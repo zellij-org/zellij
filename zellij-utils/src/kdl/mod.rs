@@ -4011,111 +4011,115 @@ impl Themes {
         for theme_config in kdl_children_nodes_or_error!(themes_from_kdl, "no themes found") {
             let theme_name = kdl_name!(theme_config);
             let theme_colors = kdl_children_or_error!(theme_config, "empty theme");
-            let styling = kdl_child_with_name!(theme_config, "styling");
-            let theme = match styling {
-                // Newer theme definition with named styles
-                Some(style) => {
-                    let s = Styling {
-                        text_unselected: Themes::style_declaration_from_node(
-                            style,
-                            "text_unselected",
-                            DEFAULT_STYLES.text_unselected,
-                        )?,
-                        text_selected: Themes::style_declaration_from_node(
-                            style,
-                            "text_selected",
-                            DEFAULT_STYLES.text_selected,
-                        )?,
-                        ribbon_unselected: Themes::style_declaration_from_node(
-                            style,
-                            "ribbon_unselected",
-                            DEFAULT_STYLES.ribbon_unselected,
-                        )?,
-                        ribbon_selected: Themes::style_declaration_from_node(
-                            style,
-                            "ribbon_selected",
-                            DEFAULT_STYLES.ribbon_selected,
-                        )?,
-                        table_title: Themes::style_declaration_from_node(
-                            style,
-                            "table_title",
-                            DEFAULT_STYLES.table_title,
-                        )?,
-                        table_cell_unselected: Themes::style_declaration_from_node(
-                            style,
-                            "table_cell_unselected",
-                            DEFAULT_STYLES.table_cell_unselected,
-                        )?,
-                        table_cell_selected: Themes::style_declaration_from_node(
-                            style,
-                            "table_cell_selected",
-                            DEFAULT_STYLES.table_cell_selected,
-                        )?,
-                        list_unselected: Themes::style_declaration_from_node(
-                            style,
-                            "list_unselected",
-                            DEFAULT_STYLES.list_unselected,
-                        )?,
-                        list_selected: Themes::style_declaration_from_node(
-                            style,
-                            "list_selected",
-                            DEFAULT_STYLES.list_selected,
-                        )?,
-                        frame_unselected: Themes::style_declaration_from_node(
-                            style,
-                            "frame_unselected",
-                            DEFAULT_STYLES.frame_unselected,
-                        )?,
-                        frame_selected: Themes::style_declaration_from_node(
-                            style,
-                            "frame_selected",
-                            DEFAULT_STYLES.frame_selected,
-                        )?,
-                        frame_highlight: Themes::style_declaration_from_node(
-                            style,
-                            "frame_highlight",
-                            DEFAULT_STYLES.frame_highlight,
-                        )?,
-                        exit_code_success: Themes::style_declaration_from_node(
-                            style,
-                            "exit_code_success",
-                            DEFAULT_STYLES.exit_code_success,
-                        )?,
-                        exit_code_error: Themes::style_declaration_from_node(
-                            style,
-                            "exit_code_error",
-                            DEFAULT_STYLES.exit_code_error,
-                        )?,
-                        multiplayer_user_colors: Themes::multiplayer_colors(style)
-                            .unwrap_or_default(),
-                    };
-
-                    Theme {
-                        palette: s,
-                        sourced_from_external_file,
-                    }
-                },
+            let palette_color_names = HashSet::from([
+                "fg", "bg", "red", "green", "blue", "yellow", "magenta", "orange", "cyan", "black",
+                "white",
+            ]);
+            let theme = if theme_colors
+                .nodes()
+                .iter()
+                .all(|n| palette_color_names.contains(n.name().value()))
+            {
                 // Older palette based theme definition
-                None => {
-                    let palette = Palette {
-                        fg: PaletteColor::try_from(("fg", theme_colors))?,
-                        bg: PaletteColor::try_from(("bg", theme_colors))?,
-                        red: PaletteColor::try_from(("red", theme_colors))?,
-                        green: PaletteColor::try_from(("green", theme_colors))?,
-                        yellow: PaletteColor::try_from(("yellow", theme_colors))?,
-                        blue: PaletteColor::try_from(("blue", theme_colors))?,
-                        magenta: PaletteColor::try_from(("magenta", theme_colors))?,
-                        orange: PaletteColor::try_from(("orange", theme_colors))?,
-                        cyan: PaletteColor::try_from(("cyan", theme_colors))?,
-                        black: PaletteColor::try_from(("black", theme_colors))?,
-                        white: PaletteColor::try_from(("white", theme_colors))?,
-                        ..Default::default()
-                    };
-                    Theme {
-                        palette: palette.into(),
-                        sourced_from_external_file,
-                    }
-                },
+                let palette = Palette {
+                    fg: PaletteColor::try_from(("fg", theme_colors))?,
+                    bg: PaletteColor::try_from(("bg", theme_colors))?,
+                    red: PaletteColor::try_from(("red", theme_colors))?,
+                    green: PaletteColor::try_from(("green", theme_colors))?,
+                    yellow: PaletteColor::try_from(("yellow", theme_colors))?,
+                    blue: PaletteColor::try_from(("blue", theme_colors))?,
+                    magenta: PaletteColor::try_from(("magenta", theme_colors))?,
+                    orange: PaletteColor::try_from(("orange", theme_colors))?,
+                    cyan: PaletteColor::try_from(("cyan", theme_colors))?,
+                    black: PaletteColor::try_from(("black", theme_colors))?,
+                    white: PaletteColor::try_from(("white", theme_colors))?,
+                    ..Default::default()
+                };
+                Theme {
+                    palette: palette.into(),
+                    sourced_from_external_file,
+                }
+            } else {
+                // Newer theme definition with named styles
+                let s = Styling {
+                    text_unselected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "text_unselected",
+                        DEFAULT_STYLES.text_unselected,
+                    )?,
+                    text_selected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "text_selected",
+                        DEFAULT_STYLES.text_selected,
+                    )?,
+                    ribbon_unselected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "ribbon_unselected",
+                        DEFAULT_STYLES.ribbon_unselected,
+                    )?,
+                    ribbon_selected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "ribbon_selected",
+                        DEFAULT_STYLES.ribbon_selected,
+                    )?,
+                    table_title: Themes::style_declaration_from_node(
+                        theme_config,
+                        "table_title",
+                        DEFAULT_STYLES.table_title,
+                    )?,
+                    table_cell_unselected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "table_cell_unselected",
+                        DEFAULT_STYLES.table_cell_unselected,
+                    )?,
+                    table_cell_selected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "table_cell_selected",
+                        DEFAULT_STYLES.table_cell_selected,
+                    )?,
+                    list_unselected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "list_unselected",
+                        DEFAULT_STYLES.list_unselected,
+                    )?,
+                    list_selected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "list_selected",
+                        DEFAULT_STYLES.list_selected,
+                    )?,
+                    frame_unselected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "frame_unselected",
+                        DEFAULT_STYLES.frame_unselected,
+                    )?,
+                    frame_selected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "frame_selected",
+                        DEFAULT_STYLES.frame_selected,
+                    )?,
+                    frame_highlight: Themes::style_declaration_from_node(
+                        theme_config,
+                        "frame_highlight",
+                        DEFAULT_STYLES.frame_highlight,
+                    )?,
+                    exit_code_success: Themes::style_declaration_from_node(
+                        theme_config,
+                        "exit_code_success",
+                        DEFAULT_STYLES.exit_code_success,
+                    )?,
+                    exit_code_error: Themes::style_declaration_from_node(
+                        theme_config,
+                        "exit_code_error",
+                        DEFAULT_STYLES.exit_code_error,
+                    )?,
+                    multiplayer_user_colors: Themes::multiplayer_colors(theme_config)
+                        .unwrap_or_default(),
+                };
+
+                Theme {
+                    palette: s,
+                    sourced_from_external_file,
+                }
             };
             themes.insert(theme_name.into(), theme);
         }
