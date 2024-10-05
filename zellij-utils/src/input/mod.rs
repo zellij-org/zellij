@@ -3,14 +3,11 @@ pub mod command;
 pub mod config;
 pub mod keybinds;
 pub mod layout;
+pub mod mouse;
 pub mod options;
 pub mod permission;
 pub mod plugins;
 pub mod theme;
-
-// Can't use this in wasm due to dependency on the `termwiz` crate.
-#[cfg(not(target_family = "wasm"))]
-pub mod mouse;
 
 #[cfg(not(target_family = "wasm"))]
 pub use not_wasm::*;
