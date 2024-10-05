@@ -5,7 +5,7 @@ use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::route_action;
 use crate::ServerInstruction;
-use log::{debug, warn};
+use log::warn;
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, HashSet},
@@ -41,7 +41,6 @@ use zellij_utils::{
         actions::Action,
         command::{OpenFilePayload, RunCommand, RunCommandAction, TerminalAction},
         layout::{Layout, RunPluginOrAlias},
-        plugins::PluginType,
     },
     plugin_api::{
         plugin_command::ProtobufPluginCommand,
@@ -340,6 +339,13 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         tab_index,
                         should_change_focus_to_new_tab,
                     ),
+                    PluginCommand::ReloadPlugin(plugin_id) => reload_plugin(env, plugin_id),
+                    PluginCommand::LoadNewPlugin {
+                        url,
+                        config,
+                        load_in_background,
+                        skip_plugin_cache,
+                    } => load_new_plugin(env, url, config, load_in_background, skip_plugin_cache),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -406,38 +412,25 @@ fn unsubscribe(env: &PluginEnv, event_list: HashSet<EventType>) -> Result<()> {
 }
 
 fn set_selectable(env: &PluginEnv, selectable: bool) {
-    match env.plugin.run {
-        PluginType::Pane(Some(tab_index)) => {
-            // let selectable = selectable != 0;
-            env.senders
-                .send_to_screen(ScreenInstruction::SetSelectable(
-                    PaneId::Plugin(env.plugin_id),
-                    selectable,
-                    tab_index,
-                ))
-                .with_context(|| {
-                    format!(
-                        "failed to set plugin {} selectable from plugin {}",
-                        selectable,
-                        env.name()
-                    )
-                })
-                .non_fatal();
-        },
-        _ => {
-            debug!(
-                "{} - Calling method 'set_selectable' does nothing for headless plugins",
-                env.plugin.location
+    env.senders
+        .send_to_screen(ScreenInstruction::SetSelectable(
+            PaneId::Plugin(env.plugin_id),
+            selectable,
+        ))
+        .with_context(|| {
+            format!(
+                "failed to set plugin {} selectable from plugin {}",
+                selectable,
+                env.name()
             )
-        },
-    }
+        })
+        .non_fatal();
 }
 
 fn request_permission(env: &PluginEnv, permissions: Vec<PermissionType>) -> Result<()> {
     if PermissionCache::from_path_or_default(None)
         .check_permissions(env.plugin.location.to_string(), &permissions)
     {
-        log::info!("PermissionRequestResult 1");
         return env
             .senders
             .send_to_plugin(PluginInstruction::PermissionRequestResult(
@@ -1361,12 +1354,20 @@ fn close_terminal_pane(env: &PluginEnv, terminal_pane_id: u32) {
     let error_msg = || format!("failed to change tab focus in plugin {}", env.name());
     let action = Action::CloseTerminalPane(terminal_pane_id);
     apply_action!(action, error_msg, env);
+    env.senders
+        .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(
+            terminal_pane_id,
+        )))
+        .non_fatal();
 }
 
 fn close_plugin_pane(env: &PluginEnv, plugin_pane_id: u32) {
     let error_msg = || format!("failed to change tab focus in plugin {}", env.name());
     let action = Action::ClosePluginPane(plugin_pane_id);
     apply_action!(action, error_msg, env);
+    env.senders
+        .send_to_plugin(PluginInstruction::Unload(plugin_pane_id))
+        .non_fatal();
 }
 
 fn focus_terminal_pane(env: &PluginEnv, terminal_pane_id: u32, should_float_if_hidden: bool) {
@@ -1648,6 +1649,70 @@ fn break_panes_to_tab_with_index(
         });
 }
 
+fn reload_plugin(env: &PluginEnv, plugin_id: u32) {
+    let _ = env
+        .senders
+        .send_to_plugin(PluginInstruction::ReloadPluginWithId(plugin_id));
+}
+
+fn load_new_plugin(
+    env: &PluginEnv,
+    url: String,
+    config: BTreeMap<String, String>,
+    load_in_background: bool,
+    skip_plugin_cache: bool,
+) {
+    let url = if &url == "zellij:OWN_URL" {
+        env.plugin.location.display()
+    } else {
+        url
+    };
+    if load_in_background {
+        match RunPluginOrAlias::from_url(&url, &Some(config), None, Some(env.plugin_cwd.clone())) {
+            Ok(run_plugin_or_alias) => {
+                let _ = env
+                    .senders
+                    .send_to_plugin(PluginInstruction::LoadBackgroundPlugin(
+                        run_plugin_or_alias,
+                        env.client_id,
+                    ));
+            },
+            Err(e) => {
+                log::error!("Failed to load new plugin: {:?}", e);
+            },
+        }
+    } else {
+        let should_float = Some(true);
+        let should_be_open_in_place = false;
+        let pane_title = None;
+        let tab_index = None;
+        let pane_id_to_replace = None;
+        let client_id = env.client_id;
+        let size = Default::default();
+        let cwd = Some(env.plugin_cwd.clone());
+        let skip_cache = skip_plugin_cache;
+        match RunPluginOrAlias::from_url(&url, &Some(config), None, Some(env.plugin_cwd.clone())) {
+            Ok(run_plugin_or_alias) => {
+                let _ = env.senders.send_to_plugin(PluginInstruction::Load(
+                    should_float,
+                    should_be_open_in_place,
+                    pane_title,
+                    run_plugin_or_alias,
+                    tab_index,
+                    pane_id_to_replace,
+                    client_id,
+                    size,
+                    cwd,
+                    skip_cache,
+                ));
+            },
+            Err(e) => {
+                log::error!("Failed to load new plugin: {:?}", e);
+            },
+        }
+    }
+}
+
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -1795,6 +1860,8 @@ fn check_command_permission(
         | PluginCommand::CloseTabWithIndex(..)
         | PluginCommand::BreakPanesToNewTab(..)
         | PluginCommand::BreakPanesToTabWithIndex(..)
+        | PluginCommand::ReloadPlugin(..)
+        | PluginCommand::LoadNewPlugin { .. }
         | PluginCommand::KillSessions(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)

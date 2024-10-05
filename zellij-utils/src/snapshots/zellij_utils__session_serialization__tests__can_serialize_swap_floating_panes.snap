@@ -1,0 +1,76 @@
+---
+source: zellij-utils/src/session_serialization.rs
+assertion_line: 2111
+expression: kdl.0
+---
+layout {
+    swap_floating_layout {
+        floating_panes max_panes=1 {
+            pane {
+            }
+            pane {
+            }
+            pane {
+            }
+        }
+        floating_panes min_panes=1 {
+            pane {
+            }
+            pane {
+            }
+            pane {
+            }
+        }
+        floating_panes exact_panes=1 {
+            pane {
+            }
+            pane {
+            }
+            pane {
+            }
+        }
+        floating_panes {
+            pane {
+            }
+            pane {
+            }
+            pane {
+            }
+        }
+    }
+    swap_floating_layout name="swap_floating_layout_2" {
+        floating_panes max_panes=2 {
+            pane {
+            }
+            pane {
+            }
+            pane {
+            }
+        }
+        floating_panes min_panes=2 {
+            pane {
+            }
+            pane {
+            }
+            pane {
+            }
+        }
+        floating_panes exact_panes=2 {
+            pane {
+            }
+            pane {
+            }
+            pane {
+            }
+        }
+        floating_panes {
+            pane {
+            }
+            pane {
+            }
+            pane {
+            }
+        }
+    }
+}
+

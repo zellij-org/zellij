@@ -37,6 +37,7 @@ lazy_static::lazy_static! {
         WorkspaceMember{crate_name: "default-plugins/fixture-plugin-for-tests", build: true},
         WorkspaceMember{crate_name: "default-plugins/session-manager", build: true},
         WorkspaceMember{crate_name: "default-plugins/configuration", build: true},
+        WorkspaceMember{crate_name: "default-plugins/plugin-manager", build: true},
         WorkspaceMember{crate_name: "zellij-utils", build: false},
         WorkspaceMember{crate_name: "zellij-tile-utils", build: false},
         WorkspaceMember{crate_name: "zellij-tile", build: false},

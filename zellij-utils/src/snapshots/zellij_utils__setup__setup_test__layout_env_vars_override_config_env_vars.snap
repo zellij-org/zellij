@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 811
+assertion_line: 812
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -4140,6 +4140,34 @@ Config {
                 bare_key: Char(
                     'p',
                 ),
+                key_modifiers: {},
+            }: [
+                LaunchOrFocusPlugin(
+                    Alias(
+                        PluginAlias {
+                            name: "plugin-manager",
+                            configuration: Some(
+                                PluginUserConfiguration(
+                                    {},
+                                ),
+                            ),
+                            initial_cwd: None,
+                            run_plugin: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
                 key_modifiers: {
                     Ctrl,
                 },
@@ -5611,6 +5639,18 @@ Config {
                     "/",
                 ),
             },
+            "plugin-manager": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "plugin-manager",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
             "session-manager": RunPlugin {
                 _allow_exec_host_cmd: false,
                 location: Zellij(
@@ -5686,4 +5726,5 @@ Config {
         "LAYOUT_ENV_VAR": "make sure I'm also here",
         "MY_ENV_VAR": "from layout",
     },
+    background_plugins: {},
 }

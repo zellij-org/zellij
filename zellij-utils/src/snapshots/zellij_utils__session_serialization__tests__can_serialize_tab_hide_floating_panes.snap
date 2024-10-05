@@ -1,0 +1,10 @@
+---
+source: zellij-utils/src/session_serialization.rs
+assertion_line: 1667
+expression: kdl.0
+---
+layout {
+    tab name="Tab #1" hide_floating_panes=true {
+    }
+}
+

@@ -1551,7 +1551,7 @@ impl Pty {
             should_open_in_place,
             pane_title,
             run,
-            tab_index,
+            Some(tab_index),
             pane_id_to_replace,
             client_id,
             size,
