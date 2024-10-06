@@ -3594,7 +3594,7 @@ pub(crate) fn screen_thread_main(
                     // update state
                     screen.session_name = name.clone();
                     screen.default_mode_info.session_name = Some(name.clone());
-                    for (_client_id, mut mode_info) in screen.mode_info.iter_mut() {
+                    for (_client_id, mode_info) in screen.mode_info.iter_mut() {
                         mode_info.session_name = Some(name.clone());
                     }
                     for (_, tab) in screen.tabs.iter_mut() {

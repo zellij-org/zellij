@@ -6,7 +6,7 @@ use std::{
     mem::MaybeUninit,
     os::windows::{
         ffi::OsStrExt,
-        io::{AsRawHandle, FromRawHandle, IntoRawHandle, OwnedHandle},
+        io::{AsRawHandle, FromRawHandle, OwnedHandle},
     },
     path::PathBuf,
     ptr,
@@ -60,7 +60,7 @@ struct EventedOverlapped(OVERLAPPED);
 
 impl Drop for EventedOverlapped {
     fn drop(&mut self) {
-        if (!self.0.hEvent.is_null()) {
+        if !self.0.hEvent.is_null() {
             unsafe {
                 CloseHandle(self.0.hEvent);
             }
@@ -158,7 +158,7 @@ impl Pipe {
         // the function returns a nonzero value. If the function
         // returns zero, GetLastError returns ERROR_PIPE_CONNECTED.
 
-        let mut pipe_handle = PipeStream::from(server_listener_pipe_handle);
+        let pipe_handle = PipeStream::from(server_listener_pipe_handle);
         let connected = if unsafe {
             ConnectNamedPipe(pipe_handle.0.as_raw_handle() as _, ptr::null_mut())
         } != 0

@@ -5,8 +5,6 @@ use crate::plugins::zellij_exports::{wasi_write_object, zellij_exports};
 use crate::plugins::PluginId;
 use highway::{HighwayHash, PortableHash};
 use log::info;
-use std::ffi::OsString;
-use std::path::Path;
 use std::{
     collections::{HashMap, HashSet},
     fs,

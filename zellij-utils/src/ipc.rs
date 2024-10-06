@@ -18,7 +18,6 @@ use crate::shared::set_permissions;
 
 #[cfg(unix)]
 use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
-use log::warn;
 
 #[cfg(unix)]
 use nix::unistd::dup;
@@ -408,8 +407,8 @@ where
                                 todo!("Decode first message and figure out what to do with the remainder")
                             }
                         },
-                        (rmp_serde::decode::Error::InvalidDataRead(io_error)
-                        | rmp_serde::decode::Error::InvalidMarkerRead(io_error))
+                        rmp_serde::decode::Error::InvalidDataRead(io_error)
+                        | rmp_serde::decode::Error::InvalidMarkerRead(io_error)
                             if io_error.kind() == std::io::ErrorKind::UnexpectedEof =>
                         {
                             counter += 1;
@@ -420,7 +419,7 @@ where
                             buf.reserve(1);
                             continue;
                         },
-                        e => {
+                        _e => {
                             return None;
                         },
                     }

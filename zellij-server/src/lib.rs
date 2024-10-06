@@ -25,7 +25,6 @@ use std::{
     thread,
 };
 use zellij_utils::envs;
-use zellij_utils::interprocess::local_socket::LocalSocketStream;
 #[cfg(unix)]
 use zellij_utils::nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;
