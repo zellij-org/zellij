@@ -989,7 +989,7 @@ impl TiledPanes {
         self.focus_pane(next_index, client_id);
         self.set_pane_active_at(next_index);
     }
-    pub fn move_focus_left(&mut self, client_id: ClientId) -> bool {
+    pub fn move_focus_left(&mut self, client_id: ClientId, wrap: bool) -> bool {
         match self.get_active_pane_id(client_id) {
             Some(active_pane_id) => {
                 let pane_grid = TiledPaneGrid::new(
@@ -998,34 +998,39 @@ impl TiledPanes {
                     *self.display_area.borrow(),
                     *self.viewport.borrow(),
                 );
-                let next_index = pane_grid.next_selectable_pane_id_to_the_left(&active_pane_id);
-                match next_index {
-                    Some(p) => {
-                        // render previously active pane so that its frame does not remain actively
-                        // colored
-                        let previously_active_pane = self
-                            .panes
-                            .get_mut(self.active_panes.get(&client_id).unwrap())
-                            .unwrap();
-
-                        previously_active_pane.set_should_render(true);
-                        // we render the full viewport to remove any ui elements that might have been
-                        // there before (eg. another user's cursor)
-                        previously_active_pane.render_full_viewport();
-
-                        let next_active_pane = self.panes.get_mut(&p).unwrap();
-                        next_active_pane.set_should_render(true);
-                        // we render the full viewport to remove any ui elements that might have been
-                        // there before (eg. another user's cursor)
-                        next_active_pane.render_full_viewport();
-
-                        self.focus_pane(p, client_id);
-                        self.set_pane_active_at(p);
-
-                        true
-                    },
-                    None => false,
+                let mut next_index = pane_grid.next_selectable_pane_id_to_the_left(&active_pane_id);
+                if next_index == None {
+                    if !wrap {
+                        return false
+                    }
+                    next_index = pane_grid.pane_id_on_edge(Direction::Right);
+                    if next_index == None || next_index.unwrap() == active_pane_id {
+                        return false
+                    }
                 }
+                // render previously active pane so that its frame does not remain actively
+                // colored
+                let p = next_index.unwrap();
+                let previously_active_pane = self
+                    .panes
+                    .get_mut(self.active_panes.get(&client_id).unwrap())
+                    .unwrap();
+
+                previously_active_pane.set_should_render(true);
+                // we render the full viewport to remove any ui elements that might have been
+                // there before (eg. another user's cursor)
+                previously_active_pane.render_full_viewport();
+
+                let next_active_pane = self.panes.get_mut(&p).unwrap();
+                next_active_pane.set_should_render(true);
+                // we render the full viewport to remove any ui elements that might have been
+                // there before (eg. another user's cursor)
+                next_active_pane.render_full_viewport();
+
+                self.focus_pane(p, client_id);
+                self.set_pane_active_at(p);
+
+                true
             },
             None => false,
         }
@@ -1039,47 +1044,49 @@ impl TiledPanes {
                     *self.display_area.borrow(),
                     *self.viewport.borrow(),
                 );
-                let next_index = pane_grid
+                let mut next_index = pane_grid
                     .next_selectable_pane_id_below(&active_pane_id)
                     .or_else(|| pane_grid.progress_stack_down_if_in_stack(&active_pane_id));
-                match next_index {
-                    Some(p) => {
-                        // render previously active pane so that its frame does not remain actively
-                        // colored
-                        let previously_active_pane = self
-                            .panes
-                            .get_mut(self.active_panes.get(&client_id).unwrap())
-                            .unwrap();
-
-                        let previously_active_pane_is_stacked =
-                            previously_active_pane.current_geom().is_stacked;
-                        previously_active_pane.set_should_render(true);
-                        // we render the full viewport to remove any ui elements that might have been
-                        // there before (eg. another user's cursor)
-                        previously_active_pane.render_full_viewport();
-
-                        let next_active_pane = self.panes.get_mut(&p).unwrap();
-                        let next_active_pane_is_stacked =
-                            next_active_pane.current_geom().is_stacked;
-                        next_active_pane.set_should_render(true);
-                        // we render the full viewport to remove any ui elements that might have been
-                        // there before (eg. another user's cursor)
-                        next_active_pane.render_full_viewport();
-
-                        self.focus_pane(p, client_id);
-                        self.set_pane_active_at(p);
-                        if previously_active_pane_is_stacked || next_active_pane_is_stacked {
-                            // we do this because a stack pane focus change also changes its
-                            // geometry and we need to let the pty know about this (like in a
-                            // normal size change)
-                            self.focus_pane_for_all_clients(p); // TODO: for all client *in stack*
-                            self.reapply_pane_frames();
-                        }
-
-                        true
-                    },
-                    None => false,
+                if next_index == None {
+                    next_index = pane_grid.pane_id_on_edge(Direction::Up);
+                    if next_index == None || next_index.unwrap() == active_pane_id {
+                        return false
+                    }
                 }
+                // render previously active pane so that its frame does not remain actively
+                // colored
+                let p = next_index.unwrap();
+                let previously_active_pane = self
+                    .panes
+                    .get_mut(self.active_panes.get(&client_id).unwrap())
+                    .unwrap();
+
+                let previously_active_pane_is_stacked =
+                    previously_active_pane.current_geom().is_stacked;
+                previously_active_pane.set_should_render(true);
+                // we render the full viewport to remove any ui elements that might have been
+                // there before (eg. another user's cursor)
+                previously_active_pane.render_full_viewport();
+
+                let next_active_pane = self.panes.get_mut(&p).unwrap();
+                let next_active_pane_is_stacked =
+                    next_active_pane.current_geom().is_stacked;
+                next_active_pane.set_should_render(true);
+                // we render the full viewport to remove any ui elements that might have been
+                // there before (eg. another user's cursor)
+                next_active_pane.render_full_viewport();
+
+                self.focus_pane(p, client_id);
+                self.set_pane_active_at(p);
+                if previously_active_pane_is_stacked || next_active_pane_is_stacked {
+                    // we do this because a stack pane focus change also changes its
+                    // geometry and we need to let the pty know about this (like in a
+                    // normal size change)
+                    self.focus_pane_for_all_clients(p); // TODO: for all client *in stack*
+                    self.reapply_pane_frames();
+                }
+
+                true
             },
             None => false,
         }
@@ -1093,52 +1100,54 @@ impl TiledPanes {
                     *self.display_area.borrow(),
                     *self.viewport.borrow(),
                 );
-                let next_index = pane_grid
+                let mut next_index = pane_grid
                     .next_selectable_pane_id_above(&active_pane_id)
                     .or_else(|| pane_grid.progress_stack_up_if_in_stack(&active_pane_id));
-                match next_index {
-                    Some(p) => {
-                        // render previously active pane so that its frame does not remain actively
-                        // colored
-                        let previously_active_pane = self
-                            .panes
-                            .get_mut(self.active_panes.get(&client_id).unwrap())
-                            .unwrap();
-
-                        let previously_active_pane_is_stacked =
-                            previously_active_pane.current_geom().is_stacked;
-                        previously_active_pane.set_should_render(true);
-                        // we render the full viewport to remove any ui elements that might have been
-                        // there before (eg. another user's cursor)
-                        previously_active_pane.render_full_viewport();
-
-                        let next_active_pane = self.panes.get_mut(&p).unwrap();
-                        let next_active_pane_is_stacked =
-                            next_active_pane.current_geom().is_stacked;
-                        next_active_pane.set_should_render(true);
-                        // we render the full viewport to remove any ui elements that might have been
-                        // there before (eg. another user's cursor)
-                        next_active_pane.render_full_viewport();
-
-                        self.focus_pane(p, client_id);
-                        self.set_pane_active_at(p);
-                        if previously_active_pane_is_stacked || next_active_pane_is_stacked {
-                            // we do this because a stack pane focus change also changes its
-                            // geometry and we need to let the pty know about this (like in a
-                            // normal size change)
-                            self.focus_pane_for_all_clients(p); // TODO: for all client *in stack*
-                            self.reapply_pane_frames();
-                        }
-
-                        true
-                    },
-                    None => false,
+                if next_index == None {
+                    next_index = pane_grid.pane_id_on_edge(Direction::Down);
+                    if next_index == None || next_index.unwrap() == active_pane_id {
+                        return false
+                    }
                 }
+                // render previously active pane so that its frame does not remain actively
+                // colored
+                let p = next_index.unwrap();
+                let previously_active_pane = self
+                    .panes
+                    .get_mut(self.active_panes.get(&client_id).unwrap())
+                    .unwrap();
+
+                let previously_active_pane_is_stacked =
+                    previously_active_pane.current_geom().is_stacked;
+                previously_active_pane.set_should_render(true);
+                // we render the full viewport to remove any ui elements that might have been
+                // there before (eg. another user's cursor)
+                previously_active_pane.render_full_viewport();
+
+                let next_active_pane = self.panes.get_mut(&p).unwrap();
+                let next_active_pane_is_stacked =
+                    next_active_pane.current_geom().is_stacked;
+                next_active_pane.set_should_render(true);
+                // we render the full viewport to remove any ui elements that might have been
+                // there before (eg. another user's cursor)
+                next_active_pane.render_full_viewport();
+
+                self.focus_pane(p, client_id);
+                self.set_pane_active_at(p);
+                if previously_active_pane_is_stacked || next_active_pane_is_stacked {
+                    // we do this because a stack pane focus change also changes its
+                    // geometry and we need to let the pty know about this (like in a
+                    // normal size change)
+                    self.focus_pane_for_all_clients(p); // TODO: for all client *in stack*
+                    self.reapply_pane_frames();
+                }
+
+                true
             },
             None => false,
         }
     }
-    pub fn move_focus_right(&mut self, client_id: ClientId) -> bool {
+    pub fn move_focus_right(&mut self, client_id: ClientId, wrap: bool) -> bool {
         match self.get_active_pane_id(client_id) {
             Some(active_pane_id) => {
                 let pane_grid = TiledPaneGrid::new(
@@ -1147,34 +1156,39 @@ impl TiledPanes {
                     *self.display_area.borrow(),
                     *self.viewport.borrow(),
                 );
-                let next_index = pane_grid.next_selectable_pane_id_to_the_right(&active_pane_id);
-                match next_index {
-                    Some(p) => {
-                        // render previously active pane so that its frame does not remain actively
-                        // colored
-                        let previously_active_pane = self
-                            .panes
-                            .get_mut(self.active_panes.get(&client_id).unwrap())
-                            .unwrap();
-
-                        previously_active_pane.set_should_render(true);
-                        // we render the full viewport to remove any ui elements that might have been
-                        // there before (eg. another user's cursor)
-                        previously_active_pane.render_full_viewport();
-
-                        let next_active_pane = self.panes.get_mut(&p).unwrap();
-                        next_active_pane.set_should_render(true);
-                        // we render the full viewport to remove any ui elements that might have been
-                        // there before (eg. another user's cursor)
-                        next_active_pane.render_full_viewport();
-
-                        self.focus_pane(p, client_id);
-                        self.set_pane_active_at(p);
-
-                        true
-                    },
-                    None => false,
+                let mut next_index = pane_grid.next_selectable_pane_id_to_the_right(&active_pane_id);
+                if next_index == None {
+                    if !wrap {
+                        return false
+                    }
+                    next_index = pane_grid.pane_id_on_edge(Direction::Left);
+                    if next_index == None || next_index.unwrap() == active_pane_id {
+                        return false
+                    }
                 }
+                // render previously active pane so that its frame does not remain actively
+                // colored
+                let p = next_index.unwrap();
+                let previously_active_pane = self
+                    .panes
+                    .get_mut(self.active_panes.get(&client_id).unwrap())
+                    .unwrap();
+
+                previously_active_pane.set_should_render(true);
+                // we render the full viewport to remove any ui elements that might have been
+                // there before (eg. another user's cursor)
+                previously_active_pane.render_full_viewport();
+
+                let next_active_pane = self.panes.get_mut(&p).unwrap();
+                next_active_pane.set_should_render(true);
+                // we render the full viewport to remove any ui elements that might have been
+                // there before (eg. another user's cursor)
+                next_active_pane.render_full_viewport();
+
+                self.focus_pane(p, client_id);
+                self.set_pane_active_at(p);
+
+                true
             },
             None => false,
         }
@@ -1678,13 +1692,13 @@ impl TiledPanes {
 
     pub fn focus_pane_left_fullscreen(&mut self, client_id: ClientId) {
         self.unset_fullscreen();
-        self.move_focus_left(client_id);
+        self.move_focus_left(client_id, true);
         self.toggle_active_pane_fullscreen(client_id);
     }
 
     pub fn focus_pane_right_fullscreen(&mut self, client_id: ClientId) {
         self.unset_fullscreen();
-        self.move_focus_right(client_id);
+        self.move_focus_right(client_id, true);
         self.toggle_active_pane_fullscreen(client_id);
     }
 
