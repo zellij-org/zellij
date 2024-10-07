@@ -1,10 +1,10 @@
 ---
 source: zellij-utils/src/input/./unit/theme_test.rs
-assertion_line: 15
 expression: "format!(\"{:#?}\", theme)"
 ---
 {
     "dracula": Theme {
+        sourced_from_external_file: true,
         palette: Styling {
             text_unselected: StyleDeclaration {
                 base: Rgb(
@@ -232,9 +232,9 @@ expression: "format!(\"{:#?}\", theme)"
                 ),
                 background: Rgb(
                     (
-                        40,
-                        42,
-                        54,
+                        0,
+                        0,
+                        0,
                     ),
                 ),
                 emphasis_1: Rgb(
@@ -623,6 +623,5 @@ expression: "format!(\"{:#?}\", theme)"
                 ),
             },
         },
-        sourced_from_external_file: true,
     },
 }
