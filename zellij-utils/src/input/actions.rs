@@ -583,21 +583,22 @@ impl Action {
                         stringified_error
                     })?;
                     let mut tabs = layout.tabs();
-                    if tabs.len() > 1 {
-                        return Err(format!("Tab layout cannot itself have tabs"));
-                    } else if !tabs.is_empty() {
+                    if !tabs.is_empty() {
                         let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
                         let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
-                        let (tab_name, layout, floating_panes_layout) =
-                            tabs.drain(..).next().unwrap();
-                        let name = tab_name.or(name);
-                        Ok(vec![Action::NewTab(
-                            Some(layout),
-                            floating_panes_layout,
-                            swap_tiled_layouts,
-                            swap_floating_layouts,
-                            name,
-                        )])
+                        let mut new_tab_actions = vec![];
+                        for (tab_name, layout, floating_panes_layout) in tabs.drain(..) {
+                            let name = tab_name.or_else(|| name.clone());
+                            new_tab_actions.push(Action::NewTab(
+                                Some(layout),
+                                floating_panes_layout,
+                                swap_tiled_layouts.clone(),
+                                swap_floating_layouts.clone(),
+                                name,
+                            ));
+                        }
+                        // TODO: handle focused tab index
+                        Ok(new_tab_actions)
                     } else {
                         let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
                         let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
