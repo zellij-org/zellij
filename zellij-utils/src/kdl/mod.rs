@@ -4170,9 +4170,7 @@ impl Themes {
             }
             has_themes = true;
             let mut current_theme_node = KdlNode::new(theme_name.clone());
-            let mut current_theme_node_styling = KdlNode::new("styling");
             let mut current_theme_node_children = KdlDocument::new();
-            let mut current_theme_node_styling_children = KdlDocument::new();
             current_theme_node_children
                 .nodes_mut()
                 .push(theme.palette.text_unselected.to_kdl("text_unselected"));
@@ -4214,6 +4212,9 @@ impl Themes {
                 .push(theme.palette.frame_unselected.to_kdl("frame_unselected"));
             current_theme_node_children
                 .nodes_mut()
+                .push(theme.palette.frame_highlight.to_kdl("frame_highlight"));
+            current_theme_node_children
+                .nodes_mut()
                 .push(theme.palette.exit_code_success.to_kdl("exit_code_success"));
             current_theme_node_children
                 .nodes_mut()
@@ -4221,11 +4222,7 @@ impl Themes {
             current_theme_node_children
                 .nodes_mut()
                 .push(theme.palette.multiplayer_user_colors.to_kdl());
-            current_theme_node_styling.set_children(current_theme_node_children);
-            current_theme_node_styling_children
-                .nodes_mut()
-                .push(current_theme_node_styling);
-            current_theme_node.set_children(current_theme_node_styling_children);
+            current_theme_node.set_children(current_theme_node_children);
             themes.nodes_mut().push(current_theme_node);
         }
         if has_themes {
@@ -5302,7 +5299,7 @@ fn themes_to_string() {
     .unwrap();
     assert_eq!(
         deserialized, deserialized_from_serialized,
-        "Deserialized serialized config equals original config"
+        "Deserialized serialized config equals original config",
     );
     insta::assert_snapshot!(serialized.to_string());
 }

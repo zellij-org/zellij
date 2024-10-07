@@ -764,107 +764,105 @@ mod config_test {
         let config_contents = r##"
             themes {
                 named_theme {
-                    styling {
-                        text_unselected {
-                            base "#DCD7BA"
-                            emphasis_1 "#DCD7CD"
-                            emphasis_2 "#DCD8DD"
-                            emphasis_3 "#DCD899"
-                            emphasis_4 "#ACD7CD"
-                            background   "#1F1F28"
-                        }
-                        text_selected {
-                            base "#16161D"
-                            emphasis_1 "#16161D"
-                            emphasis_2 "#16161D"
-                            emphasis_3 "#16161D"
-                            emphasis_4 "#16161D"
-                            background   "#9CABCA"
-                        }
-                        ribbon_unselected {
-                            base "#DCD7BA"
-                            emphasis_1 "#7FB4CA"
-                            emphasis_2 "#A3D4D5"
-                            emphasis_3 "#7AA89F"
-                            emphasis_4 "#DCD819"
-                            background   "#252535"
-                        }
-                        ribbon_selected {
-                            base "#16161D"
-                            emphasis_1 "#181820"
-                            emphasis_2 "#1A1A22"
-                            emphasis_3 "#2A2A37"
-                            emphasis_4 "#363646"
-                            background   "#76946A"
-                        }
-                        table_title {
-                            base "#DCD7BA"
-                            emphasis_1 "#7FB4CA"
-                            emphasis_2 "#A3D4D5"
-                            emphasis_3 "#7AA89F"
-                            emphasis_4 "#DCD819"
-                            background   "#252535"
-                        }
-                        table_cell_unselected {
-                            base "#DCD7BA"
-                            emphasis_1 "#DCD7CD"
-                            emphasis_2 "#DCD8DD"
-                            emphasis_3 "#DCD899"
-                            emphasis_4 "#ACD7CD"
-                            background   "#1F1F28"
-                        }
-                        table_cell_selected {
-                            base "#16161D"
-                            emphasis_1 "#181820"
-                            emphasis_2 "#1A1A22"
-                            emphasis_3 "#2A2A37"
-                            emphasis_4 "#363646"
-                            background   "#76946A"
-                        }
-                        list_unselected {
-                            base "#DCD7BA"
-                            emphasis_1 "#DCD7CD"
-                            emphasis_2 "#DCD8DD"
-                            emphasis_3 "#DCD899"
-                            emphasis_4 "#ACD7CD"
-                            background   "#1F1F28"
-                        }
-                        list_selected {
-                            base "#16161D"
-                            emphasis_1 "#181820"
-                            emphasis_2 "#1A1A22"
-                            emphasis_3 "#2A2A37"
-                            emphasis_4 "#363646"
-                            background   "#76946A"
-                        }
-                        frame_unselected {
-                            base "#DCD8DD"
-                            emphasis_1 "#7FB4CA"
-                            emphasis_2 "#A3D4D5"
-                            emphasis_3 "#7AA89F"
-                            emphasis_4 "#DCD819"
-                        }
-                        frame_selected {
-                            base "#76946A"
-                            emphasis_1 "#C34043"
-                            emphasis_2 "#C8C093"
-                            emphasis_3 "#ACD7CD"
-                            emphasis_4 "#DCD819"
-                        }
-                        exit_code_success {
-                            base "#76946A"
-                            emphasis_1 "#76946A"
-                            emphasis_2 "#76946A"
-                            emphasis_3 "#76946A"
-                            emphasis_4 "#76946A"
-                        }
-                        exit_code_error {
-                            base "#C34043"
-                            emphasis_1 "#C34043"
-                            emphasis_2 "#C34043"
-                            emphasis_3 "#C34043"
-                            emphasis_4 "#C34043"
-                        }
+                    text_unselected {
+                        base "#DCD7BA"
+                        emphasis_1 "#DCD7CD"
+                        emphasis_2 "#DCD8DD"
+                        emphasis_3 "#DCD899"
+                        emphasis_4 "#ACD7CD"
+                        background   "#1F1F28"
+                    }
+                    text_selected {
+                        base "#16161D"
+                        emphasis_1 "#16161D"
+                        emphasis_2 "#16161D"
+                        emphasis_3 "#16161D"
+                        emphasis_4 "#16161D"
+                        background   "#9CABCA"
+                    }
+                    ribbon_unselected {
+                        base "#DCD7BA"
+                        emphasis_1 "#7FB4CA"
+                        emphasis_2 "#A3D4D5"
+                        emphasis_3 "#7AA89F"
+                        emphasis_4 "#DCD819"
+                        background   "#252535"
+                    }
+                    ribbon_selected {
+                        base "#16161D"
+                        emphasis_1 "#181820"
+                        emphasis_2 "#1A1A22"
+                        emphasis_3 "#2A2A37"
+                        emphasis_4 "#363646"
+                        background   "#76946A"
+                    }
+                    table_title {
+                        base "#DCD7BA"
+                        emphasis_1 "#7FB4CA"
+                        emphasis_2 "#A3D4D5"
+                        emphasis_3 "#7AA89F"
+                        emphasis_4 "#DCD819"
+                        background   "#252535"
+                    }
+                    table_cell_unselected {
+                        base "#DCD7BA"
+                        emphasis_1 "#DCD7CD"
+                        emphasis_2 "#DCD8DD"
+                        emphasis_3 "#DCD899"
+                        emphasis_4 "#ACD7CD"
+                        background   "#1F1F28"
+                    }
+                    table_cell_selected {
+                        base "#16161D"
+                        emphasis_1 "#181820"
+                        emphasis_2 "#1A1A22"
+                        emphasis_3 "#2A2A37"
+                        emphasis_4 "#363646"
+                        background   "#76946A"
+                    }
+                    list_unselected {
+                        base "#DCD7BA"
+                        emphasis_1 "#DCD7CD"
+                        emphasis_2 "#DCD8DD"
+                        emphasis_3 "#DCD899"
+                        emphasis_4 "#ACD7CD"
+                        background   "#1F1F28"
+                    }
+                    list_selected {
+                        base "#16161D"
+                        emphasis_1 "#181820"
+                        emphasis_2 "#1A1A22"
+                        emphasis_3 "#2A2A37"
+                        emphasis_4 "#363646"
+                        background   "#76946A"
+                    }
+                    frame_unselected {
+                        base "#DCD8DD"
+                        emphasis_1 "#7FB4CA"
+                        emphasis_2 "#A3D4D5"
+                        emphasis_3 "#7AA89F"
+                        emphasis_4 "#DCD819"
+                    }
+                    frame_selected {
+                        base "#76946A"
+                        emphasis_1 "#C34043"
+                        emphasis_2 "#C8C093"
+                        emphasis_3 "#ACD7CD"
+                        emphasis_4 "#DCD819"
+                    }
+                    exit_code_success {
+                        base "#76946A"
+                        emphasis_1 "#76946A"
+                        emphasis_2 "#76946A"
+                        emphasis_3 "#76946A"
+                        emphasis_4 "#76946A"
+                    }
+                    exit_code_error {
+                        base "#C34043"
+                        emphasis_1 "#C34043"
+                        emphasis_2 "#C34043"
+                        emphasis_3 "#C34043"
+                        emphasis_4 "#C34043"
                     }
                 }
             }
@@ -994,14 +992,12 @@ mod config_test {
         let config_contents = r##"
             themes {
                 named_theme {
-                    styling {
-                        text_unselected {
-                            base "#DCD7BA"
-                            emphasis_2 "#DCD8DD"
-                            emphasis_3 "#DCD899"
-                            emphasis_4 "#ACD7CD"
-                            background   "#1F1F28"
-                        }
+                    text_unselected {
+                        base "#DCD7BA"
+                        emphasis_2 "#DCD8DD"
+                        emphasis_3 "#DCD899"
+                        emphasis_4 "#ACD7CD"
+                        background   "#1F1F28"
                     }
                 }
             }
@@ -1026,15 +1022,13 @@ mod config_test {
         let config_contents = r##"
             themes {
                 named_theme {
-                    styling {
-                        text_unselected {
-                            base "#DCD7BA"
-                            emphasis_1 "#DCD7CD"
-                            emphasis_2 "#DCD8DD"
-                            emphasis_3 "#DCD899"
-                            emphasis_4 "#ACD7CD"
-                            background   "#1F1F28"
-                        }
+                    text_unselected {
+                        base "#DCD7BA"
+                        emphasis_1 "#DCD7CD"
+                        emphasis_2 "#DCD8DD"
+                        emphasis_3 "#DCD899"
+                        emphasis_4 "#ACD7CD"
+                        background   "#1F1F28"
                     }
                 }
             }
