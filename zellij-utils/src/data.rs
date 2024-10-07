@@ -1357,12 +1357,12 @@ impl From<Palette> for Styling {
                 background: bg,
             },
             text_selected: StyleDeclaration {
-                base: fg,
+                base: bg,
                 emphasis_1: palette.orange,
                 emphasis_2: palette.cyan,
                 emphasis_3: palette.green,
                 emphasis_4: palette.magenta,
-                background: palette.bg,
+                background: fg,
             },
             ribbon_unselected: StyleDeclaration {
                 base: palette.black,
