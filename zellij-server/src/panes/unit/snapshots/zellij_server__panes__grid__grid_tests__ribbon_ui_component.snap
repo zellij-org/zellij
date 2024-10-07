@@ -1,9 +1,8 @@
 ---
 source: zellij-server/src/panes/./unit/grid_tests.rs
-assertion_line: 2921
 expression: "format!(\"{:?}\", grid)"
 ---
-00 (C):  <n> RESIZE 
+00 (C):  [1m<[38;5;9mn[39;38;5;0m> RESIZE 
 01 (C): 
 02 (C): 
 03 (C): 
@@ -43,5 +42,4 @@ expression: "format!(\"{:?}\", grid)"
 37 (C): 
 38 (C): 
 39 (C): 
-40 (C): 
-
+40 (C):
