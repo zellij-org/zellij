@@ -119,6 +119,16 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -224,6 +234,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -554,6 +565,16 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -711,6 +732,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -970,6 +992,7 @@ Config {
                         Down,
                     ),
                     None,
+                    false,
                 ),
                 SwitchToMode(
                     Normal,
@@ -996,6 +1019,16 @@ Config {
                 SwitchToMode(
                     Normal,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -1141,6 +1174,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
                 SwitchToMode(
                     Normal,
@@ -1169,6 +1203,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -1236,6 +1271,7 @@ Config {
                         Right,
                     ),
                     None,
+                    false,
                 ),
                 SwitchToMode(
                     Normal,
@@ -1603,6 +1639,16 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -1758,6 +1804,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -2080,6 +2127,16 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -2217,6 +2274,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -2455,6 +2513,16 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -2560,6 +2628,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -2838,6 +2907,16 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -2985,6 +3064,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -3238,6 +3318,16 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -3343,6 +3433,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -3559,6 +3650,16 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -3664,6 +3765,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -3868,11 +3970,49 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'c',
+                ),
+                key_modifiers: {},
+            }: [
+                LaunchOrFocusPlugin(
+                    Alias(
+                        PluginAlias {
+                            name: "configuration",
+                            configuration: Some(
+                                PluginUserConfiguration(
+                                    {},
+                                ),
+                            ),
+                            initial_cwd: None,
+                            run_plugin: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'd',
                 ),
                 key_modifiers: {},
             }: [
                 Detach,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -3981,6 +4121,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -4280,6 +4421,16 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -4443,6 +4594,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -4662,6 +4814,16 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -4767,6 +4929,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -4960,6 +5123,7 @@ Config {
                         Down,
                     ),
                     None,
+                    false,
                 ),
                 SwitchToMode(
                     Normal,
@@ -4976,6 +5140,7 @@ Config {
                         Right,
                     ),
                     None,
+                    false,
                 ),
                 SwitchToMode(
                     Normal,
@@ -5104,6 +5269,16 @@ Config {
                 key_modifiers: {},
             }: [
                 Detach,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -5275,6 +5450,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -5438,6 +5614,7 @@ Config {
     },
     themes: {
         "other-theme-from-config": Theme {
+            sourced_from_external_file: false,
             palette: Styling {
                 text_unselected: StyleDeclaration {
                     base: Rgb(
@@ -6058,6 +6235,7 @@ Config {
             },
         },
         "theme-from-config": Theme {
+            sourced_from_external_file: false,
             palette: Styling {
                 text_unselected: StyleDeclaration {
                     base: Rgb(
@@ -6678,6 +6856,7 @@ Config {
             },
         },
         "theme-from-layout": Theme {
+            sourced_from_external_file: false,
             palette: Styling {
                 text_unselected: StyleDeclaration {
                     base: Rgb(
@@ -7305,6 +7484,18 @@ Config {
                 location: Zellij(
                     PluginTag(
                         "compact-bar",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
+            "configuration": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "configuration",
                     ),
                 ),
                 configuration: PluginUserConfiguration(

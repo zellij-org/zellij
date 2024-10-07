@@ -1,6 +1,5 @@
 ---
 source: zellij-server/src/panes/./unit/grid_tests.rs
-assertion_line: 3102
 expression: "format!(\"{:?}\", grid)"
 ---
 00 (C): title1           title2            title3           title4                 title5          
@@ -9,7 +8,7 @@ expression: "format!(\"{:?}\", grid)"
 03 (C): 3lksdjflksdjf    lkjdsflksjdf      lkjsd😳lkfjsfd   lkjsdlkjfd             lkjdslkjsdf     
 04 (C): 4lksdjflks222djf lk😳222jdsflksjdf lk222jsdlkfjsfd  lkwwwjsdlkjfd          lkjdslkjsdf     
 05 (C): 5lksdjflksdjf    lkjdsflksjdf      lkjsdlkfjsfd     lksdjflksjfdlkjsdlkjfd lkjdrrrrslkjsdf 
-06 (C): 6lksdjflk😳sdjf  l😳kjdsflksjdf    lkjsdlkfjsfd     lkjsdlkjfd             lwwkwkjdslkjsdf 
+06 (C): [36m6lksdjflk😳sdjf  [46ml😳kjdsflksjdf    lkjsdlkfjsfd     lkjsdlkjfd             lwwkwkjdslkjsdf 
 07 (C): 
 08 (C): 
 09 (C): 
@@ -43,5 +42,4 @@ expression: "format!(\"{:?}\", grid)"
 37 (C): 
 38 (C): 
 39 (C): 
-40 (C): 
-
+40 (C):

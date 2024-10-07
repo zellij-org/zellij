@@ -1,33 +1,258 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 4821
 expression: serialized.to_string()
 ---
 themes {
     dracula {
-        fg 248 248 242
-        bg 40 42 54
-        red 255 85 85
-        green 80 250 123
-        yellow 241 250 140
-        blue 98 114 164
-        magenta 255 121 198
-        orange 255 184 108
-        cyan 139 233 253
-        black 0 0 0
-        white 255 255 255
+        text_unselected {
+            base 255 255 255
+            background 0 0 0
+            emphasis_1 255 184 108
+            emphasis_2 139 233 253
+            emphasis_3 80 250 123
+            emphasis_4 255 121 198
+        }
+        text_selected {
+            base 255 255 255
+            background 40 42 54
+            emphasis_1 255 184 108
+            emphasis_2 139 233 253
+            emphasis_3 80 250 123
+            emphasis_4 255 121 198
+        }
+        ribbon_selected {
+            base 0 0 0
+            background 80 250 123
+            emphasis_1 255 85 85
+            emphasis_2 255 184 108
+            emphasis_3 255 121 198
+            emphasis_4 98 114 164
+        }
+        ribbon_unselected {
+            base 0 0 0
+            background 248 248 242
+            emphasis_1 255 85 85
+            emphasis_2 255 255 255
+            emphasis_3 98 114 164
+            emphasis_4 255 121 198
+        }
+        table_title {
+            base 80 250 123
+            background 0
+            emphasis_1 255 184 108
+            emphasis_2 139 233 253
+            emphasis_3 255 85 85
+            emphasis_4 255 121 198
+        }
+        table_cell_selected {
+            base 80 250 123
+            background 40 42 54
+            emphasis_1 255 184 108
+            emphasis_2 139 233 253
+            emphasis_3 255 85 85
+            emphasis_4 255 121 198
+        }
+        table_cell_unselected {
+            base 248 248 242
+            background 0 0 0
+            emphasis_1 255 184 108
+            emphasis_2 139 233 253
+            emphasis_3 80 250 123
+            emphasis_4 255 121 198
+        }
+        list_selected {
+            base 80 250 123
+            background 40 42 54
+            emphasis_1 255 184 108
+            emphasis_2 139 233 253
+            emphasis_3 255 85 85
+            emphasis_4 255 121 198
+        }
+        list_unselected {
+            base 248 248 242
+            background 40 42 54
+            emphasis_1 255 184 108
+            emphasis_2 139 233 253
+            emphasis_3 80 250 123
+            emphasis_4 255 121 198
+        }
+        frame_selected {
+            base 80 250 123
+            background 0
+            emphasis_1 255 184 108
+            emphasis_2 139 233 253
+            emphasis_3 255 121 198
+            emphasis_4 0
+        }
+        frame_unselected {
+            base 255 184 108
+            background 0
+            emphasis_1 0
+            emphasis_2 0
+            emphasis_3 0
+            emphasis_4 0 0 0
+        }
+        frame_highlight {
+            base 80 250 123
+            background 0
+            emphasis_1 80 250 123
+            emphasis_2 80 250 123
+            emphasis_3 80 250 123
+            emphasis_4 80 250 123
+        }
+        exit_code_success {
+            base 80 250 123
+            background 0
+            emphasis_1 139 233 253
+            emphasis_2 0 0 0
+            emphasis_3 255 121 198
+            emphasis_4 98 114 164
+        }
+        exit_code_error {
+            base 255 85 85
+            background 0
+            emphasis_1 241 250 140
+            emphasis_2 0
+            emphasis_3 0
+            emphasis_4 0
+        }
+        multiplayer_user_colors {
+            player_1 255 121 198
+            player_2 98 114 164
+            player_3 0
+            player_4 241 250 140
+            player_5 139 233 253
+            player_6 0
+            player_7 255 85 85
+            player_8 0
+            player_9 0
+            player_10 0
+        }
     }
     nord {
-        fg 216 222 233
-        bg 46 52 64
-        red 191 97 106
-        green 163 190 140
-        yellow 235 203 139
-        blue 129 161 193
-        magenta 180 142 173
-        orange 208 135 112
-        cyan 136 192 208
-        black 59 66 82
-        white 229 233 240
+        text_unselected {
+            base 229 233 240
+            background 59 66 82
+            emphasis_1 208 135 112
+            emphasis_2 136 192 208
+            emphasis_3 163 190 140
+            emphasis_4 180 142 173
+        }
+        text_selected {
+            base 229 233 240
+            background 46 52 64
+            emphasis_1 208 135 112
+            emphasis_2 136 192 208
+            emphasis_3 163 190 140
+            emphasis_4 180 142 173
+        }
+        ribbon_selected {
+            base 59 66 82
+            background 163 190 140
+            emphasis_1 191 97 106
+            emphasis_2 208 135 112
+            emphasis_3 180 142 173
+            emphasis_4 129 161 193
+        }
+        ribbon_unselected {
+            base 59 66 82
+            background 216 222 233
+            emphasis_1 191 97 106
+            emphasis_2 229 233 240
+            emphasis_3 129 161 193
+            emphasis_4 180 142 173
+        }
+        table_title {
+            base 163 190 140
+            background 0
+            emphasis_1 208 135 112
+            emphasis_2 136 192 208
+            emphasis_3 191 97 106
+            emphasis_4 180 142 173
+        }
+        table_cell_selected {
+            base 163 190 140
+            background 46 52 64
+            emphasis_1 208 135 112
+            emphasis_2 136 192 208
+            emphasis_3 191 97 106
+            emphasis_4 180 142 173
+        }
+        table_cell_unselected {
+            base 216 222 233
+            background 59 66 82
+            emphasis_1 208 135 112
+            emphasis_2 136 192 208
+            emphasis_3 163 190 140
+            emphasis_4 180 142 173
+        }
+        list_selected {
+            base 163 190 140
+            background 46 52 64
+            emphasis_1 208 135 112
+            emphasis_2 136 192 208
+            emphasis_3 191 97 106
+            emphasis_4 180 142 173
+        }
+        list_unselected {
+            base 216 222 233
+            background 46 52 64
+            emphasis_1 208 135 112
+            emphasis_2 136 192 208
+            emphasis_3 163 190 140
+            emphasis_4 180 142 173
+        }
+        frame_selected {
+            base 163 190 140
+            background 0
+            emphasis_1 208 135 112
+            emphasis_2 136 192 208
+            emphasis_3 180 142 173
+            emphasis_4 0
+        }
+        frame_unselected {
+            base 208 135 112
+            background 0
+            emphasis_1 0
+            emphasis_2 0
+            emphasis_3 0
+            emphasis_4 59 66 82
+        }
+        frame_highlight {
+            base 163 190 140
+            background 0
+            emphasis_1 163 190 140
+            emphasis_2 163 190 140
+            emphasis_3 163 190 140
+            emphasis_4 163 190 140
+        }
+        exit_code_success {
+            base 163 190 140
+            background 0
+            emphasis_1 136 192 208
+            emphasis_2 59 66 82
+            emphasis_3 180 142 173
+            emphasis_4 129 161 193
+        }
+        exit_code_error {
+            base 191 97 106
+            background 0
+            emphasis_1 235 203 139
+            emphasis_2 0
+            emphasis_3 0
+            emphasis_4 0
+        }
+        multiplayer_user_colors {
+            player_1 180 142 173
+            player_2 129 161 193
+            player_3 0
+            player_4 235 203 139
+            player_5 136 192 208
+            player_6 0
+            player_7 191 97 106
+            player_8 0
+            player_9 0
+            player_10 0
+        }
     }
 }
