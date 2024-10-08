@@ -111,7 +111,7 @@ fn start_zellij_mirrored_session_with_layout(channel: &mut ssh2::Channel, layout
     channel
         .write_all(
             format!(
-                "{} {} --session {} --data-dir {} --layout {} options --mirror-session true --serialization-interval 1\n",
+                "{} {} --session {} --data-dir {} --new-session-with-layout {} options --mirror-session true --serialization-interval 1\n",
                 SET_ENV_VARIABLES,
                 ZELLIJ_EXECUTABLE_LOCATION,
                 SESSION_NAME,
@@ -133,7 +133,7 @@ fn start_zellij_mirrored_session_with_layout_and_viewport_serialization(
     channel
         .write_all(
             format!(
-                "{} {} --session {} --data-dir {} --layout {} options --mirror-session true --serialize-pane-viewport true --serialization-interval 1\n",
+                "{} {} --session {} --data-dir {} --new-session-with-layout {} options --mirror-session true --serialize-pane-viewport true --serialization-interval 1\n",
                 SET_ENV_VARIABLES,
                 ZELLIJ_EXECUTABLE_LOCATION,
                 SESSION_NAME,

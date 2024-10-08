@@ -53,8 +53,15 @@ pub struct CliArgs {
     pub session: Option<String>,
 
     /// Name of a predefined layout inside the layout directory or the path to a layout file
+    /// if inside a session (or using the --session flag) will be added to the session as a new tab
+    /// or tabs, otherwise will start a new session
     #[clap(short, long, value_parser, overrides_with = "layout")]
     pub layout: Option<PathBuf>,
+
+    /// Name of a predefined layout inside the layout directory or the path to a layout file
+    /// Will always start a new session, even if inside an existing session
+    #[clap(short, long, value_parser, overrides_with = "new_session_with_layout")]
+    pub new_session_with_layout: Option<PathBuf>,
 
     /// Change where zellij looks for the configuration file
     #[clap(short, long, overrides_with = "config", env = ZELLIJ_CONFIG_FILE_ENV, value_parser)]

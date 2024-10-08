@@ -315,7 +315,7 @@ impl TryFrom<ProtobufAction> for Action {
                     Some(_) => Err("NewTab should not have a payload"),
                     None => {
                         // we do not serialize the layouts of this action
-                        Ok(Action::NewTab(None, vec![], None, None, None))
+                        Ok(Action::NewTab(None, vec![], None, None, None, true))
                     },
                 }
             },
