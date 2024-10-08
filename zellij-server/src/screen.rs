@@ -218,7 +218,7 @@ pub enum ScreenInstruction {
         Vec<FloatingPaneLayout>,
         Option<String>,
         (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), // swap layouts
-        bool, // should_change_focus_to_new_tab
+        bool,                                            // should_change_focus_to_new_tab
         ClientId,
     ),
     ApplyLayout(
@@ -3426,8 +3426,17 @@ pub(crate) fn screen_thread_main(
             ) => {
                 let tab_index = screen.get_new_tab_index();
                 pending_tab_ids.insert(tab_index);
-                let client_id_for_new_tab = if should_change_focus_to_new_tab { Some(client_id) } else { None };
-                screen.new_tab(tab_index, swap_layouts, tab_name.clone(), client_id_for_new_tab)?;
+                let client_id_for_new_tab = if should_change_focus_to_new_tab {
+                    Some(client_id)
+                } else {
+                    None
+                };
+                screen.new_tab(
+                    tab_index,
+                    swap_layouts,
+                    tab_name.clone(),
+                    client_id_for_new_tab,
+                )?;
                 screen
                     .bus
                     .senders
@@ -3470,9 +3479,7 @@ pub(crate) fn screen_thread_main(
                         screen.go_to_tab(tab_index as usize + 1, client_id)?;
                     }
                 } else if should_change_focus_to_new_tab {
-                    let client_id_to_switch = if screen
-                        .active_tab_indices
-                        .contains_key(&client_id)
+                    let client_id_to_switch = if screen.active_tab_indices.contains_key(&client_id)
                     {
                         Some(client_id)
                     } else {

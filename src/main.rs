@@ -6,10 +6,10 @@ mod tests;
 use zellij_utils::{
     clap::Parser,
     cli::{CliAction, CliArgs, Command, Sessions},
-    input::config::Config,
-    setup::Setup,
-    logging::*,
     envs,
+    input::config::Config,
+    logging::*,
+    setup::Setup,
 };
 
 fn main() {
@@ -193,7 +193,12 @@ fn main() {
     } else if let Some(path) = opts.server {
         commands::start_server(path, opts.debug);
     } else if let Some(layout) = &opts.layout {
-        if let Some(session_name) = opts.session.as_ref().cloned().or_else(|| envs::get_session_name().ok()) {
+        if let Some(session_name) = opts
+            .session
+            .as_ref()
+            .cloned()
+            .or_else(|| envs::get_session_name().ok())
+        {
             let config = Config::try_from(&opts).ok();
             let options = Setup::from_cli_args(&opts).ok().map(|r| r.2);
             let new_layout_cli_action = CliAction::NewTab {

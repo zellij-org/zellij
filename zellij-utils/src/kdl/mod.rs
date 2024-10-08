@@ -698,9 +698,12 @@ impl Action {
                     let mut children = KdlDocument::new();
                     let mut name_node = KdlNode::new("name");
                     if !should_change_focus_to_new_tab {
-                        let mut should_change_focus_to_new_tab_node = KdlNode::new("should_change_focus_to_new_tab");
+                        let mut should_change_focus_to_new_tab_node =
+                            KdlNode::new("should_change_focus_to_new_tab");
                         should_change_focus_to_new_tab_node.push(KdlValue::Bool(false));
-                        children.nodes_mut().push(should_change_focus_to_new_tab_node);
+                        children
+                            .nodes_mut()
+                            .push(should_change_focus_to_new_tab_node);
                     }
                     name_node.push(name.clone());
                     children.nodes_mut().push(name_node);

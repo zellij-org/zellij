@@ -588,17 +588,20 @@ impl Action {
                         let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
                         let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
                         let mut new_tab_actions = vec![];
-                        let mut has_focused_tab = tabs.iter().any(|(_, layout, _)| layout.focus.unwrap_or(false));
+                        let mut has_focused_tab = tabs
+                            .iter()
+                            .any(|(_, layout, _)| layout.focus.unwrap_or(false));
                         for (tab_name, layout, floating_panes_layout) in tabs.drain(..) {
                             let name = tab_name.or_else(|| name.clone());
-                            let should_change_focus_to_new_tab = layout.focus.unwrap_or_else(|| {
-                                if !has_focused_tab {
-                                    has_focused_tab = true;
-                                    true
-                                } else {
-                                    false
-                                }
-                            });
+                            let should_change_focus_to_new_tab =
+                                layout.focus.unwrap_or_else(|| {
+                                    if !has_focused_tab {
+                                        has_focused_tab = true;
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                });
                             new_tab_actions.push(Action::NewTab(
                                 Some(layout),
                                 floating_panes_layout,
@@ -625,7 +628,14 @@ impl Action {
                     }
                 } else {
                     let should_change_focus_to_new_tab = true;
-                    Ok(vec![Action::NewTab(None, vec![], None, None, name, should_change_focus_to_new_tab)])
+                    Ok(vec![Action::NewTab(
+                        None,
+                        vec![],
+                        None,
+                        None,
+                        name,
+                        should_change_focus_to_new_tab,
+                    )])
                 }
             },
             CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),

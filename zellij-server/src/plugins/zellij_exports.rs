@@ -1014,7 +1014,9 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
         tabs_to_open.push(action);
     } else {
         let focused_tab_index = layout.focused_tab_index().unwrap_or(0);
-        for (tab_index, (tab_name, tiled_pane_layout, floating_pane_layout)) in layout.tabs().into_iter().enumerate() {
+        for (tab_index, (tab_name, tiled_pane_layout, floating_pane_layout)) in
+            layout.tabs().into_iter().enumerate()
+        {
             let should_focus_tab = tab_index == focused_tab_index;
             let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
             let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
