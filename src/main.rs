@@ -6,8 +6,10 @@ mod tests;
 use zellij_utils::{
     clap::Parser,
     cli::{CliAction, CliArgs, Command, Sessions},
+    envs,
     input::config::Config,
     logging::*,
+    setup::Setup,
 };
 
 fn main() {
@@ -190,6 +192,30 @@ fn main() {
         commands::delete_session(target_session, force);
     } else if let Some(path) = opts.server {
         commands::start_server(path, opts.debug);
+    } else if let Some(layout) = &opts.layout {
+        if let Some(session_name) = opts
+            .session
+            .as_ref()
+            .cloned()
+            .or_else(|| envs::get_session_name().ok())
+        {
+            let config = Config::try_from(&opts).ok();
+            let options = Setup::from_cli_args(&opts).ok().map(|r| r.2);
+            let new_layout_cli_action = CliAction::NewTab {
+                layout: Some(layout.clone()),
+                layout_dir: options.as_ref().and_then(|o| o.layout_dir.clone()),
+                name: None,
+                cwd: options.as_ref().and_then(|o| o.default_cwd.clone()),
+            };
+            commands::send_action_to_session(new_layout_cli_action, Some(session_name), config);
+        } else {
+            commands::start_client(opts);
+        }
+    } else if let Some(layout_for_new_session) = &opts.new_session_with_layout {
+        let mut opts = opts.clone();
+        opts.new_session_with_layout = None;
+        opts.layout = Some(layout_for_new_session.clone());
+        commands::start_client(opts);
     } else {
         commands::start_client(opts);
     }
