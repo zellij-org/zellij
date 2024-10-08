@@ -218,6 +218,7 @@ pub enum ScreenInstruction {
         Vec<FloatingPaneLayout>,
         Option<String>,
         (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), // swap layouts
+        bool,                                            // should_change_focus_to_new_tab
         ClientId,
     ),
     ApplyLayout(
@@ -3420,12 +3421,22 @@ pub(crate) fn screen_thread_main(
                 floating_panes_layout,
                 tab_name,
                 swap_layouts,
+                should_change_focus_to_new_tab,
                 client_id,
             ) => {
                 let tab_index = screen.get_new_tab_index();
-                let should_change_focus_to_new_tab = true;
                 pending_tab_ids.insert(tab_index);
-                screen.new_tab(tab_index, swap_layouts, tab_name.clone(), Some(client_id))?;
+                let client_id_for_new_tab = if should_change_focus_to_new_tab {
+                    Some(client_id)
+                } else {
+                    None
+                };
+                screen.new_tab(
+                    tab_index,
+                    swap_layouts,
+                    tab_name.clone(),
+                    client_id_for_new_tab,
+                )?;
                 screen
                     .bus
                     .senders
@@ -3463,6 +3474,19 @@ pub(crate) fn screen_thread_main(
                 if pending_tab_ids.is_empty() {
                     for (tab_index, client_id) in pending_tab_switches.drain() {
                         screen.go_to_tab(tab_index as usize, client_id)?;
+                    }
+                    if should_change_focus_to_new_tab {
+                        screen.go_to_tab(tab_index as usize + 1, client_id)?;
+                    }
+                } else if should_change_focus_to_new_tab {
+                    let client_id_to_switch = if screen.active_tab_indices.contains_key(&client_id)
+                    {
+                        Some(client_id)
+                    } else {
+                        screen.active_tab_indices.keys().next().copied()
+                    };
+                    if let Some(client_id_to_switch) = client_id_to_switch {
+                        pending_tab_switches.insert((tab_index as usize, client_id_to_switch));
                     }
                 }
 

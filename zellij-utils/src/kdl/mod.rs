@@ -691,12 +691,20 @@ impl Action {
                 Some(node)
             },
             Action::UndoRenamePane => Some(KdlNode::new("UndoRenamePane")),
-            Action::NewTab(_, _, _, _, name) => {
+            Action::NewTab(_, _, _, _, name, should_change_focus_to_new_tab) => {
                 log::warn!("Converting new tab action without arguments, original action saved to .bak.kdl file");
                 let mut node = KdlNode::new("NewTab");
                 if let Some(name) = name {
                     let mut children = KdlDocument::new();
                     let mut name_node = KdlNode::new("name");
+                    if !should_change_focus_to_new_tab {
+                        let mut should_change_focus_to_new_tab_node =
+                            KdlNode::new("should_change_focus_to_new_tab");
+                        should_change_focus_to_new_tab_node.push(KdlValue::Bool(false));
+                        children
+                            .nodes_mut()
+                            .push(should_change_focus_to_new_tab_node);
+                    }
                     name_node.push(name.clone());
                     children.nodes_mut().push(name_node);
                     node.set_children(children);
@@ -1379,7 +1387,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "NewTab" => {
                 let command_metadata = action_children.iter().next();
                 if command_metadata.is_none() {
-                    return Ok(Action::NewTab(None, vec![], None, None, None));
+                    return Ok(Action::NewTab(None, vec![], None, None, None, true));
                 }
 
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -1438,6 +1446,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 } else if !tabs.is_empty() {
                     let (tab_name, layout, floating_panes_layout) = tabs.drain(..).next().unwrap();
                     let name = tab_name.or(name);
+                    let should_change_focus_to_new_tab = layout.focus.unwrap_or(true);
 
                     Ok(Action::NewTab(
                         Some(layout),
@@ -1445,9 +1454,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         swap_tiled_layouts,
                         swap_floating_layouts,
                         name,
+                        should_change_focus_to_new_tab,
                     ))
                 } else {
                     let (layout, floating_panes_layout) = layout.new_tab();
+                    let should_change_focus_to_new_tab = layout.focus.unwrap_or(true);
 
                     Ok(Action::NewTab(
                         Some(layout),
@@ -1455,6 +1466,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         swap_tiled_layouts,
                         swap_floating_layouts,
                         name,
+                        should_change_focus_to_new_tab,
                     ))
                 }
             },
