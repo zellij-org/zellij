@@ -371,6 +371,7 @@ impl MockScreen {
         let default_shell = None;
         let tab_name = None;
         let tab_index = self.last_opened_tab_index.map(|l| l + 1).unwrap_or(0);
+        let should_change_focus_to_new_tab = true;
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             None,
             default_shell,
@@ -378,6 +379,7 @@ impl MockScreen {
             initial_floating_panes_layout.clone(),
             tab_name,
             (vec![], vec![]), // swap layouts
+            should_change_focus_to_new_tab,
             self.main_client_id,
         ));
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
@@ -456,6 +458,7 @@ impl MockScreen {
         let default_shell = None;
         let tab_name = None;
         let tab_index = self.last_opened_tab_index.map(|l| l + 1).unwrap_or(0);
+        let should_change_focus_to_new_tab = true;
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             None,
             default_shell,
@@ -463,6 +466,7 @@ impl MockScreen {
             initial_floating_panes_layout.clone(),
             tab_name,
             (vec![], vec![]), // swap layouts
+            should_change_focus_to_new_tab,
             self.main_client_id,
         ));
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
@@ -488,6 +492,7 @@ impl MockScreen {
         for i in 0..pane_count {
             pane_ids.push((i as u32, None));
         }
+        let should_change_focus_to_new_tab = true;
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             None,
             default_shell,
@@ -495,6 +500,7 @@ impl MockScreen {
             vec![], // floating_panes_layout
             tab_name,
             (vec![], vec![]), // swap layouts
+            should_change_focus_to_new_tab,
             self.main_client_id,
         ));
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(

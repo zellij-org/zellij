@@ -580,7 +580,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 });
                 let cwd = runtime_config_options.default_cwd;
 
-                let spawn_tabs = |tab_layout, floating_panes_layout, tab_name, swap_layouts| {
+                let spawn_tabs = |tab_layout, floating_panes_layout, tab_name, swap_layouts, should_focus_tab| {
                     session_data
                         .read()
                         .unwrap()
@@ -594,13 +594,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             floating_panes_layout,
                             tab_name,
                             swap_layouts,
+                            should_focus_tab,
                             client_id,
                         ))
                         .unwrap()
                 };
 
                 if layout.has_tabs() {
-                    for (tab_name, tab_layout, floating_panes_layout) in layout.tabs() {
+                    let focused_tab_index = layout.focused_tab_index().unwrap_or(0);
+                    for (tab_index, (tab_name, tab_layout, floating_panes_layout)) in layout.tabs().into_iter().enumerate() {
+                        let should_focus_tab = tab_index == focused_tab_index;
                         spawn_tabs(
                             Some(tab_layout.clone()),
                             floating_panes_layout.clone(),
@@ -609,21 +612,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                 layout.swap_tiled_layouts.clone(),
                                 layout.swap_floating_layouts.clone(),
                             ),
+                            should_focus_tab,
                         );
-                    }
-
-                    if let Some(focused_tab_index) = layout.focused_tab_index() {
-                        session_data
-                            .read()
-                            .unwrap()
-                            .as_ref()
-                            .unwrap()
-                            .senders
-                            .send_to_screen(ScreenInstruction::GoToTab(
-                                (focused_tab_index + 1) as u32,
-                                Some(client_id),
-                            ))
-                            .unwrap();
                     }
                 } else {
                     let mut floating_panes =
@@ -642,6 +632,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             layout.swap_tiled_layouts.clone(),
                             layout.swap_floating_layouts.clone(),
                         ),
+                        true
                     );
                 }
                 session_data
