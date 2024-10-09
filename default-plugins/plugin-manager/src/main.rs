@@ -486,8 +486,9 @@ impl ZellijPlugin for State {
             EventType::TabUpdate,
             EventType::Key,
             EventType::SessionUpdate,
-            EventType::PermissionRequestResult,
         ]);
+        let own_plugin_id = get_plugin_ids().plugin_id;
+        rename_plugin_pane(own_plugin_id, "Plugin Manager");
     }
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
         if pipe_message.name == "filepicker_result" {
@@ -523,11 +524,6 @@ impl ZellijPlugin for State {
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
-            Event::PermissionRequestResult(_) => {
-                let own_plugin_id = get_plugin_ids().plugin_id;
-                rename_plugin_pane(own_plugin_id, "Plugin Manager");
-                should_render = true;
-            },
             Event::SessionUpdate(live_sessions, _dead_sessions) => {
                 for session in live_sessions {
                     if session.is_current_session {
