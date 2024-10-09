@@ -64,38 +64,22 @@ impl ZellijPlugin for State {
             .map(|v| v == "true")
             .unwrap_or(false);
         self.userspace_configuration = configuration;
-        // we need the ReadApplicationState permission to receive the ModeUpdate and TabUpdate
-        // events
-        // we need the RunCommands permission to run "cargo test" in a floating window
-        request_permission(&[
-            PermissionType::ReadApplicationState,
-            PermissionType::RunCommands,
-            PermissionType::ReadCliPipes,
-            PermissionType::MessageAndLaunchOtherPlugins,
-            PermissionType::Reconfigure,
-            PermissionType::ChangeApplicationState,
-        ]);
-        subscribe(&[
-            EventType::PermissionRequestResult,
-            EventType::Key,
-            EventType::FailedToWriteConfigToDisk,
-        ]);
+        subscribe(&[EventType::Key, EventType::FailedToWriteConfigToDisk]);
+        let own_plugin_id = get_plugin_ids().plugin_id;
         if self.is_setup_wizard {
             self.ui_size = 18;
             self.selected_index = Some(0);
-            let own_plugin_id = get_plugin_ids().plugin_id;
             rename_plugin_pane(own_plugin_id, "First Run Setup Wizard (Step 1/1)");
             resize_focused_pane(Resize::Increase);
             resize_focused_pane(Resize::Increase);
             resize_focused_pane(Resize::Increase);
+        } else {
+            rename_plugin_pane(own_plugin_id, "Configuration");
         }
     }
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
-            Event::PermissionRequestResult(_) => {
-                should_render = true;
-            },
             Event::Key(key) => {
                 if self.remapping_leaders {
                     should_render = self.handle_remapping_screen_key(key);
