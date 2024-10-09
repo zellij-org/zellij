@@ -37,6 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(http): get web requests to work consistently by switching from surf to using isahc directly (https://github.com/zellij-org/zellij/pull/3643)
 * feat(cli): make `--layout` flag idempotent(-ish) (https://github.com/zellij-org/zellij/pull/3650)
 * fix(plugins): handle race when setting plugin selectable (https://github.com/zellij-org/zellij/pull/3651)
+* feat(cli): add cache folder indication to `zellij setup --check` (https://github.com/zellij-org/zellij/pull/3652)
 
 ## [0.40.1] - 2024-05-02
 * fix(sessions): issue where sessions would occasionally become unresponsive (https://github.com/zellij-org/zellij/pull/3281)
