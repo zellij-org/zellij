@@ -1,20 +1,132 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 3749
 expression: serialized.to_string()
 ---
 themes {
     default {
-        fg 1
-        bg 10
-        red 30
-        green 40
-        yellow 50
-        blue 60
-        magenta 70
-        orange 254
-        cyan 80
-        black 20
-        white 90
+        text_unselected {
+            base 90
+            background 20
+            emphasis_1 254
+            emphasis_2 80
+            emphasis_3 40
+            emphasis_4 70
+        }
+        text_selected {
+            base 90
+            background 10
+            emphasis_1 254
+            emphasis_2 80
+            emphasis_3 40
+            emphasis_4 70
+        }
+        ribbon_selected {
+            base 20
+            background 40
+            emphasis_1 30
+            emphasis_2 254
+            emphasis_3 70
+            emphasis_4 60
+        }
+        ribbon_unselected {
+            base 20
+            background 1
+            emphasis_1 30
+            emphasis_2 90
+            emphasis_3 60
+            emphasis_4 70
+        }
+        table_title {
+            base 40
+            background 0
+            emphasis_1 254
+            emphasis_2 80
+            emphasis_3 30
+            emphasis_4 70
+        }
+        table_cell_selected {
+            base 40
+            background 10
+            emphasis_1 254
+            emphasis_2 80
+            emphasis_3 30
+            emphasis_4 70
+        }
+        table_cell_unselected {
+            base 1
+            background 20
+            emphasis_1 254
+            emphasis_2 80
+            emphasis_3 40
+            emphasis_4 70
+        }
+        list_selected {
+            base 40
+            background 10
+            emphasis_1 254
+            emphasis_2 80
+            emphasis_3 30
+            emphasis_4 70
+        }
+        list_unselected {
+            base 1
+            background 10
+            emphasis_1 254
+            emphasis_2 80
+            emphasis_3 40
+            emphasis_4 70
+        }
+        frame_selected {
+            base 40
+            background 0
+            emphasis_1 254
+            emphasis_2 80
+            emphasis_3 70
+            emphasis_4 0
+        }
+        frame_unselected {
+            base 254
+            background 0
+            emphasis_1 0
+            emphasis_2 0
+            emphasis_3 0
+            emphasis_4 20
+        }
+        frame_highlight {
+            base 40
+            background 0
+            emphasis_1 40
+            emphasis_2 40
+            emphasis_3 40
+            emphasis_4 40
+        }
+        exit_code_success {
+            base 40
+            background 0
+            emphasis_1 80
+            emphasis_2 20
+            emphasis_3 70
+            emphasis_4 60
+        }
+        exit_code_error {
+            base 30
+            background 0
+            emphasis_1 50
+            emphasis_2 0
+            emphasis_3 0
+            emphasis_4 0
+        }
+        multiplayer_user_colors {
+            player_1 70
+            player_2 60
+            player_3 0
+            player_4 50
+            player_5 80
+            player_6 0
+            player_7 30
+            player_8 0
+            player_9 0
+            player_10 0
+        }
     }
 }

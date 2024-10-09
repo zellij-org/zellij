@@ -280,7 +280,7 @@ impl SessionMetaData {
                         .unwrap_or_else(Default::default),
                     theme: new_config
                         .theme_config(new_config.options.theme.as_ref())
-                        .unwrap_or_else(|| default_palette()),
+                        .unwrap_or_else(|| default_palette().into()),
                     simplified_ui: new_config.options.simplified_ui.unwrap_or(false),
                     default_shell: new_config.options.default_shell,
                     pane_frames: new_config.options.pane_frames.unwrap_or(true),
