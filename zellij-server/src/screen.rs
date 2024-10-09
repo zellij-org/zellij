@@ -2707,6 +2707,7 @@ pub(crate) fn screen_thread_main(
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
     let mut pending_tab_switches: HashSet<(usize, ClientId)> = HashSet::new(); // usize is the
                                                                                // tab_index
+    let mut pending_events_waiting_for_tab: Vec<ScreenInstruction> = vec![];
     let mut pending_events_waiting_for_client: Vec<ScreenInstruction> = vec![];
     let mut plugin_loading_message_cache = HashMap::new();
     loop {
@@ -3296,11 +3297,17 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::SetSelectable(pid, selectable) => {
                 let all_tabs = screen.get_tabs_mut();
+                let mut found_plugin = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pid) {
                         tab.set_pane_selectable(pid, selectable);
+                        found_plugin = true;
                         break;
                     }
+                }
+                if !found_plugin {
+                    pending_events_waiting_for_tab
+                        .push(ScreenInstruction::SetSelectable(pid, selectable));
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -3499,6 +3506,10 @@ pub(crate) fn screen_thread_main(
                 }
 
                 for event in pending_events_waiting_for_client.drain(..) {
+                    screen.bus.senders.send_to_screen(event).non_fatal();
+                }
+
+                for event in pending_events_waiting_for_tab.drain(..) {
                     screen.bus.senders.send_to_screen(event).non_fatal();
                 }
 
