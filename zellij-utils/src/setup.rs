@@ -5,7 +5,7 @@ use crate::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
     consts::{
         FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION,
-        ZELLIJ_DEFAULT_THEMES, ZELLIJ_PROJ_DIR,
+        ZELLIJ_CACHE_DIR, ZELLIJ_DEFAULT_THEMES, ZELLIJ_PROJ_DIR,
     },
     errors::prelude::*,
     home::*,
@@ -553,6 +553,7 @@ impl Setup {
             )
             .unwrap();
         }
+        writeln!(&mut message, "[CACHE DIR]: {}", ZELLIJ_CACHE_DIR.display()).unwrap();
         writeln!(&mut message, "[DATA DIR]: {:?}", data_dir).unwrap();
         message.push_str(&format!("[PLUGIN DIR]: {:?}\n", plugin_dir));
         if !cfg!(feature = "disable_automatic_asset_installation") {
