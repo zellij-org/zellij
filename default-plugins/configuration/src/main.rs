@@ -1291,7 +1291,7 @@ keybinds clear-defaults=true {{
         bind "{primary_modifier} g" {{ SwitchToMode "Locked"; }}
         bind "{primary_modifier} q" {{ Quit; }}
     }}
-    shared_except "renamepane" "renametab" "entersearch" {{
+    shared_except "renamepane" "renametab" "entersearch" "locked" {{
         bind "esc" {{ SwitchToMode "locked"; }}
     }}
     shared_among "normal" "locked" {{
