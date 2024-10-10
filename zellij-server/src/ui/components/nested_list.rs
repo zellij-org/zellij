@@ -27,22 +27,32 @@ pub fn nested_list(
             break;
         }
         let mut reset_styles_for_item = RESET_STYLES;
-        if line_item.text.selected {
-            reset_styles_for_item.background = None;
-        };
+        reset_styles_for_item.background = None;
+        reset_styles_for_item.foreground = None;
         let padding = line_item.indentation_level * 2 + 1;
         let bulletin = if line_item.indentation_level % 2 == 0 {
             "> "
         } else {
             "- "
         };
-        let text_style = reset_styles_for_item.bold(Some(AnsiCode::On));
+        let text_style = if line_item.text.selected {
+            reset_styles_for_item
+                .bold(Some(AnsiCode::On))
+                .foreground(Some(style.colors.white.into()))
+                .background(Some(style.colors.bg.into()))
+        } else {
+            reset_styles_for_item
+                .bold(Some(AnsiCode::On))
+                .foreground(Some(style.colors.white.into()))
+                .background(Some(style.colors.black.into()))
+        };
         let (mut text, text_width) = stringify_text(
             &line_item.text,
             Some(padding + bulletin.len()),
             &coordinates,
             style,
             text_style,
+            line_item.text.selected,
         );
         text = pad_line(text, max_width, padding, text_width);
         let go_to_row_instruction = coordinates
@@ -55,23 +65,19 @@ pub fn nested_list(
                     "".to_owned()
                 }
             });
-        if line_item.text.selected {
-            let selected_background = RESET_STYLES.background(Some(style.colors.bg.into()));
-            stringified.push_str(&format!(
-                "{}{}{}{:padding$}{bulletin}{}{text}{}",
-                go_to_row_instruction,
-                selected_background,
-                reset_styles_for_item,
-                " ",
-                text_style,
-                RESET_STYLES
-            ));
+        let line_style = if line_item.text.selected {
+            RESET_STYLES
+                .foreground(Some(style.colors.white.into()))
+                .background(Some(style.colors.bg.into()))
         } else {
-            stringified.push_str(&format!(
-                "{}{}{:padding$}{bulletin}{}{text}{}",
-                go_to_row_instruction, reset_styles_for_item, " ", text_style, RESET_STYLES
-            ));
-        }
+            RESET_STYLES
+                .foreground(Some(style.colors.white.into()))
+                .background(Some(style.colors.black.into()))
+        };
+        stringified.push_str(&format!(
+            "{}{}{}{:padding$}{bulletin}{}{text}{}",
+            go_to_row_instruction, line_style, reset_styles_for_item, " ", text_style, RESET_STYLES
+        ));
     }
     stringified.as_bytes().to_vec()
 }

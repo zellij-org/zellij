@@ -12,12 +12,21 @@ use unicode_width::UnicodeWidthChar;
 use zellij_utils::errors::prelude::*;
 
 pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordinates>) -> Vec<u8> {
-    let mut text_style = RESET_STYLES.bold(Some(AnsiCode::On));
+    let mut text_style = RESET_STYLES
+        .bold(Some(AnsiCode::On))
+        .foreground(Some(style.colors.white.into()))
+        .background(Some(style.colors.black.into()));
     if content.selected {
         text_style = text_style.background(Some(style.colors.bg.into()));
     }
-    let (text, _text_width) =
-        stringify_text(&content, None, &component_coordinates, style, text_style);
+    let (text, _text_width) = stringify_text(
+        &content,
+        None,
+        &component_coordinates,
+        style,
+        text_style,
+        content.selected,
+    );
     match component_coordinates {
         Some(component_coordinates) => format!("{}{}{}", component_coordinates, text_style, text)
             .as_bytes()
@@ -32,6 +41,7 @@ pub fn stringify_text(
     coordinates: &Option<Coordinates>,
     style: &Style,
     text_style: CharacterStyles,
+    is_selected: bool,
 ) -> (String, usize) {
     let mut text_width = 0;
     let mut stringified = String::new();
@@ -47,7 +57,7 @@ pub fn stringify_text(
         text_width += character_width;
         if !text.indices.is_empty() {
             let character_with_styling =
-                color_index_character(character, i, &text, style, text_style);
+                color_index_character(character, i, &text, style, text_style, is_selected);
             stringified.push_str(&character_with_styling);
         } else {
             stringified.push(character);
@@ -62,10 +72,17 @@ pub fn color_index_character(
     text: &Text,
     style: &Style,
     base_text_style: CharacterStyles,
+    is_selected: bool,
 ) -> String {
     let character_style = text
         .style_of_index(index, style)
-        .map(|foreground_style| base_text_style.foreground(Some(foreground_style.into())))
+        .map(|foreground_style| {
+            let mut character_style = base_text_style.foreground(Some(foreground_style.into()));
+            if is_selected {
+                character_style = character_style.background(Some(style.colors.bg.into()));
+            };
+            character_style
+        })
         .unwrap_or(base_text_style);
     format!("{}{}{}", character_style, character, base_text_style)
 }
