@@ -40,7 +40,8 @@ pub fn table(
             }
             // here we intentionally don't pass our coordinates even if we have them, because
             // these cells have already been padded and truncated
-            let (text, _text_width) = stringify_text(&cell, None, &None, style, text_style);
+            let (text, _text_width) =
+                stringify_text(&cell, None, &None, style, text_style, cell.selected);
             stringified.push_str(&format!("{}{}{} ", text_style, text, reset_styles_for_item));
         }
         let next_row_instruction = coordinates
