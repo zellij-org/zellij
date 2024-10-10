@@ -2347,7 +2347,7 @@ impl Tab {
                             ))
                             .with_context(err_context)?;
                     },
-                    _ => Err::<(), _>(err).fatal(),
+                    _ => Err::<(), _>(err).non_fatal(),
                 },
             }
         }
@@ -4172,7 +4172,7 @@ impl Tab {
                             ))
                             .with_context(err_context)?;
                     },
-                    _ => Err::<(), _>(err).fatal(),
+                    _ => Err::<(), _>(err).non_fatal(),
                 },
             }
         } else if self
