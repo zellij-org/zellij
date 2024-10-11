@@ -41,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(ui): various panename fixes (https://github.com/zellij-org/zellij/pull/3653)
 * fix(ux): only damage the relevant swap layout layer when resizing panes (https://github.com/zellij-org/zellij/pull/3654)
 * fix(ui): set background color for UI components (https://github.com/zellij-org/zellij/pull/3658)
+* fix(plugins): properly handle concurrent http plugin downloads (https://github.com/zellij-org/zellij/pull/3664)
 
 ## [0.40.1] - 2024-05-02
 * fix(sessions): issue where sessions would occasionally become unresponsive (https://github.com/zellij-org/zellij/pull/3281)
