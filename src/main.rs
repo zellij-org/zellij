@@ -6,6 +6,7 @@ mod tests;
 use zellij_utils::{
     clap::Parser,
     cli::{CliAction, CliArgs, Command, Sessions},
+    consts::create_config_and_cache_folders,
     envs,
     input::config::Config,
     logging::*,
@@ -14,6 +15,7 @@ use zellij_utils::{
 
 fn main() {
     configure_logger();
+    create_config_and_cache_folders();
     let opts = CliArgs::parse();
 
     {

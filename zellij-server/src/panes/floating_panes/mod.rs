@@ -712,6 +712,15 @@ impl FloatingPanes {
         self.set_force_render();
     }
     pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        let pane_is_selectable = self
+            .panes
+            .get(&pane_id)
+            .map(|p| p.selectable())
+            .unwrap_or(false);
+        if !pane_is_selectable {
+            log::error!("Cannot focus pane {:?} as it is not selectable!", pane_id);
+            return;
+        }
         self.active_panes
             .insert(client_id, pane_id, &mut self.panes);
         self.focus_pane_for_all_clients(pane_id);
