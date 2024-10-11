@@ -3966,7 +3966,8 @@ impl Tab {
                 focused_floating_pane
             })
             .or_else(|_| match self.suppressed_panes.remove(&pane_id) {
-                Some(pane) => {
+                Some(mut pane) => {
+                    pane.1.set_selectable(true);
                     if should_float {
                         self.show_floating_panes();
                         self.add_floating_pane(pane.1, pane_id, None, Some(client_id))

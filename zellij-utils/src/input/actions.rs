@@ -740,16 +740,6 @@ impl Action {
                 &run_plugin_or_alias.location_string() == plugin_url
             },
             Action::LaunchOrFocusPlugin(run_plugin_or_alias, ..) => {
-                log::info!(
-                    "2: {:?} == {:?}",
-                    run_plugin_or_alias.location_string(),
-                    plugin_url
-                );
-                eprintln!(
-                    "2: {:?} == {:?}",
-                    run_plugin_or_alias.location_string(),
-                    plugin_url
-                );
                 &run_plugin_or_alias.location_string() == plugin_url
             },
             _ => false,
