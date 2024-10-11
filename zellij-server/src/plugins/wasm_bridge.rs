@@ -107,6 +107,7 @@ pub struct WasmBridge {
     default_keybinds: Keybinds,
     keybinds: HashMap<ClientId, Keybinds>,
     base_modes: HashMap<ClientId, InputMode>,
+    downloader: Downloader,
 }
 
 impl WasmBridge {
@@ -129,6 +130,7 @@ impl WasmBridge {
         let plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let watcher = None;
+        let downloader = Downloader::new(ZELLIJ_CACHE_DIR.to_path_buf());
         WasmBridge {
             connected_clients,
             senders,
@@ -157,6 +159,7 @@ impl WasmBridge {
             default_keybinds,
             keybinds: HashMap::new(),
             base_modes: HashMap::new(),
+            downloader,
         }
     }
     pub fn load_plugin(
@@ -213,6 +216,7 @@ impl WasmBridge {
                     let default_shell = self.default_shell.clone();
                     let default_layout = self.default_layout.clone();
                     let layout_dir = self.layout_dir.clone();
+                    let downloader = self.downloader.clone();
                     let default_mode = self
                         .base_modes
                         .get(&client_id)
@@ -236,7 +240,8 @@ impl WasmBridge {
                                 .map(ToString::to_string)
                                 .collect();
 
-                            let downloader = Downloader::new(ZELLIJ_CACHE_DIR.to_path_buf());
+                            // if the url is already in cache, we'll use that version, otherwise
+                            // we'll download it, place it in cache and then use it
                             match downloader.download(url, Some(&file_name)).await {
                                 Ok(_) => plugin.path = ZELLIJ_CACHE_DIR.join(&file_name),
                                 Err(e) => handle_plugin_loading_failure(
