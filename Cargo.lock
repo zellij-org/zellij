@@ -5128,6 +5128,7 @@ dependencies = [
  "colorsys",
  "common-path",
  "crossbeam",
+ "curl-sys",
  "directories",
  "expect-test",
  "futures",

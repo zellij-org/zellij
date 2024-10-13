@@ -58,6 +58,7 @@ humantime = "2.1.0"
 futures = "0.3.28"
 openssl-sys = { version = "0.9.93", features = ["vendored"] }
 isahc = "1.7.2"
+curl-sys = { version = "0.4", features = ["force-system-lib-on-osx"] }
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
