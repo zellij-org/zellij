@@ -45,6 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(plugins): protect from various fail conditions in plugin loading and API (https://github.com/zellij-org/zellij/pull/3665)
 * fix(resurrection): properly serialize plugin aliases (https://github.com/zellij-org/zellij/pull/3673)
 * fix(plugins): do not allow attaching to same session (https://github.com/zellij-org/zellij/pull/3674)
+* fix(plugins): allow switching to a session with just cwd and no layout (https://github.com/zellij-org/zellij/pull/3676)
 
 ## [0.40.1] - 2024-05-02
 * fix(sessions): issue where sessions would occasionally become unresponsive (https://github.com/zellij-org/zellij/pull/3281)
