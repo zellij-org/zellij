@@ -280,8 +280,8 @@ impl SessionLayoutMetadata {
         self.default_editor = Some(default_editor);
     }
     pub fn update_plugin_aliases_in_default_layout(&mut self, plugin_aliases: &PluginAliases) {
-
-        self.default_layout.populate_plugin_aliases_in_layout(&plugin_aliases);
+        self.default_layout
+            .populate_plugin_aliases_in_layout(&plugin_aliases);
     }
 }
 

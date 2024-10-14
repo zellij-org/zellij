@@ -552,21 +552,33 @@ pub(crate) fn plugin_thread_main(
                 )?;
             },
             PluginInstruction::DumpLayout(mut session_layout_metadata, client_id) => {
-                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge, &plugin_aliases);
+                populate_session_layout_metadata(
+                    &mut session_layout_metadata,
+                    &wasm_bridge,
+                    &plugin_aliases,
+                );
                 drop(bus.senders.send_to_pty(PtyInstruction::DumpLayout(
                     session_layout_metadata,
                     client_id,
                 )));
             },
             PluginInstruction::ListClientsMetadata(mut session_layout_metadata, client_id) => {
-                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge, &plugin_aliases);
+                populate_session_layout_metadata(
+                    &mut session_layout_metadata,
+                    &wasm_bridge,
+                    &plugin_aliases,
+                );
                 drop(bus.senders.send_to_pty(PtyInstruction::ListClientsMetadata(
                     session_layout_metadata,
                     client_id,
                 )));
             },
             PluginInstruction::DumpLayoutToPlugin(mut session_layout_metadata, plugin_id) => {
-                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge, &plugin_aliases);
+                populate_session_layout_metadata(
+                    &mut session_layout_metadata,
+                    &wasm_bridge,
+                    &plugin_aliases,
+                );
                 match session_serialization::serialize_session_layout(
                     session_layout_metadata.into(),
                 ) {
@@ -592,7 +604,11 @@ pub(crate) fn plugin_thread_main(
                 }
             },
             PluginInstruction::LogLayoutToHd(mut session_layout_metadata) => {
-                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge, &plugin_aliases);
+                populate_session_layout_metadata(
+                    &mut session_layout_metadata,
+                    &wasm_bridge,
+                    &plugin_aliases,
+                );
                 drop(
                     bus.senders
                         .send_to_pty(PtyInstruction::LogLayoutToHd(session_layout_metadata)),
