@@ -426,9 +426,13 @@ pub(crate) fn plugin_thread_main(
 
                 let mut plugin_ids: HashMap<RunPluginOrAlias, Vec<PluginId>> = HashMap::new();
                 tab_layout = tab_layout.or_else(|| Some(layout.new_tab().0));
-                tab_layout
-                    .as_mut()
-                    .map(|t| t.populate_plugin_aliases_in_layout(&plugin_aliases));
+                tab_layout.as_mut().map(|t| {
+                    t.populate_plugin_aliases_in_layout(&plugin_aliases);
+                    if let Some(cwd) = cwd.as_ref() {
+                        t.add_cwd_to_layout(cwd);
+                    }
+                    t
+                });
                 floating_panes_layout.iter_mut().for_each(|f| {
                     f.run
                         .as_mut()

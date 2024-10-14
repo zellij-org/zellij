@@ -960,7 +960,7 @@ impl PermissionType {
                 "Access Zellij state (Panes, Tabs and UI)".to_owned()
             },
             PermissionType::ChangeApplicationState => {
-                "Change Zellij state (Panes, Tabs and UI)".to_owned()
+                "Change Zellij state (Panes, Tabs and UI) and run commands".to_owned()
             },
             PermissionType::OpenFiles => "Open files (eg. for editing)".to_owned(),
             PermissionType::RunCommands => "Run commands".to_owned(),
