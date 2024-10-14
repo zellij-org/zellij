@@ -234,7 +234,14 @@ pub fn extract_plugin_and_config(
                 Some(run_plugin.configuration.clone()),
             ),
             RunPluginOrAlias::Alias(plugin_alias) => {
-                let name = plugin_alias.name.clone();
+                // in this case, the aliases should already be populated by the RunPlugins they
+                // translate to - if they are not, the alias either does not exist or this is some
+                // sort of bug
+                let name = plugin_alias
+                    .run_plugin
+                    .as_ref()
+                    .map(|run_plugin| run_plugin.location.display().to_string())
+                    .unwrap_or_else(|| plugin_alias.name.clone());
                 let configuration = plugin_alias
                     .run_plugin
                     .as_ref()
