@@ -238,10 +238,12 @@ impl Config {
         Ok(())
     }
     pub fn config_file_path(opts: &CliArgs) -> Option<PathBuf> {
-        opts.config_dir
-            .clone()
-            .or_else(home::find_default_config_dir)
-            .map(|config_dir| config_dir.join(DEFAULT_CONFIG_FILE_NAME))
+        opts.config.clone().or_else(|| {
+            opts.config_dir
+                .clone()
+                .or_else(home::find_default_config_dir)
+                .map(|config_dir| config_dir.join(DEFAULT_CONFIG_FILE_NAME))
+        })
     }
     pub fn write_config_to_disk(config: String, opts: &CliArgs) -> Result<Config, Option<PathBuf>> {
         // if we fail, try to return the PathBuf of the file we were not able to write to
