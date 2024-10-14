@@ -552,21 +552,21 @@ pub(crate) fn plugin_thread_main(
                 )?;
             },
             PluginInstruction::DumpLayout(mut session_layout_metadata, client_id) => {
-                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge);
+                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge, &plugin_aliases);
                 drop(bus.senders.send_to_pty(PtyInstruction::DumpLayout(
                     session_layout_metadata,
                     client_id,
                 )));
             },
             PluginInstruction::ListClientsMetadata(mut session_layout_metadata, client_id) => {
-                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge);
+                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge, &plugin_aliases);
                 drop(bus.senders.send_to_pty(PtyInstruction::ListClientsMetadata(
                     session_layout_metadata,
                     client_id,
                 )));
             },
             PluginInstruction::DumpLayoutToPlugin(mut session_layout_metadata, plugin_id) => {
-                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge);
+                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge, &plugin_aliases);
                 match session_serialization::serialize_session_layout(
                     session_layout_metadata.into(),
                 ) {
@@ -592,7 +592,7 @@ pub(crate) fn plugin_thread_main(
                 }
             },
             PluginInstruction::LogLayoutToHd(mut session_layout_metadata) => {
-                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge);
+                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge, &plugin_aliases);
                 drop(
                     bus.senders
                         .send_to_pty(PtyInstruction::LogLayoutToHd(session_layout_metadata)),
@@ -871,6 +871,7 @@ pub(crate) fn plugin_thread_main(
 fn populate_session_layout_metadata(
     session_layout_metadata: &mut SessionLayoutMetadata,
     wasm_bridge: &WasmBridge,
+    plugin_aliases: &PluginAliases,
 ) {
     let plugin_ids = session_layout_metadata.all_plugin_ids();
     let mut plugin_ids_to_cmds: HashMap<u32, RunPlugin> = HashMap::new();
@@ -884,6 +885,7 @@ fn populate_session_layout_metadata(
         }
     }
     session_layout_metadata.update_plugin_cmds(plugin_ids_to_cmds);
+    session_layout_metadata.update_plugin_aliases_in_default_layout(plugin_aliases);
 }
 
 fn pipe_to_all_plugins(
