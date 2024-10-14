@@ -983,52 +983,58 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 );
             },
             ServerInstruction::SwitchSession(mut connect_to_session, client_id) => {
-                let layout_dir = session_data
-                    .read()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .session_configuration
-                    .get_client_configuration(&client_id)
-                    .options
-                    .layout_dir
-                    .or_else(|| default_layout_dir());
-                if let Some(layout_dir) = layout_dir {
-                    connect_to_session.apply_layout_dir(&layout_dir);
-                }
-                if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
+                let current_session_name = envs::get_session_name();
+                if connect_to_session.name == current_session_name.ok() {
+                    log::error!("Cannot attach to same session");
+                } else {
+                    let layout_dir = session_data
+                        .read()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .session_configuration
+                        .get_client_configuration(&client_id)
+                        .options
+                        .layout_dir
+                        .or_else(|| default_layout_dir());
+                    if let Some(layout_dir) = layout_dir {
+                        connect_to_session.apply_layout_dir(&layout_dir);
+                    }
+                    if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
+                    {
+                        session_data
+                            .write()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                            .unwrap();
+                    }
                     session_data
                         .write()
                         .unwrap()
                         .as_ref()
                         .unwrap()
                         .senders
-                        .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                        .send_to_screen(ScreenInstruction::RemoveClient(client_id))
                         .unwrap();
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_plugin(PluginInstruction::RemoveClient(client_id))
+                        .unwrap();
+                    send_to_client!(
+                        client_id,
+                        os_input,
+                        ServerToClientMsg::SwitchSession(connect_to_session),
+                        session_state
+                    );
+                    remove_client!(client_id, os_input, session_state);
                 }
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_screen(ScreenInstruction::RemoveClient(client_id))
-                    .unwrap();
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_plugin(PluginInstruction::RemoveClient(client_id))
-                    .unwrap();
-                send_to_client!(
-                    client_id,
-                    os_input,
-                    ServerToClientMsg::SwitchSession(connect_to_session),
-                    session_state
-                );
-                remove_client!(client_id, os_input, session_state);
             },
             ServerInstruction::AssociatePipeWithClient { pipe_id, client_id } => {
                 session_state
