@@ -6,6 +6,7 @@ use std::{
 };
 use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
+use zellij_utils::input::actions::Action;
 pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::plugin_command::ProtobufPluginCommand;
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
@@ -853,7 +854,7 @@ pub fn dump_session_layout() {
     unsafe { host_run_plugin_command() };
 }
 
-/// Rebind keys for the current user
+/// Change configuration for the current user
 pub fn reconfigure(new_config: String, save_configuration_file: bool) {
     let plugin_command = PluginCommand::Reconfigure(new_config, save_configuration_file);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1096,6 +1097,22 @@ pub fn load_new_plugin<S: AsRef<str>>(
         config,
         load_in_background,
         skip_plugin_cache,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Rebind keys for the current user
+pub fn rebind_keys(
+    keys_to_unbind: Vec<(InputMode, KeyWithModifier)>,
+    keys_to_rebind: Vec<(InputMode, KeyWithModifier, Vec<Action>)>,
+    write_config_to_disk: bool,
+) {
+    let plugin_command = PluginCommand::RebindKeys {
+        keys_to_rebind,
+        keys_to_unbind,
+        write_config_to_disk,
     };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());

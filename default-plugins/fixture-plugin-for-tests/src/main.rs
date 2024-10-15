@@ -445,6 +445,86 @@ impl ZellijPlugin for State {
                         skip_plugin_cache,
                     )
                 },
+                BareKey::Char('y') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    let write_to_disk = true;
+                    let mut keys_to_unbind = vec![
+                        (
+                            InputMode::Locked,
+                            KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+                        ),
+                        (
+                            InputMode::Normal,
+                            KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+                        ),
+                        (
+                            InputMode::Pane,
+                            KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+                        ),
+                        (
+                            InputMode::Tab,
+                            KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+                        ),
+                        (
+                            InputMode::Resize,
+                            KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+                        ),
+                        (
+                            InputMode::Move,
+                            KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+                        ),
+                        (
+                            InputMode::Search,
+                            KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+                        ),
+                        (
+                            InputMode::Session,
+                            KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+                        ),
+                    ];
+                    let mut keys_to_rebind = vec![
+                        (
+                            InputMode::Locked,
+                            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+                            vec![actions::Action::SwitchToMode(InputMode::Normal)],
+                        ),
+                        (
+                            InputMode::Normal,
+                            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                        ),
+                        (
+                            InputMode::Pane,
+                            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                        ),
+                        (
+                            InputMode::Tab,
+                            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                        ),
+                        (
+                            InputMode::Resize,
+                            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                        ),
+                        (
+                            InputMode::Move,
+                            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                        ),
+                        (
+                            InputMode::Search,
+                            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                        ),
+                        (
+                            InputMode::Session,
+                            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                        ),
+                    ];
+                    rebind_keys(keys_to_unbind, keys_to_rebind, write_to_disk);
+                },
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {

@@ -482,6 +482,7 @@ pub enum ServerContext {
     Reconfigure,
     ConfigWrittenToDisk,
     FailedToWriteConfigToDisk,
+    RebindKeys,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
