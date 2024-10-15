@@ -1,5 +1,6 @@
 use super::{
-    is_too_high, parse_indices, parse_selected, parse_transparent, parse_text, stringify_text, Coordinates, Text,
+    is_too_high, parse_indices, parse_selected, parse_text, parse_transparent, stringify_text,
+    Coordinates, Text,
 };
 use crate::panes::terminal_character::{AnsiCode, RESET_STYLES};
 use zellij_utils::data::Style;
@@ -70,8 +71,7 @@ pub fn nested_list(
                 }
             });
         let line_style = if line_item.text.transparent {
-            RESET_STYLES
-                .foreground(Some(style.colors.white.into()))
+            RESET_STYLES.foreground(Some(style.colors.white.into()))
         } else if line_item.text.selected {
             RESET_STYLES
                 .foreground(Some(style.colors.white.into()))
