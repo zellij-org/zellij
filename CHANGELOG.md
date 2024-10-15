@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(keybinds): support multiple modifiers (eg. Ctrl+Alt) and the kitty keyboard protocol (https://github.com/zellij-org/zellij/pull/3383, https://github.com/zellij-org/zellij/pull/3441 and https://github.com/zellij-org/zellij/pull/3484)
 * fix(terminal): properly set and handle scroll region in various instances (https://github.com/zellij-org/zellij/pull/3381 and https://github.com/zellij-org/zellij/pull/3382)
 * fix(rendering): do not render if resizing screen to same size (https://github.com/zellij-org/zellij/pull/3413)
-* feat(plugins): rebind keys at runtime (https://github.com/zellij-org/zellij/pull/3422
+* feat(plugins): rebind keys at runtime (https://github.com/zellij-org/zellij/pull/3422, https://github.com/zellij-org/zellij/pull/3680)
 * fix(rendering): do not render cursor if there's nothing to render (https://github.com/zellij-org/zellij/pull/3439 and https://github.com/zellij-org/zellij/pull/3483)
 * fix(terminal): workaround for windows terminal not interpreting underline colors with semicolons (https://github.com/zellij-org/zellij/pull/3440)
 * dependencies: switch from wasmer to wasmtime (https://github.com/zellij-org/zellij/pull/3349)
