@@ -1107,9 +1107,13 @@ pub fn load_new_plugin<S: AsRef<str>>(
 pub fn rebind_keys(
     keys_to_unbind: Vec<(InputMode, KeyWithModifier)>,
     keys_to_rebind: Vec<(InputMode, KeyWithModifier, Vec<Action>)>,
-    write_config_to_disk: bool
+    write_config_to_disk: bool,
 ) {
-    let plugin_command = PluginCommand::RebindKeys{keys_to_rebind, keys_to_unbind, write_config_to_disk};
+    let plugin_command = PluginCommand::RebindKeys {
+        keys_to_rebind,
+        keys_to_unbind,
+        write_config_to_disk,
+    };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

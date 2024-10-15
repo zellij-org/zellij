@@ -523,11 +523,7 @@ impl ZellijPlugin for State {
                             vec![actions::Action::SwitchToMode(InputMode::Locked)],
                         ),
                     ];
-                    rebind_keys(
-                        keys_to_unbind,
-                        keys_to_rebind,
-                        write_to_disk
-                    );
+                    rebind_keys(keys_to_unbind, keys_to_rebind, write_to_disk);
                 },
                 _ => {},
             },

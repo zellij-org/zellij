@@ -1876,6 +1876,6 @@ pub enum PluginCommand {
     RebindKeys {
         keys_to_rebind: Vec<(InputMode, KeyWithModifier, Vec<Action>)>,
         keys_to_unbind: Vec<(InputMode, KeyWithModifier)>,
-        write_config_to_disk: bool
+        write_config_to_disk: bool,
     },
 }

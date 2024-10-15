@@ -42,7 +42,7 @@ use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
-    data::{ConnectToSession, Event, InputMode, PluginCapabilities, KeyWithModifier},
+    data::{ConnectToSession, Event, InputMode, KeyWithModifier, PluginCapabilities},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
     input::{
@@ -152,7 +152,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::FailedToWriteConfigToDisk(..) => {
                 ServerContext::FailedToWriteConfigToDisk
             },
-            ServerInstruction::RebindKeys{..} => ServerContext::RebindKeys,
+            ServerInstruction::RebindKeys { .. } => ServerContext::RebindKeys,
         }
     }
 }
@@ -251,14 +251,22 @@ impl SessionConfiguration {
         match self.runtime_config.get_mut(client_id) {
             Some(config) => {
                 for (input_mode, key_with_modifier) in keys_to_unbind {
-                    let keys_in_mode = config.keybinds.0.entry(input_mode).or_insert_with(Default::default);
+                    let keys_in_mode = config
+                        .keybinds
+                        .0
+                        .entry(input_mode)
+                        .or_insert_with(Default::default);
                     let removed = keys_in_mode.remove(&key_with_modifier);
                     if removed.is_some() {
                         config_changed = true;
                     }
                 }
                 for (input_mode, key_with_modifier, actions) in keys_to_rebind {
-                    let keys_in_mode = config.keybinds.0.entry(input_mode).or_insert_with(Default::default);
+                    let keys_in_mode = config
+                        .keybinds
+                        .0
+                        .entry(input_mode)
+                        .or_insert_with(Default::default);
                     if keys_in_mode.get(&key_with_modifier) != Some(&actions) {
                         config_changed = true;
                         keys_in_mode.insert(key_with_modifier, actions);
@@ -267,12 +275,13 @@ impl SessionConfiguration {
                 if config_changed {
                     full_reconfigured_config = Some(config.clone());
                 }
-            }
+            },
             None => {
-                log::error!("Could not find runtime or saved configuration for client, cannot rebind keys");
-            }
+                log::error!(
+                    "Could not find runtime or saved configuration for client, cannot rebind keys"
+                );
+            },
         }
-
 
         (full_reconfigured_config, config_changed)
     }
@@ -1170,7 +1179,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_plugin(PluginInstruction::FailedToWriteConfigToDisk { file_path })
                     .unwrap();
             },
-            ServerInstruction::RebindKeys { client_id, keys_to_rebind, keys_to_unbind, write_config_to_disk } => {
+            ServerInstruction::RebindKeys {
+                client_id,
+                keys_to_rebind,
+                keys_to_unbind,
+                write_config_to_disk,
+            } => {
                 let (new_config, runtime_config_changed) = session_data
                     .write()
                     .unwrap()
@@ -1200,7 +1214,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .propagate_configuration_changes(vec![(client_id, new_config)]);
                     }
                 }
-            }
+            },
         }
     }
 

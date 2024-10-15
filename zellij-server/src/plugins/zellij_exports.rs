@@ -18,8 +18,8 @@ use std::{
 };
 use wasmtime::{Caller, Linker};
 use zellij_utils::data::{
-    CommandType, ConnectToSession, FloatingPaneCoordinates, HttpVerb, LayoutInfo, MessageToPlugin,
-    OriginatingPlugin, PermissionStatus, PermissionType, PluginPermission, KeyWithModifier
+    CommandType, ConnectToSession, FloatingPaneCoordinates, HttpVerb, KeyWithModifier, LayoutInfo,
+    MessageToPlugin, OriginatingPlugin, PermissionStatus, PermissionType, PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::{
@@ -346,9 +346,11 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         load_in_background,
                         skip_plugin_cache,
                     } => load_new_plugin(env, url, config, load_in_background, skip_plugin_cache),
-                    PluginCommand::RebindKeys{keys_to_rebind, keys_to_unbind, write_config_to_disk} => {
-                        rebind_keys(env, keys_to_rebind, keys_to_unbind, write_config_to_disk)?
-                    },
+                    PluginCommand::RebindKeys {
+                        keys_to_rebind,
+                        keys_to_unbind,
+                        write_config_to_disk,
+                    } => rebind_keys(env, keys_to_rebind, keys_to_unbind, write_config_to_disk)?,
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -977,7 +979,7 @@ fn rebind_keys(
     env: &PluginEnv,
     keys_to_rebind: Vec<(InputMode, KeyWithModifier, Vec<Action>)>,
     keys_to_unbind: Vec<(InputMode, KeyWithModifier)>,
-    write_config_to_disk: bool
+    write_config_to_disk: bool,
 ) -> Result<()> {
     let err_context = || "Failed to rebind_keys";
     let client_id = env.client_id;
@@ -1896,8 +1898,9 @@ fn check_command_permission(
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
         PluginCommand::DumpSessionLayout => PermissionType::ReadApplicationState,
-        PluginCommand::RebindKeys{..}
-        | PluginCommand::Reconfigure(..) => PermissionType::Reconfigure,
+        PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
+            PermissionType::Reconfigure
+        },
         _ => return (PermissionStatus::Granted, None),
     };
 
