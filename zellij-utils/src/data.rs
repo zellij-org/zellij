@@ -1873,4 +1873,9 @@ pub enum PluginCommand {
         load_in_background: bool,
         skip_plugin_cache: bool,
     },
+    RebindKeys {
+        keys_to_rebind: Vec<(InputMode, KeyWithModifier, Vec<Action>)>,
+        keys_to_unbind: Vec<(InputMode, KeyWithModifier)>,
+        write_config_to_disk: bool,
+    },
 }
