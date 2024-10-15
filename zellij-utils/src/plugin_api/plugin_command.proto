@@ -7,6 +7,8 @@ import "command.proto";
 import "message.proto";
 import "resize.proto";
 import "plugin_permission.proto";
+import "input_mode.proto";
+import "key.proto";
 
 package api.plugin_command;
 
@@ -123,6 +125,7 @@ enum CommandName {
   BreakPanesToTabWithIndex = 109;
   ReloadPlugin = 110;
   LoadNewPlugin = 111;
+  RebindKeys = 112;
 }
 
 message PluginCommand {
@@ -205,7 +208,25 @@ message PluginCommand {
     BreakPanesToTabWithIndexPayload break_panes_to_tab_with_index_payload = 85;
     ReloadPluginPayload reload_plugin_payload = 86;
     LoadNewPluginPayload load_new_plugin_payload = 87;
+    RebindKeysPayload rebind_keys_payload = 88;
   }
+}
+
+message RebindKeysPayload {
+  repeated KeyToRebind keys_to_rebind = 1;
+  repeated KeyToUnbind keys_to_unbind = 2;
+  bool write_config_to_disk = 3;
+}
+
+message KeyToRebind {
+  input_mode.InputMode input_mode = 1;
+  key.Key key = 2;
+  repeated action.Action actions = 3;
+}
+
+message KeyToUnbind {
+  input_mode.InputMode input_mode = 1;
+  key.Key key = 2;
 }
 
 message LoadNewPluginPayload {

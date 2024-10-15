@@ -1,11 +1,231 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 6566
-expression: "format!(\"{:#?}\", rebind_keys_event)"
+assertion_line: 8552
+expression: "format!(\"{:#?}\", rebind_event)"
 ---
 Some(
-    RebindKeys(
-        1,
-        "\n                        keybinds {\n                            locked {\n                                bind \"a\" { NewTab; }\n                            }\n                        }\n                    ",
-    ),
+    RebindKeys {
+        client_id: 1,
+        keys_to_rebind: [
+            (
+                Locked,
+                KeyWithModifier {
+                    bare_key: Char(
+                        'a',
+                    ),
+                    key_modifiers: {
+                        Ctrl,
+                    },
+                },
+                [
+                    SwitchToMode(
+                        Normal,
+                    ),
+                ],
+            ),
+            (
+                Normal,
+                KeyWithModifier {
+                    bare_key: Char(
+                        'a',
+                    ),
+                    key_modifiers: {
+                        Ctrl,
+                    },
+                },
+                [
+                    SwitchToMode(
+                        Locked,
+                    ),
+                ],
+            ),
+            (
+                Pane,
+                KeyWithModifier {
+                    bare_key: Char(
+                        'a',
+                    ),
+                    key_modifiers: {
+                        Ctrl,
+                    },
+                },
+                [
+                    SwitchToMode(
+                        Locked,
+                    ),
+                ],
+            ),
+            (
+                Tab,
+                KeyWithModifier {
+                    bare_key: Char(
+                        'a',
+                    ),
+                    key_modifiers: {
+                        Ctrl,
+                    },
+                },
+                [
+                    SwitchToMode(
+                        Locked,
+                    ),
+                ],
+            ),
+            (
+                Resize,
+                KeyWithModifier {
+                    bare_key: Char(
+                        'a',
+                    ),
+                    key_modifiers: {
+                        Ctrl,
+                    },
+                },
+                [
+                    SwitchToMode(
+                        Locked,
+                    ),
+                ],
+            ),
+            (
+                Move,
+                KeyWithModifier {
+                    bare_key: Char(
+                        'a',
+                    ),
+                    key_modifiers: {
+                        Ctrl,
+                    },
+                },
+                [
+                    SwitchToMode(
+                        Locked,
+                    ),
+                ],
+            ),
+            (
+                Search,
+                KeyWithModifier {
+                    bare_key: Char(
+                        'a',
+                    ),
+                    key_modifiers: {
+                        Ctrl,
+                    },
+                },
+                [
+                    SwitchToMode(
+                        Locked,
+                    ),
+                ],
+            ),
+            (
+                Session,
+                KeyWithModifier {
+                    bare_key: Char(
+                        'a',
+                    ),
+                    key_modifiers: {
+                        Ctrl,
+                    },
+                },
+                [
+                    SwitchToMode(
+                        Locked,
+                    ),
+                ],
+            ),
+        ],
+        keys_to_unbind: [
+            (
+                Locked,
+                KeyWithModifier {
+                    bare_key: Char(
+                        'g',
+                    ),
+                    key_modifiers: {
+                        Ctrl,
+                    },
+                },
+            ),
+            (
+                Normal,
+                KeyWithModifier {
+                    bare_key: Char(
+                        'g',
+                    ),
+                    key_modifiers: {
+                        Ctrl,
+                    },
+                },
+            ),
+            (
+                Pane,
+                KeyWithModifier {
+                    bare_key: Char(
+                        'g',
+                    ),
+                    key_modifiers: {
+                        Ctrl,
+                    },
+                },
+            ),
+            (
+                Tab,
+                KeyWithModifier {
+                    bare_key: Char(
+                        'g',
+                    ),
+                    key_modifiers: {
+                        Ctrl,
+                    },
+                },
+            ),
+            (
+                Resize,
+                KeyWithModifier {
+                    bare_key: Char(
+                        'g',
+                    ),
+                    key_modifiers: {
+                        Ctrl,
+                    },
+                },
+            ),
+            (
+                Move,
+                KeyWithModifier {
+                    bare_key: Char(
+                        'g',
+                    ),
+                    key_modifiers: {
+                        Ctrl,
+                    },
+                },
+            ),
+            (
+                Search,
+                KeyWithModifier {
+                    bare_key: Char(
+                        'g',
+                    ),
+                    key_modifiers: {
+                        Ctrl,
+                    },
+                },
+            ),
+            (
+                Session,
+                KeyWithModifier {
+                    bare_key: Char(
+                        'g',
+                    ),
+                    key_modifiers: {
+                        Ctrl,
+                    },
+                },
+            ),
+        ],
+        write_config_to_disk: true,
+    },
 )

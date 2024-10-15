@@ -42,10 +42,11 @@ use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
-    data::{ConnectToSession, Event, InputMode, PluginCapabilities},
+    data::{ConnectToSession, Event, InputMode, PluginCapabilities, KeyWithModifier},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
     input::{
+        actions::Action,
         command::{RunCommand, TerminalAction},
         config::Config,
         get_mode_info,
@@ -109,6 +110,12 @@ pub enum ServerInstruction {
     },
     ConfigWrittenToDisk(ClientId, Config),
     FailedToWriteConfigToDisk(ClientId, Option<PathBuf>), // Pathbuf - file we failed to write
+    RebindKeys {
+        client_id: ClientId,
+        keys_to_rebind: Vec<(InputMode, KeyWithModifier, Vec<Action>)>,
+        keys_to_unbind: Vec<(InputMode, KeyWithModifier)>,
+        write_config_to_disk: bool,
+    },
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -145,6 +152,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::FailedToWriteConfigToDisk(..) => {
                 ServerContext::FailedToWriteConfigToDisk
             },
+            ServerInstruction::RebindKeys{..} => ServerContext::RebindKeys,
         }
     }
 }
@@ -224,6 +232,48 @@ impl SessionConfiguration {
                 log::error!("Failed to reconfigure runtime config: {}", e);
             },
         }
+        (full_reconfigured_config, config_changed)
+    }
+    pub fn rebind_keys(
+        &mut self,
+        client_id: &ClientId,
+        keys_to_rebind: Vec<(InputMode, KeyWithModifier, Vec<Action>)>,
+        keys_to_unbind: Vec<(InputMode, KeyWithModifier)>,
+    ) -> (Option<Config>, bool) {
+        let mut full_reconfigured_config = None;
+        let mut config_changed = false;
+
+        if self.runtime_config.get(client_id).is_none() {
+            if let Some(saved_config) = self.saved_config.get(client_id) {
+                self.runtime_config.insert(*client_id, saved_config.clone());
+            }
+        }
+        match self.runtime_config.get_mut(client_id) {
+            Some(config) => {
+                for (input_mode, key_with_modifier) in keys_to_unbind {
+                    let keys_in_mode = config.keybinds.0.entry(input_mode).or_insert_with(Default::default);
+                    let removed = keys_in_mode.remove(&key_with_modifier);
+                    if removed.is_some() {
+                        config_changed = true;
+                    }
+                }
+                for (input_mode, key_with_modifier, actions) in keys_to_rebind {
+                    let keys_in_mode = config.keybinds.0.entry(input_mode).or_insert_with(Default::default);
+                    if keys_in_mode.get(&key_with_modifier) != Some(&actions) {
+                        config_changed = true;
+                        keys_in_mode.insert(key_with_modifier, actions);
+                    }
+                }
+                if config_changed {
+                    full_reconfigured_config = Some(config.clone());
+                }
+            }
+            None => {
+                log::error!("Could not find runtime or saved configuration for client, cannot rebind keys");
+            }
+        }
+
+
         (full_reconfigured_config, config_changed)
     }
 }
@@ -1120,6 +1170,37 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_plugin(PluginInstruction::FailedToWriteConfigToDisk { file_path })
                     .unwrap();
             },
+            ServerInstruction::RebindKeys { client_id, keys_to_rebind, keys_to_unbind, write_config_to_disk } => {
+                let (new_config, runtime_config_changed) = session_data
+                    .write()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .session_configuration
+                    .rebind_keys(&client_id, keys_to_rebind, keys_to_unbind);
+                if let Some(new_config) = new_config {
+                    if write_config_to_disk {
+                        let clear_defaults = true;
+                        send_to_client!(
+                            client_id,
+                            os_input,
+                            ServerToClientMsg::WriteConfigToDisk {
+                                config: new_config.to_string(clear_defaults)
+                            },
+                            session_state
+                        );
+                    }
+
+                    if runtime_config_changed {
+                        session_data
+                            .write()
+                            .unwrap()
+                            .as_mut()
+                            .unwrap()
+                            .propagate_configuration_changes(vec![(client_id, new_config)]);
+                    }
+                }
+            }
         }
     }
 
