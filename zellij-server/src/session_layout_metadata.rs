@@ -7,6 +7,7 @@ use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::{
     input::command::RunCommand,
     input::layout::{Layout, Run, RunPlugin, RunPluginOrAlias},
+    input::plugins::PluginAliases,
     session_serialization::{
         extract_command_and_args, extract_edit_and_line_number, extract_plugin_and_config,
         GlobalLayoutManifest, PaneLayoutManifest, TabLayoutManifest,
@@ -277,6 +278,10 @@ impl SessionLayoutMetadata {
             )
         });
         self.default_editor = Some(default_editor);
+    }
+    pub fn update_plugin_aliases_in_default_layout(&mut self, plugin_aliases: &PluginAliases) {
+        self.default_layout
+            .populate_plugin_aliases_in_layout(&plugin_aliases);
     }
 }
 

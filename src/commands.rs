@@ -483,6 +483,10 @@ pub(crate) fn start_client(opts: CliArgs) {
                         log::error!("Failed to parse new session layout: {:?}", e);
                     },
                 }
+            } else {
+                if let Some(cwd) = reconnect_to_session.cwd.as_ref() {
+                    config_options.default_cwd = Some(cwd.clone());
+                }
             }
 
             is_a_reconnect = true;

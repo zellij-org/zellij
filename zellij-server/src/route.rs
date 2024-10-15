@@ -499,6 +499,7 @@ pub(crate) fn route_action(
             swap_tiled_layouts,
             swap_floating_layouts,
             tab_name,
+            should_change_focus_to_new_tab,
         ) => {
             let shell = default_shell.clone();
             let swap_tiled_layouts =
@@ -513,6 +514,7 @@ pub(crate) fn route_action(
                     floating_panes_layout,
                     tab_name,
                     (swap_tiled_layouts, swap_floating_layouts),
+                    should_change_focus_to_new_tab,
                     client_id,
                 ))
                 .with_context(err_context)?;

@@ -56,10 +56,9 @@ async-std = { version = "1.3.0", features = ["unstable", "attributes"] }
 notify-debouncer-full = "0.1.0"
 humantime = "2.1.0"
 futures = "0.3.28"
-surf = { version = "2.3.2", default-features = false, features = [
-    "curl-client",
-] }
 openssl-sys = { version = "0.9.93", features = ["vendored"] }
+isahc = "1.7.2"
+curl-sys = { version = "0.4", features = ["force-system-lib-on-osx"] }
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }

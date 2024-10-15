@@ -4,7 +4,7 @@
 themes {
   catppuccin-latte {
     bg "#acb0be" // Surface2
-    fg "#acb0be" // Surface2
+    fg "#5c5f77" // Subtext1
     red "#d20f39"
     green "#40a02b"
     blue "#1e66f5"

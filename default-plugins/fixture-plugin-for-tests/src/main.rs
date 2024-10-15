@@ -364,6 +364,167 @@ impl ZellijPlugin for State {
                 BareKey::Char('d') if key.has_modifiers(&[KeyModifier::Alt]) => {
                     rerun_command_pane(1);
                 },
+                BareKey::Char('e') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    resize_pane_with_id(
+                        ResizeStrategy::new(Resize::Increase, Some(Direction::Left)),
+                        PaneId::Terminal(2),
+                    );
+                },
+                BareKey::Char('f') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    edit_scrollback_for_pane_with_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('g') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    write_to_pane_id(vec![102, 111, 111], PaneId::Terminal(2));
+                },
+                BareKey::Char('h') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    write_chars_to_pane_id("foo\n", PaneId::Terminal(2));
+                },
+                BareKey::Char('i') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    move_pane_with_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('j') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    move_pane_with_pane_id_in_direction(PaneId::Terminal(2), Direction::Left);
+                },
+                BareKey::Char('k') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    clear_screen_for_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('l') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    scroll_up_in_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('m') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    scroll_down_in_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('n') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    scroll_to_top_in_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('o') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    scroll_to_bottom_in_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('p') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    page_scroll_up_in_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('q') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    page_scroll_down_in_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('r') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    toggle_pane_id_fullscreen(PaneId::Terminal(2));
+                },
+                BareKey::Char('s') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    toggle_pane_embed_or_eject_for_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('t') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    close_tab_with_index(2);
+                },
+                BareKey::Char('u') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    let should_change_focus_to_new_tab = true;
+                    break_panes_to_new_tab(
+                        &[PaneId::Terminal(1), PaneId::Plugin(2)],
+                        Some("new_tab_name".to_owned()),
+                        should_change_focus_to_new_tab,
+                    );
+                },
+                BareKey::Char('v') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    let should_change_focus_to_target_tab = true;
+                    break_panes_to_tab_with_index(
+                        &[PaneId::Terminal(1), PaneId::Plugin(2)],
+                        2,
+                        should_change_focus_to_target_tab,
+                    );
+                },
+                BareKey::Char('w') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    reload_plugin_with_id(0);
+                },
+                BareKey::Char('x') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    let config = BTreeMap::new();
+                    let load_in_background = true;
+                    let skip_plugin_cache = true;
+                    load_new_plugin(
+                        "zellij:OWN_URL",
+                        config,
+                        load_in_background,
+                        skip_plugin_cache,
+                    )
+                },
+                BareKey::Char('y') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    let write_to_disk = true;
+                    let mut keys_to_unbind = vec![
+                        (
+                            InputMode::Locked,
+                            KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+                        ),
+                        (
+                            InputMode::Normal,
+                            KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+                        ),
+                        (
+                            InputMode::Pane,
+                            KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+                        ),
+                        (
+                            InputMode::Tab,
+                            KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+                        ),
+                        (
+                            InputMode::Resize,
+                            KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+                        ),
+                        (
+                            InputMode::Move,
+                            KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+                        ),
+                        (
+                            InputMode::Search,
+                            KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+                        ),
+                        (
+                            InputMode::Session,
+                            KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+                        ),
+                    ];
+                    let mut keys_to_rebind = vec![
+                        (
+                            InputMode::Locked,
+                            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+                            vec![actions::Action::SwitchToMode(InputMode::Normal)],
+                        ),
+                        (
+                            InputMode::Normal,
+                            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                        ),
+                        (
+                            InputMode::Pane,
+                            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                        ),
+                        (
+                            InputMode::Tab,
+                            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                        ),
+                        (
+                            InputMode::Resize,
+                            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                        ),
+                        (
+                            InputMode::Move,
+                            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                        ),
+                        (
+                            InputMode::Search,
+                            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                        ),
+                        (
+                            InputMode::Session,
+                            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                        ),
+                    ];
+                    rebind_keys(keys_to_unbind, keys_to_rebind, write_to_disk);
+                },
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {

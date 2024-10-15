@@ -1,0 +1,18 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 7269
+expression: "format!(\"{:#?}\", rerun_command_pane_event)"
+---
+Some(
+    WriteToPaneId(
+        [
+            102,
+            111,
+            111,
+            10,
+        ],
+        Terminal(
+            2,
+        ),
+    ),
+)

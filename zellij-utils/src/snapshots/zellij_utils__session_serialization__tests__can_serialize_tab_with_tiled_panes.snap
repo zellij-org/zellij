@@ -1,0 +1,31 @@
+---
+source: zellij-utils/src/session_serialization.rs
+assertion_line: 1799
+expression: kdl.0
+---
+layout {
+    tab name="Tab with \"tiled panes\"" {
+        pane size=10
+        pane cwd="/tmp/\"my/cool cwd" size=10
+        pane edit="/tmp/\"my/cool cwd/my-file" size=10
+        pane command="/tmp/\"my/cool cwd/command.sh" size=10 {
+            start_suspended true
+        }
+        pane command="/tmp/\"my/cool cwd/command.sh" size=10 {
+            args "--arg1" "arg\"2" "arg > \\3"
+            start_suspended true
+        }
+        pane size=10 {
+            plugin location="file:/tmp/\"my/cool cwd/plugin.wasm"
+        }
+        pane size=10 {
+            plugin location="file:/tmp/\"my/cool cwd/plugin.wasm" {
+                "key 1\"\\" "val 1\"\\"
+                "key 2\"\\" "val 2\"\\"
+            }
+        }
+        pane size=10 borderless=true
+        pane name="my cool \\ \"pane_title\"" focus=true contents_file="initial_contents_1" size=10
+    }
+}
+

@@ -5,7 +5,7 @@ use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::route_action;
 use crate::ServerInstruction;
-use log::{debug, warn};
+use log::warn;
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, HashSet},
@@ -18,8 +18,8 @@ use std::{
 };
 use wasmtime::{Caller, Linker};
 use zellij_utils::data::{
-    CommandType, ConnectToSession, FloatingPaneCoordinates, HttpVerb, LayoutInfo, MessageToPlugin,
-    OriginatingPlugin, PermissionStatus, PermissionType, PluginPermission,
+    CommandType, ConnectToSession, FloatingPaneCoordinates, HttpVerb, KeyWithModifier, LayoutInfo,
+    MessageToPlugin, OriginatingPlugin, PermissionStatus, PermissionType, PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::{
@@ -41,7 +41,6 @@ use zellij_utils::{
         actions::Action,
         command::{OpenFilePayload, RunCommand, RunCommandAction, TerminalAction},
         layout::{Layout, RunPluginOrAlias},
-        plugins::PluginType,
     },
     plugin_api::{
         plugin_command::ProtobufPluginCommand,
@@ -272,6 +271,86 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::RerunCommandPane(terminal_pane_id) => {
                         rerun_command_pane(env, terminal_pane_id)
                     },
+                    PluginCommand::ResizePaneIdWithDirection(resize, pane_id) => {
+                        resize_pane_with_id(env, resize, pane_id.into())
+                    },
+                    PluginCommand::EditScrollbackForPaneWithId(pane_id) => {
+                        edit_scrollback_for_pane_with_id(env, pane_id.into())
+                    },
+                    PluginCommand::WriteToPaneId(bytes, pane_id) => {
+                        write_to_pane_id(env, bytes, pane_id.into())
+                    },
+                    PluginCommand::WriteCharsToPaneId(chars, pane_id) => {
+                        write_chars_to_pane_id(env, chars, pane_id.into())
+                    },
+                    PluginCommand::MovePaneWithPaneId(pane_id) => {
+                        move_pane_with_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::MovePaneWithPaneIdInDirection(pane_id, direction) => {
+                        move_pane_with_pane_id_in_direction(env, pane_id.into(), direction)
+                    },
+                    PluginCommand::ClearScreenForPaneId(pane_id) => {
+                        clear_screen_for_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::ScrollUpInPaneId(pane_id) => {
+                        scroll_up_in_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::ScrollDownInPaneId(pane_id) => {
+                        scroll_down_in_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::ScrollToTopInPaneId(pane_id) => {
+                        scroll_to_top_in_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::ScrollToBottomInPaneId(pane_id) => {
+                        scroll_to_bottom_in_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::PageScrollUpInPaneId(pane_id) => {
+                        page_scroll_up_in_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::PageScrollDownInPaneId(pane_id) => {
+                        page_scroll_down_in_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::TogglePaneIdFullscreen(pane_id) => {
+                        toggle_pane_id_fullscreen(env, pane_id.into())
+                    },
+                    PluginCommand::TogglePaneEmbedOrEjectForPaneId(pane_id) => {
+                        toggle_pane_embed_or_eject_for_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::CloseTabWithIndex(tab_index) => {
+                        close_tab_with_index(env, tab_index)
+                    },
+                    PluginCommand::BreakPanesToNewTab(
+                        pane_ids,
+                        new_tab_name,
+                        should_change_focus_to_new_tab,
+                    ) => break_panes_to_new_tab(
+                        env,
+                        pane_ids.into_iter().map(|p_id| p_id.into()).collect(),
+                        new_tab_name,
+                        should_change_focus_to_new_tab,
+                    ),
+                    PluginCommand::BreakPanesToTabWithIndex(
+                        pane_ids,
+                        should_change_focus_to_new_tab,
+                        tab_index,
+                    ) => break_panes_to_tab_with_index(
+                        env,
+                        pane_ids.into_iter().map(|p_id| p_id.into()).collect(),
+                        tab_index,
+                        should_change_focus_to_new_tab,
+                    ),
+                    PluginCommand::ReloadPlugin(plugin_id) => reload_plugin(env, plugin_id),
+                    PluginCommand::LoadNewPlugin {
+                        url,
+                        config,
+                        load_in_background,
+                        skip_plugin_cache,
+                    } => load_new_plugin(env, url, config, load_in_background, skip_plugin_cache),
+                    PluginCommand::RebindKeys {
+                        keys_to_rebind,
+                        keys_to_unbind,
+                        write_config_to_disk,
+                    } => rebind_keys(env, keys_to_rebind, keys_to_unbind, write_config_to_disk)?,
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -338,38 +417,25 @@ fn unsubscribe(env: &PluginEnv, event_list: HashSet<EventType>) -> Result<()> {
 }
 
 fn set_selectable(env: &PluginEnv, selectable: bool) {
-    match env.plugin.run {
-        PluginType::Pane(Some(tab_index)) => {
-            // let selectable = selectable != 0;
-            env.senders
-                .send_to_screen(ScreenInstruction::SetSelectable(
-                    PaneId::Plugin(env.plugin_id),
-                    selectable,
-                    tab_index,
-                ))
-                .with_context(|| {
-                    format!(
-                        "failed to set plugin {} selectable from plugin {}",
-                        selectable,
-                        env.name()
-                    )
-                })
-                .non_fatal();
-        },
-        _ => {
-            debug!(
-                "{} - Calling method 'set_selectable' does nothing for headless plugins",
-                env.plugin.location
+    env.senders
+        .send_to_screen(ScreenInstruction::SetSelectable(
+            PaneId::Plugin(env.plugin_id),
+            selectable,
+        ))
+        .with_context(|| {
+            format!(
+                "failed to set plugin {} selectable from plugin {}",
+                selectable,
+                env.name()
             )
-        },
-    }
+        })
+        .non_fatal();
 }
 
 fn request_permission(env: &PluginEnv, permissions: Vec<PermissionType>) -> Result<()> {
     if PermissionCache::from_path_or_default(None)
         .check_permissions(env.plugin.location.to_string(), &permissions)
     {
-        log::info!("PermissionRequestResult 1");
         return env
             .senders
             .send_to_plugin(PluginInstruction::PermissionRequestResult(
@@ -909,6 +975,25 @@ fn reconfigure(env: &PluginEnv, new_config: String, write_config_to_disk: bool) 
     Ok(())
 }
 
+fn rebind_keys(
+    env: &PluginEnv,
+    keys_to_rebind: Vec<(InputMode, KeyWithModifier, Vec<Action>)>,
+    keys_to_unbind: Vec<(InputMode, KeyWithModifier)>,
+    write_config_to_disk: bool,
+) -> Result<()> {
+    let err_context = || "Failed to rebind_keys";
+    let client_id = env.client_id;
+    env.senders
+        .send_to_server(ServerInstruction::RebindKeys {
+            client_id,
+            keys_to_rebind,
+            keys_to_unbind,
+            write_config_to_disk,
+        })
+        .with_context(err_context)?;
+    Ok(())
+}
+
 fn switch_to_mode(env: &PluginEnv, input_mode: InputMode) {
     let action = Action::SwitchToMode(input_mode);
     let error_msg = || format!("failed to switch to mode in plugin {}", env.name());
@@ -948,10 +1033,15 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
             swap_tiled_layouts,
             swap_floating_layouts,
             None,
+            true,
         );
         tabs_to_open.push(action);
     } else {
-        for (tab_name, tiled_pane_layout, floating_pane_layout) in layout.tabs() {
+        let focused_tab_index = layout.focused_tab_index().unwrap_or(0);
+        for (tab_index, (tab_name, tiled_pane_layout, floating_pane_layout)) in
+            layout.tabs().into_iter().enumerate()
+        {
+            let should_focus_tab = tab_index == focused_tab_index;
             let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
             let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
             let action = Action::NewTab(
@@ -960,6 +1050,7 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
                 swap_tiled_layouts,
                 swap_floating_layouts,
                 tab_name,
+                should_focus_tab,
             );
             tabs_to_open.push(action);
         }
@@ -971,7 +1062,7 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
 }
 
 fn new_tab(env: &PluginEnv) {
-    let action = Action::NewTab(None, vec![], None, None, None);
+    let action = Action::NewTab(None, vec![], None, None, None, true);
     let error_msg = || format!("Failed to open new tab");
     apply_action!(action, error_msg, env);
 }
@@ -1293,12 +1384,20 @@ fn close_terminal_pane(env: &PluginEnv, terminal_pane_id: u32) {
     let error_msg = || format!("failed to change tab focus in plugin {}", env.name());
     let action = Action::CloseTerminalPane(terminal_pane_id);
     apply_action!(action, error_msg, env);
+    env.senders
+        .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(
+            terminal_pane_id,
+        )))
+        .non_fatal();
 }
 
 fn close_plugin_pane(env: &PluginEnv, plugin_pane_id: u32) {
     let error_msg = || format!("failed to change tab focus in plugin {}", env.name());
     let action = Action::ClosePluginPane(plugin_pane_id);
     apply_action!(action, error_msg, env);
+    env.senders
+        .send_to_plugin(PluginInstruction::Unload(plugin_pane_id))
+        .non_fatal();
 }
 
 fn focus_terminal_pane(env: &PluginEnv, terminal_pane_id: u32, should_float_if_hidden: bool) {
@@ -1442,6 +1541,208 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
     }
 }
 
+fn resize_pane_with_id(env: &PluginEnv, resize: ResizeStrategy, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::ResizePaneWithId(resize, pane_id));
+}
+
+fn edit_scrollback_for_pane_with_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::EditScrollbackForPaneWithId(pane_id));
+}
+
+fn write_to_pane_id(env: &PluginEnv, bytes: Vec<u8>, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::WriteToPaneId(bytes, pane_id));
+}
+
+fn write_chars_to_pane_id(env: &PluginEnv, chars: String, pane_id: PaneId) {
+    let bytes = chars.into_bytes();
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::WriteToPaneId(bytes, pane_id));
+}
+
+fn move_pane_with_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::MovePaneWithPaneId(pane_id));
+}
+
+fn move_pane_with_pane_id_in_direction(env: &PluginEnv, pane_id: PaneId, direction: Direction) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::MovePaneWithPaneIdInDirection(
+            pane_id, direction,
+        ));
+}
+
+fn clear_screen_for_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::ClearScreenForPaneId(pane_id));
+}
+
+fn scroll_up_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::ScrollUpInPaneId(pane_id));
+}
+
+fn scroll_down_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::ScrollDownInPaneId(pane_id));
+}
+
+fn scroll_to_top_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::ScrollToTopInPaneId(pane_id));
+}
+
+fn scroll_to_bottom_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::ScrollToBottomInPaneId(pane_id));
+}
+
+fn page_scroll_up_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::PageScrollUpInPaneId(pane_id));
+}
+
+fn page_scroll_down_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::PageScrollDownInPaneId(pane_id));
+}
+
+fn toggle_pane_id_fullscreen(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::TogglePaneIdFullscreen(pane_id));
+}
+
+fn toggle_pane_embed_or_eject_for_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(pane_id));
+}
+
+fn close_tab_with_index(env: &PluginEnv, tab_index: usize) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::CloseTabWithIndex(tab_index));
+}
+
+fn break_panes_to_new_tab(
+    env: &PluginEnv,
+    pane_ids: Vec<PaneId>,
+    new_tab_name: Option<String>,
+    should_change_focus_to_new_tab: bool,
+) {
+    let default_shell = env.default_shell.clone().or_else(|| {
+        Some(TerminalAction::RunCommand(RunCommand {
+            command: env.path_to_default_shell.clone(),
+            ..Default::default()
+        }))
+    });
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::BreakPanesToNewTab {
+            pane_ids,
+            default_shell,
+            new_tab_name,
+            should_change_focus_to_new_tab,
+            client_id: env.client_id,
+        });
+}
+
+fn break_panes_to_tab_with_index(
+    env: &PluginEnv,
+    pane_ids: Vec<PaneId>,
+    should_change_focus_to_new_tab: bool,
+    tab_index: usize,
+) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::BreakPanesToTabWithIndex {
+            pane_ids,
+            tab_index,
+            client_id: env.client_id,
+            should_change_focus_to_new_tab,
+        });
+}
+
+fn reload_plugin(env: &PluginEnv, plugin_id: u32) {
+    let _ = env
+        .senders
+        .send_to_plugin(PluginInstruction::ReloadPluginWithId(plugin_id));
+}
+
+fn load_new_plugin(
+    env: &PluginEnv,
+    url: String,
+    config: BTreeMap<String, String>,
+    load_in_background: bool,
+    skip_plugin_cache: bool,
+) {
+    let url = if &url == "zellij:OWN_URL" {
+        env.plugin.location.display()
+    } else {
+        url
+    };
+    if load_in_background {
+        match RunPluginOrAlias::from_url(&url, &Some(config), None, Some(env.plugin_cwd.clone())) {
+            Ok(run_plugin_or_alias) => {
+                let _ = env
+                    .senders
+                    .send_to_plugin(PluginInstruction::LoadBackgroundPlugin(
+                        run_plugin_or_alias,
+                        env.client_id,
+                    ));
+            },
+            Err(e) => {
+                log::error!("Failed to load new plugin: {:?}", e);
+            },
+        }
+    } else {
+        let should_float = Some(true);
+        let should_be_open_in_place = false;
+        let pane_title = None;
+        let tab_index = None;
+        let pane_id_to_replace = None;
+        let client_id = env.client_id;
+        let size = Default::default();
+        let cwd = Some(env.plugin_cwd.clone());
+        let skip_cache = skip_plugin_cache;
+        match RunPluginOrAlias::from_url(&url, &Some(config), None, Some(env.plugin_cwd.clone())) {
+            Ok(run_plugin_or_alias) => {
+                let _ = env.senders.send_to_plugin(PluginInstruction::Load(
+                    should_float,
+                    should_be_open_in_place,
+                    pane_title,
+                    run_plugin_or_alias,
+                    tab_index,
+                    pane_id_to_replace,
+                    client_id,
+                    size,
+                    cwd,
+                    skip_cache,
+                ));
+            },
+            Err(e) => {
+                log::error!("Failed to load new plugin: {:?}", e);
+            },
+        }
+    }
+}
+
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -1516,7 +1817,10 @@ fn check_command_permission(
         | PluginCommand::RunCommand(..)
         | PluginCommand::ExecCmd(..) => PermissionType::RunCommands,
         PluginCommand::WebRequest(..) => PermissionType::WebAccess,
-        PluginCommand::Write(..) | PluginCommand::WriteChars(..) => PermissionType::WriteToStdin,
+        PluginCommand::Write(..)
+        | PluginCommand::WriteChars(..)
+        | PluginCommand::WriteToPaneId(..)
+        | PluginCommand::WriteCharsToPaneId(..) => PermissionType::WriteToStdin,
         PluginCommand::SwitchTabTo(..)
         | PluginCommand::SwitchToMode(..)
         | PluginCommand::NewTabsWithLayout(..)
@@ -1531,19 +1835,31 @@ fn check_command_permission(
         | PluginCommand::MoveFocusOrTab(..)
         | PluginCommand::Detach
         | PluginCommand::EditScrollback
+        | PluginCommand::EditScrollbackForPaneWithId(..)
         | PluginCommand::ToggleTab
         | PluginCommand::MovePane
         | PluginCommand::MovePaneWithDirection(..)
+        | PluginCommand::MovePaneWithPaneId(..)
+        | PluginCommand::MovePaneWithPaneIdInDirection(..)
         | PluginCommand::ClearScreen
+        | PluginCommand::ClearScreenForPaneId(..)
         | PluginCommand::ScrollUp
+        | PluginCommand::ScrollUpInPaneId(..)
         | PluginCommand::ScrollDown
+        | PluginCommand::ScrollDownInPaneId(..)
         | PluginCommand::ScrollToTop
+        | PluginCommand::ScrollToTopInPaneId(..)
         | PluginCommand::ScrollToBottom
+        | PluginCommand::ScrollToBottomInPaneId(..)
         | PluginCommand::PageScrollUp
+        | PluginCommand::PageScrollUpInPaneId(..)
         | PluginCommand::PageScrollDown
+        | PluginCommand::PageScrollDownInPaneId(..)
         | PluginCommand::ToggleFocusFullscreen
+        | PluginCommand::TogglePaneIdFullscreen(..)
         | PluginCommand::TogglePaneFrames
         | PluginCommand::TogglePaneEmbedOrEject
+        | PluginCommand::TogglePaneEmbedOrEjectForPaneId(..)
         | PluginCommand::UndoRenamePane
         | PluginCommand::CloseFocus
         | PluginCommand::ToggleActiveTabSync
@@ -1570,13 +1886,21 @@ fn check_command_permission(
         | PluginCommand::ShowPaneWithId(..)
         | PluginCommand::HidePaneWithId(..)
         | PluginCommand::RerunCommandPane(..)
+        | PluginCommand::ResizePaneIdWithDirection(..)
+        | PluginCommand::CloseTabWithIndex(..)
+        | PluginCommand::BreakPanesToNewTab(..)
+        | PluginCommand::BreakPanesToTabWithIndex(..)
+        | PluginCommand::ReloadPlugin(..)
+        | PluginCommand::LoadNewPlugin { .. }
         | PluginCommand::KillSessions(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
         PluginCommand::DumpSessionLayout => PermissionType::ReadApplicationState,
-        PluginCommand::Reconfigure(..) => PermissionType::Reconfigure,
+        PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
+            PermissionType::Reconfigure
+        },
         _ => return (PermissionStatus::Granted, None),
     };
 

@@ -355,6 +355,23 @@ pub enum ScreenContext {
     ListClientsMetadata,
     Reconfigure,
     RerunCommandPane,
+    ResizePaneWithId,
+    EditScrollbackForPaneWithId,
+    WriteToPaneId,
+    MovePaneWithPaneId,
+    MovePaneWithPaneIdInDirection,
+    ClearScreenForPaneId,
+    ScrollUpInPaneId,
+    ScrollDownInPaneId,
+    ScrollToTopInPaneId,
+    ScrollToBottomInPaneId,
+    PageScrollUpInPaneId,
+    PageScrollDownInPaneId,
+    TogglePaneIdFullscreen,
+    TogglePaneEmbedOrEjectForPaneId,
+    CloseTabWithIndex,
+    BreakPanesToNewTab,
+    BreakPanesToTabWithIndex,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -385,10 +402,12 @@ pub enum PtyContext {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PluginContext {
     Load,
+    LoadBackgroundPlugin,
     Update,
     Render,
     Unload,
     Reload,
+    ReloadPluginWithId,
     Resize,
     Exit,
     AddClient,
@@ -465,6 +484,7 @@ pub enum ServerContext {
     Reconfigure,
     ConfigWrittenToDisk,
     FailedToWriteConfigToDisk,
+    RebindKeys,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -486,6 +506,7 @@ pub enum BackgroundJobContext {
     ReportLayoutInfo,
     RunCommand,
     WebRequest,
+    ReportPluginList,
     Exit,
 }
 

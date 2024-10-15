@@ -29,7 +29,10 @@ use std::env::set_var;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
 
-use crate::{plugins::PluginInstruction, pty::PtyInstruction};
+use crate::{
+    plugins::PluginInstruction,
+    pty::{ClientTabIndexOrPaneId, PtyInstruction},
+};
 use zellij_utils::ipc::PixelDimensions;
 
 use zellij_utils::{
@@ -368,6 +371,7 @@ impl MockScreen {
         let default_shell = None;
         let tab_name = None;
         let tab_index = self.last_opened_tab_index.map(|l| l + 1).unwrap_or(0);
+        let should_change_focus_to_new_tab = true;
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             None,
             default_shell,
@@ -375,6 +379,7 @@ impl MockScreen {
             initial_floating_panes_layout.clone(),
             tab_name,
             (vec![], vec![]), // swap layouts
+            should_change_focus_to_new_tab,
             self.main_client_id,
         ));
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
@@ -384,6 +389,7 @@ impl MockScreen {
             floating_pane_ids,
             plugin_ids,
             tab_index,
+            true,
             self.main_client_id,
         ));
         self.last_opened_tab_index = Some(tab_index);
@@ -452,6 +458,7 @@ impl MockScreen {
         let default_shell = None;
         let tab_name = None;
         let tab_index = self.last_opened_tab_index.map(|l| l + 1).unwrap_or(0);
+        let should_change_focus_to_new_tab = true;
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             None,
             default_shell,
@@ -459,6 +466,7 @@ impl MockScreen {
             initial_floating_panes_layout.clone(),
             tab_name,
             (vec![], vec![]), // swap layouts
+            should_change_focus_to_new_tab,
             self.main_client_id,
         ));
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
@@ -468,6 +476,7 @@ impl MockScreen {
             floating_pane_ids,
             plugin_ids,
             tab_index,
+            true,
             self.main_client_id,
         ));
         self.last_opened_tab_index = Some(tab_index);
@@ -483,6 +492,7 @@ impl MockScreen {
         for i in 0..pane_count {
             pane_ids.push((i as u32, None));
         }
+        let should_change_focus_to_new_tab = true;
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             None,
             default_shell,
@@ -490,6 +500,7 @@ impl MockScreen {
             vec![], // floating_panes_layout
             tab_name,
             (vec![], vec![]), // swap layouts
+            should_change_focus_to_new_tab,
             self.main_client_id,
         ));
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
@@ -499,6 +510,7 @@ impl MockScreen {
             vec![], // floating panes ids
             plugin_ids,
             0,
+            true,
             self.main_client_id,
         ));
         self.last_opened_tab_index = Some(tab_index);
@@ -646,7 +658,7 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
     let new_terminal_ids = vec![(pid, None)];
     let new_plugin_ids = HashMap::new();
     screen
-        .new_tab(tab_index, (vec![], vec![]), None, client_id)
+        .new_tab(tab_index, (vec![], vec![]), None, Some(client_id))
         .expect("TEST");
     screen
         .apply_layout(
@@ -656,6 +668,7 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
             vec![], // new floating terminal ids
             new_plugin_ids,
             tab_index,
+            true,
             client_id,
         )
         .expect("TEST");
@@ -1699,7 +1712,7 @@ pub fn send_cli_edit_scrollback_action() {
         {
             assert_eq!(scrollback_contents_file, &PathBuf::from(&dumped_file_name));
             assert_eq!(terminal_id, &Some(1));
-            assert_eq!(client_id, &1);
+            assert_eq!(client_id, &ClientTabIndexOrPaneId::ClientId(1));
             found_instruction = true;
         }
     }
@@ -3245,6 +3258,7 @@ pub fn screen_can_break_pane_to_a_new_tab() {
         vec![], // floating panes ids
         Default::default(),
         1,
+        true,
         1,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -3346,6 +3360,7 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
         vec![], // floating panes ids
         Default::default(),
         1,
+        true,
         1,
     ));
     std::thread::sleep(std::time::Duration::from_millis(200));
@@ -3415,6 +3430,7 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
         vec![], // floating panes ids
         Default::default(),
         1,
+        true,
         1,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -3488,6 +3504,7 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
         vec![], // floating panes ids
         Default::default(),
         1,
+        true,
         1,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));

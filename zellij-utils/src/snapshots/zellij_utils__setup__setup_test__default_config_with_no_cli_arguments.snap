@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 753
+assertion_line: 754
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -1764,6 +1764,7 @@ Config {
                     None,
                     None,
                     None,
+                    true,
                 ),
                 SwitchToMode(
                     Normal,
@@ -4140,6 +4141,34 @@ Config {
                 bare_key: Char(
                     'p',
                 ),
+                key_modifiers: {},
+            }: [
+                LaunchOrFocusPlugin(
+                    Alias(
+                        PluginAlias {
+                            name: "plugin-manager",
+                            configuration: Some(
+                                PluginUserConfiguration(
+                                    {},
+                                ),
+                            ),
+                            initial_cwd: None,
+                            run_plugin: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
                 key_modifiers: {
                     Ctrl,
                 },
@@ -5216,6 +5245,7 @@ Config {
                     None,
                     None,
                     None,
+                    true,
                 ),
                 SwitchToMode(
                     Normal,
@@ -5611,6 +5641,18 @@ Config {
                     "/",
                 ),
             },
+            "plugin-manager": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "plugin-manager",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
             "session-manager": RunPlugin {
                 _allow_exec_host_cmd: false,
                 location: Zellij(
@@ -5682,4 +5724,5 @@ Config {
         },
     },
     env: {},
+    background_plugins: {},
 }

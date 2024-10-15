@@ -1,5 +1,6 @@
 //! Zellij program-wide constants.
 
+use crate::home::find_default_config_dir;
 use directories::ProjectDirs;
 use include_dir::{include_dir, Dir};
 use lazy_static::lazy_static;
@@ -30,6 +31,22 @@ pub fn session_layout_cache_file_name(session_name: &str) -> PathBuf {
 
 pub fn session_info_folder_for_session(session_name: &str) -> PathBuf {
     ZELLIJ_SESSION_INFO_CACHE_DIR.join(session_name)
+}
+
+pub fn create_config_and_cache_folders() {
+    if let Err(e) = std::fs::create_dir_all(&ZELLIJ_CACHE_DIR.as_path()) {
+        log::error!("Failed to create cache dir: {:?}", e);
+    }
+    if let Some(config_dir) = find_default_config_dir() {
+        if let Err(e) = std::fs::create_dir_all(&config_dir.as_path()) {
+            log::error!("Failed to create config dir: {:?}", e);
+        }
+    }
+    // while session_info is a child of cache currently, it won't necessarily always be this way,
+    // and so it's explicitly created here
+    if let Err(e) = std::fs::create_dir_all(&ZELLIJ_SESSION_INFO_CACHE_DIR.as_path()) {
+        log::error!("Failed to create session_info cache dir: {:?}", e);
+    }
 }
 
 const fn system_default_data_dir() -> &'static str {
@@ -111,6 +128,7 @@ mod not_wasm {
             add_plugin!(assets, "strider.wasm");
             add_plugin!(assets, "session-manager.wasm");
             add_plugin!(assets, "configuration.wasm");
+            add_plugin!(assets, "plugin-manager.wasm");
             assets
         };
     }

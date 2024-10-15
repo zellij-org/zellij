@@ -67,8 +67,12 @@ fn stop_zellij(channel: &mut ssh2::Channel) {
     channel.write_all(b"rm -rf /tmp/*\n").unwrap(); // remove temporary artifacts from previous
                                                     // tests
     channel.write_all(b"rm -rf /tmp/*\n").unwrap(); // remove temporary artifacts from previous
+    channel.write_all(b"rm -rf /tmp/*\n").unwrap(); // remove temporary artifacts from previous
     channel
         .write_all(b"rm -rf ~/.cache/zellij/*/session_info\n")
+        .unwrap();
+    channel
+        .write_all(b"rm -rf ~/.cache/zellij/permissions.kdl\n")
         .unwrap();
 }
 
@@ -107,7 +111,7 @@ fn start_zellij_mirrored_session_with_layout(channel: &mut ssh2::Channel, layout
     channel
         .write_all(
             format!(
-                "{} {} --session {} --data-dir {} --layout {} options --mirror-session true --serialization-interval 1\n",
+                "{} {} --session {} --data-dir {} --new-session-with-layout {} options --mirror-session true --serialization-interval 1\n",
                 SET_ENV_VARIABLES,
                 ZELLIJ_EXECUTABLE_LOCATION,
                 SESSION_NAME,
@@ -129,7 +133,7 @@ fn start_zellij_mirrored_session_with_layout_and_viewport_serialization(
     channel
         .write_all(
             format!(
-                "{} {} --session {} --data-dir {} --layout {} options --mirror-session true --serialize-pane-viewport true --serialization-interval 1\n",
+                "{} {} --session {} --data-dir {} --new-session-with-layout {} options --mirror-session true --serialize-pane-viewport true --serialization-interval 1\n",
                 SET_ENV_VARIABLES,
                 ZELLIJ_EXECUTABLE_LOCATION,
                 SESSION_NAME,

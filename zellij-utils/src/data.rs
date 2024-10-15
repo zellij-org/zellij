@@ -1,7 +1,7 @@
 use crate::input::actions::Action;
 use crate::input::config::ConversionError;
 use crate::input::keybinds::Keybinds;
-use crate::input::layout::SplitSize;
+use crate::input::layout::{RunPlugin, SplitSize};
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -960,7 +960,7 @@ impl PermissionType {
                 "Access Zellij state (Panes, Tabs and UI)".to_owned()
             },
             PermissionType::ChangeApplicationState => {
-                "Change Zellij state (Panes, Tabs and UI)".to_owned()
+                "Change Zellij state (Panes, Tabs and UI) and run commands".to_owned()
             },
             PermissionType::OpenFiles => "Open files (eg. for editing)".to_owned(),
             PermissionType::RunCommands => "Run commands".to_owned(),
@@ -1199,6 +1199,22 @@ pub struct SessionInfo {
     pub connected_clients: usize,
     pub is_current_session: bool,
     pub available_layouts: Vec<LayoutInfo>,
+    pub plugins: BTreeMap<u32, PluginInfo>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PluginInfo {
+    pub location: String,
+    pub configuration: BTreeMap<String, String>,
+}
+
+impl From<RunPlugin> for PluginInfo {
+    fn from(run_plugin: RunPlugin) -> Self {
+        PluginInfo {
+            location: run_plugin.location.display(),
+            configuration: run_plugin.configuration.inner().clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -1252,6 +1268,14 @@ impl SessionInfo {
     }
     pub fn update_connected_clients(&mut self, new_connected_clients: usize) {
         self.connected_clients = new_connected_clients;
+    }
+    pub fn populate_plugin_list(&mut self, plugins: BTreeMap<u32, RunPlugin>) {
+        // u32 - plugin_id
+        let mut plugin_list = BTreeMap::new();
+        for (plugin_id, run_plugin) in plugins {
+            plugin_list.insert(plugin_id, run_plugin.into());
+        }
+        self.plugins = plugin_list;
     }
 }
 
@@ -1820,4 +1844,38 @@ pub enum PluginCommand {
     ShowPaneWithId(PaneId, bool), // bool -> should_float_if_hidden
     OpenCommandPaneBackground(CommandToRun, Context),
     RerunCommandPane(u32), // u32  - terminal pane id
+    ResizePaneIdWithDirection(ResizeStrategy, PaneId),
+    EditScrollbackForPaneWithId(PaneId),
+    WriteToPaneId(Vec<u8>, PaneId),
+    WriteCharsToPaneId(String, PaneId),
+    MovePaneWithPaneId(PaneId),
+    MovePaneWithPaneIdInDirection(PaneId, Direction),
+    ClearScreenForPaneId(PaneId),
+    ScrollUpInPaneId(PaneId),
+    ScrollDownInPaneId(PaneId),
+    ScrollToTopInPaneId(PaneId),
+    ScrollToBottomInPaneId(PaneId),
+    PageScrollUpInPaneId(PaneId),
+    PageScrollDownInPaneId(PaneId),
+    TogglePaneIdFullscreen(PaneId),
+    TogglePaneEmbedOrEjectForPaneId(PaneId),
+    CloseTabWithIndex(usize), // usize - tab_index
+    BreakPanesToNewTab(Vec<PaneId>, Option<String>, bool), // bool -
+    // should_change_focus_to_new_tab,
+    // Option<String> - optional name for
+    // the new tab
+    BreakPanesToTabWithIndex(Vec<PaneId>, usize, bool), // usize - tab_index, bool -
+    // should_change_focus_to_new_tab
+    ReloadPlugin(u32), // u32 - plugin pane id
+    LoadNewPlugin {
+        url: String,
+        config: BTreeMap<String, String>,
+        load_in_background: bool,
+        skip_plugin_cache: bool,
+    },
+    RebindKeys {
+        keys_to_rebind: Vec<(InputMode, KeyWithModifier, Vec<Action>)>,
+        keys_to_unbind: Vec<(InputMode, KeyWithModifier)>,
+        write_config_to_disk: bool,
+    },
 }

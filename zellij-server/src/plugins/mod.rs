@@ -14,6 +14,7 @@ use std::{
 };
 use wasmtime::Engine;
 
+use crate::background_jobs::BackgroundJob;
 use crate::panes::PaneId;
 use crate::screen::ScreenInstruction;
 use crate::session_layout_metadata::SessionLayoutMetadata;
@@ -33,7 +34,7 @@ use zellij_utils::{
         command::TerminalAction,
         keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout},
-        plugins::PluginAliases,
+        plugins::{PluginAliases, PluginConfig},
     },
     ipc::ClientAttributes,
     pane_size::Size,
@@ -49,13 +50,14 @@ pub enum PluginInstruction {
         bool,           // should be opened in place
         Option<String>, // pane title
         RunPluginOrAlias,
-        usize,          // tab index
+        Option<usize>,  // tab index
         Option<PaneId>, // pane id to replace if this is to be opened "in-place"
         ClientId,
         Size,
         Option<PathBuf>, // cwd
         bool,            // skip cache
     ),
+    LoadBackgroundPlugin(RunPluginOrAlias, ClientId),
     Update(Vec<(Option<PluginId>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
     Unload(PluginId),                                         // plugin_id
     Reload(
@@ -65,6 +67,7 @@ pub enum PluginInstruction {
         usize, // tab index
         Size,
     ),
+    ReloadPluginWithId(u32),
     Resize(PluginId, usize, usize), // plugin_id, columns, rows
     AddClient(ClientId),
     RemoveClient(ClientId),
@@ -74,6 +77,7 @@ pub enum PluginInstruction {
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
         usize, // tab_index
+        bool,  // should change focus to new tab
         ClientId,
     ),
     ApplyCachedEvents {
@@ -161,9 +165,11 @@ impl From<&PluginInstruction> for PluginContext {
     fn from(plugin_instruction: &PluginInstruction) -> Self {
         match *plugin_instruction {
             PluginInstruction::Load(..) => PluginContext::Load,
+            PluginInstruction::LoadBackgroundPlugin(..) => PluginContext::LoadBackgroundPlugin,
             PluginInstruction::Update(..) => PluginContext::Update,
             PluginInstruction::Unload(..) => PluginContext::Unload,
             PluginInstruction::Reload(..) => PluginContext::Reload,
+            PluginInstruction::ReloadPluginWithId(..) => PluginContext::ReloadPluginWithId,
             PluginInstruction::Resize(..) => PluginContext::Resize,
             PluginInstruction::Exit => PluginContext::Exit,
             PluginInstruction::AddClient(_) => PluginContext::AddClient,
@@ -215,6 +221,12 @@ pub(crate) fn plugin_thread_main(
     plugin_aliases: Box<PluginAliases>,
     default_mode: InputMode,
     default_keybinds: Keybinds,
+    background_plugins: HashSet<RunPluginOrAlias>,
+    // the client id that started the session,
+    // we need it here because the thread's own list of connected clients might not yet be updated
+    // on session start when we need to load the background plugins, and so we must have an
+    // explicit client_id that has started the session
+    initiating_client_id: ClientId,
 ) -> Result<()> {
     info!("Wasm main thread starts");
     let plugin_dir = data_dir.join("plugins/");
@@ -240,6 +252,16 @@ pub(crate) fn plugin_thread_main(
         default_keybinds,
     );
 
+    for mut run_plugin_or_alias in background_plugins {
+        load_background_plugin(
+            run_plugin_or_alias,
+            &mut wasm_bridge,
+            &bus,
+            &plugin_aliases,
+            initiating_client_id,
+        );
+    }
+
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Plugin((&event).into()));
@@ -262,7 +284,7 @@ pub(crate) fn plugin_thread_main(
                 let start_suppressed = false;
                 match wasm_bridge.load_plugin(
                     &run_plugin,
-                    Some(tab_index),
+                    tab_index,
                     size,
                     cwd.clone(),
                     skip_cache,
@@ -275,7 +297,7 @@ pub(crate) fn plugin_thread_main(
                             should_be_open_in_place,
                             run_plugin_or_alias,
                             pane_title,
-                            Some(tab_index),
+                            tab_index,
                             plugin_id,
                             pane_id_to_replace,
                             cwd,
@@ -287,6 +309,15 @@ pub(crate) fn plugin_thread_main(
                         log::error!("Failed to load plugin: {e}");
                     },
                 }
+            },
+            PluginInstruction::LoadBackgroundPlugin(run_plugin_or_alias, client_id) => {
+                load_background_plugin(
+                    run_plugin_or_alias,
+                    &mut wasm_bridge,
+                    &bus,
+                    &plugin_aliases,
+                    client_id,
+                );
             },
             PluginInstruction::Update(updates) => {
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
@@ -362,6 +393,9 @@ pub(crate) fn plugin_thread_main(
                     },
                 }
             },
+            PluginInstruction::ReloadPluginWithId(plugin_id) => {
+                wasm_bridge.reload_plugin_with_id(plugin_id).non_fatal();
+            },
             PluginInstruction::Resize(pid, new_columns, new_rows) => {
                 wasm_bridge.resize_plugin(pid, new_columns, new_rows, shutdown_send.clone())?;
             },
@@ -377,6 +411,7 @@ pub(crate) fn plugin_thread_main(
                 mut tab_layout,
                 mut floating_panes_layout,
                 tab_index,
+                should_change_focus_to_new_tab,
                 client_id,
             ) => {
                 // prefer connected clients so as to avoid opening plugins in the background for
@@ -391,9 +426,13 @@ pub(crate) fn plugin_thread_main(
 
                 let mut plugin_ids: HashMap<RunPluginOrAlias, Vec<PluginId>> = HashMap::new();
                 tab_layout = tab_layout.or_else(|| Some(layout.new_tab().0));
-                tab_layout
-                    .as_mut()
-                    .map(|t| t.populate_plugin_aliases_in_layout(&plugin_aliases));
+                tab_layout.as_mut().map(|t| {
+                    t.populate_plugin_aliases_in_layout(&plugin_aliases);
+                    if let Some(cwd) = cwd.as_ref() {
+                        t.add_cwd_to_layout(cwd);
+                    }
+                    t
+                });
                 floating_panes_layout.iter_mut().for_each(|f| {
                     f.run
                         .as_mut()
@@ -444,6 +483,7 @@ pub(crate) fn plugin_thread_main(
                     floating_panes_layout,
                     tab_index,
                     plugin_ids,
+                    should_change_focus_to_new_tab,
                     client_id,
                 )));
             },
@@ -516,21 +556,33 @@ pub(crate) fn plugin_thread_main(
                 )?;
             },
             PluginInstruction::DumpLayout(mut session_layout_metadata, client_id) => {
-                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge);
+                populate_session_layout_metadata(
+                    &mut session_layout_metadata,
+                    &wasm_bridge,
+                    &plugin_aliases,
+                );
                 drop(bus.senders.send_to_pty(PtyInstruction::DumpLayout(
                     session_layout_metadata,
                     client_id,
                 )));
             },
             PluginInstruction::ListClientsMetadata(mut session_layout_metadata, client_id) => {
-                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge);
+                populate_session_layout_metadata(
+                    &mut session_layout_metadata,
+                    &wasm_bridge,
+                    &plugin_aliases,
+                );
                 drop(bus.senders.send_to_pty(PtyInstruction::ListClientsMetadata(
                     session_layout_metadata,
                     client_id,
                 )));
             },
             PluginInstruction::DumpLayoutToPlugin(mut session_layout_metadata, plugin_id) => {
-                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge);
+                populate_session_layout_metadata(
+                    &mut session_layout_metadata,
+                    &wasm_bridge,
+                    &plugin_aliases,
+                );
                 match session_serialization::serialize_session_layout(
                     session_layout_metadata.into(),
                 ) {
@@ -556,7 +608,11 @@ pub(crate) fn plugin_thread_main(
                 }
             },
             PluginInstruction::LogLayoutToHd(mut session_layout_metadata) => {
-                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge);
+                populate_session_layout_metadata(
+                    &mut session_layout_metadata,
+                    &wasm_bridge,
+                    &plugin_aliases,
+                );
                 drop(
                     bus.senders
                         .send_to_pty(PtyInstruction::LogLayoutToHd(session_layout_metadata)),
@@ -835,6 +891,7 @@ pub(crate) fn plugin_thread_main(
 fn populate_session_layout_metadata(
     session_layout_metadata: &mut SessionLayoutMetadata,
     wasm_bridge: &WasmBridge,
+    plugin_aliases: &PluginAliases,
 ) {
     let plugin_ids = session_layout_metadata.all_plugin_ids();
     let mut plugin_ids_to_cmds: HashMap<u32, RunPlugin> = HashMap::new();
@@ -848,6 +905,7 @@ fn populate_session_layout_metadata(
         }
     }
     session_layout_metadata.update_plugin_cmds(plugin_ids_to_cmds);
+    session_layout_metadata.update_plugin_aliases_in_default_layout(plugin_aliases);
 }
 
 fn pipe_to_all_plugins(
@@ -926,6 +984,53 @@ fn pipe_to_specific_plugins(
             None => {
                 log::error!("Failed to parse plugin url: {}", e);
             },
+        },
+    }
+}
+
+fn load_background_plugin(
+    mut run_plugin_or_alias: RunPluginOrAlias,
+    wasm_bridge: &mut WasmBridge,
+    bus: &Bus<PluginInstruction>,
+    plugin_aliases: &PluginAliases,
+    client_id: ClientId,
+) {
+    run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
+    let cwd = run_plugin_or_alias.get_initial_cwd();
+    let run_plugin = run_plugin_or_alias.get_run_plugin();
+    let size = Size::default();
+    let skip_cache = false;
+    match wasm_bridge.load_plugin(
+        &run_plugin,
+        None,
+        size,
+        cwd.clone(),
+        skip_cache,
+        Some(client_id),
+        None,
+    ) {
+        Ok((plugin_id, client_id)) => {
+            let should_float = None;
+            let should_be_open_in_place = false;
+            let pane_title = None;
+            let pane_id_to_replace = None;
+            let start_suppressed = true;
+            drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
+                should_float,
+                should_be_open_in_place,
+                run_plugin_or_alias,
+                pane_title,
+                None,
+                plugin_id,
+                pane_id_to_replace,
+                cwd,
+                start_suppressed,
+                // None,
+                Some(client_id),
+            )));
+        },
+        Err(e) => {
+            log::error!("Failed to load plugin: {e}");
         },
     }
 }

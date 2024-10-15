@@ -1,0 +1,12 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 7482
+expression: "format!(\"{:#?}\", screen_instruction)"
+---
+Some(
+    ClearScreenForPaneId(
+        Terminal(
+            2,
+        ),
+    ),
+)
