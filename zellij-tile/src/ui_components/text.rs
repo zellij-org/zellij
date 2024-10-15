@@ -5,6 +5,7 @@ use std::ops::RangeBounds;
 pub struct Text {
     text: String,
     selected: bool,
+    transparent: bool,
     indices: Vec<Vec<usize>>,
 }
 
@@ -16,11 +17,16 @@ impl Text {
         Text {
             text: content.to_string(),
             selected: false,
+            transparent: false,
             indices: vec![],
         }
     }
     pub fn selected(mut self) -> Self {
         self.selected = true;
+        self
+    }
+    pub fn transparent(mut self) -> Self {
+        self.transparent = true;
         self
     }
     pub fn color_indices(mut self, index_level: usize, mut indices: Vec<usize>) -> Self {
@@ -75,11 +81,17 @@ impl Text {
                     .join(",")
             ));
         }
+
+        let mut prefix = "".to_owned();
         if self.selected {
-            format!("x{}{}", indices, text)
-        } else {
-            format!("{}{}", indices, text)
+            prefix = format!("x{}", prefix);
         }
+
+        if self.transparent {
+            prefix = format!("z{}", prefix);
+        }
+
+        format!("{}{}{}", prefix, indices, text)
     }
 }
 
