@@ -26,6 +26,10 @@ impl NestedListItem {
         self.content = self.content.selected();
         self
     }
+    pub fn transparent(mut self) -> Self {
+        self.content = self.content.transparent();
+        self
+    }
     pub fn color_indices(mut self, index_level: usize, indices: Vec<usize>) -> Self {
         self.content = self.content.color_indices(index_level, indices);
         self
