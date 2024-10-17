@@ -4,16 +4,106 @@ use std::collections::{BTreeMap, BTreeSet};
 
 static UI_SIZE: usize = 15;
 
-struct State {
-    userspace_configuration: BTreeMap<String, String>,
+#[derive(Debug)]
+enum Screen {
+    RebindLeaders(RebindLeadersScreen),
+    ResetKeybindings(ResetKeybindingsScreen),
+    RebindLeadersForReset(RebindLeadersForResetScreen)
+}
+
+#[derive(Debug, Default)]
+struct ResetKeybindingsScreen {
     selected_index: Option<usize>,
+}
+
+#[derive(Debug)]
+struct RebindLeadersForResetScreen {
     selected_primary_key_index: usize,
     selected_secondary_key_index: usize,
-    remapping_leaders: bool,
+    browsing_secondary_modifier: bool,
+}
+
+#[derive(Debug)]
+struct RebindLeadersScreen {
+    selected_primary_key_index: usize,
+    selected_secondary_key_index: usize,
+    main_leader_selected: bool,
+    rebinding_main_leader: bool,
+    browsing_primary_modifier: bool,
+    browsing_secondary_modifier: bool,
+}
+
+impl Default for RebindLeadersScreen {
+    fn default() -> Self {
+        RebindLeadersScreen {
+            selected_primary_key_index: 0,
+            selected_secondary_key_index: 0,
+            main_leader_selected: true,
+            rebinding_main_leader: false,
+            browsing_primary_modifier: false,
+            browsing_secondary_modifier: false,
+        }
+    }
+}
+
+impl ResetKeybindingsScreen {
+    pub fn move_selected_index_down(&mut self) {
+        if self.selected_index.is_none() {
+            self.selected_index = Some(0);
+        } else if self.selected_index < Some(1) {
+            self.selected_index = Some(1);
+        } else {
+            self.selected_index = None;
+        }
+    }
+    pub fn move_selected_index_up(&mut self) {
+        if self.selected_index.is_none() {
+            self.selected_index = Some(1);
+        } else if self.selected_index == Some(1) {
+            self.selected_index = Some(0);
+        } else {
+            self.selected_index = None;
+        }
+    }
+    pub fn take_selected_index(&mut self) -> Option<usize> {
+        self.selected_index.take()
+    }
+    pub fn reset_selected_index(&mut self) {
+        self.selected_index = Some(0);
+    }
+}
+
+impl Default for Screen {
+    fn default() -> Self {
+        Screen::RebindLeaders(Default::default())
+    }
+}
+
+impl Screen {
+    pub fn new_reset_keybindings_screen(selected_index: Option<usize>) -> Self {
+        Screen::ResetKeybindings(ResetKeybindingsScreen {
+            selected_index,
+            ..Default::default()
+        })
+    }
+}
+
+impl Default for RebindLeadersForResetScreen {
+    fn default() -> Self {
+        RebindLeadersForResetScreen {
+            selected_primary_key_index: 0,
+            selected_secondary_key_index: 0,
+            browsing_secondary_modifier: false,
+        }
+    }
+}
+
+
+
+struct State {
     primary_modifier: BTreeSet<KeyModifier>,
     secondary_modifier: BTreeSet<KeyModifier>,
     possible_modifiers: Vec<KeyModifier>,
-    browsing_secondary_modifier: bool,
     mode_color_index: usize,
     preset_color_index: usize,
     primary_leader_key_color_index: usize,
@@ -21,6 +111,9 @@ struct State {
     notification: Option<String>,
     is_setup_wizard: bool,
     ui_size: usize,
+    current_screen: Screen,
+    main_leader: Option<KeyWithModifier>,
+    latest_mode_info: Option<ModeInfo>,
 }
 
 impl Default for State {
@@ -30,11 +123,6 @@ impl Default for State {
         let mut secondary_modifier = BTreeSet::new();
         secondary_modifier.insert(KeyModifier::Alt);
         State {
-            userspace_configuration: BTreeMap::new(),
-            selected_index: None,
-            selected_primary_key_index: 0,
-            selected_secondary_key_index: 0,
-            remapping_leaders: false,
             primary_modifier,
             secondary_modifier,
             possible_modifiers: vec![
@@ -43,7 +131,6 @@ impl Default for State {
                 KeyModifier::Super,
                 KeyModifier::Shift,
             ],
-            browsing_secondary_modifier: false,
             primary_leader_key_color_index: 3,
             secondary_leader_key_color_index: 0,
             mode_color_index: 2,
@@ -51,6 +138,9 @@ impl Default for State {
             notification: None,
             is_setup_wizard: false,
             ui_size: UI_SIZE,
+            current_screen: Screen::default(),
+            main_leader: None,
+            latest_mode_info: None,
         }
     }
 }
@@ -63,12 +153,11 @@ impl ZellijPlugin for State {
             .get("is_setup_wizard")
             .map(|v| v == "true")
             .unwrap_or(false);
-        self.userspace_configuration = configuration;
-        subscribe(&[EventType::Key, EventType::FailedToWriteConfigToDisk]);
+        subscribe(&[EventType::Key, EventType::FailedToWriteConfigToDisk, EventType::ModeUpdate]);
         let own_plugin_id = get_plugin_ids().plugin_id;
         if self.is_setup_wizard {
             self.ui_size = 18;
-            self.selected_index = Some(0);
+            self.current_screen = Screen::new_reset_keybindings_screen(Some(0));
             rename_plugin_pane(own_plugin_id, "First Run Setup Wizard (Step 1/1)");
             resize_focused_pane(Resize::Increase);
             resize_focused_pane(Resize::Increase);
@@ -80,14 +169,44 @@ impl ZellijPlugin for State {
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
-            Event::Key(key) => {
-                if self.remapping_leaders {
-                    should_render = self.handle_remapping_screen_key(key);
-                } else if self.is_setup_wizard {
-                    should_render = self.handle_setup_wizard_key(key);
-                } else {
-                    should_render = self.handle_main_screen_key(key);
+            Event::ModeUpdate(mode_info) => {
+                self.latest_mode_info = Some(mode_info.clone());
+                if let Some(InputMode::Locked) = mode_info.base_mode {
+                    if !self.rebinding_main_leader() {
+                        let prev_leader = self.main_leader.take();
+                        self.main_leader = mode_info
+                            .keybinds
+                            .into_iter()
+                            .find_map(|m| {
+                                if m.0 == InputMode::Locked {
+                                    Some(m.1)
+                                } else {
+                                    None
+                                }
+                            })
+                            .and_then(|k| k.into_iter().find_map(|(k, a)| {
+                                if a == &[actions::Action::SwitchToMode(InputMode::Normal)] {
+                                    Some(k)
+                                } else {
+                                    None
+                                }
+                            }));
+                        if prev_leader != self.main_leader {
+                            should_render = true;
+                        }
+                    }
                 }
+            }
+            Event::Key(key) => {
+                should_render = match self.current_screen {
+                    Screen::RebindLeaders(..) => self.handle_rebinding_leaders_key(key),
+                    Screen::ResetKeybindings(..) => if self.is_setup_wizard {
+                        self.handle_setup_wizard_key(key)
+                    } else {
+                        self.handle_reset_keybindings_key(key)
+                    },
+                    Screen::RebindLeadersForReset(..) => self.handle_rebind_leaders_for_reset_key(key),
+                };
             },
             Event::FailedToWriteConfigToDisk(config_file_path) => {
                 match config_file_path {
@@ -108,144 +227,250 @@ impl ZellijPlugin for State {
         should_render
     }
     fn render(&mut self, rows: usize, cols: usize) {
-        if self.remapping_leaders {
-            self.render_remapping_leaders_screen(rows, cols);
-        } else if self.is_setup_wizard {
-            self.render_setup_wizard_screen(rows, cols);
-        } else {
-            self.render_main_screen(rows, cols);
-        }
+        match self.current_screen {
+            Screen::RebindLeaders(..) => self.render_rebind_leaders_screen(rows, cols),
+            Screen::ResetKeybindings(..) => if self.is_setup_wizard {
+                self.render_setup_wizard_screen(rows, cols)
+            } else {
+                self.render_reset_keybindings_screen(rows, cols)
+            },
+            Screen::RebindLeadersForReset(..) => self.render_rebind_leaders_for_reset_screen(rows, cols),
+        };
     }
 }
 
 impl State {
-    fn handle_remapping_screen_key(&mut self, key: KeyWithModifier) -> bool {
+    fn handle_rebind_leaders_for_reset_key(&mut self, key: KeyWithModifier) -> bool {
         let mut should_render = false;
-        if self.browsing_secondary_modifier {
-            if key.bare_key == BareKey::Left && key.has_no_modifiers() {
-                self.browsing_secondary_modifier = false;
-                self.selected_primary_key_index = self.selected_secondary_key_index;
-                should_render = true;
-            } else if key.bare_key == BareKey::Right && key.has_no_modifiers() {
-                self.browsing_secondary_modifier = false;
-                self.selected_primary_key_index = self.selected_secondary_key_index;
-                should_render = true;
-            } else if key.bare_key == BareKey::Down && key.has_no_modifiers() {
-                if self.selected_secondary_key_index
-                    < self.possible_modifiers.len().saturating_sub(1)
-                {
-                    self.selected_secondary_key_index += 1;
-                } else {
-                    self.selected_secondary_key_index = 0;
-                }
-                should_render = true;
-            } else if key.bare_key == BareKey::Up && key.has_no_modifiers() {
-                if self.selected_secondary_key_index > 0 {
-                    self.selected_secondary_key_index -= 1;
-                } else {
-                    self.selected_secondary_key_index =
-                        self.possible_modifiers.len().saturating_sub(1);
-                }
-                should_render = true;
-            } else if key.bare_key == BareKey::Char(' ') && key.has_no_modifiers() {
-                if let Some(selected_modifier) = self
-                    .possible_modifiers
-                    .get(self.selected_secondary_key_index)
-                {
-                    if self.secondary_modifier.contains(selected_modifier) {
-                        self.secondary_modifier.remove(selected_modifier);
+        if let Screen::RebindLeadersForReset(rebind_leaders_for_reset_screen) = &mut self.current_screen {
+            if rebind_leaders_for_reset_screen.browsing_secondary_modifier {
+                if key.bare_key == BareKey::Left && key.has_no_modifiers() {
+                    rebind_leaders_for_reset_screen.browsing_secondary_modifier = false;
+                    rebind_leaders_for_reset_screen.selected_primary_key_index = rebind_leaders_for_reset_screen.selected_secondary_key_index;
+                    should_render = true;
+                } else if key.bare_key == BareKey::Right && key.has_no_modifiers() {
+                    rebind_leaders_for_reset_screen.browsing_secondary_modifier = false;
+                    rebind_leaders_for_reset_screen.selected_primary_key_index = rebind_leaders_for_reset_screen.selected_secondary_key_index;
+                    should_render = true;
+                } else if key.bare_key == BareKey::Down && key.has_no_modifiers() {
+                    if rebind_leaders_for_reset_screen.selected_secondary_key_index
+                        < self.possible_modifiers.len().saturating_sub(1)
+                    {
+                        rebind_leaders_for_reset_screen.selected_secondary_key_index += 1;
                     } else {
-                        self.secondary_modifier.insert(*selected_modifier);
+                        rebind_leaders_for_reset_screen.selected_secondary_key_index = 0;
                     }
                     should_render = true;
-                }
-            }
-        } else {
-            if key.bare_key == BareKey::Left && key.has_no_modifiers() {
-                self.browsing_secondary_modifier = true;
-                self.selected_secondary_key_index = self.selected_primary_key_index;
-                should_render = true;
-            } else if key.bare_key == BareKey::Right && key.has_no_modifiers() {
-                self.browsing_secondary_modifier = true;
-                self.selected_secondary_key_index = self.selected_primary_key_index;
-                should_render = true;
-            } else if key.bare_key == BareKey::Down && key.has_no_modifiers() {
-                if self.selected_primary_key_index < self.possible_modifiers.len().saturating_sub(1)
-                {
-                    self.selected_primary_key_index += 1;
-                } else {
-                    self.selected_primary_key_index = 0;
-                }
-                should_render = true;
-            } else if key.bare_key == BareKey::Up && key.has_no_modifiers() {
-                if self.selected_primary_key_index > 0 {
-                    self.selected_primary_key_index -= 1;
-                } else {
-                    self.selected_primary_key_index =
-                        self.possible_modifiers.len().saturating_sub(1);
-                }
-                should_render = true;
-            } else if key.bare_key == BareKey::Char(' ') && key.has_no_modifiers() {
-                if let Some(selected_modifier) =
-                    self.possible_modifiers.get(self.selected_primary_key_index)
-                {
-                    if self.primary_modifier.contains(selected_modifier) {
-                        self.primary_modifier.remove(selected_modifier);
+                } else if key.bare_key == BareKey::Up && key.has_no_modifiers() {
+                    if rebind_leaders_for_reset_screen.selected_secondary_key_index > 0 {
+                        rebind_leaders_for_reset_screen.selected_secondary_key_index -= 1;
                     } else {
-                        self.primary_modifier.insert(*selected_modifier);
+                        rebind_leaders_for_reset_screen.selected_secondary_key_index =
+                            self.possible_modifiers.len().saturating_sub(1);
                     }
                     should_render = true;
+                } else if key.bare_key == BareKey::Char(' ') && key.has_no_modifiers() {
+                    if let Some(selected_modifier) = self
+                        .possible_modifiers
+                        .get(rebind_leaders_for_reset_screen.selected_secondary_key_index)
+                    {
+                        if self.secondary_modifier.contains(selected_modifier) {
+                            self.secondary_modifier.remove(selected_modifier);
+                        } else {
+                            self.secondary_modifier.insert(*selected_modifier);
+                        }
+                        should_render = true;
+                    }
+                }
+            } else {
+                if key.bare_key == BareKey::Left && key.has_no_modifiers() {
+                    rebind_leaders_for_reset_screen.browsing_secondary_modifier = true;
+                    rebind_leaders_for_reset_screen.selected_secondary_key_index = rebind_leaders_for_reset_screen.selected_primary_key_index;
+                    should_render = true;
+                } else if key.bare_key == BareKey::Right && key.has_no_modifiers() {
+                    rebind_leaders_for_reset_screen.browsing_secondary_modifier = true;
+                    rebind_leaders_for_reset_screen.selected_secondary_key_index = rebind_leaders_for_reset_screen.selected_primary_key_index;
+                    should_render = true;
+                } else if key.bare_key == BareKey::Down && key.has_no_modifiers() {
+                    if rebind_leaders_for_reset_screen.selected_primary_key_index < self.possible_modifiers.len().saturating_sub(1)
+                    {
+                        rebind_leaders_for_reset_screen.selected_primary_key_index += 1;
+                    } else {
+                        rebind_leaders_for_reset_screen.selected_primary_key_index = 0;
+                    }
+                    should_render = true;
+                } else if key.bare_key == BareKey::Up && key.has_no_modifiers() {
+                    if rebind_leaders_for_reset_screen.selected_primary_key_index > 0 {
+                        rebind_leaders_for_reset_screen.selected_primary_key_index -= 1;
+                    } else {
+                        rebind_leaders_for_reset_screen.selected_primary_key_index =
+                            self.possible_modifiers.len().saturating_sub(1);
+                    }
+                    should_render = true;
+                } else if key.bare_key == BareKey::Char(' ') && key.has_no_modifiers() {
+                    if let Some(selected_modifier) =
+                        self.possible_modifiers.get(rebind_leaders_for_reset_screen.selected_primary_key_index)
+                    {
+                        if self.primary_modifier.contains(selected_modifier) {
+                            self.primary_modifier.remove(selected_modifier);
+                        } else {
+                            self.primary_modifier.insert(*selected_modifier);
+                        }
+                        should_render = true;
+                    }
                 }
             }
-        }
-        if key.bare_key == BareKey::Enter {
-            self.remapping_leaders = false;
-            should_render = true;
+            if key.bare_key == BareKey::Enter {
+                self.current_screen = Screen::ResetKeybindings(Default::default());
+                should_render = true;
+            }
         }
         should_render
     }
-    fn handle_main_screen_key(&mut self, key: KeyWithModifier) -> bool {
+    fn handle_rebinding_leaders_key(&mut self, key: KeyWithModifier) -> bool {
+        let mut should_render = false;
+        if let Screen::RebindLeaders(rebind_leaders_screen) = &mut self.current_screen {
+            if rebind_leaders_screen.browsing_primary_modifier {
+                if key.bare_key == BareKey::Left && key.has_no_modifiers() {
+                    rebind_leaders_screen.browsing_primary_modifier = false;
+                    rebind_leaders_screen.browsing_secondary_modifier = true;
+                    rebind_leaders_screen.selected_secondary_key_index = rebind_leaders_screen.selected_primary_key_index;
+                    should_render = true;
+                } else if key.bare_key == BareKey::Right && key.has_no_modifiers() {
+                    rebind_leaders_screen.browsing_primary_modifier = false;
+                    rebind_leaders_screen.browsing_secondary_modifier = true;
+                    rebind_leaders_screen.selected_secondary_key_index = rebind_leaders_screen.selected_primary_key_index;
+                    should_render = true;
+                } else if key.bare_key == BareKey::Down && key.has_no_modifiers() {
+                    if rebind_leaders_screen.selected_primary_key_index < self.possible_modifiers.len().saturating_sub(1)
+                    {
+                        rebind_leaders_screen.selected_primary_key_index += 1;
+                    } else {
+                        *rebind_leaders_screen = Default::default();
+                    }
+                    should_render = true;
+                } else if key.bare_key == BareKey::Up && key.has_no_modifiers() {
+                    if rebind_leaders_screen.selected_primary_key_index > 0 {
+                        rebind_leaders_screen.selected_primary_key_index -= 1;
+                    } else {
+                        rebind_leaders_screen.browsing_primary_modifier = false;
+                        rebind_leaders_screen.main_leader_selected = true;
+                    }
+                    should_render = true;
+                } else if key.bare_key == BareKey::Char(' ') && key.has_no_modifiers() {
+                    if let Some(selected_modifier) =
+                        self.possible_modifiers.get(rebind_leaders_screen.selected_primary_key_index)
+                    {
+                        if self.primary_modifier.contains(selected_modifier) {
+                            self.primary_modifier.remove(selected_modifier);
+                        } else {
+                            self.primary_modifier.insert(*selected_modifier);
+                        }
+                        should_render = true;
+                    }
+                }
+            } else if rebind_leaders_screen.browsing_secondary_modifier {
+                if key.bare_key == BareKey::Left && key.has_no_modifiers() {
+                    rebind_leaders_screen.browsing_secondary_modifier = false;
+                    rebind_leaders_screen.browsing_primary_modifier = true;
+                    rebind_leaders_screen.selected_primary_key_index = rebind_leaders_screen.selected_secondary_key_index;
+                    should_render = true;
+                } else if key.bare_key == BareKey::Right && key.has_no_modifiers() {
+                    rebind_leaders_screen.browsing_secondary_modifier = false;
+                    rebind_leaders_screen.browsing_primary_modifier = true;
+                    rebind_leaders_screen.selected_primary_key_index = rebind_leaders_screen.selected_secondary_key_index;
+                    should_render = true;
+                } else if key.bare_key == BareKey::Down && key.has_no_modifiers() {
+                    if rebind_leaders_screen.selected_secondary_key_index
+                        < self.possible_modifiers.len().saturating_sub(1)
+                    {
+                        rebind_leaders_screen.selected_secondary_key_index += 1;
+                    } else {
+                        *rebind_leaders_screen = Default::default();
+                    }
+                    should_render = true;
+                } else if key.bare_key == BareKey::Up && key.has_no_modifiers() {
+                    if rebind_leaders_screen.selected_secondary_key_index > 0 {
+                        rebind_leaders_screen.selected_secondary_key_index -= 1;
+                    } else {
+                        rebind_leaders_screen.browsing_secondary_modifier = false;
+                        rebind_leaders_screen.main_leader_selected = true;
+                    }
+                    should_render = true;
+                } else if key.bare_key == BareKey::Char(' ') && key.has_no_modifiers() {
+                    if let Some(selected_modifier) = self
+                        .possible_modifiers
+                        .get(rebind_leaders_screen.selected_secondary_key_index)
+                    {
+                        if self.secondary_modifier.contains(selected_modifier) {
+                            self.secondary_modifier.remove(selected_modifier);
+                        } else {
+                            self.secondary_modifier.insert(*selected_modifier);
+                        }
+                        should_render = true;
+                    }
+                }
+            } else if rebind_leaders_screen.main_leader_selected {
+                if key.bare_key == BareKey::Down && key.has_no_modifiers() {
+                    rebind_leaders_screen.main_leader_selected = false;
+                    rebind_leaders_screen.browsing_primary_modifier = true;
+                    should_render = true;
+                } else if key.bare_key == BareKey::Char(' ') && key.has_no_modifiers() {
+                    // TODO: this should error if base mode is not locked
+                    rebind_leaders_screen.main_leader_selected = false;
+                    rebind_leaders_screen.rebinding_main_leader = true;
+                    should_render = true;
+                }
+            } else if rebind_leaders_screen.rebinding_main_leader {
+                self.main_leader = Some(key.clone());
+                *rebind_leaders_screen = Default::default();
+                should_render = true;
+            }
+            if key.bare_key == BareKey::Enter && key.has_no_modifiers() {
+                *rebind_leaders_screen = Default::default();
+                self.rebind_keys();
+                should_render = true;
+            }
+        }
+        should_render
+    }
+    fn handle_reset_keybindings_key(&mut self, key: KeyWithModifier) -> bool {
         let mut should_render = false;
         if self.notification.is_some() {
             self.notification = None;
             should_render = true;
         } else if key.bare_key == BareKey::Down && key.has_no_modifiers() {
-            if self.selected_index.is_none() {
-                self.selected_index = Some(0);
-            } else if self.selected_index < Some(1) {
-                self.selected_index = Some(1);
-            } else {
-                self.selected_index = None;
+            if let Screen::ResetKeybindings(reset_keybindings_screen) = &mut self.current_screen {
+                reset_keybindings_screen.move_selected_index_down();
             }
             should_render = true;
         } else if key.bare_key == BareKey::Up && key.has_no_modifiers() {
-            if self.selected_index.is_none() {
-                self.selected_index = Some(1);
-            } else if self.selected_index == Some(1) {
-                self.selected_index = Some(0);
-            } else {
-                self.selected_index = None;
+            if let Screen::ResetKeybindings(reset_keybindings_screen) = &mut self.current_screen {
+                reset_keybindings_screen.move_selected_index_up();
             }
             should_render = true;
         } else if key.bare_key == BareKey::Enter && key.has_no_modifiers() {
-            if let Some(selected) = self.selected_index.take() {
-                let write_to_disk = false;
-                self.reconfigure(selected, write_to_disk);
-                self.notification = Some("Configuration applied to current session.".to_owned());
-                should_render = true;
-            } else {
-                self.selected_index = Some(0);
+            if let Screen::ResetKeybindings(reset_keybindings_screen) = &mut self.current_screen {
+                if let Some(selected_index) = reset_keybindings_screen.take_selected_index() {
+                    let write_to_disk = false;
+                    self.reconfigure(selected_index, write_to_disk);
+                    self.notification = Some("Configuration applied to current session.".to_owned());
+                } else {
+                    reset_keybindings_screen.reset_selected_index();
+                }
                 should_render = true;
             }
         } else if key.bare_key == BareKey::Char(' ') && key.has_no_modifiers() {
-            if let Some(selected) = self.selected_index.take() {
-                let write_to_disk = true;
-                self.reconfigure(selected, write_to_disk);
-                self.notification = Some("Configuration applied and saved to disk.".to_owned());
-                should_render = true;
+            if let Screen::ResetKeybindings(reset_keybindings_screen) = &mut self.current_screen {
+                if let Some(selected_index) = reset_keybindings_screen.take_selected_index() {
+                    let write_to_disk = true;
+                    self.reconfigure(selected_index, write_to_disk);
+                    self.notification = Some("Configuration applied and saved to disk.".to_owned());
+                    should_render = true;
+                }
             }
         } else if key.bare_key == BareKey::Char('l') && key.has_no_modifiers() {
-            self.remapping_leaders = true;
+            self.current_screen = Screen::RebindLeadersForReset(Default::default());
             should_render = true;
         } else if (key.bare_key == BareKey::Esc && key.has_no_modifiers())
             || key.is_key_with_ctrl_modifier(BareKey::Char('c'))
@@ -261,34 +486,28 @@ impl State {
             self.notification = None;
             should_render = true;
         } else if key.bare_key == BareKey::Down && key.has_no_modifiers() {
-            if self.selected_index.is_none() {
-                self.selected_index = Some(0);
-            } else if self.selected_index < Some(1) {
-                self.selected_index = Some(1);
-            } else {
-                self.selected_index = None;
+            if let Screen::ResetKeybindings(reset_keybindings_screen) = &mut self.current_screen {
+                reset_keybindings_screen.move_selected_index_down();
             }
             should_render = true;
         } else if key.bare_key == BareKey::Up && key.has_no_modifiers() {
-            if self.selected_index.is_none() {
-                self.selected_index = Some(1);
-            } else if self.selected_index == Some(1) {
-                self.selected_index = Some(0);
-            } else {
-                self.selected_index = None;
+            if let Screen::ResetKeybindings(reset_keybindings_screen) = &mut self.current_screen {
+                reset_keybindings_screen.move_selected_index_up();
             }
             should_render = true;
         } else if key.bare_key == BareKey::Enter && key.has_no_modifiers() {
-            if let Some(selected) = self.selected_index.take() {
-                let write_to_disk = true;
-                self.reconfigure(selected, write_to_disk);
-                close_self();
-            } else {
-                self.selected_index = Some(0);
-                should_render = true;
+            if let Screen::ResetKeybindings(reset_keybindings_screen) = &mut self.current_screen {
+                if let Some(selected_index) = reset_keybindings_screen.take_selected_index() {
+                    let write_to_disk = false;
+                    self.reconfigure(selected_index, write_to_disk);
+                    close_self();
+                } else {
+                    reset_keybindings_screen.reset_selected_index();
+                    should_render = true;
+                }
             }
         } else if key.bare_key == BareKey::Char('l') && key.has_no_modifiers() {
-            self.remapping_leaders = true;
+            self.current_screen = Screen::RebindLeadersForReset(Default::default());
             should_render = true;
         } else if (key.bare_key == BareKey::Esc && key.has_no_modifiers())
             || key.is_key_with_ctrl_modifier(BareKey::Char('c'))
@@ -300,22 +519,24 @@ impl State {
     }
     fn render_selection_keymap(&self, rows: usize, cols: usize) {
         let widths = self.remapping_screen_widths();
-        if cols >= widths.0 {
-            let mut x = cols.saturating_sub(10) / 2;
-            let mut y = rows.saturating_sub(7) / 2;
-            if self.browsing_secondary_modifier {
-                x += 31;
-                y += self.selected_secondary_key_index;
-            } else {
-                y += self.selected_primary_key_index;
+        if let Screen::RebindLeadersForReset(rebind_leaders_for_reset_screen) = &self.current_screen {
+            if cols >= widths.0 {
+                let mut x = cols.saturating_sub(10) / 2;
+                let mut y = rows.saturating_sub(7) / 2;
+                if rebind_leaders_for_reset_screen.browsing_secondary_modifier {
+                    x += 31;
+                    y += rebind_leaders_for_reset_screen.selected_secondary_key_index;
+                } else {
+                    y += rebind_leaders_for_reset_screen.selected_primary_key_index;
+                }
+                let text = "<←↓↑→> / <SPACE> ";
+                let text_len = text.chars().count();
+                let text = Text::new(text)
+                    .color_range(2, 1..5)
+                    .color_range(2, 10..15)
+                    .selected();
+                print_text_with_coordinates(text, x.saturating_sub(text_len), y + 5, None, None);
             }
-            let text = "<←↓↑→> / <SPACE> ";
-            let text_len = text.chars().count();
-            let text = Text::new(text)
-                .color_range(2, 1..5)
-                .color_range(2, 10..15)
-                .selected();
-            print_text_with_coordinates(text, x.saturating_sub(text_len), y + 3, None, None);
         }
     }
     fn render_remapping_screen_title(&self, rows: usize, cols: usize) {
@@ -342,8 +563,8 @@ impl State {
             None,
         );
     }
-    fn render_primary_modifier_selector(&self, rows: usize, cols: usize) {
-        let widths = self.remapping_screen_widths();
+    fn render_rebind_leaders_screen_title(&self, rows: usize, cols: usize) {
+        let widths = self.remapping_screen_widths(); // TODO: adjust widths
         let screen_width = if cols >= widths.0 {
             widths.0
         } else if cols >= widths.1 {
@@ -351,107 +572,301 @@ impl State {
         } else {
             widths.2
         };
-        self.render_remapping_screen_title(rows, cols);
+        let leader_keys_text = if cols >= widths.0 {
+            "Change the main leader key as well as the primary and secondary key modifiers:"
+        } else {
+            "Change leader keys:"
+        };
         let base_x = cols.saturating_sub(screen_width) / 2;
         let base_y = rows.saturating_sub(7) / 2;
-        let primary_modifier_key_text = self.primary_modifier_text();
-        let (primary_modifier_text, primary_modifier_start_position) = if cols >= widths.0 {
-            (format!("Primary: {}", primary_modifier_key_text), 9)
-        } else {
-            (format!("{}", primary_modifier_key_text), 0)
-        };
         print_text_with_coordinates(
-            Text::new(primary_modifier_text).color_range(
-                self.primary_leader_key_color_index,
-                primary_modifier_start_position..,
-            ),
+            Text::new(leader_keys_text).color_range(2, ..),
             base_x,
-            base_y + 2,
+            base_y,
             None,
             None,
         );
-        print_nested_list_with_coordinates(
-            self.possible_modifiers
-                .iter()
-                .enumerate()
-                .map(|(i, m)| {
-                    let item = if self.primary_modifier.contains(m) {
-                        NestedListItem::new(m.to_string())
-                            .color_range(self.primary_leader_key_color_index, ..)
-                    } else {
-                        NestedListItem::new(m.to_string())
-                    };
-                    if !self.browsing_secondary_modifier && self.selected_primary_key_index == i {
-                        item.selected()
-                    } else {
-                        item
-                    }
-                })
-                .collect(),
-            base_x,
-            base_y + 3,
-            Some(screen_width / 2),
-            None,
-        );
+    }
+    fn render_primary_modifier_selector(&self, rows: usize, cols: usize) {
+        match &self.current_screen {
+            Screen::RebindLeadersForReset(rebind_leaders_for_reset_screen) => {
+                let widths = self.remapping_screen_widths();
+                let screen_width = if cols >= widths.0 {
+                    widths.0
+                } else if cols >= widths.1 {
+                    widths.1
+                } else {
+                    widths.2
+                };
+                let base_x = cols.saturating_sub(screen_width) / 2;
+                let base_y = rows.saturating_sub(7) / 2;
+                let primary_modifier_key_text = self.primary_modifier_text();
+                let (primary_modifier_text, primary_modifier_start_position) = if cols >= widths.0 {
+                    (format!("Primary: {}", primary_modifier_key_text), 9)
+                } else {
+                    (format!("{}", primary_modifier_key_text), 0)
+                };
+                print_text_with_coordinates(
+                    Text::new(primary_modifier_text).color_range(
+                        self.primary_leader_key_color_index,
+                        primary_modifier_start_position..,
+                    ),
+                    base_x,
+                    base_y + 4,
+                    None,
+                    None,
+                );
+                print_nested_list_with_coordinates(
+                    self.possible_modifiers
+                        .iter()
+                        .enumerate()
+                        .map(|(i, m)| {
+                            let item = if self.primary_modifier.contains(m) {
+                                NestedListItem::new(m.to_string())
+                                    .color_range(self.primary_leader_key_color_index, ..)
+                            } else {
+                                NestedListItem::new(m.to_string())
+                            };
+                            if !rebind_leaders_for_reset_screen.browsing_secondary_modifier && rebind_leaders_for_reset_screen.selected_primary_key_index == i {
+                                item.selected()
+                            } else {
+                                item
+                            }
+                        })
+                        .collect(),
+                    base_x,
+                    base_y + 5,
+                    Some(screen_width / 2),
+                    None,
+                );
+            },
+            Screen::RebindLeaders(rebind_leaders_screen) => {
+                let widths = self.remapping_screen_widths();
+                let screen_width = if cols >= widths.0 {
+                    widths.0
+                } else if cols >= widths.1 {
+                    widths.1
+                } else {
+                    widths.2
+                };
+                let base_x = cols.saturating_sub(screen_width) / 2;
+                let base_y = rows.saturating_sub(7) / 2;
+                let primary_modifier_key_text = self.primary_modifier_text();
+                let (primary_modifier_text, primary_modifier_start_position) = if cols >= widths.0 {
+                    (format!("Primary: {}", primary_modifier_key_text), 9)
+                } else {
+                    (format!("{}", primary_modifier_key_text), 0)
+                };
+                print_text_with_coordinates(
+                    Text::new(primary_modifier_text).color_range(
+                        self.primary_leader_key_color_index,
+                        primary_modifier_start_position..,
+                    ),
+                    base_x,
+                    base_y + 4,
+                    None,
+                    None,
+                );
+                print_nested_list_with_coordinates(
+                    self.possible_modifiers
+                        .iter()
+                        .enumerate()
+                        .map(|(i, m)| {
+                            let item = if self.primary_modifier.contains(m) {
+                                NestedListItem::new(m.to_string())
+                                    .color_range(self.primary_leader_key_color_index, ..)
+                            } else {
+                                NestedListItem::new(m.to_string())
+                            };
+                            if rebind_leaders_screen.browsing_primary_modifier && rebind_leaders_screen.selected_primary_key_index == i {
+                                item.selected()
+                            } else {
+                                item
+                            }
+                        })
+                        .collect(),
+                    base_x,
+                    base_y + 5,
+                    Some(screen_width / 2),
+                    None,
+                );
+            },
+            _ => {}
+        }
     }
     fn render_secondary_modifier_selector(&mut self, rows: usize, cols: usize) {
-        let widths = self.remapping_screen_widths();
-        let screen_width = if cols >= widths.0 {
-            widths.0
-        } else if cols >= widths.1 {
-            widths.1
-        } else {
-            widths.2
-        };
-        let base_x = cols.saturating_sub(screen_width) / 2;
-        let base_y = rows.saturating_sub(7) / 2;
-        let secondary_modifier_key_text = self.secondary_modifier_text();
-        let (secondary_modifier_text, secondary_modifier_start_position) = if cols >= widths.0 {
-            (format!("Secondary: {}", secondary_modifier_key_text), 10)
-        } else {
-            (format!("{}", secondary_modifier_key_text), 0)
-        };
-        let secondary_modifier_menu_x_coords = base_x + (screen_width / 2);
-        print_text_with_coordinates(
-            Text::new(secondary_modifier_text).color_range(
-                self.secondary_leader_key_color_index,
-                secondary_modifier_start_position..,
-            ),
-            secondary_modifier_menu_x_coords,
-            base_y + 2,
-            None,
-            None,
-        );
-        print_nested_list_with_coordinates(
-            self.possible_modifiers
-                .iter()
-                .enumerate()
-                .map(|(i, m)| {
-                    let item = if self.secondary_modifier.contains(m) {
-                        NestedListItem::new(m.to_string())
-                            .color_range(self.secondary_leader_key_color_index, ..)
-                    } else {
-                        NestedListItem::new(m.to_string())
-                    };
-                    if self.browsing_secondary_modifier && self.selected_secondary_key_index == i {
-                        item.selected()
-                    } else {
-                        item
-                    }
-                })
-                .collect(),
-            secondary_modifier_menu_x_coords,
-            base_y + 3,
-            Some(screen_width / 2),
-            None,
-        );
+        match &self.current_screen {
+            Screen::RebindLeadersForReset(rebind_leaders_for_reset_screen) => {
+                let widths = self.remapping_screen_widths();
+                let screen_width = if cols >= widths.0 {
+                    widths.0
+                } else if cols >= widths.1 {
+                    widths.1
+                } else {
+                    widths.2
+                };
+                let base_x = cols.saturating_sub(screen_width) / 2;
+                let base_y = rows.saturating_sub(7) / 2;
+                let secondary_modifier_key_text = self.secondary_modifier_text();
+                let (secondary_modifier_text, secondary_modifier_start_position) = if cols >= widths.0 {
+                    (format!("Secondary: {}", secondary_modifier_key_text), 10)
+                } else {
+                    (format!("{}", secondary_modifier_key_text), 0)
+                };
+                let secondary_modifier_menu_x_coords = base_x + (screen_width / 2);
+                print_text_with_coordinates(
+                    Text::new(secondary_modifier_text).color_range(
+                        self.secondary_leader_key_color_index,
+                        secondary_modifier_start_position..,
+                    ),
+                    secondary_modifier_menu_x_coords,
+                    base_y + 4,
+                    None,
+                    None,
+                );
+                print_nested_list_with_coordinates(
+                    self.possible_modifiers
+                        .iter()
+                        .enumerate()
+                        .map(|(i, m)| {
+                            let item = if self.secondary_modifier.contains(m) {
+                                NestedListItem::new(m.to_string())
+                                    .color_range(self.secondary_leader_key_color_index, ..)
+                            } else {
+                                NestedListItem::new(m.to_string())
+                            };
+                            if rebind_leaders_for_reset_screen.browsing_secondary_modifier && rebind_leaders_for_reset_screen.selected_secondary_key_index == i {
+                                item.selected()
+                            } else {
+                                item
+                            }
+                        })
+                        .collect(),
+                    secondary_modifier_menu_x_coords,
+                    base_y + 5,
+                    Some(screen_width / 2),
+                    None,
+                );
+            }
+            Screen::RebindLeaders(rebind_leaders_screen) => {
+                let widths = self.remapping_screen_widths();
+                let screen_width = if cols >= widths.0 {
+                    widths.0
+                } else if cols >= widths.1 {
+                    widths.1
+                } else {
+                    widths.2
+                };
+                let base_x = cols.saturating_sub(screen_width) / 2;
+                let base_y = rows.saturating_sub(7) / 2;
+                let secondary_modifier_key_text = self.secondary_modifier_text();
+                let (secondary_modifier_text, secondary_modifier_start_position) = if cols >= widths.0 {
+                    (format!("Secondary: {}", secondary_modifier_key_text), 10)
+                } else {
+                    (format!("{}", secondary_modifier_key_text), 0)
+                };
+                let secondary_modifier_menu_x_coords = base_x + (screen_width / 2);
+                print_text_with_coordinates(
+                    Text::new(secondary_modifier_text).color_range(
+                        self.secondary_leader_key_color_index,
+                        secondary_modifier_start_position..,
+                    ),
+                    secondary_modifier_menu_x_coords,
+                    base_y + 4,
+                    None,
+                    None,
+                );
+                print_nested_list_with_coordinates(
+                    self.possible_modifiers
+                        .iter()
+                        .enumerate()
+                        .map(|(i, m)| {
+                            let item = if self.secondary_modifier.contains(m) {
+                                NestedListItem::new(m.to_string())
+                                    .color_range(self.secondary_leader_key_color_index, ..)
+                            } else {
+                                NestedListItem::new(m.to_string())
+                            };
+                            if rebind_leaders_screen.browsing_secondary_modifier && rebind_leaders_screen.selected_secondary_key_index == i {
+                                item.selected()
+                            } else {
+                                item
+                            }
+                        })
+                        .collect(),
+                    secondary_modifier_menu_x_coords,
+                    base_y + 5,
+                    Some(screen_width / 2),
+                    None,
+                );
+            }
+            _ => {}
+        }
     }
-    fn render_remapping_leaders_screen(&mut self, rows: usize, cols: usize) {
+    fn render_rebind_leaders_for_reset_screen(&mut self, rows: usize, cols: usize) {
         self.render_remapping_screen_title(rows, cols);
+        self.render_main_leader_key(rows, cols);
         self.render_primary_modifier_selector(rows, cols);
         self.render_secondary_modifier_selector(rows, cols);
         self.render_selection_keymap(rows, cols);
         self.render_help_text_remapping(rows, cols);
+    }
+    fn render_rebind_leaders_screen(&mut self, rows: usize, cols: usize) {
+        self.render_rebind_leaders_screen_title(rows, cols);
+        self.render_main_leader_key(rows, cols);
+        self.render_primary_modifier_selector(rows, cols);
+        self.render_secondary_modifier_selector(rows, cols);
+        self.render_selection_keymap(rows, cols);
+        self.render_help_text_remapping(rows, cols);
+    }
+    fn render_main_leader_key(&self, rows: usize, cols: usize) {
+        let widths = self.remapping_screen_widths(); // TODO: adjust these
+        let screen_width = if cols >= widths.0 {
+            widths.0
+        } else if cols >= widths.1 {
+            widths.1
+        } else {
+            widths.2
+        };
+        let base_x = cols.saturating_sub(screen_width) / 2;
+        let base_y = rows.saturating_sub(7) / 2;
+        let main_leader_key_text = self.main_leader_text();
+        let (primary_modifier_text, primary_modifier_start_position) = if cols >= widths.0 {
+            match main_leader_key_text {
+                Some(main_leader_text) => (format!("Main leader: {}", main_leader_text), 13),
+                None => (format!("Main leader: N/A (reset to \"non-colliding\" first)"), 13),
+            }
+        } else {
+            match main_leader_key_text {
+                Some(main_leader_text) => (format!("{}", main_leader_text), 0),
+                None => (format!("N/A"), 0),
+            }
+        };
+        let is_selected = if let Screen::RebindLeaders(rebind_leaders_screen) = &self.current_screen {
+            rebind_leaders_screen.main_leader_selected
+        } else {
+            false
+        };
+        let mut primary_modifier = Text::new(primary_modifier_text).color_range(
+            self.primary_leader_key_color_index,
+            primary_modifier_start_position..,
+        );
+        if is_selected {
+            primary_modifier = primary_modifier.selected();
+        }
+        print_text_with_coordinates(
+            primary_modifier,
+            base_x,
+            base_y + 2,
+            None,
+            None,
+        );
+    }
+    fn main_leader_text(&self) -> Option<String> {
+        // TODO: CONTINUE HERE - get this from ModeInfo, then make it possible to adjust this in
+        // the relevant handle_keys function
+        self.main_leader.as_ref().map(|m| format!("{}", m))
+        // Some("Ctrl g".to_owned()) // TODO: from ModeInfo
     }
     fn render_override_title(&self, rows: usize, cols: usize, primary_modifier_key_text: &str) {
         let widths = self.main_screen_widths(primary_modifier_key_text);
@@ -664,8 +1079,10 @@ impl State {
             let max_width = widths.2;
             (list_items, max_width)
         };
-        if self.selected_index == Some(0) {
-            list_items = list_items.drain(..).map(|i| i.selected()).collect();
+        if let Screen::ResetKeybindings(reset_keybindings_screen) = &self.current_screen {
+            if reset_keybindings_screen.selected_index == Some(0) {
+                list_items = list_items.drain(..).map(|i| i.selected()).collect();
+            }
         }
         let left_padding = cols.saturating_sub(max_width) / 2;
         let top_coordinates = if rows > 14 {
@@ -815,8 +1232,10 @@ impl State {
             let max_width = widths.2;
             (list_items, max_width)
         };
-        if self.selected_index == Some(1) {
-            list_items = list_items.drain(..).map(|i| i.selected()).collect();
+        if let Screen::ResetKeybindings(reset_keybindings_screen) = &self.current_screen {
+            if reset_keybindings_screen.selected_index == Some(1) {
+                list_items = list_items.drain(..).map(|i| i.selected()).collect();
+            }
         }
         let left_padding = cols.saturating_sub(max_width) / 2;
         let top_coordinates = if rows > 14 {
@@ -1053,7 +1472,7 @@ impl State {
         let min_width = 30;
         (full_width, mid_width, min_width)
     }
-    fn render_main_screen(&mut self, rows: usize, cols: usize) {
+    fn render_reset_keybindings_screen(&mut self, rows: usize, cols: usize) {
         let primary_modifier_key_text = self.primary_modifier_text();
         let secondary_modifier_key_text = self.secondary_modifier_text();
         self.render_override_title(rows, cols, &primary_modifier_key_text);
@@ -1149,6 +1568,298 @@ impl State {
             );
             switch_to_input_mode(&InputMode::Locked);
         }
+    }
+    fn rebind_keys(&mut self) {
+        let write_to_disk = false; // TODO: support this
+        let mut keys_to_unbind = vec![];
+        let mut keys_to_bind = vec![];
+        let base_mode_is_locked = self.latest_mode_info.as_ref().map(|m| m.base_mode == Some(InputMode::Locked)).unwrap_or(false);
+        if base_mode_is_locked {
+            // unlock-first keybindings
+            if let Some(unlock_key) = &self.main_leader {
+                self.bind_unlock_key(&mut keys_to_unbind, &mut keys_to_bind, unlock_key);
+            }
+            self.bind_all_secondary_actions(&mut keys_to_unbind, &mut keys_to_bind);
+        } else {
+            self.bind_all_secondary_actions(&mut keys_to_unbind, &mut keys_to_bind);
+            self.bind_all_primary_actions(&mut keys_to_unbind, &mut keys_to_bind);
+        }
+        rebind_keys(keys_to_unbind, keys_to_bind, write_to_disk);
+    }
+    fn rebinding_main_leader(&self) -> bool {
+        match &self.current_screen {
+            Screen::RebindLeaders(rebind_leaders_screen) => rebind_leaders_screen.rebinding_main_leader,
+            Screen::ResetKeybindings(..) => false,
+            Screen::RebindLeadersForReset(rebind_leaders_for_reset_screen) => false, // TODO:
+                                                                                     // adjust this
+        }
+    }
+    fn get_current_keybind(&self, in_mode: InputMode, actions: &[actions::Action]) -> Option<KeyWithModifier> {
+        self.latest_mode_info
+            .as_ref()
+            .and_then(|m_i| m_i.keybinds.iter()
+                .find_map(|m| {
+                    if m.0 == in_mode {
+                        Some(&m.1)
+                    } else {
+                        None
+                    }
+                })
+            )
+            .and_then(|k| k.into_iter().find_map(|(k, a)| {
+                if a == actions {
+                    Some(k)
+                } else {
+                    None
+                }
+            })).cloned()
+    }
+    fn get_current_keybinds(&self, in_mode: InputMode, actions: &[actions::Action]) -> Vec<KeyWithModifier> {
+        self.latest_mode_info
+            .as_ref()
+            .and_then(|m_i| m_i.keybinds.iter()
+                .find_map(|m| {
+                    if m.0 == in_mode {
+                        Some(&m.1)
+                    } else {
+                        None
+                    }
+                })
+            )
+            .map(|k| k.into_iter().filter_map(|(k, a)| {
+                if a == actions {
+                    Some(k.clone())
+                } else {
+                    None
+                }
+            }).collect::<Vec<_>>()).unwrap_or_else(Default::default)
+    }
+    fn bind_actions(
+        &self,
+        keys_to_unbind: &mut Vec<(InputMode, KeyWithModifier)>,
+        keys_to_bind: &mut Vec<(InputMode, KeyWithModifier, Vec<actions::Action>)>,
+        actions: &[actions::Action],
+        key: KeyWithModifier
+    ) {
+        for current_keybind in self.get_current_keybinds(InputMode::Normal, actions) {
+            keys_to_unbind.push((InputMode::Normal, current_keybind));
+        }
+        for current_keybind in self.get_current_keybinds(InputMode::Locked, actions) {
+            keys_to_unbind.push((InputMode::Locked, current_keybind));
+        }
+        keys_to_bind.push((InputMode::Normal, key.clone(), actions.to_vec()));
+        keys_to_bind.push((InputMode::Locked, key, actions.to_vec()));
+    }
+    fn bind_primary_switch_to_mode_action(
+        &self,
+        keys_to_unbind: &mut Vec<(InputMode, KeyWithModifier)>,
+        keys_to_bind: &mut Vec<(InputMode, KeyWithModifier, Vec<actions::Action>)>,
+        target_mode: InputMode,
+        new_key: KeyWithModifier
+    ) {
+        let all_relevant_modes = vec![
+            InputMode::Locked,
+            InputMode::Normal,
+            InputMode::Pane,
+            InputMode::Tab,
+            InputMode::Resize,
+            InputMode::Move,
+            InputMode::Search,
+            InputMode::Scroll,
+            InputMode::Session,
+        ];
+        for mode in &all_relevant_modes {
+            if mode == &target_mode {
+                for current_keybind in self.get_current_keybinds(*mode, &[actions::Action::SwitchToMode(InputMode::Normal)]) {
+                    if current_keybind.bare_key != BareKey::Enter && current_keybind.bare_key != BareKey::Esc {
+                        keys_to_unbind.push((*mode, current_keybind));
+                    }
+                }
+            } else {
+                for current_keybind in self.get_current_keybinds(*mode, &[actions::Action::SwitchToMode(target_mode)]) {
+                    keys_to_unbind.push((*mode, current_keybind));
+                }
+            }
+        }
+        for mode in &all_relevant_modes {
+            if mode == &target_mode {
+                keys_to_bind.push((*mode, new_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Normal)]));
+            } else if mode != &InputMode::Locked {
+                keys_to_bind.push((*mode, new_key.clone(), vec![actions::Action::SwitchToMode(target_mode)]));
+            }
+        }
+    }
+    fn bind_quit_action(
+        &self,
+        keys_to_unbind: &mut Vec<(InputMode, KeyWithModifier)>,
+        keys_to_bind: &mut Vec<(InputMode, KeyWithModifier, Vec<actions::Action>)>,
+        new_key: KeyWithModifier
+    ) {
+        let all_relevant_modes = vec![
+            InputMode::Normal,
+            InputMode::Pane,
+            InputMode::Tab,
+            InputMode::Resize,
+            InputMode::Move,
+            InputMode::Search,
+            InputMode::Scroll,
+            InputMode::Session,
+        ];
+        for mode in &all_relevant_modes {
+            for current_keybind in self.get_current_keybinds(*mode, &[actions::Action::Quit]) {
+                keys_to_unbind.push((*mode, current_keybind));
+            }
+            keys_to_bind.push((*mode, new_key.clone(), vec![actions::Action::Quit]));
+        }
+    }
+    fn bind_all_secondary_actions(
+        &self,
+        keys_to_unbind: &mut Vec<(InputMode, KeyWithModifier)>,
+        keys_to_bind: &mut Vec<(InputMode, KeyWithModifier, Vec<actions::Action>)>,
+    ) {
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::NewPane(None, None, false)],
+            KeyWithModifier::new_with_modifiers(BareKey::Char('n'), self.secondary_modifier.clone())
+        );
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::ToggleFloatingPanes],
+            KeyWithModifier::new_with_modifiers(BareKey::Char('f'), self.secondary_modifier.clone())
+        );
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::MoveTab(Direction::Left)],
+            KeyWithModifier::new_with_modifiers(BareKey::Char('i'), self.secondary_modifier.clone())
+        );
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::MoveTab(Direction::Right)],
+            KeyWithModifier::new_with_modifiers(BareKey::Char('o'), self.secondary_modifier.clone())
+        );
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::MoveFocusOrTab(Direction::Left)],
+            KeyWithModifier::new_with_modifiers(BareKey::Char('h'), self.secondary_modifier.clone())
+        );
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::MoveFocusOrTab(Direction::Left)],
+            KeyWithModifier::new_with_modifiers(BareKey::Left, self.secondary_modifier.clone())
+        );
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::MoveFocusOrTab(Direction::Right)],
+            KeyWithModifier::new_with_modifiers(BareKey::Char('l'), self.secondary_modifier.clone())
+        );
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::MoveFocusOrTab(Direction::Right)],
+            KeyWithModifier::new_with_modifiers(BareKey::Right, self.secondary_modifier.clone())
+        );
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::MoveFocus(Direction::Down)],
+            KeyWithModifier::new_with_modifiers(BareKey::Char('j'), self.secondary_modifier.clone())
+        );
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::MoveFocus(Direction::Down)],
+            KeyWithModifier::new_with_modifiers(BareKey::Down, self.secondary_modifier.clone())
+        );
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::MoveFocus(Direction::Up)],
+            KeyWithModifier::new_with_modifiers(BareKey::Char('k'), self.secondary_modifier.clone())
+        );
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::MoveFocus(Direction::Up)],
+            KeyWithModifier::new_with_modifiers(BareKey::Up, self.secondary_modifier.clone())
+        );
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::Resize(Resize::Increase, None)],
+            KeyWithModifier::new_with_modifiers(BareKey::Char('+'), self.secondary_modifier.clone())
+        );
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::Resize(Resize::Increase, None)],
+            KeyWithModifier::new_with_modifiers(BareKey::Char('='), self.secondary_modifier.clone())
+        );
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::Resize(Resize::Decrease, None)],
+            KeyWithModifier::new_with_modifiers(BareKey::Char('-'), self.secondary_modifier.clone())
+        );
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::PreviousSwapLayout],
+            KeyWithModifier::new_with_modifiers(BareKey::Char('['), self.secondary_modifier.clone())
+        );
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::NextSwapLayout],
+            KeyWithModifier::new_with_modifiers(BareKey::Char(']'), self.secondary_modifier.clone())
+        );
+    }
+    fn bind_all_primary_actions(
+        &self,
+        keys_to_unbind: &mut Vec<(InputMode, KeyWithModifier)>,
+        keys_to_bind: &mut Vec<(InputMode, KeyWithModifier, Vec<actions::Action>)>,
+    ) {
+        self.bind_primary_switch_to_mode_action(keys_to_unbind, keys_to_bind, InputMode::Locked, KeyWithModifier::new_with_modifiers(BareKey::Char('g'), self.primary_modifier.clone()));
+        self.bind_primary_switch_to_mode_action(keys_to_unbind, keys_to_bind, InputMode::Pane, KeyWithModifier::new_with_modifiers(BareKey::Char('p'), self.primary_modifier.clone()));
+        self.bind_primary_switch_to_mode_action(keys_to_unbind, keys_to_bind, InputMode::Tab, KeyWithModifier::new_with_modifiers(BareKey::Char('t'), self.primary_modifier.clone()));
+        self.bind_primary_switch_to_mode_action(keys_to_unbind, keys_to_bind, InputMode::Resize, KeyWithModifier::new_with_modifiers(BareKey::Char('n'), self.primary_modifier.clone()));
+        self.bind_primary_switch_to_mode_action(keys_to_unbind, keys_to_bind, InputMode::Move, KeyWithModifier::new_with_modifiers(BareKey::Char('h'), self.primary_modifier.clone()));
+        self.bind_primary_switch_to_mode_action(keys_to_unbind, keys_to_bind, InputMode::Scroll, KeyWithModifier::new_with_modifiers(BareKey::Char('s'), self.primary_modifier.clone()));
+        self.bind_primary_switch_to_mode_action(keys_to_unbind, keys_to_bind, InputMode::Session, KeyWithModifier::new_with_modifiers(BareKey::Char('o'), self.primary_modifier.clone()));
+        self.bind_quit_action(keys_to_unbind, keys_to_bind, KeyWithModifier::new_with_modifiers(BareKey::Char('q'), self.primary_modifier.clone()));
+    }
+    fn bind_unlock_key(
+        &self,
+        keys_to_unbind: &mut Vec<(InputMode, KeyWithModifier)>,
+        keys_to_bind: &mut Vec<(InputMode, KeyWithModifier, Vec<actions::Action>)>,
+        unlock_key: &KeyWithModifier
+    ) {
+        if let Some(previous_unlock_key) = self.get_current_keybind(InputMode::Locked, &[actions::Action::SwitchToMode(InputMode::Normal)]) {
+            keys_to_unbind.push((InputMode::Locked, previous_unlock_key.clone()));
+            keys_to_unbind.push((InputMode::Normal, previous_unlock_key.clone()));
+            keys_to_unbind.push((InputMode::Pane, previous_unlock_key.clone()));
+            keys_to_unbind.push((InputMode::Tab, previous_unlock_key.clone()));
+            keys_to_unbind.push((InputMode::Resize, previous_unlock_key.clone()));
+            keys_to_unbind.push((InputMode::Move, previous_unlock_key.clone()));
+            keys_to_unbind.push((InputMode::Search, previous_unlock_key.clone()));
+            keys_to_unbind.push((InputMode::Scroll, previous_unlock_key.clone()));
+            keys_to_unbind.push((InputMode::Session, previous_unlock_key.clone()));
+        }
+        keys_to_bind.push((InputMode::Locked, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Normal)]));
+        keys_to_bind.push((InputMode::Normal, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Locked)]));
+        keys_to_bind.push((InputMode::Pane, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Locked)]));
+        keys_to_bind.push((InputMode::Tab, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Locked)]));
+        keys_to_bind.push((InputMode::Resize, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Locked)]));
+        keys_to_bind.push((InputMode::Move, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Locked)]));
+        keys_to_bind.push((InputMode::Search, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Locked)]));
+        keys_to_bind.push((InputMode::Scroll, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Locked)]));
+        keys_to_bind.push((InputMode::Session, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Locked)]));
     }
 }
 
@@ -1263,7 +1974,6 @@ keybinds clear-defaults=true {{
     }}
     session {{
         bind "o" {{ SwitchToMode "Normal"; }}
-        bind "{primary_modifier} s" {{ SwitchToMode "Scroll"; }}
         bind "d" {{ Detach; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
