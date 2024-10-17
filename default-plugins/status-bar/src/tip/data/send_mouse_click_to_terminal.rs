@@ -23,8 +23,8 @@ macro_rules! strings {
 
 pub fn mouse_click_to_terminal_full(help: &ModeInfo) -> LinePart {
     // Tip: SHIFT + <mouse-click> bypasses Zellij and sends the mouse click directly to the terminal
-    let green_color = palette_match!(help.style.colors.green);
-    let orange_color = palette_match!(help.style.colors.orange);
+    let green_color = palette_match!(help.style.colors.text_unselected.emphasis_3);
+    let orange_color = palette_match!(help.style.colors.text_unselected.emphasis_1);
 
     strings!(&[
         Style::new().paint(" Tip: "),
@@ -37,8 +37,8 @@ pub fn mouse_click_to_terminal_full(help: &ModeInfo) -> LinePart {
 
 pub fn mouse_click_to_terminal_medium(help: &ModeInfo) -> LinePart {
     // Tip: SHIFT + <mouse-click> sends the click directly to the terminal
-    let green_color = palette_match!(help.style.colors.green);
-    let orange_color = palette_match!(help.style.colors.orange);
+    let green_color = palette_match!(help.style.colors.text_unselected.emphasis_3);
+    let orange_color = palette_match!(help.style.colors.text_unselected.emphasis_1);
     strings!(&[
         Style::new().paint(" Tip: "),
         Style::new().fg(orange_color).bold().paint("Shift"),
@@ -50,8 +50,8 @@ pub fn mouse_click_to_terminal_medium(help: &ModeInfo) -> LinePart {
 
 pub fn mouse_click_to_terminal_short(help: &ModeInfo) -> LinePart {
     // Tip: SHIFT + <mouse-click>  => sends click to terminal.
-    let green_color = palette_match!(help.style.colors.green);
-    let orange_color = palette_match!(help.style.colors.orange);
+    let green_color = palette_match!(help.style.colors.text_unselected.emphasis_3);
+    let orange_color = palette_match!(help.style.colors.text_unselected.emphasis_1);
 
     strings!(&[
         Style::new().paint(" Tip: "),
