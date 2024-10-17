@@ -285,7 +285,14 @@ pub fn tab_line(
         let mut padding = String::new();
         let mut padding_len = 0;
         for _ in 0..remaining_space {
-            padding.push_str(" ");
+            padding.push_str(
+                &style!(
+                    palette.text_unselected.background,
+                    palette.text_unselected.background
+                )
+                .paint(" ")
+                .to_string(),
+            );
             padding_len += 1;
         }
         swap_layout_indicator.part = format!("{}{}", padding, swap_layout_indicator.part);

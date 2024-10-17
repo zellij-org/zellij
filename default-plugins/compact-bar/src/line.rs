@@ -183,7 +183,7 @@ fn tab_line_prefix(
 
     let prefix_text_len = prefix_text.chars().count();
     let text_color = palette.text_unselected.base;
-    let bg_color = palette.text_unselected.background;
+    let bg_color = palette.ribbon_unselected.background;
     let locked_mode_color = palette.text_unselected.emphasis_4;
     let normal_mode_color = palette.text_unselected.emphasis_3;
     let other_modes_color = palette.text_unselected.emphasis_1;
@@ -285,7 +285,7 @@ pub fn tab_line(
     let current_title_len = get_current_title_len(&prefix);
     if current_title_len < cols {
         let mut remaining_space = cols - current_title_len;
-        let remaining_bg = palette.text_unselected.background;
+        let remaining_bg = palette.ribbon_unselected.background;
         if let Some(swap_layout_status) = swap_layout_status(
             remaining_space,
             active_swap_layout_name,

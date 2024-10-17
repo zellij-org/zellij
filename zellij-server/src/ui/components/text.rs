@@ -1,5 +1,5 @@
-use super::{is_too_wide, parqet_opaque, parse_indices, parse_selected, Coordinates};
-use crate::panes::{terminal_character::CharacterStyles, AnsiCode};
+use super::{is_too_wide, parse_indices, parse_opaque, parse_selected, Coordinates};
+use crate::panes::{terminal_character::CharacterStyles, AnsiCode, RESET_STYLES};
 use zellij_utils::{
     data::{PaletteColor, Style, StyleDeclaration},
     shared::ansi_len,
@@ -14,8 +14,11 @@ pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordina
     } else {
         style.colors.text_unselected
     };
-    // TODO: Background here dependent on optional bg, transparency
-    let base_text_style = CharacterStyles::from(declaration).background(Some(AnsiCode::Reset));
+    let base_text_style = if content.selected {
+        CharacterStyles::from(declaration).background(Some(declaration.background.into()))
+    } else {
+        CharacterStyles::from(declaration).foreground(Some(AnsiCode::ColorIndex(39)))
+    };
     let (text, _text_width) = stringify_text(
         &content,
         None,
