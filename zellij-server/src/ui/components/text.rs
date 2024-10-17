@@ -68,7 +68,6 @@ pub fn color_index_character(
     text: &Text,
     declaration: &StyleDeclaration,
     base_text_style: CharacterStyles,
-    is_selected: bool,
 ) -> String {
     let character_style = text
         .style_of_index(index, declaration)
