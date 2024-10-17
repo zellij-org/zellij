@@ -21,10 +21,7 @@ pub fn table(
         }
         for cell in row {
             let (reset_styles_for_item, declaration) = if is_title_row {
-                (
-                    RESET_STYLES.background(Some(style.colors.table_title.background.into())),
-                    style.colors.table_title,
-                )
+                (RESET_STYLES.background(None), style.colors.table_title)
             } else {
                 if cell.selected {
                     (

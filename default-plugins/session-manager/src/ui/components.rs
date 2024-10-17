@@ -396,7 +396,7 @@ pub fn build_session_ui_line(session_ui_info: &SessionUiInfo, colors: Colors) ->
         )]));
     let session_name_span = UiSpan::TruncatableUiSpan(TruncatableUiSpan::new(
         session_name.clone(),
-        SpanStyle::ForegroundBold(colors.palette.exit_code_success.base),
+        SpanStyle::ForegroundBold(colors.palette.text_unselected.emphasis_1),
     ));
     let tab_and_pane_count = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
         StringAndLength::new(
@@ -613,7 +613,7 @@ fn render_new_session_folder_prompt(
                 print!(
                     "\u{1b}[m{}{} {} ({} {}, {} {})",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
-                    colors.session_name(folder_prompt),
+                    colors.session_name_prompt(folder_prompt),
                     colors.pane_count_search_prompt(&new_session_folder),
                     change_folder_shortcut,
                     to_change,
@@ -632,7 +632,7 @@ fn render_new_session_folder_prompt(
                 print!(
                     "\u{1b}[m{}{} {} ({} {}, {} {})",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
-                    colors.session_name(short_folder_prompt),
+                    colors.session_name_prompt(short_folder_prompt),
                     colors.pane_count_search_prompt(&new_session_folder),
                     change_folder_shortcut,
                     to_change,
@@ -649,7 +649,7 @@ fn render_new_session_folder_prompt(
                 print!(
                     "\u{1b}[m{}{} {} ({}/{})",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
-                    colors.session_name(short_folder_prompt),
+                    colors.session_name_prompt(short_folder_prompt),
                     colors.pane_count_search_prompt(&new_session_folder),
                     change_folder_shortcut,
                     reset_folder_shortcut,
@@ -667,7 +667,7 @@ fn render_new_session_folder_prompt(
                 print!(
                     "\u{1b}[m{}{} {} ({}/{})",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
-                    colors.session_name(short_folder_prompt),
+                    colors.session_name_prompt(short_folder_prompt),
                     colors.pane_count_search_prompt(&truncated_path),
                     change_folder_shortcut,
                     reset_folder_shortcut,
@@ -687,7 +687,7 @@ fn render_new_session_folder_prompt(
                 print!(
                     "\u{1b}[m{}{} ({} {})",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
-                    colors.session_name(folder_prompt),
+                    colors.session_name_prompt(folder_prompt),
                     change_folder_shortcut,
                     to_set,
                 );
@@ -700,7 +700,7 @@ fn render_new_session_folder_prompt(
                 print!(
                     "\u{1b}[m{}{} ({} {})",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
-                    colors.session_name(short_folder_prompt),
+                    colors.session_name_prompt(short_folder_prompt),
                     change_folder_shortcut,
                     to_set,
                 );
@@ -708,7 +708,7 @@ fn render_new_session_folder_prompt(
                 print!(
                     "\u{1b}[m{}{} {}",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
-                    colors.session_name(short_folder_prompt),
+                    colors.session_name_prompt(short_folder_prompt),
                     change_folder_shortcut,
                 );
             }
@@ -735,7 +735,7 @@ pub fn render_new_session_block(
             println!(
                 "\u{1b}[m{}{} {}_ ({} {})",
                 format!("\u{1b}[{};{}H", y + 1, x + 1),
-                colors.session_name(prompt),
+                colors.session_name_prompt(prompt),
                 colors.pane_count_search_prompt(&new_session_name),
                 enter,
                 long_instruction,
@@ -761,7 +761,7 @@ pub fn render_new_session_block(
             println!(
                 "\u{1b}[m{}{} {}_ {}",
                 format!("\u{1b}[{};{}H", y + 1, x + 1),
-                colors.session_name(prompt),
+                colors.session_name_prompt(prompt),
                 colors.pane_count_search_prompt(&new_session_name),
                 enter,
             );
@@ -781,7 +781,7 @@ pub fn render_new_session_block(
             println!(
                 "\u{1b}[m{}{}: {} ({} to correct)",
                 format!("\u{1b}[{};{}H", y + 1, x + 1),
-                colors.session_name("New session name"),
+                colors.session_name_prompt("New session name"),
                 colors.pane_count_search_prompt(new_session_name),
                 esc,
             );
@@ -789,7 +789,7 @@ pub fn render_new_session_block(
             println!(
                 "\u{1b}[m{}{}: {} {}",
                 format!("\u{1b}[{};{}H", y + 1, x + 1),
-                colors.session_name("New session name"),
+                colors.session_name_prompt("New session name"),
                 colors.pane_count_search_prompt(new_session_name),
                 esc,
             );
@@ -995,8 +995,8 @@ impl Colors {
         }
     }
 
-    pub fn session_name(&self, text: &str) -> String {
-        self.color(&self.palette.exit_code_success.emphasis_1, text)
+    pub fn session_name_prompt(&self, text: &str) -> String {
+        self.color(&self.palette.exit_code_success.base, text)
     }
 
     pub fn connected_users(&self, text: &str) -> String {
