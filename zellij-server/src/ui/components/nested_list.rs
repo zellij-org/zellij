@@ -1,5 +1,5 @@
 use super::{
-    is_too_high, parse_indices, parse_selected, parse_text, parse_transparent, stringify_text,
+    is_too_high, parse_bg_black, parse_indices, parse_selected, parse_text, stringify_text,
     Coordinates, Text,
 };
 use crate::panes::terminal_character::{AnsiCode, RESET_STYLES};
@@ -36,20 +36,20 @@ pub fn nested_list(
         } else {
             "- "
         };
-        let text_style = if line_item.text.transparent {
-            reset_styles_for_item
-                .bold(Some(AnsiCode::On))
-                .foreground(Some(style.colors.white.into()))
-        } else if line_item.text.selected {
+        let text_style = if line_item.text.selected {
             reset_styles_for_item
                 .bold(Some(AnsiCode::On))
                 .foreground(Some(style.colors.white.into()))
                 .background(Some(style.colors.bg.into()))
-        } else {
+        } else if line_item.text.bg_black {
             reset_styles_for_item
                 .bold(Some(AnsiCode::On))
                 .foreground(Some(style.colors.white.into()))
                 .background(Some(style.colors.black.into()))
+        } else {
+            reset_styles_for_item
+                .bold(Some(AnsiCode::On))
+                .foreground(Some(style.colors.white.into()))
         };
         let (mut text, text_width) = stringify_text(
             &line_item.text,
@@ -70,16 +70,16 @@ pub fn nested_list(
                     "".to_owned()
                 }
             });
-        let line_style = if line_item.text.transparent {
-            RESET_STYLES.foreground(Some(style.colors.white.into()))
-        } else if line_item.text.selected {
+        let line_style = if line_item.text.selected {
             RESET_STYLES
                 .foreground(Some(style.colors.white.into()))
                 .background(Some(style.colors.bg.into()))
-        } else {
+        } else if line_item.text.bg_black {
             RESET_STYLES
                 .foreground(Some(style.colors.white.into()))
                 .background(Some(style.colors.black.into()))
+        } else {
+            RESET_STYLES.foreground(Some(style.colors.white.into()))
         };
         stringified.push_str(&format!(
             "{}{}{}{:padding$}{bulletin}{}{text}{}",
@@ -96,12 +96,12 @@ pub fn parse_nested_list_items<'a>(
         .flat_map(|mut stringified| {
             let indentation_level = parse_indentation_level(&mut stringified);
             let selected = parse_selected(&mut stringified);
-            let transparent = parse_transparent(&mut stringified);
+            let bg_black = parse_bg_black(&mut stringified);
             let indices = parse_indices(&mut stringified);
             let text = parse_text(&mut stringified).map_err(|e| e.to_string())?;
             let text = Text {
                 text,
-                transparent,
+                bg_black,
                 selected,
                 indices,
             };

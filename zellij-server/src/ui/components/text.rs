@@ -1,6 +1,6 @@
 use super::{
     emphasis_variants_for_ribbon, emphasis_variants_for_selected_ribbon, is_too_wide,
-    parse_indices, parse_selected, parse_transparent, Coordinates,
+    parse_bg_black, parse_indices, parse_selected, Coordinates,
 };
 use crate::panes::terminal_character::{AnsiCode, CharacterStyles, RESET_STYLES};
 use zellij_utils::{
@@ -14,11 +14,10 @@ use zellij_utils::errors::prelude::*;
 pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordinates>) -> Vec<u8> {
     let mut text_style = RESET_STYLES
         .bold(Some(AnsiCode::On))
-        .foreground(Some(style.colors.white.into()))
-        .background(Some(style.colors.black.into()));
+        .foreground(Some(style.colors.white.into()));
 
-    if content.transparent {
-        text_style = text_style.background(None);
+    if content.bg_black {
+        text_style = text_style.background(Some(style.colors.black.into()));
     }
 
     if content.selected {
@@ -105,12 +104,12 @@ pub fn parse_text_params<'a>(params_iter: impl Iterator<Item = &'a mut String>) 
     params_iter
         .flat_map(|mut stringified| {
             let selected = parse_selected(&mut stringified);
-            let transparent = parse_transparent(&mut stringified);
+            let bg_black = parse_bg_black(&mut stringified);
             let indices = parse_indices(&mut stringified);
             let text = parse_text(&mut stringified).map_err(|e| e.to_string())?;
             Ok::<Text, String>(Text {
                 text,
-                transparent,
+                bg_black,
                 selected,
                 indices,
             })
@@ -122,7 +121,7 @@ pub fn parse_text_params<'a>(params_iter: impl Iterator<Item = &'a mut String>) 
 pub struct Text {
     pub text: String,
     pub selected: bool,
-    pub transparent: bool,
+    pub bg_black: bool,
     pub indices: Vec<Vec<usize>>,
 }
 
