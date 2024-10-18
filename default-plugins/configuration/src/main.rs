@@ -3,6 +3,7 @@ use zellij_tile::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 
 static UI_SIZE: usize = 15;
+static WIDTH_BREAKPOINTS: (usize, usize) = (62, 35);
 
 #[derive(Debug)]
 enum Screen {
@@ -263,7 +264,6 @@ impl ZellijPlugin for State {
             .get("is_setup_wizard")
             .map(|v| v == "true")
             .unwrap_or(false);
-        self.is_setup_wizard = true; // TODO: NO!!!!!111oneoneone
         subscribe(&[EventType::Key, EventType::FailedToWriteConfigToDisk, EventType::ModeUpdate]);
         let own_plugin_id = get_plugin_ids().plugin_id;
         if self.is_setup_wizard {
@@ -744,47 +744,61 @@ impl State {
         }
         should_render
     }
-    fn render_selection_keymap(&self, rows: usize, cols: usize) {
-        let widths = self.remapping_screen_widths();
-        if let Screen::PresetsLeaders(rebind_leaders_for_reset_screen) = &self.current_screen {
-            if cols >= widths.0 {
-                let mut x = cols.saturating_sub(10) / 2;
-                let mut y = rows.saturating_sub(7) / 2;
-                if rebind_leaders_for_reset_screen.browsing_secondary_modifier {
-                    x += 31;
-                    y += rebind_leaders_for_reset_screen.selected_secondary_key_index;
-                } else {
-                    y += rebind_leaders_for_reset_screen.selected_primary_key_index;
-                }
-                let text = "<←↓↑→> / <SPACE> ";
-                let text_len = text.chars().count();
-                let text = Text::new(text)
-                    .color_range(2, 1..5)
-                    .color_range(2, 10..15)
-                    .selected();
-                print_text_with_coordinates(text, x.saturating_sub(text_len), y + 5, None, None);
-            }
-        }
-    }
+//     fn render_selection_keymap(&self, rows: usize, cols: usize) {
+//         if let Screen::PresetsLeaders(rebind_leaders_for_reset_screen) = &self.current_screen {
+//             if cols >= widths.0 {
+//                 let mut x = cols.saturating_sub(10) / 2;
+//                 let mut y = rows.saturating_sub(7) / 2;
+//                 if rebind_leaders_for_reset_screen.browsing_secondary_modifier {
+//                     x += 31;
+//                     y += rebind_leaders_for_reset_screen.selected_secondary_key_index;
+//                 } else {
+//                     y += rebind_leaders_for_reset_screen.selected_primary_key_index;
+//                 }
+//                 let text = "<←↓↑→> / <SPACE> ";
+//                 let text_len = text.chars().count();
+//                 let text = Text::new(text)
+//                     .color_range(2, 1..5)
+//                     .color_range(2, 10..15)
+//                     .selected();
+//                 print_text_with_coordinates(text, x.saturating_sub(text_len), y + 5, None, None);
+//             }
+//         }
+//     }
     fn render_remapping_screen_title(&self, rows: usize, cols: usize) {
-        let widths = self.remapping_screen_widths(); // TODO: adjust widths
-        let screen_width = if cols >= widths.0 {
-            widths.0
-        } else if cols >= widths.1 {
-            widths.1
+        let screen_width = if cols >= WIDTH_BREAKPOINTS.0 {
+            WIDTH_BREAKPOINTS.0
         } else {
-            widths.2
+            WIDTH_BREAKPOINTS.1
         };
-        let leader_keys_text = if cols >= widths.0 {
+        let leader_keys_text = if cols >= WIDTH_BREAKPOINTS.0 {
             "Adjust leader keys for the presets in the previous screen"
         } else {
             "Adjust leader keys"
         };
         let base_x = cols.saturating_sub(screen_width) / 2;
         let base_y = rows.saturating_sub(10) / 2;
-        let explanation_text_0 = "Note: will take effect once a preset is selected and applied";
-        let explanation_text_1 = "Primary - the modifier used to switch modes (eg. PANE, TAB)";
-        let explanation_text_2 = "Secondary - the modifier used for common actions (eg. New Pane)";
+        let explanation_text_1 = if cols >= WIDTH_BREAKPOINTS.0 {
+            "Primary - the modifier used to switch modes (eg. PANE, TAB)"
+        } else if cols >= WIDTH_BREAKPOINTS.1 {
+            "Primary - used to switch modes"
+        } else {
+            ""
+        };
+        let explanation_text_2 = if cols >= WIDTH_BREAKPOINTS.0 {
+            "Secondary - the modifier used for common actions (eg. New Pane)"
+        } else if cols >= WIDTH_BREAKPOINTS.1 {
+            "Secondary - common actions"
+        } else {
+            ""
+        };
+        let explanation_text_bottom = if cols >= WIDTH_BREAKPOINTS.0 {
+            "Note: will take effect once a preset is selected and applied"
+        } else if cols >= WIDTH_BREAKPOINTS.1 {
+            "Note: apply once a preset is set"
+        } else {
+            ""
+        };
         print_text_with_coordinates(
             Text::new(leader_keys_text).color_range(2, ..),
             base_x,
@@ -807,7 +821,7 @@ impl State {
             None,
         );
         print_text_with_coordinates(
-            Text::new(explanation_text_0),
+            Text::new(explanation_text_bottom),
             base_x,
             base_y + 11,
             None,
@@ -815,23 +829,33 @@ impl State {
         );
     }
     fn render_rebind_leaders_screen_title(&self, rows: usize, cols: usize) {
-        let widths = self.remapping_screen_widths(); // TODO: adjust widths
-        let screen_width = if cols >= widths.0 {
-            widths.0
-        } else if cols >= widths.1 {
-            widths.1
+        // let widths = self.remapping_screen_widths(); // TODO: adjust widths
+        let screen_width = if cols >= WIDTH_BREAKPOINTS.0 {
+            WIDTH_BREAKPOINTS.0
         } else {
-            widths.2
+            WIDTH_BREAKPOINTS.1
         };
-        let leader_keys_text = if cols >= widths.0 {
+        let leader_keys_text = if cols >= WIDTH_BREAKPOINTS.0 {
             "Rebind leader keys (Default preset)"
         } else {
             "Rebind leader keys"
         };
         let base_x = cols.saturating_sub(screen_width) / 2;
         let base_y = rows.saturating_sub(10) / 2;
-        let explanation_text_1 = "Primary - the modifier used to switch modes (eg. PANE, TAB)";
-        let explanation_text_2 = "Secondary - the modifier used for common actions (eg. New Pane)";
+        let explanation_text_1 = if cols >= WIDTH_BREAKPOINTS.0 {
+            "Primary - the modifier used to switch modes (eg. PANE, TAB)"
+        } else if cols >= WIDTH_BREAKPOINTS.1 {
+            "Primary - used to switch modes"
+        } else {
+            ""
+        };
+        let explanation_text_2 = if cols >= WIDTH_BREAKPOINTS.0 {
+            "Secondary - the modifier used for common actions (eg. New Pane)"
+        } else if cols >= WIDTH_BREAKPOINTS.1 {
+            "Secondary - common actions"
+        } else {
+            ""
+        };
         print_text_with_coordinates(
             Text::new(leader_keys_text).color_range(2, ..),
             base_x,
@@ -882,23 +906,34 @@ impl State {
 //         );
     }
     fn render_rebind_leaders_screen_title_unlock_first(&self, rows: usize, cols: usize) {
-        let widths = self.remapping_screen_widths(); // TODO: adjust widths
-        let screen_width = if cols >= widths.0 {
-            widths.0
-        } else if cols >= widths.1 {
-            widths.1
+        let screen_width = if cols >= WIDTH_BREAKPOINTS.0 {
+            WIDTH_BREAKPOINTS.0
         } else {
-            widths.2
+            WIDTH_BREAKPOINTS.1
         };
-        let leader_keys_text = if cols >= widths.0 {
+        let leader_keys_text = if cols >= WIDTH_BREAKPOINTS.0 {
             "Rebind leader keys (Non-Colliding preset)"
+        } else if cols >= WIDTH_BREAKPOINTS.1 {
+            "Rebind leader keys (Non-Colliding)"
         } else {
             "Rebind leader keys"
         };
         let base_x = cols.saturating_sub(screen_width) / 2;
         let base_y = rows.saturating_sub(10) / 2;
-        let explanation_text_1 = "Unlock toggle - used to expose the other modes (eg. PANE, TAB)";
-        let explanation_text_2 = "Secondary modifier - the prefix seen on the bottom bar";
+        let explanation_text_1 = if cols >= WIDTH_BREAKPOINTS.0 {
+            "Unlock toggle - used to expose the other modes (eg. PANE, TAB)"
+        } else if cols >= WIDTH_BREAKPOINTS.1 {
+            "Unlock toggle - expose other modes"
+        } else {
+            ""
+        };
+        let explanation_text_2 = if cols >= WIDTH_BREAKPOINTS.0 {
+            "Secondary modifier - prefixes common actions (eg. New Pane)"
+        } else if cols >= WIDTH_BREAKPOINTS.1 {
+            "Secondary modifier - common actions"
+        } else {
+            ""
+        };
         print_text_with_coordinates(
             Text::new(leader_keys_text).color_range(2, ..),
             base_x,
@@ -924,18 +959,16 @@ impl State {
     fn render_primary_modifier_selector(&self, rows: usize, cols: usize) {
         match &self.current_screen {
             Screen::PresetsLeaders(rebind_leaders_for_reset_screen) => {
-                let widths = self.remapping_screen_widths();
-                let screen_width = if cols >= widths.0 {
-                    widths.0
-                } else if cols >= widths.1 {
-                    widths.1
+                // let widths = self.remapping_screen_widths();
+                let screen_width = if cols >= WIDTH_BREAKPOINTS.0 {
+                    WIDTH_BREAKPOINTS.0
                 } else {
-                    widths.2
+                    WIDTH_BREAKPOINTS.1
                 };
                 let base_x = cols.saturating_sub(screen_width) / 2;
                 let base_y = rows.saturating_sub(7) / 2;
                 let primary_modifier_key_text = self.primary_modifier_text_for_presets();
-                let (primary_modifier_text, primary_modifier_start_position) = if cols >= widths.0 {
+                let (primary_modifier_text, primary_modifier_start_position) = if cols >= WIDTH_BREAKPOINTS.0 {
                     (format!("Primary: {}", primary_modifier_key_text), 9)
                 } else {
                     (format!("{}", primary_modifier_key_text), 0)
@@ -975,18 +1008,15 @@ impl State {
                 );
             },
             Screen::RebindLeaders(rebind_leaders_screen) => {
-                let widths = self.remapping_screen_widths();
-                let screen_width = if cols >= widths.0 {
-                    widths.0
-                } else if cols >= widths.1 {
-                    widths.1
+                let screen_width = if cols >= WIDTH_BREAKPOINTS.0 {
+                    WIDTH_BREAKPOINTS.0
                 } else {
-                    widths.2
+                    WIDTH_BREAKPOINTS.1
                 };
                 let base_x = cols.saturating_sub(screen_width) / 2;
                 let base_y = rows.saturating_sub(7) / 2;
                 let primary_modifier_key_text = self.primary_modifier_text();
-                let (primary_modifier_text, primary_modifier_start_position) = if cols >= widths.0 {
+                let (primary_modifier_text, primary_modifier_start_position) = if cols >= WIDTH_BREAKPOINTS.0 {
                     (format!("Primary: {}", primary_modifier_key_text), 9)
                 } else {
                     (format!("{}", primary_modifier_key_text), 0)
@@ -1031,18 +1061,15 @@ impl State {
     fn render_secondary_modifier_selector(&mut self, rows: usize, cols: usize) {
         match &self.current_screen {
             Screen::PresetsLeaders(rebind_leaders_for_reset_screen) => {
-                let widths = self.remapping_screen_widths();
-                let screen_width = if cols >= widths.0 {
-                    widths.0
-                } else if cols >= widths.1 {
-                    widths.1
+                let screen_width = if cols >= WIDTH_BREAKPOINTS.0 {
+                    WIDTH_BREAKPOINTS.0
                 } else {
-                    widths.2
+                    WIDTH_BREAKPOINTS.1
                 };
                 let base_x = cols.saturating_sub(screen_width) / 2;
                 let base_y = rows.saturating_sub(10) / 2;
                 let secondary_modifier_key_text = self.secondary_modifier_text_for_presets();
-                let (secondary_modifier_text, secondary_modifier_start_position) = if cols >= widths.0 {
+                let (secondary_modifier_text, secondary_modifier_start_position) = if cols >= WIDTH_BREAKPOINTS.0 {
                     (format!("Secondary: {}", secondary_modifier_key_text), 10)
                 } else {
                     (format!("{}", secondary_modifier_key_text), 0)
@@ -1083,18 +1110,15 @@ impl State {
                 );
             }
             Screen::RebindLeaders(rebind_leaders_screen) => {
-                let widths = self.remapping_screen_widths();
-                let screen_width = if cols >= widths.0 {
-                    widths.0
-                } else if cols >= widths.1 {
-                    widths.1
+                let screen_width = if cols >= WIDTH_BREAKPOINTS.0 {
+                    WIDTH_BREAKPOINTS.0
                 } else {
-                    widths.2
+                    WIDTH_BREAKPOINTS.1
                 };
                 let base_x = cols.saturating_sub(screen_width) / 2;
                 let base_y = rows.saturating_sub(10) / 2;
                 let secondary_modifier_key_text = self.secondary_modifier_text();
-                let (secondary_modifier_text, secondary_modifier_start_position) = if cols >= widths.0 {
+                let (secondary_modifier_text, secondary_modifier_start_position) = if cols >= WIDTH_BREAKPOINTS.0 {
                     if self.currently_in_unlock_first() {
                         (format!("Secondary Modifier: {}", secondary_modifier_key_text), 20)
                     } else {
@@ -1148,35 +1172,40 @@ impl State {
         self.render_help_text_rebind_leaders_for_reset_screen(rows, cols);
     }
     fn render_rebind_leaders_screen(&mut self, rows: usize, cols: usize) {
-        self.render_top_tab_menu();
+        self.render_top_tab_menu(cols);
         if self.currently_in_unlock_first() {
             self.render_rebind_leaders_screen_unlock_first(rows, cols);
         } else {
             self.render_rebind_leaders_screen_default_preset(rows, cols);
         }
-        self.render_info_line(rows, cols, &self.primary_modifier_text());
+        self.render_info_line(rows, cols);
     }
     fn render_rebind_leaders_screen_unlock_first(&mut self, rows: usize, cols: usize) {
         self.render_rebind_leaders_screen_title_unlock_first(rows, cols);
         self.render_unlock_toggle(rows, cols);
         self.render_secondary_modifier_selector(rows, cols);
-        self.render_selection_keymap(rows, cols);
         self.render_help_text_remapping(rows, cols);
     }
     fn render_rebind_leaders_screen_default_preset(&mut self, rows: usize, cols: usize) {
         self.render_rebind_leaders_screen_title(rows, cols);
         self.render_primary_modifier_selector(rows, cols);
         self.render_secondary_modifier_selector(rows, cols);
-        self.render_selection_keymap(rows, cols);
         self.render_help_text_remapping(rows, cols);
     }
-    fn render_top_tab_menu(&self) {
-        let first_ribbon_text = "Rebind leader keys";
-        let second_ribbon_text = "Change keybindings preset";
+    fn render_top_tab_menu(&self, cols: usize) {
+        let first_ribbon_text_long = "Rebind leader keys";
+        let second_ribbon_text_long = "Change mode behavior";
+        let first_ribbon_text_short = "Rebind keys";
+        let second_ribbon_text_short = "Mode behavior";
         let (first_ribbon_is_selected, second_ribbon_is_selected) = match self.current_screen {
             Screen::RebindLeaders(_) => (true, false),
             Screen::Presets(_) => (false, true),
             Screen::PresetsLeaders(_) => (false, true)
+        };
+        let (first_ribbon_text, second_ribbon_text, starting_positions) = if cols >= first_ribbon_text_long.chars().count() + second_ribbon_text_long.chars().count() + 14 {
+            (first_ribbon_text_long, second_ribbon_text_long, (6, 28))
+        } else {
+            (first_ribbon_text_short, second_ribbon_text_short, (6, 21))
         };
         let mut first_ribbon = Text::new(first_ribbon_text);
         let mut second_ribbon = Text::new(second_ribbon_text);
@@ -1187,27 +1216,22 @@ impl State {
             second_ribbon = second_ribbon.selected();
         }
         let switch_key = Text::new("<TAB>").color_range(3, ..);
-        let first_ribbon_start_pos = 6;
-        let second_ribbon_start_pos = 28;
         print_text_with_coordinates(switch_key, 0, 0, None, None);
-        print_ribbon_with_coordinates(first_ribbon, first_ribbon_start_pos, 0, None, None);
-        print_ribbon_with_coordinates(second_ribbon, second_ribbon_start_pos, 0, None, None);
+        print_ribbon_with_coordinates(first_ribbon, starting_positions.0, 0, None, None);
+        print_ribbon_with_coordinates(second_ribbon, starting_positions.1, 0, None, None);
 
     }
     fn render_unlock_toggle(&self, rows: usize, cols: usize) {
-        let widths = self.remapping_screen_widths(); // TODO: adjust these
-        let screen_width = if cols >= widths.0 {
-            widths.0
-        } else if cols >= widths.1 {
-            widths.1
+        let screen_width = if cols >= WIDTH_BREAKPOINTS.0 {
+            WIDTH_BREAKPOINTS.0
         } else {
-            widths.2
+            WIDTH_BREAKPOINTS.1
         };
         let base_x = cols.saturating_sub(screen_width) / 2;
         let base_y = rows.saturating_sub(10) / 2;
         if let Some(main_leader_key_text) = self.main_leader_text() {
             let main_leader_key_text = if self.rebinding_main_leader() { "...".to_owned() } else { main_leader_key_text };
-            let (primary_modifier_text, primary_modifier_start_position) = if cols >= widths.0 {
+            let (primary_modifier_text, primary_modifier_start_position) = if cols >= WIDTH_BREAKPOINTS.0 {
                 (format!("Unlock Toggle: {}", main_leader_key_text), 15)
             } else {
                 (format!("{}", main_leader_key_text), 0)
@@ -1697,19 +1721,16 @@ impl State {
             )
         };
     }
-    fn render_info_line(&self, rows: usize, cols: usize, primary_modifier_key_text: &str) {
-        let widths = self.main_screen_widths(primary_modifier_key_text);
+    fn render_info_line(&self, rows: usize, cols: usize) {
         let top_coordinates = if rows > 14 {
             (rows.saturating_sub(self.ui_size) / 2) + 14
         } else {
             (rows.saturating_sub(self.ui_size) / 2) + 10
         };
-        let left_padding = if cols >= widths.0 {
-            cols.saturating_sub(widths.0) / 2
-        } else if cols >= widths.1 {
-            cols.saturating_sub(widths.1) / 2
+        let left_padding = if cols >= WIDTH_BREAKPOINTS.0 {
+            cols.saturating_sub(WIDTH_BREAKPOINTS.0) / 2
         } else {
-            cols.saturating_sub(widths.2) / 2
+            cols.saturating_sub(WIDTH_BREAKPOINTS.1) / 2
         };
         if let Some(notification) = &self.notification {
             print_text_with_coordinates(
@@ -1791,11 +1812,13 @@ impl State {
         }
     }
     fn render_help_text_remapping(&self, rows: usize, cols: usize) {
-        let widths = (107, 95);
-        if cols >= widths.0 {
-            let help_text = "Help: <←↓↑→> - navigate, <SPACE> - select, <ENTER> - apply, <INSERT> - save, <Ctrl c> - reset, <ESC> - close";
+        let help_text_long = "Help: <←↓↑→> - navigate, <SPACE> - select, <ENTER> - apply, <INSERT> - save, <Ctrl c> - reset, <ESC> - close";
+        let help_text_medium = "Help: <←↓↑→/SPACE> - navigate/select, <ENTER/INS> - apply/save, <Ctrl c> - reset, <ESC> - close";
+        let help_text_short = "Help: <←↓↑→>/<SPACE>/<ENTER> select/<INS> save/<Ctrl c> reset/<ESC>";
+        let help_text_minimum = "<←↓↑→>/<SPACE>/<ENTER>/<INS>/<Ctrl c>/<ESC>";
+        if cols >= help_text_long.chars().count() {
             print_text_with_coordinates(
-                Text::new(help_text)
+                Text::new(help_text_long)
                     .color_range(2, 6..=12)
                     .color_range(2, 25..=31)
                     .color_range(2, 43..=49)
@@ -1807,10 +1830,9 @@ impl State {
                 None,
                 None,
             );
-        } else if cols >= widths.1 {
-            let help_text = "Help: <←↓↑→/SPACE> - navigate/select, <ENTER/INS> - apply/save, <Ctrl c> - reset, <ESC> - close";
+        } else if cols >= help_text_medium.chars().count() {
             print_text_with_coordinates(
-                Text::new(help_text)
+                Text::new(help_text_medium)
                     .color_range(2, 6..=17)
                     .color_range(2, 38..=48)
                     .color_range(2, 64..=72)
@@ -1820,10 +1842,9 @@ impl State {
                 None,
                 None,
             );
-        } else {
-            let help_text = "Help: <←↓↑→>/<SPACE>/<ENTER> select/<INS> save/<Ctrl c> reset/<ESC>";
+        } else if cols >= help_text_short.chars().count() {
             print_text_with_coordinates(
-                Text::new(help_text)
+                Text::new(help_text_short)
                     .color_range(2, 6..=11)
                     .color_range(2, 13..=19)
                     .color_range(2, 21..=27)
@@ -1835,20 +1856,72 @@ impl State {
                 None,
                 None,
             );
+        } else {
+            print_text_with_coordinates(
+                Text::new(help_text_minimum)
+                    .color_range(2, ..=5)
+                    .color_range(2, 7..=13)
+                    .color_range(2, 15..=21)
+                    .color_range(2, 23..=27)
+                    .color_range(2, 29..=36)
+                    .color_range(2, 38..=42),
+                0,
+                rows,
+                None,
+                None,
+            );
         }
     }
     fn render_help_text_rebind_leaders_for_reset_screen(&self, rows: usize, cols: usize) {
-        let help_text = "Help: <←↓↑→> - navigate, <SPACE> - select, <ENTER> - apply to presets";
-        print_text_with_coordinates(
-            Text::new(help_text)
-                .color_range(2, 6..=12)
-                .color_range(2, 25..=31)
-                .color_range(2, 43..=49),
-            0,
-            rows,
-            None,
-            None,
-        );
+        let help_text_long = "Help: <←↓↑→> - navigate, <SPACE> - select, <ENTER> - apply to presets";
+        let help_text_medium = "Help: <←↓↑→> - navigate, <SPACE> - select, <ENTER> - apply";
+        let help_text_short = "<←↓↑→/SPACE> - navigate/select, <ENTER> - apply";
+        let help_text_minimum = "<←↓↑→>/<SPACE>/<ENTER>";
+        if cols >= help_text_long.chars().count() {
+            print_text_with_coordinates(
+                Text::new(help_text_long)
+                    .color_range(2, 6..=12)
+                    .color_range(2, 25..=31)
+                    .color_range(2, 43..=49),
+                0,
+                rows,
+                None,
+                None,
+            );
+        } else if cols >= help_text_medium.chars().count() {
+            print_text_with_coordinates(
+                Text::new(help_text_medium)
+                    .color_range(2, 6..=12)
+                    .color_range(2, 25..=31)
+                    .color_range(2, 43..=49),
+                0,
+                rows,
+                None,
+                None,
+            );
+        } else if cols >= help_text_short.chars().count() {
+            print_text_with_coordinates(
+                Text::new(help_text_short)
+                    .color_range(2, 1..=4)
+                    .color_range(2, 6..=10)
+                    .color_range(2, 32..=38),
+                0,
+                rows,
+                None,
+                None,
+            );
+        } else {
+            print_text_with_coordinates(
+                Text::new(help_text_minimum)
+                    .color_range(2, ..=5)
+                    .color_range(2, 7..=13)
+                    .color_range(2, 15..=21),
+                0,
+                rows,
+                None,
+                None,
+            );
+        }
     }
     fn primary_modifier_text(&self) -> String {
         if self.primary_modifier_to_rebind.is_empty() {
@@ -1901,14 +1974,14 @@ impl State {
         let min_width = 26 + primary_modifier_key_text_len;
         (full_width, mid_width, min_width)
     }
-    fn remapping_screen_widths(&self) -> (usize, usize, usize) {
-        let full_width = 62;
-        let mid_width = 42;
-        let min_width = 30;
-        (full_width, mid_width, min_width)
-    }
+//     fn remapping_screen_widths(&self) -> (usize, usize, usize) {
+//         let full_width = 62;
+//         let mid_width = 42;
+//         let min_width = 30;
+//         (full_width, mid_width, min_width)
+//     }
     fn render_reset_keybindings_screen(&mut self, rows: usize, cols: usize) {
-        self.render_top_tab_menu();
+        self.render_top_tab_menu(cols);
         let primary_modifier_key_text = self.primary_modifier_text_for_presets();
         let secondary_modifier_key_text = self.secondary_modifier_text_for_presets();
         self.render_override_title(rows, cols, &primary_modifier_key_text);
@@ -1920,7 +1993,7 @@ impl State {
             &primary_modifier_key_text,
             &secondary_modifier_key_text,
         );
-        self.render_info_line(rows, cols, &primary_modifier_key_text);
+        self.render_info_line(rows, cols);
         self.render_help_text_main(rows, cols);
     }
     fn render_setup_wizard_screen(&mut self, rows: usize, cols: usize) {
@@ -1935,7 +2008,7 @@ impl State {
             &primary_modifier_key_text,
             &secondary_modifier_key_text,
         );
-        self.render_info_line(rows + 8, cols, &primary_modifier_key_text);
+        self.render_info_line(rows + 8, cols);
         self.render_help_text_setup_wizard(rows + 8, cols);
     }
     fn warning_text(&self, max_width: usize) -> Option<String> {
