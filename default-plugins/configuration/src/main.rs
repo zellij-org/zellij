@@ -62,7 +62,6 @@ struct State {
     is_setup_wizard: bool,
     ui_size: usize,
     current_screen: Screen,
-    main_leader: Option<KeyWithModifier>,
     latest_mode_info: Option<ModeInfo>,
 }
 
@@ -73,7 +72,6 @@ impl Default for State {
             is_setup_wizard: false,
             ui_size: UI_SIZE,
             current_screen: Screen::default(),
-            main_leader: None,
             latest_mode_info: None,
         }
     }
@@ -110,13 +108,7 @@ impl ZellijPlugin for State {
                 }
                 self.latest_mode_info = Some(mode_info.clone());
                 self.current_screen.update_mode_info(mode_info.clone());
-                if let Some(InputMode::Locked) = mode_info.base_mode {
-                    let prev_leader = self.main_leader.take();
-                    self.set_main_leader();
-                    if prev_leader != self.main_leader {
-                        should_render = true;
-                    }
-                }
+                should_render = true;
             }
             Event::Key(key) => {
                 if self.notification.is_some() {
@@ -185,34 +177,13 @@ impl State {
             },
         }
     }
-    fn set_main_leader(&mut self) {
-        self.main_leader = self.latest_mode_info.as_ref().and_then(|mode_info| {
-            mode_info
-            .keybinds
-            .iter()
-            .find_map(|m| {
-                if m.0 == InputMode::Locked {
-                    Some(m.1.clone())
-                } else {
-                    None
-                }
-            })
-            .and_then(|k| k.into_iter().find_map(|(k, a)| {
-                if a == &[actions::Action::SwitchToMode(InputMode::Normal)] {
-                    Some(k)
-                } else {
-                    None
-                }
-            }))
-        });
-    }
     fn switch_screen(&mut self) {
         match &self.current_screen {
             Screen::RebindLeaders(_) => {
                 self.current_screen = Screen::Presets(Default::default());
             },
             Screen::Presets(_) => {
-                self.current_screen = Screen::RebindLeaders(Default::default());
+                self.current_screen = Screen::RebindLeaders(RebindLeadersScreen::default().with_mode_info(self.latest_mode_info.clone()));
             }
         }
         if let Some(mode_info) = &self.latest_mode_info {

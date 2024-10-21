@@ -100,7 +100,7 @@ impl PresetsScreen {
                 should_render = true;
             }
         } else if key.bare_key == BareKey::Char('l') && key.has_no_modifiers() {
-            self.rebind_leaders_screen = Some(RebindLeadersScreen::default().with_rebinding_for_presets());
+            self.rebind_leaders_screen = Some(RebindLeadersScreen::default().with_rebinding_for_presets().with_mode_info(self.latest_mode_info.clone()));
             should_render = true;
         } else if (key.bare_key == BareKey::Esc && key.has_no_modifiers())
             || key.is_key_with_ctrl_modifier(BareKey::Char('c'))
@@ -700,7 +700,7 @@ impl PresetsScreen {
                         13..primary_modifier_key_text_len + 14,
                     )
                     .color_range(
-                        2,
+                        0,
                         primary_modifier_key_text_len + 23
                             ..primary_modifier_key_text_len + 23 + secondary_modifier_key_text_len,
                     ),
