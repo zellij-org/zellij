@@ -680,7 +680,7 @@ impl RebindLeadersScreen {
     }
     fn handle_default_preset_key(&mut self, key: KeyWithModifier) -> bool {
         let should_render = true;
-        if key.bare_key == BareKey::Insert && key.has_no_modifiers() {
+        if key.bare_key == BareKey::Insert && key.has_no_modifiers() && !self.is_rebinding_for_presets {
             let write_to_disk = true;
             self.rebind_keys(write_to_disk);
             self.hard_reset_ui_state();
@@ -1050,7 +1050,7 @@ impl RebindLeadersScreen {
         self.is_rebinding_for_presets = is_rebinding_for_presets;
     }
     fn handle_unlock_first_key(&mut self, key: KeyWithModifier) -> bool {
-        if key.bare_key == BareKey::Insert && key.has_no_modifiers() {
+        if key.bare_key == BareKey::Insert && key.has_no_modifiers() && !self.is_rebinding_for_presets {
             let write_to_disk = true;
             self.rebind_keys(write_to_disk);
             self.hard_reset_ui_state();
