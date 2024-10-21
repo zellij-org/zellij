@@ -1,13 +1,13 @@
-mod ui_components;
-mod rebind_leaders_screen;
-mod presets_screen;
 mod presets;
+mod presets_screen;
+mod rebind_leaders_screen;
+mod ui_components;
 
 use zellij_tile::prelude::*;
 
-use ui_components::top_tab_menu;
-use rebind_leaders_screen::RebindLeadersScreen;
 use presets_screen::PresetsScreen;
+use rebind_leaders_screen::RebindLeadersScreen;
+use ui_components::top_tab_menu;
 
 use std::collections::BTreeMap;
 
@@ -85,7 +85,11 @@ impl ZellijPlugin for State {
             .get("is_setup_wizard")
             .map(|v| v == "true")
             .unwrap_or(false);
-        subscribe(&[EventType::Key, EventType::FailedToWriteConfigToDisk, EventType::ModeUpdate]);
+        subscribe(&[
+            EventType::Key,
+            EventType::FailedToWriteConfigToDisk,
+            EventType::ModeUpdate,
+        ]);
         let own_plugin_id = get_plugin_ids().plugin_id;
         if self.is_setup_wizard {
             self.ui_size = 18;
@@ -109,21 +113,28 @@ impl ZellijPlugin for State {
                 self.latest_mode_info = Some(mode_info.clone());
                 self.current_screen.update_mode_info(mode_info.clone());
                 should_render = true;
-            }
+            },
             Event::Key(key) => {
                 if self.notification.is_some() {
                     self.notification = None;
                     should_render = true;
-                } else if key.bare_key == BareKey::Tab && key.has_no_modifiers() && !self.is_setup_wizard {
+                } else if key.bare_key == BareKey::Tab
+                    && key.has_no_modifiers()
+                    && !self.is_setup_wizard
+                {
                     self.switch_screen();
                     should_render = true;
                 } else {
                     should_render = match &mut self.current_screen {
-                        Screen::RebindLeaders(rebind_leaders_screen) => rebind_leaders_screen.handle_key(key),
-                        Screen::Presets(presets_screen) => if self.is_setup_wizard {
-                            presets_screen.handle_setup_wizard_key(key)
-                        } else {
-                            presets_screen.handle_presets_key(key)
+                        Screen::RebindLeaders(rebind_leaders_screen) => {
+                            rebind_leaders_screen.handle_key(key)
+                        },
+                        Screen::Presets(presets_screen) => {
+                            if self.is_setup_wizard {
+                                presets_screen.handle_setup_wizard_key(key)
+                            } else {
+                                presets_screen.handle_presets_key(key)
+                            }
                         },
                     };
                 }
@@ -154,13 +165,23 @@ impl ZellijPlugin for State {
         match &mut self.current_screen {
             Screen::RebindLeaders(rebind_leaders_screen) => {
                 rebind_leaders_screen.render(rows, cols, self.ui_size, &notification);
-            }
-            Screen::Presets(presets_screen) => if self.is_setup_wizard {
-                presets_screen
-                    .render_setup_wizard_screen(rows, cols, self.ui_size, &notification)
-            } else {
-                presets_screen
-                    .render_reset_keybindings_screen(rows, cols, self.ui_size, &notification)
+            },
+            Screen::Presets(presets_screen) => {
+                if self.is_setup_wizard {
+                    presets_screen.render_setup_wizard_screen(
+                        rows,
+                        cols,
+                        self.ui_size,
+                        &notification,
+                    )
+                } else {
+                    presets_screen.render_reset_keybindings_screen(
+                        rows,
+                        cols,
+                        self.ui_size,
+                        &notification,
+                    )
+                }
             },
         };
     }
@@ -170,10 +191,12 @@ impl State {
     fn is_in_main_screen(&self) -> bool {
         match &self.current_screen {
             Screen::RebindLeaders(_) => true,
-            Screen::Presets(presets_screen) => if self.is_setup_wizard || presets_screen.rebinding_leaders() {
-                false
-            } else {
-                true
+            Screen::Presets(presets_screen) => {
+                if self.is_setup_wizard || presets_screen.rebinding_leaders() {
+                    false
+                } else {
+                    true
+                }
             },
         }
     }
@@ -183,8 +206,10 @@ impl State {
                 self.current_screen = Screen::Presets(Default::default());
             },
             Screen::Presets(_) => {
-                self.current_screen = Screen::RebindLeaders(RebindLeadersScreen::default().with_mode_info(self.latest_mode_info.clone()));
-            }
+                self.current_screen = Screen::RebindLeaders(
+                    RebindLeadersScreen::default().with_mode_info(self.latest_mode_info.clone()),
+                );
+            },
         }
         if let Some(mode_info) = &self.latest_mode_info {
             self.current_screen.update_mode_info(mode_info.clone());

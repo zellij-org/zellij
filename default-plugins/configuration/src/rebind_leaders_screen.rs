@@ -1,9 +1,7 @@
-use zellij_tile::prelude::*;
 use std::collections::BTreeSet;
+use zellij_tile::prelude::*;
 
-use crate::ui_components::{
-    info_line, back_to_presets
-};
+use crate::ui_components::{back_to_presets, info_line};
 
 use crate::{POSSIBLE_MODIFIERS, WIDTH_BREAKPOINTS};
 
@@ -65,35 +63,39 @@ impl RebindLeadersScreen {
             self.set_primary_and_secondary_modifiers_from_keybindings();
         }
     }
-    pub fn primary_and_secondary_modifiers(&self) -> (
-        BTreeSet<KeyModifier>,
-        BTreeSet<KeyModifier>)
-    {
-        (self.primary_modifier.clone(), self.secondary_modifier.clone())
+    pub fn primary_and_secondary_modifiers(
+        &self,
+    ) -> (BTreeSet<KeyModifier>, BTreeSet<KeyModifier>) {
+        (
+            self.primary_modifier.clone(),
+            self.secondary_modifier.clone(),
+        )
     }
     fn set_main_leader_from_keybindings(&mut self) {
         self.main_leader = self.latest_mode_info.as_ref().and_then(|mode_info| {
             mode_info
-            .keybinds
-            .iter()
-            .find_map(|m| {
-                if m.0 == InputMode::Locked {
-                    Some(m.1.clone())
-                } else {
-                    None
-                }
-            })
-            .and_then(|k| k.into_iter().find_map(|(k, a)| {
-                if a == &[actions::Action::SwitchToMode(InputMode::Normal)] {
-                    Some(k)
-                } else {
-                    None
-                }
-            }))
+                .keybinds
+                .iter()
+                .find_map(|m| {
+                    if m.0 == InputMode::Locked {
+                        Some(m.1.clone())
+                    } else {
+                        None
+                    }
+                })
+                .and_then(|k| {
+                    k.into_iter().find_map(|(k, a)| {
+                        if a == &[actions::Action::SwitchToMode(InputMode::Normal)] {
+                            Some(k)
+                        } else {
+                            None
+                        }
+                    })
+                })
         });
     }
     fn set_primary_and_secondary_modifiers_from_keybindings(&mut self) {
-        // TODO: 
+        // TODO:
         // * primary modifier
         //     - find modifier key from locked to normal as below
         //
@@ -101,42 +103,46 @@ impl RebindLeadersScreen {
         //     - find modifier key to open a new pane from base mode
         let mut primary_modifier = self.latest_mode_info.as_ref().and_then(|mode_info| {
             mode_info
-            .keybinds
-            .iter()
-            .find_map(|m| {
-                if m.0 == InputMode::Locked {
-                    Some(m.1.clone())
-                } else {
-                    None
-                }
-            })
-            .and_then(|k| k.into_iter().find_map(|(k, a)| {
-                if a == &[actions::Action::SwitchToMode(InputMode::Normal)] {
-                    Some(k.key_modifiers.clone())
-                } else {
-                    None
-                }
-            }))
+                .keybinds
+                .iter()
+                .find_map(|m| {
+                    if m.0 == InputMode::Locked {
+                        Some(m.1.clone())
+                    } else {
+                        None
+                    }
+                })
+                .and_then(|k| {
+                    k.into_iter().find_map(|(k, a)| {
+                        if a == &[actions::Action::SwitchToMode(InputMode::Normal)] {
+                            Some(k.key_modifiers.clone())
+                        } else {
+                            None
+                        }
+                    })
+                })
         });
         let mut secondary_modifier = self.latest_mode_info.as_ref().and_then(|mode_info| {
             let base_mode = mode_info.base_mode.unwrap_or(InputMode::Normal);
             mode_info
-            .keybinds
-            .iter()
-            .find_map(|m| {
-                if m.0 == base_mode {
-                    Some(m.1.clone())
-                } else {
-                    None
-                }
-            })
-            .and_then(|k| k.into_iter().find_map(|(k, a)| {
-                if a == &[actions::Action::NewPane(None, None, false)] {
-                    Some(k.key_modifiers.clone())
-                } else {
-                    None
-                }
-            }))
+                .keybinds
+                .iter()
+                .find_map(|m| {
+                    if m.0 == base_mode {
+                        Some(m.1.clone())
+                    } else {
+                        None
+                    }
+                })
+                .and_then(|k| {
+                    k.into_iter().find_map(|(k, a)| {
+                        if a == &[actions::Action::NewPane(None, None, false)] {
+                            Some(k.key_modifiers.clone())
+                        } else {
+                            None
+                        }
+                    })
+                })
         });
         if let Some(primary_modifier) = primary_modifier.take() {
             self.primary_modifier = primary_modifier;
@@ -178,9 +184,7 @@ impl RebindLeadersScreen {
         self.selected_secondary_key_index = 0;
     }
     pub fn move_secondary_index_down(&mut self) {
-        if self.selected_secondary_key_index
-            < POSSIBLE_MODIFIERS.len().saturating_sub(1)
-        {
+        if self.selected_secondary_key_index < POSSIBLE_MODIFIERS.len().saturating_sub(1) {
             self.selected_secondary_key_index += 1;
         } else {
             self.set_unlock_toggle_selected();
@@ -236,7 +240,9 @@ impl RebindLeadersScreen {
     }
     pub fn move_selection_for_unlock_first(&mut self, key: &KeyWithModifier) {
         if self.browsing_secondary_modifier {
-            if (key.bare_key == BareKey::Left || key.bare_key == BareKey::Right) && key.has_no_modifiers() {
+            if (key.bare_key == BareKey::Left || key.bare_key == BareKey::Right)
+                && key.has_no_modifiers()
+            {
                 self.set_unlock_toggle_selected();
             } else if key.bare_key == BareKey::Down && key.has_no_modifiers() {
                 self.move_secondary_index_down();
@@ -244,7 +250,12 @@ impl RebindLeadersScreen {
                 self.move_secondary_index_up();
             }
         } else if self.main_leader_selected {
-            if (key.bare_key == BareKey::Down || key.bare_key == BareKey::Up || key.bare_key == BareKey::Right || key.bare_key == BareKey::Left) && key.has_no_modifiers() {
+            if (key.bare_key == BareKey::Down
+                || key.bare_key == BareKey::Up
+                || key.bare_key == BareKey::Right
+                || key.bare_key == BareKey::Left)
+                && key.has_no_modifiers()
+            {
                 self.set_secondary_modifier_selected();
             }
         } else {
@@ -291,16 +302,14 @@ impl RebindLeadersScreen {
         let base_x = cols.saturating_sub(screen_width) / 2;
         let base_y = rows.saturating_sub(7) / 2;
         let primary_modifier_key_text = self.primary_modifier_text();
-        let (primary_modifier_text, primary_modifier_start_position) = if cols >= WIDTH_BREAKPOINTS.0 {
-            (format!("Primary: {}", primary_modifier_key_text), 9)
-        } else {
-            (format!("{}", primary_modifier_key_text), 0)
-        };
+        let (primary_modifier_text, primary_modifier_start_position) =
+            if cols >= WIDTH_BREAKPOINTS.0 {
+                (format!("Primary: {}", primary_modifier_key_text), 9)
+            } else {
+                (format!("{}", primary_modifier_key_text), 0)
+            };
         print_text_with_coordinates(
-            Text::new(primary_modifier_text).color_range(
-                3,
-                primary_modifier_start_position..,
-            ),
+            Text::new(primary_modifier_text).color_range(3, primary_modifier_start_position..),
             base_x,
             base_y + 4,
             None,
@@ -312,8 +321,7 @@ impl RebindLeadersScreen {
                 .enumerate()
                 .map(|(i, m)| {
                     let item = if self.primary_modifier.contains(m) {
-                        NestedListItem::new(m.to_string())
-                            .color_range(3, ..)
+                        NestedListItem::new(m.to_string()).color_range(3, ..)
                     } else {
                         NestedListItem::new(m.to_string())
                     };
@@ -439,32 +447,38 @@ impl RebindLeadersScreen {
         let base_x = cols.saturating_sub(screen_width) / 2;
         let base_y = rows.saturating_sub(10) / 2;
         if let Some(main_leader_key_text) = self.main_leader_text() {
-            let main_leader_key_text = if self.rebinding_main_leader { "...".to_owned() } else { main_leader_key_text };
-            let (primary_modifier_text, primary_modifier_start_position) = if cols >= WIDTH_BREAKPOINTS.0 {
-                (format!("Unlock Toggle: {}", main_leader_key_text), 15)
+            let main_leader_key_text = if self.rebinding_main_leader {
+                "...".to_owned()
             } else {
-                (format!("{}", main_leader_key_text), 0)
+                main_leader_key_text
             };
-            let mut primary_modifier = Text::new(primary_modifier_text).color_range(3, primary_modifier_start_position..);
+            let (primary_modifier_text, primary_modifier_start_position) =
+                if cols >= WIDTH_BREAKPOINTS.0 {
+                    (format!("Unlock Toggle: {}", main_leader_key_text), 15)
+                } else {
+                    (format!("{}", main_leader_key_text), 0)
+                };
+            let mut primary_modifier =
+                Text::new(primary_modifier_text).color_range(3, primary_modifier_start_position..);
             if self.main_leader_selected {
                 primary_modifier = primary_modifier.selected();
             }
-            print_text_with_coordinates(
-                primary_modifier,
-                base_x,
-                base_y + 5,
-                None,
-                None,
-            );
+            print_text_with_coordinates(primary_modifier, base_x, base_y + 5, None, None);
             if self.rebinding_main_leader {
                 let first_bulletin = "[Enter new key] eg.";
                 let second_bulletin = "\"Ctrl g\", \"Alt g\",";
                 let third_bulletin = "\"Alt ESC\", \"Ctrl SPACE\"";
-                print_nested_list_with_coordinates(vec![
-                    NestedListItem::new(first_bulletin).color_range(3, ..=14),
-                    NestedListItem::new(second_bulletin),
-                    NestedListItem::new(third_bulletin),
-                ], base_x, base_y + 6, None, None);
+                print_nested_list_with_coordinates(
+                    vec![
+                        NestedListItem::new(first_bulletin).color_range(3, ..=14),
+                        NestedListItem::new(second_bulletin),
+                        NestedListItem::new(third_bulletin),
+                    ],
+                    base_x,
+                    base_y + 6,
+                    None,
+                    None,
+                );
             }
         }
     }
@@ -480,21 +494,22 @@ impl RebindLeadersScreen {
         let base_x = cols.saturating_sub(screen_width) / 2;
         let base_y = rows.saturating_sub(10) / 2;
         let secondary_modifier_key_text = self.secondary_modifier_text();
-        let (secondary_modifier_text, secondary_modifier_start_position) = if cols >= WIDTH_BREAKPOINTS.0 {
-            if self.currently_in_unlock_first() {
-                (format!("Secondary Modifier: {}", secondary_modifier_key_text), 20)
+        let (secondary_modifier_text, secondary_modifier_start_position) =
+            if cols >= WIDTH_BREAKPOINTS.0 {
+                if self.currently_in_unlock_first() {
+                    (
+                        format!("Secondary Modifier: {}", secondary_modifier_key_text),
+                        20,
+                    )
+                } else {
+                    (format!("Secondary: {}", secondary_modifier_key_text), 11)
+                }
             } else {
-                (format!("Secondary: {}", secondary_modifier_key_text), 11)
-            }
-        } else {
-            (format!("{}", secondary_modifier_key_text), 0)
-        };
+                (format!("{}", secondary_modifier_key_text), 0)
+            };
         let secondary_modifier_menu_x_coords = base_x + (screen_width / 2);
         print_text_with_coordinates(
-            Text::new(secondary_modifier_text).color_range(
-                0,
-                secondary_modifier_start_position..,
-            ),
+            Text::new(secondary_modifier_text).color_range(0, secondary_modifier_start_position..),
             secondary_modifier_menu_x_coords,
             base_y + 5,
             None,
@@ -506,8 +521,7 @@ impl RebindLeadersScreen {
                 .enumerate()
                 .map(|(i, m)| {
                     let item = if self.secondary_modifier.contains(m) {
-                        NestedListItem::new(m.to_string())
-                            .color_range(0, ..)
+                        NestedListItem::new(m.to_string()).color_range(0, ..)
                     } else {
                         NestedListItem::new(m.to_string())
                     };
@@ -675,12 +689,18 @@ impl RebindLeadersScreen {
         if self.is_rebinding_for_presets {
             false
         } else {
-            self.latest_mode_info.as_ref().map(|m| m.base_mode == Some(InputMode::Locked)).unwrap_or(false)
+            self.latest_mode_info
+                .as_ref()
+                .map(|m| m.base_mode == Some(InputMode::Locked))
+                .unwrap_or(false)
         }
     }
     fn handle_default_preset_key(&mut self, key: KeyWithModifier) -> bool {
         let should_render = true;
-        if key.bare_key == BareKey::Insert && key.has_no_modifiers() && !self.is_rebinding_for_presets {
+        if key.bare_key == BareKey::Insert
+            && key.has_no_modifiers()
+            && !self.is_rebinding_for_presets
+        {
             let write_to_disk = true;
             self.rebind_keys(write_to_disk);
             self.hard_reset_ui_state();
@@ -700,7 +720,12 @@ impl RebindLeadersScreen {
                 let selected_secondary_key_index = self.selected_secondary_key_index;
                 self.toggle_secondary_modifier(selected_secondary_key_index);
             }
-        } else if (key.bare_key == BareKey::Left || key.bare_key == BareKey::Right || key.bare_key == BareKey::Up || key.bare_key == BareKey::Down) && key.has_no_modifiers() {
+        } else if (key.bare_key == BareKey::Left
+            || key.bare_key == BareKey::Right
+            || key.bare_key == BareKey::Up
+            || key.bare_key == BareKey::Down)
+            && key.has_no_modifiers()
+        {
             self.move_selection_for_default_preset(&key);
         } else if self.rebinding_main_leader {
             self.soft_reset_ui_state();
@@ -710,9 +735,7 @@ impl RebindLeadersScreen {
         should_render
     }
     fn toggle_secondary_modifier(&mut self, secondary_modifier_index: usize) {
-        if let Some(selected_modifier) = POSSIBLE_MODIFIERS
-            .get(secondary_modifier_index)
-        {
+        if let Some(selected_modifier) = POSSIBLE_MODIFIERS.get(secondary_modifier_index) {
             if self.secondary_modifier.contains(selected_modifier) {
                 self.secondary_modifier.remove(selected_modifier);
             } else {
@@ -722,9 +745,7 @@ impl RebindLeadersScreen {
         }
     }
     fn toggle_primary_modifier(&mut self, primary_modifier_index: usize) {
-        if let Some(selected_modifier) = POSSIBLE_MODIFIERS
-            .get(primary_modifier_index)
-        {
+        if let Some(selected_modifier) = POSSIBLE_MODIFIERS.get(primary_modifier_index) {
             if self.primary_modifier.contains(selected_modifier) {
                 self.primary_modifier.remove(selected_modifier);
             } else {
@@ -757,20 +778,59 @@ impl RebindLeadersScreen {
         keys_to_unbind: &mut Vec<(InputMode, KeyWithModifier)>,
         keys_to_bind: &mut Vec<(InputMode, KeyWithModifier, Vec<actions::Action>)>,
     ) {
-        self.bind_primary_switch_to_mode_action(keys_to_unbind, keys_to_bind, InputMode::Locked, KeyWithModifier::new_with_modifiers(BareKey::Char('g'), self.primary_modifier.clone()));
-        self.bind_primary_switch_to_mode_action(keys_to_unbind, keys_to_bind, InputMode::Pane, KeyWithModifier::new_with_modifiers(BareKey::Char('p'), self.primary_modifier.clone()));
-        self.bind_primary_switch_to_mode_action(keys_to_unbind, keys_to_bind, InputMode::Tab, KeyWithModifier::new_with_modifiers(BareKey::Char('t'), self.primary_modifier.clone()));
-        self.bind_primary_switch_to_mode_action(keys_to_unbind, keys_to_bind, InputMode::Resize, KeyWithModifier::new_with_modifiers(BareKey::Char('n'), self.primary_modifier.clone()));
-        self.bind_primary_switch_to_mode_action(keys_to_unbind, keys_to_bind, InputMode::Move, KeyWithModifier::new_with_modifiers(BareKey::Char('h'), self.primary_modifier.clone()));
-        self.bind_primary_switch_to_mode_action(keys_to_unbind, keys_to_bind, InputMode::Scroll, KeyWithModifier::new_with_modifiers(BareKey::Char('s'), self.primary_modifier.clone()));
-        self.bind_primary_switch_to_mode_action(keys_to_unbind, keys_to_bind, InputMode::Session, KeyWithModifier::new_with_modifiers(BareKey::Char('o'), self.primary_modifier.clone()));
-        self.bind_quit_action(keys_to_unbind, keys_to_bind, KeyWithModifier::new_with_modifiers(BareKey::Char('q'), self.primary_modifier.clone()));
+        self.bind_primary_switch_to_mode_action(
+            keys_to_unbind,
+            keys_to_bind,
+            InputMode::Locked,
+            KeyWithModifier::new_with_modifiers(BareKey::Char('g'), self.primary_modifier.clone()),
+        );
+        self.bind_primary_switch_to_mode_action(
+            keys_to_unbind,
+            keys_to_bind,
+            InputMode::Pane,
+            KeyWithModifier::new_with_modifiers(BareKey::Char('p'), self.primary_modifier.clone()),
+        );
+        self.bind_primary_switch_to_mode_action(
+            keys_to_unbind,
+            keys_to_bind,
+            InputMode::Tab,
+            KeyWithModifier::new_with_modifiers(BareKey::Char('t'), self.primary_modifier.clone()),
+        );
+        self.bind_primary_switch_to_mode_action(
+            keys_to_unbind,
+            keys_to_bind,
+            InputMode::Resize,
+            KeyWithModifier::new_with_modifiers(BareKey::Char('n'), self.primary_modifier.clone()),
+        );
+        self.bind_primary_switch_to_mode_action(
+            keys_to_unbind,
+            keys_to_bind,
+            InputMode::Move,
+            KeyWithModifier::new_with_modifiers(BareKey::Char('h'), self.primary_modifier.clone()),
+        );
+        self.bind_primary_switch_to_mode_action(
+            keys_to_unbind,
+            keys_to_bind,
+            InputMode::Scroll,
+            KeyWithModifier::new_with_modifiers(BareKey::Char('s'), self.primary_modifier.clone()),
+        );
+        self.bind_primary_switch_to_mode_action(
+            keys_to_unbind,
+            keys_to_bind,
+            InputMode::Session,
+            KeyWithModifier::new_with_modifiers(BareKey::Char('o'), self.primary_modifier.clone()),
+        );
+        self.bind_quit_action(
+            keys_to_unbind,
+            keys_to_bind,
+            KeyWithModifier::new_with_modifiers(BareKey::Char('q'), self.primary_modifier.clone()),
+        );
     }
     fn bind_quit_action(
         &self,
         keys_to_unbind: &mut Vec<(InputMode, KeyWithModifier)>,
         keys_to_bind: &mut Vec<(InputMode, KeyWithModifier, Vec<actions::Action>)>,
-        new_key: KeyWithModifier
+        new_key: KeyWithModifier,
     ) {
         let all_relevant_modes = vec![
             InputMode::Normal,
@@ -789,32 +849,31 @@ impl RebindLeadersScreen {
             keys_to_bind.push((*mode, new_key.clone(), vec![actions::Action::Quit]));
         }
     }
-    fn get_current_keybinds(&self, in_mode: InputMode, actions: &[actions::Action]) -> Vec<KeyWithModifier> {
+    fn get_current_keybinds(
+        &self,
+        in_mode: InputMode,
+        actions: &[actions::Action],
+    ) -> Vec<KeyWithModifier> {
         self.latest_mode_info
             .as_ref()
-            .and_then(|m_i| m_i.keybinds.iter()
-                .find_map(|m| {
-                    if m.0 == in_mode {
-                        Some(&m.1)
-                    } else {
-                        None
-                    }
-                })
-            )
-            .map(|k| k.into_iter().filter_map(|(k, a)| {
-                if a == actions {
-                    Some(k.clone())
-                } else {
-                    None
-                }
-            }).collect::<Vec<_>>()).unwrap_or_else(Default::default)
+            .and_then(|m_i| {
+                m_i.keybinds
+                    .iter()
+                    .find_map(|m| if m.0 == in_mode { Some(&m.1) } else { None })
+            })
+            .map(|k| {
+                k.into_iter()
+                    .filter_map(|(k, a)| if a == actions { Some(k.clone()) } else { None })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_else(Default::default)
     }
     fn bind_primary_switch_to_mode_action(
         &self,
         keys_to_unbind: &mut Vec<(InputMode, KeyWithModifier)>,
         keys_to_bind: &mut Vec<(InputMode, KeyWithModifier, Vec<actions::Action>)>,
         target_mode: InputMode,
-        new_key: KeyWithModifier
+        new_key: KeyWithModifier,
     ) {
         let all_relevant_modes = vec![
             InputMode::Locked,
@@ -829,22 +888,37 @@ impl RebindLeadersScreen {
         ];
         for mode in &all_relevant_modes {
             if mode == &target_mode {
-                for current_keybind in self.get_current_keybinds(*mode, &[actions::Action::SwitchToMode(InputMode::Normal)]) {
-                    if current_keybind.bare_key != BareKey::Enter && current_keybind.bare_key != BareKey::Esc {
+                for current_keybind in self.get_current_keybinds(
+                    *mode,
+                    &[actions::Action::SwitchToMode(InputMode::Normal)],
+                ) {
+                    if current_keybind.bare_key != BareKey::Enter
+                        && current_keybind.bare_key != BareKey::Esc
+                    {
                         keys_to_unbind.push((*mode, current_keybind));
                     }
                 }
             } else {
-                for current_keybind in self.get_current_keybinds(*mode, &[actions::Action::SwitchToMode(target_mode)]) {
+                for current_keybind in
+                    self.get_current_keybinds(*mode, &[actions::Action::SwitchToMode(target_mode)])
+                {
                     keys_to_unbind.push((*mode, current_keybind));
                 }
             }
         }
         for mode in &all_relevant_modes {
             if mode == &target_mode {
-                keys_to_bind.push((*mode, new_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Normal)]));
+                keys_to_bind.push((
+                    *mode,
+                    new_key.clone(),
+                    vec![actions::Action::SwitchToMode(InputMode::Normal)],
+                ));
             } else if mode != &InputMode::Locked {
-                keys_to_bind.push((*mode, new_key.clone(), vec![actions::Action::SwitchToMode(target_mode)]));
+                keys_to_bind.push((
+                    *mode,
+                    new_key.clone(),
+                    vec![actions::Action::SwitchToMode(target_mode)],
+                ));
             }
         }
     }
@@ -857,103 +931,142 @@ impl RebindLeadersScreen {
             keys_to_unbind,
             keys_to_bind,
             &[actions::Action::NewPane(None, None, false)],
-            KeyWithModifier::new_with_modifiers(BareKey::Char('n'), self.secondary_modifier.clone())
+            KeyWithModifier::new_with_modifiers(
+                BareKey::Char('n'),
+                self.secondary_modifier.clone(),
+            ),
         );
         self.bind_actions(
             keys_to_unbind,
             keys_to_bind,
             &[actions::Action::ToggleFloatingPanes],
-            KeyWithModifier::new_with_modifiers(BareKey::Char('f'), self.secondary_modifier.clone())
+            KeyWithModifier::new_with_modifiers(
+                BareKey::Char('f'),
+                self.secondary_modifier.clone(),
+            ),
         );
         self.bind_actions(
             keys_to_unbind,
             keys_to_bind,
             &[actions::Action::MoveTab(Direction::Left)],
-            KeyWithModifier::new_with_modifiers(BareKey::Char('i'), self.secondary_modifier.clone())
+            KeyWithModifier::new_with_modifiers(
+                BareKey::Char('i'),
+                self.secondary_modifier.clone(),
+            ),
         );
         self.bind_actions(
             keys_to_unbind,
             keys_to_bind,
             &[actions::Action::MoveTab(Direction::Right)],
-            KeyWithModifier::new_with_modifiers(BareKey::Char('o'), self.secondary_modifier.clone())
+            KeyWithModifier::new_with_modifiers(
+                BareKey::Char('o'),
+                self.secondary_modifier.clone(),
+            ),
         );
         self.bind_actions(
             keys_to_unbind,
             keys_to_bind,
             &[actions::Action::MoveFocusOrTab(Direction::Left)],
-            KeyWithModifier::new_with_modifiers(BareKey::Char('h'), self.secondary_modifier.clone())
+            KeyWithModifier::new_with_modifiers(
+                BareKey::Char('h'),
+                self.secondary_modifier.clone(),
+            ),
         );
         self.bind_actions(
             keys_to_unbind,
             keys_to_bind,
             &[actions::Action::MoveFocusOrTab(Direction::Left)],
-            KeyWithModifier::new_with_modifiers(BareKey::Left, self.secondary_modifier.clone())
+            KeyWithModifier::new_with_modifiers(BareKey::Left, self.secondary_modifier.clone()),
         );
         self.bind_actions(
             keys_to_unbind,
             keys_to_bind,
             &[actions::Action::MoveFocusOrTab(Direction::Right)],
-            KeyWithModifier::new_with_modifiers(BareKey::Char('l'), self.secondary_modifier.clone())
+            KeyWithModifier::new_with_modifiers(
+                BareKey::Char('l'),
+                self.secondary_modifier.clone(),
+            ),
         );
         self.bind_actions(
             keys_to_unbind,
             keys_to_bind,
             &[actions::Action::MoveFocusOrTab(Direction::Right)],
-            KeyWithModifier::new_with_modifiers(BareKey::Right, self.secondary_modifier.clone())
+            KeyWithModifier::new_with_modifiers(BareKey::Right, self.secondary_modifier.clone()),
         );
         self.bind_actions(
             keys_to_unbind,
             keys_to_bind,
             &[actions::Action::MoveFocus(Direction::Down)],
-            KeyWithModifier::new_with_modifiers(BareKey::Char('j'), self.secondary_modifier.clone())
+            KeyWithModifier::new_with_modifiers(
+                BareKey::Char('j'),
+                self.secondary_modifier.clone(),
+            ),
         );
         self.bind_actions(
             keys_to_unbind,
             keys_to_bind,
             &[actions::Action::MoveFocus(Direction::Down)],
-            KeyWithModifier::new_with_modifiers(BareKey::Down, self.secondary_modifier.clone())
+            KeyWithModifier::new_with_modifiers(BareKey::Down, self.secondary_modifier.clone()),
         );
         self.bind_actions(
             keys_to_unbind,
             keys_to_bind,
             &[actions::Action::MoveFocus(Direction::Up)],
-            KeyWithModifier::new_with_modifiers(BareKey::Char('k'), self.secondary_modifier.clone())
+            KeyWithModifier::new_with_modifiers(
+                BareKey::Char('k'),
+                self.secondary_modifier.clone(),
+            ),
         );
         self.bind_actions(
             keys_to_unbind,
             keys_to_bind,
             &[actions::Action::MoveFocus(Direction::Up)],
-            KeyWithModifier::new_with_modifiers(BareKey::Up, self.secondary_modifier.clone())
+            KeyWithModifier::new_with_modifiers(BareKey::Up, self.secondary_modifier.clone()),
         );
         self.bind_actions(
             keys_to_unbind,
             keys_to_bind,
             &[actions::Action::Resize(Resize::Increase, None)],
-            KeyWithModifier::new_with_modifiers(BareKey::Char('+'), self.secondary_modifier.clone())
+            KeyWithModifier::new_with_modifiers(
+                BareKey::Char('+'),
+                self.secondary_modifier.clone(),
+            ),
         );
         self.bind_actions(
             keys_to_unbind,
             keys_to_bind,
             &[actions::Action::Resize(Resize::Increase, None)],
-            KeyWithModifier::new_with_modifiers(BareKey::Char('='), self.secondary_modifier.clone())
+            KeyWithModifier::new_with_modifiers(
+                BareKey::Char('='),
+                self.secondary_modifier.clone(),
+            ),
         );
         self.bind_actions(
             keys_to_unbind,
             keys_to_bind,
             &[actions::Action::Resize(Resize::Decrease, None)],
-            KeyWithModifier::new_with_modifiers(BareKey::Char('-'), self.secondary_modifier.clone())
+            KeyWithModifier::new_with_modifiers(
+                BareKey::Char('-'),
+                self.secondary_modifier.clone(),
+            ),
         );
         self.bind_actions(
             keys_to_unbind,
             keys_to_bind,
             &[actions::Action::PreviousSwapLayout],
-            KeyWithModifier::new_with_modifiers(BareKey::Char('['), self.secondary_modifier.clone())
+            KeyWithModifier::new_with_modifiers(
+                BareKey::Char('['),
+                self.secondary_modifier.clone(),
+            ),
         );
         self.bind_actions(
             keys_to_unbind,
             keys_to_bind,
             &[actions::Action::NextSwapLayout],
-            KeyWithModifier::new_with_modifiers(BareKey::Char(']'), self.secondary_modifier.clone())
+            KeyWithModifier::new_with_modifiers(
+                BareKey::Char(']'),
+                self.secondary_modifier.clone(),
+            ),
         );
     }
     fn bind_actions(
@@ -961,7 +1074,7 @@ impl RebindLeadersScreen {
         keys_to_unbind: &mut Vec<(InputMode, KeyWithModifier)>,
         keys_to_bind: &mut Vec<(InputMode, KeyWithModifier, Vec<actions::Action>)>,
         actions: &[actions::Action],
-        key: KeyWithModifier
+        key: KeyWithModifier,
     ) {
         for current_keybind in self.get_current_keybinds(InputMode::Normal, actions) {
             keys_to_unbind.push((InputMode::Normal, current_keybind));
@@ -976,9 +1089,12 @@ impl RebindLeadersScreen {
         &self,
         keys_to_unbind: &mut Vec<(InputMode, KeyWithModifier)>,
         keys_to_bind: &mut Vec<(InputMode, KeyWithModifier, Vec<actions::Action>)>,
-        unlock_key: &KeyWithModifier
+        unlock_key: &KeyWithModifier,
     ) {
-        if let Some(previous_unlock_key) = self.get_current_keybind(InputMode::Locked, &[actions::Action::SwitchToMode(InputMode::Normal)]) {
+        if let Some(previous_unlock_key) = self.get_current_keybind(
+            InputMode::Locked,
+            &[actions::Action::SwitchToMode(InputMode::Normal)],
+        ) {
             keys_to_unbind.push((InputMode::Locked, previous_unlock_key.clone()));
             keys_to_unbind.push((InputMode::Normal, previous_unlock_key.clone()));
             keys_to_unbind.push((InputMode::Pane, previous_unlock_key.clone()));
@@ -989,35 +1105,69 @@ impl RebindLeadersScreen {
             keys_to_unbind.push((InputMode::Scroll, previous_unlock_key.clone()));
             keys_to_unbind.push((InputMode::Session, previous_unlock_key.clone()));
         }
-        keys_to_bind.push((InputMode::Locked, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Normal)]));
-        keys_to_bind.push((InputMode::Normal, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Locked)]));
-        keys_to_bind.push((InputMode::Pane, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Locked)]));
-        keys_to_bind.push((InputMode::Tab, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Locked)]));
-        keys_to_bind.push((InputMode::Resize, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Locked)]));
-        keys_to_bind.push((InputMode::Move, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Locked)]));
-        keys_to_bind.push((InputMode::Search, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Locked)]));
-        keys_to_bind.push((InputMode::Scroll, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Locked)]));
-        keys_to_bind.push((InputMode::Session, unlock_key.clone(), vec![actions::Action::SwitchToMode(InputMode::Locked)]));
+        keys_to_bind.push((
+            InputMode::Locked,
+            unlock_key.clone(),
+            vec![actions::Action::SwitchToMode(InputMode::Normal)],
+        ));
+        keys_to_bind.push((
+            InputMode::Normal,
+            unlock_key.clone(),
+            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+        ));
+        keys_to_bind.push((
+            InputMode::Pane,
+            unlock_key.clone(),
+            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+        ));
+        keys_to_bind.push((
+            InputMode::Tab,
+            unlock_key.clone(),
+            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+        ));
+        keys_to_bind.push((
+            InputMode::Resize,
+            unlock_key.clone(),
+            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+        ));
+        keys_to_bind.push((
+            InputMode::Move,
+            unlock_key.clone(),
+            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+        ));
+        keys_to_bind.push((
+            InputMode::Search,
+            unlock_key.clone(),
+            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+        ));
+        keys_to_bind.push((
+            InputMode::Scroll,
+            unlock_key.clone(),
+            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+        ));
+        keys_to_bind.push((
+            InputMode::Session,
+            unlock_key.clone(),
+            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+        ));
     }
-    fn get_current_keybind(&self, in_mode: InputMode, actions: &[actions::Action]) -> Option<KeyWithModifier> {
+    fn get_current_keybind(
+        &self,
+        in_mode: InputMode,
+        actions: &[actions::Action],
+    ) -> Option<KeyWithModifier> {
         self.latest_mode_info
             .as_ref()
-            .and_then(|m_i| m_i.keybinds.iter()
-                .find_map(|m| {
-                    if m.0 == in_mode {
-                        Some(&m.1)
-                    } else {
-                        None
-                    }
-                })
-            )
-            .and_then(|k| k.into_iter().find_map(|(k, a)| {
-                if a == actions {
-                    Some(k)
-                } else {
-                    None
-                }
-            })).cloned()
+            .and_then(|m_i| {
+                m_i.keybinds
+                    .iter()
+                    .find_map(|m| if m.0 == in_mode { Some(&m.1) } else { None })
+            })
+            .and_then(|k| {
+                k.into_iter()
+                    .find_map(|(k, a)| if a == actions { Some(k) } else { None })
+            })
+            .cloned()
     }
     fn soft_reset_ui_state(&mut self) {
         let mut latest_mode_info = self.latest_mode_info.take();
@@ -1050,7 +1200,10 @@ impl RebindLeadersScreen {
         self.is_rebinding_for_presets = is_rebinding_for_presets;
     }
     fn handle_unlock_first_key(&mut self, key: KeyWithModifier) -> bool {
-        if key.bare_key == BareKey::Insert && key.has_no_modifiers() && !self.is_rebinding_for_presets {
+        if key.bare_key == BareKey::Insert
+            && key.has_no_modifiers()
+            && !self.is_rebinding_for_presets
+        {
             let write_to_disk = true;
             self.rebind_keys(write_to_disk);
             self.hard_reset_ui_state();
@@ -1073,7 +1226,12 @@ impl RebindLeadersScreen {
                 let selected_secondary_key_index = self.selected_secondary_key_index;
                 self.toggle_secondary_modifier(selected_secondary_key_index);
             }
-        } else if (key.bare_key == BareKey::Left || key.bare_key == BareKey::Right || key.bare_key == BareKey::Up || key.bare_key == BareKey::Down) && key.has_no_modifiers() {
+        } else if (key.bare_key == BareKey::Left
+            || key.bare_key == BareKey::Right
+            || key.bare_key == BareKey::Up
+            || key.bare_key == BareKey::Down)
+            && key.has_no_modifiers()
+        {
             self.move_selection_for_unlock_first(&key);
         } else if self.rebinding_main_leader {
             self.soft_reset_ui_state();

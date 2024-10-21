@@ -1,5 +1,5 @@
-use zellij_tile::prelude::*;
 use crate::{Screen, WIDTH_BREAKPOINTS};
+use zellij_tile::prelude::*;
 
 pub fn top_tab_menu(cols: usize, current_screen: &Screen) {
     let first_ribbon_text_long = "Rebind leader keys";
@@ -10,7 +10,9 @@ pub fn top_tab_menu(cols: usize, current_screen: &Screen) {
         Screen::RebindLeaders(_) => (true, false),
         Screen::Presets(_) => (false, true),
     };
-    let (first_ribbon_text, second_ribbon_text, starting_positions) = if cols >= first_ribbon_text_long.chars().count() + second_ribbon_text_long.chars().count() + 14 {
+    let (first_ribbon_text, second_ribbon_text, starting_positions) = if cols
+        >= first_ribbon_text_long.chars().count() + second_ribbon_text_long.chars().count() + 14
+    {
         (first_ribbon_text_long, second_ribbon_text_long, (6, 28))
     } else {
         (first_ribbon_text_short, second_ribbon_text_short, (6, 21))

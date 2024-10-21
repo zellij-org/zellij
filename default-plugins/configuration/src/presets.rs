@@ -1,4 +1,3 @@
-
 pub fn unlock_first_keybinds(primary_modifier: String, secondary_modifier: String) -> String {
     format!(
         r#"
@@ -903,7 +902,10 @@ keybinds clear-defaults=true {{
     )
 }
 
-pub fn non_colliding_default_keybinds(primary_modifier: String, secondary_modifier: String) -> String {
+pub fn non_colliding_default_keybinds(
+    primary_modifier: String,
+    secondary_modifier: String,
+) -> String {
     format!(
         r#"
 default_mode "normal"

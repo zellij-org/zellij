@@ -1,18 +1,13 @@
 use zellij_tile::prelude::*;
 
-use crate::ui_components::{
-    top_tab_menu, info_line
-};
+use crate::ui_components::{info_line, top_tab_menu};
 
 use crate::rebind_leaders_screen::RebindLeadersScreen;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::WIDTH_BREAKPOINTS;
 
-use crate::presets::{
-    default_keybinds,
-    unlock_first_keybinds,
-};
+use crate::presets::{default_keybinds, unlock_first_keybinds};
 
 #[derive(Debug)]
 pub struct PresetsScreen {
@@ -36,7 +31,7 @@ impl Default for PresetsScreen {
             selected_index: None,
             latest_mode_info: None,
             notification: None,
-            rebind_leaders_screen: None
+            rebind_leaders_screen: None,
         }
     }
 }
@@ -58,10 +53,11 @@ impl PresetsScreen {
                     // consume screen without applying its modifiers
                     drop(self.rebind_leaders_screen.take());
                     return true;
-                }
+                },
                 BareKey::Enter if key.has_no_modifiers() => {
                     // consume screen and apply its modifiers
-                    let (primary_modifier, secondary_modifier) = rebind_leaders_screen.primary_and_secondary_modifiers();
+                    let (primary_modifier, secondary_modifier) =
+                        rebind_leaders_screen.primary_and_secondary_modifiers();
                     self.primary_modifier = primary_modifier;
                     self.secondary_modifier = secondary_modifier;
                     drop(self.rebind_leaders_screen.take());
@@ -69,8 +65,7 @@ impl PresetsScreen {
                 },
                 _ => {
                     return rebind_leaders_screen.handle_key(key);
-                }
-
+                },
             }
         }
         let mut should_render = false;
@@ -100,7 +95,11 @@ impl PresetsScreen {
                 should_render = true;
             }
         } else if key.bare_key == BareKey::Char('l') && key.has_no_modifiers() {
-            self.rebind_leaders_screen = Some(RebindLeadersScreen::default().with_rebinding_for_presets().with_mode_info(self.latest_mode_info.clone()));
+            self.rebind_leaders_screen = Some(
+                RebindLeadersScreen::default()
+                    .with_rebinding_for_presets()
+                    .with_mode_info(self.latest_mode_info.clone()),
+            );
             should_render = true;
         } else if (key.bare_key == BareKey::Esc && key.has_no_modifiers())
             || key.is_key_with_ctrl_modifier(BareKey::Char('c'))
@@ -117,10 +116,11 @@ impl PresetsScreen {
                     // consume screen without applying its modifiers
                     drop(self.rebind_leaders_screen.take());
                     return true;
-                }
+                },
                 BareKey::Enter if key.has_no_modifiers() => {
                     // consume screen and apply its modifiers
-                    let (primary_modifier, secondary_modifier) = rebind_leaders_screen.primary_and_secondary_modifiers();
+                    let (primary_modifier, secondary_modifier) =
+                        rebind_leaders_screen.primary_and_secondary_modifiers();
                     self.primary_modifier = primary_modifier;
                     self.secondary_modifier = secondary_modifier;
                     drop(self.rebind_leaders_screen.take());
@@ -128,7 +128,7 @@ impl PresetsScreen {
                 },
                 _ => {
                     return rebind_leaders_screen.handle_key(key);
-                }
+                },
             }
         }
         let mut should_render = false;
@@ -151,8 +151,8 @@ impl PresetsScreen {
                 should_render = true;
             }
         } else if key.bare_key == BareKey::Char('l') && key.has_no_modifiers() {
-            self.rebind_leaders_screen = Some(RebindLeadersScreen::default()
-                .with_rebinding_for_presets());
+            self.rebind_leaders_screen =
+                Some(RebindLeadersScreen::default().with_rebinding_for_presets());
             should_render = true;
         } else if (key.bare_key == BareKey::Esc && key.has_no_modifiers())
             || key.is_key_with_ctrl_modifier(BareKey::Char('c'))
@@ -258,7 +258,14 @@ impl PresetsScreen {
             &secondary_modifier_key_text,
             ui_size,
         );
-        info_line(rows + 8, cols, ui_size, &notification, &self.warning_text(cols), Some(self.main_screen_widths(&primary_modifier_key_text)));
+        info_line(
+            rows + 8,
+            cols,
+            ui_size,
+            &notification,
+            &self.warning_text(cols),
+            Some(self.main_screen_widths(&primary_modifier_key_text)),
+        );
         // self.render_info_line(rows + 8, cols);
         self.render_help_text_setup_wizard(rows + 8, cols);
     }
@@ -286,7 +293,14 @@ impl PresetsScreen {
         );
         let notification = notification.clone().or_else(|| self.notification.clone());
         let warning_text = self.warning_text(cols);
-        info_line(rows, cols, ui_size, &notification, &warning_text, Some(self.main_screen_widths(&primary_modifier_key_text)));
+        info_line(
+            rows,
+            cols,
+            ui_size,
+            &notification,
+            &warning_text,
+            Some(self.main_screen_widths(&primary_modifier_key_text)),
+        );
         self.render_help_text_main(rows, cols);
     }
     fn primary_modifier_text(&self) -> String {
@@ -311,7 +325,13 @@ impl PresetsScreen {
                 .join("-")
         }
     }
-    fn render_setup_wizard_title(&self, rows: usize, cols: usize, primary_modifier_key_text: &str, ui_size: usize) {
+    fn render_setup_wizard_title(
+        &self,
+        rows: usize,
+        cols: usize,
+        primary_modifier_key_text: &str,
+        ui_size: usize,
+    ) {
         let widths = self.main_screen_widths(primary_modifier_key_text);
         if cols >= widths.0 {
             let title_text_1 = "Hi there! How would you like to interact with Zellij?";
@@ -402,7 +422,13 @@ impl PresetsScreen {
         let min_width = 26 + primary_modifier_key_text_len;
         (full_width, mid_width, min_width)
     }
-    fn render_first_bulletin(&self, rows: usize, cols: usize, primary_modifier_key_text: &str, ui_size: usize) {
+    fn render_first_bulletin(
+        &self,
+        rows: usize,
+        cols: usize,
+        primary_modifier_key_text: &str,
+        ui_size: usize,
+    ) {
         let widths = self.main_screen_widths(primary_modifier_key_text);
         let primary_modifier_key_text_len = primary_modifier_key_text.chars().count();
         let default_text = "1. Default";
@@ -415,10 +441,7 @@ impl PresetsScreen {
                     "{} p - to enter PANE mode",
                     primary_modifier_key_text
                 ))
-                .color_range(
-                    3,
-                    ..primary_modifier_key_text_len + 3,
-                )
+                .color_range(3, ..primary_modifier_key_text_len + 3)
                 .color_range(
                     2,
                     primary_modifier_key_text_len + 14..primary_modifier_key_text_len + 18,
@@ -428,10 +451,7 @@ impl PresetsScreen {
                     "{} t - to enter TAB mode",
                     primary_modifier_key_text
                 ))
-                .color_range(
-                    3,
-                    ..primary_modifier_key_text_len + 3,
-                )
+                .color_range(3, ..primary_modifier_key_text_len + 3)
                 .color_range(
                     2,
                     primary_modifier_key_text_len + 14..primary_modifier_key_text_len + 17,
@@ -449,10 +469,7 @@ impl PresetsScreen {
                     primary_modifier_key_text
                 ))
                 .indent(1)
-                .color_range(
-                    3,
-                    ..primary_modifier_key_text_len + 3,
-                )
+                .color_range(3, ..primary_modifier_key_text_len + 3)
                 .color_range(
                     2,
                     primary_modifier_key_text_len + 14..primary_modifier_key_text_len + 18,
@@ -462,10 +479,7 @@ impl PresetsScreen {
                     primary_modifier_key_text
                 ))
                 .indent(1)
-                .color_range(
-                    3,
-                    ..primary_modifier_key_text_len + 3,
-                )
+                .color_range(3, ..primary_modifier_key_text_len + 3)
                 .color_range(
                     2,
                     primary_modifier_key_text_len + 14..primary_modifier_key_text_len + 17,
@@ -478,20 +492,14 @@ impl PresetsScreen {
                 NestedListItem::new(default_text).color_range(1, ..),
                 NestedListItem::new("Directly, eg.:").indent(1),
                 NestedListItem::new(format!("{} p - PANE mode", primary_modifier_key_text))
-                    .color_range(
-                        3,
-                        ..primary_modifier_key_text_len + 3,
-                    )
+                    .color_range(3, ..primary_modifier_key_text_len + 3)
                     .color_range(
                         2,
                         primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 10,
                     )
                     .indent(1),
                 NestedListItem::new(format!("{} t - TAB mode", primary_modifier_key_text))
-                    .color_range(
-                        3,
-                        ..primary_modifier_key_text_len + 3,
-                    )
+                    .color_range(3, ..primary_modifier_key_text_len + 3)
                     .color_range(
                         2,
                         primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 9,
@@ -518,7 +526,13 @@ impl PresetsScreen {
             None,
         );
     }
-    fn render_second_bulletin(&self, rows: usize, cols: usize, primary_modifier_key_text: &str, ui_size: usize) {
+    fn render_second_bulletin(
+        &self,
+        rows: usize,
+        cols: usize,
+        primary_modifier_key_text: &str,
+        ui_size: usize,
+    ) {
         let unlock_first_text = "2. Unlock First (non-colliding)";
         let widths = self.main_screen_widths(primary_modifier_key_text);
         let primary_modifier_key_text_len = primary_modifier_key_text.chars().count();
@@ -535,10 +549,7 @@ impl PresetsScreen {
                     primary_modifier_key_text
                 ))
                 .indent(1)
-                .color_range(
-                    3,
-                    ..primary_modifier_key_text_len + 3,
-                )
+                .color_range(3, ..primary_modifier_key_text_len + 3)
                 .color_range(
                     3,
                     primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
@@ -552,10 +563,7 @@ impl PresetsScreen {
                     primary_modifier_key_text
                 ))
                 .indent(1)
-                .color_range(
-                    3,
-                    ..primary_modifier_key_text_len + 3,
-                )
+                .color_range(3, ..primary_modifier_key_text_len + 3)
                 .color_range(
                     3,
                     primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
@@ -579,10 +587,7 @@ impl PresetsScreen {
                     "{} g + p to enter PANE mode",
                     primary_modifier_key_text
                 ))
-                .color_range(
-                    3,
-                    ..primary_modifier_key_text_len + 3,
-                )
+                .color_range(3, ..primary_modifier_key_text_len + 3)
                 .color_range(
                     3,
                     primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
@@ -596,10 +601,7 @@ impl PresetsScreen {
                     "{} g + t to enter TAB mode",
                     primary_modifier_key_text
                 ))
-                .color_range(
-                    3,
-                    ..primary_modifier_key_text_len + 3,
-                )
+                .color_range(3, ..primary_modifier_key_text_len + 3)
                 .color_range(
                     3,
                     primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
@@ -621,10 +623,7 @@ impl PresetsScreen {
                 ))
                 .indent(1),
                 NestedListItem::new(format!("{} g + p PANE mode", primary_modifier_key_text))
-                    .color_range(
-                        3,
-                        ..primary_modifier_key_text_len + 3,
-                    )
+                    .color_range(3, ..primary_modifier_key_text_len + 3)
                     .color_range(
                         3,
                         primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
@@ -635,10 +634,7 @@ impl PresetsScreen {
                     )
                     .indent(1),
                 NestedListItem::new(format!("{} g + t TAB mode", primary_modifier_key_text))
-                    .color_range(
-                        3,
-                        ..primary_modifier_key_text_len + 3,
-                    )
+                    .color_range(3, ..primary_modifier_key_text_len + 3)
                     .color_range(
                         3,
                         primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
@@ -695,10 +691,7 @@ impl PresetsScreen {
             print_text_with_coordinates(
                 Text::new(leader_key_text)
                     .color_range(2, ..12)
-                    .color_range(
-                        3,
-                        13..primary_modifier_key_text_len + 14,
-                    )
+                    .color_range(3, 13..primary_modifier_key_text_len + 14)
                     .color_range(
                         0,
                         primary_modifier_key_text_len + 23
@@ -722,10 +715,7 @@ impl PresetsScreen {
             print_text_with_coordinates(
                 Text::new(leader_key_text)
                     .color_range(2, ..8)
-                    .color_range(
-                        3,
-                        9..primary_modifier_key_text_len + 10,
-                    )
+                    .color_range(3, 9..primary_modifier_key_text_len + 10)
                     .color_range(
                         0,
                         primary_modifier_key_text_len + 11
@@ -768,7 +758,13 @@ impl PresetsScreen {
             );
         }
     }
-    fn render_override_title(&self, rows: usize, cols: usize, primary_modifier_key_text: &str, ui_size: usize) {
+    fn render_override_title(
+        &self,
+        rows: usize,
+        cols: usize,
+        primary_modifier_key_text: &str,
+        ui_size: usize,
+    ) {
         let widths = self.main_screen_widths(primary_modifier_key_text);
         if cols >= widths.0 {
             let title_text = "Override keybindings with one of the following presets:";
