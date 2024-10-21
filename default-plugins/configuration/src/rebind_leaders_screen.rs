@@ -95,12 +95,6 @@ impl RebindLeadersScreen {
         });
     }
     fn set_primary_and_secondary_modifiers_from_keybindings(&mut self) {
-        // TODO:
-        // * primary modifier
-        //     - find modifier key from locked to normal as below
-        //
-        // * secondary modifier
-        //     - find modifier key to open a new pane from base mode
         let mut primary_modifier = self.latest_mode_info.as_ref().and_then(|mode_info| {
             mode_info
                 .keybinds

@@ -1,11 +1,9 @@
 use zellij_tile::prelude::*;
 
-use crate::ui_components::{info_line, top_tab_menu};
+use crate::ui_components::info_line;
 
 use crate::rebind_leaders_screen::RebindLeadersScreen;
-use std::collections::{BTreeMap, BTreeSet};
-
-use crate::WIDTH_BREAKPOINTS;
+use std::collections::BTreeSet;
 
 use crate::presets::{default_keybinds, unlock_first_keybinds};
 
@@ -240,9 +238,6 @@ impl PresetsScreen {
         ui_size: usize,
         notification: &Option<String>,
     ) {
-        // TODO: CONTINUE HERE (20/10) - check setup wizard screen
-        // then delete dead code, see what else we need to transfer, do some last checks and
-        // commit!
         if let Some(rebind_leaders_screen) = self.rebind_leaders_screen.as_mut() {
             return rebind_leaders_screen.render(rows, cols, ui_size, notification);
         }
