@@ -1,0 +1,21 @@
+// Basic theme using only the 16 ANSI colors
+// Allows one to customize theme via ones terminal color settings if the
+// terminal emulator does not support truecolor (e.g. macOS Terminal.app)
+
+// Note: there is no orange in the ANSI color palette, so we use bright red instead
+
+themes {
+  ansi {
+    fg 7 // white
+    bg 8 // bright black
+    red 1
+    green 2
+    yellow 3
+    blue 4
+    magenta 5
+    orange 9 // bright red
+    cyan 6
+    black 0
+    white 15 // bright white
+  }
+}
