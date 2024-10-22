@@ -26,7 +26,7 @@ use wasm_bridge::WasmBridge;
 use zellij_utils::{
     async_std::{channel, future::timeout, task},
     data::{
-        Event, EventType, InputMode, MessageToPlugin, PermissionStatus, PermissionType,
+        ClientInfo, Event, EventType, InputMode, MessageToPlugin, PermissionStatus, PermissionType,
         PipeMessage, PipeSource, PluginCapabilities,
     },
     errors::{prelude::*, ContextType, PluginContext},
@@ -158,6 +158,7 @@ pub enum PluginInstruction {
         file_path: Option<PathBuf>,
     },
     WatchFilesystem,
+    ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
     Exit,
 }
 
@@ -203,6 +204,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::FailedToWriteConfigToDisk { .. } => {
                 PluginContext::FailedToWriteConfigToDisk
             },
+            PluginInstruction::ListClientsToPlugin(..) => PluginContext::ListClientsToPlugin,
         }
     }
 }
@@ -606,6 +608,35 @@ pub(crate) fn plugin_thread_main(
                         wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
                     },
                 }
+            },
+            PluginInstruction::ListClientsToPlugin(
+                mut session_layout_metadata,
+                plugin_id,
+                client_id,
+            ) => {
+                populate_session_layout_metadata(
+                    &mut session_layout_metadata,
+                    &wasm_bridge,
+                    &plugin_aliases,
+                );
+                let mut clients_metadata = session_layout_metadata.all_clients_metadata();
+                let mut client_list_for_plugin = vec![];
+                let default_editor = session_layout_metadata.default_editor.clone();
+                for (client_metadata_id, client_metadata) in clients_metadata.iter_mut() {
+                    let is_current_client = client_metadata_id == &client_id;
+                    client_list_for_plugin.push(ClientInfo::new(
+                        *client_metadata_id,
+                        client_metadata.get_pane_id().into(),
+                        client_metadata.stringify_command(&default_editor),
+                        is_current_client,
+                    ));
+                }
+                let updates = vec![(
+                    Some(plugin_id),
+                    Some(client_id),
+                    Event::ListClients(client_list_for_plugin),
+                )];
+                wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
             PluginInstruction::LogLayoutToHd(mut session_layout_metadata) => {
                 populate_session_layout_metadata(

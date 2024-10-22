@@ -49,6 +49,7 @@ enum EventType {
     EditPaneExited = 23;
     CommandPaneReRun = 24;
     FailedToWriteConfigToDisk = 25;
+    ListClients = 26;
 }
 
 message EventNameList {
@@ -79,7 +80,19 @@ message Event {
     EditPaneExitedPayload edit_pane_exited_payload = 20;
     CommandPaneReRunPayload command_pane_rerun_payload = 21;
     FailedToWriteConfigToDiskPayload failed_to_write_config_to_disk_payload = 22;
+    ListClientsPayload list_clients_payload = 23;
   }
+}
+
+message ListClientsPayload {
+  repeated ClientInfo client_info = 1;
+}
+
+message ClientInfo {
+  uint32 client_id = 1;
+  PaneId pane_id = 2;
+  string running_command = 3;
+  bool is_current_client = 4;
 }
 
 message FailedToWriteConfigToDiskPayload {

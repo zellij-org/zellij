@@ -370,6 +370,7 @@ pub enum ScreenContext {
     CloseTabWithIndex,
     BreakPanesToNewTab,
     BreakPanesToTabWithIndex,
+    ListClientsToPlugin,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -393,6 +394,7 @@ pub enum PtyContext {
     DumpLayoutToPlugin,
     ListClientsMetadata,
     Reconfigure,
+    ListClientsToPlugin,
     Exit,
 }
 
@@ -430,6 +432,7 @@ pub enum PluginContext {
     ListClientsMetadata,
     Reconfigure,
     FailedToWriteConfigToDisk,
+    ListClientsToPlugin,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

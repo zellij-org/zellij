@@ -525,6 +525,9 @@ impl ZellijPlugin for State {
                     ];
                     rebind_keys(keys_to_unbind, keys_to_rebind, write_to_disk);
                 },
+                BareKey::Char('z') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    list_clients();
+                },
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {

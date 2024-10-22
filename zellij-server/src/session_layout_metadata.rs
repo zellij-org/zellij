@@ -82,6 +82,28 @@ impl SessionLayoutMetadata {
 
         ClientMetadata::render_many(clients_metadata, &self.default_editor)
     }
+    pub fn all_clients_metadata(&self) -> BTreeMap<ClientId, ClientMetadata> {
+        let mut clients_metadata: BTreeMap<ClientId, ClientMetadata> = BTreeMap::new();
+        for tab in &self.tabs {
+            let panes = if tab.hide_floating_panes {
+                &tab.tiled_panes
+            } else {
+                &tab.floating_panes
+            };
+            for pane in panes {
+                for focused_client in &pane.focused_clients {
+                    clients_metadata.insert(
+                        *focused_client,
+                        ClientMetadata {
+                            pane_id: pane.id.clone(),
+                            command: pane.run.clone(),
+                        },
+                    );
+                }
+            }
+        }
+        clients_metadata
+    }
     pub fn is_dirty(&self) -> bool {
         // here we check to see if the serialized layout would be different than the base one, and
         // thus is "dirty". A layout is considered dirty if one of the following is true:
@@ -372,7 +394,7 @@ impl PaneLayoutMetadata {
     }
 }
 
-struct ClientMetadata {
+pub struct ClientMetadata {
     pane_id: PaneId,
     command: Option<Run>,
 }
@@ -403,6 +425,9 @@ impl ClientMetadata {
             _ => None,
         };
         stringified.unwrap_or("N/A".to_owned())
+    }
+    pub fn get_pane_id(&self) -> PaneId {
+        self.pane_id
     }
     pub fn render_many(
         clients_metadata: BTreeMap<ClientId, ClientMetadata>,
