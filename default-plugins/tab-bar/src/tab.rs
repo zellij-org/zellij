@@ -89,8 +89,10 @@ pub fn tab_style(
 ) -> LinePart {
     let separator = tab_separator(capabilities);
 
-    if tab.is_sync_panes_active {
-        tabname.push_str(" (Sync)");
+    if tab.is_fullscreen_active {
+        tabname.push_str(" (FULLSCREEN)");
+    } else if tab.is_sync_panes_active {
+        tabname.push_str(" (SYNC)");
     }
     // we only color alternate tabs differently if we can't use the arrow fonts to separate them
     if !capabilities.arrow_fonts {
