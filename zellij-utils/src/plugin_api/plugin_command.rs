@@ -1299,6 +1299,10 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for RebindKeys"),
             },
+            Some(CommandName::ListClients) => match protobuf_plugin_command.payload {
+                Some(_) => Err("ListClients should have no payload, found a payload"),
+                None => Ok(PluginCommand::ListClients),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2121,6 +2125,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                         .collect(),
                     write_config_to_disk,
                 })),
+            }),
+            PluginCommand::ListClients => Ok(ProtobufPluginCommand {
+                name: CommandName::ListClients as i32,
+                payload: None,
             }),
         }
     }

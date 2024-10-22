@@ -11,7 +11,7 @@ pub struct Event {
     pub name: i32,
     #[prost(
         oneof = "event::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23"
     )]
     pub payload: ::core::option::Option<event::Payload>,
 }
@@ -62,7 +62,27 @@ pub mod event {
         CommandPaneRerunPayload(super::CommandPaneReRunPayload),
         #[prost(message, tag = "22")]
         FailedToWriteConfigToDiskPayload(super::FailedToWriteConfigToDiskPayload),
+        #[prost(message, tag = "23")]
+        ListClientsPayload(super::ListClientsPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListClientsPayload {
+    #[prost(message, repeated, tag = "1")]
+    pub client_info: ::prost::alloc::vec::Vec<ClientInfo>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ClientInfo {
+    #[prost(uint32, tag = "1")]
+    pub client_id: u32,
+    #[prost(message, optional, tag = "2")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(string, tag = "3")]
+    pub running_command: ::prost::alloc::string::String,
+    #[prost(bool, tag = "4")]
+    pub is_current_client: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -447,6 +467,7 @@ pub enum EventType {
     EditPaneExited = 23,
     CommandPaneReRun = 24,
     FailedToWriteConfigToDisk = 25,
+    ListClients = 26,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -481,6 +502,7 @@ impl EventType {
             EventType::EditPaneExited => "EditPaneExited",
             EventType::CommandPaneReRun => "CommandPaneReRun",
             EventType::FailedToWriteConfigToDisk => "FailedToWriteConfigToDisk",
+            EventType::ListClients => "ListClients",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -512,6 +534,7 @@ impl EventType {
             "EditPaneExited" => Some(Self::EditPaneExited),
             "CommandPaneReRun" => Some(Self::CommandPaneReRun),
             "FailedToWriteConfigToDisk" => Some(Self::FailedToWriteConfigToDisk),
+            "ListClients" => Some(Self::ListClients),
             _ => None,
         }
     }
