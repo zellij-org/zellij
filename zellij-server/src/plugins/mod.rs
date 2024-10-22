@@ -26,8 +26,8 @@ use wasm_bridge::WasmBridge;
 use zellij_utils::{
     async_std::{channel, future::timeout, task},
     data::{
-        Event, EventType, InputMode, MessageToPlugin, PermissionStatus, PermissionType,
-        PipeMessage, PipeSource, PluginCapabilities, ClientInfo
+        ClientInfo, Event, EventType, InputMode, MessageToPlugin, PermissionStatus, PermissionType,
+        PipeMessage, PipeSource, PluginCapabilities,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -609,7 +609,11 @@ pub(crate) fn plugin_thread_main(
                     },
                 }
             },
-            PluginInstruction::ListClientsToPlugin(mut session_layout_metadata, plugin_id, client_id) => {
+            PluginInstruction::ListClientsToPlugin(
+                mut session_layout_metadata,
+                plugin_id,
+                client_id,
+            ) => {
                 populate_session_layout_metadata(
                     &mut session_layout_metadata,
                     &wasm_bridge,
@@ -624,7 +628,7 @@ pub(crate) fn plugin_thread_main(
                         *client_metadata_id,
                         client_metadata.get_pane_id().into(),
                         client_metadata.stringify_command(&default_editor),
-                        is_current_client
+                        is_current_client,
                     ));
                 }
                 let updates = vec![(

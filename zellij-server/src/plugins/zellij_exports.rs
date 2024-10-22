@@ -1476,11 +1476,12 @@ fn dump_session_layout(env: &PluginEnv) {
 }
 
 fn list_clients(env: &PluginEnv) {
-    let _ = env
-        .senders
-        .to_screen
-        .as_ref()
-        .map(|sender| sender.send(ScreenInstruction::ListClientsToPlugin(env.plugin_id, env.client_id)));
+    let _ = env.senders.to_screen.as_ref().map(|sender| {
+        sender.send(ScreenInstruction::ListClientsToPlugin(
+            env.plugin_id,
+            env.client_id,
+        ))
+    });
 }
 
 fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
@@ -1906,8 +1907,9 @@ fn check_command_permission(
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
-        PluginCommand::ListClients
-        | PluginCommand::DumpSessionLayout => PermissionType::ReadApplicationState,
+        PluginCommand::ListClients | PluginCommand::DumpSessionLayout => {
+            PermissionType::ReadApplicationState
+        },
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },

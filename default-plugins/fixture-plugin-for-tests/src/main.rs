@@ -527,7 +527,7 @@ impl ZellijPlugin for State {
                 },
                 BareKey::Char('z') if key.has_modifiers(&[KeyModifier::Alt]) => {
                     list_clients();
-                }
+                },
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {

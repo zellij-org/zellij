@@ -1371,11 +1371,16 @@ pub struct ClientInfo {
     pub client_id: ClientId,
     pub pane_id: PaneId,
     pub running_command: String,
-    pub is_current_client: bool
+    pub is_current_client: bool,
 }
 
 impl ClientInfo {
-    pub fn new(client_id: ClientId, pane_id: PaneId, running_command: String, is_current_client: bool) -> Self {
+    pub fn new(
+        client_id: ClientId,
+        pane_id: PaneId,
+        running_command: String,
+        is_current_client: bool,
+    ) -> Self {
         ClientInfo {
             client_id,
             pane_id,
@@ -1383,7 +1388,6 @@ impl ClientInfo {
             is_current_client,
         }
     }
-
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]

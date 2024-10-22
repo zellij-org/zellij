@@ -726,7 +726,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     .with_context(err_context)
                     .non_fatal();
             },
-            PtyInstruction::ListClientsToPlugin(mut session_layout_metadata, plugin_id, client_id) => {
+            PtyInstruction::ListClientsToPlugin(
+                mut session_layout_metadata,
+                plugin_id,
+                client_id,
+            ) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 pty.bus

@@ -1,15 +1,16 @@
 pub use super::generated_api::api::{
     action::{Action as ProtobufAction, Position as ProtobufPosition},
     event::{
-        event::Payload as ProtobufEventPayload, CopyDestination as ProtobufCopyDestination,
-        Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
-        EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
-        InputModeKeybinds as ProtobufInputModeKeybinds, KeyBind as ProtobufKeyBind,
-        LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
-        PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
-        PaneManifest as ProtobufPaneManifest, PaneType as ProtobufPaneType,
-        PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
-        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, ClientInfo as ProtobufClientInfo, *,
+        event::Payload as ProtobufEventPayload, ClientInfo as ProtobufClientInfo,
+        CopyDestination as ProtobufCopyDestination, Event as ProtobufEvent,
+        EventNameList as ProtobufEventNameList, EventType as ProtobufEventType,
+        FileMetadata as ProtobufFileMetadata, InputModeKeybinds as ProtobufInputModeKeybinds,
+        KeyBind as ProtobufKeyBind, LayoutInfo as ProtobufLayoutInfo,
+        ModeUpdatePayload as ProtobufModeUpdatePayload, PaneId as ProtobufPaneId,
+        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
+        PaneType as ProtobufPaneType, PluginInfo as ProtobufPluginInfo,
+        ResurrectableSession as ProtobufResurrectableSession,
+        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
@@ -17,9 +18,9 @@ pub use super::generated_api::api::{
 };
 #[allow(hidden_glob_reexports)]
 use crate::data::{
-    CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier, LayoutInfo,
-    ModeInfo, Mouse, PaneId, PaneInfo, PaneManifest, PermissionStatus, PluginCapabilities,
-    PluginInfo, SessionInfo, Style, TabInfo, ClientInfo
+    ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier,
+    LayoutInfo, ModeInfo, Mouse, PaneId, PaneInfo, PaneManifest, PermissionStatus,
+    PluginCapabilities, PluginInfo, SessionInfo, Style, TabInfo,
 };
 
 use crate::errors::prelude::*;
@@ -321,11 +322,15 @@ impl TryFrom<ProtobufEvent> for Event {
                 _ => Err("Malformed payload for the FailedToWriteConfigToDisk Event"),
             },
             Some(ProtobufEventType::ListClients) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::ListClientsPayload(
-                    mut list_clients_payload,
-                )) => Ok(Event::ListClients(
-                    list_clients_payload.client_info.drain(..).filter_map(|c| c.try_into().ok()).collect()
-                )),
+                Some(ProtobufEventPayload::ListClientsPayload(mut list_clients_payload)) => {
+                    Ok(Event::ListClients(
+                        list_clients_payload
+                            .client_info
+                            .drain(..)
+                            .filter_map(|c| c.try_into().ok())
+                            .collect(),
+                    ))
+                },
                 _ => Err("Malformed payload for the FailedToWriteConfigToDisk Event"),
             },
             None => Err("Unknown Protobuf Event"),
@@ -338,7 +343,10 @@ impl TryFrom<ProtobufClientInfo> for ClientInfo {
     fn try_from(protobuf_client_info: ProtobufClientInfo) -> Result<Self, &'static str> {
         Ok(ClientInfo::new(
             protobuf_client_info.client_id as u16,
-            protobuf_client_info.pane_id.ok_or("No pane id found")?.try_into()?,
+            protobuf_client_info
+                .pane_id
+                .ok_or("No pane id found")?
+                .try_into()?,
             protobuf_client_info.running_command,
             protobuf_client_info.is_current_client,
         ))
@@ -668,9 +676,12 @@ impl TryFrom<Event> for ProtobufEvent {
             }),
             Event::ListClients(mut client_info_list) => Ok(ProtobufEvent {
                 name: ProtobufEventType::ListClients as i32,
-                payload: Some(event::Payload::ListClientsPayload(
-                    ListClientsPayload { client_info: client_info_list.drain(..).filter_map(|c| c.try_into().ok()).collect() },
-                )),
+                payload: Some(event::Payload::ListClientsPayload(ListClientsPayload {
+                    client_info: client_info_list
+                        .drain(..)
+                        .filter_map(|c| c.try_into().ok())
+                        .collect(),
+                })),
             }),
         }
     }
