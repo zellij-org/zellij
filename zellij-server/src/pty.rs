@@ -101,6 +101,7 @@ pub enum PtyInstruction {
         client_id: ClientId,
         default_editor: Option<PathBuf>,
     },
+    ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
     Exit,
 }
 
@@ -125,6 +126,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::FillPluginCwd(..) => PtyContext::FillPluginCwd,
             PtyInstruction::ListClientsMetadata(..) => PtyContext::ListClientsMetadata,
             PtyInstruction::Reconfigure { .. } => PtyContext::Reconfigure,
+            PtyInstruction::ListClientsToPlugin(..) => PtyContext::ListClientsToPlugin,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -720,6 +722,19 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     .send_to_plugin(PluginInstruction::DumpLayoutToPlugin(
                         session_layout_metadata,
                         plugin_id,
+                    ))
+                    .with_context(err_context)
+                    .non_fatal();
+            },
+            PtyInstruction::ListClientsToPlugin(mut session_layout_metadata, plugin_id, client_id) => {
+                let err_context = || format!("Failed to dump layout");
+                pty.populate_session_layout_metadata(&mut session_layout_metadata);
+                pty.bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::ListClientsToPlugin(
+                        session_layout_metadata,
+                        plugin_id,
+                        client_id,
                     ))
                     .with_context(err_context)
                     .non_fatal();

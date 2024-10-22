@@ -921,6 +921,7 @@ pub enum Event {
     EditPaneExited(u32, Option<i32>, Context), // u32 - terminal_pane_id, Option<i32> - exit code
     CommandPaneReRun(u32, Context),            // u32 - terminal_pane_id, Option<i32> -
     FailedToWriteConfigToDisk(Option<String>), // String -> the file path we failed to write
+    ListClients(Vec<ClientInfo>),
 }
 
 #[derive(
@@ -1364,6 +1365,25 @@ pub struct PaneInfo {
     /// Unselectable panes are often used for UI elements that do not have direct user interaction
     /// (eg. the default `status-bar` or `tab-bar`).
     pub is_selectable: bool,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ClientInfo {
+    pub client_id: ClientId,
+    pub pane_id: PaneId,
+    pub running_command: String,
+    pub is_current_client: bool
+}
+
+impl ClientInfo {
+    pub fn new(client_id: ClientId, pane_id: PaneId, running_command: String, is_current_client: bool) -> Self {
+        ClientInfo {
+            client_id,
+            pane_id,
+            running_command,
+            is_current_client,
+        }
+    }
+
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -1878,4 +1898,5 @@ pub enum PluginCommand {
         keys_to_unbind: Vec<(InputMode, KeyWithModifier)>,
         write_config_to_disk: bool,
     },
+    ListClients,
 }
