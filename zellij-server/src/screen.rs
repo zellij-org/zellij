@@ -2506,7 +2506,7 @@ impl Screen {
         let active_tab_index =
             first_client_id.and_then(|client_id| self.active_tab_indices.get(&client_id));
 
-        for (tab_index, tab) in self.tabs.values().enumerate() {
+        for (tab_index, tab) in self.tabs.iter() {
             let tab_is_focused = active_tab_index == Some(&tab_index);
             let hide_floating_panes = !tab.are_floating_panes_visible();
             let mut suppressed_panes = HashMap::new();
