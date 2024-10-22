@@ -1,14 +1,15 @@
 pub use super::generated_api::api::{
     action::{Action as ProtobufAction, Position as ProtobufPosition},
     event::{
-        event::Payload as ProtobufEventPayload, CopyDestination as ProtobufCopyDestination,
-        Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
-        EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
-        InputModeKeybinds as ProtobufInputModeKeybinds, KeyBind as ProtobufKeyBind,
-        LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
-        PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
-        PaneManifest as ProtobufPaneManifest, PaneType as ProtobufPaneType,
-        PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
+        event::Payload as ProtobufEventPayload, ClientInfo as ProtobufClientInfo,
+        CopyDestination as ProtobufCopyDestination, Event as ProtobufEvent,
+        EventNameList as ProtobufEventNameList, EventType as ProtobufEventType,
+        FileMetadata as ProtobufFileMetadata, InputModeKeybinds as ProtobufInputModeKeybinds,
+        KeyBind as ProtobufKeyBind, LayoutInfo as ProtobufLayoutInfo,
+        ModeUpdatePayload as ProtobufModeUpdatePayload, PaneId as ProtobufPaneId,
+        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
+        PaneType as ProtobufPaneType, PluginInfo as ProtobufPluginInfo,
+        ResurrectableSession as ProtobufResurrectableSession,
         SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
     },
     input_mode::InputMode as ProtobufInputMode,
@@ -17,9 +18,9 @@ pub use super::generated_api::api::{
 };
 #[allow(hidden_glob_reexports)]
 use crate::data::{
-    CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier, LayoutInfo,
-    ModeInfo, Mouse, PaneId, PaneInfo, PaneManifest, PermissionStatus, PluginCapabilities,
-    PluginInfo, SessionInfo, Style, TabInfo,
+    ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier,
+    LayoutInfo, ModeInfo, Mouse, PaneId, PaneInfo, PaneManifest, PermissionStatus,
+    PluginCapabilities, PluginInfo, SessionInfo, Style, TabInfo,
 };
 
 use crate::errors::prelude::*;
@@ -320,8 +321,47 @@ impl TryFrom<ProtobufEvent> for Event {
                 )),
                 _ => Err("Malformed payload for the FailedToWriteConfigToDisk Event"),
             },
+            Some(ProtobufEventType::ListClients) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::ListClientsPayload(mut list_clients_payload)) => {
+                    Ok(Event::ListClients(
+                        list_clients_payload
+                            .client_info
+                            .drain(..)
+                            .filter_map(|c| c.try_into().ok())
+                            .collect(),
+                    ))
+                },
+                _ => Err("Malformed payload for the FailedToWriteConfigToDisk Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
+    }
+}
+
+impl TryFrom<ProtobufClientInfo> for ClientInfo {
+    type Error = &'static str;
+    fn try_from(protobuf_client_info: ProtobufClientInfo) -> Result<Self, &'static str> {
+        Ok(ClientInfo::new(
+            protobuf_client_info.client_id as u16,
+            protobuf_client_info
+                .pane_id
+                .ok_or("No pane id found")?
+                .try_into()?,
+            protobuf_client_info.running_command,
+            protobuf_client_info.is_current_client,
+        ))
+    }
+}
+
+impl TryFrom<ClientInfo> for ProtobufClientInfo {
+    type Error = &'static str;
+    fn try_from(client_info: ClientInfo) -> Result<Self, &'static str> {
+        Ok(ProtobufClientInfo {
+            client_id: client_info.client_id as u32,
+            pane_id: Some(client_info.pane_id.try_into()?),
+            running_command: client_info.running_command,
+            is_current_client: client_info.is_current_client,
+        })
     }
 }
 
@@ -633,6 +673,15 @@ impl TryFrom<Event> for ProtobufEvent {
                 payload: Some(event::Payload::FailedToWriteConfigToDiskPayload(
                     FailedToWriteConfigToDiskPayload { file_path },
                 )),
+            }),
+            Event::ListClients(mut client_info_list) => Ok(ProtobufEvent {
+                name: ProtobufEventType::ListClients as i32,
+                payload: Some(event::Payload::ListClientsPayload(ListClientsPayload {
+                    client_info: client_info_list
+                        .drain(..)
+                        .filter_map(|c| c.try_into().ok())
+                        .collect(),
+                })),
             }),
         }
     }
@@ -1178,6 +1227,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::EditPaneExited => EventType::EditPaneExited,
             ProtobufEventType::CommandPaneReRun => EventType::CommandPaneReRun,
             ProtobufEventType::FailedToWriteConfigToDisk => EventType::FailedToWriteConfigToDisk,
+            ProtobufEventType::ListClients => EventType::ListClients,
         })
     }
 }
@@ -1212,6 +1262,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::EditPaneExited => ProtobufEventType::EditPaneExited,
             EventType::CommandPaneReRun => ProtobufEventType::CommandPaneReRun,
             EventType::FailedToWriteConfigToDisk => ProtobufEventType::FailedToWriteConfigToDisk,
+            EventType::ListClients => ProtobufEventType::ListClients,
         })
     }
 }

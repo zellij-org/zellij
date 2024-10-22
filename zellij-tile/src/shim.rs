@@ -854,6 +854,15 @@ pub fn dump_session_layout() {
     unsafe { host_run_plugin_command() };
 }
 
+/// Get a list of clients, their focused pane and running command or focused plugin back as an
+/// Event::ListClients (note: this event must be subscribed to)
+pub fn list_clients() {
+    let plugin_command = PluginCommand::ListClients;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Change configuration for the current user
 pub fn reconfigure(new_config: String, save_configuration_file: bool) {
     let plugin_command = PluginCommand::Reconfigure(new_config, save_configuration_file);

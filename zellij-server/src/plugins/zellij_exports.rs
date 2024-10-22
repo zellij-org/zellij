@@ -351,6 +351,7 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         keys_to_unbind,
                         write_config_to_disk,
                     } => rebind_keys(env, keys_to_rebind, keys_to_unbind, write_config_to_disk)?,
+                    PluginCommand::ListClients => list_clients(env),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -1474,6 +1475,15 @@ fn dump_session_layout(env: &PluginEnv) {
         .map(|sender| sender.send(ScreenInstruction::DumpLayoutToPlugin(env.plugin_id)));
 }
 
+fn list_clients(env: &PluginEnv) {
+    let _ = env.senders.to_screen.as_ref().map(|sender| {
+        sender.send(ScreenInstruction::ListClientsToPlugin(
+            env.plugin_id,
+            env.client_id,
+        ))
+    });
+}
+
 fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
     if !folder_to_scan.starts_with("/host") {
         log::error!(
@@ -1897,7 +1907,9 @@ fn check_command_permission(
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
-        PluginCommand::DumpSessionLayout => PermissionType::ReadApplicationState,
+        PluginCommand::ListClients | PluginCommand::DumpSessionLayout => {
+            PermissionType::ReadApplicationState
+        },
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },

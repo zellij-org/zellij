@@ -1,0 +1,9 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 8623
+expression: "format!(\"{:#?}\", list_clients_instruction)"
+---
+ListClientsToPlugin(
+    0,
+    1,
+)

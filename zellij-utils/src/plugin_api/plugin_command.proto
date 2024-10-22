@@ -126,6 +126,7 @@ enum CommandName {
   ReloadPlugin = 110;
   LoadNewPlugin = 111;
   RebindKeys = 112;
+  ListClients = 113;
 }
 
 message PluginCommand {
