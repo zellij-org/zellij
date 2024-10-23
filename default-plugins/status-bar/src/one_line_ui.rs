@@ -9,7 +9,7 @@ use zellij_tile::prelude::*;
 use zellij_tile_utils::palette_match;
 
 use crate::first_line::{to_char, KeyAction, KeyMode, KeyShortcut};
-use crate::second_line::{text_copied_hint, system_clipboard_error};
+use crate::second_line::{system_clipboard_error, text_copied_hint};
 use crate::{action_key, action_key_group, color_elements, MORE_MSG, TO_NORMAL};
 use crate::{ColoredElements, LinePart};
 use unicode_width::UnicodeWidthStr;
