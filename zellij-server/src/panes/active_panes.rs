@@ -9,6 +9,12 @@ pub struct ActivePanes {
     os_api: Box<dyn ServerOsApi>,
 }
 
+impl std::fmt::Debug for ActivePanes{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.active_panes)
+    }
+}
+
 impl ActivePanes {
     pub fn new(os_api: &Box<dyn ServerOsApi>) -> Self {
         let os_api = os_api.clone();
