@@ -1,6 +1,6 @@
 use super::{
     emphasis_variants_for_ribbon, emphasis_variants_for_selected_ribbon, is_too_wide,
-    parse_opaque, parse_indices, parse_selected, Coordinates,
+    parse_indices, parse_opaque, parse_selected, Coordinates,
 };
 use crate::panes::terminal_character::{AnsiCode, CharacterStyles, RESET_STYLES};
 use zellij_utils::{

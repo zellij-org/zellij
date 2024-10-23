@@ -1,5 +1,5 @@
 use super::{
-    is_too_high, parse_opaque, parse_indices, parse_selected, parse_text, stringify_text,
+    is_too_high, parse_indices, parse_opaque, parse_selected, parse_text, stringify_text,
     Coordinates, Text,
 };
 use crate::panes::terminal_character::{AnsiCode, RESET_STYLES};
