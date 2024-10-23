@@ -34,6 +34,7 @@ pub struct NewPluginScreen {
     selected_config_index: Option<usize>,
     request_ids: Vec<String>,
     load_in_background: bool,
+    colors: Palette,
 }
 
 impl Default for NewPluginScreen {
@@ -49,11 +50,19 @@ impl Default for NewPluginScreen {
             selected_config_index: None,
             request_ids: vec![],
             load_in_background: true,
+            colors: Palette::default(),
         }
     }
 }
 
 impl NewPluginScreen {
+    pub fn new(colors: Palette) -> Self {
+        Self {
+            colors,
+            ..Default::default()
+        }
+    }
+
     pub fn render(&self, rows: usize, cols: usize) {
         self.render_title(cols);
         self.render_url_field(cols);
@@ -246,11 +255,25 @@ impl NewPluginScreen {
     fn render_background_toggle(&self, y_coordinates: usize) {
         let key_shortcuts_text = format!("Ctrl l");
         print_text_with_coordinates(
-            Text::new(&key_shortcuts_text).color_range(3, ..),
+            Text::new(&key_shortcuts_text).color_range(3, ..).opaque(),
             0,
             y_coordinates,
             None,
             None,
+        );
+        let background = match self.colors.theme_hue {
+            ThemeHue::Dark => self.colors.black,
+            ThemeHue::Light => self.colors.white,
+        };
+        let bg_color = match background {
+            PaletteColor::Rgb((r, g, b)) => format!("\u{1b}[48;2;{};{};{}m\u{1b}[0K", r, g, b),
+            PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),
+        };
+        println!(
+            "\u{1b}[{};{}H{}",
+            y_coordinates + 1,
+            key_shortcuts_text.chars().count() + 1,
+            bg_color
         );
         let load_in_background_text = format!("Load in Background");
         let load_in_foreground_text = format!("Load in Foreground");
@@ -473,6 +496,7 @@ struct State {
     plugin_id_to_tab_position: HashMap<u32, usize>,
     search_term: String,
     new_plugin_screen: Option<NewPluginScreen>,
+    colors: Palette,
 }
 
 register_plugin!(State);
@@ -524,6 +548,10 @@ impl ZellijPlugin for State {
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
+            Event::ModeUpdate(mode_info) => {
+                self.colors = mode_info.style.colors;
+                should_render = true;
+            },
             Event::SessionUpdate(live_sessions, _dead_sessions) => {
                 for session in live_sessions {
                     if session.is_current_session {
@@ -990,7 +1018,7 @@ impl State {
                 self.reload_selected();
             },
             BareKey::Insert if key.has_no_modifiers() => {
-                self.new_plugin_screen = Some(Default::default());
+                self.new_plugin_screen = Some(NewPluginScreen::new(self.colors));
                 should_render = true;
             },
             BareKey::Delete if key.has_no_modifiers() => {
