@@ -16,12 +16,10 @@ pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordina
         .bold(Some(AnsiCode::On))
         .foreground(Some(style.colors.white.into()));
 
-    if content.opaque {
-        text_style = text_style.background(Some(style.colors.black.into()));
-    }
-
     if content.selected {
         text_style = text_style.background(Some(style.colors.bg.into()));
+    } else if content.opaque {
+        text_style = text_style.background(Some(style.colors.black.into()));
     }
     let (text, _text_width) = stringify_text(
         &content,
