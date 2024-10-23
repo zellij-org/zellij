@@ -9,6 +9,7 @@ use zellij_tile::prelude::*;
 use zellij_tile_utils::palette_match;
 
 use crate::first_line::{to_char, KeyAction, KeyMode, KeyShortcut};
+use crate::second_line::{system_clipboard_error, text_copied_hint};
 use crate::{action_key, action_key_group, color_elements, MORE_MSG, TO_NORMAL};
 use crate::{ColoredElements, LinePart};
 use unicode_width::UnicodeWidthStr;
@@ -19,7 +20,15 @@ pub fn one_line_ui(
     mut max_len: usize,
     separator: &str,
     base_mode_is_locked: bool,
+    text_copied_to_clipboard_destination: Option<CopyDestination>,
+    clipboard_failure: bool,
 ) -> LinePart {
+    if let Some(text_copied_to_clipboard_destination) = text_copied_to_clipboard_destination {
+        return text_copied_hint(&help.style.colors, text_copied_to_clipboard_destination);
+    }
+    if clipboard_failure {
+        return system_clipboard_error(&help.style.colors);
+    }
     let mut line_part_to_render = LinePart::default();
     let mut append = |line_part: &LinePart, max_len: &mut usize| {
         line_part_to_render.append(line_part);

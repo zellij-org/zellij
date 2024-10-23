@@ -262,7 +262,9 @@ impl ZellijPlugin for State {
                     active_tab,
                     cols,
                     separator,
-                    self.base_mode_is_locked
+                    self.base_mode_is_locked,
+                    self.text_copy_destination,
+                    self.display_system_clipboard_failure,
                 )
             );
             return;
