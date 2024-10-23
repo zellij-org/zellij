@@ -80,6 +80,14 @@ keybinds clear-defaults=true {{
         bind "Ctrl b" "PageUp" "Left" "h" {{ PageScrollUp; }}
         bind "d" {{ HalfPageScrollDown; }}
         bind "u" {{ HalfPageScrollUp; }}
+        bind "Alt left" {{ MoveFocusOrTab "left"; SwitchToMode "locked"; }}
+        bind "Alt down" {{ MoveFocus "down"; SwitchToMode "locked"; }}
+        bind "Alt up" {{ MoveFocus "up"; SwitchToMode "locked"; }}
+        bind "Alt right" {{ MoveFocusOrTab "right"; SwitchToMode "locked"; }}
+        bind "Alt h" {{ MoveFocusOrTab "left"; SwitchToMode "locked"; }}
+        bind "Alt j" {{ MoveFocus "down"; SwitchToMode "locked"; }}
+        bind "Alt k" {{ MoveFocus "up"; SwitchToMode "locked"; }}
+        bind "Alt l" {{ MoveFocusOrTab "right"; SwitchToMode "locked"; }}
     }}
     search {{
         bind "Ctrl c" {{ ScrollToBottom; SwitchToMode "Locked"; }}
@@ -268,6 +276,14 @@ keybinds clear-defaults=true {{
         bind "Ctrl b" "PageUp" "Left" "h" {{ PageScrollUp; }}
         bind "d" {{ HalfPageScrollDown; }}
         bind "u" {{ HalfPageScrollUp; }}
+        bind "{secondary_modifier} left" {{ MoveFocusOrTab "left"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} down" {{ MoveFocus "down"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} up" {{ MoveFocus "up"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} right" {{ MoveFocusOrTab "right"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} h" {{ MoveFocusOrTab "left"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} j" {{ MoveFocus "down"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} k" {{ MoveFocus "up"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} l" {{ MoveFocusOrTab "right"; SwitchToMode "normal"; }}
     }}
     search {{
         bind "{primary_modifier} s" {{ SwitchToMode "Normal"; }}
@@ -461,6 +477,14 @@ keybinds clear-defaults=true {{
         bind "k" "Up" {{ ScrollUp; }}
         bind "d" {{ HalfPageScrollDown; }}
         bind "u" {{ HalfPageScrollUp; }}
+        bind "{secondary_modifier} left" {{ MoveFocusOrTab "left"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} down" {{ MoveFocus "down"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} up" {{ MoveFocus "up"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} right" {{ MoveFocusOrTab "right"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} h" {{ MoveFocusOrTab "left"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} j" {{ MoveFocus "down"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} k" {{ MoveFocus "up"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} l" {{ MoveFocusOrTab "right"; SwitchToMode "normal"; }}
     }}
     search {{
         bind "Ctrl c" {{ ScrollToBottom; SwitchToMode "Normal"; }}
@@ -986,6 +1010,14 @@ keybinds clear-defaults=true {{
         bind "Ctrl b" "PageUp" "Left" "h" {{ PageScrollUp; }}
         bind "d" {{ HalfPageScrollDown; }}
         bind "u" {{ HalfPageScrollUp; }}
+        bind "{secondary_modifier} left" {{ MoveFocusOrTab "left"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} down" {{ MoveFocus "down"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} up" {{ MoveFocus "up"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} right" {{ MoveFocusOrTab "right"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} h" {{ MoveFocusOrTab "left"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} j" {{ MoveFocus "down"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} k" {{ MoveFocus "up"; SwitchToMode "normal"; }}
+        bind "{secondary_modifier} l" {{ MoveFocusOrTab "right"; SwitchToMode "normal"; }}
     }}
     search {{
         bind "{primary_modifier} s" {{ SwitchToMode "Normal"; }}
