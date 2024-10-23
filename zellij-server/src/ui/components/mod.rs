@@ -164,13 +164,13 @@ fn parse_selected(stringified: &mut String) -> bool {
     selected
 }
 
-fn parse_bg_black(stringified: &mut String) -> bool {
-    let mut bg_black = false;
+fn parse_opaque(stringified: &mut String) -> bool {
+    let mut opaque = false;
     if stringified.chars().next() == Some('z') {
-        bg_black = true;
+        opaque = true;
         stringified.remove(0);
     }
-    bg_black
+    opaque
 }
 
 fn parse_indices(stringified: &mut String) -> Vec<Vec<usize>> {

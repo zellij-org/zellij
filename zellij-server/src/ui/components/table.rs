@@ -37,7 +37,7 @@ pub fn table(
             if cell.selected {
                 reset_styles_for_item.background = None;
                 text_style = text_style.background(Some(style.colors.bg.into()));
-            } else if cell.bg_black {
+            } else if cell.opaque {
                 reset_styles_for_item.background = None;
                 text_style = text_style.background(Some(style.colors.black.into()));
             }

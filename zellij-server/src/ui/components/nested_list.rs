@@ -1,5 +1,5 @@
 use super::{
-    is_too_high, parse_bg_black, parse_indices, parse_selected, parse_text, stringify_text,
+    is_too_high, parse_opaque, parse_indices, parse_selected, parse_text, stringify_text,
     Coordinates, Text,
 };
 use crate::panes::terminal_character::{AnsiCode, RESET_STYLES};
@@ -41,7 +41,7 @@ pub fn nested_list(
                 .bold(Some(AnsiCode::On))
                 .foreground(Some(style.colors.white.into()))
                 .background(Some(style.colors.bg.into()))
-        } else if line_item.text.bg_black {
+        } else if line_item.text.opaque {
             reset_styles_for_item
                 .bold(Some(AnsiCode::On))
                 .foreground(Some(style.colors.white.into()))
@@ -74,7 +74,7 @@ pub fn nested_list(
             RESET_STYLES
                 .foreground(Some(style.colors.white.into()))
                 .background(Some(style.colors.bg.into()))
-        } else if line_item.text.bg_black {
+        } else if line_item.text.opaque {
             RESET_STYLES
                 .foreground(Some(style.colors.white.into()))
                 .background(Some(style.colors.black.into()))
@@ -96,12 +96,12 @@ pub fn parse_nested_list_items<'a>(
         .flat_map(|mut stringified| {
             let indentation_level = parse_indentation_level(&mut stringified);
             let selected = parse_selected(&mut stringified);
-            let bg_black = parse_bg_black(&mut stringified);
+            let opaque = parse_opaque(&mut stringified);
             let indices = parse_indices(&mut stringified);
             let text = parse_text(&mut stringified).map_err(|e| e.to_string())?;
             let text = Text {
                 text,
-                bg_black,
+                opaque,
                 selected,
                 indices,
             };
