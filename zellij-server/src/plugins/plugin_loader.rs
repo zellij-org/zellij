@@ -696,7 +696,6 @@ impl<'a> PluginLoader<'a> {
         wasi_write_object(
             plugin.lock().unwrap().store.data(),
             &protobuf_bytes,
-            // &self.plugin.userspace_configuration.inner(),
         )
         .with_context(err_context)?;
         load_function
