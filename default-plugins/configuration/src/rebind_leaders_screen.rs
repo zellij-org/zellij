@@ -560,7 +560,8 @@ impl RebindLeadersScreen {
         }
         let help_text_long = "Help: <←↓↑→> - navigate, <SPACE> - select, <ENTER> - apply, <Ctrl s> - save, <Ctrl c> - reset, <ESC> - close";
         let help_text_medium = "Help: <←↓↑→/SPACE> - navigate/select, <ENTER/Ctrl s> - apply/save, <Ctrl c> - reset, <ESC> - close";
-        let help_text_short = "Help: <←↓↑→>/<SPACE>/<ENTER> select/<Ctrl s> save/<Ctrl c> reset/<ESC>";
+        let help_text_short =
+            "Help: <←↓↑→>/<SPACE>/<ENTER> select/<Ctrl s> save/<Ctrl c> reset/<ESC>";
         let help_text_minimum = "<←↓↑→>/<SPACE>/<ENTER>/<Ctrl s>/<Ctrl c>/<ESC>";
         if cols >= help_text_long.chars().count() {
             print_text_with_coordinates(

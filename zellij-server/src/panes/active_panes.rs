@@ -9,7 +9,7 @@ pub struct ActivePanes {
     os_api: Box<dyn ServerOsApi>,
 }
 
-impl std::fmt::Debug for ActivePanes{
+impl std::fmt::Debug for ActivePanes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.active_panes)
     }

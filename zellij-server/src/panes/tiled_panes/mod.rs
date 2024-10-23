@@ -1569,7 +1569,11 @@ impl TiledPanes {
             closed_pane
         } else {
             let closed_pane = self.panes.remove(&pane_id);
-            if closed_pane.as_ref().map(|p| p.selectable()).unwrap_or(false) {
+            if closed_pane
+                .as_ref()
+                .map(|p| p.selectable())
+                .unwrap_or(false)
+            {
                 // this is a bit of a roundabout way to say: this is the last pane and so the tab
                 // should be destroyed
                 self.active_panes.clear(&mut self.panes);
