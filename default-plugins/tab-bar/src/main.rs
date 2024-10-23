@@ -124,6 +124,12 @@ impl ZellijPlugin for State {
             is_alternate_tab = !is_alternate_tab;
             all_tabs.push(tab);
         }
+
+        let background = match self.mode_info.style.colors.theme_hue {
+            ThemeHue::Dark => self.mode_info.style.colors.black,
+            ThemeHue::Light => self.mode_info.style.colors.white,
+        };
+
         self.tab_line = tab_line(
             self.mode_info.session_name.as_deref(),
             all_tabs,
@@ -135,6 +141,7 @@ impl ZellijPlugin for State {
             self.tabs.iter().find(|t| t.active),
             &self.mode_info,
             self.hide_swap_layout_indication,
+            &background,
         );
 
         let output = self
@@ -142,10 +149,6 @@ impl ZellijPlugin for State {
             .iter()
             .fold(String::new(), |output, part| output + &part.part);
 
-        let background = match self.mode_info.style.colors.theme_hue {
-            ThemeHue::Dark => self.mode_info.style.colors.black,
-            ThemeHue::Light => self.mode_info.style.colors.white,
-        };
         match background {
             PaletteColor::Rgb((r, g, b)) => {
                 print!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", output, r, g, b);
