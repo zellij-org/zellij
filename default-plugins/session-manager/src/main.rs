@@ -218,7 +218,11 @@ impl State {
                 should_render = true;
             },
             BareKey::Tab if key.has_no_modifiers() => {
-                self.toggle_active_screen();
+                self.toggle_active_screen_ltr();
+                should_render = true;
+            },
+            BareKey::Tab if key.has_modifiers(&[KeyModifier::Shift]) => {
+                self.toggle_active_screen_rtl();
                 should_render = true;
             },
             BareKey::Char('f') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
@@ -372,7 +376,11 @@ impl State {
                     should_render = true;
                 },
                 BareKey::Tab if key.has_no_modifiers() => {
-                    self.toggle_active_screen();
+                    self.toggle_active_screen_ltr();
+                    should_render = true;
+                },
+                BareKey::Tab if key.has_modifiers(&[KeyModifier::Shift]) => {
+                    self.toggle_active_screen_rtl();
                     should_render = true;
                 },
                 BareKey::Esc if key.has_no_modifiers() => {
@@ -420,7 +428,11 @@ impl State {
                 should_render = true;
             },
             BareKey::Tab if key.has_no_modifiers() => {
-                self.toggle_active_screen();
+                self.toggle_active_screen_ltr();
+                should_render = true;
+            },
+            BareKey::Tab if key.has_modifiers(&[KeyModifier::Shift]) => {
+                self.toggle_active_screen_rtl();
                 should_render = true;
             },
             BareKey::Delete if key.has_no_modifiers() => {
@@ -514,11 +526,18 @@ impl State {
             },
         }
     }
-    fn toggle_active_screen(&mut self) {
+    fn toggle_active_screen_ltr(&mut self) {
         self.active_screen = match self.active_screen {
             ActiveScreen::NewSession => ActiveScreen::AttachToSession,
             ActiveScreen::AttachToSession => ActiveScreen::ResurrectSession,
             ActiveScreen::ResurrectSession => ActiveScreen::NewSession,
+        };
+    }
+    fn toggle_active_screen_rtl(&mut self) {
+        self.active_screen = match self.active_screen {
+            ActiveScreen::NewSession => ActiveScreen::ResurrectSession,
+            ActiveScreen::AttachToSession => ActiveScreen::NewSession,
+            ActiveScreen::ResurrectSession => ActiveScreen::AttachToSession,
         };
     }
     fn show_error(&mut self, error_text: &str) {
