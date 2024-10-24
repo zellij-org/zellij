@@ -37,6 +37,9 @@ pub fn table(
             if cell.selected {
                 reset_styles_for_item.background = None;
                 text_style = text_style.background(Some(style.colors.bg.into()));
+            } else if cell.opaque {
+                reset_styles_for_item.background = None;
+                text_style = text_style.background(Some(style.colors.black.into()));
             }
             // here we intentionally don't pass our coordinates even if we have them, because
             // these cells have already been padded and truncated

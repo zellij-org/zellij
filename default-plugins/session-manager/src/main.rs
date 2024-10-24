@@ -122,10 +122,21 @@ impl ZellijPlugin for State {
     fn render(&mut self, rows: usize, cols: usize) {
         let (x, y, width, height) = self.main_menu_size(rows, cols);
 
+        let background = match self.colors.palette.theme_hue {
+            ThemeHue::Dark => self.colors.palette.black,
+            ThemeHue::Light => self.colors.palette.white,
+        };
+
         if self.is_welcome_screen {
             render_banner(x, 0, rows.saturating_sub(height), width);
         }
-        render_screen_toggle(self.active_screen, x, y, width.saturating_sub(2));
+        render_screen_toggle(
+            self.active_screen,
+            x,
+            y,
+            width.saturating_sub(2),
+            &background,
+        );
 
         match self.active_screen {
             ActiveScreen::NewSession => {
