@@ -2124,7 +2124,7 @@ impl Screen {
         let mut found = false;
         for tab in self.tabs.values_mut() {
             if tab.has_pane_with_pid(&pane_id) {
-                tab.resize_pane_with_id(resize, pane_id);
+                tab.resize_pane_with_id(resize, pane_id).non_fatal();
                 found = true;
                 break;
             }
@@ -2232,7 +2232,7 @@ impl Screen {
         } else {
             self.new_tab(tab_index, swap_layouts, None, None)?;
         }
-        let mut tab = self.tabs.get_mut(&tab_index).with_context(err_context)?;
+        let tab = self.tabs.get_mut(&tab_index).with_context(err_context)?;
         if let Some(new_tab_name) = new_tab_name {
             tab.name = new_tab_name.clone();
         }
@@ -2828,7 +2828,7 @@ pub(crate) fn screen_thread_main(
                         screen.unblock_input()?;
                         screen.log_and_report_session_state()?;
                     },
-                    ClientTabIndexOrPaneId::TabIndex(tab_index) => {
+                    ClientTabIndexOrPaneId::TabIndex(_tab_index) => {
                         log::error!("Cannot OpenInPlaceEditor with a TabIndex");
                     },
                     ClientTabIndexOrPaneId::PaneId(pane_id_to_replace) => {
@@ -2836,7 +2836,8 @@ pub(crate) fn screen_thread_main(
                         let all_tabs = screen.get_tabs_mut();
                         for tab in all_tabs.values_mut() {
                             if tab.has_pane_with_pid(&pane_id_to_replace) {
-                                tab.replace_pane_with_editor_pane(pid, pane_id_to_replace);
+                                tab.replace_pane_with_editor_pane(pid, pane_id_to_replace)
+                                    .non_fatal();
                                 found = true;
                                 break;
                             }

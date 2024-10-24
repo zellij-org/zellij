@@ -294,7 +294,7 @@ impl RebindLeadersScreen {
             WIDTH_BREAKPOINTS.1
         };
         let base_x = cols.saturating_sub(screen_width) / 2;
-        let base_y = rows.saturating_sub(7) / 2;
+        let base_y = rows.saturating_sub(10) / 2;
         let primary_modifier_key_text = self.primary_modifier_text();
         let (primary_modifier_text, primary_modifier_start_position) =
             if cols >= WIDTH_BREAKPOINTS.0 {
@@ -305,7 +305,7 @@ impl RebindLeadersScreen {
         print_text_with_coordinates(
             Text::new(primary_modifier_text).color_range(3, primary_modifier_start_position..),
             base_x,
-            base_y + 4,
+            base_y + 5,
             None,
             None,
         );
@@ -327,7 +327,7 @@ impl RebindLeadersScreen {
                 })
                 .collect(),
             base_x,
-            base_y + 5,
+            base_y + 6,
             Some(screen_width / 2),
             None,
         );

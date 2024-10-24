@@ -793,7 +793,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             },
             PtyInstruction::Reconfigure {
                 default_editor,
-                client_id,
+                client_id: _,
             } => {
                 pty.reconfigure(default_editor);
             },
@@ -931,7 +931,6 @@ impl Pty {
                     None,
                     open_file_payload.originating_plugin.clone(),
                 ),
-                _ => (false, false, None, None),
             };
 
         if hold_on_start {
