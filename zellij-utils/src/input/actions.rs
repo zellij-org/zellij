@@ -542,7 +542,7 @@ impl Action {
                                 None
                             }
                         }) {
-                            should_start_layout_commands_suspended = true;
+                        should_start_layout_commands_suspended = true;
                         (
                             layout_url.to_owned(),
                             Layout::stringified_from_url(layout_url)

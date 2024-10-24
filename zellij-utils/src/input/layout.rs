@@ -1198,7 +1198,10 @@ impl Layout {
             None,
         );
         if should_start_layout_commands_suspended {
-            layout.iter_mut().next().map(|l| l.recursively_add_start_suspended_including_template(Some(true)));
+            layout
+                .iter_mut()
+                .next()
+                .map(|l| l.recursively_add_start_suspended_including_template(Some(true)));
         }
         layout
     }
@@ -1495,7 +1498,10 @@ impl Layout {
             }
         }
     }
-    pub fn recursively_add_start_suspended_including_template(&mut self, start_suspended: Option<bool>) {
+    pub fn recursively_add_start_suspended_including_template(
+        &mut self,
+        start_suspended: Option<bool>,
+    ) {
         if let Some((tiled_panes_template, floating_panes_template)) = self.template.as_mut() {
             tiled_panes_template.recursively_add_start_suspended(start_suspended);
             for floating_pane in floating_panes_template.iter_mut() {
