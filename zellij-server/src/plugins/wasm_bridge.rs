@@ -615,7 +615,9 @@ impl WasmBridge {
                             running_plugin.rows = new_rows;
                             running_plugin.columns = new_columns;
 
-                            if old_rows != new_rows || old_columns != new_columns {
+                            // in the below conditional, we check if event_id == 0 so that we'll
+                            // make sure to always render on the first resize event
+                            if old_rows != new_rows || old_columns != new_columns || event_id == 0 {
                                 let rendered_bytes = running_plugin
                                     .instance
                                     .clone()
