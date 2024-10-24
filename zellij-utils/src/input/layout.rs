@@ -1167,6 +1167,7 @@ impl Layout {
         layout_dir: &Option<PathBuf>,
         layout_info: LayoutInfo,
     ) -> Result<Layout, ConfigError> {
+        let mut should_start_layout_commands_suspended = false;
         let (path_to_raw_layout, raw_layout, raw_swap_layouts) = match layout_info {
             LayoutInfo::File(layout_name_without_extension) => {
                 let layout_dir = layout_dir.clone().or_else(|| default_layout_dir());
@@ -1182,17 +1183,27 @@ impl Layout {
                     Self::stringified_from_default_assets(&PathBuf::from(layout_name))?;
                 (Some(path_to_layout), stringified_layout, swap_layouts)
             },
-            LayoutInfo::Url(url) => (Some(url.clone()), Self::stringified_from_url(&url)?, None),
+            LayoutInfo::Url(url) => {
+                should_start_layout_commands_suspended = true;
+                (Some(url.clone()), Self::stringified_from_url(&url)?, None)
+            },
             LayoutInfo::Stringified(stringified_layout) => (None, stringified_layout, None),
         };
-        Layout::from_kdl(
+        let mut layout = Layout::from_kdl(
             &raw_layout,
             path_to_raw_layout,
             raw_swap_layouts
                 .as_ref()
                 .map(|(r, f)| (r.as_str(), f.as_str())),
             None,
-        )
+        );
+        if should_start_layout_commands_suspended {
+            layout
+                .iter_mut()
+                .next()
+                .map(|l| l.recursively_add_start_suspended_including_template(Some(true)));
+        }
+        layout
     }
     pub fn stringified_from_path_or_default(
         layout_path: Option<&PathBuf>,
@@ -1259,7 +1270,8 @@ impl Layout {
                 Err(e) => Err(ConfigError::DownloadError(format!("{}", e))),
             }
         })?;
-        let layout = Layout::from_kdl(&raw_layout, Some(url.into()), None, None)?;
+        let mut layout = Layout::from_kdl(&raw_layout, Some(url.into()), None, None)?;
+        layout.recursively_add_start_suspended_including_template(Some(true));
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
@@ -1486,7 +1498,23 @@ impl Layout {
             }
         }
     }
-
+    pub fn recursively_add_start_suspended_including_template(
+        &mut self,
+        start_suspended: Option<bool>,
+    ) {
+        if let Some((tiled_panes_template, floating_panes_template)) = self.template.as_mut() {
+            tiled_panes_template.recursively_add_start_suspended(start_suspended);
+            for floating_pane in floating_panes_template.iter_mut() {
+                floating_pane.add_start_suspended(start_suspended);
+            }
+        }
+        for (_tab_name, tiled_panes, floating_panes) in self.tabs.iter_mut() {
+            tiled_panes.recursively_add_start_suspended(start_suspended);
+            for floating_pane in floating_panes.iter_mut() {
+                floating_pane.add_start_suspended(start_suspended);
+            }
+        }
+    }
     fn swap_layout_and_path(path: &Path) -> Option<(String, String)> {
         // Option<path, stringified_swap_layout>
         let mut swap_layout_path = PathBuf::from(path);
