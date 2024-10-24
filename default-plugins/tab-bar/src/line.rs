@@ -232,6 +232,7 @@ pub fn tab_line(
     tab_info: Option<&TabInfo>,
     mode_info: &ModeInfo,
     hide_swap_layout_indicator: bool,
+    background: &PaletteColor,
 ) -> Vec<LinePart> {
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
     let mut tabs_before_active = all_tabs;
@@ -278,6 +279,14 @@ pub fn tab_line(
         capabilities,
     );
     prefix.append(&mut tabs_to_render);
+    prefix.append(&mut vec![LinePart {
+        part: match background {
+            PaletteColor::Rgb((r, g, b)) => format!("\u{1b}[48;2;{};{};{}m\u{1b}[0K", r, g, b),
+            PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),
+        },
+        len: 0,
+        tab_index: None,
+    }]);
 
     if let Some(mut swap_layout_indicator) = swap_layout_indicator.take() {
         let remaining_space = cols
@@ -382,9 +391,11 @@ pub fn style_key_with_modifier(keyvec: &[KeyWithModifier], color_index: Option<u
     if no_common_modifier || key.len() == 1 {
         let key_string_text = format!(" {} ", key.join(key_separator));
         let text = if let Some(color_index) = color_index {
-            Text::new(&key_string_text).color_range(color_index, ..)
-        } else {
             Text::new(&key_string_text)
+                .color_range(color_index, ..)
+                .opaque()
+        } else {
+            Text::new(&key_string_text).opaque()
         };
         LinePart {
             part: serialize_text(&text),
@@ -402,8 +413,9 @@ pub fn style_key_with_modifier(keyvec: &[KeyWithModifier], color_index: Option<u
                     modifier_str.width() + 3
                         ..modifier_str.width() + 3 + key_string_without_modifier.width(),
                 )
+                .opaque()
         } else {
-            Text::new(&key_string_text)
+            Text::new(&key_string_text).opaque()
         };
         LinePart {
             part: serialize_text(&text),

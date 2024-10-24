@@ -507,10 +507,22 @@ pub fn minimize_lines(
 pub fn render_prompt(search_term: &str, colors: Colors, x: usize, y: usize) {
     let prompt = colors.green(&format!("Search:"));
     let search_term = colors.bold(&format!("{}_", search_term));
-    println!("\u{1b}[{};{}H{} {}\n", y + 1, x, prompt, search_term);
+    println!(
+        "\u{1b}[{};{}H\u{1b}[0m{} {}\n",
+        y + 1,
+        x,
+        prompt,
+        search_term
+    );
 }
 
-pub fn render_screen_toggle(active_screen: ActiveScreen, x: usize, y: usize, max_cols: usize) {
+pub fn render_screen_toggle(
+    active_screen: ActiveScreen,
+    x: usize,
+    y: usize,
+    max_cols: usize,
+    background: &PaletteColor,
+) {
     let key_indication_text = "<TAB>";
     let (new_session_text, running_sessions_text, exited_sessions_text) = if max_cols > 66 {
         ("New Session", "Attach to Session", "Resurrect Session")
@@ -520,10 +532,12 @@ pub fn render_screen_toggle(active_screen: ActiveScreen, x: usize, y: usize, max
     let key_indication_len = key_indication_text.chars().count() + 1;
     let first_ribbon_length = new_session_text.chars().count() + 4;
     let second_ribbon_length = running_sessions_text.chars().count() + 4;
+    let third_ribbon_length = exited_sessions_text.chars().count() + 4;
     let key_indication_x = x;
     let first_ribbon_x = key_indication_x + key_indication_len;
     let second_ribbon_x = first_ribbon_x + first_ribbon_length;
     let third_ribbon_x = second_ribbon_x + second_ribbon_length;
+    let reset_x = third_ribbon_x + third_ribbon_length + 1;
     let mut new_session_text = Text::new(new_session_text);
     let mut running_sessions_text = Text::new(running_sessions_text);
     let mut exited_sessions_text = Text::new(exited_sessions_text);
@@ -538,13 +552,18 @@ pub fn render_screen_toggle(active_screen: ActiveScreen, x: usize, y: usize, max
             exited_sessions_text = exited_sessions_text.selected();
         },
     }
+    let bg_color = match background {
+        PaletteColor::Rgb((r, g, b)) => format!("\u{1b}[48;2;{};{};{}m\u{1b}[0K", r, g, b),
+        PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),
+    };
     print_text_with_coordinates(
-        Text::new(key_indication_text).color_range(3, ..),
+        Text::new(key_indication_text).color_range(3, ..).opaque(),
         key_indication_x,
         y,
         None,
         None,
     );
+    println!("\u{1b}[{};{}H{}", y + 1, first_ribbon_x, bg_color);
     print_ribbon_with_coordinates(new_session_text, first_ribbon_x, y, None, None);
     print_ribbon_with_coordinates(running_sessions_text, second_ribbon_x, y, None, None);
     print_ribbon_with_coordinates(exited_sessions_text, third_ribbon_x, y, None, None);

@@ -1,5 +1,6 @@
 use super::{
-    is_too_high, parse_indices, parse_selected, parse_text, stringify_text, Coordinates, Text,
+    is_too_high, parse_indices, parse_opaque, parse_selected, parse_text, stringify_text,
+    Coordinates, Text,
 };
 use crate::panes::terminal_character::{AnsiCode, RESET_STYLES};
 use zellij_utils::data::Style;
@@ -40,11 +41,15 @@ pub fn nested_list(
                 .bold(Some(AnsiCode::On))
                 .foreground(Some(style.colors.white.into()))
                 .background(Some(style.colors.bg.into()))
-        } else {
+        } else if line_item.text.opaque {
             reset_styles_for_item
                 .bold(Some(AnsiCode::On))
                 .foreground(Some(style.colors.white.into()))
                 .background(Some(style.colors.black.into()))
+        } else {
+            reset_styles_for_item
+                .bold(Some(AnsiCode::On))
+                .foreground(Some(style.colors.white.into()))
         };
         let (mut text, text_width) = stringify_text(
             &line_item.text,
@@ -69,10 +74,12 @@ pub fn nested_list(
             RESET_STYLES
                 .foreground(Some(style.colors.white.into()))
                 .background(Some(style.colors.bg.into()))
-        } else {
+        } else if line_item.text.opaque {
             RESET_STYLES
                 .foreground(Some(style.colors.white.into()))
                 .background(Some(style.colors.black.into()))
+        } else {
+            RESET_STYLES.foreground(Some(style.colors.white.into()))
         };
         stringified.push_str(&format!(
             "{}{}{}{:padding$}{bulletin}{}{text}{}",
@@ -89,10 +96,12 @@ pub fn parse_nested_list_items<'a>(
         .flat_map(|mut stringified| {
             let indentation_level = parse_indentation_level(&mut stringified);
             let selected = parse_selected(&mut stringified);
+            let opaque = parse_opaque(&mut stringified);
             let indices = parse_indices(&mut stringified);
             let text = parse_text(&mut stringified).map_err(|e| e.to_string())?;
             let text = Text {
                 text,
+                opaque,
                 selected,
                 indices,
             };
