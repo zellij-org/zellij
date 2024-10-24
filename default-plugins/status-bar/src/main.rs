@@ -253,10 +253,19 @@ impl ZellijPlugin for State {
             ""
         };
 
+        let background = match self.mode_info.style.colors.theme_hue {
+            ThemeHue::Dark => self.mode_info.style.colors.black,
+            ThemeHue::Light => self.mode_info.style.colors.white,
+        };
+
         if rows == 1 && !self.classic_ui {
+            let fill_bg = match background {
+                PaletteColor::Rgb((r, g, b)) => format!("\u{1b}[48;2;{};{};{}m\u{1b}[0K", r, g, b),
+                PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),
+            };
             let active_tab = self.tabs.iter().find(|t| t.active);
             print!(
-                "{}",
+                "{}{}",
                 one_line_ui(
                     &self.mode_info,
                     active_tab,
@@ -265,7 +274,8 @@ impl ZellijPlugin for State {
                     self.base_mode_is_locked,
                     self.text_copy_destination,
                     self.display_system_clipboard_failure,
-                )
+                ),
+                fill_bg,
             );
             return;
         }
@@ -273,11 +283,6 @@ impl ZellijPlugin for State {
         let active_tab = self.tabs.iter().find(|t| t.active);
         let first_line = first_line(&self.mode_info, active_tab, cols, separator);
         let second_line = self.second_line(cols);
-
-        let background = match self.mode_info.style.colors.theme_hue {
-            ThemeHue::Dark => self.mode_info.style.colors.black,
-            ThemeHue::Light => self.mode_info.style.colors.white,
-        };
 
         // [48;5;238m is white background, [0K is so that it fills the rest of the line
         // [m is background reset, [0K is so that it clears the rest of the line

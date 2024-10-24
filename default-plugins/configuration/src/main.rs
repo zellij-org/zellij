@@ -71,6 +71,7 @@ struct State {
     ui_size: usize,
     current_screen: Screen,
     latest_mode_info: Option<ModeInfo>,
+    colors: Palette,
 }
 
 impl Default for State {
@@ -81,6 +82,7 @@ impl Default for State {
             ui_size: UI_SIZE,
             current_screen: Screen::default(),
             latest_mode_info: None,
+            colors: Palette::default(),
         }
     }
 }
@@ -114,6 +116,7 @@ impl ZellijPlugin for State {
         let mut should_render = false;
         match event {
             Event::ModeUpdate(mode_info) => {
+                self.colors = mode_info.style.colors;
                 if self.latest_mode_info.as_ref().and_then(|l| l.base_mode) != mode_info.base_mode {
                     // reset ui state
                     self.current_screen.reset_state(self.is_setup_wizard);
@@ -168,7 +171,7 @@ impl ZellijPlugin for State {
     fn render(&mut self, rows: usize, cols: usize) {
         let notification = self.notification.clone();
         if self.is_in_main_screen() {
-            top_tab_menu(cols, &self.current_screen);
+            top_tab_menu(cols, &self.current_screen, &self.colors);
         }
         match &mut self.current_screen {
             Screen::RebindLeaders(rebind_leaders_screen) => {
