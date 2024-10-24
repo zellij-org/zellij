@@ -1297,7 +1297,8 @@ impl Tab {
                             self.os_api,
                             self.senders,
                             self.character_cell_size
-                        ).non_fatal();
+                        )
+                        .non_fatal();
                         self.insert_scrollback_editor_replaced_pane(replaced_pane, pid);
                     },
                     None => {
@@ -4096,7 +4097,8 @@ impl Tab {
         match self.suppressed_panes.remove(&pane_id) {
             Some(pane) => {
                 self.show_floating_panes();
-                self.add_floating_pane(pane.1, pane_id, None, None).non_fatal();
+                self.add_floating_pane(pane.1, pane_id, None, None)
+                    .non_fatal();
                 self.floating_panes.focus_pane_for_all_clients(pane_id);
             },
             None => {

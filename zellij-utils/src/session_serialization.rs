@@ -5,9 +5,8 @@ use std::path::PathBuf;
 use crate::{
     input::layout::PluginUserConfiguration,
     input::layout::{
-        FloatingPaneLayout, Layout, LayoutConstraint, PercentOrFixed, Run,
-        RunPluginOrAlias, SplitDirection, SplitSize, SwapFloatingLayout, SwapTiledLayout,
-        TiledPaneLayout,
+        FloatingPaneLayout, Layout, LayoutConstraint, PercentOrFixed, Run, RunPluginOrAlias,
+        SplitDirection, SplitSize, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
     pane_size::{Constraint, PaneGeom},
 };

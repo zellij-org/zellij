@@ -2836,7 +2836,8 @@ pub(crate) fn screen_thread_main(
                         let all_tabs = screen.get_tabs_mut();
                         for tab in all_tabs.values_mut() {
                             if tab.has_pane_with_pid(&pane_id_to_replace) {
-                                tab.replace_pane_with_editor_pane(pid, pane_id_to_replace).non_fatal();
+                                tab.replace_pane_with_editor_pane(pid, pane_id_to_replace)
+                                    .non_fatal();
                                 found = true;
                                 break;
                             }
