@@ -32,8 +32,16 @@ impl Screen {
             Screen::new_reset_keybindings_screen(Some(0));
         } else {
             match self {
-                Screen::RebindLeaders(r) => *r = Default::default(),
-                Screen::Presets(r) => *r = Default::default(),
+                Screen::RebindLeaders(r) => {
+                    let notification = r.drain_notification();
+                    *r = Default::default();
+                    r.set_notification(notification);
+                },
+                Screen::Presets(r) => {
+                    let notification = r.drain_notification();
+                    *r = Default::default();
+                    r.set_notification(notification);
+                },
             }
         }
     }

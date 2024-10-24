@@ -680,6 +680,12 @@ impl RebindLeadersScreen {
             self.handle_default_preset_key(key)
         }
     }
+    pub fn drain_notification(&mut self) -> Option<String> {
+        self.notification.take()
+    }
+    pub fn set_notification(&mut self, notification: Option<String>) {
+        self.notification = notification;
+    }
     fn currently_in_unlock_first(&self) -> bool {
         if self.is_rebinding_for_presets {
             false
