@@ -1,7 +1,15 @@
 use crate::{Screen, WIDTH_BREAKPOINTS};
 use zellij_tile::prelude::*;
 
-pub fn top_tab_menu(cols: usize, current_screen: &Screen) {
+pub fn top_tab_menu(cols: usize, current_screen: &Screen, colors: &Palette) {
+    let background = match colors.theme_hue {
+        ThemeHue::Dark => colors.black,
+        ThemeHue::Light => colors.white,
+    };
+    let bg_color = match background {
+        PaletteColor::Rgb((r, g, b)) => format!("\u{1b}[48;2;{};{};{}m\u{1b}[0K", r, g, b),
+        PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),
+    };
     let first_ribbon_text_long = "Rebind leader keys";
     let second_ribbon_text_long = "Change mode behavior";
     let first_ribbon_text_short = "Rebind keys";
@@ -25,8 +33,9 @@ pub fn top_tab_menu(cols: usize, current_screen: &Screen) {
     if second_ribbon_is_selected {
         second_ribbon = second_ribbon.selected();
     }
-    let switch_key = Text::new("<TAB>").color_range(3, ..);
+    let switch_key = Text::new("<TAB>").color_range(3, ..).opaque();
     print_text_with_coordinates(switch_key, 0, 0, None, None);
+    print!("\u{1b}[{};{}H{}", 0, starting_positions.0 - 1, bg_color);
     print_ribbon_with_coordinates(first_ribbon, starting_positions.0, 0, None, None);
     print_ribbon_with_coordinates(second_ribbon, starting_positions.1, 0, None, None);
 }
