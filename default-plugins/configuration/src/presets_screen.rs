@@ -190,6 +190,12 @@ impl PresetsScreen {
     pub fn reset_selected_index(&mut self) {
         self.selected_index = Some(0);
     }
+    pub fn drain_notification(&mut self) -> Option<String> {
+        self.notification.take()
+    }
+    pub fn set_notification(&mut self, notification: Option<String>) {
+        self.notification = notification;
+    }
     fn reconfigure(&self, selected: usize, write_to_disk: bool) {
         if selected == 0 {
             // TODO: these should be part of a "transaction" when they are
