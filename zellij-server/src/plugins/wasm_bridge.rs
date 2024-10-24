@@ -369,8 +369,6 @@ impl WasmBridge {
             let default_shell = self.default_shell.clone();
             let default_layout = self.default_layout.clone();
             let layout_dir = self.layout_dir.clone();
-            let base_modes = self.base_modes.clone();
-            let keybinds = self.keybinds.clone();
             async move {
                 match PluginLoader::reload_plugin(
                     plugin_id,
@@ -388,8 +386,6 @@ impl WasmBridge {
                     default_shell.clone(),
                     default_layout.clone(),
                     layout_dir.clone(),
-                    &base_modes,
-                    &keybinds,
                 ) {
                     Ok(_) => {
                         let plugin_list = plugin_map.lock().unwrap().list_plugins();
@@ -449,8 +445,6 @@ impl WasmBridge {
             let default_shell = self.default_shell.clone();
             let default_layout = self.default_layout.clone();
             let layout_dir = self.layout_dir.clone();
-            let base_modes = self.base_modes.clone();
-            let keybinds = self.keybinds.clone();
             async move {
                 match PluginLoader::reload_plugin(
                     first_plugin_id,
@@ -468,8 +462,6 @@ impl WasmBridge {
                     default_shell.clone(),
                     default_layout.clone(),
                     layout_dir.clone(),
-                    &base_modes,
-                    &keybinds,
                 ) {
                     Ok(_) => {
                         let plugin_list = plugin_map.lock().unwrap().list_plugins();
@@ -496,8 +488,6 @@ impl WasmBridge {
                                 default_shell.clone(),
                                 default_layout.clone(),
                                 layout_dir.clone(),
-                                &base_modes,
-                                &keybinds,
                             ) {
                                 Ok(_) => {
                                     let plugin_list = plugin_map.lock().unwrap().list_plugins();

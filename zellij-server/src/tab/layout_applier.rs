@@ -109,14 +109,12 @@ impl<'a> LayoutApplier<'a> {
         client_id: ClientId,
     ) -> Result<bool> {
         // true => should_show_floating_panes
-        let layout_name = layout.name.clone();
         let hide_floating_panes = layout.hide_floating_panes;
         self.apply_tiled_panes_layout(layout, new_terminal_ids, &mut new_plugin_ids, client_id)?;
         let layout_has_floating_panes = self.apply_floating_panes_layout(
             floating_panes_layout,
             new_floating_terminal_ids,
             &mut new_plugin_ids,
-            layout_name,
         )?;
         let should_show_floating_panes = layout_has_floating_panes && !hide_floating_panes;
         return Ok(should_show_floating_panes);
@@ -379,7 +377,6 @@ impl<'a> LayoutApplier<'a> {
         floating_panes_layout: Vec<FloatingPaneLayout>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_plugin_ids: &mut HashMap<RunPluginOrAlias, Vec<u32>>,
-        layout_name: Option<String>,
     ) -> Result<bool> {
         // true => has floating panes
         let err_context = || format!("Failed to apply_floating_panes_layout");

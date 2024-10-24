@@ -3,10 +3,9 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::{
-    input::command::RunCommand,
     input::layout::PluginUserConfiguration,
     input::layout::{
-        FloatingPaneLayout, Layout, LayoutConstraint, PercentOrFixed, Run, RunPlugin,
+        FloatingPaneLayout, Layout, LayoutConstraint, PercentOrFixed, Run,
         RunPluginOrAlias, SplitDirection, SplitSize, SwapFloatingLayout, SwapTiledLayout,
         TiledPaneLayout,
     },
@@ -1263,6 +1262,8 @@ mod tests {
     }
     #[test]
     fn can_serialize_tab_with_tiled_panes() {
+        use crate::input::command::RunCommand;
+        use crate::input::layout::RunPlugin;
         let mut plugin_configuration = BTreeMap::new();
         plugin_configuration.insert("key 1\"\\".to_owned(), "val 1\"\\".to_owned());
         plugin_configuration.insert("key 2\"\\".to_owned(), "val 2\"\\".to_owned());
@@ -1401,6 +1402,8 @@ mod tests {
     }
     #[test]
     fn can_serialize_tab_with_floating_panes() {
+        use crate::input::command::RunCommand;
+        use crate::input::layout::RunPlugin;
         let mut plugin_configuration = BTreeMap::new();
         plugin_configuration.insert("key 1\"\\".to_owned(), "val 1\"\\".to_owned());
         plugin_configuration.insert("key 2\"\\".to_owned(), "val 2\"\\".to_owned());

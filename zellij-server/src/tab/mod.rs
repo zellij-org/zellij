@@ -1297,7 +1297,7 @@ impl Tab {
                             self.os_api,
                             self.senders,
                             self.character_cell_size
-                        );
+                        ).non_fatal();
                         self.insert_scrollback_editor_replaced_pane(replaced_pane, pid);
                     },
                     None => {
@@ -3089,17 +3089,6 @@ impl Tab {
         }
     }
 
-    pub fn scroll_terminal_half_page_up(&mut self, terminal_pane_id: u32) {
-        if let Some(terminal_pane) = self.get_pane_with_id_mut(PaneId::Terminal(terminal_pane_id)) {
-            let fictitious_client_id = 1; // this is not checked for terminal panes and we
-                                          // don't have an actual client id here
-                                          // TODO: traits were a mistake
-                                          // prevent overflow when row == 0
-            let scroll_rows = (terminal_pane.rows().max(1).saturating_sub(1)) / 2;
-            terminal_pane.scroll_down(scroll_rows, fictitious_client_id);
-        }
-    }
-
     pub fn scroll_active_terminal_down_half_page(&mut self, client_id: ClientId) -> Result<()> {
         let err_context =
             || format!("failed to scroll down half a page in active pane for client {client_id}");
@@ -3115,21 +3104,6 @@ impl Tab {
             }
         }
         Ok(())
-    }
-
-    pub fn scroll_terminal_half_page_down(&mut self, terminal_pane_id: u32) {
-        if let Some(terminal_pane) = self.get_pane_with_id_mut(PaneId::Terminal(terminal_pane_id)) {
-            let fictitious_client_id = 1; // this is not checked for terminal panes and we
-                                          // don't have an actual client id here
-                                          // TODO: traits were a mistake
-            let scroll_rows = (terminal_pane.rows().max(1) - 1) / 2;
-            terminal_pane.scroll_down(scroll_rows, fictitious_client_id);
-            if !terminal_pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = terminal_pane.pid() {
-                    self.process_pending_vte_events(raw_fd).non_fatal();
-                }
-            }
-        }
     }
 
     pub fn scroll_active_terminal_to_bottom(&mut self, client_id: ClientId) -> Result<()> {
@@ -4122,7 +4096,7 @@ impl Tab {
         match self.suppressed_panes.remove(&pane_id) {
             Some(pane) => {
                 self.show_floating_panes();
-                self.add_floating_pane(pane.1, pane_id, None, None);
+                self.add_floating_pane(pane.1, pane_id, None, None).non_fatal();
                 self.floating_panes.focus_pane_for_all_clients(pane_id);
             },
             None => {

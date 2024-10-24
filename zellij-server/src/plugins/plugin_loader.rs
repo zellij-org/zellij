@@ -90,8 +90,6 @@ impl<'a> PluginLoader<'a> {
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
-        base_modes: &HashMap<ClientId, InputMode>,
-        keybinds: &HashMap<ClientId, Keybinds>,
     ) -> Result<()> {
         let err_context = || format!("failed to reload plugin {plugin_id} from memory");
         let mut connected_clients: Vec<ClientId> =
@@ -100,11 +98,6 @@ impl<'a> PluginLoader<'a> {
             return Err(anyhow!("No connected clients, cannot reload plugin"));
         }
         let first_client_id = connected_clients.remove(0);
-        let keybinds = keybinds.get(&first_client_id).cloned().unwrap_or_default();
-        let default_mode = base_modes
-            .get(&first_client_id)
-            .cloned()
-            .unwrap_or_default();
 
         let mut plugin_loader = PluginLoader::new_from_existing_plugin_attributes(
             &plugin_cache,
@@ -122,8 +115,6 @@ impl<'a> PluginLoader<'a> {
             default_shell,
             default_layout,
             layout_dir,
-            default_mode,
-            keybinds,
         )?;
         plugin_loader
             .load_module_from_memory()
@@ -290,8 +281,6 @@ impl<'a> PluginLoader<'a> {
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
-        base_modes: &HashMap<ClientId, InputMode>,
-        keybinds: &HashMap<ClientId, Keybinds>,
     ) -> Result<()> {
         let err_context = || format!("failed to reload plugin id {plugin_id}");
 
@@ -301,11 +290,6 @@ impl<'a> PluginLoader<'a> {
             return Err(anyhow!("No connected clients, cannot reload plugin"));
         }
         let first_client_id = connected_clients.remove(0);
-        let keybinds = keybinds.get(&first_client_id).cloned().unwrap_or_default();
-        let default_mode = base_modes
-            .get(&first_client_id)
-            .cloned()
-            .unwrap_or_default();
 
         let mut plugin_loader = PluginLoader::new_from_existing_plugin_attributes(
             &plugin_cache,
@@ -323,8 +307,6 @@ impl<'a> PluginLoader<'a> {
             default_shell,
             default_layout,
             layout_dir,
-            default_mode,
-            keybinds,
         )?;
         plugin_loader
             .compile_module()
@@ -406,8 +388,6 @@ impl<'a> PluginLoader<'a> {
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
-        default_mode: InputMode,
-        keybinds: Keybinds,
     ) -> Result<Self> {
         let err_context = || "Failed to find existing plugin";
         let (running_plugin, _subscriptions, _workers) = {
@@ -833,11 +813,11 @@ impl<'a> PluginLoader<'a> {
                 self.plugin_id,
             )))));
         let wasi_ctx = wasi_ctx_builder.build_p1();
-        let mut mut_plugin = self.plugin.clone();
+        let plugin = self.plugin.clone();
         let plugin_env = PluginEnv {
             plugin_id: self.plugin_id,
             client_id: self.client_id,
-            plugin: mut_plugin,
+            plugin,
             permissions: Arc::new(Mutex::new(None)),
             senders: self.senders.clone(),
             wasi_ctx,
