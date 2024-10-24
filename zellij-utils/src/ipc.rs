@@ -4,7 +4,6 @@ use crate::{
     data::{ClientId, ConnectToSession, KeyWithModifier, Style},
     errors::{get_current_ctx, prelude::*, ErrorContext},
     input::config::Config,
-    input::keybinds::Keybinds,
     input::{actions::Action, layout::Layout, options::Options, plugins::PluginAliases},
     pane_size::{Size, SizeInPixels},
 };
