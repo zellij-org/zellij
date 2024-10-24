@@ -705,9 +705,17 @@ impl Grid {
             let line_to_push_up = if line_to_push_up.is_canonical {
                 line_to_push_up
             } else {
-                let mut last_line_above = self.lines_above.pop_back().unwrap();
-                last_line_above.append(&mut line_to_push_up.columns);
-                last_line_above
+                match self.lines_above.pop_back() {
+                    Some(mut last_line_above) => {
+                        last_line_above.append(&mut line_to_push_up.columns);
+                        last_line_above
+                    },
+                    None => {
+                        // in this case, this line was not canonical but its beginning line was
+                        // dropped out of scope, so we make it canonical and push it up
+                        line_to_push_up.canonical()
+                    },
+                }
             };
 
             let dropped_line_width =
