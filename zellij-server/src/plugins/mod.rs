@@ -14,7 +14,6 @@ use std::{
 };
 use wasmtime::Engine;
 
-use crate::background_jobs::BackgroundJob;
 use crate::panes::PaneId;
 use crate::screen::ScreenInstruction;
 use crate::session_layout_metadata::SessionLayoutMetadata;
@@ -34,7 +33,7 @@ use zellij_utils::{
         command::TerminalAction,
         keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout},
-        plugins::{PluginAliases, PluginConfig},
+        plugins::PluginAliases,
     },
     ipc::ClientAttributes,
     pane_size::Size,
@@ -254,7 +253,7 @@ pub(crate) fn plugin_thread_main(
         default_keybinds,
     );
 
-    for mut run_plugin_or_alias in background_plugins {
+    for run_plugin_or_alias in background_plugins {
         load_background_plugin(
             run_plugin_or_alias,
             &mut wasm_bridge,

@@ -51,7 +51,7 @@ use zellij_utils::{
         config::Config,
         get_mode_info,
         keybinds::Keybinds,
-        layout::{FloatingPaneLayout, Layout, PercentOrFixed, PluginAlias, Run, RunPluginOrAlias},
+        layout::{FloatingPaneLayout, Layout, PluginAlias, Run, RunPluginOrAlias},
         options::Options,
         plugins::PluginAliases,
     },
@@ -1169,7 +1169,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .propagate_configuration_changes(changes);
             },
-            ServerInstruction::FailedToWriteConfigToDisk(client_id, file_path) => {
+            ServerInstruction::FailedToWriteConfigToDisk(_client_id, file_path) => {
                 session_data
                     .write()
                     .unwrap()

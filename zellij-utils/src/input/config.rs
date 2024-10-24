@@ -10,7 +10,7 @@ use thiserror::Error;
 use std::convert::TryFrom;
 
 use super::keybinds::Keybinds;
-use super::layout::{RunPlugin, RunPluginOrAlias};
+use super::layout::RunPluginOrAlias;
 use super::options::Options;
 use super::plugins::{PluginAliases, PluginsConfigError};
 use super::theme::{Themes, UiConfig};
@@ -402,10 +402,9 @@ impl Config {
 #[cfg(test)]
 mod config_test {
     use super::*;
-    use crate::data::{InputMode, Palette, PaletteColor, PluginTag};
-    use crate::input::layout::{RunPlugin, RunPluginLocation};
+    use crate::data::{InputMode, Palette, PaletteColor};
+    use crate::input::layout::RunPlugin;
     use crate::input::options::{Clipboard, OnForceClose};
-    use crate::input::plugins::PluginConfig;
     use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
     use std::collections::{BTreeMap, HashMap};
     use std::io::Write;

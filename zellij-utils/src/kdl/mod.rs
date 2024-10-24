@@ -1030,13 +1030,13 @@ impl Action {
             Action::KeybindPipe {
                 name,
                 payload,
-                args,
+                args: _, // currently unsupported
                 plugin,
                 configuration,
                 launch_new,
                 skip_cache,
                 floating,
-                in_place,
+                in_place: _, // currently unsupported
                 cwd,
                 pane_title,
                 plugin_id,
