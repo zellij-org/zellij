@@ -1,7 +1,7 @@
 use std::fmt::{Display, Error, Formatter};
 
 use zellij_utils::{
-    data::{Palette, PaletteColor},
+    data::{PaletteColor, Styling},
     errors::prelude::*,
 };
 
@@ -24,7 +24,7 @@ pub struct LoadingIndication {
     error: Option<String>,
     animation_offset: usize,
     plugin_name: String,
-    terminal_emulator_colors: Option<Palette>,
+    terminal_emulator_colors: Option<Styling>,
     override_previous_error: bool,
 }
 
@@ -39,7 +39,7 @@ impl LoadingIndication {
     pub fn set_name(&mut self, plugin_name: String) {
         self.plugin_name = plugin_name;
     }
-    pub fn with_colors(mut self, terminal_emulator_colors: Palette) -> Self {
+    pub fn with_colors(mut self, terminal_emulator_colors: Styling) -> Self {
         self.terminal_emulator_colors = Some(terminal_emulator_colors);
         self
     }
@@ -142,19 +142,27 @@ macro_rules! style {
 impl Display for LoadingIndication {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let cyan = match self.terminal_emulator_colors {
-            Some(terminal_emulator_colors) => style!(terminal_emulator_colors.cyan).bold(),
+            Some(terminal_emulator_colors) => {
+                style!(terminal_emulator_colors.exit_code_success.emphasis_1).bold()
+            },
             None => ansi_term::Style::new(),
         };
         let green = match self.terminal_emulator_colors {
-            Some(terminal_emulator_colors) => style!(terminal_emulator_colors.green).bold(),
+            Some(terminal_emulator_colors) => {
+                style!(terminal_emulator_colors.exit_code_success.base).bold()
+            },
             None => ansi_term::Style::new(),
         };
         let yellow = match self.terminal_emulator_colors {
-            Some(terminal_emulator_colors) => style!(terminal_emulator_colors.yellow).bold(),
+            Some(terminal_emulator_colors) => {
+                style!(terminal_emulator_colors.exit_code_error.emphasis_1).bold()
+            },
             None => ansi_term::Style::new(),
         };
         let red = match self.terminal_emulator_colors {
-            Some(terminal_emulator_colors) => style!(terminal_emulator_colors.red).bold(),
+            Some(terminal_emulator_colors) => {
+                style!(terminal_emulator_colors.exit_code_error.base).bold()
+            },
             None => ansi_term::Style::new(),
         };
         let bold = ansi_term::Style::new().bold().italic();
