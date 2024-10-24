@@ -869,29 +869,33 @@ impl State {
         tab_line
     }
     pub fn render_help(&self, y: usize, cols: usize) {
-        let full_text = "Help: <←↓↑→> - Navigate/Expand, <ENTER> - focus, <TAB> - Reload, <Del> - Close, <INSERT> - New";
+        let full_text = "Help: <←↓↑→> - Navigate/Expand, <ENTER> - focus, <TAB> - Reload, <Del> - Close, <Ctrl a> - New, <ESC> - Exit";
         let middle_text =
-            "Help: <←↓↑→/ENTER> - Navigate, <TAB> - Reload, <Del> - Close, <INSERT> - New";
-        let short_text = "<←↓↑→/ENTER/TAB/Del> - Navigate/Expand/Reload/Close, <INSERT> - New";
+            "Help: <←↓↑→/ENTER> - Navigate, <TAB> - Reload, <Del> - Close, <Ctrl a> - New, <ESC> - Exit";
+        let short_text =
+            "<←↓↑→/ENTER/TAB/Del> - Navigate/Expand/Reload/Close, <Ctrl a> - New, <ESC> - Exit";
         if cols >= full_text.chars().count() {
             let text = Text::new(full_text)
                 .color_range(3, 5..=11)
                 .color_range(3, 32..=38)
                 .color_range(3, 49..=53)
                 .color_range(3, 65..=69)
-                .color_range(3, 80..=87);
+                .color_range(3, 80..=87)
+                .color_range(3, 96..=100);
             print_text_with_coordinates(text, 0, y, Some(cols), None);
         } else if cols >= middle_text.chars().count() {
             let text = Text::new(middle_text)
                 .color_range(3, 6..=17)
                 .color_range(3, 31..=35)
                 .color_range(3, 47..=51)
-                .color_range(3, 62..=69);
+                .color_range(3, 62..=69)
+                .color_range(3, 78..=82);
             print_text_with_coordinates(text, 0, y, Some(cols), None);
         } else {
             let text = Text::new(short_text)
                 .color_range(3, ..=21)
-                .color_range(3, 53..=60);
+                .color_range(3, 53..=60)
+                .color_range(3, 69..=73);
             print_text_with_coordinates(text, 0, y, Some(cols), None);
         }
     }
@@ -1017,7 +1021,7 @@ impl State {
             BareKey::Tab if key.has_no_modifiers() => {
                 self.reload_selected();
             },
-            BareKey::Insert if key.has_no_modifiers() => {
+            BareKey::Char('a') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                 self.new_plugin_screen = Some(NewPluginScreen::new(self.colors));
                 should_render = true;
             },
@@ -1025,9 +1029,13 @@ impl State {
                 self.close_selected();
             },
             BareKey::Esc if key.has_no_modifiers() => {
-                self.search_term.clear();
-                self.update_search_term();
-                should_render = true;
+                if !self.search_term.is_empty() {
+                    self.search_term.clear();
+                    self.update_search_term();
+                    should_render = true;
+                } else {
+                    close_self();
+                }
             },
             _ => {},
         }

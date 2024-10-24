@@ -9,6 +9,7 @@ use zellij_tile::prelude::*;
 use zellij_tile_utils::palette_match;
 
 use crate::first_line::{to_char, KeyAction, KeyMode, KeyShortcut};
+use crate::second_line::{system_clipboard_error, text_copied_hint};
 use crate::{action_key, action_key_group, color_elements, MORE_MSG, TO_NORMAL};
 use crate::{ColoredElements, LinePart};
 use unicode_width::UnicodeWidthStr;
@@ -19,7 +20,15 @@ pub fn one_line_ui(
     mut max_len: usize,
     separator: &str,
     base_mode_is_locked: bool,
+    text_copied_to_clipboard_destination: Option<CopyDestination>,
+    clipboard_failure: bool,
 ) -> LinePart {
+    if let Some(text_copied_to_clipboard_destination) = text_copied_to_clipboard_destination {
+        return text_copied_hint(&help.style.colors, text_copied_to_clipboard_destination);
+    }
+    if clipboard_failure {
+        return system_clipboard_error(&help.style.colors);
+    }
     let mut line_part_to_render = LinePart::default();
     let mut append = |line_part: &LinePart, max_len: &mut usize| {
         line_part_to_render.append(line_part);
@@ -696,7 +705,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
     let move_focus_left_action_key = action_key(binds, &[Action::MoveFocusOrTab(Direction::Left)]);
     let move_focus_left_key = move_focus_left_action_key
         .iter()
-        .find(|k| k.is_key_with_alt_modifier(BareKey::Left))
+        .find(|k| k.bare_key == BareKey::Left)
         .or_else(|| move_focus_left_action_key.iter().next());
     if let Some(move_focus_left_key) = move_focus_left_key {
         move_focus_shortcuts.push(move_focus_left_key.clone());
@@ -705,7 +714,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
     let move_focus_left_action_key = action_key(binds, &[Action::MoveFocus(Direction::Down)]);
     let move_focus_left_key = move_focus_left_action_key
         .iter()
-        .find(|k| k.is_key_with_alt_modifier(BareKey::Down))
+        .find(|k| k.bare_key == BareKey::Down)
         .or_else(|| move_focus_left_action_key.iter().next());
     if let Some(move_focus_left_key) = move_focus_left_key {
         move_focus_shortcuts.push(move_focus_left_key.clone());
@@ -714,7 +723,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
     let move_focus_left_action_key = action_key(binds, &[Action::MoveFocus(Direction::Up)]);
     let move_focus_left_key = move_focus_left_action_key
         .iter()
-        .find(|k| k.is_key_with_alt_modifier(BareKey::Up))
+        .find(|k| k.bare_key == BareKey::Up)
         .or_else(|| move_focus_left_action_key.iter().next());
     if let Some(move_focus_left_key) = move_focus_left_key {
         move_focus_shortcuts.push(move_focus_left_key.clone());
@@ -723,7 +732,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
     let move_focus_left_action_key = action_key(binds, &[Action::MoveFocusOrTab(Direction::Right)]);
     let move_focus_left_key = move_focus_left_action_key
         .iter()
-        .find(|k| k.is_key_with_alt_modifier(BareKey::Right))
+        .find(|k| k.bare_key == BareKey::Right)
         .or_else(|| move_focus_left_action_key.iter().next());
     if let Some(move_focus_left_key) = move_focus_left_key {
         move_focus_shortcuts.push(move_focus_left_key.clone());

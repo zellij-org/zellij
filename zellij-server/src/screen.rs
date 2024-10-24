@@ -410,6 +410,7 @@ pub enum ScreenInstruction {
         should_change_focus_to_new_tab: bool,
         client_id: ClientId,
     },
+    ListClientsToPlugin(PluginId, ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -621,6 +622,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::BreakPanesToTabWithIndex { .. } => {
                 ScreenContext::BreakPanesToTabWithIndex
             },
+            ScreenInstruction::ListClientsToPlugin(..) => ScreenContext::ListClientsToPlugin,
         }
     }
 }
@@ -2506,7 +2508,7 @@ impl Screen {
         let active_tab_index =
             first_client_id.and_then(|client_id| self.active_tab_indices.get(&client_id));
 
-        for (tab_index, tab) in self.tabs.values().enumerate() {
+        for (tab_index, tab) in self.tabs.iter() {
             let tab_is_focused = active_tab_index == Some(&tab_index);
             let hide_floating_panes = !tab.are_floating_panes_visible();
             let mut suppressed_panes = HashMap::new();
@@ -3106,6 +3108,21 @@ pub(crate) fn screen_thread_main(
                     .send_to_pty(PtyInstruction::DumpLayoutToPlugin(
                         session_layout_metadata,
                         plugin_id,
+                    ))
+                    .with_context(err_context)
+                    .non_fatal();
+            },
+            ScreenInstruction::ListClientsToPlugin(plugin_id, client_id) => {
+                let err_context = || format!("Failed to dump layout");
+                let session_layout_metadata =
+                    screen.get_layout_metadata(screen.default_shell.clone());
+                screen
+                    .bus
+                    .senders
+                    .send_to_pty(PtyInstruction::ListClientsToPlugin(
+                        session_layout_metadata,
+                        plugin_id,
+                        client_id,
                     ))
                     .with_context(err_context)
                     .non_fatal();

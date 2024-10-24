@@ -693,12 +693,8 @@ impl<'a> PluginLoader<'a> {
             .try_into()
             .map_err(|e| anyhow!("Failed to serialize user configuration: {:?}", e))?;
         let protobuf_bytes = protobuf_plugin_configuration.encode_to_vec();
-        wasi_write_object(
-            plugin.lock().unwrap().store.data(),
-            &protobuf_bytes,
-            // &self.plugin.userspace_configuration.inner(),
-        )
-        .with_context(err_context)?;
+        wasi_write_object(plugin.lock().unwrap().store.data(), &protobuf_bytes)
+            .with_context(err_context)?;
         load_function
             .call(&mut plugin.lock().unwrap().store, ())
             .with_context(err_context)?;

@@ -715,6 +715,7 @@ pub enum CommandName {
     ReloadPlugin = 110,
     LoadNewPlugin = 111,
     RebindKeys = 112,
+    ListClients = 113,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -838,6 +839,7 @@ impl CommandName {
             CommandName::ReloadPlugin => "ReloadPlugin",
             CommandName::LoadNewPlugin => "LoadNewPlugin",
             CommandName::RebindKeys => "RebindKeys",
+            CommandName::ListClients => "ListClients",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -958,6 +960,7 @@ impl CommandName {
             "ReloadPlugin" => Some(Self::ReloadPlugin),
             "LoadNewPlugin" => Some(Self::LoadNewPlugin),
             "RebindKeys" => Some(Self::RebindKeys),
+            "ListClients" => Some(Self::ListClients),
             _ => None,
         }
     }
