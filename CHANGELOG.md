@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
-* feat(layouts): allow consuming a layout through a url (https://github.com/zellij-org/zellij/pull/3351)
+* feat(layouts): allow consuming a layout through a url (https://github.com/zellij-org/zellij/pull/3351 and https://github.com/zellij-org/zellij/pull/3697)
 * dependencies: eliminate future incompatibility warnings (https://github.com/zellij-org/zellij/pull/3315)
 * fix(plugins): occasional out of order events on startup (https://github.com/zellij-org/zellij/pull/3367)
 * feat(keybinds): support multiple modifiers (eg. Ctrl+Alt) and the kitty keyboard protocol (https://github.com/zellij-org/zellij/pull/3383, https://github.com/zellij-org/zellij/pull/3441 and https://github.com/zellij-org/zellij/pull/3484)
