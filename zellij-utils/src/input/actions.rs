@@ -533,6 +533,7 @@ impl Action {
                         .or_else(|| config.and_then(|c| c.options.layout_dir))
                         .or_else(|| get_layout_dir(find_default_config_dir()));
 
+                    let mut should_start_layout_commands_suspended = false;
                     let (path_to_raw_layout, raw_layout, swap_layouts) = if let Some(layout_url) =
                         layout_path.to_str().and_then(|l| {
                             if l.starts_with("http://") || l.starts_with("https://") {
@@ -541,6 +542,7 @@ impl Action {
                                 None
                             }
                         }) {
+                            should_start_layout_commands_suspended = true;
                         (
                             layout_url.to_owned(),
                             Layout::stringified_from_url(layout_url)
@@ -551,7 +553,7 @@ impl Action {
                         Layout::stringified_from_path_or_default(Some(&layout_path), layout_dir)
                             .map_err(|e| format!("Failed to load layout: {}", e))?
                     };
-                    let layout = Layout::from_str(&raw_layout, path_to_raw_layout, swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())), cwd).map_err(|e| {
+                    let mut layout = Layout::from_str(&raw_layout, path_to_raw_layout, swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())), cwd).map_err(|e| {
                         let stringified_error = match e {
                             ConfigError::KdlError(kdl_error) => {
                                 let error = kdl_error.add_src(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout));
@@ -583,6 +585,9 @@ impl Action {
                         };
                         stringified_error
                     })?;
+                    if should_start_layout_commands_suspended {
+                        layout.recursively_add_start_suspended_including_template(Some(true));
+                    }
                     let mut tabs = layout.tabs();
                     if !tabs.is_empty() {
                         let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
