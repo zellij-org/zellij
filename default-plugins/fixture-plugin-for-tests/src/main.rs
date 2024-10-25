@@ -447,7 +447,7 @@ impl ZellijPlugin for State {
                 },
                 BareKey::Char('y') if key.has_modifiers(&[KeyModifier::Alt]) => {
                     let write_to_disk = true;
-                    let mut keys_to_unbind = vec![
+                    let keys_to_unbind = vec![
                         (
                             InputMode::Locked,
                             KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
@@ -481,7 +481,7 @@ impl ZellijPlugin for State {
                             KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
                         ),
                     ];
-                    let mut keys_to_rebind = vec![
+                    let keys_to_rebind = vec![
                         (
                             InputMode::Locked,
                             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
