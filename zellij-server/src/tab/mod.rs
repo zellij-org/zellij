@@ -2056,19 +2056,19 @@ impl Tab {
     pub fn are_floating_panes_visible(&self) -> bool {
         self.floating_panes.panes_are_visible()
     }
-    pub fn focus_pane_left_fullscreen(&mut self, client_id: ClientId) {
+    pub fn focus_pane_left_fullscreen(&mut self, client_id: ClientId) -> bool {
         if !self.is_fullscreen_active() {
-            return;
+            return false;
         }
 
-        self.tiled_panes.focus_pane_left_fullscreen(client_id);
+        return self.tiled_panes.focus_pane_left_fullscreen(client_id);
     }
-    pub fn focus_pane_right_fullscreen(&mut self, client_id: ClientId) {
+    pub fn focus_pane_right_fullscreen(&mut self, client_id: ClientId) -> bool {
         if !self.is_fullscreen_active() {
-            return;
+            return false;
         }
 
-        self.tiled_panes.focus_pane_right_fullscreen(client_id);
+        return self.tiled_panes.focus_pane_right_fullscreen(client_id);
     }
     pub fn focus_pane_up_fullscreen(&mut self, client_id: ClientId) {
         if !self.is_fullscreen_active() {
@@ -2405,8 +2405,7 @@ impl Tab {
                 return Ok(false);
             }
             if self.tiled_panes.fullscreen_is_active() {
-                self.focus_pane_left_fullscreen(client_id);
-                return Ok(true);
+                return Ok(self.focus_pane_left_fullscreen(client_id));
             }
             Ok(self.tiled_panes.move_focus_left(client_id))
         }
@@ -2472,8 +2471,7 @@ impl Tab {
                 return Ok(false);
             }
             if self.tiled_panes.fullscreen_is_active() {
-                self.focus_pane_right_fullscreen(client_id);
-                return Ok(true);
+                return Ok(self.focus_pane_right_fullscreen(client_id));
             }
             Ok(self.tiled_panes.move_focus_right(client_id))
         }
