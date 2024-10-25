@@ -53,11 +53,11 @@ cargo install --locked zellij
 
 bash/zsh:
 ```bash
-bash <(curl -L zellij.dev/launch)
+bash <(curl -L https://zellij.dev/launch)
 ```
 fish/xonsh:
 ```bash
-bash -c 'bash <(curl -L zellij.dev/launch)'
+bash -c 'bash <(curl -L https://zellij.dev/launch)'
 ```
 
 #### Installing from `main`
