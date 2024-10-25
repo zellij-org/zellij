@@ -1,14 +1,10 @@
 use ansi_term::ANSIStrings;
-use ansi_term::{
-    Color::{Fixed, RGB},
-    Style,
-};
 use unicode_width::UnicodeWidthStr;
 
 use crate::{LinePart, ARROW_SEPARATOR};
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
-use zellij_tile_utils::{palette_match, style};
+use zellij_tile_utils::style;
 
 fn get_current_title_len(current_title: &[LinePart]) -> usize {
     current_title.iter().map(|p| p.len).sum()
@@ -251,7 +247,6 @@ pub fn tab_line(
     } else {
         tab_info.and_then(|tab_info| {
             swap_layout_status(
-                cols,
                 &tab_info.active_swap_layout_name,
                 tab_info.is_swap_layout_dirty,
                 mode_info,
@@ -307,7 +302,6 @@ pub fn tab_line(
 }
 
 fn swap_layout_status(
-    cols: usize,
     swap_layout_name: &Option<String>,
     is_swap_layout_dirty: bool,
     mode_info: &ModeInfo,
