@@ -532,12 +532,10 @@ pub fn render_screen_toggle(
     let key_indication_len = key_indication_text.chars().count() + 1;
     let first_ribbon_length = new_session_text.chars().count() + 4;
     let second_ribbon_length = running_sessions_text.chars().count() + 4;
-    let third_ribbon_length = exited_sessions_text.chars().count() + 4;
     let key_indication_x = x;
     let first_ribbon_x = key_indication_x + key_indication_len;
     let second_ribbon_x = first_ribbon_x + first_ribbon_length;
     let third_ribbon_x = second_ribbon_x + second_ribbon_length;
-    let reset_x = third_ribbon_x + third_ribbon_length + 1;
     let mut new_session_text = Text::new(new_session_text);
     let mut running_sessions_text = Text::new(running_sessions_text);
     let mut exited_sessions_text = Text::new(exited_sessions_text);

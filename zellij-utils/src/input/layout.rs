@@ -1229,8 +1229,8 @@ impl Layout {
             ),
         }
     }
+    #[cfg(not(target_family = "wasm"))]
     pub fn stringified_from_url(url: &str) -> Result<String, ConfigError> {
-        #[cfg(not(target_family = "wasm"))]
         let raw_layout = task::block_on(async move {
             let download = Downloader::download_without_cache(url).await;
             match download {
@@ -1238,8 +1238,11 @@ impl Layout {
                 Err(e) => Err(ConfigError::DownloadError(format!("{}", e))),
             }
         })?;
+        Ok(raw_layout)
+    }
+    #[cfg(target_family = "wasm")]
+    pub fn stringified_from_url(_url: &str) -> Result<String, ConfigError> {
         // silently fail - this should not happen in plugins and legacy architecture is hard
-        #[cfg(target_family = "wasm")]
         let raw_layout = String::new();
         Ok(raw_layout)
     }
@@ -1284,7 +1287,7 @@ impl Layout {
         Ok((layout, config))
     }
     #[cfg(target_family = "wasm")]
-    pub fn from_url(url: &str, config: Config) -> Result<(Layout, Config), ConfigError> {
+    pub fn from_url(_url: &str, _config: Config) -> Result<(Layout, Config), ConfigError> {
         Err(ConfigError::DownloadError(format!(
             "Unsupported platform, cannot download layout from the web"
         )))
