@@ -1,0 +1,18 @@
+// Vesper theme
+// https://github.com/raunofreiberg/vesper
+
+themes {
+  vesper {
+    fg "#ffffff"
+    bg "#101010"
+    black "#101010"
+    red "#f5a191"
+    green "#90b99f"
+    yellow "#e6b99d"
+    blue "#aca1cf"
+    magenta "#e29eca"
+    cyan "#ea83a5"
+    white "#a0a0a0"
+    orange "#ffc799"
+  }
+}
