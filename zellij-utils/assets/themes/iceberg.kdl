@@ -1,0 +1,30 @@
+themes {
+    // note: blue and green are actually swapped to better
+    // fit with the iceberg theme's emphasis on blue
+    iceberg-dark {
+        fg 198 200 209
+        bg 22 24 33
+        black 30 33 50
+        red 226 120 120
+        green 132 160 198
+        yellow 226 164 120
+        blue 180 190 130
+        magenta 160 147 199
+        cyan 137 184 194
+        white 198 200 209
+        orange 226 165 120
+    }
+    iceberg-light {
+        fg 51 55 76
+        bg 232 233 236
+        black 220 223 231
+        red 204 81 122
+        green 45 83 158
+        yellow 197 115 57
+        blue 102 142 61
+        magenta 119 89 180
+        cyan 63 131 166
+        white 51 55 76
+        orange 198 116 57
+    }
+}
