@@ -1,0 +1,17 @@
+// Night Owl Theme:
+
+themes {
+  night-owl {
+    bg "#051525" // Surface2
+    fg "#d7dde9"
+    red "#dd5e56"
+    green "#67d679"
+    blue "#8aa8f8"
+    yellow "#b6d976"
+    magenta "#be94e4" // Pink
+    orange "#fab387" // Peach
+    cyan "#5ec4a9" // Sky
+    black "#051525" // Mantle
+    white "#feffff"
+     }
+}
