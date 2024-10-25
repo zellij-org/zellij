@@ -1,20 +1,20 @@
 themes {
     gruvbox-light {
-        fg 124 111 100
-        bg 251 82 75
-        black 40 40 40
-        red 205 75 69
-        green 152 151 26
+        bg 213 196 161
+        fg 80 73 69
+        orange 152 0 5
+        green 121 116 14
         yellow 215 153 33
         blue 69 133 136
         magenta 177 98 134
         cyan 104 157 106
-        white 213 196 161
-        orange 214 93 14
+        black 235 219 178
+        white 60 56 54
+        red 214 93 14
     }
     gruvbox-dark {
-        fg 213 196 161
-        bg 40 40 40
+        fg 235 219 178
+        bg 80 73 69
         black 60 56 54
         red 204 36 29
         green 152 151 26
@@ -26,4 +26,3 @@ themes {
         orange 214 93 14
     }
 }
-
