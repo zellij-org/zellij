@@ -51,6 +51,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(plugins): always render on first load (https://github.com/zellij-org/zellij/pull/3693)
 * fix(terminal): recover from partial line drop (https://github.com/zellij-org/zellij/pull/3695)
 * feat(themes): add new themes (https://github.com/zellij-org/zellij/pull/3478, https://github.com/zellij-org/zellij/pull/3596, https://github.com/zellij-org/zellij/pull/3567, https://github.com/zellij-org/zellij/pull/3443, https://github.com/zellij-org/zellij/pull/3393, https://github.com/zellij-org/zellij/pull/3323, https://github.com/zellij-org/zellij/pull/3313, https://github.com/zellij-org/zellij/pull/3308, https://github.com/zellij-org/zellij/pull/3255 and https://github.com/zellij-org/zellij/pull/3030)
+* fix(tabs): make MoveFocusOrTab aware of fullscreen panes (https://github.com/zellij-org/zellij/pull/3498)
 
 ## [0.40.1] - 2024-05-02
 * fix(sessions): issue where sessions would occasionally become unresponsive (https://github.com/zellij-org/zellij/pull/3281)
