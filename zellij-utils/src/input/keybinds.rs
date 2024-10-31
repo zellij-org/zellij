@@ -76,7 +76,7 @@ impl Keybinds {
             },
             mode if mode == default_input_mode => {
                 Action::Write(key_with_modifier.cloned(), raw_bytes, key_is_kitty_protocol)
-            }
+            },
             InputMode::RenameTab => Action::TabNameInput(raw_bytes),
             InputMode::RenamePane => Action::PaneNameInput(raw_bytes),
             InputMode::EnterSearch => Action::SearchInput(raw_bytes),

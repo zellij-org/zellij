@@ -314,12 +314,17 @@ impl SessionMetaData {
     pub fn get_client_keybinds_and_mode(
         &self,
         client_id: &ClientId,
-    ) -> Option<(Keybinds, &InputMode, InputMode)> { // (keybinds, current_input_mode,
-                                                     // default_input_mode)
+    ) -> Option<(Keybinds, &InputMode, InputMode)> {
+        // (keybinds, current_input_mode,
+        // default_input_mode)
         let client_keybinds = self.session_configuration.get_client_keybinds(client_id);
-        let default_input_mode = self.session_configuration.get_client_default_input_mode(client_id);
+        let default_input_mode = self
+            .session_configuration
+            .get_client_default_input_mode(client_id);
         match self.current_input_modes.get(client_id) {
-            Some(client_input_mode) => Some((client_keybinds, client_input_mode, default_input_mode)),
+            Some(client_input_mode) => {
+                Some((client_keybinds, client_input_mode, default_input_mode))
+            },
             _ => None,
         }
     }
