@@ -85,7 +85,7 @@ impl PresetsScreen {
                 self.reset_selected_index();
             }
             should_render = true;
-        } else if key.bare_key == BareKey::Char('s') && key.has_modifiers(&[KeyModifier::Ctrl]) {
+        } else if key.bare_key == BareKey::Char('a') && key.has_modifiers(&[KeyModifier::Ctrl]) {
             if let Some(selected_index) = self.take_selected_index() {
                 let write_to_disk = true;
                 self.reconfigure(selected_index, write_to_disk);
@@ -794,8 +794,8 @@ impl PresetsScreen {
         }
     }
     fn render_help_text_main(&self, rows: usize, cols: usize) {
-        let full_help_text = "Help: <↓↑> - navigate, <ENTER> - apply, <Ctrl s> - apply & save, <l> - leaders, <ESC> - close";
-        let short_help_text = "Help: <↓↑> / <ENTER> / <Ctrl s> / <l> / <ESC>";
+        let full_help_text = "Help: <↓↑> - navigate, <ENTER> - apply, <Ctrl a> - apply & save, <l> - leaders, <ESC> - close";
+        let short_help_text = "Help: <↓↑> / <ENTER> / <Ctrl a> / <l> / <ESC>";
         if cols >= full_help_text.chars().count() {
             print_text_with_coordinates(
                 Text::new(full_help_text)
