@@ -67,6 +67,15 @@ pub fn home_config_dir() -> Option<PathBuf> {
     }
 }
 
+pub fn try_create_home_config_dir() {
+    if let Some(user_dirs) = BaseDirs::new() {
+        let config_dir = user_dirs.home_dir().join(CONFIG_LOCATION);
+        if let Err(e) = std::fs::create_dir_all(config_dir) {
+            log::error!("Failed to create config dir: {:?}", e);
+        }
+    }
+}
+
 pub fn get_layout_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
     config_dir.map(|dir| dir.join("layouts"))
 }

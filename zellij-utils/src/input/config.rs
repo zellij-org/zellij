@@ -291,6 +291,11 @@ impl Config {
     }
     // returns true if the config was not previouly written to disk and we successfully wrote it
     pub fn write_config_to_disk_if_it_does_not_exist(config: String, opts: &CliArgs) -> bool {
+        if opts.config.is_none() {
+            // if a config file path wasn't explicitly specified, we try to create the default
+            // config folder
+            home::try_create_home_config_dir();
+        }
         match Config::config_file_path(opts) {
             Some(config_file_path) => {
                 if config_file_path.exists() {
@@ -309,7 +314,7 @@ impl Config {
                     }
                 }
             },
-            None => false,
+            None => false
         }
     }
     fn find_free_backup_file_name(config_file_path: &PathBuf) -> Option<PathBuf> {
