@@ -998,12 +998,13 @@ pub(crate) fn route_thread_main(
                         ClientToServerMsg::Key(key, raw_bytes, is_kitty_keyboard_protocol) => {
                             if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
                                 match rlocked_sessions.get_client_keybinds_and_mode(&client_id) {
-                                    Some((keybinds, input_mode)) => {
+                                    Some((keybinds, input_mode, default_input_mode)) => {
                                         for action in keybinds
                                             .get_actions_for_key_in_mode_or_default_action(
                                                 &input_mode,
                                                 &key,
                                                 raw_bytes,
+                                                default_input_mode,
                                                 is_kitty_keyboard_protocol,
                                             )
                                         {
