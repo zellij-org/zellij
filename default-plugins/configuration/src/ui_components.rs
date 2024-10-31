@@ -35,7 +35,7 @@ pub fn top_tab_menu(cols: usize, current_screen: &Screen, colors: &Palette) {
     }
     let switch_key = Text::new("<TAB>").color_range(3, ..).opaque();
     print_text_with_coordinates(switch_key, 0, 0, None, None);
-    print!("\u{1b}[{};{}H{}", 0, starting_positions.0 - 1, bg_color);
+    print!("\u{1b}[{};{}H{}", 0, starting_positions.0, bg_color);
     print_ribbon_with_coordinates(first_ribbon, starting_positions.0, 0, None, None);
     print_ribbon_with_coordinates(second_ribbon, starting_positions.1, 0, None, None);
 }
