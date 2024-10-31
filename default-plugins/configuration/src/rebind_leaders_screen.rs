@@ -47,10 +47,12 @@ impl Default for RebindLeadersScreen {
 }
 
 impl RebindLeadersScreen {
-    pub fn with_rebinding_for_presets(mut self) -> Self {
-        self.is_rebinding_for_presets = true;
-        self
-    }
+    // temporarily commented out for the time being because the extra leaders screen was deemed a bit
+    // confusing, see commend in <l> key
+    //     pub fn with_rebinding_for_presets(mut self) -> Self {
+    //         self.is_rebinding_for_presets = true;
+    //         self
+    //     }
     pub fn with_mode_info(mut self, latest_mode_info: Option<ModeInfo>) -> Self {
         self.latest_mode_info = latest_mode_info;
         self.hard_reset_ui_state();
@@ -558,11 +560,11 @@ impl RebindLeadersScreen {
         if self.is_rebinding_for_presets {
             return self.render_help_text_for_presets_rebinding(rows, cols);
         }
-        let help_text_long = "Help: <←↓↑→> - navigate, <SPACE> - select, <ENTER> - apply, <Ctrl s> - save, <Ctrl c> - reset, <ESC> - close";
-        let help_text_medium = "Help: <←↓↑→/SPACE> - navigate/select, <ENTER/Ctrl s> - apply/save, <Ctrl c> - reset, <ESC> - close";
+        let help_text_long = "Help: <←↓↑→> - navigate, <SPACE> - select, <ENTER> - apply, <Ctrl a> - save, <Ctrl c> - reset, <ESC> - close";
+        let help_text_medium = "Help: <←↓↑→/SPACE> - navigate/select, <ENTER/Ctrl a> - apply/save, <Ctrl c> - reset, <ESC> - close";
         let help_text_short =
-            "Help: <←↓↑→>/<SPACE>/<ENTER> select/<Ctrl s> save/<Ctrl c> reset/<ESC>";
-        let help_text_minimum = "<←↓↑→>/<SPACE>/<ENTER>/<Ctrl s>/<Ctrl c>/<ESC>";
+            "Help: <←↓↑→>/<SPACE>/<ENTER> select/<Ctrl a> save/<Ctrl c> reset/<ESC>";
+        let help_text_minimum = "<←↓↑→>/<SPACE>/<ENTER>/<Ctrl a>/<Ctrl c>/<ESC>";
         if cols >= help_text_long.chars().count() {
             print_text_with_coordinates(
                 Text::new(help_text_long)
@@ -698,8 +700,8 @@ impl RebindLeadersScreen {
     }
     fn handle_default_preset_key(&mut self, key: KeyWithModifier) -> bool {
         let should_render = true;
-        if key.bare_key == BareKey::Insert
-            && key.has_no_modifiers()
+        if key.bare_key == BareKey::Char('a')
+            && key.has_modifiers(&[KeyModifier::Ctrl])
             && !self.is_rebinding_for_presets
         {
             let write_to_disk = true;
@@ -1201,7 +1203,7 @@ impl RebindLeadersScreen {
         self.is_rebinding_for_presets = is_rebinding_for_presets;
     }
     fn handle_unlock_first_key(&mut self, key: KeyWithModifier) -> bool {
-        if key.bare_key == BareKey::Char('s')
+        if key.bare_key == BareKey::Char('a')
             && key.has_modifiers(&[KeyModifier::Ctrl])
             && !self.is_rebinding_for_presets
         {
