@@ -39,6 +39,7 @@ impl Keybinds {
         mode: &InputMode,
         key_with_modifier: &KeyWithModifier,
         raw_bytes: Vec<u8>,
+        default_input_mode: InputMode,
         key_is_kitty_protocol: bool,
     ) -> Vec<Action> {
         self.0
@@ -50,6 +51,7 @@ impl Keybinds {
                     mode,
                     Some(key_with_modifier),
                     raw_bytes,
+                    default_input_mode,
                     key_is_kitty_protocol,
                 )]
             })
@@ -65,10 +67,14 @@ impl Keybinds {
         mode: &InputMode,
         key_with_modifier: Option<&KeyWithModifier>,
         raw_bytes: Vec<u8>,
+        default_input_mode: InputMode,
         key_is_kitty_protocol: bool,
     ) -> Action {
         match *mode {
-            InputMode::Normal | InputMode::Locked => {
+            InputMode::Locked => {
+                Action::Write(key_with_modifier.cloned(), raw_bytes, key_is_kitty_protocol)
+            },
+            mode if mode == default_input_mode => {
                 Action::Write(key_with_modifier.cloned(), raw_bytes, key_is_kitty_protocol)
             },
             InputMode::RenameTab => Action::TabNameInput(raw_bytes),

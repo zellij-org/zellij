@@ -203,6 +203,13 @@ impl SessionConfiguration {
             .map(|c| c.keybinds.clone())
             .unwrap_or_default()
     }
+    pub fn get_client_default_input_mode(&self, client_id: &ClientId) -> InputMode {
+        self.runtime_config
+            .get(client_id)
+            .or_else(|| self.saved_config.get(client_id))
+            .and_then(|c| c.options.default_mode.clone())
+            .unwrap_or_default()
+    }
     pub fn get_client_configuration(&self, client_id: &ClientId) -> Config {
         self.runtime_config
             .get(client_id)
@@ -307,10 +314,17 @@ impl SessionMetaData {
     pub fn get_client_keybinds_and_mode(
         &self,
         client_id: &ClientId,
-    ) -> Option<(Keybinds, &InputMode)> {
+    ) -> Option<(Keybinds, &InputMode, InputMode)> {
+        // (keybinds, current_input_mode,
+        // default_input_mode)
         let client_keybinds = self.session_configuration.get_client_keybinds(client_id);
+        let default_input_mode = self
+            .session_configuration
+            .get_client_default_input_mode(client_id);
         match self.current_input_modes.get(client_id) {
-            Some(client_input_mode) => Some((client_keybinds, client_input_mode)),
+            Some(client_input_mode) => {
+                Some((client_keybinds, client_input_mode, default_input_mode))
+            },
             _ => None,
         }
     }
