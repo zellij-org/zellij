@@ -47,10 +47,12 @@ impl Default for RebindLeadersScreen {
 }
 
 impl RebindLeadersScreen {
-    pub fn with_rebinding_for_presets(mut self) -> Self {
-        self.is_rebinding_for_presets = true;
-        self
-    }
+    // temporarily commented out for the time being because the extra leaders screen was deemed a bit
+    // confusing, see commend in <l> key
+    //     pub fn with_rebinding_for_presets(mut self) -> Self {
+    //         self.is_rebinding_for_presets = true;
+    //         self
+    //     }
     pub fn with_mode_info(mut self, latest_mode_info: Option<ModeInfo>) -> Self {
         self.latest_mode_info = latest_mode_info;
         self.hard_reset_ui_state();

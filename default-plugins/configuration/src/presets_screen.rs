@@ -93,12 +93,19 @@ impl PresetsScreen {
                 should_render = true;
             }
         } else if key.bare_key == BareKey::Char('l') && key.has_no_modifiers() {
-            self.rebind_leaders_screen = Some(
-                RebindLeadersScreen::default()
-                    .with_rebinding_for_presets()
-                    .with_mode_info(self.latest_mode_info.clone()),
-            );
-            should_render = true;
+            // for the time being this screen has been disabled because it was deemed too confusing
+            // and its use-cases are very limited (it's possible to achieve the same results by
+            // applying a preset and then rebinding the leader keys)
+            //
+            // the code is left here in case someone feels strongly about implementing this on
+            // their own, and because at the time of writing I'm a little ambiguous about this
+            // decision. At some point it should be refactored away
+            //             self.rebind_leaders_screen = Some(
+            //                 RebindLeadersScreen::default()
+            //                     .with_rebinding_for_presets()
+            //                     .with_mode_info(self.latest_mode_info.clone()),
+            //             );
+            //            should_render = true;
         } else if (key.bare_key == BareKey::Esc && key.has_no_modifiers())
             || key.is_key_with_ctrl_modifier(BareKey::Char('c'))
         {
@@ -149,9 +156,16 @@ impl PresetsScreen {
                 should_render = true;
             }
         } else if key.bare_key == BareKey::Char('l') && key.has_no_modifiers() {
-            self.rebind_leaders_screen =
-                Some(RebindLeadersScreen::default().with_rebinding_for_presets());
-            should_render = true;
+            // for the time being this screen has been disabled because it was deemed too confusing
+            // and its use-cases are very limited (it's possible to achieve the same results by
+            // applying a preset and then rebinding the leader keys)
+            //
+            // the code is left here in case someone feels strongly about implementing this on
+            // their own, and because at the time of writing I'm a little ambiguous about this
+            // decision. At some point it should be refactored away
+            //             self.rebind_leaders_screen =
+            //                 Some(RebindLeadersScreen::default().with_rebinding_for_presets());
+            //            should_render = true;
         } else if (key.bare_key == BareKey::Esc && key.has_no_modifiers())
             || key.is_key_with_ctrl_modifier(BareKey::Char('c'))
         {
@@ -730,16 +744,14 @@ impl PresetsScreen {
         };
     }
     fn render_help_text_setup_wizard(&self, rows: usize, cols: usize) {
-        let full_help_text =
-            "Help: <↓↑> - navigate, <ENTER> - apply & save, <l> - change leaders, <ESC> - close";
-        let short_help_text = "Help: <↓↑> / <ENTER> / <l> / <ESC>";
+        let full_help_text = "Help: <↓↑> - navigate, <ENTER> - apply & save, <ESC> - close";
+        let short_help_text = "Help: <↓↑> / <ENTER> / <ESC>";
         if cols >= full_help_text.chars().count() {
             print_text_with_coordinates(
                 Text::new(full_help_text)
                     .color_range(2, 6..10)
                     .color_range(2, 23..30)
-                    .color_range(2, 47..50)
-                    .color_range(2, 69..74),
+                    .color_range(2, 47..=50),
                 0,
                 rows,
                 None,
@@ -750,8 +762,7 @@ impl PresetsScreen {
                 Text::new(short_help_text)
                     .color_range(2, 6..10)
                     .color_range(2, 13..20)
-                    .color_range(2, 23..26)
-                    .color_range(2, 29..34),
+                    .color_range(2, 23..=27),
                 0,
                 rows,
                 None,
@@ -794,16 +805,16 @@ impl PresetsScreen {
         }
     }
     fn render_help_text_main(&self, rows: usize, cols: usize) {
-        let full_help_text = "Help: <↓↑> - navigate, <ENTER> - apply, <Ctrl a> - apply & save, <l> - leaders, <ESC> - close";
-        let short_help_text = "Help: <↓↑> / <ENTER> / <Ctrl a> / <l> / <ESC>";
+        let full_help_text =
+            "Help: <↓↑> - navigate, <ENTER> - apply, <Ctrl a> - apply & save, <ESC> - close";
+        let short_help_text = "Help: <↓↑> / <ENTER> / <Ctrl a> / <ESC>";
         if cols >= full_help_text.chars().count() {
             print_text_with_coordinates(
                 Text::new(full_help_text)
                     .color_range(2, 6..10)
                     .color_range(2, 23..30)
                     .color_range(2, 40..48)
-                    .color_range(2, 65..68)
-                    .color_range(2, 80..85),
+                    .color_range(2, 65..=69),
                 0,
                 rows,
                 None,
@@ -815,8 +826,7 @@ impl PresetsScreen {
                     .color_range(2, 6..10)
                     .color_range(2, 13..20)
                     .color_range(2, 23..31)
-                    .color_range(2, 34..37)
-                    .color_range(2, 40..45),
+                    .color_range(2, 34..=38),
                 0,
                 rows,
                 None,

@@ -314,7 +314,7 @@ impl Config {
                     }
                 }
             },
-            None => false
+            None => false,
         }
     }
     fn find_free_backup_file_name(config_file_path: &PathBuf) -> Option<PathBuf> {
