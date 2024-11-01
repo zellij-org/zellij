@@ -262,10 +262,7 @@ impl ZellijPlugin for State {
             ""
         };
 
-        let background = match self.mode_info.style.colors.theme_hue {
-            ThemeHue::Dark => self.mode_info.style.colors.black,
-            ThemeHue::Light => self.mode_info.style.colors.white,
-        };
+        let background = self.mode_info.style.colors.text_unselected.background;
 
         if rows == 1 && !self.classic_ui {
             let fill_bg = match background {
@@ -294,7 +291,6 @@ impl ZellijPlugin for State {
         let first_line = first_line(&self.mode_info, active_tab, cols, separator);
         let second_line = self.second_line(cols);
 
-        let background = self.mode_info.style.colors.text_unselected.background;
         // [48;5;238m is white background, [0K is so that it fills the rest of the line
         // [m is background reset, [0K is so that it clears the rest of the line
         match background {
