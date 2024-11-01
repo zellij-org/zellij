@@ -1,11 +1,8 @@
 use crate::{Screen, WIDTH_BREAKPOINTS};
 use zellij_tile::prelude::*;
 
-pub fn top_tab_menu(cols: usize, current_screen: &Screen, colors: &Palette) {
-    let background = match colors.theme_hue {
-        ThemeHue::Dark => colors.black,
-        ThemeHue::Light => colors.white,
-    };
+pub fn top_tab_menu(cols: usize, current_screen: &Screen, colors: &Styling) {
+    let background = colors.text_unselected.background;
     let bg_color = match background {
         PaletteColor::Rgb((r, g, b)) => format!("\u{1b}[48;2;{};{};{}m\u{1b}[0K", r, g, b),
         PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),

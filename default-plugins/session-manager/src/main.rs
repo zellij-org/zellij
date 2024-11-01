@@ -122,10 +122,7 @@ impl ZellijPlugin for State {
     fn render(&mut self, rows: usize, cols: usize) {
         let (x, y, width, height) = self.main_menu_size(rows, cols);
 
-        let background = match self.colors.palette.theme_hue {
-            ThemeHue::Dark => self.colors.palette.black,
-            ThemeHue::Light => self.colors.palette.white,
-        };
+        let background = self.colors.palette.text_unselected.background;
 
         if self.is_welcome_screen {
             render_banner(x, 0, rows.saturating_sub(height), width);
