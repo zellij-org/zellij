@@ -765,9 +765,7 @@ impl Display for CharacterStyles {
 
 impl From<StyleDeclaration> for CharacterStyles {
     fn from(declaration: StyleDeclaration) -> Self {
-        RESET_STYLES
-            .foreground(Some(declaration.base.into()))
-            .background(Some(declaration.background.into()))
+        RESET_STYLES.foreground(Some(declaration.base.into()))
     }
 }
 

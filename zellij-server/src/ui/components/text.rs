@@ -14,11 +14,9 @@ pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordina
     } else {
         style.colors.text_unselected
     };
-    let base_text_style = if content.selected {
-        CharacterStyles::from(declaration).background(Some(declaration.background.into()))
-    } else {
-        CharacterStyles::from(declaration).foreground(Some(AnsiCode::ColorIndex(39)))
-    };
+
+    let base_text_style = CharacterStyles::from(declaration);
+
     let (text, _text_width) = stringify_text(
         &content,
         None,
@@ -41,10 +39,15 @@ pub fn stringify_text(
     left_padding: Option<usize>,
     coordinates: &Option<Coordinates>,
     style: &StyleDeclaration,
-    base_text_style: CharacterStyles,
+    component_text_style: CharacterStyles,
 ) -> (String, usize) {
     let mut text_width = 0;
     let mut stringified = String::new();
+    let base_text_style = if text.opaque {
+        component_text_style.background(Some(style.background.into()))
+    } else {
+        component_text_style
+    };
     for (i, character) in text.text.chars().enumerate() {
         let character_width = character.width().unwrap_or(0);
         if is_too_wide(
