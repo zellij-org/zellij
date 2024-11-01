@@ -43,7 +43,7 @@ pub fn stringify_text(
 ) -> (String, usize) {
     let mut text_width = 0;
     let mut stringified = String::new();
-    let base_text_style = if text.opaque {
+    let base_text_style = if text.opaque || text.selected {
         component_text_style.background(Some(style.background.into()))
     } else {
         component_text_style
