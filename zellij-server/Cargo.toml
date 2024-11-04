@@ -47,6 +47,7 @@ features = [
   'runtime',
   'component-model',
   'std',
+  'gc',
 ]
 
 [dev-dependencies]
