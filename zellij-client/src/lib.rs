@@ -216,7 +216,7 @@ pub fn start_client(
 
     let palette = config
         .theme_config(config_options.theme.as_ref())
-        .unwrap_or_else(|| os_input.load_palette());
+        .unwrap_or_else(|| os_input.load_palette().into());
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     let client_attributes = ClientAttributes {
@@ -616,7 +616,7 @@ pub fn start_server_detached(
 
     let palette = config
         .theme_config(config_options.theme.as_ref())
-        .unwrap_or_else(|| os_input.load_palette());
+        .unwrap_or_else(|| os_input.load_palette().into());
 
     let client_attributes = ClientAttributes {
         size: Size { rows: 50, cols: 50 }, // just so size is not 0, it doesn't matter because we
