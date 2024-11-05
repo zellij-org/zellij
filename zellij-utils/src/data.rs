@@ -135,10 +135,6 @@ impl Into<Modifiers> for &KeyModifier {
             KeyModifier::Alt => Modifiers::ALT,
             KeyModifier::Ctrl => Modifiers::CTRL,
             KeyModifier::Super => Modifiers::SUPER,
-            KeyModifier::Hyper => Modifiers::NONE,
-            KeyModifier::Meta => Modifiers::NONE,
-            KeyModifier::CapsLock => Modifiers::NONE,
-            KeyModifier::NumLock => Modifiers::NONE,
         }
     }
 }
@@ -256,10 +252,6 @@ pub enum KeyModifier {
     Alt,
     Shift,
     Super,
-    Hyper,
-    Meta,
-    CapsLock,
-    NumLock,
 }
 
 impl FromStr for KeyModifier {
@@ -367,6 +359,8 @@ bitflags::bitflags! {
         const ALT     = 0b0000_0010;
         const CONTROL = 0b0000_0100;
         const SUPER   = 0b0000_1000;
+        // we don't actually use the below, left here for completeness in case we want to add them
+        // later
         const HYPER = 0b0001_0000;
         const META = 0b0010_0000;
         const CAPS_LOCK = 0b0100_0000;
@@ -389,10 +383,6 @@ impl KeyModifier {
                     ModifierFlags::ALT => key_modifiers.insert(KeyModifier::Alt),
                     ModifierFlags::CONTROL => key_modifiers.insert(KeyModifier::Ctrl),
                     ModifierFlags::SUPER => key_modifiers.insert(KeyModifier::Super),
-                    ModifierFlags::HYPER => key_modifiers.insert(KeyModifier::Hyper),
-                    ModifierFlags::META => key_modifiers.insert(KeyModifier::Meta),
-                    ModifierFlags::CAPS_LOCK => key_modifiers.insert(KeyModifier::CapsLock),
-                    ModifierFlags::NUM_LOCK => key_modifiers.insert(KeyModifier::NumLock),
                     _ => false,
                 };
             }
