@@ -9,9 +9,9 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use async_std::task::{self, JoinHandle};
-use zellij_utils::input::layout::SplitSize;
 use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
+use zellij_utils::input::layout::SplitSize;
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
@@ -49,13 +49,20 @@ pub enum PtyInstruction {
     ), // bool (if Some) is
     // should_float, String is an optional pane name
     OpenInPlaceEditor(PathBuf, Option<usize>, ClientTabIndexOrPaneId), // Option<usize> is the optional line number
-    SpawnTerminalVertically(Option<TerminalAction>, Option<String>, ClientId, Option<SplitSize>), // String is an
-    // optional pane
-    // name
-    // bool is start_suppressed
-    SpawnTerminalHorizontally(Option<TerminalAction>, Option<String>, ClientId, Option<SplitSize>), // String is an
-    // optional pane
-    // name
+    SpawnTerminalVertically(
+        Option<TerminalAction>,
+        Option<String>,
+        ClientId,
+        Option<SplitSize>,
+        bool,
+    ), // String is an optional pane name, bool is left
+    SpawnTerminalHorizontally(
+        Option<TerminalAction>,
+        Option<String>,
+        ClientId,
+        Option<SplitSize>,
+        bool,
+    ), // String is an optional pane name, bool is up
     UpdateActivePane(Option<PaneId>, ClientId),
     GoToTab(TabIndex, ClientId),
     NewTab(
@@ -386,7 +393,13 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::SpawnTerminalVertically(terminal_action, name, client_id, size) => {
+            PtyInstruction::SpawnTerminalVertically(
+                terminal_action,
+                name,
+                client_id,
+                size,
+                left,
+            ) => {
                 let err_context =
                     || format!("failed to spawn terminal vertically for client {client_id}");
 
@@ -412,6 +425,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 hold_for_command,
                                 client_id,
                                 size,
+                                left,
                             ))
                             .with_context(err_context)?;
                     },
@@ -427,6 +441,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         hold_for_command,
                                         client_id,
                                         size,
+                                        left,
                                     ))
                                     .with_context(err_context)?;
                                 if let Some(run_command) = run_command {
@@ -459,7 +474,13 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::SpawnTerminalHorizontally(terminal_action, name, client_id, size) => {
+            PtyInstruction::SpawnTerminalHorizontally(
+                terminal_action,
+                name,
+                client_id,
+                size,
+                up,
+            ) => {
                 let err_context =
                     || format!("failed to spawn terminal horizontally for client {client_id}");
 
@@ -485,6 +506,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 hold_for_command,
                                 client_id,
                                 size,
+                                up,
                             ))
                             .with_context(err_context)?;
                     },
@@ -499,7 +521,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         pane_title,
                                         hold_for_command,
                                         client_id,
-                                        size
+                                        size,
+                                        up
                                     ))
                                     .with_context(err_context)?;
                                 if let Some(run_command) = run_command {

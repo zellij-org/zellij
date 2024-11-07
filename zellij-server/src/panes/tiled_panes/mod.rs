@@ -202,7 +202,8 @@ impl TiledPanes {
                 // this unwrap is safe because floating panes should not be visible if there are no floating panes
                 let pane_to_split = self.panes.get_mut(&pane_id_to_split).unwrap();
                 let size_of_both_panes = pane_to_split.position_and_size();
-                if let Some((first_geom, second_geom)) = split(split_direction, &size_of_both_panes, None)
+                if let Some((first_geom, second_geom)) =
+                    split(split_direction, &size_of_both_panes, None, false)
                 {
                     pane_to_split.set_geom(first_geom);
                     pane.set_geom(second_geom);
@@ -349,7 +350,8 @@ impl TiledPanes {
                 {
                     return false;
                 } else {
-                    return split(SplitDirection::Horizontal, &full_pane_size, None).is_some();
+                    return split(SplitDirection::Horizontal, &full_pane_size, None, false)
+                        .is_some();
                 }
             }
         }
@@ -364,7 +366,7 @@ impl TiledPanes {
                 {
                     return false;
                 }
-                return split(SplitDirection::Vertical, &full_pane_size, None).is_some();
+                return split(SplitDirection::Vertical, &full_pane_size, None, false).is_some();
             }
         }
         false
@@ -376,7 +378,7 @@ impl TiledPanes {
         if full_pane_size.rows.is_fixed() || full_pane_size.is_stacked {
             return false;
         }
-        if split(SplitDirection::Horizontal, &full_pane_size, None).is_some() {
+        if split(SplitDirection::Horizontal, &full_pane_size, None, false).is_some() {
             true
         } else {
             false
@@ -388,12 +390,13 @@ impl TiledPanes {
         mut new_pane: Box<dyn Pane>,
         client_id: ClientId,
         size: Option<SplitSize>,
+        up: bool,
     ) {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
         let active_pane = self.panes.get_mut(active_pane_id).unwrap();
         let full_pane_size = active_pane.position_and_size();
         if let Some((top_winsize, bottom_winsize)) =
-            split(SplitDirection::Horizontal, &full_pane_size, size)
+            split(SplitDirection::Horizontal, &full_pane_size, size, up)
         {
             active_pane.set_geom(top_winsize);
             new_pane.set_geom(bottom_winsize);
@@ -408,7 +411,7 @@ impl TiledPanes {
         if full_pane_size.cols.is_fixed() || full_pane_size.is_stacked {
             return false;
         }
-        if split(SplitDirection::Vertical, &full_pane_size, None).is_some() {
+        if split(SplitDirection::Vertical, &full_pane_size, None, false).is_some() {
             true
         } else {
             false
@@ -420,12 +423,13 @@ impl TiledPanes {
         mut new_pane: Box<dyn Pane>,
         client_id: ClientId,
         size: Option<SplitSize>,
+        left: bool,
     ) {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
         let active_pane = self.panes.get_mut(active_pane_id).unwrap();
         let full_pane_size = active_pane.position_and_size();
         if let Some((left_winsize, right_winsize)) =
-            split(SplitDirection::Vertical, &full_pane_size, size)
+            split(SplitDirection::Vertical, &full_pane_size, size, left)
         {
             active_pane.set_geom(left_winsize);
             new_pane.set_geom(right_winsize);

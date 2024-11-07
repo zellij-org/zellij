@@ -1388,6 +1388,7 @@ pub fn split(
     direction: SplitDirection,
     rect: &PaneGeom,
     size: Option<SplitSize>,
+    swap: bool,
 ) -> Option<(PaneGeom, PaneGeom)> {
     let space = match direction {
         SplitDirection::Vertical => rect.cols,
@@ -1398,6 +1399,7 @@ pub fn split(
         SplitSize::Percent(x) => x as f64 / 100.0,
         SplitSize::Fixed(x) => (x as f64 / space.as_usize() as f64).clamp(0.0, 1.0),
     };
+    let size = if swap { 1.0 - size } else { size };
     if let Some(p) = space.as_percent() {
         let dim1 = Dimension::percent(p * (1.0 - size));
         let dim2 = Dimension::percent(p * size);
@@ -1423,7 +1425,11 @@ pub fn split(
                 ..*rect
             },
         };
-        Some((first_rect, second_rect))
+        if swap {
+            Some((second_rect, first_rect))
+        } else {
+            Some((first_rect, second_rect))
+        }
     } else {
         None
     }

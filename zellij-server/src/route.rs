@@ -263,16 +263,16 @@ pub(crate) fn route_action(
             let shell = default_shell.clone();
             let pty_instr = match direction {
                 Some(Direction::Left) => {
-                    PtyInstruction::SpawnTerminalVertically(shell, name, client_id, None)
+                    PtyInstruction::SpawnTerminalVertically(shell, name, client_id, None, true)
                 },
                 Some(Direction::Right) => {
-                    PtyInstruction::SpawnTerminalVertically(shell, name, client_id, None)
+                    PtyInstruction::SpawnTerminalVertically(shell, name, client_id, None, false)
                 },
                 Some(Direction::Up) => {
-                    PtyInstruction::SpawnTerminalHorizontally(shell, name, client_id, None)
+                    PtyInstruction::SpawnTerminalHorizontally(shell, name, client_id, None, true)
                 },
                 Some(Direction::Down) => {
-                    PtyInstruction::SpawnTerminalHorizontally(shell, name, client_id, None)
+                    PtyInstruction::SpawnTerminalHorizontally(shell, name, client_id, None, false)
                 },
                 // No direction specified - try to put it in the biggest available spot
                 None => PtyInstruction::SpawnTerminal(
@@ -298,22 +298,24 @@ pub(crate) fn route_action(
             let open_file = TerminalAction::OpenFile(open_file_payload);
             let pty_instr = match (split_direction, should_float, should_open_in_place) {
                 (Some(Direction::Left), false, false) => {
-                    PtyInstruction::SpawnTerminalVertically(Some(open_file), Some(title), client_id, None)
+                    PtyInstruction::SpawnTerminalVertically(Some(open_file), Some(title), client_id, None, true)
                 },
                 (Some(Direction::Right), false, false) => {
-                    PtyInstruction::SpawnTerminalVertically(Some(open_file), Some(title), client_id, None)
+                    PtyInstruction::SpawnTerminalVertically(Some(open_file), Some(title), client_id, None, false)
                 },
                 (Some(Direction::Up), false, false) => PtyInstruction::SpawnTerminalHorizontally(
                     Some(open_file),
                     Some(title),
                     client_id,
                     None,
+                    true,
                 ),
                 (Some(Direction::Down), false, false) => PtyInstruction::SpawnTerminalHorizontally(
                     Some(open_file),
                     Some(title),
                     client_id,
                     None,
+                    false,
                 ),
                 // open terminal in place
                 (_, _, true) => match pane_id {
@@ -419,16 +421,16 @@ pub(crate) fn route_action(
                 .or_else(|| default_shell.clone());
             let pty_instr = match direction {
                 Some(Direction::Left) => {
-                    PtyInstruction::SpawnTerminalVertically(run_cmd, name, client_id, size)
+                    PtyInstruction::SpawnTerminalVertically(run_cmd, name, client_id, size, true)
                 },
                 Some(Direction::Right) => {
-                    PtyInstruction::SpawnTerminalVertically(run_cmd, name, client_id, size)
+                    PtyInstruction::SpawnTerminalVertically(run_cmd, name, client_id, size, false)
                 },
                 Some(Direction::Up) => {
-                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, name, client_id, size)
+                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, name, client_id, size, true)
                 },
                 Some(Direction::Down) => {
-                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, name, client_id, size)
+                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, name, client_id, size, false)
                 },
                 // No direction specified - try to put it in the biggest available spot
                 None => PtyInstruction::SpawnTerminal(
@@ -469,16 +471,16 @@ pub(crate) fn route_action(
             let run_cmd = Some(TerminalAction::RunCommand(command.clone().into()));
             let pty_instr = match command.direction {
                 Some(Direction::Left) => {
-                    PtyInstruction::SpawnTerminalVertically(run_cmd, None, client_id, None)
+                    PtyInstruction::SpawnTerminalVertically(run_cmd, None, client_id, None, true)
                 },
                 Some(Direction::Right) => {
-                    PtyInstruction::SpawnTerminalVertically(run_cmd, None, client_id, None)
+                    PtyInstruction::SpawnTerminalVertically(run_cmd, None, client_id, None, false)
                 },
                 Some(Direction::Up) => {
-                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, None, client_id, None)
+                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, None, client_id, None, true)
                 },
                 Some(Direction::Down) => {
-                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, None, client_id, None)
+                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, None, client_id, None, false)
                 },
                 // No direction specified - try to put it in the biggest available spot
                 None => PtyInstruction::SpawnTerminal(

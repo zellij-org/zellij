@@ -166,6 +166,7 @@ pub enum ScreenInstruction {
         HoldForCommand,
         ClientId,
         Option<SplitSize>,
+        bool,
     ),
     VerticalSplit(
         PaneId,
@@ -173,6 +174,7 @@ pub enum ScreenInstruction {
         HoldForCommand,
         ClientId,
         Option<SplitSize>,
+        bool,
     ),
     WriteCharacter(Option<KeyWithModifier>, Vec<u8>, bool, ClientId), // bool ->
     // is_kitty_keyboard_protocol
@@ -2888,11 +2890,12 @@ pub(crate) fn screen_thread_main(
                 hold_for_command,
                 client_id,
                 size,
+                up,
             ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.horizontal_split(pid, initial_pane_title, client_id, size),
+                    |tab: &mut Tab, client_id: ClientId| tab.horizontal_split(pid, initial_pane_title, client_id, size, up),
                     ?
                 );
                 if let Some(hold_for_command) = hold_for_command {
@@ -2918,11 +2921,12 @@ pub(crate) fn screen_thread_main(
                 hold_for_command,
                 client_id,
                 size,
+                left,
             ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.vertical_split(pid, initial_pane_title, client_id, size),
+                    |tab: &mut Tab, client_id: ClientId| tab.vertical_split(pid, initial_pane_title, client_id, size, left),
                     ?
                 );
                 if let Some(hold_for_command) = hold_for_command {

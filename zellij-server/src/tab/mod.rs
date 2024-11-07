@@ -1441,6 +1441,7 @@ impl Tab {
         initial_pane_title: Option<String>,
         client_id: ClientId,
         size: Option<SplitSize>,
+        up: bool,
     ) -> Result<()> {
         let err_context =
             || format!("failed to split pane {pid:?} horizontally for client {client_id}");
@@ -1474,7 +1475,7 @@ impl Tab {
                     self.explicitly_disable_kitty_keyboard_protocol,
                 );
                 self.tiled_panes
-                    .split_pane_horizontally(pid, Box::new(new_terminal), client_id, size);
+                    .split_pane_horizontally(pid, Box::new(new_terminal), client_id, size, up);
                 self.should_clear_display_before_rendering = true;
                 self.tiled_panes.focus_pane(pid, client_id);
                 self.swap_layouts.set_is_tiled_damaged();
@@ -1502,6 +1503,7 @@ impl Tab {
         initial_pane_title: Option<String>,
         client_id: ClientId,
         size: Option<SplitSize>,
+        left: bool,
     ) -> Result<()> {
         let err_context =
             || format!("failed to split pane {pid:?} vertically for client {client_id}");
@@ -1535,7 +1537,7 @@ impl Tab {
                     self.explicitly_disable_kitty_keyboard_protocol,
                 );
                 self.tiled_panes
-                    .split_pane_vertically(pid, Box::new(new_terminal), client_id, size);
+                    .split_pane_vertically(pid, Box::new(new_terminal), client_id, size, left);
                 self.should_clear_display_before_rendering = true;
                 self.tiled_panes.focus_pane(pid, client_id);
                 self.swap_layouts.set_is_tiled_damaged();
