@@ -7,6 +7,7 @@ mod layout_applier;
 mod swap_layouts;
 
 use copy_command::CopyCommand;
+use zellij_utils::input::layout::SplitSize;
 use std::env::temp_dir;
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -1439,6 +1440,7 @@ impl Tab {
         pid: PaneId,
         initial_pane_title: Option<String>,
         client_id: ClientId,
+        size: Option<SplitSize>,
     ) -> Result<()> {
         let err_context =
             || format!("failed to split pane {pid:?} horizontally for client {client_id}");
@@ -1472,7 +1474,7 @@ impl Tab {
                     self.explicitly_disable_kitty_keyboard_protocol,
                 );
                 self.tiled_panes
-                    .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
+                    .split_pane_horizontally(pid, Box::new(new_terminal), client_id, size);
                 self.should_clear_display_before_rendering = true;
                 self.tiled_panes.focus_pane(pid, client_id);
                 self.swap_layouts.set_is_tiled_damaged();
@@ -1499,6 +1501,7 @@ impl Tab {
         pid: PaneId,
         initial_pane_title: Option<String>,
         client_id: ClientId,
+        size: Option<SplitSize>,
     ) -> Result<()> {
         let err_context =
             || format!("failed to split pane {pid:?} vertically for client {client_id}");
@@ -1532,7 +1535,7 @@ impl Tab {
                     self.explicitly_disable_kitty_keyboard_protocol,
                 );
                 self.tiled_panes
-                    .split_pane_vertically(pid, Box::new(new_terminal), client_id);
+                    .split_pane_vertically(pid, Box::new(new_terminal), client_id, size);
                 self.should_clear_display_before_rendering = true;
                 self.tiled_panes.focus_pane(pid, client_id);
                 self.swap_layouts.set_is_tiled_damaged();

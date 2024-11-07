@@ -591,7 +591,7 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
         TerminalAction::RunCommand(run_command) => Some(run_command.into()),
         _ => None,
     };
-    let action = Action::NewTiledPane(None, run_command_action, None);
+    let action = Action::NewTiledPane(None, run_command_action, None, None);
     apply_action!(action, error_msg, env);
 }
 
@@ -661,7 +661,7 @@ fn open_command_pane(
             context,
         )),
     };
-    let action = Action::NewTiledPane(direction, Some(run_command_action), name);
+    let action = Action::NewTiledPane(direction, Some(run_command_action), name, None);
     apply_action!(action, error_msg, env);
 }
 

@@ -15,6 +15,7 @@ use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::Keybinds;
+use zellij_utils::input::layout::SplitSize;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
@@ -159,8 +160,20 @@ pub enum ScreenInstruction {
     OpenInPlaceEditor(PaneId, ClientTabIndexOrPaneId),
     TogglePaneEmbedOrFloating(ClientId),
     ToggleFloatingPanes(ClientId, Option<TerminalAction>),
-    HorizontalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
-    VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
+    HorizontalSplit(
+        PaneId,
+        Option<InitialTitle>,
+        HoldForCommand,
+        ClientId,
+        Option<SplitSize>,
+    ),
+    VerticalSplit(
+        PaneId,
+        Option<InitialTitle>,
+        HoldForCommand,
+        ClientId,
+        Option<SplitSize>,
+    ),
     WriteCharacter(Option<KeyWithModifier>, Vec<u8>, bool, ClientId), // bool ->
     // is_kitty_keyboard_protocol
     Resize(ClientId, ResizeStrategy),
@@ -2874,11 +2887,12 @@ pub(crate) fn screen_thread_main(
                 initial_pane_title,
                 hold_for_command,
                 client_id,
+                size,
             ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.horizontal_split(pid, initial_pane_title, client_id),
+                    |tab: &mut Tab, client_id: ClientId| tab.horizontal_split(pid, initial_pane_title, client_id, size),
                     ?
                 );
                 if let Some(hold_for_command) = hold_for_command {
@@ -2903,11 +2917,12 @@ pub(crate) fn screen_thread_main(
                 initial_pane_title,
                 hold_for_command,
                 client_id,
+                size,
             ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.vertical_split(pid, initial_pane_title, client_id),
+                    |tab: &mut Tab, client_id: ClientId| tab.vertical_split(pid, initial_pane_title, client_id, size),
                     ?
                 );
                 if let Some(hold_for_command) = hold_for_command {

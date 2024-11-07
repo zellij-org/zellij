@@ -739,7 +739,7 @@ impl Action {
                 node.push(direction);
                 Some(node)
             },
-            Action::NewTiledPane(direction, run_command_action, name) => {
+            Action::NewTiledPane(direction, run_command_action, name, size) => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
                 if let Some(run_command_action) = run_command_action {
@@ -778,6 +778,18 @@ impl Action {
                     };
                     direction_node.push(direction);
                     node_children.nodes_mut().push(direction_node);
+                }
+                if let Some(size) = size {
+                    let mut size_node = KdlNode::new("size");
+                    match size {
+                        SplitSize::Percent(size) => {
+                            size_node.push(format!("{}%", size));
+                        },
+                        SplitSize::Fixed(size) => {
+                            size_node.push(KdlValue::Base10(*size as i64));
+                        },
+                    };
+                    node_children.nodes_mut().push(size_node);
                 }
                 if !node_children.nodes().is_empty() {
                     node.set_children(node_children);
@@ -1537,6 +1549,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let height = command_metadata
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "height"))
                     .map(|s| s.to_owned());
+                let size = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "size"))
+                    .map(|s| s.to_owned());
                 if floating {
                     Ok(Action::NewFloatingPane(
                         Some(run_command_action),
@@ -1550,6 +1565,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         direction,
                         Some(run_command_action),
                         name,
+                        size.as_deref().and_then(|x| SplitSize::from_str(x).ok()),
                     ))
                 }
             },

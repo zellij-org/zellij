@@ -275,9 +275,10 @@ impl TryFrom<ProtobufAction> for Action {
                             direction,
                             Some(run_command_action),
                             pane_name,
+                            None,
                         ))
                     } else {
-                        Ok(Action::NewTiledPane(direction, None, None))
+                        Ok(Action::NewTiledPane(direction, None, None, None))
                     }
                 },
                 _ => Err("Wrong payload for Action::NewTiledPane"),
@@ -937,7 +938,7 @@ impl TryFrom<Action> for ProtobufAction {
                     )),
                 })
             },
-            Action::NewTiledPane(direction, run_command_action, pane_name) => {
+            Action::NewTiledPane(direction, run_command_action, pane_name, _size) => {
                 let direction = direction.and_then(|direction| {
                     let protobuf_direction: ProtobufResizeDirection = direction.try_into().ok()?;
                     Some(protobuf_direction as i32)

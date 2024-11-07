@@ -9,6 +9,7 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use async_std::task::{self, JoinHandle};
+use zellij_utils::input::layout::SplitSize;
 use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::nix::unistd::Pid;
@@ -48,11 +49,11 @@ pub enum PtyInstruction {
     ), // bool (if Some) is
     // should_float, String is an optional pane name
     OpenInPlaceEditor(PathBuf, Option<usize>, ClientTabIndexOrPaneId), // Option<usize> is the optional line number
-    SpawnTerminalVertically(Option<TerminalAction>, Option<String>, ClientId), // String is an
+    SpawnTerminalVertically(Option<TerminalAction>, Option<String>, ClientId, Option<SplitSize>), // String is an
     // optional pane
     // name
     // bool is start_suppressed
-    SpawnTerminalHorizontally(Option<TerminalAction>, Option<String>, ClientId), // String is an
+    SpawnTerminalHorizontally(Option<TerminalAction>, Option<String>, ClientId, Option<SplitSize>), // String is an
     // optional pane
     // name
     UpdateActivePane(Option<PaneId>, ClientId),
@@ -385,7 +386,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::SpawnTerminalVertically(terminal_action, name, client_id) => {
+            PtyInstruction::SpawnTerminalVertically(terminal_action, name, client_id, size) => {
                 let err_context =
                     || format!("failed to spawn terminal vertically for client {client_id}");
 
@@ -410,6 +411,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 pane_title,
                                 hold_for_command,
                                 client_id,
+                                size,
                             ))
                             .with_context(err_context)?;
                     },
@@ -424,6 +426,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         pane_title,
                                         hold_for_command,
                                         client_id,
+                                        size,
                                     ))
                                     .with_context(err_context)?;
                                 if let Some(run_command) = run_command {
@@ -456,7 +459,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::SpawnTerminalHorizontally(terminal_action, name, client_id) => {
+            PtyInstruction::SpawnTerminalHorizontally(terminal_action, name, client_id, size) => {
                 let err_context =
                     || format!("failed to spawn terminal horizontally for client {client_id}");
 
@@ -481,6 +484,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 pane_title,
                                 hold_for_command,
                                 client_id,
+                                size,
                             ))
                             .with_context(err_context)?;
                     },
@@ -495,6 +499,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         pane_title,
                                         hold_for_command,
                                         client_id,
+                                        size
                                     ))
                                     .with_context(err_context)?;
                                 if let Some(run_command) = run_command {
