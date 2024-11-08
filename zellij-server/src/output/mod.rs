@@ -943,6 +943,7 @@ impl OutputBuffer {
         } else {
             let mut line_changes: Vec<_> = self.changed_lines.iter().copied().collect();
             line_changes.sort_unstable();
+            line_changes.truncate(viewport_height);
             let mut changed_chunks = Vec::new();
             for line_index in line_changes {
                 let terminal_characters =
