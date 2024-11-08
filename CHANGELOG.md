@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 * fix(input): keypresses not being identified properly with kitty keyboard protocol in some terminals (https://github.com/zellij-org/zellij/pull/3725)
 * fix(input): reapply ctrl-j fix for the new architecture
+* fix(plugins): various cwd and usability fixes for the plugin manager (https://github.com/zellij-org/zellij/pull/3749)
 
 ## [0.41.0] - 2024-11-04
 * feat(layouts): allow consuming a layout through a url (https://github.com/zellij-org/zellij/pull/3351 and https://github.com/zellij-org/zellij/pull/3697)
