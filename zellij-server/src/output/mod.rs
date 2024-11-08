@@ -941,7 +941,12 @@ impl OutputBuffer {
             }
             changed_chunks
         } else {
-            let mut line_changes: Vec<_> = self.changed_lines.iter().copied().collect();
+            let mut line_changes: Vec<_> = self
+                .changed_lines
+                .iter()
+                .filter(|i| *i < &viewport_height)
+                .copied()
+                .collect();
             line_changes.sort_unstable();
             let mut changed_chunks = Vec::new();
             for line_index in line_changes {
