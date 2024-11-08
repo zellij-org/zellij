@@ -49,7 +49,7 @@ impl Default for NewPluginScreen {
             entering_config_val: false,
             selected_config_index: None,
             request_ids: vec![],
-            load_in_background: true,
+            load_in_background: false,
             colors: Palette::default(),
         }
     }
@@ -353,7 +353,7 @@ impl NewPluginScreen {
         let (mut should_render, mut should_close) = (false, false);
 
         match key.bare_key {
-            BareKey::Char(character) if key.has_no_modifiers() && character != ' ' => {
+            BareKey::Char(character) if key.has_no_modifiers() => {
                 if let Some(field) = self.get_field_being_edited_mut() {
                     field.push(character);
                 }
@@ -965,7 +965,7 @@ impl State {
     pub fn handle_main_screen_key(&mut self, key: KeyWithModifier) -> bool {
         let mut should_render = false;
         match key.bare_key {
-            BareKey::Char(character) if key.has_no_modifiers() && character != ' ' => {
+            BareKey::Char(character) if key.has_no_modifiers() => {
                 self.search_term.push(character);
                 self.update_search_term();
                 self.reset_selection();
