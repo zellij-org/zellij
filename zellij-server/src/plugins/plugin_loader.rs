@@ -109,7 +109,7 @@ impl<'a> PluginLoader<'a> {
             engine,
             &plugin_dir,
             path_to_default_shell,
-            zellij_cwd,
+            Some(zellij_cwd),
             capabilities,
             client_attributes,
             default_shell,
@@ -275,7 +275,6 @@ impl<'a> PluginLoader<'a> {
         connected_clients: Arc<Mutex<Vec<ClientId>>>,
         loading_indication: &mut LoadingIndication,
         path_to_default_shell: PathBuf,
-        zellij_cwd: PathBuf,
         capabilities: PluginCapabilities,
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
@@ -301,7 +300,7 @@ impl<'a> PluginLoader<'a> {
             engine,
             &plugin_dir,
             path_to_default_shell,
-            zellij_cwd,
+            None,
             capabilities,
             client_attributes,
             default_shell,
@@ -382,7 +381,7 @@ impl<'a> PluginLoader<'a> {
         engine: Engine,
         plugin_dir: &'a PathBuf,
         path_to_default_shell: PathBuf,
-        zellij_cwd: PathBuf,
+        cwd: Option<PathBuf>,
         capabilities: PluginCapabilities,
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
@@ -405,6 +404,10 @@ impl<'a> PluginLoader<'a> {
         let keybinds = running_plugin.store.data().keybinds.clone();
         let default_mode = running_plugin.store.data().default_mode;
         let plugin_config = running_plugin.store.data().plugin.clone();
+        // prefer the explicitly given cwd, otherwise copy it from the running plugin
+        // (when reloading a plugin, we want to copy it, when starting a new plugin instance from
+        // meomory, we want to reset it)
+        let zellij_cwd = cwd.unwrap_or_else(|| running_plugin.store.data().plugin_cwd.clone());
         loading_indication.set_name(running_plugin.store.data().name());
         PluginLoader::new(
             plugin_cache,
