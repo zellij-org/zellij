@@ -325,6 +325,9 @@ impl Action {
             CliAction::FocusNextPane => Ok(vec![Action::FocusNextPane]),
             CliAction::FocusPreviousPane => Ok(vec![Action::FocusPreviousPane]),
             CliAction::MoveFocus { direction } => Ok(vec![Action::MoveFocus(direction)]),
+            CliAction::FocusPaneWithId { id, floating } => {
+                Ok(vec![Action::FocusTerminalPaneWithId(id, floating)])
+            },
             CliAction::MoveFocusOrTab { direction } => Ok(vec![Action::MoveFocusOrTab(direction)]),
             CliAction::MovePane { direction } => Ok(vec![Action::MovePane(direction)]),
             CliAction::MovePaneBackwards => Ok(vec![Action::MovePaneBackwards]),
