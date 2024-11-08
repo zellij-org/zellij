@@ -81,6 +81,7 @@ pkg-fmt = "tgz"
 [features]
 # See remarks in zellij_utils/Cargo.toml
 default = ["zellij-utils/plugins_from_target"]
+vendored-openssl = ["zellij-utils/vendored-openssl"]
 disable_automatic_asset_installation = ["zellij-utils/disable_automatic_asset_installation"]
 unstable = ["zellij-client/unstable", "zellij-utils/unstable"]
 singlepass = ["zellij-server/singlepass"]
