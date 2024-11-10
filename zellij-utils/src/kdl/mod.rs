@@ -4440,8 +4440,8 @@ impl PaneInfo {
         let terminal_command = optional_string_node!("terminal_command");
         let plugin_url = optional_string_node!("plugin_url");
         let is_selectable = bool_node!("is_selectable");
-        let cwd = optional_string_node!("cwd").map(|path| PathBuf::from::<String>(path));
-        let pid = optional_int_node!("pid", i32);
+        let cwd = optional_string_node!("cwd").map(PathBuf::from);
+        let pid = optional_int_node!("pid", usize);
 
         let pane_info = PaneInfo {
             id,
@@ -4528,6 +4528,12 @@ impl PaneInfo {
             string_node!("plugin_url", plugin_url.to_string());
         }
         bool_node!("is_selectable", self.is_selectable);
+        if let Some(cwd) = &self.cwd {
+            string_node!("cwd", cwd.display().to_string())
+        }
+        if let Some(pid) = self.pid {
+            int_node!("pid", pid)
+        }
         kdl_doucment
     }
 }
@@ -4641,6 +4647,8 @@ fn serialize_and_deserialize_session_info_with_data() {
             terminal_command: None,
             plugin_url: Some("i_am_a_fake_plugin".to_owned()),
             is_selectable: true,
+            cwd: None,
+            pid: None,
         },
     ];
     let mut panes = HashMap::new();
