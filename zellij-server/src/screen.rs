@@ -161,6 +161,14 @@ pub enum ScreenInstruction {
     ToggleFloatingPanes(ClientId, Option<TerminalAction>),
     HorizontalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
+    FourWaySplit(
+        PaneId,
+        PaneId,
+        PaneId,
+        Option<InitialTitle>,
+        HoldForCommand,
+        ClientId,
+    ),
     WriteCharacter(Option<KeyWithModifier>, Vec<u8>, bool, ClientId), // bool ->
     // is_kitty_keyboard_protocol
     Resize(ClientId, ResizeStrategy),
@@ -427,6 +435,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ToggleFloatingPanes(..) => ScreenContext::ToggleFloatingPanes,
             ScreenInstruction::HorizontalSplit(..) => ScreenContext::HorizontalSplit,
             ScreenInstruction::VerticalSplit(..) => ScreenContext::VerticalSplit,
+            ScreenInstruction::FourWaySplit(..) => ScreenContext::FourWaySplit,
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
             ScreenInstruction::Resize(.., strategy) => match strategy {
                 ResizeStrategy {
@@ -2920,6 +2929,57 @@ pub(crate) fn screen_thread_main(
                             None,
                             is_first_run,
                             hold_for_command
+                        )
+                    );
+                }
+                screen.unblock_input()?;
+                screen.log_and_report_session_state()?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::FourWaySplit(
+                pid1,
+                pid2,
+                pid3,
+                initial_pane_title,
+                hold_for_command,
+                client_id,
+            ) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.four_way_split(pid1, pid2, pid3, initial_pane_title.clone(), client_id),
+                    ?
+                );
+                if let Some(hold_for_command) = hold_for_command {
+                    let is_first_run = true;
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, _client_id: ClientId| tab.hold_pane(
+                            pid1,
+                            None,
+                            is_first_run,
+                            hold_for_command.clone()
+                        )
+                    );
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, _client_id: ClientId| tab.hold_pane(
+                            pid2,
+                            None,
+                            is_first_run,
+                            hold_for_command.clone()
+                        )
+                    );
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, _client_id: ClientId| tab.hold_pane(
+                            pid3,
+                            None,
+                            is_first_run,
+                            hold_for_command.clone()
                         )
                     );
                 }

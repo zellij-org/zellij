@@ -1555,6 +1555,108 @@ impl Tab {
         Ok(())
     }
 
+    pub fn four_way_split(
+        &mut self,
+        pid1: PaneId,
+        pid2: PaneId,
+        pid3: PaneId,
+        initial_pane_title: Option<String>,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let err_context =
+            || format!("failed to split pane {pid1:?} four way for client {client_id}");
+        if self.floating_panes.panes_are_visible() {
+            return Ok(());
+        }
+        self.close_down_to_max_terminals()
+            .with_context(err_context)?;
+        if self.tiled_panes.fullscreen_is_active() {
+            self.toggle_active_pane_fullscreen(client_id);
+        }
+        let (PaneId::Terminal(term_pid1) | PaneId::Plugin(term_pid1)) = pid1;
+        let (PaneId::Terminal(term_pid2) | PaneId::Plugin(term_pid2)) = pid2;
+        let (PaneId::Terminal(term_pid3) | PaneId::Plugin(term_pid3)) = pid3;
+        let next_terminal_position1 = self.get_next_terminal_position();
+        let new_terminal1 = TerminalPane::new(
+            term_pid1,
+            PaneGeom::default(), // the initial size will be set later
+            self.style,
+            next_terminal_position1,
+            String::new(),
+            self.link_handler.clone(),
+            self.character_cell_size.clone(),
+            self.sixel_image_store.clone(),
+            self.terminal_emulator_colors.clone(),
+            self.terminal_emulator_color_codes.clone(),
+            initial_pane_title.clone(),
+            None,
+            self.debug,
+            self.arrow_fonts,
+            self.styled_underlines,
+            self.explicitly_disable_kitty_keyboard_protocol,
+        );
+        let next_terminal_position2 = self.get_next_terminal_position();
+        let new_terminal2 = TerminalPane::new(
+            term_pid2,
+            PaneGeom::default(), // the initial size will be set later
+            self.style,
+            next_terminal_position2,
+            String::new(),
+            self.link_handler.clone(),
+            self.character_cell_size.clone(),
+            self.sixel_image_store.clone(),
+            self.terminal_emulator_colors.clone(),
+            self.terminal_emulator_color_codes.clone(),
+            initial_pane_title.clone(),
+            None,
+            self.debug,
+            self.arrow_fonts,
+            self.styled_underlines,
+            self.explicitly_disable_kitty_keyboard_protocol,
+        );
+        let next_terminal_position3 = self.get_next_terminal_position();
+        let new_terminal3 = TerminalPane::new(
+            term_pid3,
+            PaneGeom::default(), // the initial size will be set later
+            self.style,
+            next_terminal_position3,
+            String::new(),
+            self.link_handler.clone(),
+            self.character_cell_size.clone(),
+            self.sixel_image_store.clone(),
+            self.terminal_emulator_colors.clone(),
+            self.terminal_emulator_color_codes.clone(),
+            initial_pane_title.clone(),
+            None,
+            self.debug,
+            self.arrow_fonts,
+            self.styled_underlines,
+            self.explicitly_disable_kitty_keyboard_protocol,
+        );
+        // self.tiled_panes.split_pane_vertically(
+        //     new_terminal1_pid,
+        //     Box::new(new_terminal3),
+        //     client_id,
+        // );
+        self.tiled_panes
+            .split_pane_horizontally(pid1, Box::new(new_terminal1), client_id);
+
+        self.tiled_panes
+            .split_pane_vertically(pid2, Box::new(new_terminal2), client_id);
+        self.tiled_panes.focus_pane(pid1, client_id);
+        self.tiled_panes
+            .split_pane_vertically(pid3, Box::new(new_terminal3), client_id);
+        self.should_clear_display_before_rendering = true;
+        self.swap_layouts.set_is_tiled_damaged();
+        // let _ = self.horizontal_split(pid, initial_pane_title.clone(), client_id)?;
+        // let _ = self.horizontal_split(
+        //     PaneId::Terminal(term_id),
+        //     initial_pane_title.clone(),
+        //     client_id,
+        // )?;
+        Ok(())
+    }
+
     pub fn get_active_pane(&self, client_id: ClientId) -> Option<&dyn Pane> {
         self.get_active_pane_id(client_id).and_then(|ap| {
             if self.floating_panes.panes_are_visible() {

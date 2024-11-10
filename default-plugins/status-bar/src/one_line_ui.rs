@@ -686,7 +686,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
     let mut secondary_info = LinePart::default();
     let binds = &help.get_mode_keybinds();
     // New Pane
-    let new_pane_action_key = action_key(binds, &[Action::NewPane(None, None, false)]);
+    let new_pane_action_key = action_key(binds, &[Action::NewPane(None, None, false, false)]);
     let mut new_pane_key_to_display = new_pane_action_key
         .iter()
         .find(|k| k.is_key_with_alt_modifier(BareKey::Char('n')))
@@ -694,6 +694,18 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
     let new_pane_key_to_display =
         if let Some(new_pane_key_to_display) = new_pane_key_to_display.take() {
             vec![new_pane_key_to_display.clone()]
+        } else {
+            vec![]
+        };
+
+    let four_way_action_key = action_key(binds, &[Action::NewPane(None, None, false, true)]);
+    let mut four_way_key_to_display = four_way_action_key
+        .iter()
+        .find(|k| k.is_key_with_alt_modifier(BareKey::Char('p')))
+        .or_else(|| four_way_action_key.iter().next());
+    let four_way_key_to_display =
+        if let Some(four_way_key_to_display) = four_way_key_to_display.take() {
+            vec![four_way_key_to_display.clone()]
         } else {
             vec![]
         };
@@ -758,6 +770,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             new_pane_key_to_display.clone(),
             move_focus_shortcuts.clone(),
             toggle_floating_key_to_display.clone(),
+            four_way_key_to_display.clone(),
         ]
         .iter()
         .flatten()
@@ -787,6 +800,13 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             are_floating_panes_visible,
             Some(0),
         ));
+        secondary_info.append(&add_shortcut(
+            help,
+            "Four Way Split Pane",
+            &four_way_key_to_display,
+            false,
+            Some(0),
+        ));
     } else {
         let modifier_str = text_as_line_part_with_emphasis(
             format!(
@@ -804,6 +824,10 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             .iter()
             .map(|k| k.strip_common_modifiers(&common_modifiers))
             .collect();
+        let four_way_key_to_display: Vec<KeyWithModifier> = four_way_key_to_display
+            .iter()
+            .map(|k| k.strip_common_modifiers(&common_modifiers))
+            .collect();
         let move_focus_shortcuts: Vec<KeyWithModifier> = move_focus_shortcuts
             .iter()
             .map(|k| k.strip_common_modifiers(&common_modifiers))
@@ -818,6 +842,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             new_pane_key_to_display,
             false,
         ));
+
         secondary_info.append(&add_shortcut_with_inline_key(
             help,
             "Change Focus",
@@ -829,6 +854,12 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             "Floating",
             toggle_floating_key_to_display,
             are_floating_panes_visible,
+        ));
+        secondary_info.append(&add_shortcut_with_inline_key(
+            help,
+            "Four Way Split Pane",
+            four_way_key_to_display,
+            false,
         ));
     }
 
@@ -858,6 +889,13 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 are_floating_panes_visible,
                 Some(0),
             ));
+            short_line.append(&add_shortcut(
+                help,
+                "FourWay",
+                &four_way_key_to_display,
+                false,
+                Some(0),
+            ));
         } else {
             let modifier_str = text_as_line_part_with_emphasis(
                 format!(
@@ -872,6 +910,10 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             );
             short_line.append(&modifier_str);
             let new_pane_key_to_display: Vec<KeyWithModifier> = new_pane_key_to_display
+                .iter()
+                .map(|k| k.strip_common_modifiers(&common_modifiers))
+                .collect();
+            let four_way_key_to_display: Vec<KeyWithModifier> = four_way_key_to_display
                 .iter()
                 .map(|k| k.strip_common_modifiers(&common_modifiers))
                 .collect();
@@ -890,6 +932,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 new_pane_key_to_display,
                 false,
             ));
+
             short_line.append(&add_shortcut_with_inline_key(
                 help,
                 "Focus",
@@ -901,6 +944,12 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 "Floating",
                 toggle_floating_key_to_display,
                 are_floating_panes_visible,
+            ));
+            short_line.append(&add_shortcut_with_inline_key(
+                help,
+                "FourWay",
+                four_way_key_to_display,
+                false,
             ));
         }
         short_line
@@ -1172,7 +1221,8 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
     }
 
     if mi.mode == IM::Pane { vec![
-        (s("New"), s("New"), single_action_key(&km, &[A::NewPane(None, None, false), TO_NORMAL])),
+        (s("New"), s("New"), single_action_key(&km, &[A::NewPane(None, None, false, false), TO_NORMAL])),
+        (s("FourWay"), s("FourWay"), single_action_key(&km, &[A::NewPane(None, None, false, true), TO_NORMAL])),
         (s("Change Focus"), s("Move"),
             action_key_group(&km, &[&[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
                 &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
@@ -1281,8 +1331,9 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Move focus"), s("Move"), action_key_group(&km, &[
             &[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
             &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
-        (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(Some(Dir::Down), None, false), TO_NORMAL])),
-        (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(Some(Dir::Right), None, false), TO_NORMAL])),
+        (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(Some(Dir::Down), None, false, false), TO_NORMAL])),
+        (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(Some(Dir::Right), None, false, false), TO_NORMAL])),
+        (s("Split four way"), s("FourWay"), action_key(&km, &[A::NewPane(None, None, false, true), TO_NORMAL])),
         (s("Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
         (s("New tab"), s("New"), action_key(&km, &[A::NewTab(None, vec![], None, None, None, true), TO_NORMAL])),
         (s("Rename tab"), s("Rename"),

@@ -219,6 +219,8 @@ pub struct NewPanePayload {
     pub direction: ::core::option::Option<i32>,
     #[prost(string, optional, tag = "2")]
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag = "3")]
+    pub four_way: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

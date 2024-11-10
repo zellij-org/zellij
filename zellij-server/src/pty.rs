@@ -55,6 +55,9 @@ pub enum PtyInstruction {
     SpawnTerminalHorizontally(Option<TerminalAction>, Option<String>, ClientId), // String is an
     // optional pane
     // name
+    SpawnTerminalFourWay(Option<TerminalAction>, Option<String>, ClientId), // String is an
+    // optional pane
+    // name
     UpdateActivePane(Option<PaneId>, ClientId),
     GoToTab(TabIndex, ClientId),
     NewTab(
@@ -112,6 +115,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::OpenInPlaceEditor(..) => PtyContext::OpenInPlaceEditor,
             PtyInstruction::SpawnTerminalVertically(..) => PtyContext::SpawnTerminalVertically,
             PtyInstruction::SpawnTerminalHorizontally(..) => PtyContext::SpawnTerminalHorizontally,
+            PtyInstruction::SpawnTerminalFourWay(..) => PtyContext::SpawnTerminalFourWay,
             PtyInstruction::UpdateActivePane(..) => PtyContext::UpdateActivePane,
             PtyInstruction::GoToTab(..) => PtyContext::GoToTab,
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
@@ -488,6 +492,83 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
                             if hold_on_close {
                                 let hold_for_command = None; // we do not hold an "error" pane
+                                pty.bus
+                                    .senders
+                                    .send_to_screen(ScreenInstruction::HorizontalSplit(
+                                        PaneId::Terminal(*terminal_id),
+                                        pane_title,
+                                        hold_for_command,
+                                        client_id,
+                                    ))
+                                    .with_context(err_context)?;
+                                if let Some(run_command) = run_command {
+                                    pty.bus
+                                        .senders
+                                        .send_to_screen(ScreenInstruction::PtyBytes(
+                                            *terminal_id,
+                                            format!(
+                                                "Command not found: {}",
+                                                run_command.command.display()
+                                            )
+                                            .as_bytes()
+                                            .to_vec(),
+                                        ))
+                                        .with_context(err_context)?;
+                                    pty.bus
+                                        .senders
+                                        .send_to_screen(ScreenInstruction::HoldPane(
+                                            PaneId::Terminal(*terminal_id),
+                                            Some(2), // exit status
+                                            run_command,
+                                            None,
+                                            None,
+                                        ))
+                                        .with_context(err_context)?;
+                                }
+                            }
+                        },
+                        _ => Err::<(), _>(err).non_fatal(),
+                    },
+                }
+            },
+            PtyInstruction::SpawnTerminalFourWay(terminal_action, name, client_id) => {
+                let err_context =
+                    || format!("failed to spawn terminal four way for client {client_id}");
+
+                let (hold_on_close, run_command, pane_title) = match &terminal_action {
+                    Some(TerminalAction::RunCommand(run_command)) => (
+                        run_command.hold_on_close,
+                        Some(run_command.clone()),
+                        Some(name.unwrap_or_else(|| run_command.to_string())),
+                    ),
+                    _ => (false, None, name),
+                };
+                match pty
+                    .spawn_terminals(
+                        terminal_action,
+                        ClientTabIndexOrPaneId::ClientId(client_id),
+                        3,
+                    )
+                    .with_context(err_context)
+                {
+                    Ok(terminals) => {
+                        let hold_for_command = if terminals[0].1 { run_command } else { None };
+                        pty.bus
+                            .senders
+                            .send_to_screen(ScreenInstruction::FourWaySplit(
+                                PaneId::Terminal(terminals[0].0),
+                                PaneId::Terminal(terminals[1].0),
+                                PaneId::Terminal(terminals[2].0),
+                                pane_title,
+                                hold_for_command,
+                                client_id,
+                            ))
+                            .with_context(err_context)?;
+                    },
+                    Err(err) => match err.downcast_ref::<ZellijError>() {
+                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
+                            let hold_for_command = None; // we do not hold an "error" pane
+                            if hold_on_close {
                                 pty.bus
                                     .senders
                                     .send_to_screen(ScreenInstruction::HorizontalSplit(
@@ -1027,6 +1108,31 @@ impl Pty {
         self.id_to_child_pid.insert(terminal_id, child_fd);
         let starts_held = false;
         Ok((terminal_id, starts_held))
+    }
+    pub fn spawn_terminals(
+        &mut self,
+        terminal_action: Option<TerminalAction>,
+        client_or_tab_index: ClientTabIndexOrPaneId,
+        count: usize,
+    ) -> Result<Vec<(u32, bool)>> {
+        let mut spawned_terminals: Vec<(u32, bool)> = vec![];
+        for _ in 0..count {
+            let term = self.spawn_terminal(terminal_action.clone(), client_or_tab_index.clone());
+            match term {
+                Ok((pid, held)) => spawned_terminals.push((pid, held)),
+                Err(e) => {
+                    for term in &mut spawned_terminals {
+                        self.bus
+                            .os_input
+                            .as_mut()
+                            .context("no OS I/O interface found")
+                            .and_then(|os_input| os_input.kill(Pid::from_raw(term.0 as i32)))?;
+                        return Err(e);
+                    }
+                },
+            }
+        }
+        Ok(spawned_terminals)
     }
     pub fn spawn_terminals_for_layout(
         &mut self,

@@ -529,9 +529,12 @@ impl Action {
             "DumpScreen" => Ok(Action::DumpScreen(string, false)),
             "DumpLayout" => Ok(Action::DumpLayout),
             "NewPane" => {
-                if string.is_empty() {
-                    return Ok(Action::NewPane(None, None, false));
+                return if string.is_empty() {
+                    return Ok(Action::NewPane(None, None, false, false));
                 } else {
+                    if string == "FourWay" {
+                        return Ok(Action::NewPane(None, None, false, true));
+                    }
                     let direction = Direction::from_str(string.as_str()).map_err(|_| {
                         ConfigError::new_kdl_error(
                             format!("Invalid direction: '{}'", string),
@@ -539,8 +542,8 @@ impl Action {
                             action_node.span().len(),
                         )
                     })?;
-                    Ok(Action::NewPane(Some(direction), None, false))
-                }
+                    Ok(Action::NewPane(Some(direction), None, false, false))
+                };
             },
             "SearchToggleOption" => {
                 let toggle_option = SearchOption::from_str(string.as_str()).map_err(|_| {
@@ -667,7 +670,7 @@ impl Action {
             Action::ToggleFocusFullscreen => Some(KdlNode::new("ToggleFocusFullscreen")),
             Action::TogglePaneFrames => Some(KdlNode::new("TogglePaneFrames")),
             Action::ToggleActiveSyncTab => Some(KdlNode::new("ToggleActiveSyncTab")),
-            Action::NewPane(direction, _, _) => {
+            Action::NewPane(direction, _, _, _) => {
                 let mut node = KdlNode::new("NewPane");
                 if let Some(direction) = direction {
                     let direction = match direction {

@@ -132,7 +132,7 @@ impl RebindLeadersScreen {
                 })
                 .and_then(|k| {
                     k.into_iter().find_map(|(k, a)| {
-                        if a == &[actions::Action::NewPane(None, None, false)] {
+                        if a == &[actions::Action::NewPane(None, None, false, false)] {
                             Some(k.key_modifiers.clone())
                         } else {
                             None
@@ -933,9 +933,18 @@ impl RebindLeadersScreen {
         self.bind_actions(
             keys_to_unbind,
             keys_to_bind,
-            &[actions::Action::NewPane(None, None, false)],
+            &[actions::Action::NewPane(None, None, false, false)],
             KeyWithModifier::new_with_modifiers(
                 BareKey::Char('n'),
+                self.secondary_modifier.clone(),
+            ),
+        );
+        self.bind_actions(
+            keys_to_unbind,
+            keys_to_bind,
+            &[actions::Action::NewPane(None, None, false, true)],
+            KeyWithModifier::new_with_modifiers(
+                BareKey::Char('+'),
                 self.secondary_modifier.clone(),
             ),
         );

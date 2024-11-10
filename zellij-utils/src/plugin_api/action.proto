@@ -139,6 +139,7 @@ message ScrollAtPayload {
 message NewPanePayload {
   optional resize.ResizeDirection direction = 1;
   optional string pane_name = 2;
+  optional bool four_way = 3;
 }
 
 message SwitchToModePayload {

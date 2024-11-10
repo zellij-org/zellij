@@ -259,30 +259,34 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::TogglePaneFrames)
                 .with_context(err_context)?;
         },
-        Action::NewPane(direction, name, start_suppressed) => {
+        Action::NewPane(direction, name, start_suppressed, four_way) => {
             let shell = default_shell.clone();
-            let pty_instr = match direction {
-                Some(Direction::Left) => {
-                    PtyInstruction::SpawnTerminalVertically(shell, name, client_id)
-                },
-                Some(Direction::Right) => {
-                    PtyInstruction::SpawnTerminalVertically(shell, name, client_id)
-                },
-                Some(Direction::Up) => {
-                    PtyInstruction::SpawnTerminalHorizontally(shell, name, client_id)
-                },
-                Some(Direction::Down) => {
-                    PtyInstruction::SpawnTerminalHorizontally(shell, name, client_id)
-                },
-                // No direction specified - try to put it in the biggest available spot
-                None => PtyInstruction::SpawnTerminal(
-                    shell,
-                    None,
-                    name,
-                    None,
-                    start_suppressed,
-                    ClientTabIndexOrPaneId::ClientId(client_id),
-                ),
+            let pty_instr = if four_way {
+                PtyInstruction::SpawnTerminalFourWay(shell, name, client_id)
+            } else {
+                match direction {
+                    Some(Direction::Left) => {
+                        PtyInstruction::SpawnTerminalVertically(shell, name, client_id)
+                    },
+                    Some(Direction::Right) => {
+                        PtyInstruction::SpawnTerminalVertically(shell, name, client_id)
+                    },
+                    Some(Direction::Up) => {
+                        PtyInstruction::SpawnTerminalHorizontally(shell, name, client_id)
+                    },
+                    Some(Direction::Down) => {
+                        PtyInstruction::SpawnTerminalHorizontally(shell, name, client_id)
+                    },
+                    // No direction specified - try to put it in the biggest available spot
+                    None => PtyInstruction::SpawnTerminal(
+                        shell,
+                        None,
+                        name,
+                        None,
+                        start_suppressed,
+                        ClientTabIndexOrPaneId::ClientId(client_id),
+                    ),
+                }
             };
             senders.send_to_pty(pty_instr).with_context(err_context)?;
         },
