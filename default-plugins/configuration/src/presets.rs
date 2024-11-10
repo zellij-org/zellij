@@ -227,6 +227,7 @@ keybinds clear-defaults=true {{
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
+        bind "+" {{ NewPane "FourWays"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
