@@ -59,6 +59,7 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
             let mut needs_regeneration = false;
             prost.out_dir(prost_asset_dir);
             prost.include_file("generated_plugin_api.rs");
+            prost.protoc_arg("--experimental_allow_proto3_optional");
             let mut proto_files = vec![];
             for entry in std::fs::read_dir(&protobuf_source_dir).unwrap() {
                 let entry_path = entry.unwrap().path();
