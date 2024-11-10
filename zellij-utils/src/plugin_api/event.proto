@@ -278,6 +278,8 @@ message PaneInfo {
     optional string terminal_command = 20;
     optional string plugin_url = 21;
     bool is_selectable = 22;
+    optional string cwd = 23;
+    optional uint32 pid = 24;
 }
 
 message TabInfo {

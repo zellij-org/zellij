@@ -1355,6 +1355,8 @@ pub struct PaneInfo {
     /// Unselectable panes are often used for UI elements that do not have direct user interaction
     /// (eg. the default `status-bar` or `tab-bar`).
     pub is_selectable: bool,
+    pub cwd: Option<PathBuf>,
+    pub pid: Option<usize>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ClientInfo {

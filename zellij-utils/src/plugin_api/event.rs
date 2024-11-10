@@ -1018,6 +1018,8 @@ impl TryFrom<PaneInfo> for ProtobufPaneInfo {
             terminal_command: pane_info.terminal_command,
             plugin_url: pane_info.plugin_url,
             is_selectable: pane_info.is_selectable,
+            cwd: pane_info.cwd,
+            pid: pane_info.pid,
         })
     }
 }

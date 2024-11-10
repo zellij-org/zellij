@@ -4440,6 +4440,8 @@ impl PaneInfo {
         let terminal_command = optional_string_node!("terminal_command");
         let plugin_url = optional_string_node!("plugin_url");
         let is_selectable = bool_node!("is_selectable");
+        let cwd = optional_string_node!("cwd").map(|path| PathBuf::from::<String>(path));
+        let pid = optional_int_node!("pid", i32);
 
         let pane_info = PaneInfo {
             id,
@@ -4464,6 +4466,8 @@ impl PaneInfo {
             terminal_command,
             plugin_url,
             is_selectable,
+            cwd,
+            pid,
         };
         Ok((tab_position, pane_info))
     }
@@ -4611,6 +4615,8 @@ fn serialize_and_deserialize_session_info_with_data() {
             terminal_command: Some("foo".to_owned()),
             plugin_url: None,
             is_selectable: true,
+            cwd: Some("/some/directory/".into()),
+            pid: Some(69),
         },
         PaneInfo {
             id: 1,
