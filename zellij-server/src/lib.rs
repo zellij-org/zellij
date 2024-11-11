@@ -612,6 +612,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 should_launch_setup_wizard,
                 client_id,
             ) => {
+                log::info!("ServerInstruction::NewClient 1");
                 let mut session = init_session(
                     os_input.clone(),
                     to_server.clone(),
@@ -625,6 +626,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     plugin_aliases,
                     client_id,
                 );
+                log::info!("ServerInstruction::NewClient 2");
                 let mut runtime_configuration = config.clone();
                 runtime_configuration.options = *runtime_config_options.clone();
                 session
@@ -638,7 +640,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .current_input_modes
                     .insert(client_id, default_input_mode);
 
+                log::info!("ServerInstruction::NewClient 3");
                 *session_data.write().unwrap() = Some(session);
+                log::info!("ServerInstruction::NewClient 4");
                 session_state
                     .write()
                     .unwrap()
