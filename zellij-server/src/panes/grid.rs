@@ -1729,6 +1729,7 @@ impl Grid {
         self.mouse_tracking = MouseTracking::Off;
         self.focus_event_tracking = false;
         self.cursor_is_hidden = false;
+        self.supports_kitty_keyboard_protocol = false;
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_grid.reap_images(images_to_reap);
         }
