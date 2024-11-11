@@ -202,11 +202,7 @@ pub enum ScreenInstruction {
     TogglePaneFrames,
     SetSelectable(PaneId, bool),
     ClosePane(PaneId, Option<ClientId>),
-    HoldPane(
-        PaneId,
-        Option<i32>,
-        RunCommand,
-    ),
+    HoldPane(PaneId, Option<i32>, RunCommand),
     UpdatePaneName(Vec<u8>, ClientId),
     UndoRenamePane(ClientId),
     NewTab(
@@ -3618,8 +3614,7 @@ pub(crate) fn screen_thread_main(
                     screen.move_active_tab_to_left(client_id)?;
                     screen.render(None)?;
                 } else {
-                    pending_events_waiting_for_tab
-                        .push(ScreenInstruction::MoveTabLeft(client_id));
+                    pending_events_waiting_for_tab.push(ScreenInstruction::MoveTabLeft(client_id));
                 }
                 screen.unblock_input()?;
             },
@@ -3628,8 +3623,7 @@ pub(crate) fn screen_thread_main(
                     screen.move_active_tab_to_right(client_id)?;
                     screen.render(None)?;
                 } else {
-                    pending_events_waiting_for_tab
-                        .push(ScreenInstruction::MoveTabRight(client_id));
+                    pending_events_waiting_for_tab.push(ScreenInstruction::MoveTabRight(client_id));
                 }
                 screen.unblock_input()?;
             },
