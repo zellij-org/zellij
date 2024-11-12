@@ -1,5 +1,5 @@
 use crate::tab::{MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
-use crate::{panes::PaneId, tab::Pane};
+use crate::{panes::PaneId, tab::PaneTrait};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use zellij_utils::data::{Direction, ResizeStrategy};
@@ -20,7 +20,7 @@ fn no_pane_id(pane_id: &PaneId) -> String {
 }
 
 pub struct FloatingPaneGrid<'a> {
-    panes: Rc<RefCell<HashMap<PaneId, &'a mut Box<dyn Pane>>>>,
+    panes: Rc<RefCell<HashMap<PaneId, &'a mut Box<dyn PaneTrait>>>>,
     desired_pane_positions: Rc<RefCell<&'a mut HashMap<PaneId, PaneGeom>>>,
     display_area: Size, // includes all panes (including eg. the status bar and tab bar in the default layout)
     viewport: Viewport, // includes all non-UI panes
@@ -28,7 +28,7 @@ pub struct FloatingPaneGrid<'a> {
 
 impl<'a> FloatingPaneGrid<'a> {
     pub fn new(
-        panes: impl IntoIterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>,
+        panes: impl IntoIterator<Item = (&'a PaneId, &'a mut Box<dyn PaneTrait>)>,
         desired_pane_positions: &'a mut HashMap<PaneId, PaneGeom>,
         display_area: Size,
         viewport: Viewport,
@@ -602,7 +602,7 @@ impl<'a> FloatingPaneGrid<'a> {
     pub fn next_selectable_pane_id_to_the_left(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
         let current_pane = panes.get(current_pane_id)?;
-        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+        let panes: Vec<(PaneId, &&mut Box<dyn PaneTrait>)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))
@@ -627,7 +627,7 @@ impl<'a> FloatingPaneGrid<'a> {
     }
     pub fn pane_id_on_edge(&self, direction: Direction) -> Option<PaneId> {
         let panes = self.panes.borrow();
-        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+        let panes: Vec<(PaneId, &&mut Box<dyn PaneTrait>)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))
@@ -672,7 +672,7 @@ impl<'a> FloatingPaneGrid<'a> {
     pub fn next_selectable_pane_id_below(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
         let current_pane = panes.get(current_pane_id)?;
-        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+        let panes: Vec<(PaneId, &&mut Box<dyn PaneTrait>)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))
@@ -698,7 +698,7 @@ impl<'a> FloatingPaneGrid<'a> {
     pub fn next_selectable_pane_id_above(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
         let current_pane = panes.get(current_pane_id)?;
-        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+        let panes: Vec<(PaneId, &&mut Box<dyn PaneTrait>)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))
@@ -724,7 +724,7 @@ impl<'a> FloatingPaneGrid<'a> {
     pub fn next_selectable_pane_id_to_the_right(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
         let current_pane = panes.get(current_pane_id)?;
-        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+        let panes: Vec<(PaneId, &&mut Box<dyn PaneTrait>)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))
@@ -749,7 +749,7 @@ impl<'a> FloatingPaneGrid<'a> {
     }
     pub fn next_selectable_pane_id(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
-        let mut panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+        let mut panes: Vec<(PaneId, &&mut Box<dyn PaneTrait>)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))
@@ -775,7 +775,7 @@ impl<'a> FloatingPaneGrid<'a> {
     }
     pub fn previous_selectable_pane_id(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
-        let mut panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+        let mut panes: Vec<(PaneId, &&mut Box<dyn PaneTrait>)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))

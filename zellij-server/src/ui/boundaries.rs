@@ -2,7 +2,7 @@ use zellij_utils::pane_size::Viewport;
 
 use crate::output::CharacterChunk;
 use crate::panes::terminal_character::{TerminalCharacter, EMPTY_TERMINAL_CHARACTER, RESET_STYLES};
-use crate::tab::Pane;
+use crate::tab::PaneTrait;
 use ansi_term::Colour::{Fixed, RGB};
 use std::collections::HashMap;
 use zellij_utils::errors::prelude::*;
@@ -444,7 +444,7 @@ impl Boundaries {
             boundary_characters: HashMap::new(),
         }
     }
-    pub fn add_rect(&mut self, rect: &dyn Pane, color: Option<PaletteColor>) {
+    pub fn add_rect(&mut self, rect: &dyn PaneTrait, color: Option<PaletteColor>) {
         let pane_is_stacked = rect.current_geom().is_stacked;
         if !self.is_fully_inside_screen(rect) {
             return;
@@ -569,13 +569,13 @@ impl Boundaries {
         }
         Ok(character_chunks)
     }
-    fn rect_right_boundary_is_before_screen_edge(&self, rect: &dyn Pane) -> bool {
+    fn rect_right_boundary_is_before_screen_edge(&self, rect: &dyn PaneTrait) -> bool {
         rect.x() + rect.cols() < self.viewport.cols
     }
-    fn rect_bottom_boundary_is_before_screen_edge(&self, rect: &dyn Pane) -> bool {
+    fn rect_bottom_boundary_is_before_screen_edge(&self, rect: &dyn PaneTrait) -> bool {
         rect.y() + rect.rows() < self.viewport.y + self.viewport.rows
     }
-    fn rect_right_boundary_row_start(&self, rect: &dyn Pane) -> usize {
+    fn rect_right_boundary_row_start(&self, rect: &dyn PaneTrait) -> usize {
         let pane_is_stacked = rect.current_geom().is_stacked;
         let horizontal_frame_offset = if pane_is_stacked { 0 } else { 1 };
         if rect.y() > self.viewport.y {
@@ -584,20 +584,20 @@ impl Boundaries {
             self.viewport.y
         }
     }
-    fn rect_right_boundary_row_end(&self, rect: &dyn Pane) -> usize {
+    fn rect_right_boundary_row_end(&self, rect: &dyn PaneTrait) -> usize {
         rect.y() + rect.rows()
     }
-    fn rect_bottom_boundary_col_start(&self, rect: &dyn Pane) -> usize {
+    fn rect_bottom_boundary_col_start(&self, rect: &dyn PaneTrait) -> usize {
         if rect.x() == 0 {
             0
         } else {
             rect.x() - 1
         }
     }
-    fn rect_bottom_boundary_col_end(&self, rect: &dyn Pane) -> usize {
+    fn rect_bottom_boundary_col_end(&self, rect: &dyn PaneTrait) -> usize {
         rect.x() + rect.cols()
     }
-    fn is_fully_inside_screen(&self, rect: &dyn Pane) -> bool {
+    fn is_fully_inside_screen(&self, rect: &dyn PaneTrait) -> bool {
         rect.x() >= self.viewport.x
             && rect.x() + rect.cols() <= self.viewport.x + self.viewport.cols
             && rect.y() >= self.viewport.y

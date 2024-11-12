@@ -1,6 +1,6 @@
 use crate::output::Output;
 use crate::panes::PaneId;
-use crate::tab::Pane;
+use crate::tab::PaneTrait;
 use crate::ui::boundaries::Boundaries;
 use crate::ui::pane_boundaries_frame::FrameParams;
 use crate::ClientId;
@@ -10,7 +10,7 @@ use zellij_utils::data::{
 };
 use zellij_utils::errors::prelude::*;
 pub struct PaneContentsAndUi<'a> {
-    pane: &'a mut Box<dyn Pane>,
+    pane: &'a mut Box<dyn PaneTrait>,
     output: &'a mut Output,
     style: Style,
     focused_clients: Vec<ClientId>,
@@ -23,7 +23,7 @@ pub struct PaneContentsAndUi<'a> {
 
 impl<'a> PaneContentsAndUi<'a> {
     pub fn new(
-        pane: &'a mut Box<dyn Pane>,
+        pane: &'a mut Box<dyn PaneTrait>,
         output: &'a mut Output,
         style: Style,
         active_panes: &HashMap<ClientId, PaneId>,

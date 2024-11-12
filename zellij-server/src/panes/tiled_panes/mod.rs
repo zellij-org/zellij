@@ -10,7 +10,7 @@ use crate::{
     output::Output,
     panes::{ActivePanes, PaneId},
     plugins::PluginInstruction,
-    tab::{pane_info_for_pane, Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH},
+    tab::{pane_info_for_pane, PaneTrait, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH},
     thread_bus::ThreadSenders,
     ui::boundaries::Boundaries,
     ui::pane_contents_and_ui::PaneContentsAndUi,
@@ -54,7 +54,7 @@ fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (us
 }
 
 pub struct TiledPanes {
-    pub panes: BTreeMap<PaneId, Box<dyn Pane>>,
+    pub panes: BTreeMap<PaneId, Box<dyn PaneTrait>>,
     display_area: Rc<RefCell<Size>>,
     viewport: Rc<RefCell<Viewport>>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
@@ -109,7 +109,7 @@ impl TiledPanes {
             client_id_to_boundaries: HashMap::new(),
         }
     }
-    pub fn add_pane_with_existing_geom(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>) {
+    pub fn add_pane_with_existing_geom(&mut self, pane_id: PaneId, mut pane: Box<dyn PaneTrait>) {
         if self.draw_pane_frames {
             pane.set_content_offset(Offset::frame(1));
         }
@@ -117,9 +117,9 @@ impl TiledPanes {
     }
     pub fn replace_active_pane(
         &mut self,
-        pane: Box<dyn Pane>,
+        pane: Box<dyn PaneTrait>,
         client_id: ClientId,
-    ) -> Option<Box<dyn Pane>> {
+    ) -> Option<Box<dyn PaneTrait>> {
         let pane_id = pane.pid();
         // remove the currently active pane
         let previously_active_pane = self
@@ -138,8 +138,8 @@ impl TiledPanes {
     pub fn replace_pane(
         &mut self,
         pane_id: PaneId,
-        mut with_pane: Box<dyn Pane>,
-    ) -> Option<Box<dyn Pane>> {
+        mut with_pane: Box<dyn PaneTrait>,
+    ) -> Option<Box<dyn PaneTrait>> {
         let with_pane_id = with_pane.pid();
         if self.draw_pane_frames && !with_pane.borderless() {
             with_pane.set_content_offset(Offset::frame(1));
@@ -162,11 +162,11 @@ impl TiledPanes {
         self.reapply_pane_frames();
         removed_pane
     }
-    pub fn insert_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
+    pub fn insert_pane(&mut self, pane_id: PaneId, pane: Box<dyn PaneTrait>) {
         let should_relayout = true;
         self.add_pane(pane_id, pane, should_relayout);
     }
-    pub fn insert_pane_without_relayout(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
+    pub fn insert_pane_without_relayout(&mut self, pane_id: PaneId, pane: Box<dyn PaneTrait>) {
         let should_relayout = false;
         self.add_pane(pane_id, pane, should_relayout);
     }
@@ -183,7 +183,7 @@ impl TiledPanes {
             .is_some();
         has_room_for_new_pane || pane_grid.has_room_for_new_stacked_pane() || self.panes.is_empty()
     }
-    fn add_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>, should_relayout: bool) {
+    fn add_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn PaneTrait>, should_relayout: bool) {
         if self.panes.is_empty() {
             self.panes.insert(pane_id, pane);
             return;
@@ -385,7 +385,7 @@ impl TiledPanes {
     pub fn split_pane_horizontally(
         &mut self,
         pid: PaneId,
-        mut new_pane: Box<dyn Pane>,
+        mut new_pane: Box<dyn PaneTrait>,
         client_id: ClientId,
     ) {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
@@ -416,7 +416,7 @@ impl TiledPanes {
     pub fn split_pane_vertically(
         &mut self,
         pid: PaneId,
-        mut new_pane: Box<dyn Pane>,
+        mut new_pane: Box<dyn PaneTrait>,
         client_id: ClientId,
     ) {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
@@ -618,10 +618,10 @@ impl TiledPanes {
         self.active_panes.get(&client_id).copied()
     }
     #[allow(clippy::borrowed_box)]
-    pub fn get_pane(&self, pane_id: PaneId) -> Option<&Box<dyn Pane>> {
+    pub fn get_pane(&self, pane_id: PaneId) -> Option<&Box<dyn PaneTrait>> {
         self.panes.get(&pane_id)
     }
-    pub fn get_pane_mut(&mut self, pane_id: PaneId) -> Option<&mut Box<dyn Pane>> {
+    pub fn get_pane_mut(&mut self, pane_id: PaneId) -> Option<&mut Box<dyn PaneTrait>> {
         self.panes.get_mut(&pane_id)
     }
     pub fn get_active_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
@@ -760,7 +760,7 @@ impl TiledPanes {
         }
         Ok(())
     }
-    pub fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+    pub fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn PaneTrait>)> {
         self.panes.iter()
     }
     pub fn set_geom_for_pane_with_run(
@@ -1518,7 +1518,7 @@ impl TiledPanes {
         }
 
         // find the most recently active pane
-        let mut next_active_pane_candidates: Vec<(&PaneId, &Box<dyn Pane>)> = self
+        let mut next_active_pane_candidates: Vec<(&PaneId, &Box<dyn PaneTrait>)> = self
             .panes
             .iter()
             .filter(|(p_id, p)| !self.panes_to_hide.contains(p_id) && p.selectable())
@@ -1550,11 +1550,11 @@ impl TiledPanes {
             None => self.active_panes.clear(&mut self.panes),
         }
     }
-    pub fn extract_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
+    pub fn extract_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn PaneTrait>> {
         self.reset_boundaries();
         self.panes.remove(&pane_id)
     }
-    pub fn remove_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
+    pub fn remove_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn PaneTrait>> {
         let mut pane_grid = TiledPaneGrid::new(
             &mut self.panes,
             &self.panes_to_hide,
@@ -1747,7 +1747,7 @@ impl TiledPanes {
     pub fn focus_all_panes(&mut self) {
         self.active_panes.focus_all_panes(&mut self.panes);
     }
-    pub fn drain(&mut self) -> BTreeMap<PaneId, Box<dyn Pane>> {
+    pub fn drain(&mut self) -> BTreeMap<PaneId, Box<dyn PaneTrait>> {
         match self.panes.iter().next().map(|(pid, _p)| *pid) {
             Some(first_pid) => self.panes.split_off(&first_pid),
             None => BTreeMap::new(),
@@ -1814,7 +1814,7 @@ impl TiledPanes {
 }
 
 #[allow(clippy::borrowed_box)]
-pub fn is_inside_viewport(viewport: &Viewport, pane: &Box<dyn Pane>) -> bool {
+pub fn is_inside_viewport(viewport: &Viewport, pane: &Box<dyn PaneTrait>) -> bool {
     let pane_position_and_size = pane.current_geom();
     pane_position_and_size.y >= viewport.y
         && pane_position_and_size.y + pane_position_and_size.rows.as_usize()

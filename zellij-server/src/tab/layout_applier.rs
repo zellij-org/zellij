@@ -1,7 +1,7 @@
 use zellij_utils::errors::prelude::*;
 
 use crate::resize_pty;
-use crate::tab::{get_next_terminal_position, HoldForCommand, Pane};
+use crate::tab::{get_next_terminal_position, HoldForCommand, PaneTrait};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -662,7 +662,7 @@ impl<'a> LayoutApplier<'a> {
     }
     fn apply_layout_properties_to_pane(
         &self,
-        pane: &mut Box<dyn Pane>,
+        pane: &mut Box<dyn PaneTrait>,
         layout: &TiledPaneLayout,
         position_and_size: Option<PaneGeom>,
     ) {
@@ -676,7 +676,7 @@ impl<'a> LayoutApplier<'a> {
     }
     fn apply_floating_pane_layout_properties_to_pane(
         &self,
-        pane: &mut Box<dyn Pane>,
+        pane: &mut Box<dyn PaneTrait>,
         floating_pane_layout: Option<&FloatingPaneLayout>,
         position_and_size: PaneGeom,
     ) {
@@ -703,13 +703,13 @@ impl<'a> LayoutApplier<'a> {
 }
 
 struct ExistingTabState {
-    existing_panes: BTreeMap<PaneId, Box<dyn Pane>>,
+    existing_panes: BTreeMap<PaneId, Box<dyn PaneTrait>>,
     currently_focused_pane_id: Option<PaneId>,
 }
 
 impl ExistingTabState {
     pub fn new(
-        existing_panes: BTreeMap<PaneId, Box<dyn Pane>>,
+        existing_panes: BTreeMap<PaneId, Box<dyn PaneTrait>>,
         currently_focused_pane_id: Option<PaneId>,
     ) -> Self {
         ExistingTabState {
@@ -722,7 +722,7 @@ impl ExistingTabState {
         run: &Option<Run>,
         position_and_size: &PaneGeom,
         default_to_closest_position: bool,
-    ) -> Option<Box<dyn Pane>> {
+    ) -> Option<Box<dyn PaneTrait>> {
         let candidates = self.pane_candidates(run, position_and_size, default_to_closest_position);
         if let Some(current_pane_id_with_same_contents) =
             self.find_pane_id_with_same_contents_and_location(&candidates, run, position_and_size)
@@ -739,7 +739,7 @@ impl ExistingTabState {
         position_and_size: &PaneGeom,
         is_focused: bool,
         default_to_closest_position: bool,
-    ) -> Option<Box<dyn Pane>> {
+    ) -> Option<Box<dyn PaneTrait>> {
         let candidates = self.pane_candidates(run, position_and_size, default_to_closest_position);
         if let Some(current_pane_id_with_same_contents) =
             self.find_pane_id_with_same_contents(&candidates, run)
@@ -768,7 +768,7 @@ impl ExistingTabState {
     pub fn pane_ids(&self) -> Vec<PaneId> {
         self.existing_panes.keys().copied().collect()
     }
-    pub fn remove_pane(&mut self, pane_id: &PaneId) -> Option<Box<dyn Pane>> {
+    pub fn remove_pane(&mut self, pane_id: &PaneId) -> Option<Box<dyn PaneTrait>> {
         self.existing_panes.remove(pane_id)
     }
     fn pane_candidates(
@@ -776,7 +776,7 @@ impl ExistingTabState {
         run: &Option<Run>,
         position_and_size: &PaneGeom,
         default_to_closest_position: bool,
-    ) -> Vec<(&PaneId, &Box<dyn Pane>)> {
+    ) -> Vec<(&PaneId, &Box<dyn PaneTrait>)> {
         let mut candidates: Vec<_> = self.existing_panes.iter().collect();
         candidates.sort_by(|(a_id, a), (b_id, b)| {
             let a_invoked_with = a.invoked_with();
@@ -815,7 +815,7 @@ impl ExistingTabState {
     fn find_focused_pane_id(
         &self,
         is_focused: bool,
-        candidates: &Vec<(&PaneId, &Box<dyn Pane>)>,
+        candidates: &Vec<(&PaneId, &Box<dyn PaneTrait>)>,
     ) -> Option<PaneId> {
         if is_focused {
             candidates
@@ -829,7 +829,7 @@ impl ExistingTabState {
     }
     fn find_pane_id_with_same_contents(
         &self,
-        candidates: &Vec<(&PaneId, &Box<dyn Pane>)>,
+        candidates: &Vec<(&PaneId, &Box<dyn PaneTrait>)>,
         run: &Option<Run>,
     ) -> Option<PaneId> {
         candidates
@@ -840,7 +840,7 @@ impl ExistingTabState {
     }
     fn find_pane_id_with_same_contents_and_location(
         &self,
-        candidates: &Vec<(&PaneId, &Box<dyn Pane>)>,
+        candidates: &Vec<(&PaneId, &Box<dyn PaneTrait>)>,
         run: &Option<Run>,
         position: &PaneGeom,
     ) -> Option<PaneId> {
@@ -869,13 +869,17 @@ impl PaneFocuser {
     pub fn set_pane_id_in_focused_location(
         &mut self,
         is_focused: Option<bool>,
-        pane: &Box<dyn Pane>,
+        pane: &Box<dyn PaneTrait>,
     ) {
         if is_focused.unwrap_or(false) && pane.selectable() {
             self.pane_id_in_focused_location = Some(pane.pid());
         }
     }
-    pub fn set_expanded_stacked_pane(&mut self, is_expanded_in_stack: bool, pane: &Box<dyn Pane>) {
+    pub fn set_expanded_stacked_pane(
+        &mut self,
+        is_expanded_in_stack: bool,
+        pane: &Box<dyn PaneTrait>,
+    ) {
         if is_expanded_in_stack && pane.selectable() {
             self.expanded_stacked_pane_ids.push(pane.pid());
         }

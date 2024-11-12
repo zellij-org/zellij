@@ -1,4 +1,4 @@
-use crate::tab::Pane;
+use crate::tab::PaneTrait;
 
 use crate::{os_input_output::ServerOsApi, panes::PaneId, ClientId};
 use std::collections::{BTreeMap, HashMap};
@@ -30,13 +30,13 @@ impl ActivePanes {
         &mut self,
         client_id: ClientId,
         pane_id: PaneId,
-        panes: &mut BTreeMap<PaneId, Box<dyn Pane>>,
+        panes: &mut BTreeMap<PaneId, Box<dyn PaneTrait>>,
     ) {
         self.unfocus_pane_for_client(client_id, panes);
         self.active_panes.insert(client_id, pane_id);
         self.focus_pane(pane_id, panes);
     }
-    pub fn clear(&mut self, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
+    pub fn clear(&mut self, panes: &mut BTreeMap<PaneId, Box<dyn PaneTrait>>) {
         for pane_id in self.active_panes.values() {
             self.unfocus_pane(*pane_id, panes);
         }
@@ -54,19 +54,19 @@ impl ActivePanes {
     pub fn remove(
         &mut self,
         client_id: &ClientId,
-        panes: &mut BTreeMap<PaneId, Box<dyn Pane>>,
+        panes: &mut BTreeMap<PaneId, Box<dyn PaneTrait>>,
     ) -> Option<PaneId> {
         if let Some(pane_id_to_unfocus) = self.active_panes.get(&client_id) {
             self.unfocus_pane(*pane_id_to_unfocus, panes);
         }
         self.active_panes.remove(client_id)
     }
-    pub fn unfocus_all_panes(&self, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
+    pub fn unfocus_all_panes(&self, panes: &mut BTreeMap<PaneId, Box<dyn PaneTrait>>) {
         for (_client_id, pane_id) in &self.active_panes {
             self.unfocus_pane(*pane_id, panes);
         }
     }
-    pub fn focus_all_panes(&self, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
+    pub fn focus_all_panes(&self, panes: &mut BTreeMap<PaneId, Box<dyn PaneTrait>>) {
         for (_client_id, pane_id) in &self.active_panes {
             self.focus_pane(*pane_id, panes);
         }
@@ -80,13 +80,13 @@ impl ActivePanes {
     fn unfocus_pane_for_client(
         &self,
         client_id: ClientId,
-        panes: &mut BTreeMap<PaneId, Box<dyn Pane>>,
+        panes: &mut BTreeMap<PaneId, Box<dyn PaneTrait>>,
     ) {
         if let Some(pane_id_to_unfocus) = self.active_panes.get(&client_id) {
             self.unfocus_pane(*pane_id_to_unfocus, panes);
         }
     }
-    fn unfocus_pane(&self, pane_id: PaneId, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
+    fn unfocus_pane(&self, pane_id: PaneId, panes: &mut BTreeMap<PaneId, Box<dyn PaneTrait>>) {
         if let PaneId::Terminal(terminal_id) = pane_id {
             if let Some(focus_event) = panes.get(&pane_id).and_then(|p| p.unfocus_event()) {
                 let _ = self
@@ -95,7 +95,7 @@ impl ActivePanes {
             }
         }
     }
-    fn focus_pane(&self, pane_id: PaneId, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
+    fn focus_pane(&self, pane_id: PaneId, panes: &mut BTreeMap<PaneId, Box<dyn PaneTrait>>) {
         if let PaneId::Terminal(terminal_id) = pane_id {
             if let Some(focus_event) = panes.get(&pane_id).and_then(|p| p.focus_event()) {
                 let _ = self

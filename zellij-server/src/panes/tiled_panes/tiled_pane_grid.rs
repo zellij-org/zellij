@@ -2,7 +2,7 @@ use super::is_inside_viewport;
 use super::pane_resizer::PaneResizer;
 use super::stacked_panes::StackedPanes;
 use crate::tab::{MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
-use crate::{panes::PaneId, tab::Pane};
+use crate::{panes::PaneId, tab::PaneTrait};
 use std::cmp::{Ordering, Reverse};
 use std::collections::{HashMap, HashSet};
 use zellij_utils::data::{Direction, Resize, ResizeStrategy};
@@ -26,14 +26,14 @@ fn no_pane_id(pane_id: &PaneId) -> String {
 }
 
 pub struct TiledPaneGrid<'a> {
-    panes: Rc<RefCell<HashMap<PaneId, &'a mut Box<dyn Pane>>>>,
+    panes: Rc<RefCell<HashMap<PaneId, &'a mut Box<dyn PaneTrait>>>>,
     display_area: Size, // includes all panes (including eg. the status bar and tab bar in the default layout)
     viewport: Viewport, // includes all non-UI panes
 }
 
 impl<'a> TiledPaneGrid<'a> {
     pub fn new(
-        panes: impl IntoIterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>,
+        panes: impl IntoIterator<Item = (&'a PaneId, &'a mut Box<dyn PaneTrait>)>,
         panes_to_hide: &HashSet<PaneId>,
         display_area: Size,
         viewport: Viewport,
@@ -863,7 +863,7 @@ impl<'a> TiledPaneGrid<'a> {
 
     pub fn next_selectable_pane_id(&self, current_pane_id: &PaneId) -> PaneId {
         let panes = self.panes.borrow();
-        let mut panes: Vec<(&PaneId, &&mut Box<dyn Pane>)> =
+        let mut panes: Vec<(&PaneId, &&mut Box<dyn PaneTrait>)> =
             panes.iter().filter(|(_, p)| p.selectable()).collect();
         panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
             if a_pane.y() == b_pane.y() {
@@ -887,7 +887,7 @@ impl<'a> TiledPaneGrid<'a> {
 
     pub fn previous_selectable_pane_id(&self, current_pane_id: &PaneId) -> PaneId {
         let panes = self.panes.borrow();
-        let mut panes: Vec<(&PaneId, &&mut Box<dyn Pane>)> =
+        let mut panes: Vec<(&PaneId, &&mut Box<dyn PaneTrait>)> =
             panes.iter().filter(|(_, p)| p.selectable()).collect();
         panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
             if a_pane.y() == b_pane.y() {
@@ -913,7 +913,7 @@ impl<'a> TiledPaneGrid<'a> {
     pub fn next_selectable_pane_id_to_the_left(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
         let current_pane = panes.get(current_pane_id)?;
-        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+        let panes: Vec<(PaneId, &&mut Box<dyn PaneTrait>)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))
@@ -942,7 +942,7 @@ impl<'a> TiledPaneGrid<'a> {
         let destination_pane_id_in_stack = {
             let panes = self.panes.borrow();
             let source_pane = panes.get(source_pane_id)?;
-            let pane_list: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+            let pane_list: Vec<(PaneId, &&mut Box<dyn PaneTrait>)> = panes
                 .iter()
                 .filter(|(_, p)| p.selectable())
                 .map(|(p_id, p)| (*p_id, p))
@@ -975,7 +975,7 @@ impl<'a> TiledPaneGrid<'a> {
         let destination_pane_id_in_stack = {
             let panes = self.panes.borrow();
             let source_pane = panes.get(source_pane_id)?;
-            let pane_list: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+            let pane_list: Vec<(PaneId, &&mut Box<dyn PaneTrait>)> = panes
                 .iter()
                 .filter(|(_, p)| p.selectable())
                 .map(|(p_id, p)| (*p_id, p))
@@ -1007,7 +1007,7 @@ impl<'a> TiledPaneGrid<'a> {
     pub fn next_selectable_pane_id_below(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
         let current_pane = panes.get(current_pane_id)?;
-        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+        let panes: Vec<(PaneId, &&mut Box<dyn PaneTrait>)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))
@@ -1027,7 +1027,7 @@ impl<'a> TiledPaneGrid<'a> {
     }
     pub fn pane_id_on_edge(&self, direction: Direction) -> Option<PaneId> {
         let panes = self.panes.borrow();
-        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+        let panes: Vec<(PaneId, &&mut Box<dyn PaneTrait>)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))
@@ -1072,7 +1072,7 @@ impl<'a> TiledPaneGrid<'a> {
     pub fn next_selectable_pane_id_above(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
         let current_pane = panes.get(current_pane_id)?;
-        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+        let panes: Vec<(PaneId, &&mut Box<dyn PaneTrait>)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))
@@ -1093,7 +1093,7 @@ impl<'a> TiledPaneGrid<'a> {
     pub fn next_selectable_pane_id_to_the_right(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
         let current_pane = panes.get(current_pane_id)?;
-        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+        let panes: Vec<(PaneId, &&mut Box<dyn PaneTrait>)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))
@@ -1327,7 +1327,7 @@ impl<'a> TiledPaneGrid<'a> {
         cursor_height_width_ratio: Option<usize>,
     ) -> Option<(PaneId, SplitDirection)> {
         let panes = self.panes.borrow();
-        let pane_sequence: Vec<(&PaneId, &&mut Box<dyn Pane>)> = panes
+        let pane_sequence: Vec<(&PaneId, &&mut Box<dyn PaneTrait>)> = panes
             .iter()
             .filter(|(_, p)| p.selectable() && !p.current_geom().is_stacked)
             .collect();
@@ -1368,7 +1368,7 @@ impl<'a> TiledPaneGrid<'a> {
     }
     pub fn has_room_for_new_stacked_pane(&self) -> bool {
         let panes = self.panes.borrow();
-        let flexible_pane_in_stack: Vec<(&PaneId, &&mut Box<dyn Pane>)> = panes
+        let flexible_pane_in_stack: Vec<(&PaneId, &&mut Box<dyn PaneTrait>)> = panes
             .iter()
             .filter(|(_, p)| {
                 p.selectable() && p.current_geom().is_stacked && !p.current_geom().rows.is_fixed()

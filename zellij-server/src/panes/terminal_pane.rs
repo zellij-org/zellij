@@ -6,7 +6,7 @@ use crate::panes::{
     terminal_character::{render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
 use crate::pty::VteBytes;
-use crate::tab::{AdjustedInput, Pane};
+use crate::tab::{AdjustedInput, PaneTrait};
 use crate::ClientId;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -141,7 +141,7 @@ pub struct TerminalPane {
     arrow_fonts: bool,
 }
 
-impl Pane for TerminalPane {
+impl PaneTrait for TerminalPane {
     fn x(&self) -> usize {
         self.get_x()
     }

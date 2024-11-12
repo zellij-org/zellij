@@ -10,7 +10,7 @@ use crate::panes::{
 };
 use crate::plugins::PluginInstruction;
 use crate::pty::VteBytes;
-use crate::tab::{AdjustedInput, Pane};
+use crate::tab::{AdjustedInput, PaneTrait};
 use crate::ui::{
     loading_indication::LoadingIndication,
     pane_boundaries_frame::{FrameParams, PaneFrame},
@@ -162,7 +162,7 @@ impl PluginPane {
     }
 }
 
-impl Pane for PluginPane {
+impl PaneTrait for PluginPane {
     // FIXME: These position and size things should all be moved to default trait implementations,
     // with something like a get_pos_and_sz() method underpinning all of them. Alternatively and
     // preferably, just use an enum and not a trait object

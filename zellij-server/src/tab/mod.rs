@@ -136,7 +136,7 @@ pub const MIN_TERMINAL_WIDTH: usize = 5;
 const MAX_PENDING_VTE_EVENTS: usize = 7000;
 
 type HoldForCommand = Option<RunCommand>;
-pub type SuppressedPanes = HashMap<PaneId, (bool, Box<dyn Pane>)>; // bool => is scrollback editor
+pub type SuppressedPanes = HashMap<PaneId, (bool, Box<dyn PaneTrait>)>; // bool => is scrollback editor
 
 enum BufferedTabInstruction {
     SetPaneSelectable(PaneId, bool),
@@ -204,7 +204,7 @@ pub(crate) struct TabData {
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
-pub trait Pane {
+pub trait PaneTrait {
     fn x(&self) -> usize;
     fn y(&self) -> usize;
     fn rows(&self) -> usize;
@@ -300,49 +300,49 @@ pub trait Pane {
     fn bottom_boundary_y_coords(&self) -> usize {
         self.y() + self.rows()
     }
-    fn is_right_of(&self, other: &dyn Pane) -> bool {
+    fn is_right_of(&self, other: &dyn PaneTrait) -> bool {
         self.x() > other.x()
     }
-    fn is_directly_right_of(&self, other: &dyn Pane) -> bool {
+    fn is_directly_right_of(&self, other: &dyn PaneTrait) -> bool {
         self.x() == other.x() + other.cols()
     }
-    fn is_left_of(&self, other: &dyn Pane) -> bool {
+    fn is_left_of(&self, other: &dyn PaneTrait) -> bool {
         self.x() < other.x()
     }
-    fn is_directly_left_of(&self, other: &dyn Pane) -> bool {
+    fn is_directly_left_of(&self, other: &dyn PaneTrait) -> bool {
         self.x() + self.cols() == other.x()
     }
-    fn is_below(&self, other: &dyn Pane) -> bool {
+    fn is_below(&self, other: &dyn PaneTrait) -> bool {
         self.y() > other.y()
     }
-    fn is_directly_below(&self, other: &dyn Pane) -> bool {
+    fn is_directly_below(&self, other: &dyn PaneTrait) -> bool {
         self.y() == other.y() + other.rows()
     }
-    fn is_above(&self, other: &dyn Pane) -> bool {
+    fn is_above(&self, other: &dyn PaneTrait) -> bool {
         self.y() < other.y()
     }
-    fn is_directly_above(&self, other: &dyn Pane) -> bool {
+    fn is_directly_above(&self, other: &dyn PaneTrait) -> bool {
         self.y() + self.rows() == other.y()
     }
-    fn horizontally_overlaps_with(&self, other: &dyn Pane) -> bool {
+    fn horizontally_overlaps_with(&self, other: &dyn PaneTrait) -> bool {
         (self.y() >= other.y() && self.y() < (other.y() + other.rows()))
             || ((self.y() + self.rows()) <= (other.y() + other.rows())
                 && (self.y() + self.rows()) > other.y())
             || (self.y() <= other.y() && (self.y() + self.rows() >= (other.y() + other.rows())))
             || (other.y() <= self.y() && (other.y() + other.rows() >= (self.y() + self.rows())))
     }
-    fn get_horizontal_overlap_with(&self, other: &dyn Pane) -> usize {
+    fn get_horizontal_overlap_with(&self, other: &dyn PaneTrait) -> usize {
         std::cmp::min(self.y() + self.rows(), other.y() + other.rows())
             - std::cmp::max(self.y(), other.y())
     }
-    fn vertically_overlaps_with(&self, other: &dyn Pane) -> bool {
+    fn vertically_overlaps_with(&self, other: &dyn PaneTrait) -> bool {
         (self.x() >= other.x() && self.x() < (other.x() + other.cols()))
             || ((self.x() + self.cols()) <= (other.x() + other.cols())
                 && (self.x() + self.cols()) > other.x())
             || (self.x() <= other.x() && (self.x() + self.cols() >= (other.x() + other.cols())))
             || (other.x() <= self.x() && (other.x() + other.cols() >= (self.x() + self.cols())))
     }
-    fn get_vertical_overlap_with(&self, other: &dyn Pane) -> usize {
+    fn get_vertical_overlap_with(&self, other: &dyn PaneTrait) -> usize {
         std::cmp::min(self.x() + self.cols(), other.x() + other.cols())
             - std::cmp::max(self.x(), other.x())
     }
@@ -1150,7 +1150,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
-                )) as Box<dyn Pane>
+                )) as Box<dyn PaneTrait>
             },
             PaneId::Plugin(plugin_pid) => {
                 Box::new(PluginPane::new(
@@ -1174,7 +1174,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
-                )) as Box<dyn Pane>
+                )) as Box<dyn PaneTrait>
             },
         };
 
@@ -1555,7 +1555,7 @@ impl Tab {
         Ok(())
     }
 
-    pub fn get_active_pane(&self, client_id: ClientId) -> Option<&dyn Pane> {
+    pub fn get_active_pane(&self, client_id: ClientId) -> Option<&dyn PaneTrait> {
         self.get_active_pane_id(client_id).and_then(|ap| {
             if self.floating_panes.panes_are_visible() {
                 self.floating_panes.get_pane(ap).map(Box::as_ref)
@@ -1564,14 +1564,14 @@ impl Tab {
             }
         })
     }
-    pub fn get_pane_with_id(&self, pane_id: PaneId) -> Option<&dyn Pane> {
+    pub fn get_pane_with_id(&self, pane_id: PaneId) -> Option<&dyn PaneTrait> {
         self.floating_panes
             .get_pane(pane_id)
             .map(Box::as_ref)
             .or_else(|| self.tiled_panes.get_pane(pane_id).map(Box::as_ref))
             .or_else(|| self.suppressed_panes.get(&pane_id).map(|p| p.1.as_ref()))
     }
-    pub fn get_pane_with_id_mut(&mut self, pane_id: PaneId) -> Option<&mut Box<dyn Pane>> {
+    pub fn get_pane_with_id_mut(&mut self, pane_id: PaneId) -> Option<&mut Box<dyn PaneTrait>> {
         self.floating_panes
             .get_pane_mut(pane_id)
             .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
@@ -1581,7 +1581,7 @@ impl Tab {
                     .map(|(_, pane)| pane)
             })
     }
-    pub fn get_active_pane_mut(&mut self, client_id: ClientId) -> Option<&mut Box<dyn Pane>> {
+    pub fn get_active_pane_mut(&mut self, client_id: ClientId) -> Option<&mut Box<dyn PaneTrait>> {
         self.get_active_pane_id(client_id).and_then(|ap| {
             if self.floating_panes.panes_are_visible() {
                 self.floating_panes.get_pane_mut(ap)
@@ -1593,7 +1593,7 @@ impl Tab {
     pub fn get_active_pane_or_floating_pane_mut(
         &mut self,
         client_id: ClientId,
-    ) -> Option<&mut Box<dyn Pane>> {
+    ) -> Option<&mut Box<dyn PaneTrait>> {
         if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
             self.floating_panes.get_active_pane_mut(client_id)
         } else {
@@ -2227,22 +2227,26 @@ impl Tab {
             }
         }
     }
-    pub(crate) fn get_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+    pub(crate) fn get_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn PaneTrait>)> {
         self.tiled_panes.get_panes()
     }
-    pub(crate) fn get_floating_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+    pub(crate) fn get_floating_panes(
+        &self,
+    ) -> impl Iterator<Item = (&PaneId, &Box<dyn PaneTrait>)> {
         self.floating_panes.get_panes()
     }
     pub(crate) fn get_suppressed_panes(
         &self,
-    ) -> impl Iterator<Item = (&PaneId, &(bool, Box<dyn Pane>))> {
+    ) -> impl Iterator<Item = (&PaneId, &(bool, Box<dyn PaneTrait>))> {
         // bool => is_scrollback_editor
         self.suppressed_panes.iter()
     }
-    fn get_selectable_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+    fn get_selectable_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn PaneTrait>)> {
         self.get_tiled_panes().filter(|(_, p)| p.selectable())
     }
-    fn get_selectable_floating_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+    fn get_selectable_floating_panes(
+        &self,
+    ) -> impl Iterator<Item = (&PaneId, &Box<dyn PaneTrait>)> {
         self.get_floating_panes().filter(|(_, p)| p.selectable())
     }
     pub fn get_selectable_tiled_panes_count(&self) -> usize {
@@ -2762,7 +2766,7 @@ impl Tab {
         id: PaneId,
         ignore_suppressed_panes: bool,
         client_id: Option<ClientId>,
-    ) -> Option<Box<dyn Pane>> {
+    ) -> Option<Box<dyn PaneTrait>> {
         if !ignore_suppressed_panes && self.suppressed_panes.contains_key(&id) {
             return match self.replace_pane_with_suppressed_pane(id) {
                 Ok(pane) => pane,
@@ -2842,7 +2846,7 @@ impl Tab {
     pub fn replace_pane_with_suppressed_pane(
         &mut self,
         pane_id: PaneId,
-    ) -> Result<Option<Box<dyn Pane>>> {
+    ) -> Result<Option<Box<dyn PaneTrait>>> {
         self.suppressed_panes
             .remove(&pane_id)
             .with_context(|| {
@@ -3241,7 +3245,7 @@ impl Tab {
         &mut self,
         point: &Position,
         search_selectable: bool,
-    ) -> Result<Option<&mut Box<dyn Pane>>> {
+    ) -> Result<Option<&mut Box<dyn PaneTrait>>> {
         let err_context = || format!("failed to get pane at position {point:?}");
 
         if self.floating_panes.panes_are_visible() {
@@ -4133,7 +4137,7 @@ impl Tab {
     }
     pub fn add_floating_pane(
         &mut self,
-        mut pane: Box<dyn Pane>,
+        mut pane: Box<dyn PaneTrait>,
         pane_id: PaneId,
         floating_pane_coordinates: Option<FloatingPaneCoordinates>,
         client_id: Option<ClientId>,
@@ -4164,7 +4168,7 @@ impl Tab {
     }
     pub fn add_tiled_pane(
         &mut self,
-        mut pane: Box<dyn Pane>,
+        mut pane: Box<dyn PaneTrait>,
         pane_id: PaneId,
         client_id: Option<ClientId>,
     ) -> Result<()> {
@@ -4374,7 +4378,7 @@ impl Tab {
     }
     fn insert_scrollback_editor_replaced_pane(
         &mut self,
-        replaced_pane: Box<dyn Pane>,
+        replaced_pane: Box<dyn PaneTrait>,
         terminal_pane_id: u32,
     ) {
         let is_scrollback_editor = true;
@@ -4385,7 +4389,7 @@ impl Tab {
     }
 }
 
-pub fn pane_info_for_pane(pane_id: &PaneId, pane: &Box<dyn Pane>) -> PaneInfo {
+pub fn pane_info_for_pane(pane_id: &PaneId, pane: &Box<dyn PaneTrait>) -> PaneInfo {
     let mut pane_info = PaneInfo::default();
     pane_info.pane_x = pane.x();
     pane_info.pane_content_x = pane.get_content_x();
