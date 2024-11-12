@@ -640,9 +640,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .current_input_modes
                     .insert(client_id, default_input_mode);
 
-                log::info!("ServerInstruction::NewClient 3");
+                log::info!("ServerInstruction::NewClient 3 (waiting for lock...)");
                 *session_data.write().unwrap() = Some(session);
-                log::info!("ServerInstruction::NewClient 4");
+                log::info!("ServerInstruction::NewClient 4 (acquired lock!)");
                 session_state
                     .write()
                     .unwrap()
@@ -735,7 +735,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 pane_id_to_focus,
                 client_id,
             ) => {
+                log::info!("ServerInstruction::AtachClient 1 (waiting for lock...)");
                 let mut rlock = session_data.write().unwrap();
+                log::info!("ServerInstruction::AtachClient 1 (acquired lock!)");
                 let session_data = rlock.as_mut().unwrap();
 
                 let mut runtime_configuration = config.clone();
@@ -866,6 +868,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
                 remove_client!(client_id, os_input, session_state);
                 if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
+                    log::info!("ClientExit 1 (waiting for lock...)");
                     session_data
                         .write()
                         .unwrap()
@@ -874,7 +877,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .senders
                         .send_to_screen(ScreenInstruction::TerminalResize(min_size))
                         .unwrap();
+                    log::info!("ClientExit 1 (acquired lock!)");
                 }
+                log::info!("ClientExit 2 (waiting for lock...)");
                 session_data
                     .write()
                     .unwrap()
@@ -883,6 +888,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_screen(ScreenInstruction::RemoveClient(client_id))
                     .unwrap();
+                log::info!("ClientExit 2 (acquired lock!)");
+                log::info!("ClientExit 3 (waiting for lock...)");
                 session_data
                     .write()
                     .unwrap()
@@ -891,8 +898,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                     .unwrap();
+                log::info!("ClientExit 3 (acquired lock!)");
                 if !session_state.read().unwrap().active_clients_are_connected() {
+                    log::info!("ClientExit 4 (waiting for lock...)");
                     *session_data.write().unwrap() = None;
+                    log::info!("ClientExit 4 (acquired lock!)");
                     let client_ids_to_cleanup: Vec<ClientId> = session_state
                         .read()
                         .unwrap()
@@ -910,6 +920,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             ServerInstruction::RemoveClient(client_id) => {
                 remove_client!(client_id, os_input, session_state);
                 if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
+                    log::info!("RemoveClient 1 (waiting for lock...)");
                     session_data
                         .write()
                         .unwrap()
@@ -918,7 +929,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .senders
                         .send_to_screen(ScreenInstruction::TerminalResize(min_size))
                         .unwrap();
+                    log::info!("RemoveClient 1 (acquired lock!)");
                 }
+                log::info!("RemoveClient 2 (waiting for lock...)");
                 session_data
                     .write()
                     .unwrap()
@@ -927,6 +940,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_screen(ScreenInstruction::RemoveClient(client_id))
                     .unwrap();
+                log::info!("RemoveClient 2 (acquired lock!)");
+                log::info!("RemoveClient 3 (waiting for lock...)");
                 session_data
                     .write()
                     .unwrap()
@@ -935,6 +950,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                     .unwrap();
+                log::info!("RemoveClient 3 (acquired lock!)");
             },
             ServerInstruction::KillSession => {
                 let client_ids = session_state.read().unwrap().client_ids();
@@ -967,6 +983,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     remove_client!(client_id, os_input, session_state);
                     if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
                     {
+                        log::info!("DetachSession 1 (waiting for lock...)");
                         session_data
                             .write()
                             .unwrap()
@@ -975,7 +992,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .senders
                             .send_to_screen(ScreenInstruction::TerminalResize(min_size))
                             .unwrap();
+                        log::info!("DetachSession 1 (acquired lock!)");
                     }
+                    log::info!("DetachSession 2 (waiting for lock...)");
                     session_data
                         .write()
                         .unwrap()
@@ -984,6 +1003,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .senders
                         .send_to_screen(ScreenInstruction::RemoveClient(client_id))
                         .unwrap();
+                    log::info!("DetachSession 2 (acquired lock!)");
+                    log::info!("DetachSession 3 (waiting for lock...)");
                     session_data
                         .write()
                         .unwrap()
@@ -992,6 +1013,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .senders
                         .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                         .unwrap();
+                    log::info!("DetachSession 4 (acquired lock!)");
                 }
             },
             ServerInstruction::Render(serialized_output) => {
@@ -1141,6 +1163,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 config,
                 write_config_to_disk,
             } => {
+                log::info!("ServerInstruction::Reconfigure 1 (waiting for lock...)");
                 let (new_config, runtime_config_changed) = session_data
                     .write()
                     .unwrap()
@@ -1148,6 +1171,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .session_configuration
                     .reconfigure_runtime_config(&client_id, config);
+                log::info!("ServerInstruction::Reconfigure 1 (acquired lock!)");
 
                 if let Some(new_config) = new_config {
                     if write_config_to_disk {
@@ -1163,16 +1187,19 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     }
 
                     if runtime_config_changed {
+                        log::info!("ServerInstruction::Reconfigure 2 (waiting for lock...)");
                         session_data
                             .write()
                             .unwrap()
                             .as_mut()
                             .unwrap()
                             .propagate_configuration_changes(vec![(client_id, new_config)]);
+                        log::info!("ServerInstruction::Reconfigure 2 (acquired lock!)");
                     }
                 }
             },
             ServerInstruction::ConfigWrittenToDisk(client_id, new_config) => {
+                log::info!("ConfigWrittenToDisk 1 (waiting for lock...)");
                 let changes = session_data
                     .write()
                     .unwrap()
@@ -1180,14 +1207,18 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .session_configuration
                     .new_saved_config(client_id, new_config);
+                log::info!("ConfigWrittenToDisk 1 (acquired lock!)");
+                log::info!("ConfigWrittenToDisk 2 (waiting for lock...)");
                 session_data
                     .write()
                     .unwrap()
                     .as_mut()
                     .unwrap()
                     .propagate_configuration_changes(changes);
+                log::info!("ConfigWrittenToDisk 2 (acquired lock!)");
             },
             ServerInstruction::FailedToWriteConfigToDisk(_client_id, file_path) => {
+                log::info!("FailedToWriteConfigToDisk 1 (waiting for lock...)");
                 session_data
                     .write()
                     .unwrap()
@@ -1196,6 +1227,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_plugin(PluginInstruction::FailedToWriteConfigToDisk { file_path })
                     .unwrap();
+                log::info!("FailedToWriteConfigToDisk 1 (acquired lock!)");
             },
             ServerInstruction::RebindKeys {
                 client_id,
