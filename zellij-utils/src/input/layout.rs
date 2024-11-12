@@ -189,7 +189,11 @@ impl RunPluginOrAlias {
                         // configuration (i.e. None)
                         .and_then(|c| if c.inner().is_empty() { None } else { Some(c) })
                         == run_alias.configuration.as_ref().and_then(|c| {
-                            if c.inner().is_empty() {
+                            let mut to_compare = c.inner().clone();
+                            // caller_cwd is a special attribute given to alias and should not be
+                            // considered when weighing configuration equivalency
+                            to_compare.remove("caller_cwd");
+                            if to_compare.is_empty() {
                                 None
                             } else {
                                 Some(c)
