@@ -977,11 +977,7 @@ pub(crate) fn route_action(
 macro_rules! send_to_screen_or_retry_queue {
     ($rlocked_sessions:expr, $message:expr, $instruction: expr, $retry_queue:expr) => {{
         match $rlocked_sessions.as_ref() {
-            // Some(session_metadata) => session_metadata.senders.send_to_screen($message),
-            Some(session_metadata) => {
-                log::info!("sending instruction!! {:?}", $message);
-                session_metadata.senders.send_to_screen($message)
-            }
+            Some(session_metadata) => session_metadata.senders.send_to_screen($message),
             None => {
                 log::warn!("Server not ready, trying to place instruction in retry queue... {:?}", $message);
                 if let Some(retry_queue) = $retry_queue.as_mut() {
