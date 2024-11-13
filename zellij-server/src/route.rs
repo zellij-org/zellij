@@ -979,7 +979,7 @@ macro_rules! send_to_screen_or_retry_queue {
         match $rlocked_sessions.as_ref() {
             Some(session_metadata) => session_metadata.senders.send_to_screen($message),
             None => {
-                log::warn!("Server not ready, trying to place instruction in retry queue... {:?}", $message);
+                log::warn!("Server not ready, trying to place instruction in retry queue...");
                 if let Some(retry_queue) = $retry_queue.as_mut() {
                     retry_queue.push_back($instruction);
                 }
@@ -1011,7 +1011,8 @@ pub(crate) fn route_thread_main(
                 >|
                  -> Result<bool> {
                     let mut should_break = false;
-                    let rlocked_sessions = session_data.read().to_anyhow().with_context(err_context)?;
+                    let rlocked_sessions =
+                        session_data.read().to_anyhow().with_context(err_context)?;
                     match instruction {
                         ClientToServerMsg::Key(key, raw_bytes, is_kitty_keyboard_protocol) => {
                             if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
