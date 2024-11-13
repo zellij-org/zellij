@@ -707,10 +707,13 @@ fn report_changes_in_config_file(
             })
             .unwrap();
             if let Some(config_file_parent_folder) = config_file_path.parent() {
-                watcher
-                    .watch(&config_file_parent_folder, RecursiveMode::Recursive)
-                    .unwrap();
-                Some(Box::new(watcher))
+                match watcher.watch(&config_file_parent_folder, RecursiveMode::Recursive) {
+                    Ok(_) => Some(Box::new(watcher)),
+                    Err(e) => {
+                        log::error!("Failed to watch config file folder: {}", e);
+                        None
+                    },
+                }
             } else {
                 log::error!("Could not find config parent folder");
                 None
