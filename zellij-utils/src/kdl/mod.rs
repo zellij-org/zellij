@@ -542,6 +542,20 @@ impl Action {
                     Ok(Action::NewPane(Some(direction), None, false))
                 }
             },
+            "Fourify" => {
+                if string.is_empty() {
+                    return Ok(Action::Fourify(None, None, false));
+                } else {
+                    let direction = Direction::from_str(string.as_str()).map_err(|_| {
+                        ConfigError::new_kdl_error(
+                            format!("Invalid direction: '{}'", string),
+                            action_node.span().offset(),
+                            action_node.span().len(),
+                        )
+                    })?;
+                    Ok(Action::Fourify(Some(direction), None, false))
+                }
+            },
             "SearchToggleOption" => {
                 let toggle_option = SearchOption::from_str(string.as_str()).map_err(|_| {
                     ConfigError::new_kdl_error(
@@ -669,6 +683,19 @@ impl Action {
             Action::ToggleActiveSyncTab => Some(KdlNode::new("ToggleActiveSyncTab")),
             Action::NewPane(direction, _, _) => {
                 let mut node = KdlNode::new("NewPane");
+                if let Some(direction) = direction {
+                    let direction = match direction {
+                        Direction::Left => "left",
+                        Direction::Right => "right",
+                        Direction::Up => "up",
+                        Direction::Down => "down",
+                    };
+                    node.push(direction);
+                }
+                Some(node)
+            },
+            Action::Fourify(direction, _, _) => {
+                let mut node = KdlNode::new("Fourify");
                 if let Some(direction) = direction {
                     let direction = match direction {
                         Direction::Left => "left",
@@ -1377,6 +1404,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 kdl_action
             ),
             "NewPane" => parse_kdl_action_char_or_string_arguments!(
+                action_name,
+                action_arguments,
+                kdl_action
+            ),
+            "Fourify" => parse_kdl_action_char_or_string_arguments!(
                 action_name,
                 action_arguments,
                 kdl_action

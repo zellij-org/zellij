@@ -160,6 +160,7 @@ pub enum ScreenInstruction {
     TogglePaneEmbedOrFloating(ClientId),
     ToggleFloatingPanes(ClientId, Option<TerminalAction>),
     HorizontalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
+    FourSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     WriteCharacter(Option<KeyWithModifier>, Vec<u8>, bool, ClientId), // bool ->
     // is_kitty_keyboard_protocol
@@ -426,6 +427,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::ToggleFloatingPanes(..) => ScreenContext::ToggleFloatingPanes,
             ScreenInstruction::HorizontalSplit(..) => ScreenContext::HorizontalSplit,
+            ScreenInstruction::FourSplit(..) => ScreenContext::FourSplit,
             ScreenInstruction::VerticalSplit(..) => ScreenContext::VerticalSplit,
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
             ScreenInstruction::Resize(.., strategy) => match strategy {
@@ -2898,6 +2900,37 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
             },
+
+            ScreenInstruction::FourSplit(
+                pid,
+                initial_pane_title,
+                hold_for_command,
+                client_id,
+            ) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.four_split(pid, initial_pane_title, client_id),
+                    ?
+                );
+                if let Some(hold_for_command) = hold_for_command {
+                    let is_first_run = true;
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, _client_id: ClientId| tab.hold_pane(
+                            pid,
+                            None,
+                            is_first_run,
+                            hold_for_command
+                        )
+                    );
+                }
+                screen.unblock_input()?;
+                screen.log_and_report_session_state()?;
+                screen.render(None)?;
+            },
+
             ScreenInstruction::VerticalSplit(
                 pid,
                 initial_pane_title,

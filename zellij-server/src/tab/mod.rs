@@ -1555,6 +1555,23 @@ impl Tab {
         Ok(())
     }
 
+    pub fn four_split(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: Option<String>,
+        client_id: ClientId,
+    ) -> Result<()> {
+
+        let _ = self.vertical_split(pid, None, client_id);
+        let _ = self.horizontal_split(pid, None, client_id);
+        // let _ = self.move_focus_left(client_id);
+        // let _ = self.move_focus_up(client_id);
+        // let _ = self.horizontal_split(pid, initial_pane_title.clone(), client_id);
+        return Ok(());
+
+    }
+
+
     pub fn get_active_pane(&self, client_id: ClientId) -> Option<&dyn Pane> {
         self.get_active_pane_id(client_id).and_then(|ap| {
             if self.floating_panes.panes_are_visible() {

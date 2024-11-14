@@ -158,6 +158,7 @@ pub enum Action {
     /// Open a new pane in the specified direction (relative to focus).
     /// If no direction is specified, will try to use the biggest available space.
     NewPane(Option<Direction>, Option<String>, bool), // String is an optional pane name
+    Fourify(Option<Direction>, Option<String>, bool),
     /// Open the file in a new pane using the default editor, bool -> start suppressed
     EditFile(
         OpenFilePayload,
