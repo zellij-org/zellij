@@ -1081,6 +1081,14 @@ impl Screen {
             pane_ids.retain(|p| p != suppressed_pane_id);
         }
 
+        let _ = self.bus.senders.send_to_plugin(PluginInstruction::Update(
+            pane_ids
+                .iter()
+                .copied()
+                .map(|p_id| (None, None, Event::PaneClosed(p_id.into())))
+                .collect(),
+        ));
+
         // below we don't check the result of sending the CloseTab instruction to the pty thread
         // because this might be happening when the app is closing, at which point the pty thread
         // has already closed and this would result in an error
