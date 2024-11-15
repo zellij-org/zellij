@@ -1620,8 +1620,9 @@ impl TiledPanes {
                 viewport_pane.reset_size_and_position_override();
             }
             self.panes_to_hide.clear();
-            let fullscreen_pane = self.get_pane_mut(fullscreen_pane_id).unwrap();
-            fullscreen_pane.reset_size_and_position_override();
+            if let Some(fullscreen_pane) = self.get_pane_mut(fullscreen_pane_id) {
+                fullscreen_pane.reset_size_and_position_override();
+            }
             self.set_force_render();
             let display_area = *self.display_area.borrow();
             self.resize(display_area);
