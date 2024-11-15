@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(startup): slow start in some cases due to a race in the server retry queue (https://github.com/zellij-org/zellij/pull/3767)
 * fix(screen): various crashes due to invalid state exposed by the recent wasm runtime change (https://github.com/zellij-org/zellij/pull/3776)
 * chore(package): add the option to use the system curl instead of the vendored version when compiling (https://github.com/zellij-org/zellij/pull/3766)
+* fix(ux): change plugin manager "open from filesystem" shortcut for consistency with the session-manager (https://github.com/zellij-org/zellij/pull/3779)
 
 ## [0.41.0] - 2024-11-04
 * feat(layouts): allow consuming a layout through a url (https://github.com/zellij-org/zellij/pull/3351 and https://github.com/zellij-org/zellij/pull/3697)
