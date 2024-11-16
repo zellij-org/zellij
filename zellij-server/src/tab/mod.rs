@@ -1558,7 +1558,7 @@ impl Tab {
     pub fn four_split(
         &mut self,
         pid: PaneId,
-        initial_pane_title: Option<String>,
+        _initial_pane_title: Option<String>,
         client_id: ClientId,
     ) -> Result<()> {
 

@@ -422,7 +422,23 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     Err(err) => match err.downcast_ref::<ZellijError>() {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
                             let hold_for_command = None; // we do not hold an "error" pane
-                            if hold_on_close {
+                            let should_move_focus = false;
+
+                            if let Some("cyber111") = name.as_ref() {
+                                if name_value == "cyber111" {
+                                    should_move_focus = true;
+                                }
+                            }
+
+                            if should_move_focus_left {
+                                pty.bus
+                                    .senders
+                                    .send_to_screen(ScreenInstruction::MoveFocusLeft(
+                                        client_id,
+                                    ))
+                                    .with_context(err_context)?;
+                            }
+                            else if hold_on_close {
                                 pty.bus
                                     .senders
                                     .send_to_screen(ScreenInstruction::VerticalSplit(

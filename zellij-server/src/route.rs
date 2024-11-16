@@ -288,10 +288,10 @@ pub(crate) fn route_action(
         },
 
 
-        Action::Fourify(_direction, name, _start_suppressed) => {
+        Action::Fourify(_direction, _name, _start_suppressed) => {
             let shell = default_shell.clone();
-            let pty_instr: PtyInstruction = PtyInstruction::SpawnTerminalHorizontally(shell.clone(), None, client_id);
-            senders.send_to_pty(pty_instr).with_context(err_context)?;
+            // let pty_instr: PtyInstruction = PtyInstruction::SpawnTerminalHorizontally(shell.clone(), None, client_id);
+            // senders.send_to_pty(pty_instr).with_context(err_context)?;
 
             // Action::NewPane(_direction, None, _start_suppressed);
 
@@ -299,10 +299,10 @@ pub(crate) fn route_action(
             //     .send_to_screen(ScreenInstruction::SwitchFocus(client_id))
             //     .with_context(err_context)?;
 
-            let pty_instr: PtyInstruction = PtyInstruction::SpawnTerminalVertically(shell.clone(), None, client_id);
+            let pty_instr: PtyInstruction = PtyInstruction::SpawnTerminalVertically(shell, None, client_id);
             senders.send_to_pty(pty_instr).with_context(err_context)?;
 
-            let screen_instr = ScreenInstruction::MoveFocusLeft(client_id);
+            let screen_instr = ScreenInstruction::MovePaneLeft(client_id);
             
             senders
                 .send_to_screen(screen_instr)
