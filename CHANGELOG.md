@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * chore(package): add the option to use the system curl instead of the vendored version when compiling (https://github.com/zellij-org/zellij/pull/3766)
 * fix(ux): change plugin manager "open from filesystem" shortcut for consistency with the session-manager (https://github.com/zellij-org/zellij/pull/3779)
 * fix(plugins): send `PaneClosed` event to plugins also when an entire tab was closed (https://github.com/zellij-org/zellij/pull/3781)
-* feat(plugins): add a `/cache` folder to plugins to persist data between runs
+* feat(plugins): add a `/cache` folder to plugins to persist data between runs (https://github.com/zellij-org/zellij/pull/3787)
 
 ## [0.41.0] - 2024-11-04
 * feat(layouts): allow consuming a layout through a url (https://github.com/zellij-org/zellij/pull/3351 and https://github.com/zellij-org/zellij/pull/3697)
