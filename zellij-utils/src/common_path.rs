@@ -1,3 +1,9 @@
+// The following license refers to code in this file and this file only.
+// We chose to vendor this dependency rather than depend on it through crates.io in order to facilitate
+// packaging. This license was copied verbatim from: https://docs.rs/crate/common-path/1.0.0/source/LICENSE-MIT
+//
+// MIT License
+//
 // Copyright 2018 Paul Woolcock <paul@woolcock.us>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of
