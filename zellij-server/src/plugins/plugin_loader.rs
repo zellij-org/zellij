@@ -869,7 +869,10 @@ impl<'a> PluginLoader<'a> {
     }
 }
 
-fn create_plugin_fs_entries(plugin_own_data_dir: &PathBuf, plugin_own_cache_dir: &PathBuf) -> Result<()> {
+fn create_plugin_fs_entries(
+    plugin_own_data_dir: &PathBuf,
+    plugin_own_cache_dir: &PathBuf,
+) -> Result<()> {
     let err_context = || "failed to create plugin fs entries";
     // Create filesystem entries mounted into WASM.
     // We create them here to get expressive error messages in case they fail.
