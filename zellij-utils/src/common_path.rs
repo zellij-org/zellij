@@ -100,18 +100,22 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::{seq::SliceRandom, thread_rng};
 
     #[test]
     fn compare_all_paths() {
-        let mut rng = thread_rng();
-        for _ in 0..6 {
-            let one = Path::new("/foo/bar/baz/one.txt");
-            let two = Path::new("/foo/bar/quux/quuux/two.txt");
-            let three = Path::new("/foo/bar/baz/foo/bar");
-            let result = Path::new("/foo/bar");
-            let mut all = vec![one, two, three];
-            all.shuffle(&mut rng);
+        let one = Path::new("/foo/bar/baz/one.txt");
+        let two = Path::new("/foo/bar/quux/quuux/two.txt");
+        let three = Path::new("/foo/bar/baz/foo/bar");
+        let result = Path::new("/foo/bar");
+        let path_permutations = vec![
+            vec![one, two, three],
+            vec![one, three, two],
+            vec![two, one, three],
+            vec![two, three, one],
+            vec![three, one, two],
+            vec![three, two, one],
+        ];
+        for all in path_permutations {
             assert_eq!(common_path_all(all).unwrap(), result.to_path_buf())
         }
     }
