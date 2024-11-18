@@ -295,6 +295,7 @@ pub struct PluginEnv {
     pub client_id: ClientId,
     #[allow(dead_code)]
     pub plugin_own_data_dir: PathBuf,
+    pub plugin_own_cache_dir: PathBuf,
     pub path_to_default_shell: PathBuf,
     pub capabilities: PluginCapabilities,
     pub client_attributes: ClientAttributes,
