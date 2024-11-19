@@ -1503,7 +1503,7 @@ pub struct NewPluginArgs {
     pub skip_cache: bool,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PaneId {
     Terminal(u32),
     Plugin(u32),
