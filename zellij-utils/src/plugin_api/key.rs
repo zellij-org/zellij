@@ -73,8 +73,6 @@ impl TryFrom<KeyModifier> for ProtobufKeyModifier {
             KeyModifier::Alt => Ok(ProtobufKeyModifier::Alt),
             KeyModifier::Shift => Ok(ProtobufKeyModifier::Shift),
             KeyModifier::Super => Ok(ProtobufKeyModifier::Super),
-            _ => Err("unsupported key modifier"), // TODO: test this so we don't crash if we have a
-                                                  // Capslock or something
         }
     }
 }
