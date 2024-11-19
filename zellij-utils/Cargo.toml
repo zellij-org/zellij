@@ -17,7 +17,6 @@ clap = { version = "3.2.2", features = ["derive", "env"] }
 clap_complete = "3.2.1"
 colored = "2.0.0"
 colorsys = "0.6.5"
-common-path = "1.0.0"
 crossbeam = "0.8.1"
 directories = "5.0"
 include_dir = "0.7.3"
