@@ -69,7 +69,6 @@ impl KeyShortcut {
                 KeyModifier::Alt => "^A",
                 KeyModifier::Super => "^Su",
                 KeyModifier::Shift => "^Sh",
-                _ => "",
             })
             .collect::<Vec<_>>()
             .join("-");
