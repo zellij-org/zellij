@@ -2090,15 +2090,16 @@ impl Screen {
             .tabs
             .iter()
             .find(|(_tab_index, tab)| tab.has_pane_with_pid(&pane_id))
-            .map(|(tab_index, _tab)| *tab_index);
+            .map(|(_tab_index, tab)| tab.position);
         match tab_index {
             Some(tab_index) => {
                 self.go_to_tab(tab_index + 1, client_id)?;
                 self.tabs
-                    .get_mut(&tab_index)
-                    .with_context(err_context)?
-                    .focus_pane_with_id(pane_id, should_float_if_hidden, client_id)
-                    .context("failed to focus pane with id")?;
+                    .iter_mut()
+                    .find(|(_, t)| t.position == tab_index)
+                    .map(|(_, t)| t.focus_pane_with_id(pane_id, should_float_if_hidden, client_id))
+                    .with_context(err_context)
+                    .non_fatal();
             },
             None => {
                 log::error!("Could not find pane with id: {:?}", pane_id);
@@ -2410,11 +2411,14 @@ impl Screen {
                     .tabs
                     .iter()
                     .find(|(_tab_index, tab)| tab.has_pane_with_pid(&pane_id))
-                    .map(|(tab_index, _tab)| *tab_index);
+                    .map(|(_tab_index, tab)| tab.position);
                 match tab_index {
                     Some(tab_index) => {
-                        let tab = self.tabs.get_mut(&tab_index).with_context(err_context)?;
-                        suppress_pane(tab, pane_id, new_pane_id);
+                        if let Some(tab) = self.tabs
+                            .iter_mut()
+                            .find(|(_, t)| t.position == tab_index) {
+                                suppress_pane(tab.1, pane_id, new_pane_id);
+                        }
                     },
                     None => {
                         log::error!("Could not find pane with id: {:?}", pane_id);
