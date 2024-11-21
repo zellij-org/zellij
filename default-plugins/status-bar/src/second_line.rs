@@ -3,6 +3,7 @@ use ansi_term::{
     Color::{Fixed, RGB},
     Style,
 };
+use plugin_api::generated_api::api::key::key::Char;
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::palette_match;
@@ -147,9 +148,11 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             km.push((key, acvec));
         }
     }
+    km.push((KeyWithModifier::new(BareKey::Char('+')), vec![Action::Fourify(None, None, false), TO_NORMAL]));
 
     if mi.mode == IM::Pane { vec![
         (s("New"), s("New"), action_key(&km, &[A::NewPane(None, None, false), TO_NORMAL])),
+        (s("Fourify"), s("Pytzov"), action_key(&km, &[A::Fourify(None, None, false), TO_NORMAL])),
         (s("Change Focus"), s("Move"),
             action_key_group(&km, &[&[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
                 &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),

@@ -1450,7 +1450,7 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.toggle_active_pane_fullscreen(client_id);
         }
-        if self.tiled_panes.can_split_pane_horizontally(client_id) {
+        if self.tiled_panes.can_split_pane_horizontally(client_id) || true {
             if let PaneId::Terminal(term_pid) = pid {
                 let next_terminal_position = self.get_next_terminal_position();
                 let new_terminal = TerminalPane::new(
@@ -1510,7 +1510,7 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.toggle_active_pane_fullscreen(client_id);
         }
-        if self.tiled_panes.can_split_pane_vertically(client_id) {
+        if self.tiled_panes.can_split_pane_vertically(client_id) || true {
             if let PaneId::Terminal(term_pid) = pid {
                 let next_terminal_position = self.get_next_terminal_position();
                 let new_terminal = TerminalPane::new(
