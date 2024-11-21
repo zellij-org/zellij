@@ -1029,13 +1029,14 @@ pub(crate) fn route_thread_main(
         match receiver.recv() {
             Some((instruction, err_ctx)) => {
                 err_ctx.update_thread_ctx();
-                let rlocked_sessions = session_data.read().to_anyhow().with_context(err_context)?;
                 let mut handle_instruction = |instruction: ClientToServerMsg,
                                               mut retry_queue: Option<
                     &mut VecDeque<ClientToServerMsg>,
                 >|
                  -> Result<bool> {
                     let mut should_break = false;
+                    let rlocked_sessions =
+                        session_data.read().to_anyhow().with_context(err_context)?;
                     match instruction {
                         ClientToServerMsg::Key(key, raw_bytes, is_kitty_keyboard_protocol) => {
                             if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {

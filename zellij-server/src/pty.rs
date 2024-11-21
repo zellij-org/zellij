@@ -268,7 +268,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         pty.bus.senders.clone(),
                                         *terminal_id,
                                         run_command.clone(),
-                                        None,
                                     )
                                     .with_context(err_context)?;
                                 }
@@ -348,7 +347,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         pty.bus.senders.clone(),
                                         *terminal_id,
                                         run_command.clone(),
-                                        None,
                                     )
                                     .with_context(err_context)?;
                                 }
@@ -452,8 +450,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                             PaneId::Terminal(*terminal_id),
                                             Some(2), // exit status
                                             run_command,
-                                            None,
-                                            None,
                                         ))
                                         .with_context(err_context)?;
                                 }
@@ -597,8 +593,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                             PaneId::Terminal(*terminal_id),
                                             Some(2), // exit status
                                             run_command,
-                                            None,
-                                            None,
                                         ))
                                         .with_context(err_context)?;
                                 }
@@ -770,8 +764,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         PaneId::Terminal(*terminal_id),
                                         Some(2), // exit status
                                         run_command,
-                                        None,
-                                        None,
                                     ))
                                     .with_context(err_context)?;
                             }
@@ -823,8 +815,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         PaneId::Terminal(*terminal_id),
                                         Some(2), // exit status
                                         run_command,
-                                        None,
-                                        None,
                                     ))
                                     .with_context(err_context)?;
                             }
@@ -1141,8 +1131,6 @@ impl Pty {
                         pane_id,
                         exit_status,
                         command,
-                        None,
-                        None,
                     ));
                 } else {
                     let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
@@ -1215,14 +1203,14 @@ impl Pty {
                     // new_pane_pids
         for run_instruction in extracted_run_instructions {
             if let Some(new_pane_data) =
-                self.apply_run_instruction(run_instruction, default_shell.clone(), tab_index)?
+                self.apply_run_instruction(run_instruction, default_shell.clone())?
             {
                 new_pane_pids.push(new_pane_data);
             }
         }
         for run_instruction in extracted_floating_run_instructions {
             if let Some(new_pane_data) =
-                self.apply_run_instruction(run_instruction, default_shell.clone(), tab_index)?
+                self.apply_run_instruction(run_instruction, default_shell.clone())?
             {
                 new_floating_panes_pids.push(new_pane_data);
             }
@@ -1303,7 +1291,6 @@ impl Pty {
                                 self.bus.senders.clone(),
                                 terminal_id,
                                 run_command.clone(),
-                                Some(tab_index),
                             )
                             .with_context(err_context)?;
                         } else {
@@ -1324,7 +1311,6 @@ impl Pty {
         &mut self,
         run_instruction: Option<Run>,
         default_shell: TerminalAction,
-        tab_index: usize,
     ) -> Result<Option<(u32, bool, Option<RunCommand>, Result<i32>)>> {
         // terminal_id,
         // starts_held,
@@ -1349,8 +1335,6 @@ impl Pty {
                                 pane_id,
                                 exit_status,
                                 command,
-                                Some(tab_index),
-                                None,
                             ));
                         } else {
                             let _ =
@@ -1581,8 +1565,6 @@ impl Pty {
                                 pane_id,
                                 exit_status,
                                 command,
-                                None,
-                                None,
                             ));
                         } else {
                             let _ =
@@ -1754,7 +1736,6 @@ fn send_command_not_found_to_screen(
     senders: ThreadSenders,
     terminal_id: u32,
     run_command: RunCommand,
-    tab_index: Option<usize>,
 ) -> Result<()> {
     let err_context = || format!("failed to send command_not_fount for terminal {terminal_id}");
     senders
@@ -1770,8 +1751,6 @@ fn send_command_not_found_to_screen(
             PaneId::Terminal(terminal_id),
             Some(2),
             run_command.clone(),
-            tab_index,
-            None,
         ))
         .with_context(err_context)?;
     Ok(())

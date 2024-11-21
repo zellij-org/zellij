@@ -60,6 +60,7 @@ pub struct PluginLoader<'a> {
     plugin_dir: &'a PathBuf,
     tab_index: Option<usize>,
     plugin_own_data_dir: PathBuf,
+    plugin_own_cache_dir: PathBuf,
     size: Size,
     wasm_blob_on_hd: Option<(Vec<u8>, PathBuf)>,
     path_to_default_shell: PathBuf,
@@ -344,7 +345,10 @@ impl<'a> PluginLoader<'a> {
         let plugin_own_data_dir = ZELLIJ_SESSION_CACHE_DIR
             .join(Url::from(&plugin.location).to_string())
             .join(format!("{}-{}", plugin_id, client_id));
-        create_plugin_fs_entries(&plugin_own_data_dir)?;
+        let plugin_own_cache_dir = ZELLIJ_SESSION_CACHE_DIR
+            .join(Url::from(&plugin.location).to_string())
+            .join(format!("plugin_cache"));
+        create_plugin_fs_entries(&plugin_own_data_dir, &plugin_own_cache_dir)?;
         let plugin_path = plugin.path.clone();
         Ok(PluginLoader {
             plugin_cache: plugin_cache.clone(),
@@ -358,6 +362,7 @@ impl<'a> PluginLoader<'a> {
             plugin_dir,
             tab_index,
             plugin_own_data_dir,
+            plugin_own_cache_dir,
             size,
             wasm_blob_on_hd: None,
             path_to_default_shell,
@@ -789,6 +794,7 @@ impl<'a> PluginLoader<'a> {
         let dirs = vec![
             ("/host".to_owned(), self.zellij_cwd.clone()),
             ("/data".to_owned(), self.plugin_own_data_dir.clone()),
+            ("/cache".to_owned(), self.plugin_own_cache_dir.clone()),
             ("/tmp".to_owned(), ZELLIJ_TMP_DIR.clone()),
         ];
         let dirs = dirs.into_iter().filter(|(_dir_name, dir)| {
@@ -825,6 +831,7 @@ impl<'a> PluginLoader<'a> {
             senders: self.senders.clone(),
             wasi_ctx,
             plugin_own_data_dir: self.plugin_own_data_dir.clone(),
+            plugin_own_cache_dir: self.plugin_own_cache_dir.clone(),
             tab_index: self.tab_index,
             path_to_default_shell: self.path_to_default_shell.clone(),
             capabilities: self.capabilities.clone(),
@@ -862,12 +869,18 @@ impl<'a> PluginLoader<'a> {
     }
 }
 
-fn create_plugin_fs_entries(plugin_own_data_dir: &PathBuf) -> Result<()> {
+fn create_plugin_fs_entries(
+    plugin_own_data_dir: &PathBuf,
+    plugin_own_cache_dir: &PathBuf,
+) -> Result<()> {
     let err_context = || "failed to create plugin fs entries";
     // Create filesystem entries mounted into WASM.
     // We create them here to get expressive error messages in case they fail.
     fs::create_dir_all(&plugin_own_data_dir)
         .with_context(|| format!("failed to create datadir in {plugin_own_data_dir:?}"))
+        .with_context(err_context)?;
+    fs::create_dir_all(&plugin_own_cache_dir)
+        .with_context(|| format!("failed to create cache dir in {plugin_own_cache_dir:?}"))
         .with_context(err_context)?;
     fs::create_dir_all(ZELLIJ_TMP_DIR.as_path())
         .with_context(|| format!("failed to create tmpdir at {:?}", &ZELLIJ_TMP_DIR.as_path()))

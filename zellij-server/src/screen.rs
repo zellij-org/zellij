@@ -203,13 +203,7 @@ pub enum ScreenInstruction {
     TogglePaneFrames,
     SetSelectable(PaneId, bool),
     ClosePane(PaneId, Option<ClientId>),
-    HoldPane(
-        PaneId,
-        Option<i32>,
-        RunCommand,
-        Option<usize>,
-        Option<ClientId>,
-    ), // Option<i32> is the exit status, Option<usize> is the tab_index
+    HoldPane(PaneId, Option<i32>, RunCommand),
     UpdatePaneName(Vec<u8>, ClientId),
     UndoRenamePane(ClientId),
     NewTab(
@@ -1088,6 +1082,14 @@ impl Screen {
         for suppressed_pane_id in suppressed_panes.keys() {
             pane_ids.retain(|p| p != suppressed_pane_id);
         }
+
+        let _ = self.bus.senders.send_to_plugin(PluginInstruction::Update(
+            pane_ids
+                .iter()
+                .copied()
+                .map(|p_id| (None, None, Event::PaneClosed(p_id.into())))
+                .collect(),
+        ));
 
         // below we don't check the result of sending the CloseTab instruction to the pty thread
         // because this might be happening when the app is closing, at which point the pty thread
@@ -3388,32 +3390,13 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::HoldPane(id, exit_status, run_command, tab_index, client_id) => {
+            ScreenInstruction::HoldPane(id, exit_status, run_command) => {
                 let is_first_run = false;
-                match (client_id, tab_index) {
-                    (Some(client_id), _) => {
-                        active_tab!(screen, client_id, |tab: &mut Tab| tab.hold_pane(
-                            id,
-                            exit_status,
-                            is_first_run,
-                            run_command
-                        ));
-                    },
-                    (_, Some(tab_index)) => match screen.tabs.get_mut(&tab_index) {
-                        Some(tab) => tab.hold_pane(id, exit_status, is_first_run, run_command),
-                        None => log::warn!(
-                            "Tab with index {tab_index} not found. Cannot hold pane with id {:?}",
-                            id
-                        ),
-                    },
-                    _ => {
-                        for tab in screen.tabs.values_mut() {
-                            if tab.get_all_pane_ids().contains(&id) {
-                                tab.hold_pane(id, exit_status, is_first_run, run_command);
-                                break;
-                            }
-                        }
-                    },
+                for tab in screen.tabs.values_mut() {
+                    if tab.get_all_pane_ids().contains(&id) {
+                        tab.hold_pane(id, exit_status, is_first_run, run_command);
+                        break;
+                    }
                 }
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
@@ -3668,14 +3651,22 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::MoveTabLeft(client_id) => {
-                screen.move_active_tab_to_left(client_id)?;
+                if pending_tab_ids.is_empty() {
+                    screen.move_active_tab_to_left(client_id)?;
+                    screen.render(None)?;
+                } else {
+                    pending_events_waiting_for_tab.push(ScreenInstruction::MoveTabLeft(client_id));
+                }
                 screen.unblock_input()?;
-                screen.render(None)?;
             },
             ScreenInstruction::MoveTabRight(client_id) => {
-                screen.move_active_tab_to_right(client_id)?;
+                if pending_tab_ids.is_empty() {
+                    screen.move_active_tab_to_right(client_id)?;
+                    screen.render(None)?;
+                } else {
+                    pending_events_waiting_for_tab.push(ScreenInstruction::MoveTabRight(client_id));
+                }
                 screen.unblock_input()?;
-                screen.render(None)?;
             },
             ScreenInstruction::TerminalResize(new_size) => {
                 screen.resize_to_screen(new_size)?;
