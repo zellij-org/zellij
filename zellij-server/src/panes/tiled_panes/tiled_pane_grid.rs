@@ -1044,14 +1044,14 @@ impl<'a> TiledPaneGrid<'a> {
                 Direction::Left => {
                     let x_comparison = a.x().cmp(&b.x());
                     match x_comparison {
-                        Ordering::Equal => b.y().cmp(&a.y()),
+                        Ordering::Equal => a.rows().cmp(&b.rows()).then(b.y().cmp(&a.y())),
                         _ => x_comparison,
                     }
                 },
                 Direction::Right => {
                     let x_comparison = b.x().cmp(&a.x());
                     match x_comparison {
-                        Ordering::Equal => b.y().cmp(&a.y()),
+                        Ordering::Equal => a.rows().cmp(&b.rows()).then(b.y().cmp(&a.y())),
                         _ => x_comparison,
                     }
                 },
