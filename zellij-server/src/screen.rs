@@ -2414,10 +2414,10 @@ impl Screen {
                     .map(|(_tab_index, tab)| tab.position);
                 match tab_index {
                     Some(tab_index) => {
-                        if let Some(tab) = self.tabs
-                            .iter_mut()
-                            .find(|(_, t)| t.position == tab_index) {
-                                suppress_pane(tab.1, pane_id, new_pane_id);
+                        if let Some(tab) =
+                            self.tabs.iter_mut().find(|(_, t)| t.position == tab_index)
+                        {
+                            suppress_pane(tab.1, pane_id, new_pane_id);
                         }
                     },
                     None => {
