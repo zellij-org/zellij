@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+fix(plugins): properly focus pane after tab was closed in the plugin API (https://github.com/zellij-org/zellij/pull/3797)
 
 ## [0.41.2] - 2024-11-19
 * fix(input): keypresses not being identified properly with kitty keyboard protocol in some terminals (https://github.com/zellij-org/zellij/pull/3725)
