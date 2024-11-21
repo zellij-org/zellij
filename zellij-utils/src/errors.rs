@@ -400,6 +400,7 @@ pub enum PtyContext {
     ListClientsMetadata,
     Reconfigure,
     ListClientsToPlugin,
+    UpdatePaneInfo,
     Exit,
 }
 
