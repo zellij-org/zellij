@@ -382,8 +382,8 @@ pub struct PaneInfo {
     pub is_selectable: bool,
     #[prost(int32, tag = "23")]
     pub pid: i32,
-    #[prost(string, repeated, tag = "24")]
-    pub env: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "24")]
+    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag = "25")]
     pub tty: ::core::option::Option<::prost::alloc::string::String>,
 }

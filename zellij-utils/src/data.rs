@@ -1361,8 +1361,8 @@ pub struct PaneInfo {
     pub is_selectable: bool,
     /// The PID of the process running in this pane
     pub pid: i32,
-    /// The environment variables of the process running in this pane
-    pub env: Vec<String>,
+    /// The working dir of the process running in this pane
+    pub cwd: Option<String>,
     /// The used TTY, if we are able to parse it. For now, only available on Linux
     pub tty: Option<String>,
 }

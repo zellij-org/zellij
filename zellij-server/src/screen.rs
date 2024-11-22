@@ -1596,9 +1596,9 @@ impl Screen {
             pane_manifest.panes.insert(tab.position, tab.pane_infos());
         }
         // Instead of sending the PaneManifest directly to the Plugin,
-        // we send it via Pty, who will fill out the process ID and
-        // environment variables of the child-process for us and
-        // then forward it to the Plugin
+        // we send it via Pty, who will fill out the runtime-dependent
+        // values (like process ID, TTY, etc.) for us and then forward
+        // it to the Plugin
         self.bus
             .senders
             .send_to_pty(PtyInstruction::UpdatePaneInfo(pane_manifest.clone()))
