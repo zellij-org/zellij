@@ -299,33 +299,23 @@ impl Run {
             (None, None) => None,
         }
     }
+
+    fn update_cwd(current: &mut Option<PathBuf>, new: &PathBuf) {
+        match current {
+            Some(existing) => *existing = new.join(existing),
+            None => *current = Some(new.clone()),
+        }
+    }
+
     pub fn add_cwd(&mut self, cwd: &PathBuf) {
         match self {
-            Run::Command(run_command) => match run_command.cwd.as_mut() {
-                Some(run_cwd) => {
-                    *run_cwd = cwd.join(&run_cwd);
-                },
-                None => {
-                    run_command.cwd = Some(cwd.clone());
-                },
-            },
+            Run::Command(run_command) => Self::update_cwd(&mut run_command.cwd, cwd),
             Run::EditFile(path_to_file, _line_number, edit_cwd) => {
-                match edit_cwd.as_mut() {
-                    Some(edit_cwd) => {
-                        *edit_cwd = cwd.join(&edit_cwd);
-                    },
-                    None => {
-                        let _ = edit_cwd.insert(cwd.clone());
-                    },
-                };
-                *path_to_file = cwd.join(&path_to_file);
+                Self::update_cwd(edit_cwd, cwd);
+                *path_to_file = cwd.join(path_to_file);
             },
-            Run::Cwd(path) => {
-                *path = cwd.join(&path);
-            },
-            Run::Plugin(run_plugin_or_alias) => {
-                run_plugin_or_alias.add_initial_cwd(&cwd);
-            },
+            Run::Cwd(path) => *path = cwd.join(path),
+            Run::Plugin(run_plugin_or_alias) => run_plugin_or_alias.add_initial_cwd(cwd),
         }
     }
     pub fn add_args(&mut self, args: Option<Vec<String>>) {
