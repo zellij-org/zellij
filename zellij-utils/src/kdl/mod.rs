@@ -4466,7 +4466,7 @@ impl PaneInfo {
             is_selectable,
             // These are runtime-dependent and will be filled out by Pty upon request
             pid: -1,
-            env: Vec::new(),
+            cwd: None,
             tty: None,
         };
         Ok((tab_position, pane_info))
@@ -4617,7 +4617,7 @@ fn serialize_and_deserialize_session_info_with_data() {
             is_selectable: true,
             // These are runtime-dependent and will be filled out by Pty upon request
             pid: -1,
-            env: Vec::new(),
+            cwd: None,
             tty: None,
         },
         PaneInfo {
@@ -4645,7 +4645,7 @@ fn serialize_and_deserialize_session_info_with_data() {
             is_selectable: true,
             // These are runtime-dependent and will be filled out by Pty upon request
             pid: -1,
-            env: Vec::new(),
+            cwd: None,
             tty: None,
         },
     ];

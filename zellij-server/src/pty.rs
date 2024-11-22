@@ -800,12 +800,21 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     for pane_info in infos.as_mut_slice() {
                         let pid = pty.get_child_pid(pane_info.id);
                         pane_info.pid = pid;
-                        // Currently, only available on Linux, as both
-                        // depend on the /proc-filesystem
+                        pane_info.cwd = pty
+                            .bus
+                            .os_input
+                            .as_ref()
+                            .map(|os_input| {
+                                os_input
+                                    .get_cwd(Pid::from_raw(pid))
+                                    .map(|x| x.to_string_lossy().to_string())
+                            })
+                            .unwrap_or_default();
+
+                        // Currently, only available on Linux, as it
+                        // depends on the /proc-filesystem
                         #[cfg(target_os = "linux")]
                         {
-                            let child_env = pty.get_child_env_for_pid(pid);
-                            pane_info.env = child_env;
                             // We can't send PathBufs via protobuf, so we have to convert to String
                             pane_info.tty = TtyDriver::find_tty_for_pid(pid)
                                 .map(|x| x.to_string_lossy().to_string());
@@ -1600,17 +1609,6 @@ impl Pty {
 
     pub fn get_child_pid(&self, terminal_id: u32) -> i32 {
         *self.id_to_child_pid.get(&terminal_id).unwrap_or(&-1)
-    }
-
-    #[cfg(target_os = "linux")]
-    pub fn get_child_env_for_pid(&self, child_pid: i32) -> Vec<String> {
-        let mut lines = Vec::new();
-        if let Ok(environ) =
-            std::fs::read_to_string(&PathBuf::from(format!("/proc/{child_pid}/environ")))
-        {
-            lines = environ.split('\0').map(str::to_string).collect();
-        }
-        lines
     }
 }
 

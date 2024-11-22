@@ -984,7 +984,7 @@ impl TryFrom<ProtobufPaneInfo> for PaneInfo {
             plugin_url: protobuf_pane_info.plugin_url,
             is_selectable: protobuf_pane_info.is_selectable,
             pid: protobuf_pane_info.pid,
-            env: protobuf_pane_info.env,
+            cwd: protobuf_pane_info.cwd,
             tty: protobuf_pane_info.tty,
         })
     }
@@ -1022,7 +1022,7 @@ impl TryFrom<PaneInfo> for ProtobufPaneInfo {
             plugin_url: pane_info.plugin_url,
             is_selectable: pane_info.is_selectable,
             pid: pane_info.pid,
-            env: pane_info.env,
+            cwd: pane_info.cwd,
             tty: pane_info.tty,
         })
     }
@@ -1768,7 +1768,7 @@ fn serialize_session_update_event_with_non_default_values() {
             is_selectable: true,
             // These are runtime-dependent and will be filled out by Pty upon request
             pid: 0,
-            env: Vec::new(),
+            cwd: None,
             tty: None,
         },
         PaneInfo {
@@ -1796,7 +1796,7 @@ fn serialize_session_update_event_with_non_default_values() {
             is_selectable: true,
             // These are runtime-dependent and will be filled out by Pty upon request
             pid: 0,
-            env: Vec::new(),
+            cwd: None,
             tty: None,
         },
     ];
