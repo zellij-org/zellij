@@ -99,7 +99,7 @@ impl NewPluginScreen {
         };
         print_text_with_coordinates(url_field, 0, 2, None, None);
         let url_helper =
-            NestedListItem::new(format!("<Ctrl d> - Load from Disk")).color_range(3, ..=8);
+            NestedListItem::new(format!("<Ctrl f> - Load from Disk")).color_range(3, ..=8);
         print_nested_list_with_coordinates(vec![url_helper], 0, 3, None, None);
     }
     fn render_configuration_title(&self) {
@@ -457,7 +457,7 @@ impl NewPluginScreen {
                     should_render = true;
                 }
             },
-            BareKey::Char('d') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+            BareKey::Char('f') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                 let mut args = BTreeMap::new();
                 let request_id = Uuid::new_v4();
                 self.request_ids.push(request_id.to_string());

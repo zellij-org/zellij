@@ -5,10 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.41.2] - 2024-11-19
 * fix(input): keypresses not being identified properly with kitty keyboard protocol in some terminals (https://github.com/zellij-org/zellij/pull/3725)
 * fix(input): reapply ctrl-j fix for the new architecture
 * fix(plugins): various cwd and usability fixes for the plugin manager (https://github.com/zellij-org/zellij/pull/3749)
 * fix(output-buffer): handle race that sometimes caused text spillover (https://github.com/zellij-org/zellij/pull/3750)
+* fix(tabs): some event ordering issues exposed by the recent runtime change (https://github.com/zellij-org/zellij/pull/3758)
+* fix(plugins): do not duplicate built-in plugins, eg. session-manager (https://github.com/zellij-org/zellij/pull/3759)
+* fix(terminal): reset kitty keyboard support when resetting terminal state (https://github.com/zellij-org/zellij/pull/3760)
+* fix(startup): crash when unable to watch config dir (https://github.com/zellij-org/zellij/pull/3761)
+* fix(startup): slow start in some cases due to a race in the server retry queue (https://github.com/zellij-org/zellij/pull/3767)
+* fix(screen): various crashes due to invalid state exposed by the recent wasm runtime change (https://github.com/zellij-org/zellij/pull/3776)
+* chore(package): add the option to use the system curl instead of the vendored version when compiling (https://github.com/zellij-org/zellij/pull/3766)
+* fix(ux): change plugin manager "open from filesystem" shortcut for consistency with the session-manager (https://github.com/zellij-org/zellij/pull/3779)
+* fix(plugins): send `PaneClosed` event to plugins also when an entire tab was closed (https://github.com/zellij-org/zellij/pull/3781)
+* feat(plugins): add a `/cache` folder to plugins to persist data between runs (https://github.com/zellij-org/zellij/pull/3787)
+* feat(package): vendor the common_path dependency (https://github.com/zellij-org/zellij/pull/3780)
+* fix(plugins): derive `Hash` and `Ord` for PaneIds (https://github.com/zellij-org/zellij/pull/3790)
 
 ## [0.41.0] - 2024-11-04
 * feat(layouts): allow consuming a layout through a url (https://github.com/zellij-org/zellij/pull/3351 and https://github.com/zellij-org/zellij/pull/3697)

@@ -898,6 +898,21 @@ impl TryFrom<Action> for ProtobufAction {
                     })),
                 })
             },
+
+            Action::Fourify(direction, new_pane_name, _start_suppressed) => {
+                let direction = direction.and_then(|direction| {
+                    let protobuf_direction: ProtobufResizeDirection = direction.try_into().ok()?;
+                    Some(protobuf_direction as i32)
+                });
+                Ok(ProtobufAction {
+                    name: ProtobufActionName::NewPane as i32,
+                    optional_payload: Some(OptionalPayload::NewPanePayload(NewPanePayload {
+                        direction,
+                        pane_name: new_pane_name,
+                    })),
+                })
+            },
+
             Action::EditFile(
                 open_file_payload,
                 direction,

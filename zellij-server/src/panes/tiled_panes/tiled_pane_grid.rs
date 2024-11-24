@@ -557,7 +557,7 @@ impl<'a> TiledPaneGrid<'a> {
     }
 
     fn reduce_pane_height(&mut self, id: &PaneId, percent: f64) {
-        if self.can_reduce_pane_height(id, percent).unwrap() {
+        if self.can_reduce_pane_height(id, percent).unwrap_or(false) {
             let current_pane_is_stacked = self
                 .panes
                 .borrow()
@@ -1292,7 +1292,9 @@ impl<'a> TiledPaneGrid<'a> {
         // false => didn't succeed, so didn't do anything
         let (freed_width, freed_height, pane_to_close_is_stacked) = {
             let panes = self.panes.borrow_mut();
-            let pane_to_close = panes.get(&id).unwrap();
+            let Some(pane_to_close) = panes.get(&id) else {
+                return false;
+            };
             let freed_space = pane_to_close.position_and_size();
             let freed_width = freed_space.cols.as_percent();
             let freed_height = freed_space.rows.as_percent();
@@ -1350,7 +1352,9 @@ impl<'a> TiledPaneGrid<'a> {
             },
         );
         pane_id_to_split.and_then(|t_id_to_split| {
-            let pane_to_split = panes.get(t_id_to_split).unwrap();
+            let Some(pane_to_split) = panes.get(t_id_to_split) else {
+                return None;
+            };
             let direction = if pane_to_split.rows()
                 * cursor_height_width_ratio.unwrap_or(DEFAULT_CURSOR_HEIGHT_WIDTH_RATIO)
                 > pane_to_split.cols()

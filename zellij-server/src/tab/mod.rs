@@ -1450,7 +1450,7 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.toggle_active_pane_fullscreen(client_id);
         }
-        if self.tiled_panes.can_split_pane_horizontally(client_id) {
+        if self.tiled_panes.can_split_pane_horizontally(client_id) || true {
             if let PaneId::Terminal(term_pid) = pid {
                 let next_terminal_position = self.get_next_terminal_position();
                 let new_terminal = TerminalPane::new(
@@ -1510,7 +1510,7 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.toggle_active_pane_fullscreen(client_id);
         }
-        if self.tiled_panes.can_split_pane_vertically(client_id) {
+        if self.tiled_panes.can_split_pane_vertically(client_id) || true {
             if let PaneId::Terminal(term_pid) = pid {
                 let next_terminal_position = self.get_next_terminal_position();
                 let new_terminal = TerminalPane::new(
@@ -1554,6 +1554,23 @@ impl Tab {
         }
         Ok(())
     }
+
+    pub fn four_split(
+        &mut self,
+        pid: PaneId,
+        _initial_pane_title: Option<String>,
+        client_id: ClientId,
+    ) -> Result<()> {
+
+        let _ = self.vertical_split(pid, None, client_id);
+        let _ = self.horizontal_split(pid, None, client_id);
+        // let _ = self.move_focus_left(client_id);
+        // let _ = self.move_focus_up(client_id);
+        // let _ = self.horizontal_split(pid, initial_pane_title.clone(), client_id);
+        return Ok(());
+
+    }
+
 
     pub fn get_active_pane(&self, client_id: ClientId) -> Option<&dyn Pane> {
         self.get_active_pane_id(client_id).and_then(|ap| {

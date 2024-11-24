@@ -286,6 +286,31 @@ pub(crate) fn route_action(
             };
             senders.send_to_pty(pty_instr).with_context(err_context)?;
         },
+
+
+        Action::Fourify(_direction, _name, _start_suppressed) => {
+            let pty_instr: PtyInstruction = PtyInstruction::SpawnTerminalVertically(default_shell.clone(), Some("cyber".to_string()), client_id);
+            senders.send_to_pty(pty_instr).with_context(err_context)?;
+
+            let pty_instr: PtyInstruction = PtyInstruction::SpawnTerminalHorizontally(default_shell.clone(), None, client_id);
+            senders.send_to_pty(pty_instr).with_context(err_context)?;
+
+            thread::sleep(Duration::from_millis(100));
+            let scr_instr: ScreenInstruction = ScreenInstruction::MoveFocusLeft(client_id);
+            senders.send_to_screen(scr_instr).with_context(err_context)?;
+
+            let scr_instr: ScreenInstruction = ScreenInstruction::MoveFocusUp(client_id);
+            senders.send_to_screen(scr_instr).with_context(err_context)?;
+
+            let pty_instr: PtyInstruction = PtyInstruction::SpawnTerminalHorizontally(default_shell.clone(), None, client_id);
+            senders.send_to_pty(pty_instr).with_context(err_context)?;
+
+            thread::sleep(Duration::from_millis(100));
+            let scr_instr: ScreenInstruction = ScreenInstruction::MoveFocusUp(client_id);
+            senders.send_to_screen(scr_instr).with_context(err_context)?;
+        },
+
+
         Action::EditFile(
             open_file_payload,
             split_direction,
@@ -1004,13 +1029,14 @@ pub(crate) fn route_thread_main(
         match receiver.recv() {
             Some((instruction, err_ctx)) => {
                 err_ctx.update_thread_ctx();
-                let rlocked_sessions = session_data.read().to_anyhow().with_context(err_context)?;
                 let mut handle_instruction = |instruction: ClientToServerMsg,
                                               mut retry_queue: Option<
                     &mut VecDeque<ClientToServerMsg>,
                 >|
                  -> Result<bool> {
                     let mut should_break = false;
+                    let rlocked_sessions =
+                        session_data.read().to_anyhow().with_context(err_context)?;
                     match instruction {
                         ClientToServerMsg::Key(key, raw_bytes, is_kitty_keyboard_protocol) => {
                             if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
