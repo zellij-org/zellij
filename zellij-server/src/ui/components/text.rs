@@ -69,15 +69,20 @@ pub fn stringify_text(
     match (coordinates_width, text_style.background) {
         (Some(coordinates_width), Some(_background_style)) => {
             let text_width_with_left_padding = text_width + left_padding.unwrap_or(0);
-            let background_padding_length = coordinates_width.saturating_sub(text_width_with_left_padding);
+            let background_padding_length =
+                coordinates_width.saturating_sub(text_width_with_left_padding);
             if text_width_with_left_padding < coordinates_width {
                 // here we pad the string with whitespace until the end so that the background
                 // style will apply the whole length of the coordinates
-                stringified.push_str(&format!("{:width$}", " ", width = background_padding_length));
+                stringified.push_str(&format!(
+                    "{:width$}",
+                    " ",
+                    width = background_padding_length
+                ));
             }
             text_width += background_padding_length;
         },
-        _ => {}
+        _ => {},
     }
     (stringified, text_width)
 }

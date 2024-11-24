@@ -533,13 +533,7 @@ impl PresetsScreen {
         } else {
             (rows.saturating_sub(ui_size) / 2) + 2
         };
-        print_nested_list_with_coordinates(
-            list_items,
-            left_padding,
-            top_coordinates,
-            None,
-            None,
-        );
+        print_nested_list_with_coordinates(list_items, left_padding, top_coordinates, None, None);
     }
     fn render_second_bulletin(
         &self,
@@ -672,13 +666,7 @@ impl PresetsScreen {
         } else {
             (rows.saturating_sub(ui_size) / 2) + 6
         };
-        print_nested_list_with_coordinates(
-            list_items,
-            left_padding,
-            top_coordinates,
-            None,
-            None,
-        );
+        print_nested_list_with_coordinates(list_items, left_padding, top_coordinates, None, None);
     }
     fn render_leader_keys_indication(
         &self,
