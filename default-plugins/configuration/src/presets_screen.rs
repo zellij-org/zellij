@@ -537,7 +537,7 @@ impl PresetsScreen {
             list_items,
             left_padding,
             top_coordinates,
-            Some(max_width),
+            None,
             None,
         );
     }
@@ -676,7 +676,7 @@ impl PresetsScreen {
             list_items,
             left_padding,
             top_coordinates,
-            Some(max_width),
+            None,
             None,
         );
     }

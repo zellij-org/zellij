@@ -304,6 +304,7 @@ impl RebindLeadersScreen {
             } else {
                 (format!("{}", primary_modifier_key_text), 0)
             };
+        let primary_modifier_menu_width = primary_modifier_text.chars().count();
         print_text_with_coordinates(
             Text::new(primary_modifier_text).color_range(3, primary_modifier_start_position..),
             base_x,
@@ -330,7 +331,7 @@ impl RebindLeadersScreen {
                 .collect(),
             base_x,
             base_y + 6,
-            Some(screen_width / 2),
+            Some(primary_modifier_menu_width),
             None,
         );
     }
@@ -504,6 +505,7 @@ impl RebindLeadersScreen {
                 (format!("{}", secondary_modifier_key_text), 0)
             };
         let secondary_modifier_menu_x_coords = base_x + (screen_width / 2);
+        let secondary_modifier_menu_width = secondary_modifier_text.chars().count();
         print_text_with_coordinates(
             Text::new(secondary_modifier_text).color_range(0, secondary_modifier_start_position..),
             secondary_modifier_menu_x_coords,
@@ -530,7 +532,7 @@ impl RebindLeadersScreen {
                 .collect(),
             secondary_modifier_menu_x_coords,
             base_y + 6,
-            Some(screen_width / 2),
+            Some(secondary_modifier_menu_width),
             None,
         );
     }
