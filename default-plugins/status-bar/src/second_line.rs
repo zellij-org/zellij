@@ -150,6 +150,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
 
     if mi.mode == IM::Pane { vec![
         (s("New"), s("New"), action_key(&km, &[A::NewPane(None, None, false), TO_NORMAL])),
+        (s("Fourify"), s("Fourify"), action_key(&km, &[A::Fourify, TO_NORMAL])),
         (s("Change Focus"), s("Move"),
             action_key_group(&km, &[&[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
                 &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),

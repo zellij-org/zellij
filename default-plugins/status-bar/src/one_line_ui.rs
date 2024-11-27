@@ -698,6 +698,19 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             vec![]
         };
 
+    // Fourify
+    let fourify_action_key = action_key(binds, &[Action::Fourify]);
+    let mut fourify_key_to_display = fourify_action_key
+        .iter()
+        .find(|k| k.is_key_with_alt_modifier(BareKey::Char('n')))
+        .or_else(|| fourify_action_key.iter().next());
+    let fourify_key_to_display = if let Some(fourify_key_to_display) = fourify_key_to_display.take()
+    {
+        vec![fourify_key_to_display.clone()]
+    } else {
+        vec![]
+    };
+
     // Move focus
     let mut move_focus_shortcuts: Vec<KeyWithModifier> = vec![];
 
@@ -755,6 +768,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
 
     let common_modifiers = get_common_modifiers(
         [
+            fourify_key_to_display.clone(),
             new_pane_key_to_display.clone(),
             move_focus_shortcuts.clone(),
             toggle_floating_key_to_display.clone(),
@@ -770,6 +784,13 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             help,
             "New Pane",
             &new_pane_key_to_display,
+            false,
+            Some(0),
+        ));
+        secondary_info.append(&add_shortcut(
+            help,
+            "Fourify",
+            &fourify_key_to_display,
             false,
             Some(0),
         ));
@@ -804,6 +825,10 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             .iter()
             .map(|k| k.strip_common_modifiers(&common_modifiers))
             .collect();
+        let fourify_key_to_display: Vec<KeyWithModifier> = fourify_key_to_display
+            .iter()
+            .map(|k| k.strip_common_modifiers(&common_modifiers))
+            .collect();
         let move_focus_shortcuts: Vec<KeyWithModifier> = move_focus_shortcuts
             .iter()
             .map(|k| k.strip_common_modifiers(&common_modifiers))
@@ -816,6 +841,12 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             help,
             "New Pane",
             new_pane_key_to_display,
+            false,
+        ));
+        secondary_info.append(&add_shortcut_with_inline_key(
+            help,
+            "Fourify",
+            fourify_key_to_display,
             false,
         ));
         secondary_info.append(&add_shortcut_with_inline_key(
@@ -841,6 +872,13 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 help,
                 "New",
                 &new_pane_key_to_display,
+                false,
+                Some(0),
+            ));
+            short_line.append(&add_shortcut(
+                help,
+                "Fourify",
+                &fourify_key_to_display,
                 false,
                 Some(0),
             ));
@@ -875,6 +913,10 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 .iter()
                 .map(|k| k.strip_common_modifiers(&common_modifiers))
                 .collect();
+            let fourify_key_to_display: Vec<KeyWithModifier> = fourify_key_to_display
+                .iter()
+                .map(|k| k.strip_common_modifiers(&common_modifiers))
+                .collect();
             let move_focus_shortcuts: Vec<KeyWithModifier> = move_focus_shortcuts
                 .iter()
                 .map(|k| k.strip_common_modifiers(&common_modifiers))
@@ -888,6 +930,12 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 help,
                 "New",
                 new_pane_key_to_display,
+                false,
+            ));
+            short_line.append(&add_shortcut_with_inline_key(
+                help,
+                "Fourify",
+                fourify_key_to_display,
                 false,
             ));
             short_line.append(&add_shortcut_with_inline_key(
@@ -1173,6 +1221,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
 
     if mi.mode == IM::Pane { vec![
         (s("New"), s("New"), single_action_key(&km, &[A::NewPane(None, None, false), TO_NORMAL])),
+        (s("Fourify"), s("Fourify"), single_action_key(&km, &[A::Fourify, TO_NORMAL])),
         (s("Change Focus"), s("Move"),
             action_key_group(&km, &[&[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
                 &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),

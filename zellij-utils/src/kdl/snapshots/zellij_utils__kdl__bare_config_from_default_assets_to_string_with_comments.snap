@@ -21,6 +21,7 @@ keybinds clear-defaults=true {
         bind "k" { MoveFocus "up"; }
         bind "l" { MoveFocus "right"; }
         bind "n" { NewPane; SwitchToMode "normal"; }
+        bind "+" { Fourify; SwitchToMode "normal"; }
         bind "p" { SwitchFocus; }
         bind "Ctrl p" { SwitchToMode "normal"; }
         bind "r" { NewPane "right"; SwitchToMode "normal"; }

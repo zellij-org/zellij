@@ -158,6 +158,7 @@ pub enum Action {
     /// Open a new pane in the specified direction (relative to focus).
     /// If no direction is specified, will try to use the biggest available space.
     NewPane(Option<Direction>, Option<String>, bool), // String is an optional pane name
+    Fourify,
     /// Open the file in a new pane using the default editor, bool -> start suppressed
     EditFile(
         OpenFilePayload,
@@ -347,6 +348,7 @@ impl Action {
             CliAction::ToggleFullscreen => Ok(vec![Action::ToggleFocusFullscreen]),
             CliAction::TogglePaneFrames => Ok(vec![Action::TogglePaneFrames]),
             CliAction::ToggleActiveSyncTab => Ok(vec![Action::ToggleActiveSyncTab]),
+            CliAction::Fourify => Ok(vec![Action::Fourify]),
             CliAction::NewPane {
                 direction,
                 command,

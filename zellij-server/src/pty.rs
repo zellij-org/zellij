@@ -57,6 +57,7 @@ pub enum PtyInstruction {
     // name
     UpdateActivePane(Option<PaneId>, ClientId),
     GoToTab(TabIndex, ClientId),
+    Fourify(ClientId),
     NewTab(
         Option<PathBuf>,
         Option<TerminalAction>,
@@ -117,6 +118,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab(..) => PtyContext::NewTab,
+            PtyInstruction::Fourify(..) => PtyContext::Fourify,
             PtyInstruction::ReRunCommandInPane(..) => PtyContext::ReRunCommandInPane,
             PtyInstruction::DropToShellInPane { .. } => PtyContext::DropToShellInPane,
             PtyInstruction::SpawnInPlaceTerminal(..) => PtyContext::SpawnInPlaceTerminal,
@@ -384,6 +386,54 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         Err::<(), _>(e).with_context(err_context).non_fatal();
                     },
                 }
+            },
+            PtyInstruction::Fourify(client_id) => {
+                let err_context = || format!("failed to fourify for client {client_id}");
+
+                let (pid1, starts_held1) = pty
+                    .spawn_terminal(None, ClientTabIndexOrPaneId::ClientId(client_id))
+                    .with_context(err_context)?;
+                let (pid2, starts_held2) = pty
+                    .spawn_terminal(None, ClientTabIndexOrPaneId::ClientId(client_id))
+                    .with_context(err_context)?;
+                let (pid3, starts_held3) = pty
+                    .spawn_terminal(None, ClientTabIndexOrPaneId::ClientId(client_id))
+                    .with_context(err_context)?;
+
+                pty.bus
+                    .senders
+                    .send_to_screen(ScreenInstruction::VerticalSplit(
+                        PaneId::Terminal(pid1),
+                        None,
+                        None,
+                        client_id,
+                    ))
+                    .with_context(err_context)?;
+
+                pty.bus
+                    .senders
+                    .send_to_screen(ScreenInstruction::HorizontalSplit(
+                        PaneId::Terminal(pid2),
+                        None,
+                        None,
+                        client_id,
+                    ))
+                    .with_context(err_context)?;
+
+                pty.bus
+                    .senders
+                    .send_to_screen(ScreenInstruction::MoveFocusLeft(client_id))
+                    .with_context(err_context)?;
+
+                pty.bus
+                    .senders
+                    .send_to_screen(ScreenInstruction::HorizontalSplit(
+                        PaneId::Terminal(pid3),
+                        None,
+                        None,
+                        client_id,
+                    ))
+                    .with_context(err_context)?;
             },
             PtyInstruction::SpawnTerminalVertically(terminal_action, name, client_id) => {
                 let err_context =

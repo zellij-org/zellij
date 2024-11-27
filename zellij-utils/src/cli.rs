@@ -527,6 +527,7 @@ pub enum CliAction {
         #[clap(long, requires("floating"))]
         height: Option<String>,
     },
+    Fourify,
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
         file: PathBuf,

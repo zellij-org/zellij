@@ -528,6 +528,7 @@ impl Action {
             "MovePaneBackwards" => Ok(Action::MovePaneBackwards),
             "DumpScreen" => Ok(Action::DumpScreen(string, false)),
             "DumpLayout" => Ok(Action::DumpLayout),
+            "Fourify" => Ok(Action::Fourify),
             "NewPane" => {
                 if string.is_empty() {
                     return Ok(Action::NewPane(None, None, false));
@@ -667,6 +668,7 @@ impl Action {
             Action::ToggleFocusFullscreen => Some(KdlNode::new("ToggleFocusFullscreen")),
             Action::TogglePaneFrames => Some(KdlNode::new("TogglePaneFrames")),
             Action::ToggleActiveSyncTab => Some(KdlNode::new("ToggleActiveSyncTab")),
+            Action::Fourify => Some(KdlNode::new("Fourify")),
             Action::NewPane(direction, _, _) => {
                 let mut node = KdlNode::new("NewPane");
                 if let Some(direction) = direction {
@@ -1372,6 +1374,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 kdl_action
             ),
             "DumpLayout" => parse_kdl_action_char_or_string_arguments!(
+                action_name,
+                action_arguments,
+                kdl_action
+            ),
+            "Fourify" => parse_kdl_action_char_or_string_arguments!(
                 action_name,
                 action_arguments,
                 kdl_action

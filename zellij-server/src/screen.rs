@@ -156,6 +156,7 @@ pub enum ScreenInstruction {
         bool, // start suppressed
         ClientTabIndexOrPaneId,
     ),
+    Fourify(PaneId, ClientId),
     OpenInPlaceEditor(PaneId, ClientTabIndexOrPaneId),
     TogglePaneEmbedOrFloating(ClientId),
     ToggleFloatingPanes(ClientId, Option<TerminalAction>),
@@ -420,6 +421,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PluginBytes(..) => ScreenContext::PluginBytes,
             ScreenInstruction::Render => ScreenContext::Render,
             ScreenInstruction::NewPane(..) => ScreenContext::NewPane,
+            ScreenInstruction::Fourify(..) => ScreenContext::Fourify,
             ScreenInstruction::OpenInPlaceEditor(..) => ScreenContext::OpenInPlaceEditor,
             ScreenInstruction::TogglePaneEmbedOrFloating(..) => {
                 ScreenContext::TogglePaneEmbedOrFloating
@@ -2756,6 +2758,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::Render => {
                 screen.render(None)?;
             },
+            ScreenInstruction::Fourify(pid, client_id) => { /* TODO: do stuff here */ },
             ScreenInstruction::NewPane(
                 pid,
                 initial_pane_title,

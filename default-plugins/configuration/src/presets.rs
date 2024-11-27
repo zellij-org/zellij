@@ -29,6 +29,7 @@ keybinds clear-defaults=true {{
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "Tab" {{ SwitchFocus; }}
         bind "n" {{ NewPane; SwitchToMode "Locked"; }}
+        bind "+" {{ Fourify; SwitchToMode "Locked"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Locked"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Locked"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Locked"; }}
@@ -149,6 +150,7 @@ keybinds clear-defaults=true {{
     }}
     shared_among "normal" "locked" {{
         bind "{secondary_modifier} n" {{ NewPane; }}
+        bind "{secondary_modifier} +" {{ Fourify; }}
         bind "{secondary_modifier} f" {{ ToggleFloatingPanes; }}
         bind "{secondary_modifier} i" {{ MoveTab "Left"; }}
         bind "{secondary_modifier} o" {{ MoveTab "Right"; }}
@@ -225,6 +227,7 @@ keybinds clear-defaults=true {{
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "p" {{ SwitchFocus; }}
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
+        bind "+" {{ Fourify; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
@@ -432,6 +435,7 @@ keybinds clear-defaults=true {{
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "p" {{ SwitchFocus; }}
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
+        bind "+" {{ Fourify; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
@@ -610,6 +614,7 @@ keybinds clear-defaults=true {{
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "p" {{ SwitchFocus; }}
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
+        bind "+" {{ Fourify; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
@@ -797,6 +802,7 @@ keybinds clear-defaults=true {{
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "p" {{ SwitchFocus; }}
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
+        bind "+" {{ Fourify; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
@@ -959,6 +965,7 @@ keybinds clear-defaults=true {{
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "p" {{ SwitchFocus; }}
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
+        bind "+" {{ Fourify; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}

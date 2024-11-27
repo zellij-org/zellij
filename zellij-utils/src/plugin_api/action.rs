@@ -213,6 +213,10 @@ impl TryFrom<ProtobufAction> for Action {
                     None => Ok(Action::ToggleActiveSyncTab),
                 }
             },
+            Some(ProtobufActionName::Fourify) => match protobuf_action.optional_payload {
+                Some(_) => Err("Fourify should not have a payload"),
+                None => Ok(Action::Fourify),
+            },
             Some(ProtobufActionName::NewPane) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::NewPanePayload(payload)) => {
                     let direction: Option<Direction> = payload
@@ -883,6 +887,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::ToggleActiveSyncTab => Ok(ProtobufAction {
                 name: ProtobufActionName::ToggleActiveSyncTab as i32,
+                optional_payload: None,
+            }),
+            Action::Fourify => Ok(ProtobufAction {
+                name: ProtobufActionName::Fourify as i32,
                 optional_payload: None,
             }),
             Action::NewPane(direction, new_pane_name, _start_suppressed) => {
