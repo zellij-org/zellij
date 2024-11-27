@@ -1893,4 +1893,5 @@ pub enum PluginCommand {
         write_config_to_disk: bool,
     },
     ListClients,
+    ChangeHostFolder(PathBuf),
 }

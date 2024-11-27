@@ -4,13 +4,20 @@ use crate::plugins::pipes::{
 };
 use crate::plugins::plugin_loader::PluginLoader;
 use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions};
+use crate::plugins::plugin_map::{
+    VecDequeInputStream, WriteOutputStream,
+};
+use crate::logging_pipe::LoggingPipe;
+use wasmtime_wasi::{DirPerms, FilePerms, WasiCtxBuilder};
+
+
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use highway::{HighwayHash, PortableHash};
 use log::info;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     path::PathBuf,
     str::FromStr,
     sync::{Arc, Mutex},
@@ -18,7 +25,7 @@ use std::{
 use wasmtime::{Engine, Module};
 use zellij_utils::async_channel::Sender;
 use zellij_utils::async_std::task::{self, JoinHandle};
-use zellij_utils::consts::ZELLIJ_CACHE_DIR;
+use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{InputMode, PermissionStatus, PermissionType, PipeMessage, PipeSource};
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::keybinds::Keybinds;
@@ -734,6 +741,104 @@ impl WasmBridge {
                 }
             }
         }
+        Ok(())
+    }
+    pub fn change_plugin_host_dir(
+        &mut self,
+        new_host_dir: PathBuf,
+        plugin_id_to_update: PluginId,
+        client_id_to_update: ClientId,
+    ) -> Result<()> {
+        let err_context = || format!("Failed to change plugin host dir");
+        let plugins_to_change: Vec<(
+            PluginId,
+            ClientId,
+            Arc<Mutex<RunningPlugin>>,
+            Arc<Mutex<Subscriptions>>,
+        )> = self
+            .plugin_map
+            .lock()
+            .unwrap()
+            .running_plugins_and_subscriptions()
+            .iter()
+            .cloned()
+            .filter(|(plugin_id, _client_id, _running_plugin, _subscriptions)| {
+                // TODO: cache this somehow in this case...
+                !&self
+                    .cached_events_for_pending_plugins
+                    .contains_key(&plugin_id)
+            })
+            .collect();
+        task::spawn({
+            let senders = self.senders.clone();
+            async move {
+                if let Err(e) = new_host_dir.try_exists() {
+                    log::error!("Failed to change folder to {},: {}", new_host_dir.display(), e);
+                    return;
+                }
+                for (plugin_id, client_id, running_plugin, subscriptions) in &plugins_to_change {
+                    if plugin_id == &plugin_id_to_update && client_id == &client_id_to_update {
+                        // TODO:
+                        // 1. move this logic to plugin_loader and merge it with the other context
+                        //    creation logic - DONE
+                        // 2. send a new kind of event to the plugin, telling it its cwd changed
+                        //    <== TODO: CONTINUE HERE, do this for the error event too above
+                        // 3. make sure the new_host_dir exists before doing this - DONE
+                        let mut running_plugin = running_plugin.lock().unwrap();
+                        let plugin_env = running_plugin.store.data_mut();
+//                             // before we mounted in in the wasi environment, we'll crash
+//                             // when we move to a new wasi environment, we should address this with locking if
+//                             // there's no built-in solution
+//                             dir.try_exists().ok().unwrap_or(false)
+//                         });
+//                         let mut wasi_ctx_builder = WasiCtxBuilder::new();
+//                         wasi_ctx_builder.env("CLICOLOR_FORCE", "1");
+//                         for (guest_path, host_path) in dirs {
+//                             wasi_ctx_builder
+//                                 .preopened_dir(host_path, guest_path, DirPerms::all(), FilePerms::all())
+//                                 .with_context(err_context).unwrap(); // TODO: handle error
+//                         }
+// 
+                        let stdin_pipe = plugin_env.stdin_pipe.clone();
+                        let stdout_pipe = plugin_env.stdout_pipe.clone();
+//                         wasi_ctx_builder
+//                             .stdin(VecDequeInputStream(stdin_pipe.clone()))
+//                             .stdout(WriteOutputStream(stdout_pipe.clone()))
+//                             .stderr(WriteOutputStream(Arc::new(Mutex::new(LoggingPipe::new(
+//                                 &plugin_env.plugin.location.to_string(),
+//                                 plugin_env.plugin_id,
+//                             )))));
+//                         // let wasi_ctx = wasi_ctx_builder.build_p1();
+
+
+                        let wasi_ctx = PluginLoader::create_wasi_ctx(
+                            &new_host_dir,
+                            &plugin_env.plugin_own_data_dir,
+                            &plugin_env.plugin_own_cache_dir,
+                            &ZELLIJ_TMP_DIR,
+                            &plugin_env.plugin.location.to_string(),
+                            plugin_env.plugin_id,
+                            stdin_pipe.clone(),
+                            stdout_pipe.clone(),
+                        );
+                        match wasi_ctx {
+                            Ok(wasi_ctx) => {
+                                drop(std::mem::replace(&mut plugin_env.wasi_ctx, wasi_ctx));
+                            },
+                            Err(e) => {
+                                log::error!("Failed to create wasi ctx: {}", e);
+                            }
+                        }
+
+
+
+
+
+
+                    }
+                }
+            }
+        });
         Ok(())
     }
     pub fn pipe_messages(

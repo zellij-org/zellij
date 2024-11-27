@@ -127,6 +127,7 @@ enum CommandName {
   LoadNewPlugin = 111;
   RebindKeys = 112;
   ListClients = 113;
+  ChangeHostFolder = 114;
 }
 
 message PluginCommand {
@@ -210,7 +211,12 @@ message PluginCommand {
     ReloadPluginPayload reload_plugin_payload = 86;
     LoadNewPluginPayload load_new_plugin_payload = 87;
     RebindKeysPayload rebind_keys_payload = 88;
+    ChangeHostFolderPayload change_host_folder_payload = 89;
   }
+}
+
+message ChangeHostFolderPayload {
+  string new_host_folder = 1;
 }
 
 message RebindKeysPayload {

@@ -21,7 +21,7 @@ pub use super::generated_api::api::{
         ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetTimeoutPayload,
         ShowPaneWithIdPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToPayload,
         TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
-        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload, ChangeHostFolderPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1303,6 +1303,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(_) => Err("ListClients should have no payload, found a payload"),
                 None => Ok(PluginCommand::ListClients),
             },
+            Some(CommandName::ChangeHostFolder) => match protobuf_plugin_command.payload {
+                Some(Payload::ChangeHostFolderPayload(change_host_folder_payload)) => {
+                    Ok(PluginCommand::ChangeHostFolder(PathBuf::from(change_host_folder_payload.new_host_folder)))
+                },
+                _ => Err("Mismatched payload for ChangeHostFolder"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2129,6 +2135,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::ListClients => Ok(ProtobufPluginCommand {
                 name: CommandName::ListClients as i32,
                 payload: None,
+            }),
+            PluginCommand::ChangeHostFolder(new_host_folder) => Ok(ProtobufPluginCommand {
+                name: CommandName::ChangeHostFolder as i32,
+                payload: Some(Payload::ChangeHostFolderPayload(ChangeHostFolderPayload {
+                    new_host_folder: new_host_folder.display().to_string(), // TODO: not accurate?
+                })),
             }),
         }
     }

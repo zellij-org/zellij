@@ -158,6 +158,7 @@ pub enum PluginInstruction {
     },
     WatchFilesystem,
     ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
+    ChangePluginHostDir(PathBuf, PluginId, ClientId),
     Exit,
 }
 
@@ -204,6 +205,7 @@ impl From<&PluginInstruction> for PluginContext {
                 PluginContext::FailedToWriteConfigToDisk
             },
             PluginInstruction::ListClientsToPlugin(..) => PluginContext::ListClientsToPlugin,
+            PluginInstruction::ChangePluginHostDir(..) => PluginContext::ChangePluginHostDir,
         }
     }
 }
@@ -886,6 +888,11 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::WatchFilesystem => {
                 wasm_bridge.start_fs_watcher_if_not_started();
             },
+            PluginInstruction::ChangePluginHostDir(new_host_folder, plugin_id, client_id) => {
+                wasm_bridge
+                    .change_plugin_host_dir(new_host_folder, plugin_id, client_id)
+                    .non_fatal();
+            }
             PluginInstruction::Exit => {
                 break;
             },

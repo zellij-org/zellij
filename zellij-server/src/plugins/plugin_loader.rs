@@ -14,7 +14,7 @@ use std::{
 };
 use url::Url;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
-use wasmtime_wasi::{DirPerms, FilePerms, WasiCtxBuilder};
+use wasmtime_wasi::{DirPerms, FilePerms, WasiCtxBuilder, preview1::WasiP1Ctx};
 use zellij_utils::consts::ZELLIJ_PLUGIN_ARTIFACT_DIR;
 use zellij_utils::prost::Message;
 
@@ -784,18 +784,26 @@ impl<'a> PluginLoader<'a> {
             },
         }
     }
-    fn create_plugin_instance_env(&self, module: &Module) -> Result<(Store<PluginEnv>, Instance)> {
+    pub fn create_wasi_ctx(
+        host_dir: &PathBuf,
+        data_dir: &PathBuf,
+        cache_dir: &PathBuf,
+        tmp_dir: &PathBuf,
+        plugin_url: &String,
+        plugin_id: PluginId,
+        stdin_pipe: Arc<Mutex<VecDeque<u8>>>,
+        stdout_pipe: Arc<Mutex<VecDeque<u8>>>,
+    ) -> Result<WasiP1Ctx> {
         let err_context = || {
             format!(
-                "Failed to create instance, plugin env and subscriptions for plugin {}",
-                self.plugin_id
+                "Failed to create wasi_ctx"
             )
         };
         let dirs = vec![
-            ("/host".to_owned(), self.zellij_cwd.clone()),
-            ("/data".to_owned(), self.plugin_own_data_dir.clone()),
-            ("/cache".to_owned(), self.plugin_own_cache_dir.clone()),
-            ("/tmp".to_owned(), ZELLIJ_TMP_DIR.clone()),
+            ("/host".to_owned(), host_dir.clone()),
+            ("/data".to_owned(), data_dir.clone()),
+            ("/cache".to_owned(), cache_dir.clone()),
+            ("/tmp".to_owned(), tmp_dir.clone()),
         ];
         let dirs = dirs.into_iter().filter(|(_dir_name, dir)| {
             // note that this does not protect against TOCTOU errors
@@ -812,16 +820,67 @@ impl<'a> PluginLoader<'a> {
                 .preopened_dir(host_path, guest_path, DirPerms::all(), FilePerms::all())
                 .with_context(err_context)?;
         }
-        let stdin_pipe = Arc::new(Mutex::new(VecDeque::new()));
-        let stdout_pipe = Arc::new(Mutex::new(VecDeque::new()));
         wasi_ctx_builder
             .stdin(VecDequeInputStream(stdin_pipe.clone()))
             .stdout(WriteOutputStream(stdout_pipe.clone()))
             .stderr(WriteOutputStream(Arc::new(Mutex::new(LoggingPipe::new(
-                &self.plugin.location.to_string(),
-                self.plugin_id,
+                plugin_url,
+                plugin_id,
+//                 &self.plugin.location.to_string(),
+//                 self.plugin_id,
             )))));
         let wasi_ctx = wasi_ctx_builder.build_p1();
+        Ok(wasi_ctx)
+    }
+    fn create_plugin_instance_env(&self, module: &Module) -> Result<(Store<PluginEnv>, Instance)> {
+        let err_context = || {
+            format!(
+                "Failed to create instance, plugin env and subscriptions for plugin {}",
+                self.plugin_id
+            )
+        };
+//         let dirs = vec![
+//             ("/host".to_owned(), self.zellij_cwd.clone()),
+//             ("/data".to_owned(), self.plugin_own_data_dir.clone()),
+//             ("/cache".to_owned(), self.plugin_own_cache_dir.clone()),
+//             ("/tmp".to_owned(), ZELLIJ_TMP_DIR.clone()),
+//         ];
+//         let dirs = dirs.into_iter().filter(|(_dir_name, dir)| {
+//             // note that this does not protect against TOCTOU errors
+//             // eg. if one or more of these folders existed at the time of check but was deleted
+//             // before we mounted in in the wasi environment, we'll crash
+//             // when we move to a new wasi environment, we should address this with locking if
+//             // there's no built-in solution
+//             dir.try_exists().ok().unwrap_or(false)
+//         });
+//         let mut wasi_ctx_builder = WasiCtxBuilder::new();
+//         wasi_ctx_builder.env("CLICOLOR_FORCE", "1");
+//         for (guest_path, host_path) in dirs {
+//             wasi_ctx_builder
+//                 .preopened_dir(host_path, guest_path, DirPerms::all(), FilePerms::all())
+//                 .with_context(err_context)?;
+//         }
+        let stdin_pipe = Arc::new(Mutex::new(VecDeque::new()));
+        let stdout_pipe = Arc::new(Mutex::new(VecDeque::new()));
+//         wasi_ctx_builder
+//             .stdin(VecDequeInputStream(stdin_pipe.clone()))
+//             .stdout(WriteOutputStream(stdout_pipe.clone()))
+//             .stderr(WriteOutputStream(Arc::new(Mutex::new(LoggingPipe::new(
+//                 &self.plugin.location.to_string(),
+//                 self.plugin_id,
+//             )))));
+//         let wasi_ctx = wasi_ctx_builder.build_p1();
+
+        let wasi_ctx = PluginLoader::create_wasi_ctx(
+            &self.zellij_cwd,
+            &self.plugin_own_cache_dir,
+            &self.plugin_own_cache_dir,
+            &ZELLIJ_TMP_DIR,
+            &self.plugin.location.to_string(),
+            self.plugin_id,
+            stdin_pipe.clone(),
+            stdout_pipe.clone(),
+        )?;
         let plugin = self.plugin.clone();
         let plugin_env = PluginEnv {
             plugin_id: self.plugin_id,

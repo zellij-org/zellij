@@ -1128,6 +1128,13 @@ pub fn rebind_keys(
     unsafe { host_run_plugin_command() };
 }
 
+pub fn change_host_folder(new_host_folder: PathBuf) {
+    let plugin_command = PluginCommand::ChangeHostFolder(new_host_folder);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 #[allow(unused)]
