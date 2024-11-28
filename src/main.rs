@@ -194,6 +194,8 @@ fn main() {
         commands::delete_session(target_session, force);
     } else if let Some(path) = opts.server {
         commands::start_server(path, opts.debug);
+    } else if let Some(path) = opts.web {
+        commands::start_web_client(path, opts.debug);
     } else if let Some(layout) = &opts.layout {
         if let Some(session_name) = opts
             .session

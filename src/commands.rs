@@ -15,6 +15,7 @@ use zellij_client::{
     },
     os_input_output::get_client_os_input,
     start_client as start_client_impl, ClientInfo,
+    web_client::start_web_client as start_web_client_impl
 };
 use zellij_server::{os_input_output::get_server_os_input, start_server as start_server_impl};
 use zellij_utils::{
@@ -142,6 +143,13 @@ pub(crate) fn start_server(path: PathBuf, debug: bool) {
     zellij_utils::consts::DEBUG_MODE.set(debug).unwrap();
     let os_input = get_os_input(get_server_os_input);
     start_server_impl(Box::new(os_input), path);
+}
+
+pub(crate) fn start_web_client(session_name: String, debug: bool) {
+    // Set instance-wide debug mode
+    zellij_utils::consts::DEBUG_MODE.set(debug).unwrap();
+    // let os_input = get_os_input(get_client_os_input);
+    start_web_client_impl(&session_name);
 }
 
 fn create_new_client() -> ClientInfo {

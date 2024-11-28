@@ -1,6 +1,7 @@
 pub mod os_input_output;
 
 pub mod cli_client;
+pub mod web_client;
 mod command_is_executing;
 mod input_handler;
 mod keyboard_parser;

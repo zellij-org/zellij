@@ -48,6 +48,10 @@ pub struct CliArgs {
     #[clap(long, value_parser, hide = true, overrides_with = "server")]
     pub server: Option<PathBuf>,
 
+    /// Run a web client
+    #[clap(long, value_parser, hide = true, overrides_with = "server")]
+    pub web: Option<String>,
+
     /// Specify name of a new session
     #[clap(long, short, overrides_with = "session", value_parser = validate_session)]
     pub session: Option<String>,
