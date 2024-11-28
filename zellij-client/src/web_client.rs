@@ -28,6 +28,10 @@ use tokio::runtime::Runtime;
 
 
 
+// DEV INSTRUCTIONS:
+// * to run this:
+//      - cargo x run --singlepass
+//      - (inside the session): target/dev-opt/zellij --web $ZELLIJ_SESSION_NAME
 pub fn start_web_client(
     session_name: &str,
 ) {
@@ -36,7 +40,7 @@ pub fn start_web_client(
     rt.block_on(async {
         handle_server(session_name).await;
     });
-    log::info!("Server closed?");
+    log::info!("Server closed");
 }
 
 async fn handle_server(session_name: &str) {
@@ -63,13 +67,10 @@ async fn handle_client(
             let os_input = os_input.clone();
             move || {
                 server_listener(Box::new(os_input), websocket_channel_tx, &session_name);
-                log::info!("done server listening");
             }
         });
 
-    // Create a task to periodically send updates
     tokio::spawn(async move {
-        
         loop {
             if let Some(rendered_bytes) = websocket_channel_rc.recv().await {
                 if write.send(Message::Text(rendered_bytes)).await.is_err() {
@@ -79,13 +80,11 @@ async fn handle_client(
         }
     });
 
-    // Handle incoming messages (if necessary)
+    // Handle incoming messages (STDIN)
     while let Some(Ok(_msg)) = read.next().await {
-        // In this example, we don't need to handle incoming messages
+        // TODO
     }
-    log::info!("client dead?");
     os_input.send_to_server(ClientToServerMsg::ClientExited);
-    log::info!("sent exited to server");
 }
 
 
@@ -108,7 +107,7 @@ fn server_listener(
         style: Default::default(),
     };
 
-    // TODO: CONTINUE HERE (28/11)
+    // TODO:
     // - send the initialization string stuffs to the client
     // - fill these up (copy/paste from lib.rs in zellij client hopefully) and
     // see if this does the trick
@@ -132,7 +131,6 @@ fn server_listener(
 
 
     loop {
-        log::info!("server_listener listening to msg");
         match os_input.recv_from_server() {
 //             Some((ServerToClientMsg::UnblockInputThread, _)) => {
 //                 break;
@@ -157,7 +155,6 @@ fn server_listener(
                 break;
             },
             Some((ServerToClientMsg::Render(bytes), _)) => {
-                log::info!("can has render");
                 let _ = web_sender.send(bytes);
             }
             _ => {},

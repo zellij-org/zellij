@@ -991,13 +991,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 }
             },
             ServerInstruction::Render(serialized_output) => {
-                log::info!("can has render on server");
                 let client_ids = session_state.read().unwrap().client_ids();
                 // If `Some(_)`- unwrap it and forward it to the clients to render.
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
                 if let Some(output) = &serialized_output {
                     for (client_id, client_render_instruction) in output.iter() {
-                        log::info!("sending render to client: {:?}", client_id);
                         // TODO: When a client is too slow or unresponsive, the channel fills up
                         // and this call will disconnect the client in turn. Should this be
                         // changed?
