@@ -624,7 +624,7 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         name: Option<String>,
 
-        /// Change the working directory of the new tab/
+        /// Change the working directory of the new tab
         #[clap(short, long, value_parser)]
         cwd: Option<PathBuf>,
 

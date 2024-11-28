@@ -625,8 +625,8 @@ impl Action {
                                     }
                                 });
                             new_tab_actions.push(Action::NewTab(
-                                cwd,
-                                action,
+                                cwd.clone(),
+                                action.clone(),
                                 Some(layout),
                                 floating_panes_layout,
                                 swap_tiled_layouts.clone(),
