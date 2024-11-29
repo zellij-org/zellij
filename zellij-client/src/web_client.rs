@@ -107,7 +107,7 @@ fn server_listener(
         style: Default::default(),
     };
 
-    // TODO:
+    // TODO: CONTINUE HERE (28/11)
     // - send the initialization string stuffs to the client
     // - fill these up (copy/paste from lib.rs in zellij client hopefully) and
     // see if this does the trick
