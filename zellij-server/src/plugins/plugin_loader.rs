@@ -820,8 +820,7 @@ impl<'a> PluginLoader<'a> {
             .stdin(VecDequeInputStream(stdin_pipe.clone()))
             .stdout(WriteOutputStream(stdout_pipe.clone()))
             .stderr(WriteOutputStream(Arc::new(Mutex::new(LoggingPipe::new(
-                plugin_url,
-                plugin_id,
+                plugin_url, plugin_id,
             )))));
         let wasi_ctx = wasi_ctx_builder.build_p1();
         Ok(wasi_ctx)
