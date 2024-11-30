@@ -4,12 +4,6 @@ use crate::plugins::pipes::{
 };
 use crate::plugins::plugin_loader::PluginLoader;
 use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions};
-use crate::plugins::plugin_map::{
-    VecDequeInputStream, WriteOutputStream,
-};
-use crate::logging_pipe::LoggingPipe;
-use wasmtime_wasi::{DirPerms, FilePerms, WasiCtxBuilder};
-
 
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
@@ -17,7 +11,7 @@ use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use highway::{HighwayHash, PortableHash};
 use log::info;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet},
     path::PathBuf,
     str::FromStr,
     sync::{Arc, Mutex},
@@ -749,7 +743,6 @@ impl WasmBridge {
         plugin_id_to_update: PluginId,
         client_id_to_update: ClientId,
     ) -> Result<()> {
-        let err_context = || format!("Failed to change plugin host dir");
         let plugins_to_change: Vec<(
             PluginId,
             ClientId,
@@ -774,18 +767,34 @@ impl WasmBridge {
             async move {
                 match new_host_dir.try_exists() {
                     Ok(false) => {
-                        log::error!("Failed to change folder to {},: folder does not exist", new_host_dir.display());
-                        let _ = senders
-                            .send_to_plugin(PluginInstruction::Update(vec![(Some(plugin_id_to_update), Some(client_id_to_update), Event::FailedToChangeHostFolder(Some(format!("Folder {} does not exist", new_host_dir.display()))))]));
+                        log::error!(
+                            "Failed to change folder to {},: folder does not exist",
+                            new_host_dir.display()
+                        );
+                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                            Some(plugin_id_to_update),
+                            Some(client_id_to_update),
+                            Event::FailedToChangeHostFolder(Some(format!(
+                                "Folder {} does not exist",
+                                new_host_dir.display()
+                            ))),
+                        )]));
                         return;
-                    }
+                    },
                     Err(e) => {
-                        log::error!("Failed to change folder to {},: {}", new_host_dir.display(), e);
-                        let _ = senders
-                            .send_to_plugin(PluginInstruction::Update(vec![(Some(plugin_id_to_update), Some(client_id_to_update), Event::FailedToChangeHostFolder(Some(e.to_string())))]));
+                        log::error!(
+                            "Failed to change folder to {},: {}",
+                            new_host_dir.display(),
+                            e
+                        );
+                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                            Some(plugin_id_to_update),
+                            Some(client_id_to_update),
+                            Event::FailedToChangeHostFolder(Some(e.to_string())),
+                        )]));
                         return;
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
                 for (plugin_id, client_id, running_plugin, _subscriptions) in &plugins_to_change {
                     if plugin_id == &plugin_id_to_update && client_id == &client_id_to_update {
@@ -806,15 +815,22 @@ impl WasmBridge {
                         match wasi_ctx {
                             Ok(wasi_ctx) => {
                                 drop(std::mem::replace(&mut plugin_env.wasi_ctx, wasi_ctx));
+                                plugin_env.plugin_cwd = new_host_dir.clone();
 
-                                let _ = senders
-                                    .send_to_plugin(PluginInstruction::Update(vec![(Some(*plugin_id), Some(*client_id), Event::HostFolderChanged(new_host_dir.clone()))]));
+                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                    Some(*plugin_id),
+                                    Some(*client_id),
+                                    Event::HostFolderChanged(new_host_dir.clone()),
+                                )]));
                             },
                             Err(e) => {
-                                let _ = senders
-                                    .send_to_plugin(PluginInstruction::Update(vec![(Some(*plugin_id), Some(*client_id), Event::FailedToChangeHostFolder(Some(e.to_string())))]));
+                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                    Some(*plugin_id),
+                                    Some(*client_id),
+                                    Event::FailedToChangeHostFolder(Some(e.to_string())),
+                                )]));
                                 log::error!("Failed to create wasi ctx: {}", e);
-                            }
+                            },
                         }
                     }
                 }

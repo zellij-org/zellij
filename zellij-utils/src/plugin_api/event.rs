@@ -334,15 +334,19 @@ impl TryFrom<ProtobufEvent> for Event {
                 _ => Err("Malformed payload for the FailedToWriteConfigToDisk Event"),
             },
             Some(ProtobufEventType::HostFolderChanged) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::HostFolderChangedPayload(host_folder_changed_payload)) => {
-                    Ok(Event::HostFolderChanged(PathBuf::from(host_folder_changed_payload.new_host_folder_path)))
-                },
+                Some(ProtobufEventPayload::HostFolderChangedPayload(
+                    host_folder_changed_payload,
+                )) => Ok(Event::HostFolderChanged(PathBuf::from(
+                    host_folder_changed_payload.new_host_folder_path,
+                ))),
                 _ => Err("Malformed payload for the HostFolderChanged Event"),
             },
             Some(ProtobufEventType::FailedToChangeHostFolder) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::FailedToChangeHostFolderPayload(failed_to_change_host_folder_payload)) => {
-                    Ok(Event::FailedToChangeHostFolder(failed_to_change_host_folder_payload.error_message))
-                },
+                Some(ProtobufEventPayload::FailedToChangeHostFolderPayload(
+                    failed_to_change_host_folder_payload,
+                )) => Ok(Event::FailedToChangeHostFolder(
+                    failed_to_change_host_folder_payload.error_message,
+                )),
                 _ => Err("Malformed payload for the FailedToChangeHostFolder Event"),
             },
             None => Err("Unknown Protobuf Event"),
@@ -697,15 +701,17 @@ impl TryFrom<Event> for ProtobufEvent {
             }),
             Event::HostFolderChanged(new_host_folder_path) => Ok(ProtobufEvent {
                 name: ProtobufEventType::HostFolderChanged as i32,
-                payload: Some(event::Payload::HostFolderChangedPayload(HostFolderChangedPayload {
-                    new_host_folder_path: new_host_folder_path.display().to_string(),
-                })),
+                payload: Some(event::Payload::HostFolderChangedPayload(
+                    HostFolderChangedPayload {
+                        new_host_folder_path: new_host_folder_path.display().to_string(),
+                    },
+                )),
             }),
             Event::FailedToChangeHostFolder(error_message) => Ok(ProtobufEvent {
                 name: ProtobufEventType::FailedToChangeHostFolder as i32,
-                payload: Some(event::Payload::FailedToChangeHostFolderPayload(FailedToChangeHostFolderPayload {
-                    error_message,
-                })),
+                payload: Some(event::Payload::FailedToChangeHostFolderPayload(
+                    FailedToChangeHostFolderPayload { error_message },
+                )),
             }),
         }
     }

@@ -892,7 +892,7 @@ pub(crate) fn plugin_thread_main(
                 wasm_bridge
                     .change_plugin_host_dir(new_host_folder, plugin_id, client_id)
                     .non_fatal();
-            }
+            },
             PluginInstruction::Exit => {
                 break;
             },

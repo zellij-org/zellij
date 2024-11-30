@@ -352,7 +352,9 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         write_config_to_disk,
                     } => rebind_keys(env, keys_to_rebind, keys_to_unbind, write_config_to_disk)?,
                     PluginCommand::ListClients => list_clients(env),
-                    PluginCommand::ChangeHostFolder(new_host_folder) => change_host_folder(env, new_host_folder),
+                    PluginCommand::ChangeHostFolder(new_host_folder) => {
+                        change_host_folder(env, new_host_folder)
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(

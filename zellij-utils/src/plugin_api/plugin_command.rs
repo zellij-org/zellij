@@ -4,9 +4,9 @@ pub use super::generated_api::api::{
     input_mode::InputMode as ProtobufInputMode,
     plugin_command::{
         plugin_command::Payload, BreakPanesToNewTabPayload, BreakPanesToTabWithIndexPayload,
-        ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseTabWithIndexPayload, CommandName,
-        ContextItem, EditScrollbackForPaneWithIdPayload, EnvVariable, ExecCmdPayload,
-        FixedOrPercent as ProtobufFixedOrPercent,
+        ChangeHostFolderPayload, ClearScreenForPaneIdPayload, CliPipeOutputPayload,
+        CloseTabWithIndexPayload, CommandName, ContextItem, EditScrollbackForPaneWithIdPayload,
+        EnvVariable, ExecCmdPayload, FixedOrPercent as ProtobufFixedOrPercent,
         FixedOrPercentValue as ProtobufFixedOrPercentValue,
         FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, HidePaneWithIdPayload,
         HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
@@ -21,7 +21,7 @@ pub use super::generated_api::api::{
         ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetTimeoutPayload,
         ShowPaneWithIdPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToPayload,
         TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
-        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload, ChangeHostFolderPayload,
+        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1305,7 +1305,9 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::ChangeHostFolder) => match protobuf_plugin_command.payload {
                 Some(Payload::ChangeHostFolderPayload(change_host_folder_payload)) => {
-                    Ok(PluginCommand::ChangeHostFolder(PathBuf::from(change_host_folder_payload.new_host_folder)))
+                    Ok(PluginCommand::ChangeHostFolder(PathBuf::from(
+                        change_host_folder_payload.new_host_folder,
+                    )))
                 },
                 _ => Err("Mismatched payload for ChangeHostFolder"),
             },

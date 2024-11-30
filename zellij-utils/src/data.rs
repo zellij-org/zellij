@@ -912,7 +912,7 @@ pub enum Event {
     CommandPaneReRun(u32, Context),            // u32 - terminal_pane_id, Option<i32> -
     FailedToWriteConfigToDisk(Option<String>), // String -> the file path we failed to write
     ListClients(Vec<ClientInfo>),
-    HostFolderChanged(PathBuf), // PathBuf -> new host folder
+    HostFolderChanged(PathBuf),               // PathBuf -> new host folder
     FailedToChangeHostFolder(Option<String>), // String -> the error we got when changing
 }
 
