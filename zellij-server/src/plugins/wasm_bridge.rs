@@ -772,45 +772,27 @@ impl WasmBridge {
         task::spawn({
             let senders = self.senders.clone();
             async move {
-                if let Err(e) = new_host_dir.try_exists() {
-                    log::error!("Failed to change folder to {},: {}", new_host_dir.display(), e);
-                    return;
+                match new_host_dir.try_exists() {
+                    Ok(false) => {
+                        log::error!("Failed to change folder to {},: folder does not exist", new_host_dir.display());
+                        let _ = senders
+                            .send_to_plugin(PluginInstruction::Update(vec![(Some(plugin_id_to_update), Some(client_id_to_update), Event::FailedToChangeHostFolder(Some(format!("Folder {} does not exist", new_host_dir.display()))))]));
+                        return;
+                    }
+                    Err(e) => {
+                        log::error!("Failed to change folder to {},: {}", new_host_dir.display(), e);
+                        let _ = senders
+                            .send_to_plugin(PluginInstruction::Update(vec![(Some(plugin_id_to_update), Some(client_id_to_update), Event::FailedToChangeHostFolder(Some(e.to_string())))]));
+                        return;
+                    }
+                    _ => {}
                 }
-                for (plugin_id, client_id, running_plugin, subscriptions) in &plugins_to_change {
+                for (plugin_id, client_id, running_plugin, _subscriptions) in &plugins_to_change {
                     if plugin_id == &plugin_id_to_update && client_id == &client_id_to_update {
-                        // TODO:
-                        // 1. move this logic to plugin_loader and merge it with the other context
-                        //    creation logic - DONE
-                        // 2. send a new kind of event to the plugin, telling it its cwd changed
-                        //    <== TODO: CONTINUE HERE, do this for the error event too above
-                        // 3. make sure the new_host_dir exists before doing this - DONE
                         let mut running_plugin = running_plugin.lock().unwrap();
                         let plugin_env = running_plugin.store.data_mut();
-//                             // before we mounted in in the wasi environment, we'll crash
-//                             // when we move to a new wasi environment, we should address this with locking if
-//                             // there's no built-in solution
-//                             dir.try_exists().ok().unwrap_or(false)
-//                         });
-//                         let mut wasi_ctx_builder = WasiCtxBuilder::new();
-//                         wasi_ctx_builder.env("CLICOLOR_FORCE", "1");
-//                         for (guest_path, host_path) in dirs {
-//                             wasi_ctx_builder
-//                                 .preopened_dir(host_path, guest_path, DirPerms::all(), FilePerms::all())
-//                                 .with_context(err_context).unwrap(); // TODO: handle error
-//                         }
-// 
                         let stdin_pipe = plugin_env.stdin_pipe.clone();
                         let stdout_pipe = plugin_env.stdout_pipe.clone();
-//                         wasi_ctx_builder
-//                             .stdin(VecDequeInputStream(stdin_pipe.clone()))
-//                             .stdout(WriteOutputStream(stdout_pipe.clone()))
-//                             .stderr(WriteOutputStream(Arc::new(Mutex::new(LoggingPipe::new(
-//                                 &plugin_env.plugin.location.to_string(),
-//                                 plugin_env.plugin_id,
-//                             )))));
-//                         // let wasi_ctx = wasi_ctx_builder.build_p1();
-
-
                         let wasi_ctx = PluginLoader::create_wasi_ctx(
                             &new_host_dir,
                             &plugin_env.plugin_own_data_dir,
@@ -824,17 +806,16 @@ impl WasmBridge {
                         match wasi_ctx {
                             Ok(wasi_ctx) => {
                                 drop(std::mem::replace(&mut plugin_env.wasi_ctx, wasi_ctx));
+
+                                let _ = senders
+                                    .send_to_plugin(PluginInstruction::Update(vec![(Some(*plugin_id), Some(*client_id), Event::HostFolderChanged(new_host_dir.clone()))]));
                             },
                             Err(e) => {
+                                let _ = senders
+                                    .send_to_plugin(PluginInstruction::Update(vec![(Some(*plugin_id), Some(*client_id), Event::FailedToChangeHostFolder(Some(e.to_string())))]));
                                 log::error!("Failed to create wasi ctx: {}", e);
                             }
                         }
-
-
-
-
-
-
                     }
                 }
             }

@@ -25,6 +25,7 @@ impl TryFrom<ProtobufPermissionType> for PermissionType {
                 Ok(PermissionType::MessageAndLaunchOtherPlugins)
             },
             ProtobufPermissionType::Reconfigure => Ok(PermissionType::Reconfigure),
+            ProtobufPermissionType::FullHdAccess => Ok(PermissionType::FullHdAccess),
         }
     }
 }
@@ -51,6 +52,7 @@ impl TryFrom<PermissionType> for ProtobufPermissionType {
                 Ok(ProtobufPermissionType::MessageAndLaunchOtherPlugins)
             },
             PermissionType::Reconfigure => Ok(ProtobufPermissionType::Reconfigure),
+            PermissionType::FullHdAccess => Ok(ProtobufPermissionType::FullHdAccess),
         }
     }
 }

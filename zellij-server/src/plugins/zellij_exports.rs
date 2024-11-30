@@ -1485,7 +1485,6 @@ fn list_clients(env: &PluginEnv) {
     });
 }
 
-// TODO: PERMISSIONS!!!111oneoneone
 fn change_host_folder(env: &PluginEnv, new_host_folder: PathBuf) {
     let _ = env.senders.to_plugin.as_ref().map(|sender| {
         sender.send(PluginInstruction::ChangePluginHostDir(
@@ -1925,6 +1924,7 @@ fn check_command_permission(
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },
+        PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,
         _ => return (PermissionStatus::Granted, None),
     };
 

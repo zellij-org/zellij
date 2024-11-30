@@ -13,4 +13,5 @@ enum PermissionType {
   ReadCliPipes = 7;
   MessageAndLaunchOtherPlugins = 8;
   Reconfigure = 9;
+  FullHdAccess = 10;
 }
