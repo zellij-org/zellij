@@ -5,7 +5,7 @@ use zellij_utils::{
 };
 
 use crate::resize_pty;
-use crate::tab::{pane_info_for_pane, Pane};
+use crate::tab::{pane_info_for_pane, PaneTrait};
 use floating_pane_grid::FloatingPaneGrid;
 
 use crate::{
@@ -33,7 +33,7 @@ const RESIZE_INCREMENT_WIDTH: usize = 5;
 const RESIZE_INCREMENT_HEIGHT: usize = 2;
 
 pub struct FloatingPanes {
-    panes: BTreeMap<PaneId, Box<dyn Pane>>,
+    panes: BTreeMap<PaneId, Box<dyn PaneTrait>>,
     display_area: Rc<RefCell<Size>>,
     viewport: Rc<RefCell<Viewport>>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
@@ -101,7 +101,7 @@ impl FloatingPanes {
     pub fn pane_ids(&self) -> impl Iterator<Item = &PaneId> {
         self.panes.keys()
     }
-    pub fn add_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
+    pub fn add_pane(&mut self, pane_id: PaneId, pane: Box<dyn PaneTrait>) {
         self.desired_pane_positions
             .insert(pane_id, pane.position_and_size());
         self.panes.insert(pane_id, pane);
@@ -109,9 +109,9 @@ impl FloatingPanes {
     }
     pub fn replace_active_pane(
         &mut self,
-        pane: Box<dyn Pane>,
+        pane: Box<dyn PaneTrait>,
         client_id: ClientId,
-    ) -> Result<Box<dyn Pane>> {
+    ) -> Result<Box<dyn PaneTrait>> {
         self.active_panes
             .get(&client_id)
             .with_context(|| format!("failed to determine active pane for client {client_id}"))
@@ -122,8 +122,8 @@ impl FloatingPanes {
     pub fn replace_pane(
         &mut self,
         pane_id: PaneId,
-        mut with_pane: Box<dyn Pane>,
-    ) -> Result<Box<dyn Pane>> {
+        mut with_pane: Box<dyn PaneTrait>,
+    ) -> Result<Box<dyn PaneTrait>> {
         let err_context = || format!("failed to replace pane {pane_id:?} with pane");
 
         let with_pane_id = with_pane.pid();
@@ -160,7 +160,7 @@ impl FloatingPanes {
         let _ = self.set_pane_frames();
         removed_pane
     }
-    pub fn remove_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
+    pub fn remove_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn PaneTrait>> {
         self.z_indices.retain(|p_id| *p_id != pane_id);
         self.desired_pane_positions.remove(&pane_id);
         self.panes.remove(&pane_id)
@@ -176,18 +176,18 @@ impl FloatingPanes {
             .get_mut(&pane_id)
             .map(|p| p.hold(exit_status, is_first_run, run_command));
     }
-    pub fn get(&self, pane_id: &PaneId) -> Option<&Box<dyn Pane>> {
+    pub fn get(&self, pane_id: &PaneId) -> Option<&Box<dyn PaneTrait>> {
         self.panes.get(pane_id)
     }
-    pub fn get_mut(&mut self, pane_id: &PaneId) -> Option<&mut Box<dyn Pane>> {
+    pub fn get_mut(&mut self, pane_id: &PaneId) -> Option<&mut Box<dyn PaneTrait>> {
         self.panes.get_mut(pane_id)
     }
-    pub fn get_active_pane(&self, client_id: ClientId) -> Option<&Box<dyn Pane>> {
+    pub fn get_active_pane(&self, client_id: ClientId) -> Option<&Box<dyn PaneTrait>> {
         self.active_panes
             .get(&client_id)
             .and_then(|active_pane_id| self.panes.get(active_pane_id))
     }
-    pub fn get_active_pane_mut(&mut self, client_id: ClientId) -> Option<&mut Box<dyn Pane>> {
+    pub fn get_active_pane_mut(&mut self, client_id: ClientId) -> Option<&mut Box<dyn PaneTrait>> {
         self.active_panes
             .get(&client_id)
             .and_then(|active_pane_id| self.panes.get_mut(active_pane_id))
@@ -672,7 +672,7 @@ impl FloatingPanes {
             .collect();
 
         // find the most recently active pane
-        let mut next_active_pane_candidates: Vec<(&PaneId, &Box<dyn Pane>)> = self
+        let mut next_active_pane_candidates: Vec<(&PaneId, &Box<dyn PaneTrait>)> = self
             .panes
             .iter()
             .filter(|(_p_id, p)| p.selectable())
@@ -736,10 +736,10 @@ impl FloatingPanes {
         self.active_panes.remove(&client_id, &mut self.panes);
         self.set_force_render();
     }
-    pub fn get_pane(&self, pane_id: PaneId) -> Option<&Box<dyn Pane>> {
+    pub fn get_pane(&self, pane_id: PaneId) -> Option<&Box<dyn PaneTrait>> {
         self.panes.get(&pane_id)
     }
-    pub fn get_pane_mut(&mut self, pane_id: PaneId) -> Option<&mut Box<dyn Pane>> {
+    pub fn get_pane_mut(&mut self, pane_id: PaneId) -> Option<&mut Box<dyn PaneTrait>> {
         self.panes.get_mut(&pane_id)
     }
     pub fn get_pane_id_at(
@@ -771,7 +771,7 @@ impl FloatingPanes {
         &mut self,
         position: &Position,
         search_selectable: bool,
-    ) -> Option<&mut Box<dyn Pane>> {
+    ) -> Option<&mut Box<dyn PaneTrait>> {
         self.get_pane_id_at(position, search_selectable)
             .unwrap()
             .and_then(|pane_id| self.panes.get_mut(&pane_id))
@@ -836,13 +836,13 @@ impl FloatingPanes {
     pub fn get_active_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
         self.active_panes.get(&client_id).copied()
     }
-    pub fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+    pub fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn PaneTrait>)> {
         self.panes.iter()
     }
     pub fn visible_panes_count(&self) -> usize {
         self.panes.len()
     }
-    pub fn drain(&mut self) -> BTreeMap<PaneId, Box<dyn Pane>> {
+    pub fn drain(&mut self) -> BTreeMap<PaneId, Box<dyn PaneTrait>> {
         self.z_indices.clear();
         self.desired_pane_positions.clear();
         match self.panes.iter().next().map(|(pid, _p)| *pid) {

@@ -1,4 +1,4 @@
-use crate::{panes::PaneId, tab::Pane};
+use crate::{panes::PaneId, tab::PaneTrait};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -8,15 +8,15 @@ use zellij_utils::{
 };
 
 pub struct StackedPanes<'a> {
-    panes: Rc<RefCell<HashMap<PaneId, &'a mut Box<dyn Pane>>>>,
+    panes: Rc<RefCell<HashMap<PaneId, &'a mut Box<dyn PaneTrait>>>>,
 }
 
 impl<'a> StackedPanes<'a> {
-    pub fn new(panes: Rc<RefCell<HashMap<PaneId, &'a mut Box<dyn Pane>>>>) -> Self {
+    pub fn new(panes: Rc<RefCell<HashMap<PaneId, &'a mut Box<dyn PaneTrait>>>>) -> Self {
         StackedPanes { panes }
     }
     pub fn new_from_btreemap(
-        panes: impl IntoIterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>,
+        panes: impl IntoIterator<Item = (&'a PaneId, &'a mut Box<dyn PaneTrait>)>,
         panes_to_hide: &HashSet<PaneId>,
     ) -> Self {
         let panes: HashMap<_, _> = panes
@@ -368,7 +368,7 @@ impl<'a> StackedPanes<'a> {
     fn position_of_current_pane(
         &self,
         all_stacked_pane_positions: &Vec<(PaneId, PaneGeom)>,
-        pane_to_close: &Box<dyn Pane>,
+        pane_to_close: &Box<dyn PaneTrait>,
     ) -> Result<usize> {
         let err_context = || format!("Failed to find position of current pane");
         all_stacked_pane_positions
