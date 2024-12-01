@@ -912,6 +912,8 @@ pub enum Event {
     CommandPaneReRun(u32, Context),            // u32 - terminal_pane_id, Option<i32> -
     FailedToWriteConfigToDisk(Option<String>), // String -> the file path we failed to write
     ListClients(Vec<ClientInfo>),
+    HostFolderChanged(PathBuf),               // PathBuf -> new host folder
+    FailedToChangeHostFolder(Option<String>), // String -> the error we got when changing
 }
 
 #[derive(
@@ -942,6 +944,7 @@ pub enum Permission {
     ReadCliPipes,
     MessageAndLaunchOtherPlugins,
     Reconfigure,
+    FullHdAccess,
 }
 
 impl PermissionType {
@@ -963,6 +966,7 @@ impl PermissionType {
                 "Send messages to and launch other plugins".to_owned()
             },
             PermissionType::Reconfigure => "Change Zellij runtime configuration".to_owned(),
+            PermissionType::FullHdAccess => "Full access to the hard-drive".to_owned(),
         }
     }
 }
@@ -1893,4 +1897,5 @@ pub enum PluginCommand {
         write_config_to_disk: bool,
     },
     ListClients,
+    ChangeHostFolder(PathBuf),
 }

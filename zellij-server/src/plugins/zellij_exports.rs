@@ -352,6 +352,9 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         write_config_to_disk,
                     } => rebind_keys(env, keys_to_rebind, keys_to_unbind, write_config_to_disk)?,
                     PluginCommand::ListClients => list_clients(env),
+                    PluginCommand::ChangeHostFolder(new_host_folder) => {
+                        change_host_folder(env, new_host_folder)
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -1484,6 +1487,16 @@ fn list_clients(env: &PluginEnv) {
     });
 }
 
+fn change_host_folder(env: &PluginEnv, new_host_folder: PathBuf) {
+    let _ = env.senders.to_plugin.as_ref().map(|sender| {
+        sender.send(PluginInstruction::ChangePluginHostDir(
+            new_host_folder,
+            env.plugin_id,
+            env.client_id,
+        ))
+    });
+}
+
 fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
     if !folder_to_scan.starts_with("/host") {
         log::error!(
@@ -1913,6 +1926,7 @@ fn check_command_permission(
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },
+        PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,
         _ => return (PermissionStatus::Granted, None),
     };
 
