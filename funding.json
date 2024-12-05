@@ -7,8 +7,8 @@
         "email": "aram@poor.dev",
         "description": "An indie developer rethinking our terminal experience",
         "webpageUrl": {
-            "url": "https://poor.dev",
-            "wellKnown": "https://poor.dev/.well-known/funding-manifest-urls"
+            "url": "https://zellij.dev",
+            "wellKnown": "https://zellij.dev/.well-known/funding-manifest-urls"
         }
     },
     "projects": [{
