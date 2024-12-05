@@ -125,6 +125,10 @@ pub trait ClientOsApi: Send + Sync {
     fn env_variable(&self, _name: &str) -> Option<String> {
         None
     }
+//     fn clone_server_sender(&self) -> Arc<Mutex<Option<IpcSenderWithContext<ClientToServerMsg>>>> {
+//         // TODO: ??
+//         unimplemented!()
+//    }
 }
 
 impl ClientOsApi for ClientOsInputOutput {
@@ -308,6 +312,10 @@ impl ClientOsApi for ClientOsInputOutput {
     fn env_variable(&self, name: &str) -> Option<String> {
         std::env::var(name).ok()
     }
+//     fn clone_server_sender(&self) -> Arc<Mutex<Option<IpcSenderWithContext<ClientToServerMsg>>>> {
+//     // send_instructions_to_server: Arc<Mutex<Option<IpcSenderWithContext<ClientToServerMsg>>>>,
+//        self.send_instructions_to_server.clone()
+//    }
 }
 
 impl Clone for Box<dyn ClientOsApi> {

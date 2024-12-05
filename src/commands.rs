@@ -145,11 +145,33 @@ pub(crate) fn start_server(path: PathBuf, debug: bool) {
     start_server_impl(Box::new(os_input), path);
 }
 
-pub(crate) fn start_web_client(session_name: String, debug: bool) {
+pub(crate) fn start_web_client(session_name: String, debug: bool, opts: CliArgs) {
+
+    let (
+        config,
+        layout,
+        config_options,
+        mut config_without_layout,
+        mut config_options_without_layout,
+    ) = match Setup::from_cli_args(&opts) {
+        Ok(results) => results,
+        Err(e) => {
+            if let ConfigError::KdlError(error) = e {
+                let report: Report = error.into();
+                eprintln!("{:?}", report);
+            } else {
+                eprintln!("{}", e);
+            }
+            process::exit(1);
+        },
+    };
+
+
+
     // Set instance-wide debug mode
     zellij_utils::consts::DEBUG_MODE.set(debug).unwrap();
     // let os_input = get_os_input(get_client_os_input);
-    start_web_client_impl(&session_name);
+    start_web_client_impl(&session_name, config, config_options);
 }
 
 fn create_new_client() -> ClientInfo {
