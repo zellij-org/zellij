@@ -2764,10 +2764,11 @@ impl Tab {
     pub fn extract_pane(
         &mut self,
         id: PaneId,
-        ignore_suppressed_panes: bool,
+        dont_swap_if_suppressed: bool,
         client_id: Option<ClientId>,
     ) -> Option<Box<dyn Pane>> {
-        if !ignore_suppressed_panes && self.suppressed_panes.contains_key(&id) {
+        if !dont_swap_if_suppressed && self.suppressed_panes.contains_key(&id) {
+            // this is done for the scrollback editor
             return match self.replace_pane_with_suppressed_pane(id) {
                 Ok(pane) => pane,
                 Err(e) => {
