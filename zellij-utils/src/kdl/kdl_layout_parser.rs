@@ -1590,6 +1590,7 @@ impl<'a> KdlLayoutParser<'a> {
                 floating_pane.add_cwd_to_layout(&cwd_prefix);
             }
         }
+        tab_layout.hide_floating_panes = kdl_get_bool_property_or_child_value!(kdl_node, "hide_floating_panes").unwrap_or(false);
         tab_layout.external_children_index = None;
         Ok((
             is_focused,
