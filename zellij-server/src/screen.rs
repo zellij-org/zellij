@@ -3485,7 +3485,7 @@ pub(crate) fn screen_thread_main(
                 pending_tab_ids.remove(&tab_index);
                 if pending_tab_ids.is_empty() {
                     for (tab_index, client_id) in pending_tab_switches.drain() {
-                        screen.go_to_tab(tab_index as usize, client_id)?;
+                        screen.go_to_tab(tab_index as usize + 1, client_id)?;
                     }
                     if should_change_focus_to_new_tab {
                         screen.go_to_tab(tab_index as usize + 1, client_id)?;
