@@ -504,6 +504,9 @@ pub trait Pane {
     fn query_should_be_suppressed(&self) -> bool {
         false
     }
+    fn drain_fake_cursors(&mut self) -> Option<HashSet<(usize, usize)>> {
+        None
+    }
 }
 
 #[derive(Clone, Debug)]

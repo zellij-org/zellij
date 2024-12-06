@@ -811,6 +811,20 @@ impl Pane for TerminalPane {
         self.style.rounded_corners = rounded_corners;
         self.frame.clear();
     }
+    fn drain_fake_cursors(&mut self) -> Option<HashSet<(usize, usize)>> {
+        if !self.fake_cursor_locations.is_empty() {
+            for (y, _x) in &self.fake_cursor_locations {
+                // we do this because once these fake_cursor_locations
+                // have been drained, we have to make sure to render the line
+                // they appeared on so that whatever clears their location
+                // won't leave a hole
+                self.grid.update_line_for_rendering(*y);
+            }
+            Some(self.fake_cursor_locations.drain().collect())
+        } else {
+            None
+        }
+    }
 }
 
 impl TerminalPane {
