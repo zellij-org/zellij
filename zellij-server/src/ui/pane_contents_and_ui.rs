@@ -57,6 +57,10 @@ impl<'a> PaneContentsAndUi<'a> {
     ) -> Result<()> {
         let err_context = "failed to render pane contents to multiple clients";
 
+        // here we drop the fake cursors so that their lines will be updated
+        // and we can clear them from the UI below
+        drop(self.pane.drain_fake_cursors());
+
         if let Some((character_chunks, raw_vte_output, sixel_image_chunks)) =
             self.pane.render(None).context(err_context)?
         {
