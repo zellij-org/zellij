@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(plugins): do not detach if using `/` in session name (https://github.com/zellij-org/zellij/pull/3839)
 * fix(plugins): properly focus plugin pane after it was hidden (https://github.com/zellij-org/zellij/pull/3841)
 * fix(layouts): off by 1 when focusing a specific tab through a layout (https://github.com/zellij-org/zellij/pull/3844)
+* fix(multiplayer): properly clear fake cursors (https://github.com/zellij-org/zellij/pull/3845)
 
 ## [0.41.2] - 2024-11-19
 * fix(input): keypresses not being identified properly with kitty keyboard protocol in some terminals (https://github.com/zellij-org/zellij/pull/3725)
