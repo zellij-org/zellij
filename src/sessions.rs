@@ -285,23 +285,33 @@ pub(crate) fn delete_session(name: &str, force: bool) {
     }
 }
 
-pub(crate) fn list_sessions(no_formatting: bool, short: bool, reverse: bool) {
+pub(crate) fn list_sessions(no_formatting: bool, short: bool, reverse: bool, alive: bool) {
     let exit_code = match get_sessions() {
         Ok(running_sessions) => {
-            let resurrectable_sessions = get_resurrectable_sessions();
-            let mut all_sessions: HashMap<String, (Duration, bool)> = resurrectable_sessions
-                .iter()
-                .map(|(name, timestamp, _layout)| (name.clone(), (timestamp.clone(), true)))
-                .collect();
-            for (session_name, duration) in running_sessions {
-                all_sessions.insert(session_name.clone(), (duration, false));
-            }
-            if all_sessions.is_empty() {
+            let sessions = if alive {
+                running_sessions
+                    .into_iter()
+                    .map(|(name, timestamp)| (name, (timestamp, false)))
+                    .collect()
+            } else {
+                let resurrectable_sessions = get_resurrectable_sessions();
+                let mut all_sessions: HashMap<String, (Duration, bool)> = resurrectable_sessions
+                    .iter()
+                    .map(|(name, timestamp, _layout)| (name.clone(), (timestamp.clone(), true)))
+                    .collect();
+                for (session_name, duration) in running_sessions {
+                    all_sessions.insert(session_name.clone(), (duration, false));
+                }
+
+                all_sessions
+            };
+
+            if sessions.is_empty() {
                 eprintln!("No active zellij sessions found.");
                 1
             } else {
                 print_sessions(
-                    all_sessions
+                    sessions
                         .iter()
                         .map(|(name, (timestamp, is_dead))| {
                             (name.clone(), timestamp.clone(), *is_dead)
