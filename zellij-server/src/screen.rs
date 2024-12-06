@@ -2035,7 +2035,7 @@ impl Screen {
                 tab_index_and_plugin_pane_id = Some((*tab_index, plugin_pane_id));
                 if move_to_focused_tab && focused_tab_index != *tab_index {
                     plugin_pane_to_move_to_active_tab =
-                        tab.extract_pane(plugin_pane_id, false, Some(client_id));
+                        tab.extract_pane(plugin_pane_id, true, Some(client_id));
                 }
 
                 break;
