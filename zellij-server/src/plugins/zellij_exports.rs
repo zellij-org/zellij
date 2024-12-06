@@ -1142,21 +1142,29 @@ fn switch_session(
             return Err(anyhow!("Failed to deserialize layout: {}", e));
         }
     }
-    let client_id = env.client_id;
-    let tab_position = tab_position.map(|p| p + 1); // ¯\_()_/¯
-    let connect_to_session = ConnectToSession {
-        name: session_name,
-        tab_position,
-        pane_id,
-        layout,
-        cwd,
-    };
-    env.senders
-        .send_to_server(ServerInstruction::SwitchSession(
-            connect_to_session,
-            client_id,
-        ))
-        .with_context(err_context)?;
+    if session_name
+        .as_ref()
+        .map(|s| s.contains('/'))
+        .unwrap_or(false)
+    {
+        log::error!("Session names cannot contain \'/\'");
+    } else {
+        let client_id = env.client_id;
+        let tab_position = tab_position.map(|p| p + 1); // ¯\_()_/¯
+        let connect_to_session = ConnectToSession {
+            name: session_name,
+            tab_position,
+            pane_id,
+            layout,
+            cwd,
+        };
+        env.senders
+            .send_to_server(ServerInstruction::SwitchSession(
+                connect_to_session,
+                client_id,
+            ))
+            .with_context(err_context)?;
+    }
     Ok(())
 }
 
@@ -1437,8 +1445,12 @@ fn rename_tab(env: &PluginEnv, tab_index: u32, new_name: &str) {
 
 fn rename_session(env: &PluginEnv, new_session_name: String) {
     let error_msg = || format!("failed to rename session in plugin {}", env.name());
-    let action = Action::RenameSession(new_session_name);
-    apply_action!(action, error_msg, env);
+    if new_session_name.contains('/') {
+        log::error!("Session names cannot contain \'/\'");
+    } else {
+        let action = Action::RenameSession(new_session_name);
+        apply_action!(action, error_msg, env);
+    }
 }
 
 fn disconnect_other_clients(env: &PluginEnv) {
