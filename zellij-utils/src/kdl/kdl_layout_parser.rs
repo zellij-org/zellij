@@ -1590,7 +1590,9 @@ impl<'a> KdlLayoutParser<'a> {
                 floating_pane.add_cwd_to_layout(&cwd_prefix);
             }
         }
-        tab_layout.hide_floating_panes = kdl_get_bool_property_or_child_value!(kdl_node, "hide_floating_panes").unwrap_or(false);
+        // hide_floating_panes on the tab_layout takes precedence over the hide_floating_panes on the tab_template
+        tab_layout.hide_floating_panes =
+            kdl_get_bool_property_or_child_value!(kdl_node, "hide_floating_panes").unwrap_or(tab_layout.hide_floating_panes)
         tab_layout.external_children_index = None;
         Ok((
             is_focused,
@@ -1655,6 +1657,7 @@ impl<'a> KdlLayoutParser<'a> {
         let mut tab_floating_children = vec![];
         let mut external_children_index = None;
         let mut children_index_offset = 0;
+        let hide_floating_panes = kdl_get_bool_property_or_child_value!(kdl_node, "hide_floating_panes").unwrap_or(false);
         let is_part_of_stack = false;
         if let Some(children) = kdl_children_nodes!(kdl_node) {
             for (i, child) in children.iter().enumerate() {
@@ -1705,6 +1708,7 @@ impl<'a> KdlLayoutParser<'a> {
                 children_split_direction,
                 children: tab_children,
                 external_children_index,
+                hide_floating_panes,
                 ..Default::default()
             },
             tab_floating_children,
