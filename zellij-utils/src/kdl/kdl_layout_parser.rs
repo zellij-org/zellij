@@ -1592,7 +1592,7 @@ impl<'a> KdlLayoutParser<'a> {
         }
         // hide_floating_panes on the tab_layout takes precedence over the hide_floating_panes on the tab_template
         tab_layout.hide_floating_panes =
-            kdl_get_bool_property_or_child_value!(kdl_node, "hide_floating_panes").unwrap_or(tab_layout.hide_floating_panes)
+            kdl_get_bool_property_or_child_value!(kdl_node, "hide_floating_panes").unwrap_or(tab_layout.hide_floating_panes);
         tab_layout.external_children_index = None;
         Ok((
             is_focused,
