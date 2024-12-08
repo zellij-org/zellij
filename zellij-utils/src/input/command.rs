@@ -3,7 +3,7 @@ use crate::data::{Direction, OriginatingPlugin};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TerminalAction {
     OpenFile(OpenFilePayload),
     RunCommand(RunCommand),

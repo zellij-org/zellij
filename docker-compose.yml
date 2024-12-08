@@ -9,7 +9,7 @@ services:
       PUID: 1000
       PGID: 1000
       TZ: Europe/Vienna
-      PASSWORD_ACCESS: true
+      PASSWORD_ACCESS: "true"
       USER_PASSWORD: test
       USER_NAME: test
     volumes:
