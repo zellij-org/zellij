@@ -164,31 +164,35 @@ impl<'a> KdlLayoutParser<'a> {
         kdl_node: &KdlNode,
     ) -> Result<(), ConfigError> {
         if name.is_empty() {
-            Err(ConfigError::new_layout_kdl_error(
-                format!("Template names cannot be empty"),
+            return Err(ConfigError::new_layout_kdl_error(
+                "Template names cannot be empty".into(),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
-            ))
-        } else if name.contains(')') || name.contains('(') {
-            Err(ConfigError::new_layout_kdl_error(
-                format!("Template names cannot contain parantheses"),
+            ));
+        }
+
+        if name.contains(')') || name.contains('(') {
+            return Err(ConfigError::new_layout_kdl_error(
+                "Template names cannot contain parentheses".into(),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
-            ))
-        } else if name
+            ));
+        }
+
+        if name
             .chars()
             .next()
             .map(|first_char| first_char.is_numeric())
             .unwrap_or(false)
         {
-            Err(ConfigError::new_layout_kdl_error(
-                format!("Template names cannot start with numbers"),
+            return Err(ConfigError::new_layout_kdl_error(
+                "Template names cannot start with numbers".into(),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
-            ))
-        } else {
-            Ok(())
+            ));
         }
+
+        Ok(())
     }
     fn assert_no_grandchildren_in_stack(
         &self,
@@ -1962,60 +1966,31 @@ impl<'a> KdlLayoutParser<'a> {
         Ok(())
     }
     fn parse_constraint(&mut self, layout_node: &KdlNode) -> Result<LayoutConstraint, ConfigError> {
-        if let Some(max_panes) = kdl_get_string_property_or_child_value!(layout_node, "max_panes") {
-            return Err(kdl_parsing_error!(
-                format!(
-                    "max_panes should be a fixed number (eg. 1) and not a quoted string (\"{}\")",
-                    max_panes
-                ),
-                layout_node
-            ));
-        };
-        if let Some(min_panes) = kdl_get_string_property_or_child_value!(layout_node, "min_panes") {
-            return Err(kdl_parsing_error!(
-                format!(
-                    "min_panes should be a fixed number (eg. 1) and not a quoted string (\"{}\")",
-                    min_panes
-                ),
-                layout_node
-            ));
-        };
-        if let Some(exact_panes) =
-            kdl_get_string_property_or_child_value!(layout_node, "exact_panes")
-        {
-            return Err(kdl_parsing_error!(
-                format!(
-                    "exact_panes should be a fixed number (eg. 1) and not a quoted string (\"{}\")",
-                    exact_panes,
-                ),
-                layout_node
-            ));
-        };
-        let max_panes = kdl_get_int_property_or_child_value!(layout_node, "max_panes");
-        let min_panes = kdl_get_int_property_or_child_value!(layout_node, "min_panes");
-        let exact_panes = kdl_get_int_property_or_child_value!(layout_node, "exact_panes");
-        let mut constraint_count = 0;
-        let mut constraint = None;
-        if let Some(max_panes) = max_panes {
-            constraint_count += 1;
-            constraint = Some(LayoutConstraint::MaxPanes(max_panes as usize));
+        let constraints: [(&str, fn(usize) -> LayoutConstraint); 3] = [
+            ("max_panes", LayoutConstraint::MaxPanes),
+            ("min_panes", LayoutConstraint::MinPanes),
+            ("exact_panes", LayoutConstraint::ExactPanes),
+        ];
+
+        let mut applied_constraints = vec![];
+        for (key, constructor) in constraints {
+            if let Some(value) = kdl_get_int_property_or_child_value!(layout_node, key) {
+                applied_constraints.push(constructor(value as usize));
+            }
         }
-        if let Some(min_panes) = min_panes {
-            constraint_count += 1;
-            constraint = Some(LayoutConstraint::MinPanes(min_panes as usize));
-        }
-        if let Some(exact_panes) = exact_panes {
-            constraint_count += 1;
-            constraint = Some(LayoutConstraint::ExactPanes(exact_panes as usize));
-        }
-        if constraint_count > 1 {
+
+        if applied_constraints.len() > 1 {
             return Err(kdl_parsing_error!(
-                format!("cannot have more than one constraint (eg. max_panes + min_panes)'"),
+                String::from("Cannot define multiple constraints (e.g., max_panes + min_panes)"),
                 layout_node
             ));
         }
-        Ok(constraint.unwrap_or(LayoutConstraint::NoConstraint))
+
+        Ok(applied_constraints
+            .pop()
+            .unwrap_or(LayoutConstraint::NoConstraint))
     }
+
     fn populate_one_swap_tiled_layout(
         &self,
         layout_node: &KdlNode,
