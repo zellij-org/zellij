@@ -451,18 +451,16 @@ impl Action {
                             name,
                         )])
                     }
+                } else if floating {
+                    Ok(vec![Action::NewFloatingPane(
+                        None,
+                        name,
+                        FloatingPaneCoordinates::new(x, y, width, height),
+                    )])
+                } else if in_place {
+                    Ok(vec![Action::NewInPlacePane(None, name)])
                 } else {
-                    if floating {
-                        Ok(vec![Action::NewFloatingPane(
-                            None,
-                            name,
-                            FloatingPaneCoordinates::new(x, y, width, height),
-                        )])
-                    } else if in_place {
-                        Ok(vec![Action::NewInPlacePane(None, name)])
-                    } else {
-                        Ok(vec![Action::NewTiledPane(direction, None, name)])
-                    }
+                    Ok(vec![Action::NewTiledPane(direction, None, name)])
                 }
             },
             CliAction::Edit {

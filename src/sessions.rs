@@ -19,20 +19,18 @@ use zellij_utils::{
 pub(crate) fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         Ok(files) => {
-            let mut sessions = Vec::new();
-            files.for_each(|file| {
-                let file = file.unwrap();
-                let file_name = file.file_name().into_string().unwrap();
-                let ctime = std::fs::metadata(&file.path())
-                    .ok()
-                    .and_then(|f| f.created().ok())
-                    .and_then(|d| d.elapsed().ok())
-                    .unwrap_or_default();
-                let duration = Duration::from_secs(ctime.as_secs());
-                if file.file_type().unwrap().is_socket() && assert_socket(&file_name) {
-                    sessions.push((file_name, duration));
-                }
-            });
+            let sessions: Vec<_> = files
+                .filter_map(|file| {
+                    let file = file.ok()?;
+                    let file_name = file.file_name().into_string().ok()?;
+                    let duration = file.metadata().ok()?.created().ok()?.elapsed().ok()?;
+                    if file.file_type().ok()?.is_socket() && assert_socket(&file_name) {
+                        Some((file_name, Duration::from_secs(duration.as_secs())))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
             Ok(sessions)
         },
         Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err.kind()),
