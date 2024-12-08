@@ -352,6 +352,9 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         write_config_to_disk,
                     } => rebind_keys(env, keys_to_rebind, keys_to_unbind, write_config_to_disk)?,
                     PluginCommand::ListClients => list_clients(env),
+                    PluginCommand::ChangeHostFolder(new_host_folder) => {
+                        change_host_folder(env, new_host_folder)
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -1139,21 +1142,29 @@ fn switch_session(
             return Err(anyhow!("Failed to deserialize layout: {}", e));
         }
     }
-    let client_id = env.client_id;
-    let tab_position = tab_position.map(|p| p + 1); // ¯\_()_/¯
-    let connect_to_session = ConnectToSession {
-        name: session_name,
-        tab_position,
-        pane_id,
-        layout,
-        cwd,
-    };
-    env.senders
-        .send_to_server(ServerInstruction::SwitchSession(
-            connect_to_session,
-            client_id,
-        ))
-        .with_context(err_context)?;
+    if session_name
+        .as_ref()
+        .map(|s| s.contains('/'))
+        .unwrap_or(false)
+    {
+        log::error!("Session names cannot contain \'/\'");
+    } else {
+        let client_id = env.client_id;
+        let tab_position = tab_position.map(|p| p + 1); // ¯\_()_/¯
+        let connect_to_session = ConnectToSession {
+            name: session_name,
+            tab_position,
+            pane_id,
+            layout,
+            cwd,
+        };
+        env.senders
+            .send_to_server(ServerInstruction::SwitchSession(
+                connect_to_session,
+                client_id,
+            ))
+            .with_context(err_context)?;
+    }
     Ok(())
 }
 
@@ -1434,8 +1445,12 @@ fn rename_tab(env: &PluginEnv, tab_index: u32, new_name: &str) {
 
 fn rename_session(env: &PluginEnv, new_session_name: String) {
     let error_msg = || format!("failed to rename session in plugin {}", env.name());
-    let action = Action::RenameSession(new_session_name);
-    apply_action!(action, error_msg, env);
+    if new_session_name.contains('/') {
+        log::error!("Session names cannot contain \'/\'");
+    } else {
+        let action = Action::RenameSession(new_session_name);
+        apply_action!(action, error_msg, env);
+    }
 }
 
 fn disconnect_other_clients(env: &PluginEnv) {
@@ -1478,6 +1493,16 @@ fn dump_session_layout(env: &PluginEnv) {
 fn list_clients(env: &PluginEnv) {
     let _ = env.senders.to_screen.as_ref().map(|sender| {
         sender.send(ScreenInstruction::ListClientsToPlugin(
+            env.plugin_id,
+            env.client_id,
+        ))
+    });
+}
+
+fn change_host_folder(env: &PluginEnv, new_host_folder: PathBuf) {
+    let _ = env.senders.to_plugin.as_ref().map(|sender| {
+        sender.send(PluginInstruction::ChangePluginHostDir(
+            new_host_folder,
             env.plugin_id,
             env.client_id,
         ))
@@ -1913,6 +1938,7 @@ fn check_command_permission(
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },
+        PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,
         _ => return (PermissionStatus::Granted, None),
     };
 

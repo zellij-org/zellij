@@ -1,0 +1,50 @@
+{
+    "version": "v1.0.0",
+    "entity": {
+        "type": "individual",
+        "role": "owner",
+        "name": "Aram Drevekenin",
+        "email": "aram@poor.dev",
+        "description": "An indie developer rethinking our terminal experience",
+        "webpageUrl": {
+            "url": "https://zellij.dev",
+            "wellKnown": "https://zellij.dev/.well-known/funding-manifest-urls"
+        }
+    },
+    "projects": [{
+        "guid": "zellij",
+        "name": "Zellij",
+        "description": "A terminal workspace with batteries included",
+        "webpageUrl": {
+            "url": "https://zellij.dev",
+            "wellKnown": "https://zellij.dev/.well-known/funding-manifest-urls"
+        },
+        "repositoryUrl": {
+            "url": "https://github.com/zellij-org/zellij"
+        },
+        "licenses": ["spdx:MIT"],
+        "tags": ["terminal", "linux", "macos", "developer-tools"]
+    }],
+    "funding": {
+        "channels": [
+            {
+                "guid": "github-sponsors",
+                "type": "other",
+                "address": "https://github.com/sponsors/imsnif",
+                "description": "My Github Sponsors page."
+            }
+        ],
+        "plans": [
+            {
+                "guid": "sponsorship-plan",
+                "status": "active",
+                "name": "Sponsorship Plan",
+                "description": "Sponsor as you wish and are able (preferably in a recurring manner) to help me pay my bills!",
+                "amount": 0,
+                "currency": "USD",
+                "frequency": "other",
+                "channels": ["github-sponsors"]
+            }
+        ]
+    }
+}

@@ -50,6 +50,8 @@ enum EventType {
     CommandPaneReRun = 24;
     FailedToWriteConfigToDisk = 25;
     ListClients = 26;
+    HostFolderChanged = 27;
+    FailedToChangeHostFolder = 28;
 }
 
 message EventNameList {
@@ -81,7 +83,17 @@ message Event {
     CommandPaneReRunPayload command_pane_rerun_payload = 21;
     FailedToWriteConfigToDiskPayload failed_to_write_config_to_disk_payload = 22;
     ListClientsPayload list_clients_payload = 23;
+    HostFolderChangedPayload host_folder_changed_payload = 24;
+    FailedToChangeHostFolderPayload failed_to_change_host_folder_payload = 25;
   }
+}
+
+message FailedToChangeHostFolderPayload {
+  optional string error_message = 1;
+}
+
+message HostFolderChangedPayload {
+  string new_host_folder_path = 1;
 }
 
 message ListClientsPayload {

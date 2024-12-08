@@ -14,7 +14,7 @@ use std::{
 };
 use url::Url;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
-use wasmtime_wasi::{DirPerms, FilePerms, WasiCtxBuilder};
+use wasmtime_wasi::{preview1::WasiP1Ctx, DirPerms, FilePerms, WasiCtxBuilder};
 use zellij_utils::consts::ZELLIJ_PLUGIN_ARTIFACT_DIR;
 use zellij_utils::prost::Message;
 
@@ -64,7 +64,7 @@ pub struct PluginLoader<'a> {
     size: Size,
     wasm_blob_on_hd: Option<(Vec<u8>, PathBuf)>,
     path_to_default_shell: PathBuf,
-    zellij_cwd: PathBuf,
+    plugin_cwd: PathBuf,
     capabilities: PluginCapabilities,
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
@@ -85,7 +85,7 @@ impl<'a> PluginLoader<'a> {
         connected_clients: Arc<Mutex<Vec<ClientId>>>,
         loading_indication: &mut LoadingIndication,
         path_to_default_shell: PathBuf,
-        zellij_cwd: PathBuf,
+        plugin_cwd: PathBuf,
         capabilities: PluginCapabilities,
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
@@ -110,7 +110,7 @@ impl<'a> PluginLoader<'a> {
             engine,
             &plugin_dir,
             path_to_default_shell,
-            Some(zellij_cwd),
+            Some(plugin_cwd),
             capabilities,
             client_attributes,
             default_shell,
@@ -145,7 +145,7 @@ impl<'a> PluginLoader<'a> {
         connected_clients: Arc<Mutex<Vec<ClientId>>>,
         loading_indication: &mut LoadingIndication,
         path_to_default_shell: PathBuf,
-        zellij_cwd: PathBuf,
+        plugin_cwd: PathBuf,
         capabilities: PluginCapabilities,
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
@@ -168,7 +168,7 @@ impl<'a> PluginLoader<'a> {
             tab_index,
             size,
             path_to_default_shell,
-            zellij_cwd,
+            plugin_cwd,
             capabilities,
             client_attributes,
             default_shell,
@@ -222,7 +222,7 @@ impl<'a> PluginLoader<'a> {
         connected_clients: Arc<Mutex<Vec<ClientId>>>,
         loading_indication: &mut LoadingIndication,
         path_to_default_shell: PathBuf,
-        zellij_cwd: PathBuf,
+        plugin_cwd: PathBuf,
         capabilities: PluginCapabilities,
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
@@ -246,7 +246,7 @@ impl<'a> PluginLoader<'a> {
                 engine.clone(),
                 &plugin_dir,
                 path_to_default_shell.clone(),
-                zellij_cwd.clone(),
+                plugin_cwd.clone(),
                 capabilities.clone(),
                 client_attributes.clone(),
                 default_shell.clone(),
@@ -333,7 +333,7 @@ impl<'a> PluginLoader<'a> {
         tab_index: Option<usize>,
         size: Size,
         path_to_default_shell: PathBuf,
-        zellij_cwd: PathBuf,
+        plugin_cwd: PathBuf,
         capabilities: PluginCapabilities,
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
@@ -366,7 +366,7 @@ impl<'a> PluginLoader<'a> {
             size,
             wasm_blob_on_hd: None,
             path_to_default_shell,
-            zellij_cwd,
+            plugin_cwd,
             capabilities,
             client_attributes,
             default_shell,
@@ -412,7 +412,7 @@ impl<'a> PluginLoader<'a> {
         // prefer the explicitly given cwd, otherwise copy it from the running plugin
         // (when reloading a plugin, we want to copy it, when starting a new plugin instance from
         // meomory, we want to reset it)
-        let zellij_cwd = cwd.unwrap_or_else(|| running_plugin.store.data().plugin_cwd.clone());
+        let plugin_cwd = cwd.unwrap_or_else(|| running_plugin.store.data().plugin_cwd.clone());
         loading_indication.set_name(running_plugin.store.data().name());
         PluginLoader::new(
             plugin_cache,
@@ -426,7 +426,7 @@ impl<'a> PluginLoader<'a> {
             tab_index,
             size,
             path_to_default_shell,
-            zellij_cwd,
+            plugin_cwd,
             capabilities,
             client_attributes,
             default_shell,
@@ -446,7 +446,7 @@ impl<'a> PluginLoader<'a> {
         engine: Engine,
         plugin_dir: &'a PathBuf,
         path_to_default_shell: PathBuf,
-        zellij_cwd: PathBuf,
+        plugin_cwd: PathBuf,
         capabilities: PluginCapabilities,
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
@@ -483,7 +483,7 @@ impl<'a> PluginLoader<'a> {
             tab_index,
             size,
             path_to_default_shell,
-            zellij_cwd,
+            plugin_cwd,
             capabilities,
             client_attributes,
             default_shell,
@@ -736,7 +736,7 @@ impl<'a> PluginLoader<'a> {
                     self.engine.clone(),
                     &self.plugin_dir,
                     self.path_to_default_shell.clone(),
-                    self.zellij_cwd.clone(),
+                    self.plugin_cwd.clone(),
                     self.capabilities.clone(),
                     self.client_attributes.clone(),
                     self.default_shell.clone(),
@@ -784,18 +784,22 @@ impl<'a> PluginLoader<'a> {
             },
         }
     }
-    fn create_plugin_instance_env(&self, module: &Module) -> Result<(Store<PluginEnv>, Instance)> {
-        let err_context = || {
-            format!(
-                "Failed to create instance, plugin env and subscriptions for plugin {}",
-                self.plugin_id
-            )
-        };
+    pub fn create_wasi_ctx(
+        host_dir: &PathBuf,
+        data_dir: &PathBuf,
+        cache_dir: &PathBuf,
+        tmp_dir: &PathBuf,
+        plugin_url: &String,
+        plugin_id: PluginId,
+        stdin_pipe: Arc<Mutex<VecDeque<u8>>>,
+        stdout_pipe: Arc<Mutex<VecDeque<u8>>>,
+    ) -> Result<WasiP1Ctx> {
+        let err_context = || format!("Failed to create wasi_ctx");
         let dirs = vec![
-            ("/host".to_owned(), self.zellij_cwd.clone()),
-            ("/data".to_owned(), self.plugin_own_data_dir.clone()),
-            ("/cache".to_owned(), self.plugin_own_cache_dir.clone()),
-            ("/tmp".to_owned(), ZELLIJ_TMP_DIR.clone()),
+            ("/host".to_owned(), host_dir.clone()),
+            ("/data".to_owned(), data_dir.clone()),
+            ("/cache".to_owned(), cache_dir.clone()),
+            ("/tmp".to_owned(), tmp_dir.clone()),
         ];
         let dirs = dirs.into_iter().filter(|(_dir_name, dir)| {
             // note that this does not protect against TOCTOU errors
@@ -812,16 +816,35 @@ impl<'a> PluginLoader<'a> {
                 .preopened_dir(host_path, guest_path, DirPerms::all(), FilePerms::all())
                 .with_context(err_context)?;
         }
-        let stdin_pipe = Arc::new(Mutex::new(VecDeque::new()));
-        let stdout_pipe = Arc::new(Mutex::new(VecDeque::new()));
         wasi_ctx_builder
             .stdin(VecDequeInputStream(stdin_pipe.clone()))
             .stdout(WriteOutputStream(stdout_pipe.clone()))
             .stderr(WriteOutputStream(Arc::new(Mutex::new(LoggingPipe::new(
-                &self.plugin.location.to_string(),
-                self.plugin_id,
+                plugin_url, plugin_id,
             )))));
         let wasi_ctx = wasi_ctx_builder.build_p1();
+        Ok(wasi_ctx)
+    }
+    fn create_plugin_instance_env(&self, module: &Module) -> Result<(Store<PluginEnv>, Instance)> {
+        let err_context = || {
+            format!(
+                "Failed to create instance, plugin env and subscriptions for plugin {}",
+                self.plugin_id
+            )
+        };
+        let stdin_pipe = Arc::new(Mutex::new(VecDeque::new()));
+        let stdout_pipe = Arc::new(Mutex::new(VecDeque::new()));
+
+        let wasi_ctx = PluginLoader::create_wasi_ctx(
+            &self.plugin_cwd,
+            &self.plugin_own_data_dir,
+            &self.plugin_own_cache_dir,
+            &ZELLIJ_TMP_DIR,
+            &self.plugin.location.to_string(),
+            self.plugin_id,
+            stdin_pipe.clone(),
+            stdout_pipe.clone(),
+        )?;
         let plugin = self.plugin.clone();
         let plugin_env = PluginEnv {
             plugin_id: self.plugin_id,
@@ -838,7 +861,7 @@ impl<'a> PluginLoader<'a> {
             client_attributes: self.client_attributes.clone(),
             default_shell: self.default_shell.clone(),
             default_layout: self.default_layout.clone(),
-            plugin_cwd: self.zellij_cwd.clone(),
+            plugin_cwd: self.plugin_cwd.clone(),
             input_pipes_to_unblock: Arc::new(Mutex::new(HashSet::new())),
             input_pipes_to_block: Arc::new(Mutex::new(HashSet::new())),
             layout_dir: self.layout_dir.clone(),

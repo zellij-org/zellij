@@ -462,6 +462,9 @@ impl State {
                     // through the package)
                     self.show_error("Session name must be shorter than 108 bytes");
                     return;
+                } else if self.new_session_info.name().contains('/') {
+                    self.show_error("Session name cannot contain '/'");
+                    return;
                 }
                 self.new_session_info.handle_selection(&self.session_name);
             },
@@ -483,6 +486,10 @@ impl State {
                         self.show_error("A resurrectable session by this name already exists.");
                         return; // s that we don't hide self
                     } else {
+                        if renaming_session_name.contains('/') {
+                            self.show_error("Session names cannot contain '/'");
+                            return;
+                        }
                         self.update_current_session_name_in_ui(&renaming_session_name);
                         rename_session(&renaming_session_name);
                         return; // s that we don't hide self

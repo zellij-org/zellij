@@ -891,6 +891,16 @@ pub fn render_renaming_session_screen(
         33 + new_session_name.width()..40 + new_session_name.width(),
     );
     print_text_with_coordinates(text, x, y, None, None);
+    if new_session_name.contains('/') {
+        let error_text = "Error: session name cannot contain '/'";
+        print_text_with_coordinates(
+            Text::new(error_text).color_range(3, ..),
+            x,
+            y + 2,
+            None,
+            None,
+        );
+    }
 }
 
 pub fn render_controls_line(
