@@ -6,6 +6,7 @@ use crate::{panes::PaneId, tab::Pane};
 use std::cmp::{Ordering, Reverse};
 use std::collections::{HashMap, HashSet};
 use zellij_utils::data::{Direction, Resize, ResizeStrategy};
+use zellij_utils::input::layout::SplitSize;
 use zellij_utils::{
     errors::prelude::*,
     input::layout::SplitDirection,
@@ -1387,35 +1388,52 @@ impl<'a> TiledPaneGrid<'a> {
     }
 }
 
-pub fn split(direction: SplitDirection, rect: &PaneGeom) -> Option<(PaneGeom, PaneGeom)> {
+pub fn split(
+    direction: SplitDirection,
+    rect: &PaneGeom,
+    size: Option<SplitSize>,
+    swap: bool,
+) -> Option<(PaneGeom, PaneGeom)> {
     let space = match direction {
         SplitDirection::Vertical => rect.cols,
         SplitDirection::Horizontal => rect.rows,
     };
+    let size = size.unwrap_or(SplitSize::Percent(50));
+    let size = match size {
+        SplitSize::Percent(x) => x as f64 / 100.0,
+        SplitSize::Fixed(x) => (x as f64 / space.as_usize() as f64).clamp(0.0, 1.0),
+    };
+    let size = if swap { 1.0 - size } else { size };
     if let Some(p) = space.as_percent() {
+        let dim1 = Dimension::percent(p * (1.0 - size));
+        let dim2 = Dimension::percent(p * size);
         let first_rect = match direction {
             SplitDirection::Vertical => PaneGeom {
-                cols: Dimension::percent(p / 2.0),
+                cols: dim1,
                 ..*rect
             },
             SplitDirection::Horizontal => PaneGeom {
-                rows: Dimension::percent(p / 2.0),
+                rows: dim1,
                 ..*rect
             },
         };
         let second_rect = match direction {
             SplitDirection::Vertical => PaneGeom {
                 x: first_rect.x + 1,
-                cols: first_rect.cols,
+                cols: dim2,
                 ..*rect
             },
             SplitDirection::Horizontal => PaneGeom {
                 y: first_rect.y + 1,
-                rows: first_rect.rows,
+                rows: dim2,
                 ..*rect
             },
         };
-        Some((first_rect, second_rect))
+        if swap {
+            Some((second_rect, first_rect))
+        } else {
+            Some((first_rect, second_rect))
+        }
     } else {
         None
     }

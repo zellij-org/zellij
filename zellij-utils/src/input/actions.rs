@@ -3,7 +3,7 @@
 use super::command::{OpenFilePayload, RunCommandAction};
 use super::layout::{
     FloatingPaneLayout, Layout, PluginAlias, RunPlugin, RunPluginLocation, RunPluginOrAlias,
-    SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+    SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout, SplitSize,
 };
 use crate::cli::CliAction;
 use crate::data::{Direction, KeyWithModifier, Resize};
@@ -175,7 +175,7 @@ pub enum Action {
         Option<FloatingPaneCoordinates>,
     ), // String is an optional pane name
     /// Open a new tiled (embedded, non-floating) pane
-    NewTiledPane(Option<Direction>, Option<RunCommandAction>, Option<String>), // String is an
+    NewTiledPane(Option<Direction>, Option<RunCommandAction>, Option<String>, Option<SplitSize>), // String is an
     /// Open a new pane in place of the focused one, suppressing it instead
     NewInPlacePane(Option<RunCommandAction>, Option<String>), // String is an
     // optional pane
@@ -363,11 +363,13 @@ impl Action {
                 y,
                 width,
                 height,
+                size,
             } => {
                 let current_dir = get_current_dir();
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
                 // otherwise the current_dir might override a cwd defined in the alias itself
                 let alias_cwd = cwd.clone().map(|cwd| current_dir.join(cwd));
+                let size = size.as_deref().and_then(|x| SplitSize::from_str(x).ok());
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir.clone()));
@@ -449,6 +451,7 @@ impl Action {
                             direction,
                             Some(run_command_action),
                             name,
+                            size,
                         )])
                     }
                 } else {
@@ -461,7 +464,7 @@ impl Action {
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane(None, name)])
                     } else {
-                        Ok(vec![Action::NewTiledPane(direction, None, name)])
+                        Ok(vec![Action::NewTiledPane(direction, None, name, size)])
                     }
                 }
             },

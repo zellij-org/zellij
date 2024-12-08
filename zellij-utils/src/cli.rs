@@ -246,6 +246,9 @@ pub enum Sessions {
         /// The height if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
         #[clap(long, requires("floating"))]
         height: Option<String>,
+        /// The size if the pane is tiled as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long, conflicts_with("floating"))]
+        size: Option<String>,
     },
     /// Load a plugin
     #[clap(visible_alias = "p")]
@@ -288,6 +291,9 @@ pub enum Sessions {
         /// The height if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
         #[clap(long, requires("floating"))]
         height: Option<String>,
+        /// The size if the pane is tiled as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long, conflicts_with("floating"))]
+        size: Option<String>,
     },
     /// Edit file with default $EDITOR / $VISUAL
     #[clap(visible_alias = "e")]
@@ -526,6 +532,9 @@ pub enum CliAction {
         /// The height if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
         #[clap(long, requires("floating"))]
         height: Option<String>,
+        /// The size if the pane is tiled as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long, conflicts_with("floating"))]
+        size: Option<String>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
