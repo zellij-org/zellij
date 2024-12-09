@@ -1,4 +1,5 @@
 use ansi_term::ANSIStrings;
+use strum::IntoEnumIterator;
 use unicode_width::UnicodeWidthStr;
 
 use crate::{LinePart, ARROW_SEPARATOR};
@@ -214,8 +215,7 @@ fn tab_line_prefix(
             })
         }
     }
-    let mode_part = format!("{:?}", mode).to_uppercase();
-    let mode_part_padded = format!(" {} ", mode_part);
+    let mode_part_padded = format_input_mode(mode);
     let mode_part_len = mode_part_padded.width();
     let mode_part_styled_text = if mode == InputMode::Locked {
         style!(locked_mode_color, bg_color)
@@ -382,4 +382,32 @@ fn swap_layout_status(
         },
         None => None,
     }
+}
+
+// format the given input mode to be displayed in the tab line
+// the mode is centered in the fixe-width space available
+fn format_input_mode(mode: InputMode) -> String {
+    let max_width = InputMode::iter()
+        .map(|variant| format!("{:?}", variant).len())
+        .max()
+        .unwrap();
+    let mode_part = format!("{:?}", mode).to_uppercase();
+
+    let left_padding;
+    let right_padding;
+    let len = mode_part.len();
+    if len >= max_width {
+        left_padding = 1;
+        right_padding = 1;
+    } else {
+        let total_padding = max_width - len;
+        left_padding = total_padding / 2;
+        right_padding = total_padding - left_padding;
+    }
+
+    format!(
+        "{left}{mode_part}{right}",
+        left = " ".repeat(left_padding),
+        right = " ".repeat(right_padding)
+    )
 }
