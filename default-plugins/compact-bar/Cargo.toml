@@ -8,6 +8,7 @@ license = "MIT"
 [dependencies]
 colored = "2"
 ansi_term = "0.12"
+strum = "0.20.0"
 unicode-width = "0.1.8"
 zellij-tile = { path = "../../zellij-tile" }
 zellij-tile-utils = { path = "../../zellij-tile-utils" }
