@@ -390,20 +390,14 @@ fn format_input_mode(mode: InputMode) -> String {
     let max_width = InputMode::iter()
         .map(|variant| format!("{:?}", variant).len())
         .max()
+        .map(|max_len| max_len + 2) // add padding(left+right) for the longest mode
         .unwrap();
+
     let mode_part = format!("{:?}", mode).to_uppercase();
 
-    let left_padding;
-    let right_padding;
-    let len = mode_part.len();
-    if len >= max_width {
-        left_padding = 1;
-        right_padding = 1;
-    } else {
-        let total_padding = max_width - len;
-        left_padding = total_padding / 2;
-        right_padding = total_padding - left_padding;
-    }
+    let total_padding = max_width - mode_part.len();
+    let left_padding = total_padding / 2;
+    let right_padding = total_padding - left_padding;
 
     format!(
         "{left}{mode_part}{right}",
