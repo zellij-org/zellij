@@ -1697,6 +1697,7 @@ fn split_space(
                 cols: split_dimension,
                 rows: inherited_dimension,
                 is_stacked: layout.children_are_stacked,
+                is_pinned: false,
             },
             SplitDirection::Horizontal => PaneGeom {
                 x: space_to_split.x,
@@ -1704,6 +1705,7 @@ fn split_space(
                 cols: inherited_dimension,
                 rows: split_dimension,
                 is_stacked: layout.children_are_stacked,
+                is_pinned: false,
             },
         };
         split_geom.push(geom);

@@ -94,16 +94,35 @@ impl FloatingPanes {
                 .map(|pane_id| self.panes.get(pane_id).unwrap().position_and_size())
                 .collect();
             Some(FloatingPanesStack { layers })
+        } else if self.has_pinned_panes() {
+            let layers = self
+                .z_indices
+                .iter()
+                .filter_map(|pane_id| self
+                    .panes
+                    .get(pane_id)
+                    .map(|p| p.position_and_size())
+                    .and_then(|p| if p.is_pinned { Some(p) } else { None} )
+                )
+                .collect();
+            Some(FloatingPanesStack { layers })
         } else {
             None
         }
     }
+    pub fn has_pinned_panes(&self) -> bool {
+        self.panes.iter().any(|(_, p)| p.position_and_size().is_pinned)
+    }
     pub fn pane_ids(&self) -> impl Iterator<Item = &PaneId> {
         self.panes.keys()
     }
-    pub fn add_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
+    pub fn add_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>) {
         self.desired_pane_positions
             .insert(pane_id, pane.position_and_size());
+        // TODO: NO!!!111oneoneone
+        if self.panes.len() > 0 {
+            pane.toggle_pinned();
+        }
         self.panes.insert(pane_id, pane);
         self.z_indices.push(pane_id);
     }
@@ -317,7 +336,15 @@ impl FloatingPanes {
         let err_context = || "failed to render output";
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
-        let mut floating_panes: Vec<_> = self.panes.iter_mut().collect();
+        // let mut floating_panes: Vec<_> = self.panes.iter_mut().collect();
+        let active_panes = if self.panes_are_visible() { self.active_panes.clone_active_panes() } else { Default::default() };
+        let mut floating_panes: Vec<_> = if self.panes_are_visible() {
+            self.panes.iter_mut().collect()
+        } else if self.has_pinned_panes() {
+            self.panes.iter_mut().filter(|(_, p)| p.position_and_size().is_pinned).collect()
+        } else {
+            vec![]
+        };
         floating_panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
             self.z_indices
                 .iter()
@@ -335,7 +362,8 @@ impl FloatingPanes {
         });
 
         for (z_index, (kind, pane)) in floating_panes.iter_mut().enumerate() {
-            let mut active_panes = self.active_panes.clone_active_panes();
+            // let mut active_panes = self.active_panes.clone_active_panes();
+            let mut active_panes = active_panes.clone();
             let multiple_users_exist_in_session =
                 { self.connected_clients_in_app.borrow().len() > 1 };
             active_panes.retain(|c_id, _| self.connected_clients.borrow().contains(c_id));

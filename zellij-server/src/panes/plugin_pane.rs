@@ -700,6 +700,9 @@ impl Pane for PluginPane {
     fn query_should_be_suppressed(&self) -> bool {
         self.should_be_suppressed
     }
+    fn toggle_pinned(&mut self) {
+        self.geom.is_pinned = !self.geom.is_pinned;
+    }
 }
 
 impl PluginPane {

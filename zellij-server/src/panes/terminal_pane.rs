@@ -820,6 +820,9 @@ impl Pane for TerminalPane {
             None
         }
     }
+    fn toggle_pinned(&mut self) {
+        self.geom.is_pinned = !self.geom.is_pinned;
+    }
 }
 
 impl TerminalPane {

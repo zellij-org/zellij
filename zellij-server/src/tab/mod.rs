@@ -503,6 +503,7 @@ pub trait Pane {
     fn drain_fake_cursors(&mut self) -> Option<HashSet<(usize, usize)>> {
         None
     }
+    fn toggle_pinned(&mut self) {}
 }
 
 #[derive(Clone, Debug)]
@@ -823,7 +824,7 @@ impl Tab {
         let display_area = *self.display_area.borrow();
         // we do this so that the new swap layout has a chance to pass through the constraint system
         self.tiled_panes.resize(display_area);
-        self.should_clear_display_before_rendering = true;
+        self.set_should_clear_display_before_rendering();
         Ok(())
     }
     pub fn previous_swap_layout(&mut self, client_id: Option<ClientId>) -> Result<()> {
@@ -1476,7 +1477,7 @@ impl Tab {
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
-                self.should_clear_display_before_rendering = true;
+                self.set_should_clear_display_before_rendering();
                 self.tiled_panes.focus_pane(pid, client_id);
                 self.swap_layouts.set_is_tiled_damaged();
             }
@@ -1536,7 +1537,7 @@ impl Tab {
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
-                self.should_clear_display_before_rendering = true;
+                self.set_should_clear_display_before_rendering();
                 self.tiled_panes.focus_pane(pid, client_id);
                 self.swap_layouts.set_is_tiled_damaged();
             }
@@ -2099,6 +2100,11 @@ impl Tab {
         self.tiled_panes.set_force_render();
         self.floating_panes.set_force_render();
     }
+    pub fn set_should_clear_display_before_rendering(&mut self) {
+        self.should_clear_display_before_rendering = true;
+        self.floating_panes.set_force_render(); // we do this to make sure pinned panes are
+                                                // rendered even if their surface is not visible
+    }
     pub fn is_sync_panes_active(&self) -> bool {
         self.synchronize_is_active
     }
@@ -2147,7 +2153,11 @@ impl Tab {
         self.tiled_panes
             .render(output, self.floating_panes.panes_are_visible())
             .with_context(err_context)?;
-        if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
+        // if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
+        // TODO: what happens if we have pinned panes but none are active? just to make sure we
+        // don't have a situation where the surface is visible with no panes (i.e. no active pane)
+        // - maybe check with suppressed panes?
+        if (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes()) || self.floating_panes.has_pinned_panes() {
             self.floating_panes
                 .render(output)
                 .with_context(err_context)?;
@@ -2182,7 +2192,18 @@ impl Tab {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         for client_id in connected_clients {
-            match self.get_active_terminal_cursor_position(client_id) {
+            match self.get_active_terminal_cursor_position(client_id)
+                .and_then(|(cursor_position_x, cursor_position_y)| {
+                    // TODO: get active_pane_z_index and pass it to cursor_is_visible so we do the
+                    // right thing if the cursor is in a floating pane
+                    if self.floating_panes.panes_are_visible() {
+                        Some((cursor_position_x, cursor_position_y))
+                    } else if output.cursor_is_visible(cursor_position_x, cursor_position_y) {
+                        Some((cursor_position_x, cursor_position_y))
+                    } else {
+                        None
+                    }
+                }) {
                 Some((cursor_position_x, cursor_position_y)) => {
                     let desired_cursor_shape = self
                         .get_active_pane(client_id)
@@ -2308,7 +2329,7 @@ impl Tab {
             self.swap_layouts.set_is_tiled_damaged();
             let _ = self.relayout_tiled_panes(None, false, false, true);
         }
-        self.should_clear_display_before_rendering = true;
+        self.set_should_clear_display_before_rendering();
         self.senders
             .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
             .with_context(|| format!("failed to update plugins with mode info"))?;
@@ -3888,7 +3909,7 @@ impl Tab {
     pub fn set_pane_frames(&mut self, should_set_pane_frames: bool) {
         self.tiled_panes.set_pane_frames(should_set_pane_frames);
         self.draw_pane_frames = should_set_pane_frames;
-        self.should_clear_display_before_rendering = true;
+        self.set_should_clear_display_before_rendering();
         self.set_force_render();
     }
     pub fn panes_to_hide_count(&self) -> usize {
@@ -4185,7 +4206,7 @@ impl Tab {
             } else {
                 self.tiled_panes.insert_pane(pane_id, pane);
             }
-            self.should_clear_display_before_rendering = true;
+            self.set_should_clear_display_before_rendering();
             if let Some(client_id) = client_id {
                 self.tiled_panes.focus_pane(pane_id, client_id);
             }
