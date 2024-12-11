@@ -9,6 +9,7 @@ use crate::os_input_output::ClientOsApi;
 use crate::os_input_output::get_client_os_input;
 use zellij_utils::{
     errors::prelude::*,
+    input::cast_termwiz_key,
     input::actions::Action,
     input::config::{Config, ConfigError},
     input::options::Options,
@@ -42,6 +43,12 @@ use tokio::runtime::Runtime;
 //      - cargo x run --singlepass
 //      - (inside the session): target/dev-opt/zellij --web $ZELLIJ_SESSION_NAME
 
+// TODO:
+// - handle switching sessions
+// - place control and terminal channels on different endpoints rather than different ports
+// - use http headers to communicate client_id rather than the payload so that we can get rid of
+// one serialization level
+// - look into flow control
 
 type ConnectionTable = Arc<Mutex<HashMap<String, Arc<Mutex<Box< dyn ClientOsApi>>>>>>; // TODO: no
 
@@ -66,6 +73,12 @@ struct ControlMessage {
     message: ClientToServerMsg,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StdinMessage {
+    web_client_id: String,
+    stdin: String,
+}
+
 pub fn start_web_client(
     session_name: &str,
     config: Config,
@@ -84,7 +97,6 @@ pub fn start_web_client(
             handle_server_control(session_name, config, config_options, connection_table),
         ).await;
     });
-    log::info!("Server closed");
 }
 
 async fn terminal_server(session_name: &str, config: Config, config_options: Options, connection_table: ConnectionTable) {
@@ -124,8 +136,31 @@ async fn start_terminal_connection(
     render_to_client(stdout_channel_rx, web_client_id, client_channel_tx);
 
     // Handle incoming messages (STDIN)
-    while let Some(Ok(_msg)) = client_channel_rx.next().await {
-        // TODO
+    while let Some(Ok(msg)) = client_channel_rx.next().await {
+        match msg {
+            Message::Text(msg) => {
+                let deserialized_msg: Result<StdinMessage, _> = serde_json::from_str(&msg);
+                match deserialized_msg {
+                    Ok(deserialized_msg) => {
+                        let Some(client_connection) = connection_table
+                            .lock()
+                            .unwrap()
+                            .get(&deserialized_msg.web_client_id)
+                            .cloned() else {
+                                log::error!("Unknown web_client_id: {}", deserialized_msg.web_client_id);
+                                continue;
+                            };
+                        parse_stdin(deserialized_msg.stdin.as_bytes(), client_connection.lock().unwrap().clone());
+                    },
+                    Err(e) => {
+                        log::error!("Failed to deserialize stdin: {}", e);
+                    }
+                }
+            },
+            _ => {
+                log::error!("Unsupported websocket msg type");
+            }
+        }
     }
     os_input.send_to_server(ClientToServerMsg::ClientExited);
 }
@@ -150,7 +185,6 @@ async fn handle_client_control(
                 let deserialized_msg: Result<ControlMessage, _> = serde_json::from_str(&msg);
                 match deserialized_msg {
                     Ok(deserialized_msg) => {
-                        log::info!("can has!: {:?}", deserialized_msg);
                         let Some(client_connection) = connection_table
                             .lock()
                             .unwrap()
@@ -172,7 +206,6 @@ async fn handle_client_control(
             }
         }
     }
-    os_input.send_to_server(ClientToServerMsg::ClientExited);
 }
 
 
@@ -218,14 +251,9 @@ fn zellij_server_listener(
     let first_message = ClientToServerMsg::AttachClient(
         client_attributes,
         config.clone(),
-        Default::default(),
-        Default::default(),
-        Default::default(),
-//         client_attributes,
-//         config.clone(),
-//         config_options.clone(),
-//         tab_position_to_focus,
-//         pane_id_to_focus,
+        config_options.clone(),
+        None,
+        None,
     );
 
     os_input.connect_to_server(&*zellij_ipc_pipe);
@@ -288,4 +316,51 @@ fn render_to_client(mut stdout_channel_rx: UnboundedReceiver<String>, web_client
             }
         }
     });
+}
+
+use zellij_utils::termwiz::input::{InputEvent, InputParser, MouseButtons};
+fn is_mouse_press_or_hold(input_event: &InputEvent) -> bool {
+    if let InputEvent::Mouse(mouse_event) = input_event {
+        if mouse_event.mouse_buttons.contains(MouseButtons::LEFT)
+            || mouse_event.mouse_buttons.contains(MouseButtons::RIGHT)
+        {
+            return true;
+        }
+    }
+    false
+}
+fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>) {
+
+    let mut holding_mouse = false;
+    let mut input_parser = InputParser::new();
+    // let mut current_buffer = vec![];
+    let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely
+    let mut events = vec![];
+    input_parser.parse(
+        &buf,
+        |input_event: InputEvent| {
+            events.push(input_event);
+        },
+        maybe_more,
+    );
+
+    for (i, input_event) in events.into_iter().enumerate() {
+        match &input_event {
+            InputEvent::Key(key_event) => {
+                let key = cast_termwiz_key(
+                    key_event.clone(),
+                    &buf,
+                    None, // TODO: config, for ctrl-j etc.
+                );
+                os_input.send_to_server(ClientToServerMsg::Key(
+                    key.clone(),
+                    buf.to_vec(),
+                    false, // TODO: kitty keyboard support?
+                ));
+            },
+            _ => {
+                log::error!("Unsupported event: {:#?}", input_event);
+            }
+        }
+    }
 }
