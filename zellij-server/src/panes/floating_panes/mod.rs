@@ -385,8 +385,9 @@ impl FloatingPanes {
                     .get(client_id)
                     .unwrap_or(&self.default_mode_info)
                     .mode;
+                let is_floating = true;
                 pane_contents_and_ui
-                    .render_pane_frame(*client_id, client_mode, self.session_is_mirrored)
+                    .render_pane_frame(*client_id, client_mode, self.session_is_mirrored, is_floating)
                     .with_context(err_context)?;
                 if let PaneId::Plugin(..) = kind {
                     pane_contents_and_ui

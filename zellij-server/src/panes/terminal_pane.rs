@@ -376,12 +376,13 @@ impl Pane for TerminalPane {
         };
 
         let frame_geom = self.current_geom();
+        let is_pinned = frame_geom.is_pinned;
         let mut frame = PaneFrame::new(
             frame_geom.into(),
             self.grid.scrollback_position_and_length(),
             pane_title,
             frame_params,
-        );
+        ).is_pinned(is_pinned);
         if let Some((exit_status, is_first_run, _run_command)) = &self.is_held {
             if *is_first_run {
                 frame.indicate_first_run();
