@@ -119,10 +119,6 @@ impl FloatingPanes {
     pub fn add_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>) {
         self.desired_pane_positions
             .insert(pane_id, pane.position_and_size());
-        // TODO: NO!!!111oneoneone
-        if self.panes.len() > 0 {
-            pane.toggle_pinned();
-        }
         self.panes.insert(pane_id, pane);
         self.z_indices.push(pane_id);
     }

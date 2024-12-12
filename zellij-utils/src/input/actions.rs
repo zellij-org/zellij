@@ -300,6 +300,7 @@ pub enum Action {
         pane_title: Option<String>,
     },
     ListClients,
+    TogglePanePinned,
 }
 
 impl Action {
@@ -738,6 +739,7 @@ impl Action {
                 }])
             },
             CliAction::ListClients => Ok(vec![Action::ListClients]),
+            CliAction::TogglePanePinned => Ok(vec![Action::TogglePanePinned]),
         }
     }
     pub fn launches_plugin(&self, plugin_url: &str) -> bool {

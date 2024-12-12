@@ -1101,6 +1101,7 @@ impl Action {
                 }
                 Some(node)
             },
+            Action::TogglePanePinned => Some(KdlNode::new("TogglePanePinned")),
             _ => None,
         }
     }
@@ -1758,6 +1759,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     plugin_id,
                 })
             },
+            "TogglePanePinned" => Ok(Action::TogglePanePinned),
             _ => Err(ConfigError::new_kdl_error(
                 format!("Unsupported action: {}", action_name).into(),
                 kdl_action.span().offset(),

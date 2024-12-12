@@ -4372,6 +4372,11 @@ impl Tab {
             self.suppressed_panes.insert(pane_id, suppressed_pane_entry);
         }
     }
+    pub fn toggle_pane_pinned(&mut self, client_id: ClientId) {
+        if let Some(pane) = self.get_active_pane_mut(client_id) {
+            pane.toggle_pinned();
+        }
+    }
     fn new_scrollback_editor_pane(&self, pid: u32) -> TerminalPane {
         let next_terminal_position = self.get_next_terminal_position();
         let mut new_pane = TerminalPane::new(

@@ -405,6 +405,7 @@ pub enum ScreenInstruction {
         client_id: ClientId,
     },
     ListClientsToPlugin(PluginId, ClientId),
+    TogglePanePinned(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -617,6 +618,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::BreakPanesToTabWithIndex
             },
             ScreenInstruction::ListClientsToPlugin(..) => ScreenContext::ListClientsToPlugin,
+            ScreenInstruction::TogglePanePinned(..) => ScreenContext::TogglePanePinned,
         }
     }
 }
@@ -2498,6 +2500,14 @@ impl Screen {
             tab.update_input_modes()?;
         }
         Ok(())
+    }
+    pub fn toggle_pane_pinned(&mut self, client_id: ClientId) {
+        match self.get_active_tab_mut(client_id) {
+            Ok(active_tab) => active_tab.toggle_pane_pinned(client_id),
+            Err(e) => {
+                log::error!("Failed to find active tab for {client_id}");
+            }
+        }
     }
     fn unblock_input(&self) -> Result<()> {
         self.bus
@@ -4713,6 +4723,9 @@ pub(crate) fn screen_thread_main(
                     client_id,
                 )?;
             },
+            ScreenInstruction::TogglePanePinned(client_id) => {
+                screen.toggle_pane_pinned(client_id);
+            }
         }
     }
     Ok(())
