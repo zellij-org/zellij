@@ -202,7 +202,9 @@ impl Pane for PluginPane {
         self.set_should_render(true);
     }
     fn set_geom(&mut self, position_and_size: PaneGeom) {
+        let is_pinned = self.geom.is_pinned;
         self.geom = position_and_size;
+        self.geom.is_pinned = is_pinned;
         self.resize_grids();
         self.set_should_render(true);
     }
@@ -394,12 +396,13 @@ impl Pane for PluginPane {
                     .cols
                     .set_inner(frame_geom.cols.as_usize().saturating_sub(1));
             }
+            let is_pinned = frame_geom.is_pinned;
             let mut frame = PaneFrame::new(
                 frame_geom.into(),
                 grid.scrollback_position_and_length(),
                 pane_title,
                 frame_params,
-            );
+            ).is_pinned(is_pinned);
             if let Some((frame_color_override, _text)) = self.pane_frame_color_override.as_ref() {
                 frame.override_color(*frame_color_override);
             }
