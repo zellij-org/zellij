@@ -140,16 +140,19 @@ impl<'a> PaneContentsAndUi<'a> {
                     format!("failed to render fake cursor if needed for client {client_id}")
                 })?;
             if let Some(colors) = client_id_to_colors(*fake_cursor_client_id, self.style.colors) {
-                if let Some(vte_output) = self.pane.render_fake_cursor(colors.0, colors.1) {
-                    self.output.add_post_vte_instruction_to_client(
-                        client_id,
-                        &format!(
-                            "\u{1b}[{};{}H\u{1b}[m{}",
-                            self.pane.y() + 1,
-                            self.pane.x() + 1,
-                            vte_output
-                        ),
-                    );
+                let cursor_is_visible = self.pane.cursor_coordinates().map(|(x, y)| self.output.cursor_is_visible(self.pane.x() + x, self.pane.y() + y)).unwrap_or(false);
+                if cursor_is_visible {
+                    if let Some(vte_output) = self.pane.render_fake_cursor(colors.0, colors.1) {
+                        self.output.add_post_vte_instruction_to_client(
+                            client_id,
+                            &format!(
+                                "\u{1b}[{};{}H\u{1b}[m{}",
+                                self.pane.y() + 1,
+                                self.pane.x() + 1,
+                                vte_output
+                            ),
+                        );
+                    }
                 }
             }
         }
