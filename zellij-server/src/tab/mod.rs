@@ -397,6 +397,10 @@ pub trait Pane {
         }
         false
     }
+    fn intercept_left_mouse_click(&mut self, _position: &Position, _client_id: ClientId) -> bool {
+        let intercepted = false;
+        intercepted
+    }
     fn store_pane_name(&mut self);
     fn load_pane_name(&mut self);
     fn set_borderless(&mut self, borderless: bool);
@@ -3277,6 +3281,14 @@ impl Tab {
             {
                 return Ok(self.floating_panes.get_pane_mut(pane_id));
             }
+        } else if self.floating_panes.has_pinned_panes() {
+            if let Some(pane_id) = self
+                .floating_panes
+                .get_pinned_pane_id_at(point, search_selectable)
+                .with_context(err_context)?
+            {
+                return Ok(self.floating_panes.get_pane_mut(pane_id));
+            }
         }
         if let Some(pane_id) = self
             .get_pane_id_at(point, search_selectable)
@@ -3325,6 +3337,30 @@ impl Tab {
                 "failed to handle mouse left click at position {position:?} for client {client_id}"
             )
         };
+
+        let intercepted = self
+            .get_pane_at(position, false)
+            .with_context(err_context)?
+            .map(|pane| {
+                pane.intercept_left_mouse_click(&position, client_id)
+            })
+            .unwrap_or(false);
+        if intercepted {
+            self.set_force_render();
+            return Ok(());
+        }
+
+        if !self.floating_panes.panes_are_visible() {
+            let search_selectable = false;
+            if let Ok(Some(pane_id)) = self.floating_panes.get_pinned_pane_id_at(position, search_selectable) {
+                // here, the floating panes are not visible, but there is a pinned pane (always
+                // visible) that has been clicked on - so we make the entire surface visible and
+                // focus it
+                self.show_floating_panes();
+                self.floating_panes.focus_pane(pane_id, client_id);
+                return Ok(());
+            }
+        }
 
         self.focus_pane_at(position, client_id)
             .with_context(err_context)?;

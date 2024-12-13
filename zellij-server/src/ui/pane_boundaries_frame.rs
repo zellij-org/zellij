@@ -3,6 +3,7 @@ use crate::panes::{AnsiCode, RcCharacterStyles, TerminalCharacter, EMPTY_TERMINA
 use crate::ui::boundaries::boundary_type;
 use crate::ClientId;
 use zellij_utils::data::{client_id_to_colors, PaletteColor, Style};
+use zellij_utils::position::Position;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::Viewport;
 
@@ -740,6 +741,16 @@ impl PaneFrame {
             }
         };
         Ok(res)
+    }
+    pub fn clicked_on_pinned(&mut self, position: Position) -> bool {
+        if self.is_floating {
+            // TODO: this is not entirely accurate because our relative position calculation in
+            // itself isn't - when that is fixed, we should adjust this as well
+            if position.line() == -1 && position.column() == self.geom.cols.saturating_sub(5) {
+                return true;
+            }
+        }
+        false
     }
     pub fn render(&self) -> Result<(Vec<CharacterChunk>, Option<String>)> {
         let err_context = || "failed to render pane frame";

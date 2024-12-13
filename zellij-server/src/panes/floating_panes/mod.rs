@@ -792,6 +792,45 @@ impl FloatingPanes {
             .find(|(_, p)| p.contains(point))
             .map(|(&id, _)| id))
     }
+    pub fn get_pinned_pane_id_at(
+        &self,
+        point: &Position,
+        search_selectable: bool,
+    ) -> Result<Option<PaneId>> {
+        let _err_context = || format!("failed to determine floating pane at point {point:?}");
+
+        let mut panes: Vec<_> = if search_selectable {
+            self.panes.iter().filter(|(_, p)| p.selectable()).filter(|(_, p)| p.current_geom().is_pinned).collect()
+        } else {
+            self.panes.iter().filter(|(_, p)| p.current_geom().is_pinned).collect()
+        };
+        panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
+            // TODO: continue
+            Ord::cmp(
+                &self.z_indices.iter().position(|id| id == *b_id).unwrap(),
+                &self.z_indices.iter().position(|id| id == *a_id).unwrap(),
+            )
+        });
+        Ok(panes
+            .iter()
+            .find(|(_, p)| p.contains(point))
+            .map(|(&id, _)| id))
+    }
+    pub fn has_pinned_pane_at(&self, point: &Position) -> bool {
+
+        let mut panes: Vec<_> = self.panes.iter().filter(|(_, p)| p.current_geom().is_pinned).collect();
+
+        panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
+            Ord::cmp(
+                &self.z_indices.iter().position(|id| id == *b_id).unwrap(),
+                &self.z_indices.iter().position(|id| id == *a_id).unwrap(),
+            )
+        });
+        panes
+            .iter()
+            .find(|(_, p)| p.contains(point))
+            .is_some()
+    }
     pub fn get_pane_at_mut(
         &mut self,
         position: &Position,
