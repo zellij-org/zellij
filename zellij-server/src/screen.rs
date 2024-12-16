@@ -2502,12 +2502,10 @@ impl Screen {
         Ok(())
     }
     pub fn toggle_pane_pinned(&mut self, client_id: ClientId) {
-        match self.get_active_tab_mut(client_id) {
-            Ok(active_tab) => active_tab.toggle_pane_pinned(client_id),
-            Err(e) => {
-                log::error!("Failed to find active tab for {client_id}");
-            }
-        }
+        active_tab_and_connected_client_id!(self, client_id, |tab: &mut Tab, client_id: ClientId| {
+            tab.toggle_pane_pinned(client_id);
+        });
+        self.unblock_input().non_fatal();
     }
     fn unblock_input(&self) -> Result<()> {
         self.bus
