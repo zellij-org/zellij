@@ -2443,7 +2443,6 @@ pub fn pin_floating_panes() {
                     remote_terminal.send_key(&PANE_MODE);
                     std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&TOGGLE_FLOATING_PANES);
-                    // back to normal mode after split
                     step_is_complete = true;
                 }
                 step_is_complete

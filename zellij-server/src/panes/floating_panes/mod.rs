@@ -332,7 +332,6 @@ impl FloatingPanes {
         let err_context = || "failed to render output";
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
-        // let mut floating_panes: Vec<_> = self.panes.iter_mut().collect();
         let active_panes = if self.panes_are_visible() { self.active_panes.clone_active_panes() } else { Default::default() };
         let mut floating_panes: Vec<_> = if self.panes_are_visible() {
             self.panes.iter_mut().collect()
@@ -358,7 +357,6 @@ impl FloatingPanes {
         });
 
         for (z_index, (kind, pane)) in floating_panes.iter_mut().enumerate() {
-            // let mut active_panes = self.active_panes.clone_active_panes();
             let mut active_panes = active_panes.clone();
             let multiple_users_exist_in_session =
                 { self.connected_clients_in_app.borrow().len() > 1 };

@@ -2157,10 +2157,6 @@ impl Tab {
         self.tiled_panes
             .render(output, self.floating_panes.panes_are_visible())
             .with_context(err_context)?;
-        // if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
-        // TODO: what happens if we have pinned panes but none are active? just to make sure we
-        // don't have a situation where the surface is visible with no panes (i.e. no active pane)
-        // - maybe check with suppressed panes?
         if (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes()) || self.floating_panes.has_pinned_panes() {
             self.floating_panes
                 .render(output)
