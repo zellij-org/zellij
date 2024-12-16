@@ -746,7 +746,10 @@ impl PaneFrame {
         if self.is_floating {
             // TODO: this is not entirely accurate because our relative position calculation in
             // itself isn't - when that is fixed, we should adjust this as well
-            if position.line() == -1 && position.column() == self.geom.cols.saturating_sub(5) {
+            let checkbox_center_position = self.geom.cols.saturating_sub(5);
+            let checkbox_position_start = checkbox_center_position.saturating_sub(1);
+            let checkbox_position_end = checkbox_center_position + 1;
+            if position.line() == -1 && (position.column() >= checkbox_position_start && position.column() <= checkbox_position_end) {
                 return true;
             }
         }
