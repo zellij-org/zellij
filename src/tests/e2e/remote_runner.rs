@@ -456,6 +456,7 @@ impl RemoteRunner {
             rows,
             cols,
             is_stacked: false,
+            is_pinned: false,
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij(&mut channel);
@@ -492,6 +493,7 @@ impl RemoteRunner {
             rows,
             cols,
             is_stacked: false,
+            is_pinned: false,
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij_mirrored_session(&mut channel);
@@ -528,6 +530,7 @@ impl RemoteRunner {
             rows,
             cols,
             is_stacked: false,
+            is_pinned: false,
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij_mirrored_session_with_layout(&mut channel, layout_file_name);
@@ -567,6 +570,7 @@ impl RemoteRunner {
             rows,
             cols,
             is_stacked: false,
+            is_pinned: false,
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij_mirrored_session_with_layout_and_viewport_serialization(
@@ -613,6 +617,7 @@ impl RemoteRunner {
             rows,
             cols,
             is_stacked: false,
+            is_pinned: false,
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij_in_session(&mut channel, session_name, mirrored);
@@ -649,6 +654,7 @@ impl RemoteRunner {
             rows,
             cols,
             is_stacked: false,
+            is_pinned: false,
         };
         setup_remote_environment(&mut channel, win_size);
         attach_to_existing_session(&mut channel, session_name);
@@ -685,6 +691,7 @@ impl RemoteRunner {
             rows,
             cols,
             is_stacked: false,
+            is_pinned: false,
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij_without_frames(&mut channel);
@@ -722,6 +729,7 @@ impl RemoteRunner {
             rows,
             cols,
             is_stacked: false,
+            is_pinned: false,
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij_with_config(&mut channel, &remote_path.to_string_lossy());

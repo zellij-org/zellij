@@ -299,6 +299,7 @@ pub enum Action {
         pane_title: Option<String>,
     },
     ListClients,
+    TogglePanePinned,
 }
 
 impl Action {
@@ -362,6 +363,7 @@ impl Action {
                 y,
                 width,
                 height,
+                pinned,
             } => {
                 let current_dir = get_current_dir();
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
@@ -397,7 +399,7 @@ impl Action {
                             name,
                             skip_plugin_cache,
                             cwd,
-                            FloatingPaneCoordinates::new(x, y, width, height),
+                            FloatingPaneCoordinates::new(x, y, width, height, pinned),
                         )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePluginPane(
@@ -439,7 +441,7 @@ impl Action {
                         Ok(vec![Action::NewFloatingPane(
                             Some(run_command_action),
                             name,
-                            FloatingPaneCoordinates::new(x, y, width, height),
+                            FloatingPaneCoordinates::new(x, y, width, height, pinned),
                         )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane(Some(run_command_action), name)])
@@ -455,7 +457,7 @@ impl Action {
                         Ok(vec![Action::NewFloatingPane(
                             None,
                             name,
-                            FloatingPaneCoordinates::new(x, y, width, height),
+                            FloatingPaneCoordinates::new(x, y, width, height, pinned),
                         )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane(None, name)])
@@ -475,6 +477,7 @@ impl Action {
                 y,
                 width,
                 height,
+                pinned,
             } => {
                 let mut file = file;
                 let current_dir = get_current_dir();
@@ -493,7 +496,7 @@ impl Action {
                     floating,
                     in_place,
                     start_suppressed,
-                    FloatingPaneCoordinates::new(x, y, width, height),
+                    FloatingPaneCoordinates::new(x, y, width, height, pinned),
                 )])
             },
             CliAction::SwitchMode { input_mode } => {
@@ -737,6 +740,7 @@ impl Action {
                 }])
             },
             CliAction::ListClients => Ok(vec![Action::ListClients]),
+            CliAction::TogglePanePinned => Ok(vec![Action::TogglePanePinned]),
         }
     }
     pub fn launches_plugin(&self, plugin_url: &str) -> bool {

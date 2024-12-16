@@ -246,6 +246,9 @@ pub enum Sessions {
         /// The height if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
         #[clap(long, requires("floating"))]
         height: Option<String>,
+        /// Whether to pin a floating pane so that it is always on top
+        #[clap(long, requires("floating"))]
+        pinned: Option<bool>,
     },
     /// Load a plugin
     #[clap(visible_alias = "p")]
@@ -288,6 +291,9 @@ pub enum Sessions {
         /// The height if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
         #[clap(long, requires("floating"))]
         height: Option<String>,
+        /// Whether to pin a floating pane so that it is always on top
+        #[clap(long, requires("floating"))]
+        pinned: Option<bool>,
     },
     /// Edit file with default $EDITOR / $VISUAL
     #[clap(visible_alias = "e")]
@@ -333,6 +339,9 @@ pub enum Sessions {
         /// The height if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
         #[clap(long, requires("floating"))]
         height: Option<String>,
+        /// Whether to pin a floating pane so that it is always on top
+        #[clap(long, requires("floating"))]
+        pinned: Option<bool>,
     },
     ConvertConfig {
         old_config_file: PathBuf,
@@ -526,6 +535,9 @@ pub enum CliAction {
         /// The height if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
         #[clap(long, requires("floating"))]
         height: Option<String>,
+        /// Whether to pin a floating pane so that it is always on top
+        #[clap(long, requires("floating"))]
+        pinned: Option<bool>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
@@ -570,6 +582,9 @@ pub enum CliAction {
         /// The height if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
         #[clap(long, requires("floating"))]
         height: Option<String>,
+        /// Whether to pin a floating pane so that it is always on top
+        #[clap(long, requires("floating"))]
+        pinned: Option<bool>,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode {
@@ -744,4 +759,5 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         plugin_title: Option<String>,
     },
     ListClients,
+    TogglePanePinned,
 }

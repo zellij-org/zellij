@@ -10,14 +10,29 @@ use crate::position::Position;
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
 /// in character rows and columns.
-#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize, Eq, Hash)]
+#[derive(Clone, Copy, Default, Debug, Serialize, Deserialize, Hash)]
 pub struct PaneGeom {
     pub x: usize,
     pub y: usize,
     pub rows: Dimension,
     pub cols: Dimension,
     pub is_stacked: bool,
+    pub is_pinned: bool, // only relevant to floating panes
 }
+
+impl PartialEq for PaneGeom {
+    fn eq(&self, other: &Self) -> bool {
+        // compare all except is_pinned
+        // TODO: add is_stacked?
+        self.x == other.x
+            && self.y == other.y
+            && self.rows == other.rows
+            && self.cols == other.cols
+            && self.is_stacked == other.is_stacked
+    }
+}
+
+impl Eq for PaneGeom {}
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Viewport {

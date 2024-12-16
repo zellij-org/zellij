@@ -449,6 +449,12 @@ impl Output {
         self.client_character_chunks.values().any(|c| !c.is_empty())
             || self.sixel_chunks.values().any(|c| !c.is_empty())
     }
+    pub fn cursor_is_visible(&self, cursor_x: usize, cursor_y: usize) -> bool {
+        self.floating_panes_stack
+            .as_ref()
+            .map(|s| s.cursor_is_visible(cursor_x, cursor_y))
+            .unwrap_or(true)
+    }
 }
 
 // this struct represents the geometry of a group of floating panes
@@ -739,6 +745,24 @@ impl FloatingPanesStack {
             uncovered_chunks.push(*s_chunk);
         }
         uncovered_chunks
+    }
+    pub fn cursor_is_visible(&self, cursor_x: usize, cursor_y: usize) -> bool {
+        let z_index = 0; // TODO: receive z_index
+        let panes_to_check = self.layers.iter().skip(z_index);
+        for pane_geom in panes_to_check {
+            let pane_top_edge = pane_geom.y;
+            let pane_left_edge = pane_geom.x;
+            let pane_bottom_edge = pane_geom.y + pane_geom.rows.as_usize().saturating_sub(1);
+            let pane_right_edge = pane_geom.x + pane_geom.cols.as_usize().saturating_sub(1);
+            if pane_top_edge <= cursor_y
+                && pane_bottom_edge >= cursor_y
+                && pane_left_edge <= cursor_x
+                && pane_right_edge >= cursor_x
+            {
+                return false;
+            }
+        }
+        true
     }
 }
 

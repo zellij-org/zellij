@@ -474,7 +474,8 @@ pub enum ActionName {
     CliPipe = 82,
     MoveTab = 83,
     KeybindPipe = 84,
-    MouseEvent = 85,
+    TogglePanePinned = 85,
+    MouseEvent = 86,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -565,6 +566,7 @@ impl ActionName {
             ActionName::CliPipe => "CliPipe",
             ActionName::MoveTab => "MoveTab",
             ActionName::KeybindPipe => "KeybindPipe",
+            ActionName::TogglePanePinned => "TogglePanePinned",
             ActionName::MouseEvent => "MouseEvent",
         }
     }
@@ -653,6 +655,7 @@ impl ActionName {
             "CliPipe" => Some(Self::CliPipe),
             "MoveTab" => Some(Self::MoveTab),
             "KeybindPipe" => Some(Self::KeybindPipe),
+            "TogglePanePinned" => Some(Self::TogglePanePinned),
             "MouseEvent" => Some(Self::MouseEvent),
             _ => None,
         }

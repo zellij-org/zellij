@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 5535
+assertion_line: 5551
 expression: fake_config_stringified
 ---
 keybinds clear-defaults=true {
@@ -17,6 +17,7 @@ keybinds clear-defaults=true {
         bind "e" { TogglePaneEmbedOrFloating; SwitchToMode "normal"; }
         bind "f" { ToggleFocusFullscreen; SwitchToMode "normal"; }
         bind "h" { MoveFocus "left"; }
+        bind "i" { TogglePanePinned; SwitchToMode "normal"; }
         bind "j" { MoveFocus "down"; }
         bind "k" { MoveFocus "up"; }
         bind "l" { MoveFocus "right"; }

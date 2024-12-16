@@ -398,6 +398,10 @@ pub trait Pane {
         }
         false
     }
+    fn intercept_left_mouse_click(&mut self, _position: &Position, _client_id: ClientId) -> bool {
+        let intercepted = false;
+        intercepted
+    }
     fn store_pane_name(&mut self);
     fn load_pane_name(&mut self);
     fn set_borderless(&mut self, borderless: bool);
@@ -507,6 +511,8 @@ pub trait Pane {
     fn drain_fake_cursors(&mut self) -> Option<HashSet<(usize, usize)>> {
         None
     }
+    fn toggle_pinned(&mut self) {}
+    fn set_pinned(&mut self, should_be_pinned: bool) {}
 }
 
 #[derive(Clone, Debug)]
@@ -827,7 +833,7 @@ impl Tab {
         let display_area = *self.display_area.borrow();
         // we do this so that the new swap layout has a chance to pass through the constraint system
         self.tiled_panes.resize(display_area);
-        self.should_clear_display_before_rendering = true;
+        self.set_should_clear_display_before_rendering();
         Ok(())
     }
     pub fn previous_swap_layout(&mut self, client_id: Option<ClientId>) -> Result<()> {
@@ -1480,7 +1486,7 @@ impl Tab {
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
-                self.should_clear_display_before_rendering = true;
+                self.set_should_clear_display_before_rendering();
                 self.tiled_panes.focus_pane(pid, client_id);
                 self.swap_layouts.set_is_tiled_damaged();
             }
@@ -1540,7 +1546,7 @@ impl Tab {
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
-                self.should_clear_display_before_rendering = true;
+                self.set_should_clear_display_before_rendering();
                 self.tiled_panes.focus_pane(pid, client_id);
                 self.swap_layouts.set_is_tiled_damaged();
             }
@@ -2103,6 +2109,11 @@ impl Tab {
         self.tiled_panes.set_force_render();
         self.floating_panes.set_force_render();
     }
+    pub fn set_should_clear_display_before_rendering(&mut self) {
+        self.should_clear_display_before_rendering = true;
+        self.floating_panes.set_force_render(); // we do this to make sure pinned panes are
+                                                // rendered even if their surface is not visible
+    }
     pub fn is_sync_panes_active(&self) -> bool {
         self.synchronize_is_active
     }
@@ -2151,7 +2162,9 @@ impl Tab {
         self.tiled_panes
             .render(output, self.floating_panes.panes_are_visible())
             .with_context(err_context)?;
-        if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
+        if (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
+            || self.floating_panes.has_pinned_panes()
+        {
             self.floating_panes
                 .render(output)
                 .with_context(err_context)?;
@@ -2186,7 +2199,19 @@ impl Tab {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         for client_id in connected_clients {
-            match self.get_active_terminal_cursor_position(client_id) {
+            match self
+                .get_active_terminal_cursor_position(client_id)
+                .and_then(|(cursor_position_x, cursor_position_y)| {
+                    // TODO: get active_pane_z_index and pass it to cursor_is_visible so we do the
+                    // right thing if the cursor is in a floating pane
+                    if self.floating_panes.panes_are_visible() {
+                        Some((cursor_position_x, cursor_position_y))
+                    } else if output.cursor_is_visible(cursor_position_x, cursor_position_y) {
+                        Some((cursor_position_x, cursor_position_y))
+                    } else {
+                        None
+                    }
+                }) {
                 Some((cursor_position_x, cursor_position_y)) => {
                     let desired_cursor_shape = self
                         .get_active_pane(client_id)
@@ -2312,7 +2337,7 @@ impl Tab {
             self.swap_layouts.set_is_tiled_damaged();
             let _ = self.relayout_tiled_panes(None, false, false, true);
         }
-        self.should_clear_display_before_rendering = true;
+        self.set_should_clear_display_before_rendering();
         self.senders
             .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
             .with_context(|| format!("failed to update plugins with mode info"))?;
@@ -3260,6 +3285,14 @@ impl Tab {
             {
                 return Ok(self.floating_panes.get_pane_mut(pane_id));
             }
+        } else if self.floating_panes.has_pinned_panes() {
+            if let Some(pane_id) = self
+                .floating_panes
+                .get_pinned_pane_id_at(point, search_selectable)
+                .with_context(err_context)?
+            {
+                return Ok(self.floating_panes.get_pane_mut(pane_id));
+            }
         }
         if let Some(pane_id) = self
             .get_pane_id_at(point, search_selectable)
@@ -3331,6 +3364,31 @@ impl Tab {
                 "failed to handle mouse left click at position {position:?} for client {client_id}"
             )
         };
+
+        let intercepted = self
+            .get_pane_at(position, false)
+            .with_context(err_context)?
+            .map(|pane| pane.intercept_left_mouse_click(&position, client_id))
+            .unwrap_or(false);
+        if intercepted {
+            self.set_force_render();
+            return Ok(());
+        }
+
+        if !self.floating_panes.panes_are_visible() {
+            let search_selectable = false;
+            if let Ok(Some(pane_id)) = self
+                .floating_panes
+                .get_pinned_pane_id_at(position, search_selectable)
+            {
+                // here, the floating panes are not visible, but there is a pinned pane (always
+                // visible) that has been clicked on - so we make the entire surface visible and
+                // focus it
+                self.show_floating_panes();
+                self.floating_panes.focus_pane(pane_id, client_id);
+                return Ok(());
+            }
+        }
 
         self.focus_pane_at(position, client_id)
             .with_context(err_context)?;
@@ -3749,7 +3807,7 @@ impl Tab {
     pub fn set_pane_frames(&mut self, should_set_pane_frames: bool) {
         self.tiled_panes.set_pane_frames(should_set_pane_frames);
         self.draw_pane_frames = should_set_pane_frames;
-        self.should_clear_display_before_rendering = true;
+        self.set_should_clear_display_before_rendering();
         self.set_force_render();
     }
     pub fn panes_to_hide_count(&self) -> usize {
@@ -4007,6 +4065,9 @@ impl Tab {
         if let Some(mut new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
             if let Some(floating_pane_coordinates) = floating_pane_coordinates {
                 let viewport = self.viewport.borrow();
+                if let Some(pinned) = floating_pane_coordinates.pinned.as_ref() {
+                    pane.set_pinned(*pinned);
+                }
                 new_pane_geom.adjust_coordinates(floating_pane_coordinates, *viewport);
                 self.swap_layouts.set_is_floating_damaged();
             }
@@ -4046,7 +4107,7 @@ impl Tab {
             } else {
                 self.tiled_panes.insert_pane(pane_id, pane);
             }
-            self.should_clear_display_before_rendering = true;
+            self.set_should_clear_display_before_rendering();
             if let Some(client_id) = client_id {
                 self.tiled_panes.focus_pane(pane_id, client_id);
             }
@@ -4210,6 +4271,18 @@ impl Tab {
     pub fn add_suppressed_panes(&mut self, mut suppressed_panes: SuppressedPanes) {
         for (pane_id, suppressed_pane_entry) in suppressed_panes.drain() {
             self.suppressed_panes.insert(pane_id, suppressed_pane_entry);
+        }
+    }
+    pub fn toggle_pane_pinned(&mut self, client_id: ClientId) {
+        if let Some(pane) = self.get_active_pane_mut(client_id) {
+            pane.toggle_pinned();
+            self.set_force_render();
+        }
+    }
+    pub fn set_floating_pane_pinned(&mut self, pane_id: PaneId, should_be_pinned: bool) {
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.set_pinned(should_be_pinned);
+            self.set_force_render();
         }
     }
     fn new_scrollback_editor_pane(&self, pid: u32) -> TerminalPane {

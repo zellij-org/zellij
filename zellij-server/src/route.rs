@@ -952,6 +952,11 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::TogglePanePinned => {
+            senders
+                .send_to_screen(ScreenInstruction::TogglePanePinned(client_id))
+                .with_context(err_context)?;
+        },
     }
     Ok(should_break)
 }

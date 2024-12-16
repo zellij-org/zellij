@@ -676,6 +676,10 @@ impl TryFrom<ProtobufAction> for Action {
                 },
                 _ => Err("Wrong payload for Action::RenameSession"),
             },
+            Some(ProtobufActionName::TogglePanePinned) => match protobuf_action.optional_payload {
+                Some(_) => Err("TogglePanePinned should not have a payload"),
+                None => Ok(Action::TogglePanePinned),
+            },
             Some(ProtobufActionName::KeybindPipe) => match protobuf_action.optional_payload {
                 Some(_) => Err("KeybindPipe should not have a payload"),
                 // TODO: at some point we might want to support a payload here
@@ -1256,6 +1260,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::KeybindPipe { .. } => Ok(ProtobufAction {
                 name: ProtobufActionName::KeybindPipe as i32,
+                optional_payload: None,
+            }),
+            Action::TogglePanePinned { .. } => Ok(ProtobufAction {
+                name: ProtobufActionName::TogglePanePinned as i32,
                 optional_payload: None,
             }),
             Action::NoOp

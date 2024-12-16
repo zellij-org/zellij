@@ -355,6 +355,9 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ChangeHostFolder(new_host_folder) => {
                         change_host_folder(env, new_host_folder)
                     },
+                    PluginCommand::SetFloatingPanePinned(pane_id, should_be_pinned) => {
+                        set_floating_pane_pinned(env, pane_id.into(), should_be_pinned)
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -1509,6 +1512,15 @@ fn change_host_folder(env: &PluginEnv, new_host_folder: PathBuf) {
     });
 }
 
+fn set_floating_pane_pinned(env: &PluginEnv, pane_id: PaneId, should_be_pinned: bool) {
+    let _ = env.senders.to_screen.as_ref().map(|sender| {
+        sender.send(ScreenInstruction::SetFloatingPanePinned(
+            pane_id,
+            should_be_pinned,
+        ))
+    });
+}
+
 fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
     if !folder_to_scan.starts_with("/host") {
         log::error!(
@@ -1927,6 +1939,7 @@ fn check_command_permission(
         | PluginCommand::BreakPanesToTabWithIndex(..)
         | PluginCommand::ReloadPlugin(..)
         | PluginCommand::LoadNewPlugin { .. }
+        | PluginCommand::SetFloatingPanePinned(..)
         | PluginCommand::KillSessions(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
