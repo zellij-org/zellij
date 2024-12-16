@@ -1446,7 +1446,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::SwitchTabTo(tab_index) => Ok(ProtobufPluginCommand {
                 name: CommandName::SwitchTabTo as i32,
                 payload: Some(Payload::SwitchTabToPayload(SwitchTabToPayload {
-                    tab_index: tab_index,
+                    tab_index,
                 })),
             }),
             PluginCommand::SetTimeout(seconds) => Ok(ProtobufPluginCommand {
@@ -1661,7 +1661,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 Ok(ProtobufPluginCommand {
                     name: CommandName::FocusTerminalPane as i32,
                     payload: Some(Payload::FocusTerminalPanePayload(PaneIdAndShouldFloat {
-                        pane_id: pane_id,
+                        pane_id,
                         should_float: should_float_if_hidden,
                     })),
                 })
@@ -1670,7 +1670,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 Ok(ProtobufPluginCommand {
                     name: CommandName::FocusPluginPane as i32,
                     payload: Some(Payload::FocusPluginPanePayload(PaneIdAndShouldFloat {
-                        pane_id: pane_id,
+                        pane_id,
                         should_float: should_float_if_hidden,
                     })),
                 })
