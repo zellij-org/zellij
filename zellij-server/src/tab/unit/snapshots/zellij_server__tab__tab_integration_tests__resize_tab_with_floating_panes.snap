@@ -1,13 +1,13 @@
 ---
 source: zellij-server/src/tab/./unit/tab_integration_tests.rs
-assertion_line: 1544
+assertion_line: 2144
 expression: snapshot
 ---
-00 (C): ┌ Pane #1 ────────────────────┌ ┌ ┌ Pane #4 ─────────────────────────────────── SCROLL:  0/1 ┐─────┐                     
+00 (C): ┌ Pane #1 ────────────────────┌ ┌ ┌ Pane #4 ───────────────────────── SCROLL:  0/1 | PIN [ ] ┐─────┐                     
 01 (C): │                             │ │E│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│     │                     
-02 (C): │ ┌ Pane #5 ─────────────── SCROLL:  0/1 ┐EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│     │                     
+02 (C): │ ┌ Pane #5 ───── SCROLL:  0/1 | PIN [ ] ┐EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│     │                     
 03 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│     │                     
-04 (C): │ │E┌ Pane #6 ─────────────── SCROLL:  0/1 ┐EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│     │                     
+04 (C): │ │E┌ Pane #6 ───── SCROLL:  0/1 | PIN [ ] ┐EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│     │                     
 05 (C): │ │E│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│     │                     
 06 (C): │ │E│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│     │                     
 07 (C): │ └─│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│     │                     

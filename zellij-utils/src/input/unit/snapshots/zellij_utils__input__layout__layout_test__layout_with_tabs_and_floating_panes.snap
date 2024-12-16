@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 275
+assertion_line: 305
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -47,6 +47,7 @@ Layout {
                     width: None,
                     x: None,
                     y: None,
+                    pinned: None,
                     run: None,
                     focus: None,
                     already_running: false,
@@ -96,6 +97,7 @@ Layout {
                     width: None,
                     x: None,
                     y: None,
+                    pinned: None,
                     run: None,
                     focus: None,
                     already_running: false,
@@ -107,6 +109,7 @@ Layout {
                     width: None,
                     x: None,
                     y: None,
+                    pinned: None,
                     run: None,
                     focus: None,
                     already_running: false,
