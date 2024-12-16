@@ -1661,6 +1661,7 @@ pub struct FloatingPaneCoordinates {
     pub y: Option<SplitSize>,
     pub width: Option<SplitSize>,
     pub height: Option<SplitSize>,
+    pub pinned: Option<bool>,
 }
 
 impl FloatingPaneCoordinates {
@@ -1669,12 +1670,13 @@ impl FloatingPaneCoordinates {
         y: Option<String>,
         width: Option<String>,
         height: Option<String>,
+        pinned: Option<bool>,
     ) -> Option<Self> {
         let x = x.and_then(|x| SplitSize::from_str(&x).ok());
         let y = y.and_then(|y| SplitSize::from_str(&y).ok());
         let width = width.and_then(|width| SplitSize::from_str(&width).ok());
         let height = height.and_then(|height| SplitSize::from_str(&height).ok());
-        if x.is_none() && y.is_none() && width.is_none() && height.is_none() {
+        if x.is_none() && y.is_none() && width.is_none() && height.is_none() && pinned.is_none() {
             None
         } else {
             Some(FloatingPaneCoordinates {
@@ -1682,6 +1684,7 @@ impl FloatingPaneCoordinates {
                 y,
                 width,
                 height,
+                pinned,
             })
         }
     }
@@ -1898,4 +1901,5 @@ pub enum PluginCommand {
     },
     ListClients,
     ChangeHostFolder(PathBuf),
+    SetFloatingPanePinned(PaneId, bool), // bool -> should be pinned
 }

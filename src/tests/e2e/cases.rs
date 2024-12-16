@@ -2423,3 +2423,100 @@ pub fn load_plugins_in_background_on_startup() {
     );
     assert_snapshot!(last_snapshot);
 }
+
+#[test]
+#[ignore]
+pub fn pin_floating_panes() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new(fake_win_size)
+            .add_step(Step {
+                name: "Toggle floating panes",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.status_bar_appears()
+                        && remote_terminal.cursor_position_is(3, 2)
+                    {
+                        remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        remote_terminal.send_key(&TOGGLE_FLOATING_PANES);
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Pin floating pane",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.snapshot_contains("PIN [ ]") {
+                        remote_terminal.send_key(&sgr_mouse_report(Position::new(8, 87), 0));
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Focus underlying pane",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.snapshot_contains("PIN [+]") {
+                        remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        remote_terminal.send_key(&TOGGLE_FLOATING_PANES);
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Fill tiled pane with text",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.cursor_position_is(3, 2) {
+                        remote_terminal.load_fixture("e2e/fill_for_pinned_pane");
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Move cursor behind pinned pane",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.snapshot_contains("line") {
+                        remote_terminal
+                            .send_key(&format!("                     hide_me").as_bytes().to_vec());
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            });
+
+        runner.run_all_steps();
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for cursor to be behind pinned pane",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.snapshot_contains("hide") {
+                    // terminal has been filled with fixture text
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
+    assert_snapshot!(last_snapshot);
+}

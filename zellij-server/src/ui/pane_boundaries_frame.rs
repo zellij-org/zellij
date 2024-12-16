@@ -5,6 +5,7 @@ use crate::ClientId;
 use zellij_utils::data::{client_id_to_colors, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::Viewport;
+use zellij_utils::position::Position;
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -60,6 +61,7 @@ pub struct FrameParams {
     pub pane_is_stacked_under: bool,
     pub pane_is_stacked_over: bool,
     pub should_draw_pane_frames: bool,
+    pub pane_is_floating: bool,
 }
 
 #[derive(Default, PartialEq)]
@@ -78,6 +80,8 @@ pub struct PaneFrame {
     pane_is_stacked_over: bool,
     pane_is_stacked_under: bool,
     should_draw_pane_frames: bool,
+    is_pinned: bool,
+    is_floating: bool,
 }
 
 impl PaneFrame {
@@ -102,7 +106,13 @@ impl PaneFrame {
             pane_is_stacked_over: frame_params.pane_is_stacked_over,
             pane_is_stacked_under: frame_params.pane_is_stacked_under,
             should_draw_pane_frames: frame_params.should_draw_pane_frames,
+            is_pinned: false,
+            is_floating: frame_params.pane_is_floating,
         }
+    }
+    pub fn is_pinned(mut self, is_pinned: bool) -> Self {
+        self.is_pinned = is_pinned;
+        self
     }
     pub fn add_exit_status(&mut self, exit_status: Option<i32>) {
         self.exit_status = match exit_status {
@@ -149,32 +159,80 @@ impl PaneFrame {
         max_length: usize,
     ) -> Option<(Vec<TerminalCharacter>, usize)> {
         // string and length because of color
-        if self.scroll_position.0 > 0 || self.scroll_position.1 > 0 {
-            let prefix = " SCROLL: ";
-            let full_indication =
-                format!(" {}/{} ", self.scroll_position.0, self.scroll_position.1);
-            let short_indication = format!(" {} ", self.scroll_position.0);
-            let full_indication_len = full_indication.chars().count();
-            let short_indication_len = short_indication.chars().count();
-            let prefix_len = prefix.chars().count();
-            if prefix_len + full_indication_len <= max_length {
-                Some((
-                    foreground_color(&format!("{}{}", prefix, full_indication), self.color),
-                    prefix_len + full_indication_len,
-                ))
-            } else if full_indication_len <= max_length {
-                Some((
-                    foreground_color(&full_indication, self.color),
-                    full_indication_len,
-                ))
-            } else if short_indication_len <= max_length {
-                Some((
-                    foreground_color(&short_indication, self.color),
-                    short_indication_len,
-                ))
+        let has_scroll = self.scroll_position.0 > 0 || self.scroll_position.1 > 0;
+        if has_scroll {
+            let pin_indication = if self.is_floating {
+                self.render_pinned_indication(max_length)
             } else {
                 None
+            }; // no pin indication for tiled panes
+            let space_for_scroll_indication = pin_indication
+                .as_ref()
+                .map(|(_, length)| max_length.saturating_sub(*length + 1))
+                .unwrap_or(max_length);
+            let scroll_indication = self.render_scroll_indication(space_for_scroll_indication);
+            match (pin_indication, scroll_indication) {
+                (
+                    Some((mut pin_indication, pin_indication_len)),
+                    Some((mut scroll_indication, scroll_indication_len)),
+                ) => {
+                    let mut characters: Vec<_> = scroll_indication.drain(..).collect();
+                    let mut separator = foreground_color(&format!("|"), self.color);
+                    characters.append(&mut separator);
+                    characters.append(&mut pin_indication);
+                    Some((characters, pin_indication_len + scroll_indication_len + 1))
+                },
+                (Some(pin_indication), None) => Some(pin_indication),
+                (None, Some(scroll_indication)) => Some(scroll_indication),
+                _ => None,
             }
+        } else if self.is_floating {
+            self.render_pinned_indication(max_length)
+        } else {
+            None
+        }
+    }
+    fn render_scroll_indication(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let prefix = " SCROLL: ";
+        let full_indication = format!(" {}/{} ", self.scroll_position.0, self.scroll_position.1);
+        let short_indication = format!(" {} ", self.scroll_position.0);
+        let full_indication_len = full_indication.chars().count();
+        let short_indication_len = short_indication.chars().count();
+        let prefix_len = prefix.chars().count();
+        if prefix_len + full_indication_len <= max_length {
+            Some((
+                foreground_color(&format!("{}{}", prefix, full_indication), self.color),
+                prefix_len + full_indication_len,
+            ))
+        } else if full_indication_len <= max_length {
+            Some((
+                foreground_color(&full_indication, self.color),
+                full_indication_len,
+            ))
+        } else if short_indication_len <= max_length {
+            Some((
+                foreground_color(&short_indication, self.color),
+                short_indication_len,
+            ))
+        } else {
+            None
+        }
+    }
+    fn render_pinned_indication(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let is_checked = if self.is_pinned { '+' } else { ' ' };
+        let full_indication = format!(" PIN [{}] ", is_checked);
+        let full_indication_len = full_indication.chars().count();
+        if full_indication_len <= max_length {
+            Some((
+                foreground_color(&full_indication, self.color),
+                full_indication_len,
+            ))
         } else {
             None
         }
@@ -693,6 +751,22 @@ impl PaneFrame {
             }
         };
         Ok(res)
+    }
+    pub fn clicked_on_pinned(&mut self, position: Position) -> bool {
+        if self.is_floating {
+            // TODO: this is not entirely accurate because our relative position calculation in
+            // itself isn't - when that is fixed, we should adjust this as well
+            let checkbox_center_position = self.geom.cols.saturating_sub(5);
+            let checkbox_position_start = checkbox_center_position.saturating_sub(1);
+            let checkbox_position_end = checkbox_center_position + 1;
+            if position.line() == -1
+                && (position.column() >= checkbox_position_start
+                    && position.column() <= checkbox_position_end)
+            {
+                return true;
+            }
+        }
+        false
     }
     pub fn render(&self) -> Result<(Vec<CharacterChunk>, Option<String>)> {
         let err_context = || "failed to render pane frame";

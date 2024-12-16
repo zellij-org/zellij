@@ -405,6 +405,8 @@ pub enum ScreenInstruction {
         client_id: ClientId,
     },
     ListClientsToPlugin(PluginId, ClientId),
+    TogglePanePinned(ClientId),
+    SetFloatingPanePinned(PaneId, bool),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -617,6 +619,8 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::BreakPanesToTabWithIndex
             },
             ScreenInstruction::ListClientsToPlugin(..) => ScreenContext::ListClientsToPlugin,
+            ScreenInstruction::TogglePanePinned(..) => ScreenContext::TogglePanePinned,
+            ScreenInstruction::SetFloatingPanePinned(..) => ScreenContext::SetFloatingPanePinned,
         }
     }
 }
@@ -2498,6 +2502,32 @@ impl Screen {
             tab.update_input_modes()?;
         }
         Ok(())
+    }
+    pub fn toggle_pane_pinned(&mut self, client_id: ClientId) {
+        active_tab_and_connected_client_id!(
+            self,
+            client_id,
+            |tab: &mut Tab, client_id: ClientId| {
+                tab.toggle_pane_pinned(client_id);
+            }
+        );
+        self.unblock_input().non_fatal();
+    }
+    pub fn set_floating_pane_pinned(&mut self, pane_id: PaneId, should_be_pinned: bool) {
+        let mut found = false;
+        for tab in self.tabs.values_mut() {
+            if tab.has_pane_with_pid(&pane_id) {
+                tab.set_floating_pane_pinned(pane_id, should_be_pinned);
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            log::error!(
+                "Failed to find pane with id: {:?} to set as pinned",
+                pane_id
+            );
+        }
     }
     fn unblock_input(&self) -> Result<()> {
         self.bus
@@ -4712,6 +4742,12 @@ pub(crate) fn screen_thread_main(
                     should_change_focus_to_new_tab,
                     client_id,
                 )?;
+            },
+            ScreenInstruction::TogglePanePinned(client_id) => {
+                screen.toggle_pane_pinned(client_id);
+            },
+            ScreenInstruction::SetFloatingPanePinned(pane_id, should_be_pinned) => {
+                screen.set_floating_pane_pinned(pane_id, should_be_pinned);
             },
         }
     }

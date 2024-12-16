@@ -37,6 +37,7 @@ fn main() {
             y,
             width,
             height,
+            pinned,
         })) = opts.command
         {
             let cwd = cwd.or_else(|| std::env::current_dir().ok());
@@ -57,6 +58,7 @@ fn main() {
                 y,
                 width,
                 height,
+                pinned,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -71,6 +73,7 @@ fn main() {
             y,
             width,
             height,
+            pinned,
         })) = opts.command
         {
             let cwd = None;
@@ -90,6 +93,7 @@ fn main() {
                 y,
                 width,
                 height,
+                pinned,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -105,6 +109,7 @@ fn main() {
             y,
             width,
             height,
+            pinned,
         })) = opts.command
         {
             let mut file = file;
@@ -125,6 +130,7 @@ fn main() {
                 y,
                 width,
                 height,
+                pinned,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);

@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 826
+assertion_line: 827
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -1074,6 +1074,17 @@ Config {
             }: [
                 MoveFocusOrTab(
                     Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'i',
+                ),
+                key_modifiers: {},
+            }: [
+                TogglePanePinned,
+                SwitchToMode(
+                    Normal,
                 ),
             ],
             KeyWithModifier {

@@ -37,6 +37,7 @@ keybinds clear-defaults=true {{
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Locked"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Locked"; }}
         bind "c" {{ SwitchToMode "RenamePane"; PaneNameInput 0;}}
+        bind "i" {{ TogglePanePinned; SwitchToMode "Locked"; }}
     }}
     move {{
         bind "m" {{ SwitchToMode "Normal"; }}
@@ -233,6 +234,7 @@ keybinds clear-defaults=true {{
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }}
         bind "c" {{ SwitchToMode "RenamePane"; PaneNameInput 0;}}
+        bind "i" {{ TogglePanePinned; SwitchToMode "Normal"; }}
     }}
     move {{
         bind "{primary_modifier} h" {{ SwitchToMode "Normal"; }}
@@ -440,6 +442,7 @@ keybinds clear-defaults=true {{
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }}
         bind "c" {{ SwitchToMode "RenamePane"; PaneNameInput 0;}}
+        bind "i" {{ TogglePanePinned; SwitchToMode "Normal"; }}
     }}
     move {{
         bind "n" "Tab" {{ MovePane; }}
@@ -618,6 +621,7 @@ keybinds clear-defaults=true {{
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }}
         bind "c" {{ SwitchToMode "RenamePane"; PaneNameInput 0;}}
+        bind "i" {{ TogglePanePinned; SwitchToMode "Normal"; }}
     }}
     move {{
         bind "{primary_modifier} h" {{ SwitchToMode "Normal"; }}
@@ -805,6 +809,7 @@ keybinds clear-defaults=true {{
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }}
         bind "c" {{ SwitchToMode "RenamePane"; PaneNameInput 0;}}
+        bind "i" {{ TogglePanePinned; SwitchToMode "Normal"; }}
     }}
     move {{
         bind "n" "Tab" {{ MovePane; }}
@@ -967,6 +972,7 @@ keybinds clear-defaults=true {{
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }}
         bind "c" {{ SwitchToMode "RenamePane"; PaneNameInput 0;}}
+        bind "i" {{ TogglePanePinned; SwitchToMode "Normal"; }}
     }}
     move {{
         bind "{primary_modifier} m" {{ SwitchToMode "Normal"; }}

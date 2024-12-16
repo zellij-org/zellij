@@ -1328,6 +1328,7 @@ fn open_new_floating_pane_with_custom_coordinates() {
                 y: Some(SplitSize::Fixed(5)),
                 width: Some(SplitSize::Percent(1)),
                 height: Some(SplitSize::Fixed(2)),
+                pinned: None,
             }),
             false,
             Some(1),
@@ -1362,6 +1363,7 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
                 y: Some(SplitSize::Fixed(21)),
                 width: Some(SplitSize::Fixed(10)),
                 height: Some(SplitSize::Fixed(10)),
+                pinned: None,
             }),
             false,
             Some(1),
@@ -2229,6 +2231,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         y: None,
         width: None,
         height: None,
+        pinned: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2272,6 +2275,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         y: None,
         width: None,
         height: None,
+        pinned: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2315,6 +2319,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         y: None,
         width: None,
         height: None,
+        pinned: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2358,6 +2363,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         y: None,
         width: Some("20%".to_owned()),
         height: None,
+        pinned: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2396,6 +2402,7 @@ pub fn send_cli_edit_action_with_default_parameters() {
         y: None,
         width: None,
         height: None,
+        pinned: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2434,6 +2441,7 @@ pub fn send_cli_edit_action_with_line_number() {
         y: None,
         width: None,
         height: None,
+        pinned: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2472,6 +2480,7 @@ pub fn send_cli_edit_action_with_split_direction() {
         y: None,
         width: None,
         height: None,
+        pinned: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be

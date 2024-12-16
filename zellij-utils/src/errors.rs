@@ -373,6 +373,8 @@ pub enum ScreenContext {
     BreakPanesToNewTab,
     BreakPanesToTabWithIndex,
     ListClientsToPlugin,
+    TogglePanePinned,
+    SetFloatingPanePinned,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
