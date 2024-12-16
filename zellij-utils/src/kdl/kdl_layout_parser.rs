@@ -122,6 +122,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "y"
             || property_name == "width"
             || property_name == "height"
+            || property_name == "pinned"
             || property_name == "contents_file"
     }
     fn is_a_valid_tab_property(&self, property_name: &str) -> bool {
@@ -596,6 +597,7 @@ impl<'a> KdlLayoutParser<'a> {
         let width = self.parse_percent_or_fixed(kdl_node, "width", false)?;
         let x = self.parse_percent_or_fixed(kdl_node, "x", true)?;
         let y = self.parse_percent_or_fixed(kdl_node, "y", true)?;
+        let pinned = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "pinned");
         let run = self.parse_command_plugin_or_edit_block(kdl_node)?;
         let focus = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus");
         let name = kdl_get_string_property_or_child_value_with_error!(kdl_node, "name")
@@ -619,6 +621,7 @@ impl<'a> KdlLayoutParser<'a> {
             y,
             run,
             focus,
+            pinned,
             pane_initial_contents,
             ..Default::default()
         })
@@ -845,7 +848,7 @@ impl<'a> KdlLayoutParser<'a> {
                 let width = self.parse_percent_or_fixed(kdl_node, "width", false)?;
                 let x = self.parse_percent_or_fixed(kdl_node, "x", true)?;
                 let y = self.parse_percent_or_fixed(kdl_node, "y", true)?;
-                // let mut floating_pane = FloatingPaneLayout::from(&pane_template);
+                let pinned = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "pinned");
                 if let Some(height) = height {
                     pane_template.height = Some(height);
                 }
@@ -857,6 +860,9 @@ impl<'a> KdlLayoutParser<'a> {
                 }
                 if let Some(x) = x {
                     pane_template.x = Some(x);
+                }
+                if let Some(pinned) = pinned {
+                    pane_template.pinned = Some(pinned);
                 }
                 Ok(pane_template)
             },
@@ -896,6 +902,7 @@ impl<'a> KdlLayoutParser<'a> {
                 let width = self.parse_percent_or_fixed(kdl_node, "width", false)?;
                 let x = self.parse_percent_or_fixed(kdl_node, "x", true)?;
                 let y = self.parse_percent_or_fixed(kdl_node, "y", true)?;
+                let pinned = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "pinned");
                 let mut floating_pane = FloatingPaneLayout::from(&pane_template);
                 if let Some(height) = height {
                     floating_pane.height = Some(height);
@@ -908,6 +915,9 @@ impl<'a> KdlLayoutParser<'a> {
                 }
                 if let Some(x) = x {
                     floating_pane.x = Some(x);
+                }
+                if let Some(pinned) = pinned {
+                    floating_pane.pinned = Some(pinned);
                 }
                 Ok(floating_pane)
             },
@@ -948,6 +958,7 @@ impl<'a> KdlLayoutParser<'a> {
         let width = self.parse_percent_or_fixed(kdl_node, "width", false)?;
         let x = self.parse_percent_or_fixed(kdl_node, "x", true)?;
         let y = self.parse_percent_or_fixed(kdl_node, "y", true)?;
+        let pinned = kdl_get_string_property_or_child_value_with_error!(kdl_node, "pinned");
 
         let has_pane_properties = borderless.is_some()
             || split_size.is_some()
@@ -956,7 +967,7 @@ impl<'a> KdlLayoutParser<'a> {
             || is_expanded_in_stack.is_some()
             || has_children_nodes;
         let has_floating_pane_properties =
-            height.is_some() || width.is_some() || x.is_some() || y.is_some();
+            height.is_some() || width.is_some() || x.is_some() || y.is_some() || pinned.is_some();
         if has_pane_properties || has_floating_pane_properties {
             Ok(false)
         } else {
@@ -985,6 +996,7 @@ impl<'a> KdlLayoutParser<'a> {
         let width = self.parse_percent_or_fixed(kdl_node, "width", false)?;
         let x = self.parse_percent_or_fixed(kdl_node, "x", true)?;
         let y = self.parse_percent_or_fixed(kdl_node, "y", true)?;
+        let pinned = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "pinned");
 
         let has_pane_properties = borderless.is_some()
             || split_size.is_some()
@@ -993,7 +1005,7 @@ impl<'a> KdlLayoutParser<'a> {
             || is_expanded_in_stack.is_some()
             || has_children_nodes;
         let has_floating_pane_properties =
-            height.is_some() || width.is_some() || x.is_some() || y.is_some();
+            height.is_some() || width.is_some() || x.is_some() || y.is_some() || pinned.is_some();
 
         if has_pane_properties && has_floating_pane_properties {
             let mut pane_properties = vec![];
@@ -1027,6 +1039,9 @@ impl<'a> KdlLayoutParser<'a> {
             }
             if y.is_some() {
                 floating_pane_properties.push("y");
+            }
+            if pinned.is_some() {
+                floating_pane_properties.push("pinned");
             }
             Err(ConfigError::new_layout_kdl_error(
                 format!(
@@ -1079,6 +1094,7 @@ impl<'a> KdlLayoutParser<'a> {
             let width = self.parse_percent_or_fixed(kdl_node, "width", false)?;
             let x = self.parse_percent_or_fixed(kdl_node, "x", true)?;
             let y = self.parse_percent_or_fixed(kdl_node, "y", true)?;
+            let pinned = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "pinned");
             self.pane_templates.insert(
                 template_name,
                 (
@@ -1089,6 +1105,7 @@ impl<'a> KdlLayoutParser<'a> {
                         width,
                         x,
                         y,
+                        pinned,
                         ..Default::default()
                     }),
                     kdl_node.clone(),

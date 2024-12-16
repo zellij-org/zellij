@@ -774,6 +774,7 @@ fn get_floating_panes_layout_from_panegeoms(
                 width: Some(m.geom.cols.into()),
                 x: Some(PercentOrFixed::Fixed(m.geom.x)),
                 y: Some(PercentOrFixed::Fixed(m.geom.y)),
+                pinned: Some(m.geom.is_pinned),
                 run,
                 focus: Some(m.is_focused),
                 already_running: false,
@@ -1275,6 +1276,7 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
                     },
                     ..Default::default()
                 },
@@ -1286,6 +1288,7 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
                     },
                     ..Default::default()
                 },

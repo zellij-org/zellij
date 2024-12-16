@@ -116,7 +116,7 @@ impl FloatingPanes {
     pub fn pane_ids(&self) -> impl Iterator<Item = &PaneId> {
         self.panes.keys()
     }
-    pub fn add_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>) {
+    pub fn add_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
         self.desired_pane_positions
             .insert(pane_id, pane.position_and_size());
         self.panes.insert(pane_id, pane);
@@ -276,6 +276,9 @@ impl FloatingPanes {
         }
         if let Some(height) = &floating_pane_layout.height {
             position.rows = Dimension::fixed(height.to_position(viewport.rows));
+        }
+        if let Some(is_pinned) = &floating_pane_layout.pinned {
+            position.is_pinned = *is_pinned;
         }
         if position.cols.as_usize() > viewport.cols {
             position.cols = Dimension::fixed(viewport.cols);
