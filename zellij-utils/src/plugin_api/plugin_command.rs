@@ -21,7 +21,7 @@ pub use super::generated_api::api::{
         ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetTimeoutPayload,
         ShowPaneWithIdPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToPayload,
         TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
-        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload, SetFloatingPanePinnedPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1313,6 +1313,19 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for ChangeHostFolder"),
             },
+            Some(CommandName::SetFloatingPanePinned) => match protobuf_plugin_command.payload {
+                Some(Payload::SetFloatingPanePinnedPayload(set_floating_pane_pinned_payload)) => {
+                    match set_floating_pane_pinned_payload.pane_id.and_then(|p| p.try_into().ok()) {
+                        Some(pane_id) => {
+                            Ok(PluginCommand::SetFloatingPanePinned(pane_id, set_floating_pane_pinned_payload.should_be_pinned))
+                        },
+                        None => {
+                            Err("PaneId not found!")
+                        }
+                    }
+                },
+                _ => Err("Mismatched payload for SetFloatingPanePinned"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2144,6 +2157,13 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::ChangeHostFolder as i32,
                 payload: Some(Payload::ChangeHostFolderPayload(ChangeHostFolderPayload {
                     new_host_folder: new_host_folder.display().to_string(), // TODO: not accurate?
+                })),
+            }),
+            PluginCommand::SetFloatingPanePinned(pane_id, should_be_pinned) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetFloatingPanePinned as i32,
+                payload: Some(Payload::SetFloatingPanePinnedPayload(SetFloatingPanePinnedPayload {
+                    pane_id: pane_id.try_into().ok(),
+                    should_be_pinned,
                 })),
             }),
         }

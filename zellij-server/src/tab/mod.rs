@@ -4411,6 +4411,13 @@ impl Tab {
     pub fn toggle_pane_pinned(&mut self, client_id: ClientId) {
         if let Some(pane) = self.get_active_pane_mut(client_id) {
             pane.toggle_pinned();
+            self.set_force_render();
+        }
+    }
+    pub fn set_floating_pane_pinned(&mut self, pane_id: PaneId, should_be_pinned: bool) {
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.set_pinned(should_be_pinned);
+            self.set_force_render();
         }
     }
     fn new_scrollback_editor_pane(&self, pid: u32) -> TerminalPane {
