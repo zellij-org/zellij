@@ -2504,9 +2504,13 @@ impl Screen {
         Ok(())
     }
     pub fn toggle_pane_pinned(&mut self, client_id: ClientId) {
-        active_tab_and_connected_client_id!(self, client_id, |tab: &mut Tab, client_id: ClientId| {
-            tab.toggle_pane_pinned(client_id);
-        });
+        active_tab_and_connected_client_id!(
+            self,
+            client_id,
+            |tab: &mut Tab, client_id: ClientId| {
+                tab.toggle_pane_pinned(client_id);
+            }
+        );
         self.unblock_input().non_fatal();
     }
     pub fn set_floating_pane_pinned(&mut self, pane_id: PaneId, should_be_pinned: bool) {
@@ -2519,7 +2523,10 @@ impl Screen {
             }
         }
         if !found {
-            log::error!("Failed to find pane with id: {:?} to set as pinned", pane_id);
+            log::error!(
+                "Failed to find pane with id: {:?} to set as pinned",
+                pane_id
+            );
         }
     }
     fn unblock_input(&self) -> Result<()> {
@@ -4738,10 +4745,10 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::TogglePanePinned(client_id) => {
                 screen.toggle_pane_pinned(client_id);
-            }
+            },
             ScreenInstruction::SetFloatingPanePinned(pane_id, should_be_pinned) => {
                 screen.set_floating_pane_pinned(pane_id, should_be_pinned);
-            }
+            },
         }
     }
     Ok(())

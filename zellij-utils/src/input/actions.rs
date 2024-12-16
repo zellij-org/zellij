@@ -400,7 +400,7 @@ impl Action {
                             name,
                             skip_plugin_cache,
                             cwd,
-                            FloatingPaneCoordinates::new(x, y, width, height, pinned)
+                            FloatingPaneCoordinates::new(x, y, width, height, pinned),
                         )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePluginPane(

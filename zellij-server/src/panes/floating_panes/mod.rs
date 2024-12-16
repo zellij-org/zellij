@@ -98,12 +98,12 @@ impl FloatingPanes {
             let layers = self
                 .z_indices
                 .iter()
-                .filter_map(|pane_id| self
-                    .panes
-                    .get(pane_id)
-                    .map(|p| p.position_and_size())
-                    .and_then(|p| if p.is_pinned { Some(p) } else { None} )
-                )
+                .filter_map(|pane_id| {
+                    self.panes
+                        .get(pane_id)
+                        .map(|p| p.position_and_size())
+                        .and_then(|p| if p.is_pinned { Some(p) } else { None })
+                })
                 .collect();
             Some(FloatingPanesStack { layers })
         } else {
@@ -111,7 +111,9 @@ impl FloatingPanes {
         }
     }
     pub fn has_pinned_panes(&self) -> bool {
-        self.panes.iter().any(|(_, p)| p.position_and_size().is_pinned)
+        self.panes
+            .iter()
+            .any(|(_, p)| p.position_and_size().is_pinned)
     }
     pub fn pane_ids(&self) -> impl Iterator<Item = &PaneId> {
         self.panes.keys()
@@ -335,11 +337,18 @@ impl FloatingPanes {
         let err_context = || "failed to render output";
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
-        let active_panes = if self.panes_are_visible() { self.active_panes.clone_active_panes() } else { Default::default() };
+        let active_panes = if self.panes_are_visible() {
+            self.active_panes.clone_active_panes()
+        } else {
+            Default::default()
+        };
         let mut floating_panes: Vec<_> = if self.panes_are_visible() {
             self.panes.iter_mut().collect()
         } else if self.has_pinned_panes() {
-            self.panes.iter_mut().filter(|(_, p)| p.position_and_size().is_pinned).collect()
+            self.panes
+                .iter_mut()
+                .filter(|(_, p)| p.position_and_size().is_pinned)
+                .collect()
         } else {
             vec![]
         };
@@ -384,7 +393,12 @@ impl FloatingPanes {
                     .mode;
                 let is_floating = true;
                 pane_contents_and_ui
-                    .render_pane_frame(*client_id, client_mode, self.session_is_mirrored, is_floating)
+                    .render_pane_frame(
+                        *client_id,
+                        client_mode,
+                        self.session_is_mirrored,
+                        is_floating,
+                    )
                     .with_context(err_context)?;
                 if let PaneId::Plugin(..) = kind {
                     pane_contents_and_ui
@@ -801,9 +815,16 @@ impl FloatingPanes {
         let _err_context = || format!("failed to determine floating pane at point {point:?}");
 
         let mut panes: Vec<_> = if search_selectable {
-            self.panes.iter().filter(|(_, p)| p.selectable()).filter(|(_, p)| p.current_geom().is_pinned).collect()
+            self.panes
+                .iter()
+                .filter(|(_, p)| p.selectable())
+                .filter(|(_, p)| p.current_geom().is_pinned)
+                .collect()
         } else {
-            self.panes.iter().filter(|(_, p)| p.current_geom().is_pinned).collect()
+            self.panes
+                .iter()
+                .filter(|(_, p)| p.current_geom().is_pinned)
+                .collect()
         };
         panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
             // TODO: continue
@@ -818,8 +839,11 @@ impl FloatingPanes {
             .map(|(&id, _)| id))
     }
     pub fn has_pinned_pane_at(&self, point: &Position) -> bool {
-
-        let mut panes: Vec<_> = self.panes.iter().filter(|(_, p)| p.current_geom().is_pinned).collect();
+        let mut panes: Vec<_> = self
+            .panes
+            .iter()
+            .filter(|(_, p)| p.current_geom().is_pinned)
+            .collect();
 
         panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
             Ord::cmp(
@@ -827,10 +851,7 @@ impl FloatingPanes {
                 &self.z_indices.iter().position(|id| id == *a_id).unwrap(),
             )
         });
-        panes
-            .iter()
-            .find(|(_, p)| p.contains(point))
-            .is_some()
+        panes.iter().find(|(_, p)| p.contains(point)).is_some()
     }
     pub fn get_pane_at_mut(
         &mut self,

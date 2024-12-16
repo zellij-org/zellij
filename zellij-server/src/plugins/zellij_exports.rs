@@ -357,7 +357,7 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     },
                     PluginCommand::SetFloatingPanePinned(pane_id, should_be_pinned) => {
                         set_floating_pane_pinned(env, pane_id.into(), should_be_pinned)
-                    }
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -1516,7 +1516,7 @@ fn set_floating_pane_pinned(env: &PluginEnv, pane_id: PaneId, should_be_pinned: 
     let _ = env.senders.to_screen.as_ref().map(|sender| {
         sender.send(ScreenInstruction::SetFloatingPanePinned(
             pane_id,
-            should_be_pinned
+            should_be_pinned,
         ))
     });
 }

@@ -2158,7 +2158,9 @@ impl Tab {
         self.tiled_panes
             .render(output, self.floating_panes.panes_are_visible())
             .with_context(err_context)?;
-        if (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes()) || self.floating_panes.has_pinned_panes() {
+        if (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
+            || self.floating_panes.has_pinned_panes()
+        {
             self.floating_panes
                 .render(output)
                 .with_context(err_context)?;
@@ -2193,7 +2195,8 @@ impl Tab {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         for client_id in connected_clients {
-            match self.get_active_terminal_cursor_position(client_id)
+            match self
+                .get_active_terminal_cursor_position(client_id)
                 .and_then(|(cursor_position_x, cursor_position_y)| {
                     // TODO: get active_pane_z_index and pass it to cursor_is_visible so we do the
                     // right thing if the cursor is in a floating pane
@@ -3338,9 +3341,7 @@ impl Tab {
         let intercepted = self
             .get_pane_at(position, false)
             .with_context(err_context)?
-            .map(|pane| {
-                pane.intercept_left_mouse_click(&position, client_id)
-            })
+            .map(|pane| pane.intercept_left_mouse_click(&position, client_id))
             .unwrap_or(false);
         if intercepted {
             self.set_force_render();
@@ -3349,7 +3350,10 @@ impl Tab {
 
         if !self.floating_panes.panes_are_visible() {
             let search_selectable = false;
-            if let Ok(Some(pane_id)) = self.floating_panes.get_pinned_pane_id_at(position, search_selectable) {
+            if let Ok(Some(pane_id)) = self
+                .floating_panes
+                .get_pinned_pane_id_at(position, search_selectable)
+            {
                 // here, the floating panes are not visible, but there is a pinned pane (always
                 // visible) that has been clicked on - so we make the entire surface visible and
                 // focus it

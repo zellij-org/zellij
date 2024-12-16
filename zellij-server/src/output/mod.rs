@@ -450,8 +450,7 @@ impl Output {
             || self.sixel_chunks.values().any(|c| !c.is_empty())
     }
     pub fn cursor_is_visible(&self, cursor_x: usize, cursor_y: usize) -> bool {
-        self
-            .floating_panes_stack
+        self.floating_panes_stack
             .as_ref()
             .map(|s| s.cursor_is_visible(cursor_x, cursor_y))
             .unwrap_or(true)
@@ -755,7 +754,11 @@ impl FloatingPanesStack {
             let pane_left_edge = pane_geom.x;
             let pane_bottom_edge = pane_geom.y + pane_geom.rows.as_usize().saturating_sub(1);
             let pane_right_edge = pane_geom.x + pane_geom.cols.as_usize().saturating_sub(1);
-            if pane_top_edge <= cursor_y && pane_bottom_edge >= cursor_y && pane_left_edge <= cursor_x && pane_right_edge >= cursor_x {
+            if pane_top_edge <= cursor_y
+                && pane_bottom_edge >= cursor_y
+                && pane_left_edge <= cursor_x
+                && pane_right_edge >= cursor_x
+            {
                 return false;
             }
         }

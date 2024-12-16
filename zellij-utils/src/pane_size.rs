@@ -24,17 +24,15 @@ impl PartialEq for PaneGeom {
     fn eq(&self, other: &Self) -> bool {
         // compare all except is_pinned
         // TODO: add is_stacked?
-        self.x == other.x &&
-        self.y == other.y &&
-        self.rows  == other.rows &&
-        self.cols == other.cols &&
-        self.is_stacked == other.is_stacked
+        self.x == other.x
+            && self.y == other.y
+            && self.rows == other.rows
+            && self.cols == other.cols
+            && self.is_stacked == other.is_stacked
     }
 }
 
 impl Eq for PaneGeom {}
-
-
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Viewport {

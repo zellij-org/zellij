@@ -2434,66 +2434,69 @@ pub fn pin_floating_panes() {
     let mut test_attempts = 10;
     let last_snapshot = loop {
         RemoteRunner::kill_running_sessions(fake_win_size);
-        let mut runner = RemoteRunner::new(fake_win_size).add_step(Step {
-            name: "Toggle floating panes",
-            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
-                let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
-                {
-                    remote_terminal.send_key(&PANE_MODE);
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                    remote_terminal.send_key(&TOGGLE_FLOATING_PANES);
-                    step_is_complete = true;
-                }
-                step_is_complete
-            },
-        })
-        .add_step(Step {
-            name: "Pin floating pane",
-            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
-                let mut step_is_complete = false;
-                if remote_terminal.snapshot_contains("PIN [ ]") {
-                    remote_terminal.send_key(&sgr_mouse_report(Position::new(8, 87), 0));
-                    step_is_complete = true;
-                }
-                step_is_complete
-            },
-        })
-        .add_step(Step {
-            name: "Focus underlying pane",
-            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
-                let mut step_is_complete = false;
-                if remote_terminal.snapshot_contains("PIN [+]") {
-                    remote_terminal.send_key(&PANE_MODE);
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                    remote_terminal.send_key(&TOGGLE_FLOATING_PANES);
-                    step_is_complete = true;
-                }
-                step_is_complete
-            },
-        })
-        .add_step(Step {
-            name: "Fill tiled pane with text",
-            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
-                let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2) {
-                    remote_terminal.load_fixture("e2e/fill_for_pinned_pane");
-                    step_is_complete = true;
-                }
-                step_is_complete
-            },
-        })
-        .add_step(Step {
-            name: "Move cursor behind pinned pane",
-            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
-                let mut step_is_complete = false;
-                if remote_terminal.snapshot_contains("line") {
-                    remote_terminal.send_key(&format!("                     hide_me").as_bytes().to_vec());
-                    step_is_complete = true;
-                }
-                step_is_complete
-            },
-        });
+        let mut runner = RemoteRunner::new(fake_win_size)
+            .add_step(Step {
+                name: "Toggle floating panes",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.status_bar_appears()
+                        && remote_terminal.cursor_position_is(3, 2)
+                    {
+                        remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        remote_terminal.send_key(&TOGGLE_FLOATING_PANES);
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Pin floating pane",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.snapshot_contains("PIN [ ]") {
+                        remote_terminal.send_key(&sgr_mouse_report(Position::new(8, 87), 0));
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Focus underlying pane",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.snapshot_contains("PIN [+]") {
+                        remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        remote_terminal.send_key(&TOGGLE_FLOATING_PANES);
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Fill tiled pane with text",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.cursor_position_is(3, 2) {
+                        remote_terminal.load_fixture("e2e/fill_for_pinned_pane");
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Move cursor behind pinned pane",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.snapshot_contains("line") {
+                        remote_terminal
+                            .send_key(&format!("                     hide_me").as_bytes().to_vec());
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            });
 
         runner.run_all_steps();
         let last_snapshot = runner.take_snapshot_after(Step {

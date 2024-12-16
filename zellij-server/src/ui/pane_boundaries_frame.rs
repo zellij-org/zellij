@@ -3,9 +3,9 @@ use crate::panes::{AnsiCode, RcCharacterStyles, TerminalCharacter, EMPTY_TERMINA
 use crate::ui::boundaries::boundary_type;
 use crate::ClientId;
 use zellij_utils::data::{client_id_to_colors, PaletteColor, Style};
-use zellij_utils::position::Position;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::Viewport;
+use zellij_utils::position::Position;
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -161,25 +161,30 @@ impl PaneFrame {
         // string and length because of color
         let has_scroll = self.scroll_position.0 > 0 || self.scroll_position.1 > 0;
         if has_scroll {
-            let pin_indication = if self.is_floating { self.render_pinned_indication(max_length) } else { None }; // no pin indication for tiled panes
-            let space_for_scroll_indication = pin_indication.as_ref().map(|(_, length)| max_length.saturating_sub(*length + 1)).unwrap_or(max_length);
+            let pin_indication = if self.is_floating {
+                self.render_pinned_indication(max_length)
+            } else {
+                None
+            }; // no pin indication for tiled panes
+            let space_for_scroll_indication = pin_indication
+                .as_ref()
+                .map(|(_, length)| max_length.saturating_sub(*length + 1))
+                .unwrap_or(max_length);
             let scroll_indication = self.render_scroll_indication(space_for_scroll_indication);
             match (pin_indication, scroll_indication) {
-                (Some((mut pin_indication, pin_indication_len)), Some((mut scroll_indication, scroll_indication_len))) => {
+                (
+                    Some((mut pin_indication, pin_indication_len)),
+                    Some((mut scroll_indication, scroll_indication_len)),
+                ) => {
                     let mut characters: Vec<_> = scroll_indication.drain(..).collect();
                     let mut separator = foreground_color(&format!("|"), self.color);
                     characters.append(&mut separator);
                     characters.append(&mut pin_indication);
                     Some((characters, pin_indication_len + scroll_indication_len + 1))
-
-                }
-                (Some(pin_indication), None) => {
-                    Some(pin_indication)
-                }
-                (None, Some(scroll_indication)) => {
-                    Some(scroll_indication)
-                }
-                _ => None
+                },
+                (Some(pin_indication), None) => Some(pin_indication),
+                (None, Some(scroll_indication)) => Some(scroll_indication),
+                _ => None,
             }
         } else if self.is_floating {
             self.render_pinned_indication(max_length)
@@ -187,10 +192,12 @@ impl PaneFrame {
             None
         }
     }
-    fn render_scroll_indication(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
+    fn render_scroll_indication(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
         let prefix = " SCROLL: ";
-        let full_indication =
-            format!(" {}/{} ", self.scroll_position.0, self.scroll_position.1);
+        let full_indication = format!(" {}/{} ", self.scroll_position.0, self.scroll_position.1);
         let short_indication = format!(" {} ", self.scroll_position.0);
         let full_indication_len = full_indication.chars().count();
         let short_indication_len = short_indication.chars().count();
@@ -214,8 +221,11 @@ impl PaneFrame {
             None
         }
     }
-    fn render_pinned_indication(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
-        let is_checked = if self.is_pinned { '+' } else { ' '};
+    fn render_pinned_indication(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let is_checked = if self.is_pinned { '+' } else { ' ' };
         let full_indication = format!(" PIN [{}] ", is_checked);
         let full_indication_len = full_indication.chars().count();
         if full_indication_len <= max_length {
@@ -749,7 +759,10 @@ impl PaneFrame {
             let checkbox_center_position = self.geom.cols.saturating_sub(5);
             let checkbox_position_start = checkbox_center_position.saturating_sub(1);
             let checkbox_position_end = checkbox_center_position + 1;
-            if position.line() == -1 && (position.column() >= checkbox_position_start && position.column() <= checkbox_position_end) {
+            if position.line() == -1
+                && (position.column() >= checkbox_position_start
+                    && position.column() <= checkbox_position_end)
+            {
                 return true;
             }
         }
