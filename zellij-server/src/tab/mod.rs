@@ -508,6 +508,7 @@ pub trait Pane {
         None
     }
     fn toggle_pinned(&mut self) {}
+    fn set_pinned(&mut self, should_be_pinned: bool) {}
 }
 
 #[derive(Clone, Debug)]
@@ -4199,6 +4200,9 @@ impl Tab {
         if let Some(mut new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
             if let Some(floating_pane_coordinates) = floating_pane_coordinates {
                 let viewport = self.viewport.borrow();
+                if let Some(pinned) = floating_pane_coordinates.pinned.as_ref() {
+                    pane.set_pinned(*pinned);
+                }
                 new_pane_geom.adjust_coordinates(floating_pane_coordinates, *viewport);
                 self.swap_layouts.set_is_floating_damaged();
             }

@@ -826,6 +826,9 @@ impl Pane for TerminalPane {
     fn toggle_pinned(&mut self) {
         self.geom.is_pinned = !self.geom.is_pinned;
     }
+    fn set_pinned(&mut self, should_be_pinned: bool) {
+        self.geom.is_pinned = should_be_pinned;
+    }
     fn intercept_left_mouse_click(&mut self, position: &Position, client_id: ClientId) -> bool {
         if self.position_is_on_frame(position) {
             let relative_position = self.relative_position(position);

@@ -81,6 +81,7 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
                     None => None,
                 }
             }),
+            pinned: self.pinned,
         }
     }
 }
@@ -132,6 +133,7 @@ impl Into<ProtobufFloatingPaneCoordinates> for FloatingPaneCoordinates {
                 }),
                 None => None,
             },
+            pinned: self.pinned,
         }
     }
 }

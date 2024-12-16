@@ -706,6 +706,9 @@ impl Pane for PluginPane {
     fn toggle_pinned(&mut self) {
         self.geom.is_pinned = !self.geom.is_pinned;
     }
+    fn set_pinned(&mut self, should_be_pinned: bool) {
+        self.geom.is_pinned = should_be_pinned;
+    }
 }
 
 impl PluginPane {

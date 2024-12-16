@@ -598,6 +598,8 @@ pub struct FloatingPaneCoordinates {
     pub width: ::core::option::Option<FixedOrPercentValue>,
     #[prost(message, optional, tag = "4")]
     pub height: ::core::option::Option<FixedOrPercentValue>,
+    #[prost(bool, optional, tag = "5")]
+    pub pinned: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

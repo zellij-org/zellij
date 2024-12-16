@@ -1538,11 +1538,13 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let height = command_metadata
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "height"))
                     .map(|s| s.to_owned());
+                let pinned = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "pinned"));
                 if floating {
                     Ok(Action::NewFloatingPane(
                         Some(run_command_action),
                         name,
-                        FloatingPaneCoordinates::new(x, y, width, height),
+                        FloatingPaneCoordinates::new(x, y, width, height, pinned),
                     ))
                 } else if in_place {
                     Ok(Action::NewInPlacePane(Some(run_command_action), name))
