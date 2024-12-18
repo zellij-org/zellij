@@ -2,17 +2,21 @@
 //! and dispatch actions, that are specified through the command line.
 use std::collections::{BTreeMap, HashMap};
 use std::io::BufRead;
+use std::path::Path;
 use std::process;
 use std::{fs, path::PathBuf};
 
 use crate::os_input_output::get_client_os_input;
 use crate::os_input_output::ClientOsApi;
-use axum::response::Html;
+use axum::extract::Path as AxumPath;
+use axum::http::header;
+use axum::response::{Html, IntoResponse};
 use axum::routing::get;
 use axum::Router;
 use zellij_utils::{
     data::Style,
     errors::prelude::*,
+    include_dir,
     input::actions::Action,
     input::cast_termwiz_key,
     input::config::{Config, ConfigError},
@@ -146,6 +150,8 @@ const WEB_CLIENT_PAGE: &str = include_str!(concat!(
     "assets/index.html"
 ));
 
+const ASSETS_DIR: include_dir::Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/assets");
+
 async fn serve_web_client() {
     let addr = "127.0.0.1:8082";
 
@@ -153,13 +159,47 @@ async fn serve_web_client() {
         Html(WEB_CLIENT_PAGE)
     }
 
-    let app = Router::new().route("/", get(page_html));
+    let app = Router::new()
+        .route("/", get(page_html))
+        .route("/assets/*path", get(get_static_asset));
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 
     log::info!("Started listener on 8082");
 
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn get_static_asset(AxumPath(path): AxumPath<String>) -> impl IntoResponse {
+    let path = path.trim_start_matches('/');
+
+    match ASSETS_DIR.get_file(path) {
+        None => (
+            [(header::CONTENT_TYPE, "text/html")],
+            "Not Found".as_bytes(),
+        ),
+        Some(file) => {
+            let ext = file.path().extension().and_then(|ext| ext.to_str());
+            let mime_type = get_mime_type(ext);
+            ([(header::CONTENT_TYPE, mime_type)], file.contents())
+        },
+    }
+}
+
+fn get_mime_type(ext: Option<&str>) -> &str {
+    match ext {
+        None => "text/plain",
+        Some(ext) => match ext {
+            "html" => "text/html",
+            "css" => "text/css",
+            "js" => "application/javascript",
+            "wasm" => "application/wasm",
+            "png" => "image/png",
+            "ico" => "image/x-icon",
+            "svg" => "image/svg+xml",
+            _ => "text/plain",
+        },
+    }
 }
 
 async fn start_terminal_connection(
