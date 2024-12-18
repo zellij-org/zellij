@@ -86,6 +86,7 @@ pub enum ClientToServerMsg {
         Options,             // represents the runtime configuration
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane id to focus
+        bool, // is_web_client
     ),
     Action(Action, Option<u32>, Option<ClientId>), // u32 is the terminal id
     Key(KeyWithModifier, Vec<u8>, bool),           // key, raw_bytes, is_kitty_keyboard_protocol

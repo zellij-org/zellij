@@ -116,6 +116,31 @@ impl ErrorInstruction for ClientInstruction {
     }
 }
 
+// TODO:
+// 1. create a spawn_web_server method that would mirror the below spawn_server method
+// 2. Take the daemonize stuff from zellij-server/src/lib.rs and place them in start_web_client in
+//    zellij/src/commands.rs (might want to rename it to start_web_server)
+// 3. Gracefully exit if the port is taken and show an appropriate error in the logs
+// 4. Place this whole thing behind a support_web_connections (or some such) config
+fn spawn_web_server(socket_path: &Path) -> io::Result<()> {
+    log::info!("web server socket_path: {:?}", socket_path);
+    let mut cmd = Command::new(current_exe()?);
+    cmd.arg("--web");
+    cmd.arg(socket_path);
+    let status = cmd.status()?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        let msg = "Process returned non-zero exit code";
+        let err_msg = match status.code() {
+            Some(c) => format!("{}: {}", msg, c),
+            None => msg.to_string(),
+        };
+        Err(io::Error::new(io::ErrorKind::Other, err_msg))
+    }
+}
+
 fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
     let mut cmd = Command::new(current_exe()?);
     cmd.arg("--server");
@@ -242,6 +267,7 @@ pub fn start_client(
             envs::set_session_name(name.clone());
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
+            let is_web_client = false;
 
             (
                 ClientToServerMsg::AttachClient(
@@ -250,6 +276,7 @@ pub fn start_client(
                     config_options.clone(),
                     tab_position_to_focus,
                     pane_id_to_focus,
+                    is_web_client,
                 ),
                 ipc_pipe,
             )
@@ -260,6 +287,8 @@ pub fn start_client(
             let ipc_pipe = create_ipc_pipe();
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
+            spawn_web_server(&*ipc_pipe);
+
             let successfully_written_config =
                 Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &opts);
             // if we successfully wrote the config to disk, it means two things:
@@ -644,6 +673,7 @@ pub fn start_server_detached(
             let ipc_pipe = create_ipc_pipe();
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
+            spawn_web_server(&*ipc_pipe);
             let should_launch_setup_wizard = false; // no setup wizard when starting a detached
                                                     // server
 

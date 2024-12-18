@@ -15,6 +15,8 @@ mod terminal_bytes;
 mod thread_bus;
 mod ui;
 
+pub use daemonize;
+
 use background_jobs::{background_jobs_main, BackgroundJob};
 use log::info;
 use pty_writer::{pty_writer_main, PtyWriteInstruction};

@@ -38,11 +38,11 @@ use log::info;
 use std::env;
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
+use tokio_tungstenite::{accept_async, accept_hdr_async, WebSocketStream, tungstenite::http::{Request, Response}};
+use tokio_tungstenite::tungstenite::Message;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::{task, time};
-use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{accept_async, WebSocketStream};
 
 // DEV INSTRUCTIONS:
 // * to run this:
@@ -204,7 +204,7 @@ fn get_mime_type(ext: Option<&str>) -> &str {
 
 async fn start_terminal_connection(
     stream: tokio::net::TcpStream,
-    session_name: String,
+    mut session_name: String,
     config: Config,
     config_options: Options,
     connection_table: ConnectionTable,
@@ -217,7 +217,20 @@ async fn start_terminal_connection(
         Arc::new(Mutex::new(Box::new(os_input.clone()))),
     );
 
-    let ws_stream = accept_async(stream).await.unwrap();
+    let callback = |req: &Request<_>, response: Response<_>| {
+        let mut request_uri = req.uri().to_string();
+        if request_uri.starts_with('/') {
+            request_uri.remove(0);
+            if !request_uri.is_empty() {
+                session_name = request_uri;
+            }
+        }
+        Ok(response)
+    };
+
+
+
+    let ws_stream = accept_hdr_async(stream, callback).await.unwrap();
     let (client_channel_tx, mut client_channel_rx) = ws_stream.split();
     info!("New WebSocket connection established");
     let (stdout_channel_tx, stdout_channel_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -354,12 +367,14 @@ fn zellij_server_listener(
         },
     };
 
+    let is_web_client = true;
     let first_message = ClientToServerMsg::AttachClient(
         client_attributes,
         config.clone(),
         config_options.clone(),
         None,
         None,
+        is_web_client,
     );
 
     os_input.connect_to_server(&*zellij_ipc_pipe);

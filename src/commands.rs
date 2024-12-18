@@ -17,7 +17,7 @@ use zellij_client::{
     start_client as start_client_impl, ClientInfo,
     web_client::start_web_client as start_web_client_impl
 };
-use zellij_server::{os_input_output::get_server_os_input, start_server as start_server_impl};
+use zellij_server::{os_input_output::get_server_os_input, start_server as start_server_impl, daemonize};
 use zellij_utils::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
     data::{ConnectToSession, LayoutInfo},
@@ -30,6 +30,7 @@ use zellij_utils::{
     },
     miette::{Report, Result},
     nix,
+    nix::sys::stat::{umask, Mode},
     setup::{find_default_config_dir, get_layout_dir, Setup},
 };
 
@@ -145,7 +146,15 @@ pub(crate) fn start_server(path: PathBuf, debug: bool) {
     start_server_impl(Box::new(os_input), path);
 }
 
+// TODO: rename to start_web_server?
 pub(crate) fn start_web_client(session_name: String, debug: bool, opts: CliArgs) {
+    let current_umask = umask(Mode::all());
+    umask(current_umask);
+    daemonize::Daemonize::new()
+        .working_directory(std::env::current_dir().unwrap())
+        .umask(current_umask.bits() as u32)
+        .start()
+        .expect("could not daemonize the web server process");
 
     let (
         config,

@@ -1176,7 +1176,10 @@ pub(crate) fn route_thread_main(
                             runtime_config_options,
                             tab_position_to_focus,
                             pane_id_to_focus,
+                            is_web_client,
                         ) => {
+                            // TODO: if web clients are disabled in the config, we should not allow
+                            // this connection if is_web_client is true
                             let attach_client_instruction = ServerInstruction::AttachClient(
                                 client_attributes,
                                 config,
