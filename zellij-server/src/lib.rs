@@ -294,6 +294,11 @@ impl SessionConfiguration {
 
         (full_reconfigured_config, config_changed)
     }
+    pub fn is_web_server_enabled(&self) -> bool {
+        let is_enabled_in_runtime_config = self.runtime_config.values().any(|config| config.options.enable_web_server.unwrap_or(false));
+        let is_enabled_in_saved_config = self.saved_config.values().any(|config| config.options.enable_web_server.unwrap_or(false));
+        is_enabled_in_runtime_config || is_enabled_in_saved_config
+    }
 }
 
 pub(crate) struct SessionMetaData {

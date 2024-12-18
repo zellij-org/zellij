@@ -161,6 +161,11 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub support_kitty_keyboard_protocol: Option<bool>,
+
+    /// Whether to allow access to sessions in the browser through a local webserver
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub enable_web_server: Option<bool>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -239,6 +244,9 @@ impl Options {
         let support_kitty_keyboard_protocol = other
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
+        let enable_web_server = other
+            .enable_web_server
+            .or(self.enable_web_server);
 
         Options {
             simplified_ui,
@@ -268,6 +276,7 @@ impl Options {
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
+            enable_web_server,
         }
     }
 
@@ -326,6 +335,9 @@ impl Options {
         let support_kitty_keyboard_protocol = other
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
+        let enable_web_server = other
+            .enable_web_server
+            .or(self.enable_web_server);
 
         Options {
             simplified_ui,
@@ -355,6 +367,7 @@ impl Options {
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
+            enable_web_server,
         }
     }
 
@@ -420,6 +433,7 @@ impl From<CliOptions> for Options {
             styled_underlines: opts.styled_underlines,
             serialization_interval: opts.serialization_interval,
             support_kitty_keyboard_protocol: opts.support_kitty_keyboard_protocol,
+            enable_web_server: opts.enable_web_server,
             ..Default::default()
         }
     }

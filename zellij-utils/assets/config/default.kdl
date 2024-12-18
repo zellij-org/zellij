@@ -407,3 +407,9 @@ load_plugins {
 // Default: true (if the host terminal supports it)
 //
 // support_kitty_keyboard_protocol false
+
+// Allow access to sessions in the browser through a local webserver
+// When enabled, navigate to http://localhost:8082
+// Default: false
+//
+// enable_web_server true

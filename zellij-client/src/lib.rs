@@ -123,7 +123,6 @@ impl ErrorInstruction for ClientInstruction {
 // 3. Gracefully exit if the port is taken and show an appropriate error in the logs
 // 4. Place this whole thing behind a support_web_connections (or some such) config
 fn spawn_web_server(socket_path: &Path) -> io::Result<()> {
-    log::info!("web server socket_path: {:?}", socket_path);
     let mut cmd = Command::new(current_exe()?);
     cmd.arg("--web");
     cmd.arg(socket_path);
@@ -211,6 +210,10 @@ pub fn start_client(
         .support_kitty_keyboard_protocol
         .map(|e| !e)
         .unwrap_or(false);
+    let enable_web_server = config_options
+        .enable_web_server
+        .map(|e| e)
+        .unwrap_or(false);
     let mut reconnect_to_session = None;
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let take_snapshot = "\u{1b}[?1049h";
@@ -287,7 +290,9 @@ pub fn start_client(
             let ipc_pipe = create_ipc_pipe();
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
-            spawn_web_server(&*ipc_pipe);
+            if enable_web_server {
+                let _ = spawn_web_server(&*ipc_pipe);
+            }
 
             let successfully_written_config =
                 Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &opts);
@@ -644,6 +649,11 @@ pub fn start_server_detached(
     envs::set_zellij("0".to_string());
     config.env.set_vars();
 
+    let enable_web_server = config_options
+        .enable_web_server
+        .map(|e| !e)
+        .unwrap_or(false);
+
     let palette = config
         .theme_config(config_options.theme.as_ref())
         .unwrap_or_else(|| os_input.load_palette());
@@ -673,7 +683,9 @@ pub fn start_server_detached(
             let ipc_pipe = create_ipc_pipe();
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
-            spawn_web_server(&*ipc_pipe);
+            if enable_web_server {
+                let _ = spawn_web_server(&*ipc_pipe);
+            }
             let should_launch_setup_wizard = false; // no setup wizard when starting a detached
                                                     // server
 

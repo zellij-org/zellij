@@ -1180,17 +1180,24 @@ pub(crate) fn route_thread_main(
                         ) => {
                             // TODO: if web clients are disabled in the config, we should not allow
                             // this connection if is_web_client is true
-                            let attach_client_instruction = ServerInstruction::AttachClient(
-                                client_attributes,
-                                config,
-                                runtime_config_options,
-                                tab_position_to_focus,
-                                pane_id_to_focus,
-                                client_id,
-                            );
-                            to_server
-                                .send(attach_client_instruction)
-                                .with_context(err_context)?;
+                            let allow_web_connections = rlocked_sessions.as_ref().map(|rlocked_sessions| rlocked_sessions.session_configuration.is_web_server_enabled()).unwrap_or(false);
+                            let should_allow_connection = !is_web_client || allow_web_connections;
+                            if should_allow_connection {
+                                let attach_client_instruction = ServerInstruction::AttachClient(
+                                    client_attributes,
+                                    config,
+                                    runtime_config_options,
+                                    tab_position_to_focus,
+                                    pane_id_to_focus,
+                                    client_id,
+                                );
+                                to_server
+                                    .send(attach_client_instruction)
+                                    .with_context(err_context)?;
+                            } else {
+                                let error = "This session does not allow web connections.";
+                                let _ = to_server.send(ServerInstruction::LogError(vec![error.to_owned()], client_id));
+                            }
                         },
                         ClientToServerMsg::ClientExited => {
                             // we don't unwrap this because we don't really care if there's an error here (eg.

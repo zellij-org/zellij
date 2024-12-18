@@ -2237,6 +2237,11 @@ impl Options {
             "support_kitty_keyboard_protocol"
         )
         .map(|(v, _)| v);
+        let enable_web_server = kdl_property_first_arg_as_bool_or_error!(
+            kdl_options,
+            "enable_web_server"
+        )
+        .map(|(v, _)| v);
         Ok(Options {
             simplified_ui,
             theme,
@@ -2265,6 +2270,7 @@ impl Options {
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
+            enable_web_server,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -3064,6 +3070,34 @@ impl Options {
             None
         }
     }
+    fn enable_web_server_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Allow access to sessions in the browser through a local webserver",
+            "// When enabled, navigate to http://localhost:8082",
+            "// Default: false",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("enable_web_server");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(enable_web_server) = self.enable_web_server {
+            let mut node = create_node(enable_web_server);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
@@ -3150,6 +3184,11 @@ impl Options {
             self.support_kitty_keyboard_protocol_to_kdl(add_comments)
         {
             nodes.push(support_kitty_keyboard_protocol);
+        }
+        if let Some(enable_web_server) =
+            self.enable_web_server_to_kdl(add_comments)
+        {
+            nodes.push(enable_web_server);
         }
         nodes
     }
@@ -5438,6 +5477,7 @@ fn config_options_to_string() {
         serialization_interval 1
         disable_session_metadata true
         support_kitty_keyboard_protocol false
+        enable_web_server true
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = Options::from_kdl(&document).unwrap();
@@ -5483,6 +5523,7 @@ fn config_options_to_string_with_comments() {
         serialization_interval 1
         disable_session_metadata true
         support_kitty_keyboard_protocol false
+        enable_web_server true
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = Options::from_kdl(&document).unwrap();
