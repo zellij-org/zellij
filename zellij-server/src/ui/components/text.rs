@@ -1,5 +1,5 @@
 use super::{is_too_wide, parse_indices, parse_opaque, parse_selected, Coordinates};
-use crate::panes::{terminal_character::CharacterStyles, AnsiCode, RESET_STYLES};
+use crate::panes::{terminal_character::CharacterStyles, AnsiCode};
 use zellij_utils::{
     data::{PaletteColor, Style, StyleDeclaration},
     shared::ansi_len,
@@ -15,7 +15,7 @@ pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordina
         style.colors.text_unselected
     };
 
-    let base_text_style = CharacterStyles::from(declaration);
+    let base_text_style = CharacterStyles::from(declaration).bold(Some(AnsiCode::On));
 
     let (text, _text_width) = stringify_text(
         &content,
