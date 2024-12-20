@@ -38,7 +38,12 @@ pub fn nested_list(
         } else {
             "- "
         };
-        let text_style = CharacterStyles::from(style_declaration);
+        let text_style = if line_item.text.opaque || line_item.text.selected {
+            CharacterStyles::from(style_declaration)
+                .background(Some(style_declaration.background.into()))
+        } else {
+            CharacterStyles::from(style_declaration)
+        };
         let (mut text, text_width) = stringify_text(
             &line_item.text,
             Some(padding + bulletin.len()),
