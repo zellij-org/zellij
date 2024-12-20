@@ -1445,7 +1445,7 @@ impl From<Palette> for Styling {
                 background: palette.bg,
             },
             list_unselected: StyleDeclaration {
-                base: palette.fg,
+                base: palette.white,
                 emphasis_1: palette.orange,
                 emphasis_2: palette.cyan,
                 emphasis_3: palette.green,
