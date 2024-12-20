@@ -456,6 +456,8 @@ pub enum ActionName {
     MoveTab = 83,
     KeybindPipe = 84,
     TogglePanePinned = 85,
+    SessionNameInput = 86,
+    UndoRenameSession = 87,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -550,6 +552,8 @@ impl ActionName {
             ActionName::MoveTab => "MoveTab",
             ActionName::KeybindPipe => "KeybindPipe",
             ActionName::TogglePanePinned => "TogglePanePinned",
+            ActionName::SessionNameInput => "SessionNameInput",
+            ActionName::UndoRenameSession => "UndoRenameSession",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -641,6 +645,8 @@ impl ActionName {
             "MoveTab" => Some(Self::MoveTab),
             "KeybindPipe" => Some(Self::KeybindPipe),
             "TogglePanePinned" => Some(Self::TogglePanePinned),
+            "SessionNameInput" => Some(Self::SessionNameInput),
+            "UndoRenameSession" => Some(Self::UndoRenameSession),
             _ => None,
         }
     }

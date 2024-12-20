@@ -1070,6 +1070,7 @@ fn add_keygroup_separator(help: &ModeInfo, max_len: usize) -> Option<LinePart> {
     let mode_help_text = match help.mode {
         InputMode::RenamePane => Some("RENAMING PANE"),
         InputMode::RenameTab => Some("RENAMING TAB"),
+        InputMode::RenameSession => Some("RENAMING SESSION"),
         InputMode::EnterSearch => Some("ENTERING SEARCH TERM"),
         InputMode::Search => Some("SEARCHING"),
         _ => None,
@@ -1290,7 +1291,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Previous Tab"), s("Previous"), action_key(&km, &[A::GoToPreviousTab, TO_NORMAL])),
         (s("Next Tab"), s("Next"), action_key(&km, &[A::GoToNextTab, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_basemode_key),
-    ]} else if matches!(mi.mode, IM::RenamePane | IM::RenameTab) { vec![
+    ]} else if matches!(mi.mode, IM::RenamePane | IM::RenameTab | IM::RenameSession) { vec![
         (s("When done"), s("Done"), to_basemode_key),
     ]} else { vec![] }
 }

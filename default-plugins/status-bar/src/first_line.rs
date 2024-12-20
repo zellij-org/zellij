@@ -594,7 +594,7 @@ fn get_key_shortcut_for_mode<'a>(
         InputMode::Resize => KeyAction::Resize,
         InputMode::Move => KeyAction::Move,
         InputMode::Scroll | InputMode::Search | InputMode::EnterSearch => KeyAction::Search,
-        InputMode::Session => KeyAction::Session,
+        InputMode::Session | InputMode::RenameSession => KeyAction::Session,
     };
     for shortcut in shortcuts.iter_mut() {
         if shortcut.action == key_action {

@@ -66,6 +66,7 @@ macro_rules! parse_kdl_action_arguments {
                 "CloseTab" => Ok(Action::CloseTab),
                 "ToggleTab" => Ok(Action::ToggleTab),
                 "UndoRenameTab" => Ok(Action::UndoRenameTab),
+                "UndoRenameSession" => Ok(Action::UndoRenameSession),
                 "Detach" => Ok(Action::Detach),
                 "Copy" => Ok(Action::Copy),
                 "Confirm" => Ok(Action::Confirm),
@@ -414,6 +415,7 @@ impl Action {
             "Write" => Ok(Action::Write(None, bytes, false)),
             "PaneNameInput" => Ok(Action::PaneNameInput(bytes)),
             "TabNameInput" => Ok(Action::TabNameInput(bytes)),
+            "SessionNameInput" => Ok(Action::SessionNameInput(bytes)),
             "SearchInput" => Ok(Action::SearchInput(bytes)),
             "GoToTab" => {
                 let tab_index = *bytes.get(0).ok_or_else(|| {
@@ -728,6 +730,14 @@ impl Action {
                 Some(node)
             },
             Action::UndoRenameTab => Some(KdlNode::new("UndoRenameTab")),
+            Action::SessionNameInput(bytes) => {
+                let mut node = KdlNode::new("SessionNameInput");
+                for byte in bytes {
+                    node.push(KdlValue::Base10(*byte as i64));
+                }
+                Some(node)
+            },
+            Action::UndoRenameSession => Some(KdlNode::new("UndoRenameSession")),
             Action::MoveTab(direction) => {
                 let mut node = KdlNode::new("MoveTab");
                 let direction = match direction {
@@ -1298,6 +1308,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "UndoRenamePane" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
+            "UndoRenameSession" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
             "NoOp" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "GoToNextTab" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "GoToPreviousTab" => {
@@ -1473,6 +1486,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             },
             "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
             "TabNameInput" => {
+                parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "SessionNameInput" => {
                 parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)
             },
             "SearchInput" => {

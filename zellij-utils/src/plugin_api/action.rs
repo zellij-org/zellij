@@ -359,6 +359,16 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("UndoRenameTab should not have a payload"),
                 None => Ok(Action::UndoRenameTab),
             },
+            Some(ProtobufActionName::SessionNameInput) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::RenameSessionPayload(bytes)) => {
+                    Ok(Action::SessionNameInput(bytes.into_bytes()))
+                },
+                _ => Err("Wrong payload for Action::SessionNameInput"),
+            },
+            Some(ProtobufActionName::UndoRenameSession) => match protobuf_action.optional_payload {
+                Some(_) => Err("UndoRenameSession should not have a payload"),
+                None => Ok(Action::UndoRenameSession),
+            },
             Some(ProtobufActionName::MoveTab) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::MoveTabPayload(move_tab_payload)) => {
                     let direction: Direction = ProtobufMoveTabDirection::from_i32(move_tab_payload)
@@ -1020,6 +1030,14 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::UndoRenameTab => Ok(ProtobufAction {
                 name: ProtobufActionName::UndoRenameTab as i32,
+                optional_payload: None,
+            }),
+            Action::SessionNameInput(bytes) => Ok(ProtobufAction {
+                name: ProtobufActionName::RenameSession as i32,
+                optional_payload: Some(OptionalPayload::RenameSessionPayload(String::from_utf8_lossy(&bytes).into())),
+            }),
+            Action::UndoRenameSession => Ok(ProtobufAction {
+                name: ProtobufActionName::UndoRenameSession as i32,
                 optional_payload: None,
             }),
             Action::MoveTab(direction) => {

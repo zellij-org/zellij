@@ -188,6 +188,8 @@ pub enum Action {
     CloseFocus,
     PaneNameInput(Vec<u8>),
     UndoRenamePane,
+    SessionNameInput(Vec<u8>),
+    UndoRenameSession,
     /// Create a new tab, optionally with a specified tab layout.
     NewTab(
         Option<TiledPaneLayout>,
