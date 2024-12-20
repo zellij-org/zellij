@@ -60,7 +60,7 @@ pub fn stringify_text(
         }
     }
     let coordinates_width = coordinates.as_ref().and_then(|c| c.width);
-    match (coordinates_width, text_style.background) {
+    match (coordinates_width, base_text_style.background) {
         (Some(coordinates_width), Some(_background_style)) => {
             let text_width_with_left_padding = text_width + left_padding.unwrap_or(0);
             let background_padding_length =
