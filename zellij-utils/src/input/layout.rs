@@ -877,6 +877,7 @@ impl TiledPaneLayout {
         space: &PaneGeom,
         max_panes: Option<usize>,
         ignore_percent_split_sizes: bool,
+        focus_layout_if_not_focused: bool,
     ) -> Result<Vec<(TiledPaneLayout, PaneGeom)>, &'static str> {
         let layouts = match max_panes {
             Some(max_panes) => {
@@ -889,7 +890,7 @@ impl TiledPaneLayout {
                     // because we really should support that
                     let children_count = (max_panes - pane_count_in_layout) + 1;
                     let mut extra_children = vec![TiledPaneLayout::default(); children_count];
-                    if !layout_to_split.has_focused_node() {
+                    if !layout_to_split.has_focused_node() && focus_layout_if_not_focused {
                         if let Some(last_child) = extra_children.last_mut() {
                             last_child.focus = Some(true);
                         }
@@ -898,7 +899,7 @@ impl TiledPaneLayout {
                 } else {
                     layout_to_split.truncate(max_panes);
                 }
-                if !layout_to_split.has_focused_node() {
+                if !layout_to_split.has_focused_node() && focus_layout_if_not_focused {
                     layout_to_split.focus_deepest_pane();
                 }
 
@@ -1700,6 +1701,7 @@ fn split_space(
                 rows: inherited_dimension,
                 is_stacked: layout.children_are_stacked,
                 is_pinned: false,
+                logical_position: None,
             },
             SplitDirection::Horizontal => PaneGeom {
                 x: space_to_split.x,
@@ -1708,6 +1710,7 @@ fn split_space(
                 rows: split_dimension,
                 is_stacked: layout.children_are_stacked,
                 is_pinned: false,
+                logical_position: None,
             },
         };
         split_geom.push(geom);

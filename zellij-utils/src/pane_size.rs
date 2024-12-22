@@ -18,12 +18,12 @@ pub struct PaneGeom {
     pub cols: Dimension,
     pub is_stacked: bool,
     pub is_pinned: bool, // only relevant to floating panes
+    pub logical_position: Option<usize>, // relevant when placing this pane in a layout
 }
 
 impl PartialEq for PaneGeom {
     fn eq(&self, other: &Self) -> bool {
         // compare all except is_pinned
-        // TODO: add is_stacked?
         self.x == other.x
             && self.y == other.y
             && self.rows == other.rows

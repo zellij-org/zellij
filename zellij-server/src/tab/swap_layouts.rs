@@ -244,12 +244,13 @@ impl SwapLayouts {
                 Some(swap_layout) => {
                     for (constraint, layout) in swap_layout.0.iter() {
                         if self.state_fits_tiled_panes_constraint(constraint, tiled_panes) {
+                            let focus_layout_if_not_focused = true;
                             let display_area = self.display_area.borrow();
                             // TODO: reuse the assets from position_panes_in_space here?
                             let pane_count = tiled_panes.visible_panes_count();
                             let display_area = PaneGeom::from(&*display_area);
                             if layout
-                                .position_panes_in_space(&display_area, Some(pane_count), false)
+                                .position_panes_in_space(&display_area, Some(pane_count), false, focus_layout_if_not_focused)
                                 .is_ok()
                             {
                                 return Some(layout.clone());
@@ -274,12 +275,13 @@ impl SwapLayouts {
     ) -> Option<TiledPaneLayout> {
         for swap_layout in self.swap_tiled_layouts.iter() {
             for (_constraint, layout) in swap_layout.0.iter() {
+                let focus_layout_if_not_focused = true;
                 let display_area = self.display_area.borrow();
                 // TODO: reuse the assets from position_panes_in_space here?
                 let pane_count = tiled_panes.visible_panes_count();
                 let display_area = PaneGeom::from(&*display_area);
                 if layout
-                    .position_panes_in_space(&display_area, Some(pane_count), false)
+                    .position_panes_in_space(&display_area, Some(pane_count), false, focus_layout_if_not_focused)
                     .is_ok()
                 {
                     return Some(layout.clone());
