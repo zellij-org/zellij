@@ -508,7 +508,7 @@ pub trait Pane {
         None
     }
     fn toggle_pinned(&mut self) {}
-    fn set_pinned(&mut self, should_be_pinned: bool) {}
+    fn set_pinned(&mut self, _should_be_pinned: bool) {}
 }
 
 #[derive(Clone, Debug)]
@@ -733,9 +733,7 @@ impl Tab {
     }
     fn relayout_floating_panes(
         &mut self,
-        client_id: Option<ClientId>,
         search_backwards: bool,
-        refocus_pane: bool,
     ) -> Result<()> {
         if let Some(layout_candidate) = self
             .swap_layouts
@@ -764,8 +762,6 @@ impl Tab {
             )
             .apply_floating_panes_layout_to_existing_panes(
                 &layout_candidate,
-                refocus_pane,
-                client_id,
             )?;
         }
         self.set_force_render();
@@ -835,7 +831,7 @@ impl Tab {
     pub fn previous_swap_layout(&mut self, client_id: Option<ClientId>) -> Result<()> {
         let search_backwards = true;
         if self.floating_panes.panes_are_visible() {
-            self.relayout_floating_panes(client_id, search_backwards, true)?;
+            self.relayout_floating_panes(search_backwards)?;
         } else {
             self.relayout_tiled_panes(client_id, search_backwards, true, false)?;
         }
@@ -851,7 +847,7 @@ impl Tab {
     ) -> Result<()> {
         let search_backwards = false;
         if self.floating_panes.panes_are_visible() {
-            self.relayout_floating_panes(client_id, search_backwards, refocus_pane)?;
+            self.relayout_floating_panes(search_backwards)?;
         } else {
             self.relayout_tiled_panes(client_id, search_backwards, refocus_pane, false)?;
         }
@@ -2326,7 +2322,7 @@ impl Tab {
             // we do this only for floating panes, because the constraint system takes care of the
             // tiled panes
             self.swap_layouts.set_is_floating_damaged();
-            let _ = self.relayout_floating_panes(None, false, false);
+            let _ = self.relayout_floating_panes(false);
         }
         if self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !self.is_fullscreen_active()
         {

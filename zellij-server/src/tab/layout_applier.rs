@@ -128,47 +128,55 @@ impl<'a> LayoutApplier<'a> {
 
         let positions_in_layout = self.flatten_layout(layout)?;
 
-        let currently_focused_pane_id =
-            client_id.and_then(|client_id| self.tiled_panes.focused_pane_id(client_id));
         let mut existing_tab_state =
-            ExistingTabState::new(self.tiled_panes.drain(), currently_focused_pane_id);
+            ExistingTabState::new(self.tiled_panes.drain());
 
-        let mut pane_applier = PaneApplier::new(&mut self.tiled_panes, &self.senders, &self.character_cell_size);
-        let mut positions_left = vec![];
+        let mut pane_applier = PaneApplier::new(&mut self.tiled_panes, &mut self.floating_panes, &self.senders, &self.character_cell_size);
+        let mut positions_left_without_exact_matches = vec![];
 
         // look for exact matches (eg. panes that expect a specific command or plugin to run in them)
         for (layout, position_and_size) in positions_in_layout {
             match existing_tab_state.find_and_extract_exact_match_pane(
                 &layout.run,
-                &position_and_size,
-                true,
+                position_and_size.logical_position,
             ) {
                 Some(pane) => {
-                    pane_applier.apply_position_and_size_to_pane(pane, position_and_size, layout);
+                    pane_applier.apply_position_and_size_to_tiled_pane(pane, position_and_size, layout);
                 },
                 None => {
-                    positions_left.push((layout, position_and_size));
+                    positions_left_without_exact_matches.push((layout, position_and_size));
                 },
             }
         }
 
-        // fill the remaining panes according to their logical position
+        // look for matches according to the logical position in the layout
+        let mut positions_left = vec![];
+        for (layout, position_and_size) in positions_left_without_exact_matches {
+            if let Some(pane) = existing_tab_state.find_and_extract_pane_with_same_logical_position(
+                position_and_size.logical_position,
+            ) {
+                pane_applier.apply_position_and_size_to_tiled_pane(pane, position_and_size, layout);
+            } else {
+                positions_left.push((layout, position_and_size));
+            }
+        }
+
+        // fill the remaining panes by order of their logical position
         for (layout, position_and_size) in positions_left {
             // now let's try to find panes on a best-effort basis
             if let Some(pane) = existing_tab_state.find_and_extract_pane(
                 &layout.run,
-                &position_and_size,
-                layout.focus.unwrap_or(false),
-                true,
+                position_and_size.logical_position,
             ) {
-                pane_applier.apply_position_and_size_to_pane(pane, position_and_size, layout);
+                pane_applier.apply_position_and_size_to_tiled_pane(pane, position_and_size, layout);
             }
         }
 
-        // add the rest of the panes where tiled_panes finds room for them
+        // add the rest of the panes where tiled_panes finds room for them (eg. if the layout had
+        // less panes than we've got in our state)
         let remaining_pane_ids: Vec<PaneId> = existing_tab_state.pane_ids();
-        pane_applier.handle_remaining_pane_ids(remaining_pane_ids, layout, existing_tab_state);
-        pane_applier.finalize_state();
+        pane_applier.handle_remaining_tiled_pane_ids(remaining_pane_ids, layout, existing_tab_state);
+        pane_applier.finalize_tiled_state();
 
         LayoutApplier::offset_viewport(
             self.viewport.clone(),
@@ -197,9 +205,21 @@ impl<'a> LayoutApplier<'a> {
             // ignoring the percentage sizes (passing true as the third argument), this is a hack
             // around some issues with the constraint system that should be addressed in a systemic
             // manner
-            Err(_e) => layout
-                .position_panes_in_space(&free_space, Some(tiled_panes_count), true, focus_layout_if_not_focused)
-                .map_err(|e| anyhow!(e)),
+            Err(_e) => {
+                match layout
+                .position_panes_in_space(&free_space, Some(tiled_panes_count), true, focus_layout_if_not_focused) {
+                // .map_err(|e| anyhow!(e)) {
+                    Ok(mut positions_in_layout) => {
+                        let mut logical_position = 0;
+                        for (_layout, position_and_size) in positions_in_layout.iter_mut() {
+                            position_and_size.logical_position = Some(logical_position);
+                            logical_position += 1;
+                        }
+                        Ok(positions_in_layout)
+                    },
+                    Err(e) => Err(anyhow!(e))
+                }
+            }
         }
     }
     fn apply_tiled_panes_layout(
@@ -238,13 +258,6 @@ impl<'a> LayoutApplier<'a> {
             position_and_size.logical_position = Some(logical_position);
             logical_position += 1;
         }
-
-        // TODO:
-        // 0. add a logical_position: Option<usize> to PaneGeom - DONe
-        // 1. add a running_counter here - DONE
-        // 2. increment it and add it every time to the relevant position_and_size - DONE
-        // 3. do the same with the apply_tiled_panes_layout_to_existing_panes method
-        // 4. in pane_candidates, sort by this
 
         // first, try to find rooms for the panes that are already running (represented by
         // run_instructions_to_ignore), we try to either find an explicit position (the new
@@ -516,72 +529,67 @@ impl<'a> LayoutApplier<'a> {
     pub fn apply_floating_panes_layout_to_existing_panes(
         &mut self,
         floating_panes_layout: &Vec<FloatingPaneLayout>,
-        refocus_pane: bool,
-        client_id: Option<ClientId>,
     ) -> Result<bool> {
-        // true => has floating panes
-        let mut layout_has_floating_panes = false;
-        let layout_has_focused_pane = floating_panes_layout
-            .iter()
-            .find(|f| f.focus.map(|f| f).unwrap_or(false))
-            .is_some();
-        let floating_panes_layout = floating_panes_layout.iter();
-        let currently_focused_pane_id = self
-            .floating_panes
-            .active_pane_id_or_focused_pane_id(client_id);
-        let mut existing_tab_state =
-            ExistingTabState::new(self.floating_panes.drain(), currently_focused_pane_id);
-        let mut pane_focuser = PaneFocuser::new(refocus_pane);
-        for floating_pane_layout in floating_panes_layout {
-            let position_and_size = self
-                .floating_panes
-                .position_floating_pane_layout(&floating_pane_layout);
-            let is_focused = floating_pane_layout.focus.unwrap_or(false);
-            if let Some(mut pane) = existing_tab_state.find_and_extract_pane(
-                &floating_pane_layout.run,
-                &position_and_size,
-                is_focused,
-                false,
-            ) {
-                layout_has_floating_panes = true;
-                self.apply_floating_pane_layout_properties_to_pane(
-                    &mut pane,
-                    Some(&floating_pane_layout),
-                    position_and_size,
-                );
-                let pane_is_focused = floating_pane_layout
-                    .focus
-                    .or(Some(!layout_has_focused_pane));
-                pane_focuser.set_pane_id_in_focused_location(pane_is_focused, &pane);
-                resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)?;
-                self.floating_panes.add_pane(pane.pid(), pane);
-            }
+        let layout_has_floating_panes = self.floating_panes.has_panes();
+        let mut positions_in_layout = floating_panes_layout.clone();
+
+        let mut logical_position = 0;
+        for floating_pane_layout in positions_in_layout.iter_mut() {
+            floating_pane_layout.logical_position = Some(logical_position);
+            logical_position += 1;
         }
-        let remaining_pane_ids: Vec<PaneId> = existing_tab_state.pane_ids();
-        for pane_id in remaining_pane_ids {
-            match self.floating_panes.find_room_for_new_pane() {
-                Some(position_and_size) => {
-                    if let Some(mut pane) = existing_tab_state.remove_pane(&pane_id) {
-                        layout_has_floating_panes = true;
-                        self.apply_floating_pane_layout_properties_to_pane(
-                            &mut pane,
-                            None,
-                            position_and_size,
-                        );
-                        pane_focuser
-                            .set_pane_id_in_focused_location(Some(!layout_has_focused_pane), &pane);
-                        resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)?;
-                        self.floating_panes.add_pane(pane.pid(), pane);
-                    }
+
+        let mut existing_tab_state =
+            ExistingTabState::new(self.floating_panes.drain());
+
+        let mut pane_applier = PaneApplier::new(&mut self.tiled_panes, &mut self.floating_panes, &self.senders, &self.character_cell_size);
+        let mut positions_left_without_exact_matches = vec![];
+
+        // look for exact matches (eg. panes that expect a specific command or plugin to run in them)
+        for floating_pane_layout in positions_in_layout {
+            match existing_tab_state.find_and_extract_exact_match_pane(
+                &floating_pane_layout.run,
+                floating_pane_layout.logical_position,
+            ) {
+                Some(pane) => {
+                    pane_applier.apply_floating_panes_layout_to_floating_pane(pane, floating_pane_layout);
                 },
                 None => {
-                    log::error!("could not find room for pane!")
+                    positions_left_without_exact_matches.push(floating_pane_layout);
                 },
             }
         }
 
+        // look for matches according to the logical position in the layout
+        let mut positions_left = vec![];
+        for floating_pane_layout in positions_left_without_exact_matches {
+            if let Some(pane) = existing_tab_state.find_and_extract_pane_with_same_logical_position(
+                floating_pane_layout.logical_position,
+            ) {
+                pane_applier.apply_floating_panes_layout_to_floating_pane(pane, floating_pane_layout);
+            } else {
+                positions_left.push(floating_pane_layout);
+            }
+        }
+
+        // fill the remaining panes by order of their logical position
+        for floating_pane_layout in positions_left {
+            // now let's try to find panes on a best-effort basis
+            if let Some(pane) = existing_tab_state.find_and_extract_pane(
+                &floating_pane_layout.run,
+                floating_pane_layout.logical_position,
+            ) {
+                pane_applier.apply_floating_panes_layout_to_floating_pane(pane, floating_pane_layout);
+            }
+        }
+
+        // add the rest of the panes where tiled_panes finds room for them (eg. if the layout had
+        // less panes than we've got in our state)
+        let remaining_pane_ids: Vec<PaneId> = existing_tab_state.pane_ids();
+        pane_applier.handle_remaining_floating_pane_ids(remaining_pane_ids, existing_tab_state);
+        pane_applier.finalize_floating_panes_state();
+
         if layout_has_floating_panes {
-            pane_focuser.focus_floating_pane(&mut self.floating_panes, &mut self.os_api);
             Ok(true)
         } else {
             Ok(false)
@@ -677,33 +685,6 @@ impl<'a> LayoutApplier<'a> {
             }
         }
     }
-    fn apply_layout_properties_to_pane(
-        &self,
-        pane: &mut Box<dyn Pane>,
-        layout: &TiledPaneLayout,
-        position_and_size: Option<PaneGeom>,
-    ) {
-        if let Some(position_and_size) = position_and_size {
-            pane.set_geom(position_and_size);
-        }
-        pane.set_borderless(layout.borderless);
-        if let Some(pane_title) = layout.name.as_ref() {
-            pane.set_title(pane_title.into());
-        }
-    }
-    fn apply_floating_pane_layout_properties_to_pane(
-        &self,
-        pane: &mut Box<dyn Pane>,
-        floating_pane_layout: Option<&FloatingPaneLayout>,
-        position_and_size: PaneGeom,
-    ) {
-        pane.set_geom(position_and_size);
-        pane.set_borderless(false);
-        if let Some(pane_title) = floating_pane_layout.and_then(|f| f.name.clone()) {
-            pane.set_title(pane_title);
-        }
-        pane.set_content_offset(Offset::frame(1));
-    }
     fn total_space_for_tiled_panes(&self) -> PaneGeom {
         // for tiled panes we need to take the display area rather than the viewport because the
         // viewport can potentially also be changed
@@ -721,29 +702,24 @@ impl<'a> LayoutApplier<'a> {
 
 struct ExistingTabState {
     existing_panes: BTreeMap<PaneId, Box<dyn Pane>>,
-    currently_focused_pane_id: Option<PaneId>,
 }
 
 impl ExistingTabState {
     pub fn new(
         existing_panes: BTreeMap<PaneId, Box<dyn Pane>>,
-        currently_focused_pane_id: Option<PaneId>,
     ) -> Self {
         ExistingTabState {
             existing_panes,
-            currently_focused_pane_id,
         }
     }
     pub fn find_and_extract_exact_match_pane(
         &mut self,
         run: &Option<Run>,
-        position_and_size: &PaneGeom,
-        default_to_closest_position: bool,
+        logical_position: Option<usize>,
     ) -> Option<Box<dyn Pane>> {
-        let candidates = self.pane_candidates(run, position_and_size, default_to_closest_position);
+        let candidates = self.pane_candidates();
         if let Some(current_pane_id_with_same_contents) =
-            // self.find_pane_id_with_same_contents_and_location(&candidates, run, position_and_size)
-            self.find_pane_id_with_same_contents(&candidates, run, position_and_size.logical_position)
+            self.find_pane_id_with_same_contents(&candidates, run, logical_position)
         {
             return self
                 .existing_panes
@@ -751,23 +727,34 @@ impl ExistingTabState {
         }
         None
     }
-    pub fn find_and_extract_pane(
+    pub fn find_and_extract_pane_with_same_logical_position(
         &mut self,
-        run: &Option<Run>,
-        position_and_size: &PaneGeom,
-        is_focused: bool,
-        default_to_closest_position: bool,
+        logical_position: Option<usize>,
     ) -> Option<Box<dyn Pane>> {
-        let candidates = self.pane_candidates(run, position_and_size, default_to_closest_position);
+        let candidates = self.pane_candidates();
         if let Some(current_pane_id_with_same_logical_position) =
-            // self.find_pane_id_with_same_contents_and_location(&candidates, run, position_and_size)
-            self.find_pane_id_with_same_logical_position(&candidates, position_and_size.logical_position)
+            self.find_pane_id_with_same_logical_position(&candidates, logical_position)
         {
             return self
                 .existing_panes
                 .remove(&current_pane_id_with_same_logical_position);
         } else {
-            // TODO: is this a thing?
+            return None;
+        }
+    }
+    pub fn find_and_extract_pane(
+        &mut self,
+        run: &Option<Run>,
+        logical_position: Option<usize>,
+    ) -> Option<Box<dyn Pane>> {
+        let candidates = self.pane_candidates();
+        if let Some(current_pane_id_with_same_logical_position) =
+            self.find_pane_id_with_same_logical_position(&candidates, logical_position)
+        {
+            return self
+                .existing_panes
+                .remove(&current_pane_id_with_same_logical_position);
+        } else {
             match candidates.iter().next().map(|(pid, _p)| *pid).copied() {
                 Some(first_candidate) => self.existing_panes.remove(&first_candidate),
                 None => None,
@@ -805,9 +792,6 @@ impl ExistingTabState {
     }
     fn pane_candidates(
         &self,
-        run: &Option<Run>,
-        position_and_size: &PaneGeom,
-        default_to_closest_position: bool,
     ) -> Vec<(&PaneId, &Box<dyn Pane>)> {
         let mut candidates: Vec<_> = self.existing_panes.iter().collect();
         candidates.sort_by(|(a_id, a), (b_id, b)| {
@@ -818,53 +802,8 @@ impl ExistingTabState {
             } else {
                 a_id.cmp(&b_id)
             }
-//             let a_invoked_with = a.invoked_with();
-//             let b_invoked_with = b.invoked_with();
-//             if Run::is_same_category(run, a_invoked_with)
-//                 && !Run::is_same_category(run, b_invoked_with)
-//             {
-//                 std::cmp::Ordering::Less
-//             } else if Run::is_same_category(run, b_invoked_with)
-//                 && !Run::is_same_category(run, a_invoked_with)
-//             {
-//                 std::cmp::Ordering::Greater
-//             } else if Run::is_terminal(a_invoked_with) && !Run::is_terminal(b_invoked_with) {
-//                 // we place terminals before everything else because when we can't find
-//                 // an exact match, we need to prefer terminals are more often than not
-//                 // we'd be doing the right thing here
-//                 std::cmp::Ordering::Less
-//             } else if Run::is_terminal(b_invoked_with) && !Run::is_terminal(a_invoked_with) {
-//                 std::cmp::Ordering::Greater
-//             } else {
-//                 // try to find the closest pane
-//                 if default_to_closest_position {
-//                     let abs = |a, b| (a as isize - b as isize).abs();
-//                     let a_x_distance = abs(a.position_and_size().x, position_and_size.x);
-//                     let a_y_distance = abs(a.position_and_size().y, position_and_size.y);
-//                     let b_x_distance = abs(b.position_and_size().x, position_and_size.x);
-//                     let b_y_distance = abs(b.position_and_size().y, position_and_size.y);
-//                     (a_x_distance + a_y_distance).cmp(&(b_x_distance + b_y_distance))
-//                 } else {
-//                     a_id.cmp(&b_id) // just so it's a stable sort
-//                 }
-//             }
         });
         candidates
-    }
-    fn find_focused_pane_id(
-        &self,
-        is_focused: bool,
-        candidates: &Vec<(&PaneId, &Box<dyn Pane>)>,
-    ) -> Option<PaneId> {
-        if is_focused {
-            candidates
-                .iter()
-                .find(|(pid, _p)| Some(**pid) == self.currently_focused_pane_id)
-                .map(|(pid, _p)| *pid)
-                .copied()
-        } else {
-            None
-        }
     }
     fn find_pane_id_with_same_contents(
         &self,
@@ -906,111 +845,29 @@ impl ExistingTabState {
             .map(|(pid, _p)| *pid)
             .copied()
     }
-    fn find_pane_id_with_same_contents_and_location(
-        &self,
-        candidates: &Vec<(&PaneId, &Box<dyn Pane>)>,
-        run: &Option<Run>,
-        position: &PaneGeom,
-    ) -> Option<PaneId> {
-        candidates
-            .iter()
-            .find(|(_pid, p)| p.invoked_with() == run && p.position_and_size() == *position)
-            .map(|(pid, _p)| *pid)
-            .copied()
-    }
-}
-
-#[derive(Default, Debug)]
-struct PaneFocuser {
-    refocus_pane: bool,
-    pane_id_in_focused_location: Option<PaneId>,
-    expanded_stacked_pane_ids: Vec<PaneId>,
-}
-
-impl PaneFocuser {
-    pub fn new(refocus_pane: bool) -> Self {
-        PaneFocuser {
-            refocus_pane,
-            ..Default::default()
-        }
-    }
-    pub fn set_pane_id_in_focused_location(
-        &mut self,
-        is_focused: Option<bool>,
-        pane: &Box<dyn Pane>,
-    ) {
-        if is_focused.unwrap_or(false) && pane.selectable() {
-            self.pane_id_in_focused_location = Some(pane.pid());
-        }
-    }
-    pub fn set_expanded_stacked_pane(&mut self, is_expanded_in_stack: bool, pane: &Box<dyn Pane>) {
-        if is_expanded_in_stack && pane.selectable() {
-            self.expanded_stacked_pane_ids.push(pane.pid());
-        }
-    }
-    pub fn expand_panes_in_stack(&self, tiled_panes: &mut TiledPanes) {
-        for pane_id in &self.expanded_stacked_pane_ids {
-            tiled_panes.expand_pane_in_stack(*pane_id);
-        }
-    }
-    pub fn focus_tiled_pane(&self, tiled_panes: &mut TiledPanes) {
-        let mut panes_in_stack = vec![];
-        for pane_id in &self.expanded_stacked_pane_ids {
-            panes_in_stack.append(&mut tiled_panes.expand_pane_in_stack(*pane_id));
-        }
-        match self.pane_id_in_focused_location {
-            Some(pane_id_in_focused_location) => {
-                if self.refocus_pane {
-                    tiled_panes.reapply_pane_focus();
-                    if !panes_in_stack.contains(&pane_id_in_focused_location) {
-                        // we do not change stacked panes locations because this has already been done above
-                        tiled_panes.switch_active_pane_with(pane_id_in_focused_location);
-                    }
-                } else {
-                    tiled_panes.reapply_pane_focus();
-                }
-            },
-            None => {
-                tiled_panes.reapply_pane_focus();
-            },
-        }
-        for pane_id in &self.expanded_stacked_pane_ids {
-            tiled_panes.expand_pane_in_stack(*pane_id);
-        }
-    }
-    pub fn focus_floating_pane(
-        &self,
-        floating_panes: &mut FloatingPanes,
-        os_api: &mut Box<dyn ServerOsApi>,
-    ) {
-        floating_panes.reapply_pane_focus();
-        if let Some(pane_id_in_focused_location) = self.pane_id_in_focused_location {
-            if self.refocus_pane {
-                floating_panes.switch_active_pane_with(os_api, pane_id_in_focused_location);
-            }
-        }
-    }
 }
 
 struct PaneApplier <'a> {
     new_focused_pane_id: Option<PaneId>,
     pane_ids_expanded_in_stack: Vec<PaneId>,
     tiled_panes: &'a mut TiledPanes,
+    floating_panes: &'a mut FloatingPanes,
     senders: ThreadSenders,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
 }
 
 impl <'a> PaneApplier <'a> {
-    pub fn new(tiled_panes: &'a mut TiledPanes, senders: &ThreadSenders, character_cell_size: &Rc<RefCell<Option<SizeInPixels>>>) -> Self {
+    pub fn new(tiled_panes: &'a mut TiledPanes, floating_panes: &'a mut FloatingPanes, senders: &ThreadSenders, character_cell_size: &Rc<RefCell<Option<SizeInPixels>>>) -> Self {
         PaneApplier {
             new_focused_pane_id: None,
             pane_ids_expanded_in_stack: vec![],
             tiled_panes,
+            floating_panes,
             senders: senders.clone(),
             character_cell_size: character_cell_size.clone()
         }
     }
-    pub fn apply_position_and_size_to_pane(&mut self, mut pane: Box<dyn Pane>, position_and_size: PaneGeom, layout: TiledPaneLayout) {
+    pub fn apply_position_and_size_to_tiled_pane(&mut self, mut pane: Box<dyn Pane>, position_and_size: PaneGeom, layout: TiledPaneLayout) {
         self.apply_layout_properties_to_pane(
             &mut pane,
             &layout,
@@ -1026,16 +883,50 @@ impl <'a> PaneApplier <'a> {
         self.tiled_panes
             .add_pane_with_existing_geom(pane.pid(), pane);
     }
+    pub fn apply_floating_panes_layout_to_floating_pane(&mut self, mut pane: Box<dyn Pane>, floating_panes_layout: FloatingPaneLayout) {
+        let position_and_size = self
+            .floating_panes
+            .position_floating_pane_layout(&floating_panes_layout);
+        if let Some(pane_title) = floating_panes_layout.name.as_ref() {
+            pane.set_title(pane_title.into());
+        }
+        if floating_panes_layout.focus.unwrap_or(false) {
+            self.new_focused_pane_id = Some(pane.pid());
+        }
+        self.apply_position_and_size_to_floating_pane(pane, position_and_size)
+    }
+    pub fn apply_position_and_size_to_floating_pane(&mut self, mut pane: Box<dyn Pane>, position_and_size: PaneGeom) {
+        pane.set_geom(position_and_size);
+        let _ = resize_pty!(pane, self.os_api, self.senders, self.character_cell_size);
+        self.floating_panes.add_pane(pane.pid(), pane);
+    }
 
-    pub fn handle_remaining_pane_ids(&mut self, remaining_pane_ids: Vec<PaneId>, layout: &TiledPaneLayout, mut existing_tab_state: ExistingTabState) {
+    pub fn handle_remaining_tiled_pane_ids(&mut self, remaining_pane_ids: Vec<PaneId>, layout: &TiledPaneLayout, mut existing_tab_state: ExistingTabState) {
         for pane_id in remaining_pane_ids {
             if let Some(mut pane) = existing_tab_state.remove_pane(&pane_id) {
-                self.apply_layout_properties_to_pane(&mut pane, &layout, None);
                 self.tiled_panes.insert_pane(pane.pid(), pane);
             }
         }
     }
-    pub fn finalize_state(&mut self) {
+    pub fn handle_remaining_floating_pane_ids(&mut self, remaining_pane_ids: Vec<PaneId>, mut existing_tab_state: ExistingTabState) {
+        let remaining_pane_ids: Vec<PaneId> = existing_tab_state.pane_ids();
+        for pane_id in remaining_pane_ids {
+            match self.floating_panes.find_room_for_new_pane() {
+                Some(position_and_size) => {
+                    if let Some(mut pane) = existing_tab_state.remove_pane(&pane_id) {
+                        self.apply_position_and_size_to_floating_pane(
+                            pane,
+                            position_and_size,
+                        );
+                    }
+                },
+                None => {
+                    log::error!("could not find room for pane!")
+                },
+            }
+        }
+    }
+    pub fn finalize_tiled_state(&mut self) {
          // do some housekeeping to apply various layout properties to panes
          for pane_id in &self.pane_ids_expanded_in_stack {
              self.tiled_panes.expand_pane_in_stack(*pane_id);
@@ -1044,6 +935,13 @@ impl <'a> PaneApplier <'a> {
              self.tiled_panes.focus_pane_for_all_clients(pane_id);
          }
          self.tiled_panes.reapply_pane_focus();
+    }
+    pub fn finalize_floating_panes_state(&mut self) {
+         // do some housekeeping to apply various layout properties to panes
+         if let Some(pane_id) = self.new_focused_pane_id {
+             self.floating_panes.focus_pane_for_all_clients(pane_id);
+         }
+         self.floating_panes.reapply_pane_focus();
     }
     fn apply_layout_properties_to_pane(
         &self,

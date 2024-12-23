@@ -743,6 +743,7 @@ pub struct FloatingPaneLayout {
     pub focus: Option<bool>,
     pub already_running: bool,
     pub pane_initial_contents: Option<String>,
+    pub logical_position: Option<usize>,
 }
 
 impl FloatingPaneLayout {
@@ -758,6 +759,7 @@ impl FloatingPaneLayout {
             focus: None,
             already_running: false,
             pane_initial_contents: None,
+            logical_position: None,
         }
     }
     pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
