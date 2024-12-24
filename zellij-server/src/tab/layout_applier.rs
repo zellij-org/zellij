@@ -126,7 +126,7 @@ impl<'a> LayoutApplier<'a> {
         client_id: Option<ClientId>,
     ) -> Result<()> {
 
-        let positions_in_layout = self.flatten_layout(layout)?;
+        let positions_in_layout = self.flatten_layout(layout, true)?;
 
         let mut existing_tab_state =
             ExistingTabState::new(self.tiled_panes.drain());
@@ -185,124 +185,103 @@ impl<'a> LayoutApplier<'a> {
         );
         Ok(())
     }
-    fn flatten_layout(&self, layout: &TiledPaneLayout) -> Result<Vec<(TiledPaneLayout, PaneGeom)>> {
+    fn flatten_layout(&self, layout: &TiledPaneLayout, has_existing_panes: bool) -> Result<Vec<(TiledPaneLayout, PaneGeom)>> {
         let free_space = self.total_space_for_tiled_panes();
-        let tiled_panes_count = self.tiled_panes.visible_panes_count();
-        let focus_layout_if_not_focused = false;
-
-        // flattan layout
-
-        match layout.position_panes_in_space(&free_space, Some(tiled_panes_count), false, focus_layout_if_not_focused) {
-            Ok(mut positions_in_layout) => {
-                let mut logical_position = 0;
-                for (_layout, position_and_size) in positions_in_layout.iter_mut() {
-                    position_and_size.logical_position = Some(logical_position);
-                    logical_position += 1;
-                }
-                Ok(positions_in_layout)
-            }
-            // in the error branch, we try to recover by positioning the panes in the space but
-            // ignoring the percentage sizes (passing true as the third argument), this is a hack
-            // around some issues with the constraint system that should be addressed in a systemic
-            // manner
-            Err(_e) => {
-                match layout
-                .position_panes_in_space(&free_space, Some(tiled_panes_count), true, focus_layout_if_not_focused) {
-                // .map_err(|e| anyhow!(e)) {
-                    Ok(mut positions_in_layout) => {
-                        let mut logical_position = 0;
-                        for (_layout, position_and_size) in positions_in_layout.iter_mut() {
-                            position_and_size.logical_position = Some(logical_position);
-                            logical_position += 1;
-                        }
-                        Ok(positions_in_layout)
-                    },
-                    Err(e) => Err(anyhow!(e))
-                }
-            }
+        let tiled_panes_count = if has_existing_panes { Some(self.tiled_panes.visible_panes_count()) } else { None };
+        let focus_layout_if_not_focused = if has_existing_panes { false } else { true };
+        let mut positions_in_layout = layout
+            .position_panes_in_space(&free_space, tiled_panes_count, false, focus_layout_if_not_focused)
+            .or_else(|_e| {
+                // in the error branch, we try to recover by positioning the panes in the space but
+                // ignoring the percentage sizes (passing true as the third argument), this is a hack
+                // around some issues with the constraint system that should be addressed in a systemic
+                // manner
+                layout.position_panes_in_space(&free_space, tiled_panes_count, true, focus_layout_if_not_focused)
+            })
+            .map_err(|e| anyhow!(e))?;
+        let mut logical_position = 0;
+        for (_layout, position_and_size) in positions_in_layout.iter_mut() {
+            position_and_size.logical_position = Some(logical_position);
+            logical_position += 1;
         }
+        Ok(positions_in_layout)
     }
     fn apply_tiled_panes_layout(
         &mut self,
         layout: TiledPaneLayout,
-        new_terminal_ids: Vec<(u32, HoldForCommand)>,
-        new_plugin_ids: &mut HashMap<RunPluginOrAlias, Vec<u32>>,
+        mut new_terminal_ids: Vec<(u32, HoldForCommand)>,
+        mut new_plugin_ids: &mut HashMap<RunPluginOrAlias, Vec<u32>>,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to apply tiled panes layout");
-        let free_space = self.total_space_for_tiled_panes();
-        let focus_layout_if_not_focused = true;
-        let mut positions_in_layout = match layout.position_panes_in_space(&free_space, None, false, focus_layout_if_not_focused)
-        {
-            Ok(positions_in_layout) => positions_in_layout,
-            // in the error branch, we try to recover by positioning the panes in the space but
-            // ignoring the percentage sizes (passing true as the third argument), this is a hack
-            // around some issues with the constraint system that should be addressed in a systemic
-            // manner
-            Err(_e) => layout
-                .position_panes_in_space(&free_space, None, true, focus_layout_if_not_focused)
-                .map_err(|e| anyhow!(e))?,
-        };
-        let mut run_instructions_to_ignore = layout.run_instructions_to_ignore.clone();
-        let mut new_terminal_ids = new_terminal_ids.iter();
-
+        let mut positions_in_layout = self.flatten_layout(&layout, false)?;
+        let run_instructions_without_a_location = self.position_run_instructions_to_ignore(
+            &layout.run_instructions_to_ignore,
+            &mut positions_in_layout
+        );
+        let focus_pane_id = self.position_new_panes(&mut new_terminal_ids, &mut new_plugin_ids, &mut positions_in_layout)?;
+        self.handle_run_instructions_without_a_location(run_instructions_without_a_location, &mut new_terminal_ids);
+        self.adjust_viewport().with_context(err_context)?;
+        self.set_focused_tiled_pane(focus_pane_id, client_id);
+        Ok(())
+    }
+    fn position_run_instructions_to_ignore(&mut self, run_instructions_to_ignore: &Vec<Option<Run>>, positions_in_layout: &mut Vec<(TiledPaneLayout, PaneGeom)>) -> Vec<Option<Run>> {
+        // here we try to find rooms for the panes that are already running (represented by
+        // run_instructions_to_ignore), we try to either find an explicit position (the new
+        // layout has a pane with the exact run instruction) or an otherwise free position
+        // (the new layout has a pane with None as its run instruction, eg. just `pane` in the
+        // layout)
+        let mut run_instructions_without_a_location = vec![];
+        for run_instruction in run_instructions_to_ignore.clone().drain(..) {
+            if self.place_running_pane_in_exact_match_location(&run_instruction, positions_in_layout) {
+                // found exact match
+            } else if self.place_running_pane_in_empty_location(&run_instruction, positions_in_layout) {
+                // found empty location
+            } else {
+                // no room! we'll add it below after we place everything else
+                run_instructions_without_a_location.push(run_instruction);
+            }
+        }
+        run_instructions_without_a_location
+    }
+    fn position_new_panes(&mut self,
+        new_terminal_ids: &mut Vec<(u32, HoldForCommand)>,
+        new_plugin_ids: &mut HashMap<RunPluginOrAlias, Vec<u32>>,
+        positions_in_layout: &mut Vec<(TiledPaneLayout, PaneGeom)>
+    ) -> Result<Option<PaneId>> {
+        // here we open new panes for each run instruction in the layout with the details
+        // we got from the plugin thread and pty thread
+        // let positions_and_size = positions_in_layout.iter();
         let mut focus_pane_id: Option<PaneId> = None;
         let mut set_focus_pane_id = |layout: &TiledPaneLayout, pane_id: PaneId| {
             if layout.focus.unwrap_or(false) && focus_pane_id.is_none() {
                 focus_pane_id = Some(pane_id);
             }
         };
-
-        let mut logical_position = 0;
-        for (_layout, position_and_size) in positions_in_layout.iter_mut() {
-            position_and_size.logical_position = Some(logical_position);
-            logical_position += 1;
-        }
-
-        // first, try to find rooms for the panes that are already running (represented by
-        // run_instructions_to_ignore), we try to either find an explicit position (the new
-        // layout has a pane with the exact run instruction) or an otherwise free position
-        // (the new layout has a pane with None as its run instruction)
-        let mut run_instructions_without_a_location = vec![];
-        for run_instruction in run_instructions_to_ignore.drain(..) {
-            let found_exact_match = self.place_running_pane_in_exact_match_location(&run_instruction, &mut positions_in_layout);
-            if !found_exact_match {
-                let found_empty_space = self.place_running_pane_in_empty_location(&run_instruction, &mut positions_in_layout);
-                if !found_empty_space {
-                    run_instructions_without_a_location.push(run_instruction);
-                }
-            }
-        }
-
-        // then, we open new panes for each run instruction in the layout with the details
-        // we got from the plugin thread and pty thread
-        let positions_and_size = positions_in_layout.iter();
-        for (layout, position_and_size) in positions_and_size {
+        for (layout, position_and_size) in positions_in_layout {
             if let Some(Run::Plugin(run)) = layout.run.clone() {
-                let pid = self.new_plugin_pane(run, new_plugin_ids, position_and_size, layout)?;
-                set_focus_pane_id(layout, PaneId::Plugin(pid));
-            } else {
+                let pid = self.new_plugin_pane(run, new_plugin_ids, &position_and_size, &layout)?;
+                set_focus_pane_id(&layout, PaneId::Plugin(pid));
+            } else if !new_terminal_ids.is_empty() {
                 // there are still panes left to fill, use the pids we received in this method
-                if let Some((pid, hold_for_command)) = new_terminal_ids.next() {
-                    self.new_terminal_pane(*pid, hold_for_command, position_and_size, layout)?;
-                    set_focus_pane_id(layout, PaneId::Terminal(*pid));
-                }
+                let (pid, hold_for_command) = new_terminal_ids.remove(0);
+                self.new_terminal_pane(pid, &hold_for_command, &position_and_size, &layout)?;
+                set_focus_pane_id(&layout, PaneId::Terminal(pid));
             }
         }
-
+        Ok(focus_pane_id)
+    }
+    fn handle_run_instructions_without_a_location(
+        &mut self,
+        run_instructions_without_a_location: Vec<Option<Run>>,
+        new_terminal_ids: &mut Vec<(u32, HoldForCommand)>
+    ) {
         for run_instruction in run_instructions_without_a_location {
             self.tiled_panes.assign_geom_for_pane_with_run(run_instruction);
-
         }
-
         for (unused_pid, _) in new_terminal_ids {
-            self.senders
-                .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid)))
-                .with_context(err_context)?;
+            let _ = self.senders.send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid)));
         }
-        self.adjust_viewport().with_context(err_context)?;
-        self.set_focused_tiled_pane(focus_pane_id, client_id);
-        Ok(())
     }
     fn new_plugin_pane(
         &mut self,
