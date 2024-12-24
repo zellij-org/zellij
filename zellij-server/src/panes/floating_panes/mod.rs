@@ -282,6 +282,9 @@ impl FloatingPanes {
         if let Some(is_pinned) = &floating_pane_layout.pinned {
             position.is_pinned = *is_pinned;
         }
+        if let Some(logical_position) = &floating_pane_layout.logical_position {
+            position.logical_position = Some(*logical_position);
+        }
         if position.cols.as_usize() > viewport.cols {
             position.cols = Dimension::fixed(viewport.cols);
         }

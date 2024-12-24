@@ -769,19 +769,12 @@ impl Tab {
     }
     fn relayout_tiled_panes(
         &mut self,
-        client_id: Option<ClientId>,
         search_backwards: bool,
-        refocus_pane: bool,
         best_effort: bool,
     ) -> Result<()> {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
-        let refocus_pane = if self.swap_layouts.is_tiled_damaged() {
-            false
-        } else {
-            refocus_pane
-        };
         if let Some(layout_candidate) = self
             .swap_layouts
             .swap_tiled_panes(&self.tiled_panes, search_backwards)
@@ -817,8 +810,6 @@ impl Tab {
             )
             .apply_tiled_panes_layout_to_existing_panes(
                 &layout_candidate,
-                refocus_pane,
-                client_id,
             )?;
         }
         self.tiled_panes.reapply_pane_frames();
@@ -828,12 +819,12 @@ impl Tab {
         self.set_should_clear_display_before_rendering();
         Ok(())
     }
-    pub fn previous_swap_layout(&mut self, client_id: Option<ClientId>) -> Result<()> {
+    pub fn previous_swap_layout(&mut self) -> Result<()> {
         let search_backwards = true;
         if self.floating_panes.panes_are_visible() {
             self.relayout_floating_panes(search_backwards)?;
         } else {
-            self.relayout_tiled_panes(client_id, search_backwards, true, false)?;
+            self.relayout_tiled_panes(search_backwards, true)?;
         }
         self.senders
             .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
@@ -842,14 +833,13 @@ impl Tab {
     }
     pub fn next_swap_layout(
         &mut self,
-        client_id: Option<ClientId>,
         refocus_pane: bool,
     ) -> Result<()> {
         let search_backwards = false;
         if self.floating_panes.panes_are_visible() {
             self.relayout_floating_panes(search_backwards)?;
         } else {
-            self.relayout_tiled_panes(client_id, search_backwards, refocus_pane, false)?;
+            self.relayout_tiled_panes(search_backwards, refocus_pane)?;
         }
         self.senders
             .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
@@ -1004,7 +994,7 @@ impl Tab {
             if let Some(focused_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
                 if self.tiled_panes.has_room_for_new_pane() {
                     let floating_pane_to_embed = self
-                        .extract_pane(focused_floating_pane_id, true, Some(client_id))
+                        .extract_pane(focused_floating_pane_id, true)
                         .with_context(|| format!(
                         "failed to find floating pane (ID: {focused_floating_pane_id:?}) to embed for client {client_id}",
                     ))
@@ -1023,14 +1013,13 @@ impl Tab {
                 return Ok(());
             }
             if let Some(embedded_pane_to_float) =
-                self.extract_pane(focused_pane_id, true, Some(client_id))
+                self.extract_pane(focused_pane_id, true)
             {
                 self.show_floating_panes();
                 self.add_floating_pane(
                     embedded_pane_to_float,
                     focused_pane_id,
                     None,
-                    Some(client_id),
                 )?;
             }
         }
@@ -1049,7 +1038,7 @@ impl Tab {
         if self.floating_panes.panes_contain(&pane_id) {
             if self.tiled_panes.has_room_for_new_pane() {
                 let floating_pane_to_embed = self
-                    .extract_pane(pane_id, true, None)
+                    .extract_pane(pane_id, true)
                     .with_context(|| {
                         format!("failed to find floating pane (ID: {pane_id:?}) to embed",)
                     })
@@ -1062,8 +1051,8 @@ impl Tab {
                 // don't close the only pane on screen...
                 return Ok(());
             }
-            if let Some(embedded_pane_to_float) = self.extract_pane(pane_id, true, None) {
-                self.add_floating_pane(embedded_pane_to_float, pane_id, None, None)?;
+            if let Some(embedded_pane_to_float) = self.extract_pane(pane_id, true) {
+                self.add_floating_pane(embedded_pane_to_float, pane_id, None)?;
             }
         }
         Ok(())
@@ -1208,7 +1197,7 @@ impl Tab {
                 .insert(pid, (is_scrollback_editor, new_pane));
             Ok(())
         } else if self.floating_panes.panes_are_visible() {
-            self.add_floating_pane(new_pane, pid, floating_pane_coordinates, client_id)
+            self.add_floating_pane(new_pane, pid, floating_pane_coordinates)
         } else {
             self.add_tiled_pane(new_pane, pid, client_id)
         }
@@ -1910,7 +1899,7 @@ impl Tab {
                         should_update_ui = true;
                     },
                     Some(AdjustedInput::CloseThisPane) => {
-                        self.close_pane(PaneId::Terminal(active_terminal_id), false, None);
+                        self.close_pane(PaneId::Terminal(active_terminal_id), false);
                         should_update_ui = true;
                     },
                     Some(AdjustedInput::DropToShellInThisPane { working_dir }) => {
@@ -2327,7 +2316,7 @@ impl Tab {
         if self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !self.is_fullscreen_active()
         {
             self.swap_layouts.set_is_tiled_damaged();
-            let _ = self.relayout_tiled_panes(None, false, false, true);
+            let _ = self.relayout_tiled_panes(false, false);
         }
         self.set_should_clear_display_before_rendering();
         self.senders
@@ -2669,7 +2658,7 @@ impl Tab {
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(pid))
                     .context("failed to close down to max terminals")?;
-                self.close_pane(pid, false, None);
+                self.close_pane(pid, false);
             }
         }
         Ok(())
@@ -2729,7 +2718,6 @@ impl Tab {
         &mut self,
         id: PaneId,
         ignore_suppressed_panes: bool,
-        client_id: Option<ClientId>,
     ) {
         // we need to ignore suppressed panes when we toggle a pane to be floating/embedded(tiled)
         // this is because in that case, while we do use this logic, we're not actually closing the
@@ -2759,7 +2747,7 @@ impl Tab {
                 self.swap_layouts.set_is_floating_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
-                let _ = self.next_swap_layout(client_id, false);
+                let _ = self.next_swap_layout(false);
             }
         } else {
             if self.tiled_panes.fullscreen_is_active() {
@@ -2772,7 +2760,7 @@ impl Tab {
                 self.swap_layouts.set_is_tiled_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
-                let _ = self.next_swap_layout(client_id, false);
+                let _ = self.next_swap_layout(false);
             }
         };
         let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
@@ -2785,7 +2773,6 @@ impl Tab {
         &mut self,
         id: PaneId,
         dont_swap_if_suppressed: bool,
-        client_id: Option<ClientId>,
     ) -> Option<Box<dyn Pane>> {
         if !dont_swap_if_suppressed && self.suppressed_panes.contains_key(&id) {
             // this is done for the scrollback editor
@@ -2814,7 +2801,7 @@ impl Tab {
                 self.swap_layouts.set_is_floating_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
-                let _ = self.next_swap_layout(client_id, false);
+                let _ = self.next_swap_layout(false);
             }
             closed_pane
         } else if self.tiled_panes.panes_contain(&id) {
@@ -2828,7 +2815,7 @@ impl Tab {
                 self.swap_layouts.set_is_tiled_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
-                let _ = self.next_swap_layout(client_id, false);
+                let _ = self.next_swap_layout(false);
             }
             closed_pane
         } else if self.suppressed_panes.contains_key(&id) {
@@ -2919,7 +2906,7 @@ impl Tab {
 
         if self.floating_panes.panes_are_visible() {
             if let Some(active_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
-                self.close_pane(active_floating_pane_id, false, Some(client_id));
+                self.close_pane(active_floating_pane_id, false);
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(active_floating_pane_id))
                     .with_context(|| err_context(active_floating_pane_id))?;
@@ -2927,7 +2914,7 @@ impl Tab {
             }
         }
         if let Some(active_pane_id) = self.tiled_panes.get_active_pane_id(client_id) {
-            self.close_pane(active_pane_id, false, Some(client_id));
+            self.close_pane(active_pane_id, false);
             self.senders
                 .send_to_pty(PtyInstruction::ClosePane(active_pane_id))
                 .with_context(|| err_context(active_pane_id))?;
@@ -4140,7 +4127,7 @@ impl Tab {
                     pane.1.set_selectable(true);
                     if should_float {
                         self.show_floating_panes();
-                        self.add_floating_pane(pane.1, pane_id, None, Some(client_id))
+                        self.add_floating_pane(pane.1, pane_id, None)
                     } else {
                         self.hide_floating_panes();
                         self.add_tiled_pane(pane.1, pane_id, Some(client_id))
@@ -4153,7 +4140,7 @@ impl Tab {
         match self.suppressed_panes.remove(&pane_id) {
             Some(pane) => {
                 self.show_floating_panes();
-                self.add_floating_pane(pane.1, pane_id, None, None)
+                self.add_floating_pane(pane.1, pane_id, None)
                     .non_fatal();
                 self.floating_panes.focus_pane_for_all_clients(pane_id);
             },
@@ -4167,7 +4154,7 @@ impl Tab {
         // not take it out of there when another pane is closed (eg. like happens with the
         // scrollback editor), but it has to take itself out on its own (eg. a plugin using the
         // show_self() method)
-        if let Some(pane) = self.extract_pane(pane_id, true, client_id) {
+        if let Some(pane) = self.extract_pane(pane_id, true) {
             let is_scrollback_editor = false;
             self.suppressed_panes
                 .insert(pane_id, (is_scrollback_editor, pane));
@@ -4194,7 +4181,6 @@ impl Tab {
         mut pane: Box<dyn Pane>,
         pane_id: PaneId,
         floating_pane_coordinates: Option<FloatingPaneCoordinates>,
-        client_id: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || format!("failed to add floating pane");
         if let Some(mut new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
@@ -4219,7 +4205,7 @@ impl Tab {
             // confusing and not what the user intends
             self.swap_layouts.set_is_floating_damaged(); // we do this so that we won't skip to the
                                                          // next layout
-            self.next_swap_layout(client_id, true)?;
+            self.next_swap_layout(true)?;
         }
         Ok(())
     }
@@ -4252,7 +4238,7 @@ impl Tab {
             // confusing and not what the user intends
             self.swap_layouts.set_is_tiled_damaged(); // we do this so that we won't skip to the
                                                       // next layout
-            self.next_swap_layout(client_id, true)?;
+            self.next_swap_layout(true)?;
         }
         Ok(())
     }
