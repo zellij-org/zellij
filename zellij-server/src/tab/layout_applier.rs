@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use zellij_utils::{
     data::{Palette, Style},
-    input::layout::{FloatingPaneLayout, Run, RunPluginOrAlias, TiledPaneLayout},
+    input::layout::{FloatingPaneLayout, Run, RunPluginOrAlias, RunPlugin, TiledPaneLayout},
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
@@ -263,45 +263,14 @@ impl<'a> LayoutApplier<'a> {
         // run_instructions_to_ignore), we try to either find an explicit position (the new
         // layout has a pane with the exact run instruction) or an otherwise free position
         // (the new layout has a pane with None as its run instruction)
+        let mut run_instructions_without_a_location = vec![];
         for run_instruction in run_instructions_to_ignore.drain(..) {
-            if let Some(position) = positions_in_layout
-                .iter()
-                .position(|(layout, _position_and_size)| &layout.run == &run_instruction)
-            {
-                let (layout, position_and_size) = positions_in_layout.remove(position);
-                self.tiled_panes.set_geom_for_pane_with_run(
-                    layout.run,
-                    position_and_size,
-                    layout.borderless,
-                );
-            } else if let Some(position) = positions_in_layout
-                .iter()
-                .position(|(layout, _position_and_size)| layout.run.is_none())
-            {
-                let (layout, position_and_size) = positions_in_layout.remove(position);
-                self.tiled_panes.set_geom_for_pane_with_run(
-                    run_instruction,
-                    position_and_size,
-                    layout.borderless,
-                );
-            } else if let Some(position) =
-                positions_in_layout
-                    .iter()
-                    .position(|(layout, _position_and_size)| {
-                        Run::is_terminal(&layout.run) && Run::is_terminal(&run_instruction)
-                    })
-            {
-                let (layout, position_and_size) = positions_in_layout.remove(position);
-                self.tiled_panes.set_geom_for_pane_with_run(
-                    run_instruction,
-                    position_and_size,
-                    layout.borderless,
-                );
-            } else {
-                log::error!(
-                    "Failed to find room for run instruction: {:?}",
-                    run_instruction
-                );
+            let found_exact_match = self.place_running_pane_in_exact_match_location(&run_instruction, &mut positions_in_layout);
+            if !found_exact_match {
+                let found_empty_space = self.place_running_pane_in_empty_location(&run_instruction, &mut positions_in_layout);
+                if !found_empty_space {
+                    run_instructions_without_a_location.push(run_instruction);
+                }
             }
         }
 
@@ -310,89 +279,22 @@ impl<'a> LayoutApplier<'a> {
         let positions_and_size = positions_in_layout.iter();
         for (layout, position_and_size) in positions_and_size {
             if let Some(Run::Plugin(run)) = layout.run.clone() {
-                let pane_title = run.location_string();
-                let pid = new_plugin_ids
-                    .get_mut(&run)
-                    .and_then(|ids| ids.pop())
-                    .with_context(err_context)?;
-                let mut new_plugin = PluginPane::new(
-                    pid,
-                    *position_and_size,
-                    self.senders
-                        .to_plugin
-                        .as_ref()
-                        .with_context(err_context)?
-                        .clone(),
-                    pane_title,
-                    layout.name.clone().unwrap_or_default(),
-                    self.sixel_image_store.clone(),
-                    self.terminal_emulator_colors.clone(),
-                    self.terminal_emulator_color_codes.clone(),
-                    self.link_handler.clone(),
-                    self.character_cell_size.clone(),
-                    self.connected_clients.borrow().iter().copied().collect(),
-                    self.style,
-                    layout.run.clone(),
-                    self.debug,
-                    self.arrow_fonts,
-                    self.styled_underlines,
-                );
-                if let Some(pane_initial_contents) = &layout.pane_initial_contents {
-                    new_plugin.handle_pty_bytes(pane_initial_contents.as_bytes().into());
-                    new_plugin.handle_pty_bytes("\n\r".as_bytes().into());
-                }
-
-                new_plugin.set_borderless(layout.borderless);
-                if let Some(exclude_from_sync) = layout.exclude_from_sync {
-                    new_plugin.set_exclude_from_sync(exclude_from_sync);
-                }
-                self.tiled_panes
-                    .add_pane_with_existing_geom(PaneId::Plugin(pid), Box::new(new_plugin));
+                let pid = self.new_plugin_pane(run, new_plugin_ids, position_and_size, layout)?;
                 set_focus_pane_id(layout, PaneId::Plugin(pid));
             } else {
                 // there are still panes left to fill, use the pids we received in this method
                 if let Some((pid, hold_for_command)) = new_terminal_ids.next() {
-                    let next_terminal_position =
-                        get_next_terminal_position(&self.tiled_panes, &self.floating_panes);
-                    let initial_title = match &layout.run {
-                        Some(Run::Command(run_command)) => Some(run_command.to_string()),
-                        _ => None,
-                    };
-                    let mut new_pane = TerminalPane::new(
-                        *pid,
-                        *position_and_size,
-                        self.style,
-                        next_terminal_position,
-                        layout.name.clone().unwrap_or_default(),
-                        self.link_handler.clone(),
-                        self.character_cell_size.clone(),
-                        self.sixel_image_store.clone(),
-                        self.terminal_emulator_colors.clone(),
-                        self.terminal_emulator_color_codes.clone(),
-                        initial_title,
-                        layout.run.clone(),
-                        self.debug,
-                        self.arrow_fonts,
-                        self.styled_underlines,
-                        self.explicitly_disable_kitty_keyboard_protocol,
-                    );
-                    if let Some(pane_initial_contents) = &layout.pane_initial_contents {
-                        new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
-                        new_pane.handle_pty_bytes("\n\r".as_bytes().into());
-                    }
-                    new_pane.set_borderless(layout.borderless);
-                    if let Some(exclude_from_sync) = layout.exclude_from_sync {
-                        new_pane.set_exclude_from_sync(exclude_from_sync);
-                    }
-                    if let Some(held_command) = hold_for_command {
-                        new_pane.hold(None, true, held_command.clone());
-                    }
-                    self.tiled_panes
-                        .add_pane_with_existing_geom(PaneId::Terminal(*pid), Box::new(new_pane));
+                    self.new_terminal_pane(*pid, hold_for_command, position_and_size, layout)?;
                     set_focus_pane_id(layout, PaneId::Terminal(*pid));
                 }
             }
         }
+
+        for run_instruction in run_instructions_without_a_location {
+            self.tiled_panes.assign_geom_for_pane_with_run(run_instruction);
+
+        }
+
         for (unused_pid, _) in new_terminal_ids {
             self.senders
                 .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid)))
@@ -401,6 +303,133 @@ impl<'a> LayoutApplier<'a> {
         self.adjust_viewport().with_context(err_context)?;
         self.set_focused_tiled_pane(focus_pane_id, client_id);
         Ok(())
+    }
+    fn new_plugin_pane(
+        &mut self,
+        run: RunPluginOrAlias,
+        new_plugin_ids: &mut HashMap<RunPluginOrAlias, Vec<u32>>,
+        position_and_size: &PaneGeom,
+        layout: &TiledPaneLayout,
+    ) -> Result<u32> {
+        let err_context = || format!("Failed to start new plugin pane");
+        let pane_title = run.location_string();
+        let pid = new_plugin_ids
+            .get_mut(&run)
+            .and_then(|ids| ids.pop())
+            .with_context(err_context)?;
+        let mut new_plugin = PluginPane::new(
+            pid,
+            *position_and_size,
+            self.senders
+                .to_plugin
+                .as_ref()
+                .with_context(err_context)?
+                .clone(),
+            pane_title,
+            layout.name.clone().unwrap_or_default(),
+            self.sixel_image_store.clone(),
+            self.terminal_emulator_colors.clone(),
+            self.terminal_emulator_color_codes.clone(),
+            self.link_handler.clone(),
+            self.character_cell_size.clone(),
+            self.connected_clients.borrow().iter().copied().collect(),
+            self.style,
+            layout.run.clone(),
+            self.debug,
+            self.arrow_fonts,
+            self.styled_underlines,
+        );
+        if let Some(pane_initial_contents) = &layout.pane_initial_contents {
+            new_plugin.handle_pty_bytes(pane_initial_contents.as_bytes().into());
+            new_plugin.handle_pty_bytes("\n\r".as_bytes().into());
+        }
+
+        new_plugin.set_borderless(layout.borderless);
+        if let Some(exclude_from_sync) = layout.exclude_from_sync {
+            new_plugin.set_exclude_from_sync(exclude_from_sync);
+        }
+        self.tiled_panes
+            .add_pane_with_existing_geom(PaneId::Plugin(pid), Box::new(new_plugin));
+        Ok(pid)
+    }
+    fn new_terminal_pane(
+        &mut self,
+        pid: u32,
+        hold_for_command: &HoldForCommand,
+        position_and_size: &PaneGeom,
+        layout: &TiledPaneLayout,
+    ) -> Result<()> {
+        let next_terminal_position =
+            get_next_terminal_position(&self.tiled_panes, &self.floating_panes);
+        let initial_title = match &layout.run {
+            Some(Run::Command(run_command)) => Some(run_command.to_string()),
+            _ => None,
+        };
+        let mut new_pane = TerminalPane::new(
+            pid,
+            *position_and_size,
+            self.style,
+            next_terminal_position,
+            layout.name.clone().unwrap_or_default(),
+            self.link_handler.clone(),
+            self.character_cell_size.clone(),
+            self.sixel_image_store.clone(),
+            self.terminal_emulator_colors.clone(),
+            self.terminal_emulator_color_codes.clone(),
+            initial_title,
+            layout.run.clone(),
+            self.debug,
+            self.arrow_fonts,
+            self.styled_underlines,
+            self.explicitly_disable_kitty_keyboard_protocol,
+        );
+        if let Some(pane_initial_contents) = &layout.pane_initial_contents {
+            new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
+            new_pane.handle_pty_bytes("\n\r".as_bytes().into());
+        }
+        new_pane.set_borderless(layout.borderless);
+        if let Some(exclude_from_sync) = layout.exclude_from_sync {
+            new_pane.set_exclude_from_sync(exclude_from_sync);
+        }
+        if let Some(held_command) = hold_for_command {
+            new_pane.hold(None, true, held_command.clone());
+        }
+        self.tiled_panes
+            .add_pane_with_existing_geom(PaneId::Terminal(pid), Box::new(new_pane));
+        Ok(())
+    }
+    fn place_running_pane_in_exact_match_location(&mut self, run_instruction: &Option<Run>, positions_in_layout: &mut Vec<(TiledPaneLayout, PaneGeom)>) -> bool {
+        let mut found_exact_match = false;
+
+        if let Some(position) = positions_in_layout
+            .iter()
+            .position(|(layout, _position_and_size)| &layout.run == run_instruction)
+        {
+            let (layout, position_and_size) = positions_in_layout.remove(position);
+            self.tiled_panes.set_geom_for_pane_with_run(
+                layout.run,
+                position_and_size,
+                layout.borderless,
+            );
+            found_exact_match = true;
+        }
+        found_exact_match
+    }
+    fn place_running_pane_in_empty_location(&mut self, run_instruction: &Option<Run>, positions_in_layout: &mut Vec<(TiledPaneLayout, PaneGeom)>) -> bool {
+        let mut found_empty_location = false;
+        if let Some(position) = positions_in_layout
+            .iter()
+            .position(|(layout, _position_and_size)| layout.run.is_none())
+        {
+            let (layout, position_and_size) = positions_in_layout.remove(position);
+            self.tiled_panes.set_geom_for_pane_with_run(
+                run_instruction.clone(),
+                position_and_size,
+                layout.borderless,
+            );
+            found_empty_location = true;
+        }
+        found_empty_location
     }
     fn apply_floating_panes_layout(
         &mut self,
