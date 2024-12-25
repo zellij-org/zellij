@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(layouts): off by 1 when focusing a specific tab through a layout (https://github.com/zellij-org/zellij/pull/3844)
 * fix(multiplayer): properly clear fake cursors (https://github.com/zellij-org/zellij/pull/3845)
 * feat(ux): pin floating panes (https://github.com/zellij-org/zellij/pull/3876)
+* fix(layout-applier): logical index pane sorting (https://github.com/zellij-org/zellij/pull/3893)
 
 ## [0.41.2] - 2024-11-19
 * fix(input): keypresses not being identified properly with kitty keyboard protocol in some terminals (https://github.com/zellij-org/zellij/pull/3725)
