@@ -183,6 +183,27 @@ impl TiledPanes {
             .is_some();
         has_room_for_new_pane || pane_grid.has_room_for_new_stacked_pane() || self.panes.is_empty()
     }
+
+    pub fn assign_geom_for_pane_with_run(&mut self, run: Option<Run>) {
+        // here we're removing the first pane we find with this run instruction and re-adding it so
+        // that it gets a new geom similar to how it would when being added to the tab originally
+        if let Some(pane_id) = self
+            .panes
+            .iter()
+            .find_map(|(pid, p)| {
+                if p.invoked_with() == &run {
+                    Some(pid)
+                } else {
+                    None
+                }
+            })
+            .copied()
+        {
+            if let Some(pane) = self.panes.remove(&pane_id) {
+                self.add_pane(pane.pid(), pane, true);
+            }
+        }
+    }
     fn add_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>, should_relayout: bool) {
         if self.panes.is_empty() {
             self.panes.insert(pane_id, pane);

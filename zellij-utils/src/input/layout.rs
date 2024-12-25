@@ -743,6 +743,7 @@ pub struct FloatingPaneLayout {
     pub focus: Option<bool>,
     pub already_running: bool,
     pub pane_initial_contents: Option<String>,
+    pub logical_position: Option<usize>,
 }
 
 impl FloatingPaneLayout {
@@ -758,6 +759,7 @@ impl FloatingPaneLayout {
             focus: None,
             already_running: false,
             pane_initial_contents: None,
+            logical_position: None,
         }
     }
     pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
@@ -877,6 +879,7 @@ impl TiledPaneLayout {
         space: &PaneGeom,
         max_panes: Option<usize>,
         ignore_percent_split_sizes: bool,
+        focus_layout_if_not_focused: bool,
     ) -> Result<Vec<(TiledPaneLayout, PaneGeom)>, &'static str> {
         let layouts = match max_panes {
             Some(max_panes) => {
@@ -889,7 +892,7 @@ impl TiledPaneLayout {
                     // because we really should support that
                     let children_count = (max_panes - pane_count_in_layout) + 1;
                     let mut extra_children = vec![TiledPaneLayout::default(); children_count];
-                    if !layout_to_split.has_focused_node() {
+                    if !layout_to_split.has_focused_node() && focus_layout_if_not_focused {
                         if let Some(last_child) = extra_children.last_mut() {
                             last_child.focus = Some(true);
                         }
@@ -898,7 +901,7 @@ impl TiledPaneLayout {
                 } else {
                     layout_to_split.truncate(max_panes);
                 }
-                if !layout_to_split.has_focused_node() {
+                if !layout_to_split.has_focused_node() && focus_layout_if_not_focused {
                     layout_to_split.focus_deepest_pane();
                 }
 
@@ -1700,6 +1703,7 @@ fn split_space(
                 rows: inherited_dimension,
                 is_stacked: layout.children_are_stacked,
                 is_pinned: false,
+                logical_position: None,
             },
             SplitDirection::Horizontal => PaneGeom {
                 x: space_to_split.x,
@@ -1708,6 +1712,7 @@ fn split_space(
                 rows: split_dimension,
                 is_stacked: layout.children_are_stacked,
                 is_pinned: false,
+                logical_position: None,
             },
         };
         split_geom.push(geom);
@@ -1720,6 +1725,7 @@ fn split_space(
         layout.children_split_direction,
     );
     let mut pane_positions = Vec::new();
+    let mut pane_positions_with_children = Vec::new();
     for (i, part) in layout.children.iter().enumerate() {
         let part_position_and_size = split_geom.get(i).unwrap();
         if !part.children.is_empty() {
@@ -1729,12 +1735,18 @@ fn split_space(
                 total_space_to_split,
                 ignore_percent_split_sizes,
             )?;
-            pane_positions.append(&mut part_positions);
+            // add the only first child to pane_positions only adding the others after all the
+            // childfree panes have been added so that the returned vec will be sorted breadth-first
+            if !part_positions.is_empty() {
+                pane_positions.push(part_positions.remove(0));
+            }
+            pane_positions_with_children.append(&mut part_positions);
         } else {
             let part = part.clone();
             pane_positions.push((part, *part_position_and_size));
         }
     }
+    pane_positions.append(&mut pane_positions_with_children);
     if pane_positions.is_empty() {
         let layout = layout.clone();
         pane_positions.push((layout, space_to_split.clone()));
