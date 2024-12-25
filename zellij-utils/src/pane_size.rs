@@ -17,7 +17,7 @@ pub struct PaneGeom {
     pub rows: Dimension,
     pub cols: Dimension,
     pub is_stacked: bool,
-    pub is_pinned: bool, // only relevant to floating panes
+    pub is_pinned: bool,                 // only relevant to floating panes
     pub logical_position: Option<usize>, // relevant when placing this pane in a layout
 }
 

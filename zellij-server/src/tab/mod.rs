@@ -732,10 +732,7 @@ impl Tab {
             }
         }
     }
-    fn relayout_floating_panes(
-        &mut self,
-        search_backwards: bool,
-    ) -> Result<()> {
+    fn relayout_floating_panes(&mut self, search_backwards: bool) -> Result<()> {
         if let Some(layout_candidate) = self
             .swap_layouts
             .swap_floating_panes(&self.floating_panes, search_backwards)
@@ -761,17 +758,12 @@ impl Tab {
                 self.styled_underlines,
                 self.explicitly_disable_kitty_keyboard_protocol,
             )
-            .apply_floating_panes_layout_to_existing_panes(
-                &layout_candidate,
-            )?;
+            .apply_floating_panes_layout_to_existing_panes(&layout_candidate)?;
         }
         self.set_force_render();
         Ok(())
     }
-    fn relayout_tiled_panes(
-        &mut self,
-        search_backwards: bool,
-    ) -> Result<()> {
+    fn relayout_tiled_panes(&mut self, search_backwards: bool) -> Result<()> {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
@@ -800,9 +792,7 @@ impl Tab {
                 self.styled_underlines,
                 self.explicitly_disable_kitty_keyboard_protocol,
             )
-            .apply_tiled_panes_layout_to_existing_panes(
-                &layout_candidate,
-            )?;
+            .apply_tiled_panes_layout_to_existing_panes(&layout_candidate)?;
         }
         self.tiled_panes.reapply_pane_frames();
         let display_area = *self.display_area.borrow();
@@ -1001,15 +991,9 @@ impl Tab {
                 // don't close the only pane on screen...
                 return Ok(());
             }
-            if let Some(embedded_pane_to_float) =
-                self.extract_pane(focused_pane_id, true)
-            {
+            if let Some(embedded_pane_to_float) = self.extract_pane(focused_pane_id, true) {
                 self.show_floating_panes();
-                self.add_floating_pane(
-                    embedded_pane_to_float,
-                    focused_pane_id,
-                    None,
-                )?;
+                self.add_floating_pane(embedded_pane_to_float, focused_pane_id, None)?;
             }
         }
         Ok(())
@@ -2703,11 +2687,7 @@ impl Tab {
             self.draw_pane_frames,
         );
     }
-    pub fn close_pane(
-        &mut self,
-        id: PaneId,
-        ignore_suppressed_panes: bool,
-    ) {
+    pub fn close_pane(&mut self, id: PaneId, ignore_suppressed_panes: bool) {
         // we need to ignore suppressed panes when we toggle a pane to be floating/embedded(tiled)
         // this is because in that case, while we do use this logic, we're not actually closing the
         // pane, we're moving it
@@ -4143,8 +4123,7 @@ impl Tab {
         match self.suppressed_panes.remove(&pane_id) {
             Some(pane) => {
                 self.show_floating_panes();
-                self.add_floating_pane(pane.1, pane_id, None)
-                    .non_fatal();
+                self.add_floating_pane(pane.1, pane_id, None).non_fatal();
                 self.floating_panes.focus_pane_for_all_clients(pane_id);
             },
             None => {

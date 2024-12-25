@@ -2038,8 +2038,7 @@ impl Screen {
             if let Some(plugin_pane_id) = tab.find_plugin(&run_plugin) {
                 tab_index_and_plugin_pane_id = Some((*tab_index, plugin_pane_id));
                 if move_to_focused_tab && focused_tab_index != *tab_index {
-                    plugin_pane_to_move_to_active_tab =
-                        tab.extract_pane(plugin_pane_id, true);
+                    plugin_pane_to_move_to_active_tab = tab.extract_pane(plugin_pane_id, true);
                 }
 
                 break;
@@ -2292,11 +2291,7 @@ impl Screen {
 
             if pane_to_break_is_floating {
                 new_active_tab.show_floating_panes();
-                new_active_tab.add_floating_pane(
-                    active_pane,
-                    active_pane_id,
-                    None,
-                )?;
+                new_active_tab.add_floating_pane(active_pane, active_pane_id, None)?;
             } else {
                 new_active_tab.hide_floating_panes();
                 new_active_tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
@@ -3370,10 +3365,8 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ClosePane(id, client_id) => {
                 match client_id {
                     Some(client_id) => {
-                        active_tab!(screen, client_id, |tab: &mut Tab| tab.close_pane(
-                            id,
-                            false,
-                        ));
+                        active_tab!(screen, client_id, |tab: &mut Tab| tab
+                            .close_pane(id, false,));
                     },
                     None => {
                         for tab in screen.tabs.values_mut() {

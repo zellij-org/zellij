@@ -2335,7 +2335,6 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         })
         .cloned();
 
-
     assert_snapshot!(format!("{:?}", new_pane_instruction));
 }
 

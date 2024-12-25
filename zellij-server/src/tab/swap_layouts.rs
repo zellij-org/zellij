@@ -250,7 +250,12 @@ impl SwapLayouts {
                             let pane_count = tiled_panes.visible_panes_count();
                             let display_area = PaneGeom::from(&*display_area);
                             if layout
-                                .position_panes_in_space(&display_area, Some(pane_count), false, focus_layout_if_not_focused)
+                                .position_panes_in_space(
+                                    &display_area,
+                                    Some(pane_count),
+                                    false,
+                                    focus_layout_if_not_focused,
+                                )
                                 .is_ok()
                             {
                                 return Some(layout.clone());
@@ -281,7 +286,12 @@ impl SwapLayouts {
                 let pane_count = tiled_panes.visible_panes_count();
                 let display_area = PaneGeom::from(&*display_area);
                 if layout
-                    .position_panes_in_space(&display_area, Some(pane_count), false, focus_layout_if_not_focused)
+                    .position_panes_in_space(
+                        &display_area,
+                        Some(pane_count),
+                        false,
+                        focus_layout_if_not_focused,
+                    )
                     .is_ok()
                 {
                     return Some(layout.clone());
