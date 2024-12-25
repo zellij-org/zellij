@@ -722,6 +722,9 @@ impl Pane for PluginPane {
         }
         false
     }
+    fn reset_logical_position(&mut self) {
+        self.geom.logical_position = None;
+    }
 }
 
 impl PluginPane {

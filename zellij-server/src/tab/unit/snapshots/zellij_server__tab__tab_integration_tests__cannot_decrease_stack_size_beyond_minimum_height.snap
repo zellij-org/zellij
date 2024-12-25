@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/tab/./unit/tab_integration_tests.rs
-assertion_line: 4346
+assertion_line: 5855
 expression: snapshot
 ---
 00 (C): ┌ Pane #1 ──────────────────────────────────────────────────┐┌ Pane #3 ─────────────────────────────────────────────────┐

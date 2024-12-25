@@ -2754,7 +2754,7 @@ fn close_suppressing_tiled_pane() {
         .unwrap();
     tab.handle_pty_bytes(1, Vec::from("\n\n\nI am the original pane".as_bytes()))
         .unwrap();
-    tab.close_pane(new_pane_id, false, None);
+    tab.close_pane(new_pane_id, false);
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -2786,7 +2786,7 @@ fn close_suppressing_floating_pane() {
         .unwrap();
     tab.handle_pty_bytes(2, Vec::from("\n\n\nI am the original pane".as_bytes()))
         .unwrap();
-    tab.close_pane(editor_pane_id, false, None);
+    tab.close_pane(editor_pane_id, false);
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -2814,7 +2814,7 @@ fn suppress_tiled_pane_float_it_and_close() {
     tab.handle_pty_bytes(1, Vec::from("\n\n\nI am the original pane".as_bytes()))
         .unwrap();
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
-    tab.close_pane(new_pane_id, false, None);
+    tab.close_pane(new_pane_id, false);
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -2847,7 +2847,7 @@ fn suppress_floating_pane_embed_it_and_close_it() {
     tab.handle_pty_bytes(2, Vec::from("\n\n\nI am the original pane".as_bytes()))
         .unwrap();
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
-    tab.close_pane(editor_pane_id, false, None);
+    tab.close_pane(editor_pane_id, false);
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3757,7 +3757,7 @@ fn can_swap_tiled_layout_at_runtime() {
         Some(client_id),
     )
     .unwrap();
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3830,7 +3830,7 @@ fn can_swap_floating_layout_at_runtime() {
         Some(client_id),
     )
     .unwrap();
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3889,10 +3889,10 @@ fn swapping_layouts_after_resize_snaps_to_current_layout() {
         Some(client_id),
     )
     .unwrap();
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -4502,7 +4502,7 @@ fn move_focus_down_into_stacked_panes() {
                 tab {
                     pane
                     pane split_direction="vertical" {
-                        pane focus=true
+                        pane
                         pane stacked=true { children; }
                     }
                     pane
@@ -4620,7 +4620,7 @@ fn close_main_stacked_pane() {
         Some(client_id),
     )
     .unwrap();
-    tab.close_pane(new_pane_id_2, false, None);
+    tab.close_pane(new_pane_id_2, false);
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -4644,7 +4644,7 @@ fn close_main_stacked_pane_in_mid_stack() {
             swap_tiled_layout {
                 tab {
                     pane split_direction="vertical" {
-                        pane focus=true
+                        pane 
                         pane stacked=true { children; }
                     }
                 }
@@ -4720,7 +4720,7 @@ fn close_main_stacked_pane_in_mid_stack() {
     tab.move_focus_right(client_id);
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
-    tab.close_pane(new_pane_id_3, false, None);
+    tab.close_pane(new_pane_id_3, false);
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -4744,7 +4744,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
             swap_tiled_layout {
                 tab {
                     pane split_direction="vertical" {
-                        pane focus=true
+                        pane
                         pane stacked=true { children; }
                     }
                 }
@@ -4821,7 +4821,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
     tab.move_focus_right(client_id);
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
-    tab.close_pane(new_pane_id_2, false, None);
+    tab.close_pane(new_pane_id_2, false);
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -4845,7 +4845,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
             swap_tiled_layout {
                 tab {
                     pane split_direction="vertical" {
-                        pane focus=true
+                        pane
                         pane stacked=true { children; }
                     }
                 }
@@ -4921,7 +4921,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
     tab.move_focus_right(client_id);
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
-    tab.close_pane(new_pane_id_1, false, None);
+    tab.close_pane(new_pane_id_2, false);
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -5226,7 +5226,6 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
         Some(client_id),
     )
     .unwrap();
-    let _ = tab.move_focus_up(client_id);
     let _ = tab.move_focus_right(client_id);
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
@@ -5534,7 +5533,6 @@ fn can_increase_size_into_pane_stack_non_directionally() {
         Some(client_id),
     )
     .unwrap();
-    let _ = tab.move_focus_up(client_id);
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
     tab.render(&mut output).unwrap();
@@ -6069,7 +6067,7 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
             swap_tiled_layout {
                 tab {
                     pane split_direction="vertical" {
-                        pane focus=true
+                        pane
                         pane stacked=true { children; }
                     }
                     pane
@@ -6147,7 +6145,7 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
         .unwrap();
     tab.handle_left_click(&Position::new(1, 71), client_id)
         .unwrap();
-    tab.close_pane(PaneId::Terminal(4), false, None);
+    tab.close_pane(PaneId::Terminal(4), false);
     tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6250,7 +6248,7 @@ fn close_pane_near_stacked_panes() {
         Some(client_id),
     )
     .unwrap();
-    tab.close_pane(PaneId::Terminal(6), false, None);
+    tab.close_pane(PaneId::Terminal(6), false);
     tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6518,8 +6516,10 @@ fn layout_with_plugins_and_commands_swaped_properly() {
 
     let mut command_1 = RunCommand::default();
     command_1.command = PathBuf::from("command1");
+    command_1.hold_on_close = true;
     let mut command_2 = RunCommand::default();
     command_2.command = PathBuf::from("command2");
+    command_2.hold_on_close = true;
     let new_terminal_ids = vec![(1, Some(command_1)), (2, None), (3, Some(command_2))];
     let new_floating_terminal_ids = vec![];
     let mut new_plugin_ids = HashMap::new();
@@ -6551,7 +6551,7 @@ fn layout_with_plugins_and_commands_swaped_properly() {
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6647,8 +6647,8 @@ fn base_layout_is_included_in_swap_layouts() {
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.previous_swap_layout(Some(client_id)).unwrap(); // move back to the base layout
+    tab.next_swap_layout().unwrap();
+    tab.previous_swap_layout().unwrap(); // move back to the base layout
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6740,7 +6740,7 @@ fn swap_layouts_including_command_panes_absent_from_existing_layout() {
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6836,7 +6836,7 @@ fn swap_layouts_not_including_command_panes_present_in_existing_layout() {
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6914,7 +6914,7 @@ fn swap_layouts_including_plugin_panes_absent_from_existing_layout() {
         )),
         true,
     );
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7006,7 +7006,7 @@ fn swap_layouts_not_including_plugin_panes_present_in_existing_layout() {
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7080,9 +7080,9 @@ fn new_pane_in_auto_layout() {
         (62, 11),
         (62, 15),
         (62, 16),
-        (1, 11),
-        (1, 15),
-        (1, 16),
+        (62, 16),
+        (62, 16),
+        (62, 16),
     ];
     for i in 0..7 {
         let new_pane_id = i + 2;
@@ -7175,7 +7175,7 @@ fn when_swapping_tiled_layouts_in_a_damaged_state_layout_and_pane_focus_are_unch
         ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
     )
     .unwrap();
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -7249,7 +7249,7 @@ fn when_swapping_tiled_layouts_in_an_undamaged_state_pane_focuses_on_focused_nod
         true,
     );
     tab.move_focus_down(client_id);
-    tab.next_swap_layout(Some(client_id), true).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -7324,7 +7324,8 @@ fn when_swapping_tiled_layouts_in_an_undamaged_state_with_no_focus_node_pane_foc
         true,
     );
     tab.move_focus_down(client_id);
-    tab.next_swap_layout(Some(client_id), true).unwrap();
+    tab.move_focus_down(client_id);
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -7399,7 +7400,7 @@ fn when_closing_a_pane_in_auto_layout_the_focus_goes_to_last_focused_pane() {
     );
     let _ = tab.move_focus_down(client_id);
     let _ = tab.move_focus_down(client_id);
-    tab.close_pane(PaneId::Terminal(3), false, Some(client_id));
+    tab.close_pane(PaneId::Terminal(3), false);
     tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -7498,7 +7499,7 @@ fn floating_layout_with_plugins_and_commands_swaped_properly() {
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7592,8 +7593,8 @@ fn base_floating_layout_is_included_in_swap_layouts() {
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.previous_swap_layout(Some(client_id)).unwrap(); // move back to the base layout
+    tab.next_swap_layout().unwrap();
+    tab.previous_swap_layout().unwrap(); // move back to the base layout
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7685,7 +7686,7 @@ fn swap_floating_layouts_including_command_panes_absent_from_existing_layout() {
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7781,7 +7782,7 @@ fn swap_floating_layouts_not_including_command_panes_present_in_existing_layout(
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7852,7 +7853,7 @@ fn swap_floating_layouts_including_plugin_panes_absent_from_existing_layout() {
         )),
         true,
     );
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7940,7 +7941,7 @@ fn swap_floating_layouts_not_including_plugin_panes_present_in_existing_layout()
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7974,9 +7975,9 @@ fn new_floating_pane_in_auto_layout() {
                     pane { x "50%"; y "25%"; width "45%"; }
                 }
                 floating_panes max_panes=3 {
-                    pane focus=true { y "55%"; width "45%"; height "45%"; }
                     pane { x "1%"; y "1%"; width "45%"; }
                     pane { x "50%"; y "1%"; width "45%"; }
+                    pane { y "55%"; width "45%"; height "45%"; }
                 }
             }
         }
@@ -8101,7 +8102,7 @@ fn when_swapping_floating_layouts_in_a_damaged_state_layout_and_pane_focus_are_u
         ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
     )
     .unwrap();
-    tab.next_swap_layout(Some(client_id), true).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -8140,7 +8141,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_pane_focuses_on_focused_
         layout {
             swap_floating_layout {
                 floating_panes {
-                    pane focus=true
+                    pane
                     pane
                     pane
                 }
@@ -8174,7 +8175,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_pane_focuses_on_focused_
         )),
         true,
     );
-    tab.next_swap_layout(Some(client_id), true).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -8185,7 +8186,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_pane_focuses_on_focused_
     );
     assert_eq!(
         cursor_coordinates,
-        Some((31, 6)),
+        Some((35, 10)),
         "cursor coordinates moved to the new pane",
     );
 
@@ -8204,7 +8205,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_with_no_focus_node_pane_
     let base_layout = r#"
         layout {
             floating_panes {
-                pane focus=true
+                pane
                 pane
                 pane
             }
@@ -8248,7 +8249,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_with_no_focus_node_pane_
         )),
         true,
     );
-    tab.next_swap_layout(Some(client_id), true).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -8323,7 +8324,7 @@ fn when_closing_a_floating_pane_in_auto_layout_the_focus_goes_to_last_focused_pa
     );
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
-    tab.close_pane(PaneId::Terminal(1), false, Some(client_id));
+    tab.close_pane(PaneId::Terminal(1), false);
     tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(

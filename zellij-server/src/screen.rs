@@ -2038,8 +2038,7 @@ impl Screen {
             if let Some(plugin_pane_id) = tab.find_plugin(&run_plugin) {
                 tab_index_and_plugin_pane_id = Some((*tab_index, plugin_pane_id));
                 if move_to_focused_tab && focused_tab_index != *tab_index {
-                    plugin_pane_to_move_to_active_tab =
-                        tab.extract_pane(plugin_pane_id, true, Some(client_id));
+                    plugin_pane_to_move_to_active_tab = tab.extract_pane(plugin_pane_id, true);
                 }
 
                 break;
@@ -2055,7 +2054,6 @@ impl Screen {
                     plugin_pane_to_move_to_active_tab,
                     pane_id,
                     None,
-                    Some(client_id),
                 )?;
             } else {
                 new_active_tab.hide_floating_panes();
@@ -2156,7 +2154,7 @@ impl Screen {
                 .with_context(err_context)?;
             let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
             let active_pane = active_tab
-                .extract_pane(active_pane_id, false, Some(client_id))
+                .extract_pane(active_pane_id, false)
                 .with_context(err_context)?;
             let active_pane_run_instruction = active_pane.invoked_with().clone();
             let tab_index = self.get_new_tab_index();
@@ -2169,7 +2167,7 @@ impl Screen {
             let (mut tiled_panes_layout, mut floating_panes_layout) = default_layout.new_tab();
             if pane_to_break_is_floating {
                 tab.show_floating_panes();
-                tab.add_floating_pane(active_pane, active_pane_id, None, Some(client_id))?;
+                tab.add_floating_pane(active_pane, active_pane_id, None)?;
                 if let Some(already_running_layout) = floating_panes_layout
                     .iter_mut()
                     .find(|i| i.run == active_pane_run_instruction)
@@ -2221,7 +2219,7 @@ impl Screen {
             for tab in all_tabs.values_mut() {
                 // here we pass None instead of the client_id we have because we do not need to
                 // necessarily trigger a relayout for this tab
-                if let Some(pane) = tab.extract_pane(pane_id, true, None).take() {
+                if let Some(pane) = tab.extract_pane(pane_id, true).take() {
                     extracted_panes.push(pane);
                     break;
                 }
@@ -2276,7 +2274,7 @@ impl Screen {
                     .with_context(err_context)?;
                 let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
                 let active_pane = active_tab
-                    .extract_pane(active_pane_id, false, Some(client_id))
+                    .extract_pane(active_pane_id, false)
                     .with_context(err_context)?;
                 (active_pane_id, active_pane, pane_to_break_is_floating)
             };
@@ -2293,12 +2291,7 @@ impl Screen {
 
             if pane_to_break_is_floating {
                 new_active_tab.show_floating_panes();
-                new_active_tab.add_floating_pane(
-                    active_pane,
-                    active_pane_id,
-                    None,
-                    Some(client_id),
-                )?;
+                new_active_tab.add_floating_pane(active_pane, active_pane_id, None)?;
             } else {
                 new_active_tab.hide_floating_panes();
                 new_active_tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
@@ -2348,7 +2341,7 @@ impl Screen {
                 }
                 // here we pass None instead of the client_id we have because we do not need to
                 // necessarily trigger a relayout for this tab
-                if let Some(pane) = tab.extract_pane(pane_id, true, None).take() {
+                if let Some(pane) = tab.extract_pane(pane_id, true).take() {
                     extracted_panes.push(pane);
                     break;
                 }
@@ -3372,16 +3365,13 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ClosePane(id, client_id) => {
                 match client_id {
                     Some(client_id) => {
-                        active_tab!(screen, client_id, |tab: &mut Tab| tab.close_pane(
-                            id,
-                            false,
-                            Some(client_id)
-                        ));
+                        active_tab!(screen, client_id, |tab: &mut Tab| tab
+                            .close_pane(id, false,));
                     },
                     None => {
                         for tab in screen.tabs.values_mut() {
                             if tab.get_all_pane_ids().contains(&id) {
-                                tab.close_pane(id, false, None);
+                                tab.close_pane(id, false);
                                 break;
                             }
                         }
@@ -3904,7 +3894,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.previous_swap_layout(Some(client_id)),
+                    |tab: &mut Tab, client_id: ClientId| tab.previous_swap_layout(),
                     ?
                 );
                 screen.render(None)?;
@@ -3915,7 +3905,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.next_swap_layout(Some(client_id), true),
+                    |tab: &mut Tab, client_id: ClientId| tab.next_swap_layout(),
                     ?
                 );
                 screen.render(None)?;

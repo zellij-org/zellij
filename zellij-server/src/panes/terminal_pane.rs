@@ -842,6 +842,9 @@ impl Pane for TerminalPane {
         }
         false
     }
+    fn reset_logical_position(&mut self) {
+        self.geom.logical_position = None;
+    }
 }
 
 impl TerminalPane {
