@@ -1,17 +1,17 @@
 ---
 source: zellij-server/src/tab/./unit/tab_integration_tests.rs
-assertion_line: 5109
+assertion_line: 6660
 expression: snapshot
 ---
 00 (C): I am a tab bar                                                                                                           
-01 (C): ┌ command2 ─────────────────────────────┐┌ Pane #2 ─────────────────────────────┐┌ command1 ────────────────────────────┐
+01 (C): ┌ command1 ─────────────────────────────┐┌ Pane #2 ─────────────────────────────┐┌ command2 ────────────────────────────┐
 02 (C): │                                       ││                                      ││                                      │
 03 (C): │                                       ││                                      ││                                      │
 04 (C): │                                       ││                                      ││                                      │
 05 (C): │                                       ││                                      ││                                      │
 06 (C): │                                       ││                                      ││                                      │
 07 (C): │                                       ││                                      ││                                      │
-08 (C): │      Waiting to run: command2         ││                                      ││      Waiting to run: command1        │
+08 (C): │      Waiting to run: command1         ││                                      ││      Waiting to run: command2        │
 09 (C): │                                       ││                                      ││                                      │
 10 (C): │<ENTER> run, <ESC> drop to shell, <Ctrl││                                      ││<ENTER> run, <ESC> drop to shell, <Ctr│
 11 (C): │-c> exit                               ││                                      ││l-c> exit                             │

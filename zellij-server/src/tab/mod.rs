@@ -509,6 +509,7 @@ pub trait Pane {
     }
     fn toggle_pinned(&mut self) {}
     fn set_pinned(&mut self, _should_be_pinned: bool) {}
+    fn reset_logical_position(&mut self) {}
 }
 
 #[derive(Clone, Debug)]
@@ -2777,7 +2778,13 @@ impl Tab {
         if !dont_swap_if_suppressed && self.suppressed_panes.contains_key(&id) {
             // this is done for the scrollback editor
             return match self.replace_pane_with_suppressed_pane(id) {
-                Ok(pane) => pane,
+                Ok(mut pane) => {
+                    // we do this so that the logical index will not affect ordering in the target tab
+                    if let Some(pane) = pane.as_mut() {
+                        pane.reset_logical_position();
+                    }
+                    pane
+                },
                 Err(e) => {
                     Err::<(), _>(e)
                         .with_context(|| format!("failed to close pane {:?}", id))
@@ -2787,7 +2794,7 @@ impl Tab {
             };
         }
         if self.floating_panes.panes_contain(&id) {
-            let closed_pane = self.floating_panes.remove_pane(id);
+            let mut closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
             if !self.floating_panes.has_panes() {
                 self.hide_floating_panes();
@@ -2803,12 +2810,16 @@ impl Tab {
                 // confusing
                 let _ = self.next_swap_layout(false);
             }
+            // we do this so that the logical index will not affect ordering in the target tab
+            if let Some(closed_pane) = closed_pane.as_mut() {
+                closed_pane.reset_logical_position();
+            }
             closed_pane
         } else if self.tiled_panes.panes_contain(&id) {
             if self.tiled_panes.fullscreen_is_active() {
                 self.tiled_panes.unset_fullscreen();
             }
-            let closed_pane = self.tiled_panes.remove_pane(id);
+            let mut closed_pane = self.tiled_panes.remove_pane(id);
             self.set_force_render();
             self.tiled_panes.set_force_render();
             if self.auto_layout && !self.swap_layouts.is_tiled_damaged() {
@@ -2816,6 +2827,10 @@ impl Tab {
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
                 let _ = self.next_swap_layout(false);
+            }
+            // we do this so that the logical index will not affect ordering in the target tab
+            if let Some(closed_pane) = closed_pane.as_mut() {
+                closed_pane.reset_logical_position();
             }
             closed_pane
         } else if self.suppressed_panes.contains_key(&id) {

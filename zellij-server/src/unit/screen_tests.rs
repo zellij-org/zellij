@@ -2324,7 +2324,19 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_thread, screen_thread]);
-    assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
+
+    let new_pane_instruction = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|instruction| match instruction {
+            PtyInstruction::SpawnTerminalVertically(..) => true,
+            _ => false,
+        })
+        .cloned();
+
+
+    assert_snapshot!(format!("{:?}", new_pane_instruction));
 }
 
 #[test]

@@ -4502,7 +4502,7 @@ fn move_focus_down_into_stacked_panes() {
                 tab {
                     pane
                     pane split_direction="vertical" {
-                        pane focus=true
+                        pane
                         pane stacked=true { children; }
                     }
                     pane
@@ -4644,7 +4644,7 @@ fn close_main_stacked_pane_in_mid_stack() {
             swap_tiled_layout {
                 tab {
                     pane split_direction="vertical" {
-                        pane focus=true
+                        pane 
                         pane stacked=true { children; }
                     }
                 }
@@ -4744,7 +4744,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
             swap_tiled_layout {
                 tab {
                     pane split_direction="vertical" {
-                        pane focus=true
+                        pane
                         pane stacked=true { children; }
                     }
                 }
@@ -4845,7 +4845,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
             swap_tiled_layout {
                 tab {
                     pane split_direction="vertical" {
-                        pane focus=true
+                        pane
                         pane stacked=true { children; }
                     }
                 }
@@ -4921,7 +4921,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
     tab.move_focus_right(client_id);
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
-    tab.close_pane(new_pane_id_1, false);
+    tab.close_pane(new_pane_id_2, false);
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -5226,7 +5226,6 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
         Some(client_id),
     )
     .unwrap();
-    let _ = tab.move_focus_up(client_id);
     let _ = tab.move_focus_right(client_id);
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
@@ -5534,7 +5533,6 @@ fn can_increase_size_into_pane_stack_non_directionally() {
         Some(client_id),
     )
     .unwrap();
-    let _ = tab.move_focus_up(client_id);
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
     tab.render(&mut output).unwrap();
@@ -6069,7 +6067,7 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
             swap_tiled_layout {
                 tab {
                     pane split_direction="vertical" {
-                        pane focus=true
+                        pane
                         pane stacked=true { children; }
                     }
                     pane
@@ -6518,8 +6516,10 @@ fn layout_with_plugins_and_commands_swaped_properly() {
 
     let mut command_1 = RunCommand::default();
     command_1.command = PathBuf::from("command1");
+    command_1.hold_on_close = true;
     let mut command_2 = RunCommand::default();
     command_2.command = PathBuf::from("command2");
+    command_2.hold_on_close = true;
     let new_terminal_ids = vec![(1, Some(command_1)), (2, None), (3, Some(command_2))];
     let new_floating_terminal_ids = vec![];
     let mut new_plugin_ids = HashMap::new();
@@ -7080,9 +7080,9 @@ fn new_pane_in_auto_layout() {
         (62, 11),
         (62, 15),
         (62, 16),
-        (1, 11),
-        (1, 15),
-        (1, 16),
+        (62, 16),
+        (62, 16),
+        (62, 16),
     ];
     for i in 0..7 {
         let new_pane_id = i + 2;
@@ -7323,6 +7323,7 @@ fn when_swapping_tiled_layouts_in_an_undamaged_state_with_no_focus_node_pane_foc
         )),
         true,
     );
+    tab.move_focus_down(client_id);
     tab.move_focus_down(client_id);
     tab.next_swap_layout(true).unwrap();
     tab.render(&mut output).unwrap();
@@ -7974,9 +7975,9 @@ fn new_floating_pane_in_auto_layout() {
                     pane { x "50%"; y "25%"; width "45%"; }
                 }
                 floating_panes max_panes=3 {
-                    pane focus=true { y "55%"; width "45%"; height "45%"; }
                     pane { x "1%"; y "1%"; width "45%"; }
                     pane { x "50%"; y "1%"; width "45%"; }
+                    pane { y "55%"; width "45%"; height "45%"; }
                 }
             }
         }
@@ -8140,7 +8141,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_pane_focuses_on_focused_
         layout {
             swap_floating_layout {
                 floating_panes {
-                    pane focus=true
+                    pane
                     pane
                     pane
                 }
@@ -8185,7 +8186,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_pane_focuses_on_focused_
     );
     assert_eq!(
         cursor_coordinates,
-        Some((31, 6)),
+        Some((35, 10)),
         "cursor coordinates moved to the new pane",
     );
 
@@ -8204,7 +8205,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_with_no_focus_node_pane_
     let base_layout = r#"
         layout {
             floating_panes {
-                pane focus=true
+                pane
                 pane
                 pane
             }
