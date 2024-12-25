@@ -1681,6 +1681,7 @@ Layout {
                         focus: None,
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1709,6 +1710,7 @@ Layout {
                         focus: None,
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1737,6 +1739,7 @@ Layout {
                         focus: None,
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1765,6 +1768,7 @@ Layout {
                         focus: None,
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1793,6 +1797,7 @@ Layout {
                         focus: None,
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1821,6 +1826,7 @@ Layout {
                         focus: None,
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1849,6 +1855,7 @@ Layout {
                         focus: None,
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1877,6 +1884,7 @@ Layout {
                         focus: None,
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1905,6 +1913,7 @@ Layout {
                         focus: None,
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1935,6 +1944,7 @@ Layout {
                         ),
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                 ],
             },
@@ -1966,6 +1976,7 @@ Layout {
                         focus: None,
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                 ],
                 MaxPanes(
@@ -1994,6 +2005,7 @@ Layout {
                         focus: None,
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -2018,6 +2030,7 @@ Layout {
                         focus: None,
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                 ],
                 MaxPanes(
@@ -2048,6 +2061,7 @@ Layout {
                         ),
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -2072,6 +2086,7 @@ Layout {
                         focus: None,
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -2096,6 +2111,7 @@ Layout {
                         focus: None,
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                 ],
                 MaxPanes(
@@ -2128,6 +2144,7 @@ Layout {
                         focus: None,
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -2158,6 +2175,7 @@ Layout {
                         ),
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -2186,6 +2204,7 @@ Layout {
                         focus: None,
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -2214,6 +2233,7 @@ Layout {
                         focus: None,
                         already_running: false,
                         pane_initial_contents: None,
+                        logical_position: None,
                     },
                 ],
             },

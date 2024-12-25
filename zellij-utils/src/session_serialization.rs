@@ -1286,6 +1286,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1298,6 +1299,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1314,6 +1316,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1329,6 +1332,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1349,6 +1353,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1363,6 +1368,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1379,6 +1385,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1391,6 +1398,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1405,6 +1413,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1435,6 +1444,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1447,6 +1457,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1463,6 +1474,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1478,6 +1490,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1498,6 +1511,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1512,6 +1526,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1528,6 +1543,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1542,6 +1558,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1556,6 +1573,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1584,6 +1602,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: true,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1595,6 +1614,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: true,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1606,6 +1626,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: true,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1630,6 +1651,7 @@ mod tests {
                     cols: Dimension::percent(100.0),
                     is_stacked: false,
                     is_pinned: false,
+                    logical_position: None,
                 },
                 ..Default::default()
             }],
@@ -1645,6 +1667,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1656,6 +1679,7 @@ mod tests {
                         cols: Dimension::fixed(10),
                         is_stacked: false,
                         is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1788,6 +1812,7 @@ mod tests {
             cols: get_dim(&data["cols"]),
             is_stacked: data["is_stacked"].to_string().parse().unwrap(),
             is_pinned: false,
+            logical_position: None,
         }
     }
 
