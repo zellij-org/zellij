@@ -1725,6 +1725,7 @@ fn split_space(
         layout.children_split_direction,
     );
     let mut pane_positions = Vec::new();
+    let mut pane_positions_with_children = Vec::new();
     for (i, part) in layout.children.iter().enumerate() {
         let part_position_and_size = split_geom.get(i).unwrap();
         if !part.children.is_empty() {
@@ -1734,12 +1735,18 @@ fn split_space(
                 total_space_to_split,
                 ignore_percent_split_sizes,
             )?;
-            pane_positions.append(&mut part_positions);
+            // add the only first child to pane_positions only adding the others after all the
+            // childfree panes have been added so that the returned vec will be sorted breadth-first
+            if !part_positions.is_empty() {
+                pane_positions.push(part_positions.remove(0));
+            }
+            pane_positions_with_children.append(&mut part_positions);
         } else {
             let part = part.clone();
             pane_positions.push((part, *part_position_and_size));
         }
     }
+    pane_positions.append(&mut pane_positions_with_children);
     if pane_positions.is_empty() {
         let layout = layout.clone();
         pane_positions.push((layout, space_to_split.clone()));
