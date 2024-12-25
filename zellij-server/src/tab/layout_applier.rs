@@ -856,29 +856,6 @@ impl ExistingTabState {
                 None => None,
             }
         }
-        //         if let Some(current_pane_id_with_same_contents) =
-        //             self.find_pane_id_with_same_contents(&candidates, run)
-        //         {
-        //             return self
-        //                 .existing_panes
-        //                 .remove(&current_pane_id_with_same_contents);
-        //         } else if let Some(currently_focused_pane_id) =
-        //             self.find_focused_pane_id(is_focused, &candidates)
-        //         {
-        //             return self.existing_panes.remove(&currently_focused_pane_id);
-        //         } else if let Some(same_position_candidate_id) = candidates
-        //             .iter()
-        //             .find(|(_, p)| p.position_and_size() == *position_and_size)
-        //             .map(|(pid, _p)| *pid)
-        //             .copied()
-        //         {
-        //             return self.existing_panes.remove(&same_position_candidate_id);
-        //         } else if let Some(first_candidate) =
-        //             candidates.iter().next().map(|(pid, _p)| *pid).copied()
-        //         {
-        //             return self.existing_panes.remove(&first_candidate);
-        //         }
-        //         None
     }
     pub fn pane_ids(&self) -> Vec<PaneId> {
         self.existing_panes.keys().copied().collect()
