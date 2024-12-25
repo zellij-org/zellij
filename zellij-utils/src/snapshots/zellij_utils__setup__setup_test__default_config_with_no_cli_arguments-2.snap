@@ -1939,9 +1939,7 @@ Layout {
                         ),
                         pinned: None,
                         run: None,
-                        focus: Some(
-                            true,
-                        ),
+                        focus: None,
                         already_running: false,
                         pane_initial_contents: None,
                         logical_position: None,
@@ -2056,9 +2054,7 @@ Layout {
                         ),
                         pinned: None,
                         run: None,
-                        focus: Some(
-                            true,
-                        ),
+                        focus: None,
                         already_running: false,
                         pane_initial_contents: None,
                         logical_position: None,
@@ -2170,9 +2166,7 @@ Layout {
                         ),
                         pinned: None,
                         run: None,
-                        focus: Some(
-                            true,
-                        ),
+                        focus: None,
                         already_running: false,
                         pane_initial_contents: None,
                         logical_position: None,

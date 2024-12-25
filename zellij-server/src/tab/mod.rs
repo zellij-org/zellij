@@ -771,7 +771,6 @@ impl Tab {
     fn relayout_tiled_panes(
         &mut self,
         search_backwards: bool,
-        best_effort: bool,
     ) -> Result<()> {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
@@ -779,14 +778,6 @@ impl Tab {
         if let Some(layout_candidate) = self
             .swap_layouts
             .swap_tiled_panes(&self.tiled_panes, search_backwards)
-            .or_else(|| {
-                if best_effort {
-                    self.swap_layouts
-                        .best_effort_tiled_layout(&self.tiled_panes)
-                } else {
-                    None
-                }
-            })
         {
             LayoutApplier::new(
                 &self.viewport,
@@ -825,22 +816,19 @@ impl Tab {
         if self.floating_panes.panes_are_visible() {
             self.relayout_floating_panes(search_backwards)?;
         } else {
-            self.relayout_tiled_panes(search_backwards, true)?;
+            self.relayout_tiled_panes(search_backwards)?;
         }
         self.senders
             .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
             .with_context(|| format!("failed to update plugins with mode info"))?;
         Ok(())
     }
-    pub fn next_swap_layout(
-        &mut self,
-        refocus_pane: bool,
-    ) -> Result<()> {
+    pub fn next_swap_layout(&mut self) -> Result<()> {
         let search_backwards = false;
         if self.floating_panes.panes_are_visible() {
             self.relayout_floating_panes(search_backwards)?;
         } else {
-            self.relayout_tiled_panes(search_backwards, refocus_pane)?;
+            self.relayout_tiled_panes(search_backwards)?;
         }
         self.senders
             .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
@@ -2317,7 +2305,7 @@ impl Tab {
         if self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !self.is_fullscreen_active()
         {
             self.swap_layouts.set_is_tiled_damaged();
-            let _ = self.relayout_tiled_panes(false, false);
+            let _ = self.relayout_tiled_panes(false);
         }
         self.set_should_clear_display_before_rendering();
         self.senders
@@ -2748,7 +2736,7 @@ impl Tab {
                 self.swap_layouts.set_is_floating_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
-                let _ = self.next_swap_layout(false);
+                let _ = self.next_swap_layout();
             }
         } else {
             if self.tiled_panes.fullscreen_is_active() {
@@ -2761,7 +2749,7 @@ impl Tab {
                 self.swap_layouts.set_is_tiled_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
-                let _ = self.next_swap_layout(false);
+                let _ = self.next_swap_layout();
             }
         };
         let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
@@ -2808,7 +2796,7 @@ impl Tab {
                 self.swap_layouts.set_is_floating_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
-                let _ = self.next_swap_layout(false);
+                let _ = self.next_swap_layout();
             }
             // we do this so that the logical index will not affect ordering in the target tab
             if let Some(closed_pane) = closed_pane.as_mut() {
@@ -2826,7 +2814,7 @@ impl Tab {
                 self.swap_layouts.set_is_tiled_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
-                let _ = self.next_swap_layout(false);
+                let _ = self.next_swap_layout();
             }
             // we do this so that the logical index will not affect ordering in the target tab
             if let Some(closed_pane) = closed_pane.as_mut() {
@@ -4220,7 +4208,7 @@ impl Tab {
             // confusing and not what the user intends
             self.swap_layouts.set_is_floating_damaged(); // we do this so that we won't skip to the
                                                          // next layout
-            self.next_swap_layout(true)?;
+            self.next_swap_layout()?;
         }
         Ok(())
     }
@@ -4253,7 +4241,7 @@ impl Tab {
             // confusing and not what the user intends
             self.swap_layouts.set_is_tiled_damaged(); // we do this so that we won't skip to the
                                                       // next layout
-            self.next_swap_layout(true)?;
+            self.next_swap_layout()?;
         }
         Ok(())
     }

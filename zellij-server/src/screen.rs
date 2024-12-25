@@ -3912,7 +3912,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.next_swap_layout(true),
+                    |tab: &mut Tab, client_id: ClientId| tab.next_swap_layout(),
                     ?
                 );
                 screen.render(None)?;
