@@ -808,7 +808,7 @@ Layout {
         (
             {
                 MaxPanes(
-                    5,
+                    4,
                 ): TiledPaneLayout {
                     children_split_direction: Horizontal,
                     name: None,

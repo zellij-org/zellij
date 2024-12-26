@@ -1144,7 +1144,7 @@ impl Grid {
         )));
     }
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
-        if self.cursor_is_hidden {
+        if self.cursor_is_hidden || self.cursor.x >= self.width || self.cursor.y >= self.height {
             None
         } else {
             Some((self.cursor.x, self.cursor.y))
