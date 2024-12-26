@@ -2837,7 +2837,7 @@ impl Perform for Grid {
                 for param in params_iter.map(|param| param[0]) {
                     match param {
                         2026 => {
-                            let response = "\u{1b}[2026;2$y";
+                            let response = "\u{1b}[?2026;2$y";
                             self.pending_messages_to_pty
                                 .push(response.as_bytes().to_vec());
                         },
