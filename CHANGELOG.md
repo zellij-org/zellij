@@ -14,7 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(multiplayer): properly clear fake cursors (https://github.com/zellij-org/zellij/pull/3845)
 * feat(ux): pin floating panes (https://github.com/zellij-org/zellij/pull/3876)
 * fix(layout-applier): logical index pane sorting (https://github.com/zellij-org/zellij/pull/3893)
-* fix(terminals): synchronized rendering detection query response (https://github.com/zellij-org/zellij/pull/3884)
+* fix(terminal): synchronized rendering detection query response (https://github.com/zellij-org/zellij/pull/3884)
+* fix(terminal): cursor overflow issue (https://github.com/zellij-org/zellij/pull/3894)
 
 ## [0.41.2] - 2024-11-19
 * fix(input): keypresses not being identified properly with kitty keyboard protocol in some terminals (https://github.com/zellij-org/zellij/pull/3725)
