@@ -3272,6 +3272,23 @@ impl EnvironmentVariables {
     }
 }
 
+fn get_include_paths(kdl_includes: &KdlNode) -> Result<Vec<PathBuf>, ConfigError> {
+    let mut paths = Vec::new();
+
+    match kdl_first_entry_as_string!(kdl_includes) {
+        Some(property) => paths.push(PathBuf::from(property)),
+        None => {
+            let children =
+                kdl_children_nodes_or_error!(kdl_includes, "no path block or path for include");
+            for child in children.iter() {
+                paths.push(PathBuf::from(kdl_name!(child)));
+            }
+        },
+    }
+
+    Ok(paths)
+}
+
 impl Keybinds {
     fn bind_keys_in_block(
         block: &KdlNode,
@@ -3643,6 +3660,12 @@ impl Config {
         if let Some(env_config) = kdl_config.get("env") {
             let config_env = EnvironmentVariables::from_kdl(&env_config)?;
             config.env = config.env.merge(config_env);
+        }
+        if let Some(include_statment) = kdl_config.get("include") {
+            let paths = get_include_paths(include_statment)?;
+            for path in paths.iter() {
+                config = Config::from_path(path, Some(config))?;
+            }
         }
         Ok(config)
     }
