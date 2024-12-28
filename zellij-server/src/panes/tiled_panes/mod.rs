@@ -659,6 +659,9 @@ impl TiledPanes {
         }
         self.reset_boundaries();
     }
+    pub fn set_force_window_title_update(&mut self) {
+        self.window_title = None;
+    }
     pub fn has_active_panes(&self) -> bool {
         !self.active_panes.is_empty()
     }
