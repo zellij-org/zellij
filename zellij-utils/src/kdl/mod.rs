@@ -4,7 +4,7 @@ use crate::data::{
     PaletteColor, PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo, TabInfo,
 };
 use crate::envs::EnvironmentVariables;
-use crate::home::{find_default_config_dir, get_layout_dir};
+use crate::home::{self, find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
@@ -3276,17 +3276,32 @@ fn get_include_paths(kdl_includes: &KdlNode) -> Result<Vec<PathBuf>, ConfigError
     let mut paths = Vec::new();
 
     match kdl_first_entry_as_string!(kdl_includes) {
-        Some(property) => paths.push(PathBuf::from(property)),
+        Some(property) => paths.push(expand_path(property, &kdl_includes)?),
         None => {
             let children =
                 kdl_children_nodes_or_error!(kdl_includes, "no path block or path for include");
             for child in children.iter() {
-                paths.push(PathBuf::from(kdl_name!(child)));
+                paths.push(expand_path(kdl_name!(child), &child)?);
             }
         },
     }
 
     Ok(paths)
+}
+
+fn expand_path(path: &str, kdl_node: &KdlNode) -> Result<PathBuf, ConfigError> {
+    let mut expanded_path = match shellexpand::full(path) {
+        Ok(s) => Ok(PathBuf::from(s.as_ref())),
+        Err(e) => Err(kdl_parsing_error!(e.to_string(), kdl_node)),
+    }?;
+
+    if expanded_path.is_relative() {
+        if let Some(config_dir) = home::home_config_dir() {
+            expanded_path = config_dir.join(expanded_path);
+        }
+    }
+
+    Ok(expanded_path)
 }
 
 impl Keybinds {
