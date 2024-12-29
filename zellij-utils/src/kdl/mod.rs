@@ -3296,7 +3296,7 @@ fn expand_path(path: &str, kdl_node: &KdlNode) -> Result<PathBuf, ConfigError> {
     }?;
 
     if expanded_path.is_relative() {
-        if let Some(config_dir) = home::home_config_dir() {
+        if let Some(config_dir) = find_default_config_dir() {
             expanded_path = config_dir.join(expanded_path);
         }
     }
@@ -5448,6 +5448,43 @@ fn env_vars_to_string_with_no_env_vars() {
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = EnvironmentVariables::from_kdl(document.get("env").unwrap()).unwrap();
     assert_eq!(EnvironmentVariables::to_kdl(&deserialized), None);
+}
+
+#[test]
+fn include_paths_absolute_path() {
+    let fake_config = r##"
+    include "/absolute/path/to/file.kdl"
+    "##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let file_path = get_include_paths(document.get("include").unwrap()).unwrap();
+    assert_eq!(file_path, vec![PathBuf::from("/absolute/path/to/file.kdl")]);
+}
+
+#[test]
+fn include_paths_multiple_paths() {
+    let fake_config = r##"
+    include {
+        "/absolute/path/to/file.kdl"
+        "/second/absolute/path/to/file.kdl"
+    }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let file_path = get_include_paths(document.get("include").unwrap()).unwrap();
+    let expected_output = vec![
+        PathBuf::from("/absolute/path/to/file.kdl"),
+        PathBuf::from("/second/absolute/path/to/file.kdl"),
+    ];
+    assert_eq!(file_path, expected_output);
+}
+
+#[test]
+fn include_paths_single_and_multiple_paths_given() {
+    let fake_config = r##"
+    include "/single/path/to/file.kdl" {
+        "/absolute/path/to/file.kdl"
+    }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let file_path = get_include_paths(document.get("include").unwrap()).unwrap();
+    assert_eq!(file_path, vec![PathBuf::from("/single/path/to/file.kdl")]);
 }
 
 #[test]
