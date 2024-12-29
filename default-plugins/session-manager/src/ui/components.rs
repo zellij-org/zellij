@@ -385,7 +385,7 @@ pub fn build_session_ui_line(session_ui_info: &SessionUiInfo, colors: Colors) ->
     let tab_count = format!("{}", tab_count_text);
     let tab_count_styled = colors.tab_count(&tab_count);
     let total_pane_count = format!("{}", total_pane_count_text);
-    let total_pane_count_styled = colors.pane_count_search_prompt(&total_pane_count);
+    let total_pane_count_styled = colors.pane_count(&total_pane_count);
     let session_name = &session_ui_info.name;
     let connected_users = format!("{}", session_ui_info.connected_users);
     let connected_users_styled = colors.connected_users(&connected_users);
@@ -424,9 +424,12 @@ pub fn build_session_ui_line(session_ui_info: &SessionUiInfo, colors: Colors) ->
     ui_spans.push(connected_users_count);
     if session_ui_info.is_current_session {
         let current_session_indication = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
-            StringAndLength::new(colors.connected_users(&format!(" <CURRENT SESSION>")), 18),
-            StringAndLength::new(colors.connected_users(&format!(" <CURRENT>")), 10),
-            StringAndLength::new(colors.connected_users(&format!(" <C>")), 4),
+            StringAndLength::new(
+                colors.current_session_marker(&format!(" <CURRENT SESSION>")),
+                18,
+            ),
+            StringAndLength::new(colors.current_session_marker(&format!(" <CURRENT>")), 10),
+            StringAndLength::new(colors.current_session_marker(&format!(" <C>")), 4),
         ]));
         ui_spans.push(current_session_indication);
     }
@@ -438,7 +441,7 @@ pub fn build_tab_ui_line(tab_ui_info: &TabUiInfo, colors: Colors) -> Vec<UiSpan>
     let tab_name = &tab_ui_info.name;
     let pane_count_text = tab_ui_info.panes.len();
     let pane_count = format!("{}", pane_count_text);
-    let pane_count_styled = colors.pane_count_search_prompt(&pane_count);
+    let pane_count_styled = colors.pane_count(&pane_count);
     let tab_bullet_span =
         UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![StringAndLength::new(
             format!("  - "),
@@ -470,7 +473,7 @@ pub fn build_pane_ui_line(pane_ui_info: &PaneUiInfo, colors: Colors) -> Vec<UiSp
     let exit_code = pane_ui_info.exit_code.map(|exit_code_number| {
         let exit_code = format!("{}", exit_code_number);
         let exit_code = if exit_code_number == 0 {
-            colors.pane_count_search_prompt(&exit_code)
+            colors.session_and_folder_entry(&exit_code)
         } else {
             colors.exit_code_error(&exit_code)
         };
@@ -520,7 +523,7 @@ pub fn minimize_lines(
 }
 
 pub fn render_prompt(search_term: &str, colors: Colors, x: usize, y: usize) {
-    let prompt = colors.pane_count_search_prompt(&format!("Search:"));
+    let prompt = colors.session_and_folder_entry(&format!("Search:"));
     let search_term = colors.bold(&format!("{}_", search_term));
     println!(
         "\u{1b}[{};{}H\u{1b}[0m{} {}\n",
@@ -614,7 +617,7 @@ fn render_new_session_folder_prompt(
                     "\u{1b}[m{}{} {} ({} {}, {} {})",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
                     colors.session_name_prompt(folder_prompt),
-                    colors.pane_count_search_prompt(&new_session_folder),
+                    colors.session_and_folder_entry(&new_session_folder),
                     change_folder_shortcut,
                     to_change,
                     reset_folder_shortcut,
@@ -633,7 +636,7 @@ fn render_new_session_folder_prompt(
                     "\u{1b}[m{}{} {} ({} {}, {} {})",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
                     colors.session_name_prompt(short_folder_prompt),
-                    colors.pane_count_search_prompt(&new_session_folder),
+                    colors.session_and_folder_entry(&new_session_folder),
                     change_folder_shortcut,
                     to_change,
                     reset_folder_shortcut,
@@ -650,7 +653,7 @@ fn render_new_session_folder_prompt(
                     "\u{1b}[m{}{} {} ({}/{})",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
                     colors.session_name_prompt(short_folder_prompt),
-                    colors.pane_count_search_prompt(&new_session_folder),
+                    colors.session_and_folder_entry(&new_session_folder),
                     change_folder_shortcut,
                     reset_folder_shortcut,
                 );
@@ -668,7 +671,7 @@ fn render_new_session_folder_prompt(
                     "\u{1b}[m{}{} {} ({}/{})",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
                     colors.session_name_prompt(short_folder_prompt),
-                    colors.pane_count_search_prompt(&truncated_path),
+                    colors.session_and_folder_entry(&truncated_path),
                     change_folder_shortcut,
                     reset_folder_shortcut,
                 );
@@ -736,7 +739,7 @@ pub fn render_new_session_block(
                 "\u{1b}[m{}{} {}_ ({} {})",
                 format!("\u{1b}[{};{}H", y + 1, x + 1),
                 colors.session_name_prompt(prompt),
-                colors.pane_count_search_prompt(&new_session_name),
+                colors.session_and_folder_entry(&new_session_name),
                 enter,
                 long_instruction,
             );
@@ -762,7 +765,7 @@ pub fn render_new_session_block(
                 "\u{1b}[m{}{} {}_ {}",
                 format!("\u{1b}[{};{}H", y + 1, x + 1),
                 colors.session_name_prompt(prompt),
-                colors.pane_count_search_prompt(&new_session_name),
+                colors.session_and_folder_entry(&new_session_name),
                 enter,
             );
         }
@@ -781,8 +784,8 @@ pub fn render_new_session_block(
             println!(
                 "\u{1b}[m{}{}: {} ({} to correct)",
                 format!("\u{1b}[{};{}H", y + 1, x + 1),
-                colors.session_name_prompt("New session name"),
-                colors.pane_count_search_prompt(new_session_name),
+                colors.session_name_prompt(prompt),
+                colors.session_and_folder_entry(new_session_name),
                 esc,
             );
         } else {
@@ -790,7 +793,7 @@ pub fn render_new_session_block(
                 "\u{1b}[m{}{}: {} {}",
                 format!("\u{1b}[{};{}H", y + 1, x + 1),
                 colors.session_name_prompt("New session name"),
-                colors.pane_count_search_prompt(new_session_name),
+                colors.session_and_folder_entry(new_session_name),
                 esc,
             );
         }
@@ -972,6 +975,12 @@ pub fn render_controls_line(
     }
 }
 
+// Maps the various prompts and UI elements to the colors to present them with
+//
+// Since this plugin predates the UI components, this is a developer
+// convenience to keep the coloration of dialogs organized by descriptive names
+//
+// It will be obviated once everything is migrated to UI components from zellij-tile
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Colors {
     pub palette: Styling,
@@ -1003,7 +1012,15 @@ impl Colors {
         self.color(&self.palette.text_unselected.emphasis_3, text)
     }
 
-    pub fn pane_count_search_prompt(&self, text: &str) -> String {
+    pub fn session_and_folder_entry(&self, text: &str) -> String {
+        self.color(&self.palette.text_unselected.emphasis_1, text)
+    }
+
+    pub fn current_session_marker(&self, text: &str) -> String {
+        self.color(&self.palette.text_unselected.emphasis_1, text)
+    }
+
+    pub fn pane_count(&self, text: &str) -> String {
         self.color(&self.palette.text_unselected.emphasis_3, text)
     }
 
