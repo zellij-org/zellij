@@ -6,7 +6,7 @@ use super::layout::{
     SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
 use crate::cli::CliAction;
-use crate::data::{Direction, KeyWithModifier, Resize};
+use crate::data::{Direction, KeyWithModifier, Resize, PaneId};
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
@@ -301,6 +301,7 @@ pub enum Action {
     },
     ListClients,
     TogglePanePinned,
+    StackPanes(Vec<PaneId>),
 }
 
 impl Action {
@@ -742,6 +743,13 @@ impl Action {
             },
             CliAction::ListClients => Ok(vec![Action::ListClients]),
             CliAction::TogglePanePinned => Ok(vec![Action::TogglePanePinned]),
+            CliAction::StackPanes { pane_ids } => {
+                // TODO:
+                // 1. if it's a bare integer, assume it's a terminal
+                // 2. otherwise, if it is plugin_<int> or terminal_<int> do the right thing
+                let pane_ids = pane_ids.iter().filter_map(|s_p_id| u32::from_str_radix(s_p_id, 10).ok()).map(|p_id| PaneId::Terminal(p_id)).collect();
+                Ok(vec![Action::StackPanes(pane_ids)])
+            }
         }
     }
     pub fn launches_plugin(&self, plugin_url: &str) -> bool {

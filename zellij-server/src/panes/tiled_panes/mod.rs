@@ -818,6 +818,23 @@ impl TiledPanes {
             },
         }
     }
+    pub fn set_geom_for_pane_with_id(
+        &mut self,
+        pane_id: &PaneId,
+        geom: PaneGeom,
+    ) {
+        match self
+            .panes
+            .get_mut(pane_id)
+        {
+            Some(pane) => {
+                pane.set_geom(geom);
+            },
+            None => {
+                log::error!("Failed to find pane with id: {:?}", pane_id);
+            },
+        }
+    }
     pub fn resize(&mut self, new_screen_size: Size) {
         // this is blocked out to appease the borrow checker
         {
@@ -1843,6 +1860,12 @@ impl TiledPanes {
         for pane in self.panes.values_mut() {
             pane.update_rounded_corners(rounded_corners);
         }
+    }
+    pub fn stack_panes(&mut self, root_pane_id: PaneId, pane_count_in_stack: usize) -> Vec<PaneGeom> {
+        StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+            .new_stack(root_pane_id, pane_count_in_stack)
+        // TODO: if one of the panes in the stack was focused, we need to focus the last pane in
+        // the stack
     }
 }
 

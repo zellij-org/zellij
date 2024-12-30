@@ -760,4 +760,8 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
     },
     ListClients,
     TogglePanePinned,
+    StackPanes {
+        #[clap(last(true), required(true))]
+        pane_ids: Vec<String>,
+    },
 }

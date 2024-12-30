@@ -465,6 +465,32 @@ impl<'a> StackedPanes<'a> {
         }
         Err(anyhow!("Not enough room for another pane!"))
     }
+    pub fn new_stack(&mut self, root_pane_id: PaneId, pane_count_in_stack: usize) -> Vec<PaneGeom> {
+        let mut stacked_geoms = vec![];
+        let mut panes = self.panes.borrow();
+        let mut running_stack_geom = panes.get(&root_pane_id).map(|p| p.position_and_size());
+        let Some(mut running_stack_geom) = running_stack_geom else {
+            log::error!("Pane not found"); // TODO: better error
+            return stacked_geoms;
+        };
+        running_stack_geom.is_stacked = true;
+        let mut pane_index_in_stack = 0;
+        loop {
+            if pane_index_in_stack == pane_count_in_stack {
+                break;
+            }
+            let is_last_pane_in_stack = pane_index_in_stack == pane_count_in_stack.saturating_sub(1);
+            let mut geom_for_pane = running_stack_geom.clone();
+            if !is_last_pane_in_stack {
+                geom_for_pane.rows = Dimension::fixed(1);
+                running_stack_geom.y += 1;
+                running_stack_geom.rows.set_inner(running_stack_geom.rows.as_usize().saturating_sub(1));
+            }
+            stacked_geoms.push(geom_for_pane);
+            pane_index_in_stack += 1;
+        }
+        stacked_geoms
+    }
     fn get_all_stacks(&self) -> Result<Vec<Vec<(PaneId, PaneGeom)>>> {
         let err_context = || "Failed to get positions in stack";
         let panes = self.panes.borrow();

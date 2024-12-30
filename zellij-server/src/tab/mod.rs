@@ -4388,6 +4388,36 @@ impl Tab {
             self.set_force_render();
         }
     }
+    pub fn has_room_for_stack(&self, root_pane_id: PaneId, stack_size: usize) -> bool {
+        if self.floating_panes.panes_contain(&root_pane_id) || self.suppressed_panes.contains_key(&root_pane_id) {
+            log::error!("Root pane of stack cannot be floating or suppressed");
+            return false;
+        }
+        self.get_pane_with_id(root_pane_id).map(|p| {
+            p.position_and_size().rows.as_usize() >= stack_size + MIN_TERMINAL_HEIGHT
+        }).unwrap_or(false)
+    }
+    pub fn stack_panes(&mut self, root_pane_id: PaneId, mut panes_to_stack: Vec<Box<dyn Pane>>) {
+        if panes_to_stack.is_empty() {
+            // nothing to do
+            return;
+        }
+        self.swap_layouts.set_is_tiled_damaged(); // TODO: verify we can do all the below first
+
+        // + 1 for the root pane
+        let mut stack_geoms = self.tiled_panes.stack_panes(root_pane_id, panes_to_stack.len() + 1);
+        if stack_geoms.is_empty() {
+            log::error!("Failed to find room for stacked panes");
+            return;
+        }
+        self.tiled_panes.set_geom_for_pane_with_id(&root_pane_id, stack_geoms.remove(0));
+        for mut pane in panes_to_stack.drain(..) {
+            let stack_geom = stack_geoms.remove(0);
+            // let mut pane = &mut panes_to_stack.remove(0);
+            pane.set_geom(stack_geom);
+            self.tiled_panes.add_pane_with_existing_geom(pane.pid(), pane);
+        }
+    }
     fn new_scrollback_editor_pane(&self, pid: u32) -> TerminalPane {
         let next_terminal_position = self.get_next_terminal_position();
         let mut new_pane = TerminalPane::new(
