@@ -1,9 +1,35 @@
 // Nightfox Theme:
-// https://github.com/edeneast/nightfox.nvim
+// Upstream: https://github.com/edeneast/nightfox.nvim/raw/main/extra/zellij/nightfox.kdl
 
 themes {
+  carbonfox {
+    bg "#2a2a2a"
+    fg "#f2f4f8"
+    red "#ee5396"
+    green "#25be6a"
+    blue "#78a9ff"
+    yellow "#08bdba"
+    magenta "#be95ff"
+    orange "#3ddbd9"
+    cyan "#33b1ff"
+    black "#353535"
+    white "#b6b8bb"
+  }
+  dawnfox {
+    bg "#d0d8d8"
+    fg "#575279"
+    red "#b4637a"
+    green "#618774"
+    blue "#286983"
+    yellow "#ea9d34"
+    magenta "#907aa9"
+    orange "#d7827e"
+    cyan "#56949f"
+    black "#ebdfe4"
+    white "#625c87"
+  }
   dayfox {
-    bg "#f6f2ee"
+    bg "#e7d2be"
     fg "#3d2b5a"
     red "#a5222f"
     green "#396847"
@@ -15,8 +41,21 @@ themes {
     black "#d3c7bb"
     white "#643f61"
   }
+  duskfox {
+    bg "#433c59"
+    fg "#e0def4"
+    red "#eb6f92"
+    green "#a3be8c"
+    blue "#569fba"
+    yellow "#f6c177"
+    magenta "#c4a7e7"
+    orange "#ea9a97"
+    cyan "#9ccfd8"
+    black "#373354"
+    white "#cdcbe0"
+  }
   nightfox {
-    bg "#192330"
+    bg "#2b3b51"
     fg "#cdcecf"
     red "#c94f6d"
     green "#81b29a"
@@ -28,8 +67,21 @@ themes {
     black "#29394f"
     white "#aeafb0"
   }
+  nordfox {
+    bg "#3e4a5b"
+    fg "#cdcecf"
+    red "#bf616a"
+    green "#a3be8c"
+    blue "#81a1c1"
+    yellow "#ebcb8b"
+    magenta "#b48ead"
+    orange "#c9826b"
+    cyan "#88c0d0"
+    black "#444c5e"
+    white "#abb1bb"
+  }
   terafox {
-    bg "#152528"
+    bg "#293e40"
     fg "#e6eaea"
     red "#e85c51"
     green "#7aa4a1"
