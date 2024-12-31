@@ -1864,8 +1864,6 @@ impl TiledPanes {
     ) -> Vec<PaneGeom> {
         StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
             .new_stack(root_pane_id, pane_count_in_stack)
-        // TODO: if one of the panes in the stack was focused, we need to focus the last pane in
-        // the stack
     }
 }
 
