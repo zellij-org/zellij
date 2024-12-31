@@ -21,7 +21,7 @@ pub use super::generated_api::api::{
         ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetFloatingPanePinnedPayload,
         SetTimeoutPayload, ShowPaneWithIdPayload, SubscribePayload, SwitchSessionPayload,
         SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload,
-        UnsubscribePayload, WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        UnsubscribePayload, WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload, StackPanesPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1328,6 +1328,18 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for SetFloatingPanePinned"),
             },
+            Some(CommandName::StackPanes) => match protobuf_plugin_command.payload {
+                Some(Payload::StackPanesPayload(stack_panes_payload)) => {
+                    Ok(PluginCommand::StackPanes(
+                        stack_panes_payload
+                            .pane_ids
+                            .into_iter()
+                            .filter_map(|p_id| p_id.try_into().ok())
+                            .collect()
+                    ))
+                }
+                _ => Err("Mismatched payload for SetFloatingPanePinned"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2172,6 +2184,19 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
+            PluginCommand::StackPanes(
+                pane_ids,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::StackPanes as i32,
+                payload: Some(Payload::StackPanesPayload(
+                    StackPanesPayload{
+                        pane_ids: pane_ids
+                            .into_iter()
+                            .filter_map(|p_id| p_id.try_into().ok())
+                            .collect(),
+                    },
+                )),
+            }),
         }
     }
 }

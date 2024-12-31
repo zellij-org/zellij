@@ -1142,6 +1142,13 @@ pub fn set_floating_pane_pinned(pane_id: PaneId, should_be_pinned: bool) {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn stack_panes(pane_ids: Vec<PaneId>) {
+    let plugin_command = PluginCommand::StackPanes(pane_ids);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 #[allow(unused)]
