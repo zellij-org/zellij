@@ -2378,7 +2378,6 @@ impl Screen {
         pane_title: Option<InitialTitle>,
         client_id_tab_index_or_pane_id: ClientTabIndexOrPaneId,
     ) -> Result<()> {
-        let err_context = || format!("failed to replace pane");
         let suppress_pane = |tab: &mut Tab, pane_id: PaneId, new_pane_id: PaneId| {
             let _ = tab.suppress_pane_and_replace_with_pid(pane_id, new_pane_id, run);
             if let Some(pane_title) = pane_title {
@@ -2531,11 +2530,26 @@ impl Screen {
         }
         let stack_size = pane_ids_to_stack.len();
         let root_pane_id = pane_ids_to_stack.remove(0);
-        let Some(root_tab_id) = self.tabs.iter().find_map(|(tab_id, tab)| if tab.has_pane_with_pid(&root_pane_id) { Some(tab_id) } else { None }).copied() else {
+        let Some(root_tab_id) = self
+            .tabs
+            .iter()
+            .find_map(|(tab_id, tab)| {
+                if tab.has_pane_with_pid(&root_pane_id) {
+                    Some(tab_id)
+                } else {
+                    None
+                }
+            })
+            .copied()
+        else {
             log::error!("Failed to find tab for root_pane_id: {:?}", root_pane_id);
             return;
         };
-        let target_tab_has_room_for_stack = self.tabs.get(&root_tab_id).map(|t| t.has_room_for_stack(root_pane_id, stack_size)).unwrap_or(false);
+        let target_tab_has_room_for_stack = self
+            .tabs
+            .get(&root_tab_id)
+            .map(|t| t.has_room_for_stack(root_pane_id, stack_size))
+            .unwrap_or(false);
         if !target_tab_has_room_for_stack {
             log::error!("No room for stack with root pane id: {:?}", root_pane_id);
             return;
@@ -2556,12 +2570,14 @@ impl Screen {
                         },
                         None => {
                             log::error!("Failed to extract pane: {:?}", pane_id);
-                        }
+                        },
                     }
                 }
             }
         }
-        self.tabs.get_mut(&root_tab_id).map(|t| t.stack_panes(root_pane_id, panes_to_stack));
+        self.tabs
+            .get_mut(&root_tab_id)
+            .map(|t| t.stack_panes(root_pane_id, panes_to_stack));
     }
     fn unblock_input(&self) -> Result<()> {
         self.bus
@@ -3935,7 +3951,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.previous_swap_layout(),
+                    |tab: &mut Tab, _client_id: ClientId| tab.previous_swap_layout(),
                     ?
                 );
                 screen.render(None)?;
@@ -3946,7 +3962,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.next_swap_layout(),
+                    |tab: &mut Tab, _client_id: ClientId| tab.next_swap_layout(),
                     ?
                 );
                 screen.render(None)?;
@@ -4781,9 +4797,8 @@ pub(crate) fn screen_thread_main(
                 screen.set_floating_pane_pinned(pane_id, should_be_pinned);
             },
             ScreenInstruction::StackPanes(pane_ids_to_stack) => {
-                log::info!("screen.stack_panes: {:?}", pane_ids_to_stack);
                 screen.stack_panes(pane_ids_to_stack);
-                screen.unblock_input();
+                let _ = screen.unblock_input();
                 let _ = screen.render(None);
             },
         }

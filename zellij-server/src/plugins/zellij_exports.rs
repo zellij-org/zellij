@@ -1524,10 +1524,7 @@ fn set_floating_pane_pinned(env: &PluginEnv, pane_id: PaneId, should_be_pinned: 
     });
 }
 
-fn stack_panes(
-    env: &PluginEnv,
-    pane_ids: Vec<PaneId>,
-) {
+fn stack_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
     let _ = env
         .senders
         .send_to_screen(ScreenInstruction::StackPanes(pane_ids));

@@ -19,9 +19,10 @@ pub use super::generated_api::api::{
         RerunCommandPanePayload, ResizePaneIdWithDirectionPayload, ResizePayload,
         RunCommandPayload, ScrollDownInPaneIdPayload, ScrollToBottomInPaneIdPayload,
         ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetFloatingPanePinnedPayload,
-        SetTimeoutPayload, ShowPaneWithIdPayload, SubscribePayload, SwitchSessionPayload,
-        SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload,
-        UnsubscribePayload, WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload, StackPanesPayload
+        SetTimeoutPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
+        SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
+        TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1335,9 +1336,9 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                             .pane_ids
                             .into_iter()
                             .filter_map(|p_id| p_id.try_into().ok())
-                            .collect()
+                            .collect(),
                     ))
-                }
+                },
                 _ => Err("Mismatched payload for SetFloatingPanePinned"),
             },
             None => Err("Unrecognized plugin command"),
@@ -2184,18 +2185,14 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
-            PluginCommand::StackPanes(
-                pane_ids,
-            ) => Ok(ProtobufPluginCommand {
+            PluginCommand::StackPanes(pane_ids) => Ok(ProtobufPluginCommand {
                 name: CommandName::StackPanes as i32,
-                payload: Some(Payload::StackPanesPayload(
-                    StackPanesPayload{
-                        pane_ids: pane_ids
-                            .into_iter()
-                            .filter_map(|p_id| p_id.try_into().ok())
-                            .collect(),
-                    },
-                )),
+                payload: Some(Payload::StackPanesPayload(StackPanesPayload {
+                    pane_ids: pane_ids
+                        .into_iter()
+                        .filter_map(|p_id| p_id.try_into().ok())
+                        .collect(),
+                })),
             }),
         }
     }

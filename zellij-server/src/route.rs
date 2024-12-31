@@ -976,7 +976,9 @@ pub(crate) fn route_action(
         },
         Action::StackPanes(pane_ids_to_stack) => {
             senders
-                .send_to_screen(ScreenInstruction::StackPanes(pane_ids_to_stack.iter().map(|p| PaneId::from(*p)).collect()))
+                .send_to_screen(ScreenInstruction::StackPanes(
+                    pane_ids_to_stack.iter().map(|p| PaneId::from(*p)).collect(),
+                ))
                 .with_context(err_context)?;
         },
     }

@@ -3671,7 +3671,9 @@ pub fn send_cli_stack_panes_action() {
         ServerInstruction::KillSession,
         server_receiver
     );
-    let stack_panes_action = CliAction::StackPanes { pane_ids: vec!["1".to_owned(), "2".to_owned(), "3".to_owned()] };
+    let stack_panes_action = CliAction::StackPanes {
+        pane_ids: vec!["1".to_owned(), "2".to_owned(), "3".to_owned()],
+    };
     send_cli_action_to_server(&session_metadata, stack_panes_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);

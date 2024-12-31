@@ -6,7 +6,7 @@ use super::layout::{
     SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
 use crate::cli::CliAction;
-use crate::data::{Direction, KeyWithModifier, Resize, PaneId};
+use crate::data::{Direction, KeyWithModifier, PaneId, Resize};
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
@@ -748,23 +748,37 @@ impl Action {
                 let pane_ids = pane_ids
                     .iter()
                     .filter_map(|stringified_pane_id| {
-                        if let Some(terminal_pane_id) = stringified_pane_id.strip_prefix("terminal_") {
-                            u32::from_str_radix(terminal_pane_id, 10).ok().or_else(|| {
-                                malformed_ids.push(stringified_pane_id.to_owned());
-                                None
-                            }).map(|id| PaneId::Terminal(id))
-                        } else if let Some(plugin_pane_id) = stringified_pane_id.strip_prefix("plugin_") {
-                            u32::from_str_radix(plugin_pane_id, 10).ok().or_else(|| {
-                                malformed_ids.push(stringified_pane_id.to_owned());
-                                None
-                            }).map(|id| PaneId::Plugin(id))
+                        if let Some(terminal_pane_id) =
+                            stringified_pane_id.strip_prefix("terminal_")
+                        {
+                            u32::from_str_radix(terminal_pane_id, 10)
+                                .ok()
+                                .or_else(|| {
+                                    malformed_ids.push(stringified_pane_id.to_owned());
+                                    None
+                                })
+                                .map(|id| PaneId::Terminal(id))
+                        } else if let Some(plugin_pane_id) =
+                            stringified_pane_id.strip_prefix("plugin_")
+                        {
+                            u32::from_str_radix(plugin_pane_id, 10)
+                                .ok()
+                                .or_else(|| {
+                                    malformed_ids.push(stringified_pane_id.to_owned());
+                                    None
+                                })
+                                .map(|id| PaneId::Plugin(id))
                         } else {
-                            u32::from_str_radix(stringified_pane_id, 10).ok().or_else(|| {
-                                malformed_ids.push(stringified_pane_id.to_owned());
-                                None
-                            }).map(|id| PaneId::Terminal(id))
+                            u32::from_str_radix(stringified_pane_id, 10)
+                                .ok()
+                                .or_else(|| {
+                                    malformed_ids.push(stringified_pane_id.to_owned());
+                                    None
+                                })
+                                .map(|id| PaneId::Terminal(id))
                         }
-                    }).collect();
+                    })
+                    .collect();
                 if !malformed_ids.is_empty() {
                     Err(
                         format!(
@@ -775,7 +789,7 @@ impl Action {
                 } else {
                     Ok(vec![Action::StackPanes(pane_ids)])
                 }
-            }
+            },
         }
     }
     pub fn launches_plugin(&self, plugin_url: &str) -> bool {
