@@ -4430,8 +4430,9 @@ impl Tab {
             }
         }
         // if we had a focused pane in the stack, we expand it
-        if let Some(focused_pane_id_in_stack) = focused_pane_id_in_stack{
-            self.tiled_panes.expand_pane_in_stack(focused_pane_id_in_stack);
+        if let Some(focused_pane_id_in_stack) = focused_pane_id_in_stack {
+            self.tiled_panes
+                .expand_pane_in_stack(focused_pane_id_in_stack);
         } else if self.tiled_panes.pane_id_is_focused(&root_pane_id) {
             self.tiled_panes.expand_pane_in_stack(root_pane_id);
         }
