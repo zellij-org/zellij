@@ -129,6 +129,7 @@ enum CommandName {
   ListClients = 113;
   ChangeHostFolder = 114;
   SetFloatingPanePinned = 115;
+  StackPanes = 116;
 }
 
 message PluginCommand {
@@ -214,7 +215,12 @@ message PluginCommand {
     RebindKeysPayload rebind_keys_payload = 88;
     ChangeHostFolderPayload change_host_folder_payload = 89;
     SetFloatingPanePinnedPayload set_floating_pane_pinned_payload = 90;
+    StackPanesPayload stack_panes_payload = 91;
   }
+}
+
+message StackPanesPayload {
+  repeated PaneId pane_ids = 1;
 }
 
 message SetFloatingPanePinnedPayload {

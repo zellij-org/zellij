@@ -760,4 +760,15 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
     },
     ListClients,
     TogglePanePinned,
+    /// Stack pane ids
+    /// Ids are a space separated list of pane ids.
+    /// They should either be in the form of `terminal_<int>` (eg. terminal_1), `plugin_<int>` (eg.
+    /// plugin_1) or bare integers in which case they'll be considered terminals (eg. 1 is
+    /// the equivalent of terminal_1)
+    ///
+    /// Example: zellij action stack-panes -- terminal_1 plugin_2 3
+    StackPanes {
+        #[clap(last(true), required(true))]
+        pane_ids: Vec<String>,
+    },
 }

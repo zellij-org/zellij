@@ -375,6 +375,7 @@ pub enum ScreenContext {
     ListClientsToPlugin,
     TogglePanePinned,
     SetFloatingPanePinned,
+    StackPanes,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

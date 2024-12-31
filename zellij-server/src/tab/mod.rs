@@ -4131,7 +4131,7 @@ impl Tab {
             },
         }
     }
-    pub fn suppress_pane(&mut self, pane_id: PaneId, client_id: Option<ClientId>) {
+    pub fn suppress_pane(&mut self, pane_id: PaneId, _client_id: Option<ClientId>) {
         // this method places a pane in the suppressed pane with its own ID - this means we'll
         // not take it out of there when another pane is closed (eg. like happens with the
         // scrollback editor), but it has to take itself out on its own (eg. a plugin using the
@@ -4386,6 +4386,55 @@ impl Tab {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
             pane.set_pinned(should_be_pinned);
             self.set_force_render();
+        }
+    }
+    pub fn has_room_for_stack(&self, root_pane_id: PaneId, stack_size: usize) -> bool {
+        if self.floating_panes.panes_contain(&root_pane_id)
+            || self.suppressed_panes.contains_key(&root_pane_id)
+        {
+            log::error!("Root pane of stack cannot be floating or suppressed");
+            return false;
+        }
+        self.get_pane_with_id(root_pane_id)
+            .map(|p| p.position_and_size().rows.as_usize() >= stack_size + MIN_TERMINAL_HEIGHT)
+            .unwrap_or(false)
+    }
+    pub fn set_tiled_panes_damaged(&mut self) {
+        self.swap_layouts.set_is_tiled_damaged();
+    }
+    pub fn stack_panes(&mut self, root_pane_id: PaneId, mut panes_to_stack: Vec<Box<dyn Pane>>) {
+        if panes_to_stack.is_empty() {
+            // nothing to do
+            return;
+        }
+        self.swap_layouts.set_is_tiled_damaged(); // TODO: verify we can do all the below first
+
+        // + 1 for the root pane
+        let mut stack_geoms = self
+            .tiled_panes
+            .stack_panes(root_pane_id, panes_to_stack.len() + 1);
+        if stack_geoms.is_empty() {
+            log::error!("Failed to find room for stacked panes");
+            return;
+        }
+        self.tiled_panes
+            .set_geom_for_pane_with_id(&root_pane_id, stack_geoms.remove(0));
+        let mut focused_pane_id_in_stack = None;
+        for mut pane in panes_to_stack.drain(..) {
+            let pane_id = pane.pid();
+            let stack_geom = stack_geoms.remove(0);
+            pane.set_geom(stack_geom);
+            self.tiled_panes.add_pane_with_existing_geom(pane_id, pane);
+            if self.tiled_panes.pane_id_is_focused(&pane_id) {
+                focused_pane_id_in_stack = Some(pane_id);
+            }
+        }
+        // if we had a focused pane in the stack, we expand it
+        if let Some(focused_pane_id_in_stack) = focused_pane_id_in_stack {
+            self.tiled_panes
+                .expand_pane_in_stack(focused_pane_id_in_stack);
+        } else if self.tiled_panes.pane_id_is_focused(&root_pane_id) {
+            self.tiled_panes.expand_pane_in_stack(root_pane_id);
         }
     }
     fn new_scrollback_editor_pane(&self, pid: u32) -> TerminalPane {
