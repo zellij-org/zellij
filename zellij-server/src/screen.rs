@@ -2542,7 +2542,12 @@ impl Screen {
         }
 
         let mut panes_to_stack = vec![];
-        for tab in self.tabs.values_mut() {
+        for (tab_id, tab) in self.tabs.iter_mut() {
+            if tab_id == &root_tab_id {
+                // we do this before we extract panes so that the extraction won't trigger a
+                // relayout according to the next swapped tiled pane
+                tab.set_tiled_panes_damaged();
+            }
             for pane_id in &pane_ids_to_stack {
                 if tab.has_pane_with_pid(&pane_id) {
                     match tab.extract_pane(*pane_id, false) {

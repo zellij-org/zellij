@@ -4397,6 +4397,9 @@ impl Tab {
             p.position_and_size().rows.as_usize() >= stack_size + MIN_TERMINAL_HEIGHT
         }).unwrap_or(false)
     }
+    pub fn set_tiled_panes_damaged(&mut self) {
+        self.swap_layouts.set_is_tiled_damaged();
+    }
     pub fn stack_panes(&mut self, root_pane_id: PaneId, mut panes_to_stack: Vec<Box<dyn Pane>>) {
         if panes_to_stack.is_empty() {
             // nothing to do
