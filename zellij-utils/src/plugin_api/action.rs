@@ -1301,7 +1301,7 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::DumpLayout
             | Action::CliPipe { .. }
             | Action::ListClients
-            | Action::StackPanes(..) // TODO: NO!!!111oneoneone
+            | Action::StackPanes(..)
             | Action::SkipConfirm(..) => Err("Unsupported action"),
         }
     }

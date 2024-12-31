@@ -310,7 +310,6 @@ impl<'a> StackedPanes<'a> {
             adjust_stack_geoms(new_flexible_pane_geom)?;
         } else {
             if new_rows < all_stacked_pane_positions.len() {
-                // TODO: test this!! we don't want crashes...
                 return Err(anyhow!("Not enough room for stacked panes"));
             }
             let rows_deficit = current_rows - new_rows;

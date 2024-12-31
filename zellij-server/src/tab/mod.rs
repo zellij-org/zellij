@@ -4419,12 +4419,21 @@ impl Tab {
         }
         self.tiled_panes
             .set_geom_for_pane_with_id(&root_pane_id, stack_geoms.remove(0));
+        let mut focused_pane_id_in_stack = None;
         for mut pane in panes_to_stack.drain(..) {
+            let pane_id = pane.pid();
             let stack_geom = stack_geoms.remove(0);
-            // let mut pane = &mut panes_to_stack.remove(0);
             pane.set_geom(stack_geom);
-            self.tiled_panes
-                .add_pane_with_existing_geom(pane.pid(), pane);
+            self.tiled_panes.add_pane_with_existing_geom(pane_id, pane);
+            if self.tiled_panes.pane_id_is_focused(&pane_id) {
+                focused_pane_id_in_stack = Some(pane_id);
+            }
+        }
+        // if we had a focused pane in the stack, we expand it
+        if let Some(focused_pane_id_in_stack) = focused_pane_id_in_stack{
+            self.tiled_panes.expand_pane_in_stack(focused_pane_id_in_stack);
+        } else if self.tiled_panes.pane_id_is_focused(&root_pane_id) {
+            self.tiled_panes.expand_pane_in_stack(root_pane_id);
         }
     }
     fn new_scrollback_editor_pane(&self, pid: u32) -> TerminalPane {
