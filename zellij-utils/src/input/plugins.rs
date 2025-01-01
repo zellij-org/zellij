@@ -47,6 +47,16 @@ pub struct PluginConfig {
 
 impl PluginConfig {
     pub fn from_run_plugin(run_plugin: &RunPlugin) -> Option<PluginConfig> {
+        const BUILTIN_TAGS: &[&str] = &[
+            "status-bar",
+            "tab-bar",
+            "compact-bar",
+            "strider",
+            "session-manager",
+            "configuration",
+            "plugin-manager",
+        ];
+
         match &run_plugin.location {
             RunPluginLocation::File(path) => Some(PluginConfig {
                 path: path.clone(),
@@ -57,14 +67,7 @@ impl PluginConfig {
             }),
             RunPluginLocation::Zellij(tag) => {
                 let tag = tag.to_string();
-                if tag == "status-bar"
-                    || tag == "tab-bar"
-                    || tag == "compact-bar"
-                    || tag == "strider"
-                    || tag == "session-manager"
-                    || tag == "configuration"
-                    || tag == "plugin-manager"
-                {
+                if BUILTIN_TAGS.contains(&tag.as_str()) {
                     Some(PluginConfig {
                         path: PathBuf::from(&tag),
                         _allow_exec_host_cmd: run_plugin._allow_exec_host_cmd,
