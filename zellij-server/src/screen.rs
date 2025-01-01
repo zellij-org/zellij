@@ -240,6 +240,8 @@ pub enum ScreenInstruction {
     ToggleTab(ClientId),
     UpdateTabName(Vec<u8>, ClientId),
     UndoRenameTab(ClientId),
+    UpdateSessionName(Vec<u8>, ClientId),
+    UndoRenameSession(ClientId),
     MoveTabLeft(ClientId),
     MoveTabRight(ClientId),
     TerminalResize(Size),
@@ -502,6 +504,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::GoToTabName(..) => ScreenContext::GoToTabName,
             ScreenInstruction::UpdateTabName(..) => ScreenContext::UpdateTabName,
             ScreenInstruction::UndoRenameTab(..) => ScreenContext::UndoRenameTab,
+            ScreenInstruction::UpdateSessionName(..) => ScreenContext::UpdateSessionName,
+            ScreenInstruction::UndoRenameSession(..) => ScreenContext::UndoRenameSession,
             ScreenInstruction::MoveTabLeft(..) => ScreenContext::MoveTabLeft,
             ScreenInstruction::MoveTabRight(..) => ScreenContext::MoveTabRight,
             ScreenInstruction::TerminalResize(..) => ScreenContext::TerminalResize,
@@ -691,6 +695,7 @@ pub(crate) struct Screen {
     copy_options: CopyOptions,
     debug: bool,
     session_name: String,
+    visual_session_name: Option<String>,
     session_infos_on_machine: BTreeMap<String, SessionInfo>, // String is the session name, can
     // also be this session
     resurrectable_sessions: BTreeMap<String, Duration>, // String is the session name, duration is
@@ -755,6 +760,7 @@ impl Screen {
             copy_options,
             debug,
             session_name,
+            visual_session_name: None,
             session_infos_on_machine,
             default_layout,
             default_layout_name,
@@ -1676,6 +1682,70 @@ impl Screen {
         Ok(())
     }
 
+    pub fn update_visual_session_rename(
+        &mut self,
+        buf: Vec<u8>,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let err_context = || format!("failed to update session name for client id: {client_id:?}");
+
+        let s = str::from_utf8(&buf)
+            .with_context(|| format!("failed to construct tab name from buf: {buf:?}"))
+            .with_context(err_context)?;
+
+        if self.visual_session_name.is_none() {
+            self.visual_session_name = Some(String::new());
+        }
+        let name = self.visual_session_name.as_mut().unwrap();
+
+        match s {
+            "\0" => {
+                *name = String::new();
+            },
+            "\u{007F}" | "\u{0008}" => {
+                // delete and backspace keys
+                name.pop();
+            },
+            c => {
+                // It only allows printable unicode
+                if buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0xA0..=0xFF)) {
+                    name.push_str(c);
+                }
+            },
+        }
+
+        self.generate_and_report_mode_info(client_id, self.visual_session_name.clone())
+            .with_context(err_context)
+    }
+
+    pub fn undo_visual_session_rename(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = || format!("failed to undo session rename for client {}", client_id);
+        _ = self.visual_session_name.take();
+        self.generate_and_report_mode_info(client_id, Some(self.session_name.clone()))
+            .with_context(err_context)
+    }
+
+    pub fn generate_and_report_mode_info(
+        &mut self,
+        client_id: ClientId,
+        name: Option<String>,
+    ) -> Result<()> {
+        let mut mode_info = self
+            .mode_info
+            .get(&client_id)
+            .unwrap_or(&self.default_mode_info)
+            .clone();
+        mode_info.session_name = name;
+        self.bus
+            .senders
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                Some(client_id),
+                Event::ModeUpdate(mode_info),
+            )]))
+            .context("Failed to report mode info")
+    }
+
     pub fn update_active_tab_name(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
         let err_context =
             || format!("failed to update active tabs name for client id: {client_id:?}");
@@ -1911,6 +1981,14 @@ impl Screen {
                     active_pane.store_pane_name();
                 }
             }
+        }
+
+        if mode_info.mode == InputMode::RenameSession {
+            self.visual_session_name = Some(self.session_name.clone());
+        } else if let Some(name) = self.visual_session_name.take() {
+            self.bus
+                .senders
+                .send_to_screen(ScreenInstruction::RenameSession(name, client_id))?;
         }
 
         self.style = mode_info.style;
@@ -3695,6 +3773,16 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::UndoRenameTab(client_id) => {
                 screen.undo_active_rename_tab(client_id)?;
+                screen.unblock_input()?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::UpdateSessionName(c, client_id) => {
+                screen.update_visual_session_rename(c, client_id)?;
+                screen.unblock_input()?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::UndoRenameSession(client_id) => {
+                screen.undo_visual_session_rename(client_id)?;
                 screen.unblock_input()?;
                 screen.render(None)?;
             },

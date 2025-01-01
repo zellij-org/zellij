@@ -570,6 +570,16 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::UndoRenameTab(client_id))
                 .with_context(err_context)?;
         },
+        Action::SessionNameInput(c) => {
+            senders
+                .send_to_screen(ScreenInstruction::UpdateSessionName(c, client_id))
+                .with_context(err_context)?;
+        },
+        Action::UndoRenameSession => {
+            senders
+                .send_to_screen(ScreenInstruction::UndoRenameSession(client_id))
+                .with_context(err_context)?;
+        },
         Action::MoveTab(direction) => {
             let screen_instr = match direction {
                 Direction::Left => ScreenInstruction::MoveTabLeft(client_id),

@@ -130,8 +130,15 @@ impl ZellijPlugin for State {
             ThemeHue::Light => self.mode_info.style.colors.white,
         };
 
+        let mut name = self.mode_info.session_name.as_deref();
+        if self.mode_info.mode == InputMode::RenameSession
+            && name.map(|s| s.len() == 0).unwrap_or_default()
+        {
+            name = Some("Enter name...");
+        }
+
         self.tab_line = tab_line(
-            self.mode_info.session_name.as_deref(),
+            name,
             all_tabs,
             active_tab_index,
             cols.saturating_sub(1),

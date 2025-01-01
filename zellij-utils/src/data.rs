@@ -1031,6 +1031,9 @@ pub enum InputMode {
     /// `RenamePane` mode allows assigning a new name to a pane.
     #[serde(alias = "renamepane")]
     RenamePane,
+    /// `RenameSession` mode allows assigning a new name to a session.
+    #[serde(alias = "renamesession")]
+    RenameSession,
     /// `Session` mode allows detaching sessions
     #[serde(alias = "session")]
     Session,
@@ -1087,6 +1090,7 @@ impl FromStr for InputMode {
             "scroll" | "Scroll" => Ok(InputMode::Scroll),
             "renametab" | "RenameTab" => Ok(InputMode::RenameTab),
             "renamepane" | "RenamePane" => Ok(InputMode::RenamePane),
+            "renamesession" | "RenameSession" => Ok(InputMode::RenameSession),
             "session" | "Session" => Ok(InputMode::Session),
             "move" | "Move" => Ok(InputMode::Move),
             "prompt" | "Prompt" => Ok(InputMode::Prompt),

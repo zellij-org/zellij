@@ -251,6 +251,8 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
     ]} else if mi.mode == IM::Session { vec![
         (s("Detach"), s("Detach"), action_key(&km, &[Action::Detach])),
         (s("Session Manager"), s("Manager"), action_key(&km, &[A::LaunchOrFocusPlugin(Default::default(), true, true, false, false), TO_NORMAL])), // not entirely accurate
+        (s("Rename session"), s("Rename"),
+            action_key(&km, &[A::SwitchToMode(IM::RenameSession), A::SessionNameInput(vec![0])])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Tmux { vec![
         (s("Move focus"), s("Move"), action_key_group(&km, &[
@@ -265,7 +267,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Previous Tab"), s("Previous"), action_key(&km, &[A::GoToPreviousTab, TO_NORMAL])),
         (s("Next Tab"), s("Next"), action_key(&km, &[A::GoToNextTab, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_normal_key),
-    ]} else if matches!(mi.mode, IM::RenamePane | IM::RenameTab) { vec![
+    ]} else if matches!(mi.mode, IM::RenamePane | IM::RenameSession | IM::RenameTab) { vec![
         (s("When done"), s("Done"), to_normal_key),
         (s("Select pane"), s("Select"), action_key_group(&km, &[
             &[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
