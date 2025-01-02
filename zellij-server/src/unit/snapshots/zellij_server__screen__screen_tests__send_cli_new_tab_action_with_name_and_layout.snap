@@ -4,7 +4,9 @@ assertion_line: 2711
 expression: "format!(\"{:#?}\", new_tab_instruction)"
 ---
 NewTab(
-    None,
+    Some(
+        ".",
+    ),
     None,
     Some(
         TiledPaneLayout {
