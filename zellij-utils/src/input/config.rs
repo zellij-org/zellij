@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::PathBuf;
+use std::sync::Arc;
 use thiserror::Error;
 
 use std::convert::TryFrom;
@@ -37,16 +38,30 @@ pub struct Config {
 #[derive(Error, Debug)]
 pub struct KdlError {
     pub error_message: String,
-    pub src: Option<NamedSource>,
+    pub src: Option<Arc<NamedSource<String>>>,
     pub offset: Option<usize>,
     pub len: Option<usize>,
     pub help_message: Option<String>,
+    pub related: Vec<KdlError>,
 }
 
 impl KdlError {
     pub fn add_src(mut self, src_name: String, src_input: String) -> Self {
-        self.src = Some(NamedSource::new(src_name, src_input));
+        self.src = Some(Arc::new(NamedSource::new(src_name, src_input)));
         self
+    }
+}
+
+impl From<kdl::KdlDiagnostic> for KdlError {
+    fn from(value: kdl::KdlDiagnostic) -> Self {
+        KdlError {
+            error_message: value.label.unwrap_or_else(|| "".into()),
+            src: None,
+            offset: Some(value.span.offset()),
+            len: Some(value.span.len()),
+            help_message: value.help,
+            related: Vec::new(),
+        }
     }
 }
 
@@ -77,6 +92,9 @@ impl Diagnostic for KdlError {
         } else {
             None
         }
+    }
+    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
+        None
     }
 }
 
@@ -112,6 +130,7 @@ impl ConfigError {
             offset: Some(offset),
             len: Some(len),
             help_message: None,
+            related: Vec::new(),
         })
     }
     pub fn new_layout_kdl_error(error_message: String, offset: usize, len: usize) -> Self {
@@ -121,6 +140,7 @@ impl ConfigError {
             offset: Some(offset),
             len: Some(len),
             help_message: Some(format!("For more information, please see our layout guide: https://zellij.dev/documentation/creating-a-layout.html")),
+            related: Vec::new(),
         })
     }
 }
@@ -192,27 +212,47 @@ impl Config {
                 match Config::from_kdl(&kdl_config, default_config) {
                     Ok(config) => Ok(config),
                     Err(ConfigError::KdlDeserializationError(kdl_error)) => {
-                        let error_message = match kdl_error.kind {
-                            kdl::KdlErrorKind::Context("valid node terminator") => {
-                                format!("Failed to deserialize KDL node. \nPossible reasons:\n{}\n{}\n{}\n{}",
-                                "- Missing `;` after a node name, eg. { node; another_node; }",
-                                "- Missing quotations (\") around an argument node eg. { first_node \"argument_node\"; }",
-                                "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
-                                "- Found an extraneous equal sign (=) between node child arguments and their values. eg. { argument=\"value\" }")
-                            },
-                            _ => {
-                                String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error"))
-                            },
-                        };
-                        let kdl_error = KdlError {
-                            error_message,
-                            src: Some(NamedSource::new(
+                        let src = Some(Arc::new(NamedSource::new(
                                 path.as_path().as_os_str().to_string_lossy(),
-                                kdl_config,
-                            )),
-                            offset: Some(kdl_error.span.offset()),
-                            len: Some(kdl_error.span.len()),
-                            help_message: None,
+                                kdl_config.clone(),
+                            )));
+                        let kdl_error = if !kdl_error.diagnostics.is_empty()
+                            && kdl_error.diagnostics.len() > 1
+                        {
+                            KdlError {
+                                error_message: "Multiple KDL deserialization errors found".into(),
+                                src: None,
+                                offset: None,
+                                len: None,
+                                help_message: None,
+                                // TODO: uhhhhh..... probably don't want 1000 clones of the config
+                                related: kdl_error.diagnostics.into_iter().map(|d| d.into()).map(|mut e: KdlError| {
+                                    e.src = src.clone();
+                                    e
+                                }).collect(),
+                            }
+                        } else if let Some(diag) = kdl_error.diagnostics.get(0) {
+                            let error_message = diag
+                                .help
+                                .clone()
+                                .unwrap_or_else(|| "Kdl Deserialization Error".into());
+                            KdlError {
+                                error_message,
+                                src,
+                                offset: Some(diag.span.offset()),
+                                len: Some(diag.span.len()),
+                                help_message: None,
+                                related: Vec::new(),
+                            }
+                        } else {
+                            KdlError {
+                                error_message: format!("{kdl_error}"),
+                                src,
+                                offset: None,
+                                len: None,
+                                help_message: None,
+                                related: Vec::new(),
+                            }
                         };
                         Err(ConfigError::KdlError(kdl_error))
                     },

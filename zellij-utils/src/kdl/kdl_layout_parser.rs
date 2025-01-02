@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::str::FromStr;
 
 use crate::{
-    kdl_child_with_name, kdl_children_nodes, kdl_first_entry_as_bool, kdl_first_entry_as_i64,
+    kdl_child_with_name, kdl_children_nodes, kdl_first_entry_as_bool, kdl_first_entry_as_integer,
     kdl_first_entry_as_string, kdl_get_bool_property_or_child_value,
     kdl_get_bool_property_or_child_value_with_error, kdl_get_child,
     kdl_get_int_property_or_child_value, kdl_get_property_or_child,
@@ -363,7 +363,7 @@ impl<'a> KdlLayoutParser<'a> {
                 }
                 let config_entry_str_value = kdl_first_entry_as_string!(user_configuration_entry)
                     .map(|s| format!("{}", s.to_string()));
-                let config_entry_int_value = kdl_first_entry_as_i64!(user_configuration_entry)
+                let config_entry_int_value = kdl_first_entry_as_integer!(user_configuration_entry)
                     .map(|s| format!("{}", s.to_string()));
                 let config_entry_bool_value = kdl_first_entry_as_bool!(user_configuration_entry)
                     .map(|s| format!("{}", s.to_string()));
