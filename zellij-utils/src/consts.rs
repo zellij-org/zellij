@@ -158,6 +158,7 @@ mod unix_only {
                 |_| {
                     ZELLIJ_PROJ_DIR
                         .runtime_dir()
+                        .filter(|p| p.try_exists().ok() == Some(true))
                         .map_or_else(|| ZELLIJ_TMP_DIR.clone(), |p| p.to_owned())
                 },
                 PathBuf::from,
