@@ -255,6 +255,7 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     },
                     PluginCommand::WatchFilesystem => watch_filesystem(env),
                     PluginCommand::DumpSessionLayout => dump_session_layout(env),
+                    PluginCommand::DumpScreen(full) => dump_screen(env, full),
                     PluginCommand::CloseSelf => close_self(env),
                     PluginCommand::Reconfigure(new_config, write_config_to_disk) => {
                         reconfigure(env, new_config, write_config_to_disk)?
@@ -1494,6 +1495,16 @@ fn dump_session_layout(env: &PluginEnv) {
         .to_screen
         .as_ref()
         .map(|sender| sender.send(ScreenInstruction::DumpLayoutToPlugin(env.plugin_id)));
+}
+
+fn dump_screen(env: &PluginEnv, full: bool) {
+    let _ = env.senders.to_screen.as_ref().map(|sender| {
+        sender.send(ScreenInstruction::DumpScreenToPlugin(
+            env.plugin_id,
+            env.client_id,
+            full,
+        ))
+    });
 }
 
 fn list_clients(env: &PluginEnv) {

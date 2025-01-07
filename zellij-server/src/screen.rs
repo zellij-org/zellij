@@ -185,6 +185,7 @@ pub enum ScreenInstruction {
     DumpLayout(Option<PathBuf>, ClientId), // PathBuf is the default configured
     // shell
     DumpLayoutToPlugin(PluginId),
+    DumpScreenToPlugin(PluginId, ClientId, bool),
     EditScrollback(ClientId),
     ScrollUp(ClientId),
     ScrollUpAt(Position, ClientId),
@@ -471,6 +472,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::Exit => ScreenContext::Exit,
             ScreenInstruction::ClearScreen(..) => ScreenContext::ClearScreen,
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
+            ScreenInstruction::DumpScreenToPlugin(..) => ScreenContext::DumpScreenToPlugin,
             ScreenInstruction::DumpLayout(..) => ScreenContext::DumpLayout,
             ScreenInstruction::DumpLayoutToPlugin(..) => ScreenContext::DumpLayoutToPlugin,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
@@ -3160,6 +3162,32 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+            },
+            ScreenInstruction::DumpScreenToPlugin(plugin_id, client_id, full) => {
+                let err_context = || format!("Failed to dump screen");
+                let mut dump = None;
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| {
+                        if let Some(active_pane) =
+                            tab.get_active_pane_or_floating_pane_mut(client_id)
+                        {
+                            dump = Some(active_pane.dump_screen(full));
+                        }
+                    }
+                );
+                if let Some(dump) = dump {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_plugin(PluginInstruction::Update(vec![(
+                            Some(plugin_id),
+                            Some(client_id),
+                            Event::ScreenContents(dump),
+                        )]))
+                        .with_context(err_context)?;
+                }
             },
             ScreenInstruction::DumpLayout(default_shell, client_id) => {
                 let err_context = || format!("Failed to dump layout");
