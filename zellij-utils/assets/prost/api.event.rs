@@ -256,7 +256,9 @@ pub struct MouseEventPayload {
     #[prost(enumeration = "MouseEventName", tag = "1")]
     pub mouse_event_name: i32,
     #[prost(oneof = "mouse_event_payload::MouseEventPayload", tags = "2, 3")]
-    pub mouse_event_payload: ::core::option::Option<mouse_event_payload::MouseEventPayload>,
+    pub mouse_event_payload: ::core::option::Option<
+        mouse_event_payload::MouseEventPayload,
+    >,
 }
 /// Nested message and enum types in `MouseEventPayload`.
 pub mod mouse_event_payload {
@@ -380,12 +382,10 @@ pub struct PaneInfo {
     pub plugin_url: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag = "22")]
     pub is_selectable: bool,
-    #[prost(int32, tag = "23")]
-    pub pid: i32,
+    #[prost(int32, optional, tag = "23")]
+    pub pid: ::core::option::Option<i32>,
     #[prost(string, optional, tag = "24")]
-    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(string, optional, tag = "25")]
-    pub tty: ::core::option::Option<::prost::alloc::string::String>,
+    pub last_known_cwd: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
