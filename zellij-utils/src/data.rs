@@ -1362,9 +1362,7 @@ pub struct PaneInfo {
     /// The PID of the process running in this pane
     pub pid: i32,
     /// The working dir of the process running in this pane
-    pub cwd: Option<String>,
-    /// The used TTY, if we are able to parse it. For now, only available on Linux
-    pub tty: Option<String>,
+    pub startup_cwd: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
