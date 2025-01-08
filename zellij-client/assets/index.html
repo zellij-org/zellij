@@ -69,6 +69,18 @@
                         );
                     }
                 });
+                term.onBinary((data) => {
+                  const buffer = new Uint8Array(data.length);
+                  for (let i = 0; i < data.length; ++i) {
+                    buffer[i] = data.charCodeAt(i) & 255;
+                  }
+                  ws_terminal.send(
+                      JSON.stringify({
+                          web_client_id: own_web_client_id,
+                          stdin: buffer,
+                      })
+                  );
+                })
 
                 let ws_terminal = new WebSocket("ws://127.0.0.1:8080");
                 // let ws_control = new WebSocket('ws://127.0.0.1:8081');

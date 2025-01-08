@@ -21,6 +21,7 @@ use zellij_utils::{
     input::cast_termwiz_key,
     input::config::{Config, ConfigError},
     input::options::Options,
+    input::mouse::{MouseButton, MouseEvent},
     ipc::{
         ClientAttributes, ClientToServerMsg, ExitReason, IpcSenderWithContext, ServerToClientMsg,
     },
@@ -74,6 +75,19 @@ impl RenderedBytes {
             web_client_id: web_client_id.to_owned(),
             bytes,
         }
+    }
+}
+
+// TODO: use from input_handler?
+#[derive(Debug, Clone, Copy)]
+enum HeldMouseButton {
+    Left,
+    Right,
+    Middle,
+}
+impl Default for HeldMouseButton {
+    fn default() -> Self {
+        HeldMouseButton::Left
     }
 }
 
@@ -247,6 +261,7 @@ async fn start_terminal_connection(
     render_to_client(stdout_channel_rx, web_client_id, client_channel_tx);
 
     // Handle incoming messages (STDIN)
+    let mut holding_mouse = None;
     while let Some(Ok(msg)) = client_channel_rx.next().await {
         match msg {
             Message::Text(msg) => {
@@ -268,6 +283,7 @@ async fn start_terminal_connection(
                         parse_stdin(
                             deserialized_msg.stdin.as_bytes(),
                             client_connection.lock().unwrap().clone(),
+                            &mut holding_mouse,
                         );
                     },
                     Err(e) => {
@@ -352,9 +368,11 @@ fn zellij_server_listener(
     let enter_alternate_screen = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
     let enter_kitty_keyboard_mode = "\u{1b}[>1u";
+    let enable_mouse_mode = "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1015h\u{1b}[?1006h";
     let _ = stdout_channel_tx.send(clear_client_terminal_attributes.to_owned());
     let _ = stdout_channel_tx.send(enter_alternate_screen.to_owned());
     let _ = stdout_channel_tx.send(bracketed_paste.to_owned());
+    let _ = stdout_channel_tx.send(enable_mouse_mode.to_owned());
     let _ = stdout_channel_tx.send(enter_kitty_keyboard_mode.to_owned());
 
     let palette = config
@@ -458,8 +476,7 @@ fn is_mouse_press_or_hold(input_event: &InputEvent) -> bool {
     }
     false
 }
-fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>) {
-    let mut holding_mouse = false;
+fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>, holding_mouse: &mut Option<HeldMouseButton>) {
     let mut input_parser = InputParser::new();
     // let mut current_buffer = vec![];
     let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely
@@ -473,7 +490,7 @@ fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>) {
     );
 
     for (i, input_event) in events.into_iter().enumerate() {
-        match &input_event {
+        match input_event {
             InputEvent::Key(key_event) => {
                 let key = cast_termwiz_key(
                     key_event.clone(),
@@ -486,6 +503,102 @@ fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>) {
                     false, // TODO: kitty keyboard support?
                 ));
             },
+            InputEvent::Mouse(mouse_event) => {
+                let mouse_event =
+                    zellij_utils::input::mouse::MouseEvent::from(mouse_event);
+                match mouse_event {
+                    MouseEvent::Press(button, point) => match button {
+                        MouseButton::WheelUp => {
+                            let action = Action::ScrollUpAt(point);
+                            os_input
+                                .send_to_server(ClientToServerMsg::Action(action, None, None));
+                        },
+                        MouseButton::WheelDown => {
+                            let action = Action::ScrollDownAt(point);
+                            os_input
+                                .send_to_server(ClientToServerMsg::Action(action, None, None));
+                        },
+                        MouseButton::Left => {
+                            if holding_mouse.is_some() {
+                                let action = Action::MouseHoldLeft(point);
+                                os_input
+                                    .send_to_server(ClientToServerMsg::Action(action, None, None));
+                            } else {
+                                let action = Action::LeftClick(point);
+                                os_input
+                                    .send_to_server(ClientToServerMsg::Action(action, None, None));
+                            }
+                            *holding_mouse = Some(HeldMouseButton::Left);
+                        },
+                        MouseButton::Right => {
+                            if holding_mouse.is_some() {
+                                let action = Action::MouseHoldRight(point);
+                                os_input
+                                    .send_to_server(ClientToServerMsg::Action(action, None, None));
+                            } else {
+                                let action = Action::RightClick(point);
+                                os_input
+                                    .send_to_server(ClientToServerMsg::Action(action, None, None));
+                            }
+                            *holding_mouse = Some(HeldMouseButton::Right);
+                        },
+                        MouseButton::Middle => {
+                            if holding_mouse.is_some() {
+                                let action = Action::MouseHoldMiddle(point);
+                                os_input
+                                    .send_to_server(ClientToServerMsg::Action(action, None, None));
+                            } else {
+                                let action = Action::MiddleClick(point);
+                                os_input
+                                    .send_to_server(ClientToServerMsg::Action(action, None, None));
+                            }
+                            *holding_mouse = Some(HeldMouseButton::Middle);
+                        },
+                    },
+                    MouseEvent::Release(point) => {
+                        let button_released = holding_mouse.unwrap_or_default();
+                        match button_released {
+                            HeldMouseButton::Left => {
+                                let action = Action::LeftMouseRelease(point);
+                                os_input
+                                    .send_to_server(ClientToServerMsg::Action(action, None, None));
+                            },
+                            HeldMouseButton::Right => {
+                                let action = Action::RightMouseRelease(point);
+                                os_input
+                                    .send_to_server(ClientToServerMsg::Action(action, None, None));
+                            },
+                            HeldMouseButton::Middle => {
+                                let action = Action::MiddleMouseRelease(point);
+                                os_input
+                                    .send_to_server(ClientToServerMsg::Action(action, None, None));
+                            },
+                        };
+                        *holding_mouse = None;
+                    },
+                    MouseEvent::Hold(point) => {
+                        let button_held = holding_mouse.unwrap_or_default();
+                        match button_held {
+                            HeldMouseButton::Left => {
+                                let action = Action::MouseHoldLeft(point);
+                                os_input
+                                    .send_to_server(ClientToServerMsg::Action(action, None, None));
+                            },
+                            HeldMouseButton::Right => {
+                                let action = Action::MouseHoldRight(point);
+                                os_input
+                                    .send_to_server(ClientToServerMsg::Action(action, None, None));
+                            },
+                            HeldMouseButton::Middle => {
+                                let action = Action::MouseHoldMiddle(point);
+                                os_input
+                                    .send_to_server(ClientToServerMsg::Action(action, None, None));
+                            },
+                        };
+                        *holding_mouse = Some(button_held);
+                    },
+                }
+            }
             _ => {
                 log::error!("Unsupported event: {:#?}", input_event);
             },
