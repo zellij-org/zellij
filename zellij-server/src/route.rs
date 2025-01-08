@@ -1180,7 +1180,14 @@ pub(crate) fn route_thread_main(
                         ) => {
                             // TODO: if web clients are disabled in the config, we should not allow
                             // this connection if is_web_client is true
-                            let allow_web_connections = rlocked_sessions.as_ref().map(|rlocked_sessions| rlocked_sessions.session_configuration.is_web_server_enabled()).unwrap_or(false);
+                            let allow_web_connections = rlocked_sessions
+                                .as_ref()
+                                .map(|rlocked_sessions| {
+                                    rlocked_sessions
+                                        .session_configuration
+                                        .is_web_server_enabled()
+                                })
+                                .unwrap_or(false);
                             let should_allow_connection = !is_web_client || allow_web_connections;
                             if should_allow_connection {
                                 let attach_client_instruction = ServerInstruction::AttachClient(
@@ -1196,7 +1203,10 @@ pub(crate) fn route_thread_main(
                                     .with_context(err_context)?;
                             } else {
                                 let error = "This session does not allow web connections.";
-                                let _ = to_server.send(ServerInstruction::LogError(vec![error.to_owned()], client_id));
+                                let _ = to_server.send(ServerInstruction::LogError(
+                                    vec![error.to_owned()],
+                                    client_id,
+                                ));
                                 let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
                             }
                         },

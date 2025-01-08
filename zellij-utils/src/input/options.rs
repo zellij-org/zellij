@@ -244,9 +244,7 @@ impl Options {
         let support_kitty_keyboard_protocol = other
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
-        let enable_web_server = other
-            .enable_web_server
-            .or(self.enable_web_server);
+        let enable_web_server = other.enable_web_server.or(self.enable_web_server);
 
         Options {
             simplified_ui,
@@ -335,9 +333,7 @@ impl Options {
         let support_kitty_keyboard_protocol = other
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
-        let enable_web_server = other
-            .enable_web_server
-            .or(self.enable_web_server);
+        let enable_web_server = other.enable_web_server.or(self.enable_web_server);
 
         Options {
             simplified_ui,

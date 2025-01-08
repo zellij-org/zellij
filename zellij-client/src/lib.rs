@@ -1,14 +1,14 @@
 pub mod os_input_output;
 
 pub mod cli_client;
-#[cfg(feature = "web_server_capability")]
-pub mod web_client;
 mod command_is_executing;
 mod input_handler;
 mod keyboard_parser;
 pub mod old_config_converter;
 mod stdin_ansi_parser;
 mod stdin_handler;
+#[cfg(feature = "web_server_capability")]
+pub mod web_client;
 
 use log::info;
 use std::env::current_exe;
@@ -145,7 +145,9 @@ fn spawn_web_server(socket_path: &Path) -> io::Result<()> {
 
 #[cfg(not(feature = "web_server_capability"))]
 fn spawn_web_server(socket_path: &Path) -> io::Result<()> {
-    log::error!("This version of Zellij was compiled without web server support, cannot run web server!");
+    log::error!(
+        "This version of Zellij was compiled without web server support, cannot run web server!"
+    );
     Ok(())
 }
 
@@ -219,10 +221,7 @@ pub fn start_client(
         .support_kitty_keyboard_protocol
         .map(|e| !e)
         .unwrap_or(false);
-    let enable_web_server = config_options
-        .enable_web_server
-        .map(|e| e)
-        .unwrap_or(false);
+    let enable_web_server = config_options.enable_web_server.map(|e| e).unwrap_or(false);
     let mut reconnect_to_session = None;
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let take_snapshot = "\u{1b}[?1049h";

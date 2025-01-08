@@ -20,7 +20,9 @@ use zellij_client::{
 #[cfg(feature = "web_server_capability")]
 use zellij_client::web_client::start_web_client as start_web_client_impl;
 
-use zellij_server::{os_input_output::get_server_os_input, start_server as start_server_impl, daemonize};
+use zellij_server::{
+    daemonize, os_input_output::get_server_os_input, start_server as start_server_impl,
+};
 use zellij_utils::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
     data::{ConnectToSession, LayoutInfo},
@@ -179,8 +181,6 @@ pub(crate) fn start_web_client(session_name: String, debug: bool, opts: CliArgs)
         },
     };
 
-
-
     // Set instance-wide debug mode
     zellij_utils::consts::DEBUG_MODE.set(debug).unwrap();
     // let os_input = get_os_input(get_client_os_input);
@@ -189,8 +189,12 @@ pub(crate) fn start_web_client(session_name: String, debug: bool, opts: CliArgs)
 
 #[cfg(not(feature = "web_server_capability"))]
 pub(crate) fn start_web_client(_session_name: String, _debug: bool, _opts: CliArgs) {
-    log::error!("This version of Zellij was compiled without web server support, cannot run web server!");
-    eprintln!("This version of Zellij was compiled without web server support, cannot run web server!");
+    log::error!(
+        "This version of Zellij was compiled without web server support, cannot run web server!"
+    );
+    eprintln!(
+        "This version of Zellij was compiled without web server support, cannot run web server!"
+    );
     std::process::exit(2);
 }
 

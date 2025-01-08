@@ -38,11 +38,15 @@ use log::info;
 use std::env;
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
-use tokio_tungstenite::{accept_async, accept_hdr_async, WebSocketStream, tungstenite::http::{Request, Response}};
-use tokio_tungstenite::tungstenite::Message;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::{task, time};
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::{
+    accept_async, accept_hdr_async,
+    tungstenite::http::{Request, Response},
+    WebSocketStream,
+};
 
 // DEV INSTRUCTIONS:
 // * to run this:
@@ -227,8 +231,6 @@ async fn start_terminal_connection(
         }
         Ok(response)
     };
-
-
 
     let ws_stream = accept_hdr_async(stream, callback).await.unwrap();
     let (client_channel_tx, mut client_channel_rx) = ws_stream.split();

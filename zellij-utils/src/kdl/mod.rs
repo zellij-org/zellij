@@ -2237,11 +2237,9 @@ impl Options {
             "support_kitty_keyboard_protocol"
         )
         .map(|(v, _)| v);
-        let enable_web_server = kdl_property_first_arg_as_bool_or_error!(
-            kdl_options,
-            "enable_web_server"
-        )
-        .map(|(v, _)| v);
+        let enable_web_server =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "enable_web_server")
+                .map(|(v, _)| v);
         Ok(Options {
             simplified_ui,
             theme,
@@ -3071,7 +3069,8 @@ impl Options {
         }
     }
     fn enable_web_server_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}\n{}",
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}",
             " ",
             "// Allow access to sessions in the browser through a local webserver",
             "// When enabled, navigate to http://localhost:8082",
@@ -3185,9 +3184,7 @@ impl Options {
         {
             nodes.push(support_kitty_keyboard_protocol);
         }
-        if let Some(enable_web_server) =
-            self.enable_web_server_to_kdl(add_comments)
-        {
+        if let Some(enable_web_server) = self.enable_web_server_to_kdl(add_comments) {
             nodes.push(enable_web_server);
         }
         nodes
