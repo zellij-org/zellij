@@ -1197,6 +1197,7 @@ pub(crate) fn route_thread_main(
                             } else {
                                 let error = "This session does not allow web connections.";
                                 let _ = to_server.send(ServerInstruction::LogError(vec![error.to_owned()], client_id));
+                                let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
                             }
                         },
                         ClientToServerMsg::ClientExited => {

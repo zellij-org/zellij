@@ -57,3 +57,4 @@ wasmtime = { version = "21.0.2", features = ["winch"] } # Keep in sync with the 
 
 [features]
 singlepass = ["wasmtime/winch"]
+web_server_capability = [ ]

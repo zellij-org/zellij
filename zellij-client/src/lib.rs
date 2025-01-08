@@ -1,6 +1,7 @@
 pub mod os_input_output;
 
 pub mod cli_client;
+#[cfg(feature = "web_server_capability")]
 pub mod web_client;
 mod command_is_executing;
 mod input_handler;
@@ -122,6 +123,8 @@ impl ErrorInstruction for ClientInstruction {
 //    zellij/src/commands.rs (might want to rename it to start_web_server)
 // 3. Gracefully exit if the port is taken and show an appropriate error in the logs
 // 4. Place this whole thing behind a support_web_connections (or some such) config
+
+#[cfg(feature = "web_server_capability")]
 fn spawn_web_server(socket_path: &Path) -> io::Result<()> {
     let mut cmd = Command::new(current_exe()?);
     cmd.arg("--web");
@@ -138,6 +141,12 @@ fn spawn_web_server(socket_path: &Path) -> io::Result<()> {
         };
         Err(io::Error::new(io::ErrorKind::Other, err_msg))
     }
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+fn spawn_web_server(socket_path: &Path) -> io::Result<()> {
+    log::error!("This version of Zellij was compiled without web server support, cannot run web server!");
+    Ok(())
 }
 
 fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
