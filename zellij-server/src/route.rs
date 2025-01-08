@@ -623,6 +623,8 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::MouseHoldLeft(point) => {
+            // TODO: CONTINUE HERE - for some reason we don't see the marked characters when tryin
+            // gto copy something on the web client, let's see what's up
             senders
                 .send_to_screen(ScreenInstruction::MouseHoldLeft(point, client_id))
                 .with_context(err_context)?;
