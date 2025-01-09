@@ -3233,6 +3233,7 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
+            // TODO: remove these and other mouse events we're no longer using
             ScreenInstruction::ScrollUpAt(point, client_id) => {
                 active_tab_and_connected_client_id!(
                     screen,
@@ -3715,10 +3716,12 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::LeftMouseRelease(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_left_mouse_release(&point, client_id), ?);
-                screen.render(None)?;
-                screen.unblock_input()?;
+                // TODO: make sure this is not used anywhere and then delete it and other similar
+                // outdated events
+//                 active_tab!(screen, client_id, |tab: &mut Tab| tab
+//                     .handle_left_mouse_release(&point, client_id), ?);
+//                 screen.render(None)?;
+//                 screen.unblock_input()?;
             },
             ScreenInstruction::RightMouseRelease(point, client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
