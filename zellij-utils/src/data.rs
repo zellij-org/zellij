@@ -1413,11 +1413,11 @@ impl From<Palette> for Styling {
                 background: Default::default(),
             },
             frame_highlight: StyleDeclaration {
-                base: palette.green,
-                emphasis_1: palette.green,
-                emphasis_2: palette.green,
-                emphasis_3: palette.green,
-                emphasis_4: palette.green,
+                base: palette.orange,
+                emphasis_1: palette.orange,
+                emphasis_2: palette.orange,
+                emphasis_3: palette.orange,
+                emphasis_4: palette.orange,
                 background: Default::default(),
             },
             table_title: StyleDeclaration {
