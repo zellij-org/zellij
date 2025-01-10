@@ -289,7 +289,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 _ => Some(self.style.colors.frame_highlight.base),
             }
         } else {
-            None
+            Some(self.style.colors.frame_unselected.base)
         }
     }
 }

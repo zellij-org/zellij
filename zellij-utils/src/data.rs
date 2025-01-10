@@ -1232,7 +1232,7 @@ pub const DEFAULT_STYLES: Styling = Styling {
         background: PaletteColor::EightBit(default_colors::GRAY),
     },
     frame_unselected: StyleDeclaration {
-        base: PaletteColor::EightBit(default_colors::ORANGE),
+        base: PaletteColor::EightBit(default_colors::BRIGHT_GRAY),
         emphasis_1: PaletteColor::EightBit(default_colors::PINK),
         emphasis_2: PaletteColor::EightBit(default_colors::GRAY),
         emphasis_3: PaletteColor::EightBit(default_colors::BROWN),
@@ -1248,7 +1248,7 @@ pub const DEFAULT_STYLES: Styling = Styling {
         background: PaletteColor::EightBit(default_colors::GRAY),
     },
     frame_highlight: StyleDeclaration {
-        base: PaletteColor::EightBit(default_colors::GREEN),
+        base: PaletteColor::EightBit(default_colors::ORANGE),
         emphasis_1: PaletteColor::EightBit(default_colors::GREEN),
         emphasis_2: PaletteColor::EightBit(default_colors::GREEN),
         emphasis_3: PaletteColor::EightBit(default_colors::GREEN),
