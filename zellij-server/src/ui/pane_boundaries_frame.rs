@@ -910,7 +910,7 @@ impl PaneFrame {
         second_part.append(&mut foreground_color(left_enter_bracket, self.color));
         second_part.append(&mut foreground_color(
             enter_text,
-            Some(self.style.colors.text_unselected.emphasis_4),
+            Some(self.style.colors.text_unselected.emphasis_1),
         ));
         second_part.append(&mut foreground_color(right_enter_bracket, self.color));
         second_part.append(&mut foreground_color(enter_tip, self.color));
@@ -918,7 +918,7 @@ impl PaneFrame {
         second_part.append(&mut foreground_color(left_esc_bracket, self.color));
         second_part.append(&mut foreground_color(
             esc_text,
-            Some(self.style.colors.text_unselected.emphasis_4),
+            Some(self.style.colors.text_unselected.emphasis_1),
         ));
         second_part.append(&mut foreground_color(right_esc_bracket, self.color));
         second_part.append(&mut foreground_color(esc_tip, self.color));
@@ -926,7 +926,7 @@ impl PaneFrame {
         second_part.append(&mut foreground_color(left_break_bracket, self.color));
         second_part.append(&mut foreground_color(
             break_text,
-            Some(self.style.colors.text_unselected.emphasis_4),
+            Some(self.style.colors.text_unselected.emphasis_1),
         ));
         second_part.append(&mut foreground_color(right_break_bracket, self.color));
         second_part.append(&mut foreground_color(break_tip, self.color));
