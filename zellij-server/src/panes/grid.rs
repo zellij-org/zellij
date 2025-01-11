@@ -1745,9 +1745,11 @@ impl Grid {
     }
     pub fn update_selection(&mut self, to: &Position) {
         let old_selection = self.selection;
-        self.selection.to(*to);
-        self.update_selected_lines(&old_selection, &self.selection.clone());
-        self.mark_for_rerender();
+        if &old_selection.end != to {
+            self.selection.to(*to);
+            self.update_selected_lines(&old_selection, &self.selection.clone());
+            self.mark_for_rerender();
+        }
     }
 
     pub fn end_selection(&mut self, end: &Position) {

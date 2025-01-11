@@ -576,14 +576,17 @@ impl Pane for TerminalPane {
         if cursor_at_the_bottom {
             self.grid.scroll_up_one_line();
             self.selection_scrolled_at = time::Instant::now();
+            self.set_should_render(true);
         } else if cursor_at_the_top {
             self.grid.scroll_down_one_line();
             self.selection_scrolled_at = time::Instant::now();
+            self.set_should_render(true);
         } else if cursor_in_the_middle {
+            // here we'll only render if the selection was updated, and that'll be handled by the
+            // grid
             self.grid.update_selection(to);
         }
 
-        self.set_should_render(true);
     }
 
     fn end_selection(&mut self, end: &Position, _client_id: ClientId) {

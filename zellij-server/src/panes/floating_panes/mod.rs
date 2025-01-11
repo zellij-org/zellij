@@ -898,9 +898,11 @@ impl FloatingPanes {
         // true => handled, false => not handled (eg. no pane at this position)
         let show_panes = self.show_panes;
         if self.pane_being_moved_with_mouse.is_some() {
-            self.move_pane_to_position(&position);
-            self.set_force_render();
-            return true;
+            if self.move_pane_to_position(&position) {
+                // pane was moved to a new position
+                self.set_force_render();
+                return true;
+            }
         } else if let Some(pane) = self.get_pane_at_mut(&position, search_selectable) {
             let clicked_on_frame = pane.position_is_on_frame(&position);
             if show_panes && clicked_on_frame {
