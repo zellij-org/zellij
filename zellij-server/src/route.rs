@@ -47,14 +47,15 @@ pub(crate) fn route_action(
     let mut should_break = false;
     let err_context = || format!("failed to route action for client {client_id}");
 
-    // forward the action to plugins
-    senders
-        .send_to_plugin(PluginInstruction::Update(vec![(
-            None,
-            Some(client_id),
-            Event::InputReceived,
-        )]))
-        .with_context(err_context)?;
+    if !action.is_mouse_motion() {
+        senders
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                Some(client_id),
+                Event::InputReceived,
+            )]))
+            .with_context(err_context)?;
+    }
 
     match action {
         Action::ToggleTab => {
