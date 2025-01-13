@@ -3307,16 +3307,6 @@ impl Tab {
     }
 
     pub fn handle_mouse_event(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<()> {
-        // TODO:
-        // 1. If a pane is focused, we call intercept_left_mouse_click (this will return true if it
-        //    was intercepted, meaning it was either (un)pinned or not on the pane frame in which
-        //    case it was sent to the underlying pane. If it returns false and this is a floating
-        //    pane, we drag it
-        // 2. If this is not on a focused pane, we focus it. If the pane is tiled, we hide floating
-        //    panes
-        // 3. If this is a scroll up/down event, we send it to the pane whether it's focused or not
-        // 4. If this is a right/middle click, we send it to the pane if it is focused (might want
-        //    to add a general "intercept_mouse_click" to panes and let them make the decisions
         let err_context =
             || format!("failed to handle mouse event {event:?} for client {client_id}");
 
@@ -3349,9 +3339,9 @@ impl Tab {
         } else if event.wheel_down {
             self.handle_scrollwheel_down(&event.position, 3, client_id)?;
         } else if event.right {
-            self.handle_right_click(&event.position, client_id)?;
+            self.handle_right_click(&event, client_id)?;
         } else if event.middle {
-            self.handle_middle_click(&event.position, client_id)?;
+            self.handle_middle_click(&event, client_id)?;
         }
         Ok(())
     }
@@ -3616,25 +3606,28 @@ impl Tab {
         Ok(())
     }
 
-    pub fn handle_right_click(&mut self, position: &Position, client_id: ClientId) -> Result<()> {
+    pub fn handle_right_click(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<()> {
         let err_context = || {
             format!(
-                "failed to handle mouse right click at position {position:?} for client {client_id}"
+                "failed to handle mouse right click for client {client_id}"
             )
         };
 
+        let absolute_position = event.position;
         let active_pane_id = self
             .get_active_pane_id(client_id)
             .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
 
         if let Some(pane) = self
-            .get_pane_at(position, false)
+            .get_pane_at(&absolute_position, false)
             .with_context(err_context)?
         {
             if pane.pid() == active_pane_id {
-                let relative_position = pane.relative_position(position);
-                if let Some(mouse_event) = pane.mouse_right_click(&relative_position, false) {
-                    if !pane.position_is_on_frame(position) {
+                let relative_position = pane.relative_position(&absolute_position);
+                let mut event_for_pane = event.clone();
+                event_for_pane.position = relative_position;
+                if let Some(mouse_event) = pane.mouse_event(&event_for_pane) {
+                    if !pane.position_is_on_frame(&absolute_position) {
                         self.write_to_active_terminal(
                             &None,
                             mouse_event.into_bytes(),
@@ -3651,25 +3644,28 @@ impl Tab {
         Ok(())
     }
 
-    pub fn handle_middle_click(&mut self, position: &Position, client_id: ClientId) -> Result<()> {
+    pub fn handle_middle_click(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<()> {
         let err_context = || {
             format!(
-                "failed to handle mouse middle click at position {position:?} for client {client_id}"
+                "failed to handle mouse middle click for client {client_id}"
             )
         };
+        let absolute_position = event.position;
 
         let active_pane_id = self
             .get_active_pane_id(client_id)
             .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
 
         if let Some(pane) = self
-            .get_pane_at(position, false)
+            .get_pane_at(&absolute_position, false)
             .with_context(err_context)?
         {
             if pane.pid() == active_pane_id {
-                let relative_position = pane.relative_position(position);
-                if let Some(mouse_event) = pane.mouse_middle_click(&relative_position, false) {
-                    if !pane.position_is_on_frame(position) {
+                let relative_position = pane.relative_position(&absolute_position);
+                let mut event_for_pane = event.clone();
+                event_for_pane.position = relative_position;
+                if let Some(mouse_event) = pane.mouse_event(&event_for_pane) {
+                    if !pane.position_is_on_frame(&absolute_position) {
                         self.write_to_active_terminal(
                             &None,
                             mouse_event.into_bytes(),

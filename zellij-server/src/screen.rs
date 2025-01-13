@@ -3701,19 +3701,21 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
+            // TODO: removeme
             ScreenInstruction::RightClick(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_right_click(&point, client_id), ?);
-                screen.log_and_report_session_state()?;
-                screen.render(None)?;
-                screen.unblock_input()?;
+//                 active_tab!(screen, client_id, |tab: &mut Tab| tab
+//                     .handle_right_click(&point, client_id), ?);
+//                 screen.log_and_report_session_state()?;
+//                 screen.render(None)?;
+//                 screen.unblock_input()?;
             },
+            // TODO: removeme
             ScreenInstruction::MiddleClick(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_middle_click(&point, client_id), ?);
-                screen.log_and_report_session_state()?;
-                screen.render(None)?;
-                screen.unblock_input()?;
+//                 active_tab!(screen, client_id, |tab: &mut Tab| tab
+//                     .handle_middle_click(&point, client_id), ?);
+//                 screen.log_and_report_session_state()?;
+//                 screen.render(None)?;
+//                 screen.unblock_input()?;
             },
             ScreenInstruction::LeftMouseRelease(point, client_id) => {
                 // TODO: make sure this is not used anywhere and then delete it and other similar

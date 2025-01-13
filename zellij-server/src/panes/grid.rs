@@ -1941,9 +1941,9 @@ impl Grid {
         }
         if event.left {
             value = 32;
-        } else if event.right {
-            value = 33;
         } else if event.middle {
+            value = 33;
+        } else if event.right {
             value = 34;
         } else if event.wheel_up {
             value = 68;
@@ -1968,9 +1968,9 @@ impl Grid {
         let mut value = 3; // Default to no buttons down.
         if event.left {
             value = 0;
-        } else if event.right {
-            value = 1;
         } else if event.middle {
+            value = 1;
+        } else if event.right {
             value = 2;
         } else if event.wheel_up {
             value = 64;
@@ -2017,7 +2017,7 @@ impl Grid {
                 event.position.column() + 1,
                 event.position.line() + 1,
                 match event.event_type {
-                    MouseEventType::Press => 'M',
+                    MouseEventType::Press | MouseEventType::Motion => 'M',
                     _ => 'm',
                 }
             )),

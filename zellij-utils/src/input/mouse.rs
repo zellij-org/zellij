@@ -56,7 +56,96 @@ impl MouseEvent {
             ctrl: false,
             position: Position::new(0, 0),
         };
-
+        event
+    }
+    pub fn new_right_press_event(position: Position) -> Self {
+        let event = MouseEvent {
+            event_type: MouseEventType::Press,
+            left: false,
+            right: true,
+            middle: false,
+            wheel_up: false,
+            wheel_down: false,
+            shift: false,
+            alt: false,
+            ctrl: false,
+            position,
+        };
+        event
+    }
+    pub fn new_middle_press_event(position: Position) -> Self {
+        let event = MouseEvent {
+            event_type: MouseEventType::Press,
+            left: false,
+            right: false,
+            middle: true,
+            wheel_up: false,
+            wheel_down: false,
+            shift: false,
+            alt: false,
+            ctrl: false,
+            position,
+        };
+        event
+    }
+    pub fn new_left_release_event(position: Position) -> Self {
+        let event = MouseEvent {
+            event_type: MouseEventType::Release,
+            left: true,
+            right: false,
+            middle: false,
+            wheel_up: false,
+            wheel_down: false,
+            shift: false,
+            alt: false,
+            ctrl: false,
+            position,
+        };
+        event
+    }
+    pub fn new_left_motion_event(position: Position) -> Self {
+        let event = MouseEvent {
+            event_type: MouseEventType::Motion,
+            left: true,
+            right: false,
+            middle: false,
+            wheel_up: false,
+            wheel_down: false,
+            shift: false,
+            alt: false,
+            ctrl: false,
+            position,
+        };
+        event
+    }
+    pub fn new_right_motion_event(position: Position) -> Self {
+        let event = MouseEvent {
+            event_type: MouseEventType::Motion,
+            left: false,
+            right: true,
+            middle: false,
+            wheel_up: false,
+            wheel_down: false,
+            shift: false,
+            alt: false,
+            ctrl: false,
+            position,
+        };
+        event
+    }
+    pub fn new_middle_motion_event(position: Position) -> Self {
+        let event = MouseEvent {
+            event_type: MouseEventType::Motion,
+            left: false,
+            right: false,
+            middle: true,
+            wheel_up: false,
+            wheel_down: false,
+            shift: false,
+            alt: false,
+            ctrl: false,
+            position,
+        };
         event
     }
 }

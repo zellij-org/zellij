@@ -23,6 +23,7 @@ use zellij_utils::input::layout::{
     FloatingPaneLayout, Layout, PluginUserConfiguration, RunPluginLocation, RunPluginOrAlias,
     SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
+use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::plugins::PluginTag;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
@@ -1730,7 +1731,7 @@ fn move_floating_pane_focus_with_mouse() {
         .unwrap();
     tab.handle_left_click(&Position::new(9, 71), client_id)
         .unwrap();
-    tab.handle_left_mouse_release(&Position::new(9, 71), client_id)
+    tab.handle_left_mouse_release(&MouseEvent::new_left_release_event(Position::new(9, 71)), client_id)
         .unwrap();
     tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -1828,7 +1829,7 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
         .unwrap();
     tab.handle_left_click(&Position::new(4, 71), client_id)
         .unwrap();
-    tab.handle_left_mouse_release(&Position::new(4, 71), client_id)
+    tab.handle_left_mouse_release(&MouseEvent::new_left_release_event(Position::new(4, 71)), client_id)
         .unwrap();
     tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -1926,7 +1927,7 @@ fn drag_pane_with_mouse() {
         .unwrap();
     tab.handle_left_click(&Position::new(5, 71), client_id)
         .unwrap();
-    tab.handle_left_mouse_release(&Position::new(7, 75), client_id)
+    tab.handle_left_mouse_release(&MouseEvent::new_left_release_event(Position::new(7, 75)), client_id)
         .unwrap();
     tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -2025,13 +2026,13 @@ fn mark_text_inside_floating_pane() {
     tab.handle_left_click(&Position::new(6, 30), client_id)
         .unwrap();
     assert!(
-        tab.selecting_with_mouse,
+        tab.selecting_with_mouse_in_pane.is_some(),
         "started selecting with mouse on click"
     );
-    tab.handle_left_mouse_release(&Position::new(5, 15), client_id)
+    tab.handle_left_mouse_release(&MouseEvent::new_left_release_event(Position::new(5, 15)), client_id)
         .unwrap();
     assert!(
-        !tab.selecting_with_mouse,
+        tab.selecting_with_mouse_in_pane.is_none(),
         "stopped selecting with mouse on release"
     );
     tab.render(&mut output).unwrap();
@@ -2632,7 +2633,7 @@ fn move_floating_pane_with_sixel_image() {
     tab.handle_pty_bytes(2, fixture).unwrap();
     tab.handle_left_click(&Position::new(5, 71), client_id)
         .unwrap();
-    tab.handle_left_mouse_release(&Position::new(7, 75), client_id)
+    tab.handle_left_mouse_release(&MouseEvent::new_left_release_event(Position::new(7, 75)), client_id)
         .unwrap();
 
     tab.render(&mut output).unwrap();
@@ -2670,7 +2671,7 @@ fn floating_pane_above_sixel_image() {
     tab.handle_pty_bytes(1, fixture).unwrap();
     tab.handle_left_click(&Position::new(5, 71), client_id)
         .unwrap();
-    tab.handle_left_mouse_release(&Position::new(7, 75), client_id)
+    tab.handle_left_mouse_release(&MouseEvent::new_left_release_event(Position::new(7, 75)), client_id)
         .unwrap();
 
     tab.render(&mut output).unwrap();
@@ -3050,19 +3051,19 @@ fn pane_in_sgr_button_event_tracking_mouse_mode() {
         .unwrap();
     tab.handle_left_click(&Position::new(5, 71), client_id)
         .unwrap();
-    tab.handle_mouse_hold_left(&Position::new(9, 72), client_id)
+    tab.handle_left_mouse_motion(&MouseEvent::new_left_motion_event(Position::new(9, 72)), client_id)
         .unwrap();
-    tab.handle_left_mouse_release(&Position::new(7, 75), client_id)
+    tab.handle_left_mouse_release(&MouseEvent::new_left_release_event(Position::new(7, 75)), client_id)
         .unwrap();
-    tab.handle_right_click(&Position::new(5, 71), client_id)
+    tab.handle_right_click(&MouseEvent::new_right_press_event(Position::new(5, 71)), client_id)
         .unwrap();
-    tab.handle_mouse_hold_right(&Position::new(9, 72), client_id)
+    tab.handle_mouse_event(&MouseEvent::new_right_motion_event(Position::new(9, 72)), client_id)
         .unwrap();
     tab.handle_right_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
-    tab.handle_middle_click(&Position::new(5, 71), client_id)
+    tab.handle_middle_click(&MouseEvent::new_middle_press_event(Position::new(5, 71)), client_id)
         .unwrap();
-    tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id)
+    tab.handle_mouse_event(&MouseEvent::new_middle_motion_event(Position::new(9, 72)), client_id)
         .unwrap();
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
@@ -3112,19 +3113,19 @@ fn pane_in_sgr_normal_event_tracking_mouse_mode() {
         .unwrap();
     tab.handle_left_click(&Position::new(5, 71), client_id)
         .unwrap();
-    tab.handle_mouse_hold_left(&Position::new(9, 72), client_id)
+    tab.handle_left_mouse_motion(&MouseEvent::new_left_motion_event(Position::new(9, 72)), client_id)
         .unwrap();
-    tab.handle_left_mouse_release(&Position::new(7, 75), client_id)
+    tab.handle_left_mouse_release(&MouseEvent::new_left_release_event(Position::new(7, 75)), client_id)
         .unwrap();
-    tab.handle_right_click(&Position::new(5, 71), client_id)
+    tab.handle_right_click(&MouseEvent::new_right_press_event(Position::new(5, 71)), client_id)
         .unwrap();
-    tab.handle_mouse_hold_right(&Position::new(9, 72), client_id)
+    tab.handle_mouse_event(&MouseEvent::new_right_motion_event(Position::new(9, 72)), client_id)
         .unwrap();
     tab.handle_right_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
-    tab.handle_middle_click(&Position::new(5, 71), client_id)
+    tab.handle_middle_click(&MouseEvent::new_middle_press_event(Position::new(5, 71)), client_id)
         .unwrap();
-    tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id)
+    tab.handle_mouse_event(&MouseEvent::new_middle_motion_event(Position::new(9, 72)), client_id)
         .unwrap();
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
@@ -3174,19 +3175,19 @@ fn pane_in_utf8_button_event_tracking_mouse_mode() {
         .unwrap();
     tab.handle_left_click(&Position::new(5, 71), client_id)
         .unwrap();
-    tab.handle_mouse_hold_left(&Position::new(9, 72), client_id)
+    tab.handle_left_mouse_motion(&MouseEvent::new_left_motion_event(Position::new(9, 72)), client_id)
         .unwrap();
-    tab.handle_left_mouse_release(&Position::new(7, 75), client_id)
+    tab.handle_left_mouse_release(&MouseEvent::new_left_release_event(Position::new(7, 75)), client_id)
         .unwrap();
-    tab.handle_right_click(&Position::new(5, 71), client_id)
+    tab.handle_right_click(&MouseEvent::new_right_press_event(Position::new(5, 71)), client_id)
         .unwrap();
-    tab.handle_mouse_hold_right(&Position::new(9, 72), client_id)
+    tab.handle_mouse_event(&MouseEvent::new_right_motion_event(Position::new(9, 72)), client_id)
         .unwrap();
     tab.handle_right_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
-    tab.handle_middle_click(&Position::new(5, 71), client_id)
+    tab.handle_middle_click(&MouseEvent::new_middle_press_event(Position::new(5, 71)), client_id)
         .unwrap();
-    tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id)
+    tab.handle_mouse_event(&MouseEvent::new_middle_motion_event(Position::new(9, 72)), client_id)
         .unwrap();
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
@@ -3236,19 +3237,19 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
         .unwrap();
     tab.handle_left_click(&Position::new(5, 71), client_id)
         .unwrap();
-    tab.handle_mouse_hold_left(&Position::new(9, 72), client_id)
+    tab.handle_left_mouse_motion(&MouseEvent::new_left_motion_event(Position::new(9, 72)), client_id)
         .unwrap();
-    tab.handle_left_mouse_release(&Position::new(7, 75), client_id)
+    tab.handle_left_mouse_release(&MouseEvent::new_left_release_event(Position::new(7, 75)), client_id)
         .unwrap();
-    tab.handle_right_click(&Position::new(5, 71), client_id)
+    tab.handle_right_click(&MouseEvent::new_right_press_event(Position::new(5, 71)), client_id)
         .unwrap();
-    tab.handle_mouse_hold_right(&Position::new(9, 72), client_id)
+    tab.handle_mouse_event(&MouseEvent::new_right_motion_event(Position::new(9, 72)), client_id)
         .unwrap();
     tab.handle_right_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
-    tab.handle_middle_click(&Position::new(5, 71), client_id)
+    tab.handle_middle_click(&MouseEvent::new_middle_press_event(Position::new(5, 71)), client_id)
         .unwrap();
-    tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id)
+    tab.handle_mouse_event(&MouseEvent::new_middle_motion_event(Position::new(9, 72)), client_id)
         .unwrap();
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
