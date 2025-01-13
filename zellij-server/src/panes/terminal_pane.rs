@@ -586,7 +586,6 @@ impl Pane for TerminalPane {
             // grid
             self.grid.update_selection(to);
         }
-
     }
 
     fn end_selection(&mut self, end: &Position, _client_id: ClientId) {
@@ -863,8 +862,6 @@ impl Pane for TerminalPane {
             }
         }
         false
-        
-
     }
     fn reset_logical_position(&mut self) {
         self.geom.logical_position = None;
