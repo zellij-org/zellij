@@ -250,12 +250,6 @@ pub enum ScreenInstruction {
     TerminalColorRegisters(Vec<(usize, String)>),
     ChangeMode(ModeInfo, ClientId),
     ChangeModeForAllClients(ModeInfo),
-    LeftClick(Position, ClientId),
-    RightClick(Position, ClientId),
-    MiddleClick(Position, ClientId),
-    LeftMouseRelease(Position, ClientId),
-    RightMouseRelease(Position, ClientId),
-    MiddleMouseRelease(Position, ClientId),
     MouseEvent(MouseEvent, ClientId),
     Copy(ClientId),
     AddClient(
@@ -520,12 +514,6 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ToggleActiveSyncTab(..) => ScreenContext::ToggleActiveSyncTab,
             ScreenInstruction::ScrollUpAt(..) => ScreenContext::ScrollUpAt,
             ScreenInstruction::ScrollDownAt(..) => ScreenContext::ScrollDownAt,
-            ScreenInstruction::LeftClick(..) => ScreenContext::LeftClick,
-            ScreenInstruction::RightClick(..) => ScreenContext::RightClick,
-            ScreenInstruction::MiddleClick(..) => ScreenContext::MiddleClick,
-            ScreenInstruction::LeftMouseRelease(..) => ScreenContext::LeftMouseRelease,
-            ScreenInstruction::RightMouseRelease(..) => ScreenContext::RightMouseRelease,
-            ScreenInstruction::MiddleMouseRelease(..) => ScreenContext::MiddleMouseRelease,
             ScreenInstruction::MouseEvent(..) => ScreenContext::MouseEvent,
             ScreenInstruction::Copy(..) => ScreenContext::Copy,
             ScreenInstruction::ToggleTab(..) => ScreenContext::ToggleTab,
@@ -3694,50 +3682,11 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::LeftClick(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_left_click(&point, client_id), ?);
-                screen.log_and_report_session_state()?;
-                screen.render(None)?;
-                screen.unblock_input()?;
-            },
-            // TODO: removeme
-            ScreenInstruction::RightClick(point, client_id) => {
-//                 active_tab!(screen, client_id, |tab: &mut Tab| tab
-//                     .handle_right_click(&point, client_id), ?);
-//                 screen.log_and_report_session_state()?;
-//                 screen.render(None)?;
-//                 screen.unblock_input()?;
-            },
-            // TODO: removeme
-            ScreenInstruction::MiddleClick(point, client_id) => {
-//                 active_tab!(screen, client_id, |tab: &mut Tab| tab
-//                     .handle_middle_click(&point, client_id), ?);
-//                 screen.log_and_report_session_state()?;
-//                 screen.render(None)?;
-//                 screen.unblock_input()?;
-            },
-            ScreenInstruction::LeftMouseRelease(point, client_id) => {
-                // TODO: make sure this is not used anywhere and then delete it and other similar
-                // outdated events
-//                 active_tab!(screen, client_id, |tab: &mut Tab| tab
-//                     .handle_left_mouse_release(&point, client_id), ?);
-//                 screen.render(None)?;
-//                 screen.unblock_input()?;
-            },
-            ScreenInstruction::RightMouseRelease(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_right_mouse_release(&point, client_id), ?);
-                screen.render(None)?;
-            },
-            ScreenInstruction::MiddleMouseRelease(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_middle_mouse_release(&point, client_id), ?);
-                screen.render(None)?;
-            },
             ScreenInstruction::MouseEvent(event, client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .handle_mouse_event(&event, client_id), ?);
+                // TODO: if handle_mouse_event returns true, we need to do
+                // log_and_report_session_state (state changed, eg. floating panes were hidden)
                 screen.render(None)?;
             },
             ScreenInstruction::Copy(client_id) => {

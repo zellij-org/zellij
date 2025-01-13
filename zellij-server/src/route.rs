@@ -586,36 +586,6 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
             should_break = true;
         },
-        Action::LeftClick(point) => {
-            senders
-                .send_to_screen(ScreenInstruction::LeftClick(point, client_id))
-                .with_context(err_context)?;
-        },
-        Action::RightClick(point) => {
-            senders
-                .send_to_screen(ScreenInstruction::RightClick(point, client_id))
-                .with_context(err_context)?;
-        },
-        Action::MiddleClick(point) => {
-            senders
-                .send_to_screen(ScreenInstruction::MiddleClick(point, client_id))
-                .with_context(err_context)?;
-        },
-        Action::LeftMouseRelease(point) => {
-            senders
-                .send_to_screen(ScreenInstruction::LeftMouseRelease(point, client_id))
-                .with_context(err_context)?;
-        },
-        Action::RightMouseRelease(point) => {
-            senders
-                .send_to_screen(ScreenInstruction::RightMouseRelease(point, client_id))
-                .with_context(err_context)?;
-        },
-        Action::MiddleMouseRelease(point) => {
-            senders
-                .send_to_screen(ScreenInstruction::MiddleMouseRelease(point, client_id))
-                .with_context(err_context)?;
-        },
         Action::MouseEvent(event) => {
             senders
                 .send_to_screen(ScreenInstruction::MouseEvent(event, client_id))

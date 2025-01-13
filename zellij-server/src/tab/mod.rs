@@ -3342,7 +3342,10 @@ impl Tab {
             self.handle_right_click(&event, client_id)?;
         } else if event.middle {
             self.handle_middle_click(&event, client_id)?;
+        } else {
+            self.handle_mouse_no_click(&event, client_id)?;
         }
+        // TODO: encode motion to pane
         Ok(())
     }
     fn write_mouse_event_to_active_pane(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<()> {
@@ -3648,6 +3651,42 @@ impl Tab {
         let err_context = || {
             format!(
                 "failed to handle mouse middle click for client {client_id}"
+            )
+        };
+        let absolute_position = event.position;
+
+        let active_pane_id = self
+            .get_active_pane_id(client_id)
+            .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
+
+        if let Some(pane) = self
+            .get_pane_at(&absolute_position, false)
+            .with_context(err_context)?
+        {
+            if pane.pid() == active_pane_id {
+                let relative_position = pane.relative_position(&absolute_position);
+                let mut event_for_pane = event.clone();
+                event_for_pane.position = relative_position;
+                if let Some(mouse_event) = pane.mouse_event(&event_for_pane) {
+                    if !pane.position_is_on_frame(&absolute_position) {
+                        self.write_to_active_terminal(
+                            &None,
+                            mouse_event.into_bytes(),
+                            false,
+                            client_id,
+                        )
+                        .with_context(err_context)?;
+                    }
+                }
+            }
+        };
+        Ok(())
+    }
+
+    pub fn handle_mouse_no_click(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<()> {
+        let err_context = || {
+            format!(
+                "failed to handle mouse no click for client {client_id}"
             )
         };
         let absolute_position = event.position;

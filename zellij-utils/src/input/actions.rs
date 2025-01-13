@@ -216,16 +216,10 @@ pub enum Action {
     Run(RunCommandAction),
     /// Detach session and exit
     Detach,
-    LeftClick(Position),
-    RightClick(Position),
-    MiddleClick(Position),
     LaunchOrFocusPlugin(RunPluginOrAlias, bool, bool, bool, bool), // bools => should float,
     // move_to_focused_tab, should_open_in_place, skip_cache
     LaunchPlugin(RunPluginOrAlias, bool, bool, bool, Option<PathBuf>), // bools => should float,
     // should_open_in_place, skip_cache, Option<PathBuf> is cwd
-    LeftMouseRelease(Position),
-    RightMouseRelease(Position),
-    MiddleMouseRelease(Position),
     MouseEvent(MouseEvent),
     Copy,
     /// Confirm a prompt

@@ -384,21 +384,21 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::LeftClick) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::LeftClickPayload(payload)) => {
                     let position = payload.try_into()?;
-                    Ok(Action::LeftClick(position))
+                    Ok(Action::MouseEvent(MouseEvent::new_left_press_event(position)))
                 },
                 _ => Err("Wrong payload for Action::LeftClick"),
             },
             Some(ProtobufActionName::RightClick) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::RightClickPayload(payload)) => {
                     let position = payload.try_into()?;
-                    Ok(Action::RightClick(position))
+                    Ok(Action::MouseEvent(MouseEvent::new_right_press_event(position)))
                 },
                 _ => Err("Wrong payload for Action::RightClick"),
             },
             Some(ProtobufActionName::MiddleClick) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::MiddleClickPayload(payload)) => {
                     let position = payload.try_into()?;
-                    Ok(Action::MiddleClick(position))
+                    Ok(Action::MouseEvent(MouseEvent::new_middle_press_event(position)))
                 },
                 _ => Err("Wrong payload for Action::MiddleClick"),
             },
@@ -462,14 +462,14 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::LeftMouseRelease) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::LeftMouseReleasePayload(payload)) => {
                     let position = payload.try_into()?;
-                    Ok(Action::LeftMouseRelease(position))
+                    Ok(Action::MouseEvent(MouseEvent::new_left_release_event(position)))
                 },
                 _ => Err("Wrong payload for Action::LeftMouseRelease"),
             },
             Some(ProtobufActionName::RightMouseRelease) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::RightMouseReleasePayload(payload)) => {
                     let position = payload.try_into()?;
-                    Ok(Action::RightMouseRelease(position))
+                    Ok(Action::MouseEvent(MouseEvent::new_right_release_event(position)))
                 },
                 _ => Err("Wrong payload for Action::RightMouseRelease"),
             },
@@ -477,7 +477,7 @@ impl TryFrom<ProtobufAction> for Action {
                 match protobuf_action.optional_payload {
                     Some(OptionalPayload::MiddleMouseReleasePayload(payload)) => {
                         let position = payload.try_into()?;
-                        Ok(Action::MiddleMouseRelease(position))
+                        Ok(Action::MouseEvent(MouseEvent::new_middle_release_event(position)))
                     },
                     _ => Err("Wrong payload for Action::MiddleMouseRelease"),
                 }
@@ -1028,27 +1028,6 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::Detach as i32,
                 optional_payload: None,
             }),
-            Action::LeftClick(position) => {
-                let position: ProtobufPosition = position.try_into()?;
-                Ok(ProtobufAction {
-                    name: ProtobufActionName::LeftClick as i32,
-                    optional_payload: Some(OptionalPayload::LeftClickPayload(position)),
-                })
-            },
-            Action::RightClick(position) => {
-                let position: ProtobufPosition = position.try_into()?;
-                Ok(ProtobufAction {
-                    name: ProtobufActionName::RightClick as i32,
-                    optional_payload: Some(OptionalPayload::RightClickPayload(position)),
-                })
-            },
-            Action::MiddleClick(position) => {
-                let position: ProtobufPosition = position.try_into()?;
-                Ok(ProtobufAction {
-                    name: ProtobufActionName::MiddleClick as i32,
-                    optional_payload: Some(OptionalPayload::MiddleClickPayload(position)),
-                })
-            },
             Action::LaunchOrFocusPlugin(
                 run_plugin_or_alias,
                 should_float,
@@ -1091,27 +1070,6 @@ impl TryFrom<Action> for ProtobufAction {
                             skip_plugin_cache,
                         },
                     )),
-                })
-            },
-            Action::LeftMouseRelease(position) => {
-                let position: ProtobufPosition = position.try_into()?;
-                Ok(ProtobufAction {
-                    name: ProtobufActionName::LeftMouseRelease as i32,
-                    optional_payload: Some(OptionalPayload::LeftMouseReleasePayload(position)),
-                })
-            },
-            Action::RightMouseRelease(position) => {
-                let position: ProtobufPosition = position.try_into()?;
-                Ok(ProtobufAction {
-                    name: ProtobufActionName::RightMouseRelease as i32,
-                    optional_payload: Some(OptionalPayload::RightMouseReleasePayload(position)),
-                })
-            },
-            Action::MiddleMouseRelease(position) => {
-                let position: ProtobufPosition = position.try_into()?;
-                Ok(ProtobufAction {
-                    name: ProtobufActionName::MiddleMouseRelease as i32,
-                    optional_payload: Some(OptionalPayload::MiddleMouseReleasePayload(position)),
                 })
             },
             Action::MouseEvent(event) => {
