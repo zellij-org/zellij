@@ -1385,6 +1385,51 @@ impl<'a> TiledPaneGrid<'a> {
     pub fn make_room_in_stack_for_pane(&mut self) -> Result<PaneGeom> {
         StackedPanes::new(self.panes.clone()).make_room_for_new_pane()
     }
+    pub fn stack_pane_up(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
+        if let Some(vertically_aligned_pane_id_above) = self.get_vertically_aligned_pane_id_above(pane_id) {
+            StackedPanes::new(self.panes.clone()).combine_vertically_aligned_panes_to_stack(&vertically_aligned_pane_id_above, pane_id);
+            Some(vec![vertically_aligned_pane_id_above, *pane_id])
+        } else {
+            None
+        }
+    }
+    pub fn unstack_pane_up(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
+        StackedPanes::new(self.panes.clone()).break_pane_out_of_stack(&pane_id)
+    }
+    pub fn stack_pane_down(&mut self, pane_id: &PaneId) -> Result<bool> {
+        // TODO
+        Ok(false)
+    }
+    pub fn unstack_pane_down(&mut self, pane_id: &PaneId) -> Result<bool> {
+        // TODO
+        Ok(false)
+    }
+    pub fn stack_pane_right(&mut self, pane_id: &PaneId) -> Result<bool> {
+        // TODO
+        Ok(false)
+    }
+    pub fn stack_pane_left(&mut self, pane_id: &PaneId) -> Result<bool> {
+        // TODO
+        Ok(false)
+    }
+    fn get_vertically_aligned_pane_id_above(&self, pane_id: &PaneId) -> Option<PaneId> {
+        let Some(pane_geom) = self.get_pane_geom(pane_id) else {
+            return None;
+        };
+        let panes = self.panes.borrow();
+        panes
+            .iter()
+            .find_map(|(_, p)| {
+                if !p.selectable() {
+                    return None;
+                }
+                let candidate_geom = p.current_geom();
+                if candidate_geom.y + candidate_geom.rows.as_usize() == pane_geom.y && candidate_geom.x == pane_geom.x && candidate_geom.cols.as_usize() == pane_geom.cols.as_usize() {
+                    return Some(p.pid());
+                }
+                return None
+            })
+    }
 }
 
 pub fn split(direction: SplitDirection, rect: &PaneGeom) -> Option<(PaneGeom, PaneGeom)> {

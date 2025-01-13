@@ -18,7 +18,7 @@ use crate::{
 };
 use stacked_panes::StackedPanes;
 use zellij_utils::{
-    data::{Direction, ModeInfo, Palette, PaneInfo, ResizeStrategy, Style},
+    data::{Direction, ModeInfo, Palette, PaneInfo, ResizeStrategy, Resize, Style},
     errors::prelude::*,
     input::{
         command::RunCommand,
@@ -884,11 +884,66 @@ impl TiledPanes {
         client_id: ClientId,
         strategy: &ResizeStrategy,
     ) -> Result<()> {
-        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            self.resize_pane_with_id(*strategy, active_pane_id)?;
+        let stacked_resize = true; // TODO: from config
+        if stacked_resize {
+            if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
+                self.stacked_resize_pane_with_id(active_pane_id, strategy)?;
+            }
+        } else {
+            if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
+                self.resize_pane_with_id(*strategy, active_pane_id)?;
+            }
         }
 
         Ok(())
+    }
+    fn stacked_resize_pane_with_id(&mut self, pane_id: PaneId, strategy: &ResizeStrategy) -> Result<()> {
+        let err_context = || format!("failed to resize pand with id: {:?}", pane_id);
+
+        let mut pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        match strategy.resize {
+            Resize::Increase => {
+                if let Some(pane_ids_to_resize) = pane_grid.stack_pane_up(&pane_id) {
+                    for pane_id in pane_ids_to_resize {
+                        if let Some(pane) = self.panes.get_mut(&pane_id) {
+                            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
+                        }
+                    }
+                    Ok(())
+                } else if pane_grid.stack_pane_down(&pane_id)? {
+                    Ok(())
+                } else if pane_grid.stack_pane_right(&pane_id)? {
+                    Ok(())
+                } else if pane_grid.stack_pane_left(&pane_id)? {
+                    Ok(())
+                } else {
+                    Ok(())
+                }
+            }
+            Resize::Decrease => {
+                if let Some(pane_ids_to_resize) = pane_grid.unstack_pane_up(&pane_id) {
+                    for pane_id in pane_ids_to_resize {
+                        if let Some(pane) = self.panes.get_mut(&pane_id) {
+                            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
+                        }
+                    }
+                    Ok(())
+                } else if pane_grid.unstack_pane_down(&pane_id)? {
+                    // Ok(())
+//                 } else if pane_grid.unstack_pane_right(&pane_id)? {
+//                     Ok(())
+//                 } else if pane_grid.unstack_pane_left(&pane_id)? {
+                    Ok(())
+                } else {
+                    Ok(())
+                }
+            }
+        }
     }
     pub fn resize_pane_with_id(&mut self, strategy: ResizeStrategy, pane_id: PaneId) -> Result<()> {
         let err_context = || format!("failed to resize pand with id: {:?}", pane_id);
@@ -899,6 +954,7 @@ impl TiledPanes {
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
+
 
         match pane_grid
             .change_pane_size(&pane_id, &strategy, (RESIZE_PERCENT, RESIZE_PERCENT))
