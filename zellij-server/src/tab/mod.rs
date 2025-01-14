@@ -3459,6 +3459,15 @@ impl Tab {
             .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
         self.focus_pane_at(&event.position, client_id)
             .with_context(err_context)?;
+
+        if let Some(pane_at_position) = self.unselectable_pane_at_position(&event.position) {
+            let relative_position = pane_at_position.relative_position(&event.position);
+            // we use start_selection here because it has a client_id,
+            // ideally we should add client_id to mouse_left_click and others, but this should be
+            // dealt with as part of the trait removal refactoring
+            pane_at_position.start_selection(&relative_position, client_id);
+        }
+
         if self.floating_panes.panes_are_visible() {
             let search_selectable = false;
             // we do this because this might be the beginning of the user dragging a pane
@@ -3673,6 +3682,32 @@ impl Tab {
         Ok(false)
     }
 
+    fn unselectable_pane_at_position(&mut self, point: &Position) -> Option<&mut Box<dyn Pane>> {
+        // the repetition in this function is to appease the borrow checker, I don't like it either
+        let floating_panes_are_visible = self.floating_panes.panes_are_visible();
+        if floating_panes_are_visible {
+            if let Ok(Some(clicked_pane_id)) = self.floating_panes.get_pane_id_at(point, true) {
+                if let Some(pane) = self.floating_panes.get_pane_mut(clicked_pane_id) {
+                    if !pane.selectable() {
+                        return Some(pane);
+                    }
+                }
+            } else if let Ok(Some(clicked_pane_id)) = self.get_pane_id_at(point, false) {
+                if let Some(pane) = self.tiled_panes.get_pane_mut(clicked_pane_id) {
+                    if !pane.selectable() {
+                        return Some(pane);
+                    }
+                }
+            }
+        } else if let Ok(Some(clicked_pane_id)) = self.get_pane_id_at(point, false) {
+            if let Some(pane) = self.tiled_panes.get_pane_mut(clicked_pane_id) {
+                if !pane.selectable() {
+                    return Some(pane);
+                }
+            }
+        }
+        None
+    }
     fn focus_pane_at(&mut self, point: &Position, client_id: ClientId) -> Result<()> {
         let err_context =
             || format!("failed to focus pane at position {point:?} for client {client_id}");
