@@ -26,6 +26,7 @@ impl TryFrom<ProtobufPermissionType> for PermissionType {
             },
             ProtobufPermissionType::Reconfigure => Ok(PermissionType::Reconfigure),
             ProtobufPermissionType::FullHdAccess => Ok(PermissionType::FullHdAccess),
+            ProtobufPermissionType::ReadScreen => Ok(PermissionType::ReadScreen),
         }
     }
 }
@@ -53,6 +54,7 @@ impl TryFrom<PermissionType> for ProtobufPermissionType {
             },
             PermissionType::Reconfigure => Ok(ProtobufPermissionType::Reconfigure),
             PermissionType::FullHdAccess => Ok(ProtobufPermissionType::FullHdAccess),
+            PermissionType::ReadScreen => Ok(ProtobufPermissionType::ReadScreen),
         }
     }
 }

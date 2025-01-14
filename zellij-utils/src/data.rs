@@ -914,6 +914,7 @@ pub enum Event {
     ListClients(Vec<ClientInfo>),
     HostFolderChanged(PathBuf),               // PathBuf -> new host folder
     FailedToChangeHostFolder(Option<String>), // String -> the error we got when changing
+    ScreenContents(String),
 }
 
 #[derive(
@@ -945,6 +946,7 @@ pub enum Permission {
     MessageAndLaunchOtherPlugins,
     Reconfigure,
     FullHdAccess,
+    ReadScreen,
 }
 
 impl PermissionType {
@@ -967,6 +969,9 @@ impl PermissionType {
             },
             PermissionType::Reconfigure => "Change Zellij runtime configuration".to_owned(),
             PermissionType::FullHdAccess => "Full access to the hard-drive".to_owned(),
+            PermissionType::ReadScreen => {
+                "Read contents of the terminal screen and scrollback".to_owned()
+            },
         }
     }
 }
@@ -1857,6 +1862,7 @@ pub enum PluginCommand {
     ScanHostFolder(PathBuf),   // TODO: rename to ScanHostFolder
     WatchFilesystem,
     DumpSessionLayout,
+    DumpScreen(bool),
     CloseSelf,
     NewTabsWithLayoutInfo(LayoutInfo),
     Reconfigure(String, bool), // String -> stringified configuration, bool -> save configuration

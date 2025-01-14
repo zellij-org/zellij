@@ -982,6 +982,10 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(_) => Err("DumpSessionLayout should have no payload, found a payload"),
                 None => Ok(PluginCommand::DumpSessionLayout),
             },
+            Some(CommandName::DumpScreen) => match protobuf_plugin_command.payload {
+                Some(Payload::DumpScreenPayload(full)) => Ok(PluginCommand::DumpScreen(full)),
+                _ => Err("Mismatched payload for DumpScreen"),
+            },
             Some(CommandName::CloseSelf) => match protobuf_plugin_command.payload {
                 Some(_) => Err("CloseSelf should have no payload, found a payload"),
                 None => Ok(PluginCommand::CloseSelf),
@@ -1896,6 +1900,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::DumpSessionLayout => Ok(ProtobufPluginCommand {
                 name: CommandName::DumpSessionLayout as i32,
                 payload: None,
+            }),
+            PluginCommand::DumpScreen(full) => Ok(ProtobufPluginCommand {
+                name: CommandName::DumpScreen as i32,
+                payload: Some(Payload::DumpScreenPayload(full)),
             }),
             PluginCommand::CloseSelf => Ok(ProtobufPluginCommand {
                 name: CommandName::CloseSelf as i32,

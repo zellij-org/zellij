@@ -11,7 +11,7 @@ pub struct Event {
     pub name: i32,
     #[prost(
         oneof = "event::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26"
     )]
     pub payload: ::core::option::Option<event::Payload>,
 }
@@ -68,6 +68,8 @@ pub mod event {
         HostFolderChangedPayload(super::HostFolderChangedPayload),
         #[prost(message, tag = "25")]
         FailedToChangeHostFolderPayload(super::FailedToChangeHostFolderPayload),
+        #[prost(string, tag = "26")]
+        ScreenContentsPayload(::prost::alloc::string::String),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -486,6 +488,7 @@ pub enum EventType {
     ListClients = 26,
     HostFolderChanged = 27,
     FailedToChangeHostFolder = 28,
+    ScreenContents = 29,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -523,6 +526,7 @@ impl EventType {
             EventType::ListClients => "ListClients",
             EventType::HostFolderChanged => "HostFolderChanged",
             EventType::FailedToChangeHostFolder => "FailedToChangeHostFolder",
+            EventType::ScreenContents => "ScreenContents",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -557,6 +561,7 @@ impl EventType {
             "ListClients" => Some(Self::ListClients),
             "HostFolderChanged" => Some(Self::HostFolderChanged),
             "FailedToChangeHostFolder" => Some(Self::FailedToChangeHostFolder),
+            "ScreenContents" => Some(Self::ScreenContents),
             _ => None,
         }
     }

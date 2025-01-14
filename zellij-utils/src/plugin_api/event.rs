@@ -349,6 +349,12 @@ impl TryFrom<ProtobufEvent> for Event {
                 )),
                 _ => Err("Malformed payload for the FailedToChangeHostFolder Event"),
             },
+            Some(ProtobufEventType::ScreenContents) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::ScreenContentsPayload(dump)) => {
+                    Ok(Event::ScreenContents(dump))
+                },
+                _ => Err("Malformed payload for the ScreenContents Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -712,6 +718,10 @@ impl TryFrom<Event> for ProtobufEvent {
                 payload: Some(event::Payload::FailedToChangeHostFolderPayload(
                     FailedToChangeHostFolderPayload { error_message },
                 )),
+            }),
+            Event::ScreenContents(dump) => Ok(ProtobufEvent {
+                name: ProtobufEventType::ScreenContents as i32,
+                payload: Some(event::Payload::ScreenContentsPayload(dump)),
             }),
         }
     }
@@ -1260,6 +1270,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::ListClients => EventType::ListClients,
             ProtobufEventType::HostFolderChanged => EventType::HostFolderChanged,
             ProtobufEventType::FailedToChangeHostFolder => EventType::FailedToChangeHostFolder,
+            ProtobufEventType::ScreenContents => EventType::ScreenContents,
         })
     }
 }
@@ -1297,6 +1308,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::ListClients => ProtobufEventType::ListClients,
             EventType::HostFolderChanged => ProtobufEventType::HostFolderChanged,
             EventType::FailedToChangeHostFolder => ProtobufEventType::FailedToChangeHostFolder,
+            EventType::ScreenContents => ProtobufEventType::ScreenContents,
         })
     }
 }
