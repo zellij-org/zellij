@@ -1013,6 +1013,8 @@ impl TryFrom<ProtobufPaneInfo> for PaneInfo {
             terminal_command: protobuf_pane_info.terminal_command,
             plugin_url: protobuf_pane_info.plugin_url,
             is_selectable: protobuf_pane_info.is_selectable,
+            cwd: protobuf_pane_info.cwd.map(|cwd| cwd.into()),
+            pid: protobuf_pane_info.pid.map(|pid| pid as usize),
         })
     }
 }
@@ -1048,6 +1050,8 @@ impl TryFrom<PaneInfo> for ProtobufPaneInfo {
             terminal_command: pane_info.terminal_command,
             plugin_url: pane_info.plugin_url,
             is_selectable: pane_info.is_selectable,
+            cwd: pane_info.cwd.map(|cwd| cwd.display().to_string()),
+            pid: pane_info.pid.map(|pid| pid as u32),
         })
     }
 }
@@ -1794,6 +1798,8 @@ fn serialize_session_update_event_with_non_default_values() {
             terminal_command: Some("foo".to_owned()),
             plugin_url: None,
             is_selectable: true,
+            cwd: Some("/some/path".into()),
+            pid: Some(69),
         },
         PaneInfo {
             id: 1,
@@ -1818,6 +1824,8 @@ fn serialize_session_update_event_with_non_default_values() {
             terminal_command: None,
             plugin_url: Some("i_am_a_fake_plugin".to_owned()),
             is_selectable: true,
+            cwd: None,
+            pid: None,
         },
     ];
     panes.insert(0, panes_list);

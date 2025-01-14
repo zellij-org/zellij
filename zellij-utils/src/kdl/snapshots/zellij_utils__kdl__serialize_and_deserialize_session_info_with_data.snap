@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 2552
+assertion_line: 4697
 expression: serialized
 ---
 name "my session name"
@@ -51,6 +51,8 @@ panes {
         cursor_coordinates_in_pane 0 0
         terminal_command "foo"
         is_selectable true
+        cwd "/some/directory/"
+        pid 69
         tab_position 0
     }
     pane {
