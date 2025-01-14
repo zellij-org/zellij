@@ -356,7 +356,7 @@ fn serialize_tiled_layout_attributes(
         match layout.split_size {
             Some(SplitSize::Fixed(size)) => kdl_node
                 .entries_mut()
-                .push(KdlEntry::new_prop("size", KdlValue::Base10(size as i64))),
+                .push(KdlEntry::new_prop("size", KdlValue::Integer(size as i128))),
             Some(SplitSize::Percent(size)) => kdl_node
                 .entries_mut()
                 .push(KdlEntry::new_prop("size", format!("{size}%"))),
@@ -397,7 +397,7 @@ fn serialize_floating_layout_attributes(
         Some(PercentOrFixed::Fixed(fixed_height)) => {
             let mut node = KdlNode::new("height");
             node.entries_mut()
-                .push(KdlEntry::new(KdlValue::Base10(fixed_height as i64)));
+                .push(KdlEntry::new(KdlValue::Integer(fixed_height as i128)));
             pane_node_children.nodes_mut().push(node);
         },
         Some(PercentOrFixed::Percent(percent)) => {
@@ -412,7 +412,7 @@ fn serialize_floating_layout_attributes(
         Some(PercentOrFixed::Fixed(fixed_width)) => {
             let mut node = KdlNode::new("width");
             node.entries_mut()
-                .push(KdlEntry::new(KdlValue::Base10(fixed_width as i64)));
+                .push(KdlEntry::new(KdlValue::Integer(fixed_width as i128)));
             pane_node_children.nodes_mut().push(node);
         },
         Some(PercentOrFixed::Percent(percent)) => {
@@ -427,7 +427,7 @@ fn serialize_floating_layout_attributes(
         Some(PercentOrFixed::Fixed(fixed_x)) => {
             let mut node = KdlNode::new("x");
             node.entries_mut()
-                .push(KdlEntry::new(KdlValue::Base10(fixed_x as i64)));
+                .push(KdlEntry::new(KdlValue::Integer(fixed_x as i128)));
             pane_node_children.nodes_mut().push(node);
         },
         Some(PercentOrFixed::Percent(percent)) => {
@@ -442,7 +442,7 @@ fn serialize_floating_layout_attributes(
         Some(PercentOrFixed::Fixed(fixed_y)) => {
             let mut node = KdlNode::new("y");
             node.entries_mut()
-                .push(KdlEntry::new(KdlValue::Base10(fixed_y as i64)));
+                .push(KdlEntry::new(KdlValue::Integer(fixed_y as i128)));
             pane_node_children.nodes_mut().push(node);
         },
         Some(PercentOrFixed::Percent(percent)) => {
@@ -556,15 +556,15 @@ fn serialize_layout_constraint(layout_constraint: LayoutConstraint) -> Option<Kd
     match layout_constraint {
         LayoutConstraint::MaxPanes(max_panes) => Some(KdlEntry::new_prop(
             "max_panes",
-            KdlValue::Base10(max_panes as i64),
+            KdlValue::Integer(max_panes as i128),
         )),
         LayoutConstraint::MinPanes(min_panes) => Some(KdlEntry::new_prop(
             "min_panes",
-            KdlValue::Base10(min_panes as i64),
+            KdlValue::Integer(min_panes as i128),
         )),
         LayoutConstraint::ExactPanes(exact_panes) => Some(KdlEntry::new_prop(
             "exact_panes",
-            KdlValue::Base10(exact_panes as i64),
+            KdlValue::Integer(exact_panes as i128),
         )),
         LayoutConstraint::NoConstraint => None,
     }

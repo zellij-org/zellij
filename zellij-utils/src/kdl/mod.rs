@@ -15,11 +15,11 @@ use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
 use kdl_layout_parser::KdlLayoutParser;
+use miette::NamedSource;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::sync::Arc;
 use strum::IntoEnumIterator;
 use uuid::Uuid;
-
-use miette::NamedSource;
 
 use kdl::{KdlDocument, KdlEntry, KdlNode, KdlValue};
 
@@ -89,7 +89,7 @@ macro_rules! parse_kdl_action_u8_arguments {
     ( $action_name:expr, $action_arguments:expr, $action_node:expr ) => {{
         let mut bytes = vec![];
         for kdl_entry in $action_arguments.iter() {
-            match kdl_entry.value().as_i64() {
+            match kdl_entry.value().as_integer() {
                 Some(int_value) => bytes.push(int_value as u8),
                 None => {
                     return Err(ConfigError::new_kdl_error(
@@ -112,12 +112,11 @@ macro_rules! kdl_parsing_error {
 }
 
 #[macro_export]
-macro_rules! kdl_entries_as_i64 {
+macro_rules! kdl_entries_as_integer {
     ( $node:expr ) => {
         $node
-            .entries()
             .iter()
-            .map(|kdl_node| kdl_node.value().as_i64())
+            .map(|entry| entry.value().as_integer())
     };
 }
 
@@ -133,13 +132,13 @@ macro_rules! kdl_first_entry_as_string {
 }
 
 #[macro_export]
-macro_rules! kdl_first_entry_as_i64 {
+macro_rules! kdl_first_entry_as_integer {
     ( $node:expr ) => {
         $node
             .entries()
             .iter()
             .next()
-            .and_then(|i| i.value().as_i64())
+            .and_then(|i| i.value().as_integer())
     };
 }
 
@@ -184,7 +183,7 @@ macro_rules! parse_kdl_action_char_or_string_arguments {
 #[macro_export]
 macro_rules! kdl_arg_is_truthy {
     ( $kdl_node:expr, $arg_name:expr ) => {
-        match $kdl_node.get($arg_name) {
+        match $kdl_node.entry($arg_name) {
             Some(arg) => match arg.value().as_bool() {
                 Some(value) => value,
                 None => {
@@ -254,14 +253,13 @@ macro_rules! kdl_children {
 macro_rules! kdl_get_string_property_or_child_value {
     ( $kdl_node:expr, $name:expr ) => {
         $kdl_node
-            .get($name)
+            .entry($name)
             .and_then(|e| e.value().as_string())
             .or_else(|| {
                 $kdl_node
                     .children()
-                    .and_then(|c| c.get($name))
-                    .and_then(|c| c.get(0))
-                    .and_then(|c| c.value().as_string())
+                    .and_then(|c| c.get_arg($name))
+                    .and_then(|c| c.as_string())
             })
     };
 }
@@ -270,7 +268,6 @@ macro_rules! kdl_get_string_property_or_child_value {
 macro_rules! kdl_string_arguments {
     ( $kdl_node:expr ) => {{
         let res: Result<Vec<_>, _> = $kdl_node
-            .entries()
             .iter()
             .map(|e| {
                 e.value().as_string().ok_or(ConfigError::new_kdl_error(
@@ -363,12 +360,18 @@ pub fn kdl_arguments_that_are_strings<'a>(
     Ok(args)
 }
 
+pub fn kdl_set_leading(node: &mut KdlNode, leading: String) {
+    let mut fmt = node.format().cloned().unwrap_or_default();
+    fmt.leading = leading;
+    node.set_format(fmt);
+}
+
 pub fn kdl_arguments_that_are_digits<'a>(
     arguments: impl Iterator<Item = &'a KdlEntry>,
-) -> Result<Vec<i64>, ConfigError> {
-    let mut args: Vec<i64> = vec![];
+) -> Result<Vec<i128>, ConfigError> {
+    let mut args: Vec<i128> = vec![];
     for kdl_entry in arguments {
-        match kdl_entry.value().as_i64() {
+        match kdl_entry.value().as_integer() {
             Some(digit_value) => {
                 args.push(digit_value);
             },
@@ -577,7 +580,7 @@ impl Action {
             Action::Write(_key, bytes, _is_kitty) => {
                 let mut node = KdlNode::new("Write");
                 for byte in bytes {
-                    node.push(KdlValue::Base10(*byte as i64));
+                    node.push(KdlValue::Integer(*byte as i128));
                 }
                 Some(node)
             },
@@ -686,7 +689,7 @@ impl Action {
             Action::PaneNameInput(bytes) => {
                 let mut node = KdlNode::new("PaneNameInput");
                 for byte in bytes {
-                    node.push(KdlValue::Base10(*byte as i64));
+                    node.push(KdlValue::Integer(*byte as i128));
                 }
                 Some(node)
             },
@@ -716,14 +719,14 @@ impl Action {
             Action::CloseTab => Some(KdlNode::new("CloseTab")),
             Action::GoToTab(index) => {
                 let mut node = KdlNode::new("GoToTab");
-                node.push(KdlValue::Base10(*index as i64));
+                node.push(KdlValue::Integer(*index as i128));
                 Some(node)
             },
             Action::ToggleTab => Some(KdlNode::new("ToggleTab")),
             Action::TabNameInput(bytes) => {
                 let mut node = KdlNode::new("TabNameInput");
                 for byte in bytes {
-                    node.push(KdlValue::Base10(*byte as i64));
+                    node.push(KdlValue::Integer(*byte as i128));
                 }
                 Some(node)
             },
@@ -819,7 +822,7 @@ impl Action {
                                 x_node.push(format!("{}%", x));
                             },
                             SplitSize::Fixed(x) => {
-                                x_node.push(KdlValue::Base10(x as i64));
+                                x_node.push(KdlValue::Integer(x as i128));
                             },
                         };
                         node_children.nodes_mut().push(x_node);
@@ -831,7 +834,7 @@ impl Action {
                                 y_node.push(format!("{}%", y));
                             },
                             SplitSize::Fixed(y) => {
-                                y_node.push(KdlValue::Base10(y as i64));
+                                y_node.push(KdlValue::Integer(y as i128));
                             },
                         };
                         node_children.nodes_mut().push(y_node);
@@ -843,7 +846,7 @@ impl Action {
                                 width_node.push(format!("{}%", width));
                             },
                             SplitSize::Fixed(width) => {
-                                width_node.push(KdlValue::Base10(width as i64));
+                                width_node.push(KdlValue::Integer(width as i128));
                             },
                         };
                         node_children.nodes_mut().push(width_node);
@@ -855,7 +858,7 @@ impl Action {
                                 height_node.push(format!("{}%", height));
                             },
                             SplitSize::Fixed(height) => {
-                                height_node.push(KdlValue::Base10(height as i64));
+                                height_node.push(KdlValue::Integer(height as i128));
                             },
                         };
                         node_children.nodes_mut().push(height_node);
@@ -1003,7 +1006,7 @@ impl Action {
             Action::SearchInput(bytes) => {
                 let mut node = KdlNode::new("SearchInput");
                 for byte in bytes {
-                    node.push(KdlValue::Base10(*byte as i64));
+                    node.push(KdlValue::Integer(*byte as i128));
                 }
                 Some(node)
             },
@@ -1136,9 +1139,9 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
                 None => false,
             }
         };
-        let is_eight_bit = || kdl_first_entry_as_i64!(color).is_some() && entry_count == 1;
+        let is_eight_bit = || kdl_first_entry_as_integer!(color).is_some() && entry_count == 1;
         if is_rgb() {
-            let mut channels = kdl_entries_as_i64!(color);
+            let mut channels = kdl_entries_as_integer!(color);
             let r = channels.next().unwrap().ok_or(ConfigError::new_kdl_error(
                 format!("invalid rgb color"),
                 color.span().offset(),
@@ -1208,7 +1211,7 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
             })?;
             Ok(PaletteColor::Rgb((r, g, b)))
         } else if is_eight_bit() {
-            let n = kdl_first_entry_as_i64!(color).ok_or(ConfigError::new_kdl_error(
+            let n = kdl_first_entry_as_integer!(color).ok_or(ConfigError::new_kdl_error(
                 "Failed to parse color".into(),
                 color.span().offset(),
                 color.span().len(),
@@ -1229,12 +1232,12 @@ impl PaletteColor {
         let mut node = KdlNode::new(color_name);
         match self {
             PaletteColor::Rgb((r, g, b)) => {
-                node.push(KdlValue::Base10(*r as i64));
-                node.push(KdlValue::Base10(*g as i64));
-                node.push(KdlValue::Base10(*b as i64));
+                node.push(KdlValue::Integer(*r as i128));
+                node.push(KdlValue::Integer(*g as i128));
+                node.push(KdlValue::Integer(*b as i128));
             },
             PaletteColor::EightBit(color_index) => {
-                node.push(KdlValue::Base10(*color_index as i64));
+                node.push(KdlValue::Integer(*color_index as i128));
             },
         }
         node
@@ -1846,11 +1849,11 @@ macro_rules! kdl_property_first_arg_as_bool_or_error {
 }
 
 #[macro_export]
-macro_rules! kdl_property_first_arg_as_i64_or_error {
+macro_rules! kdl_property_first_arg_as_integer_or_error {
     ( $kdl_node:expr, $property_name:expr ) => {{
         match $kdl_node.get($property_name) {
-            Some(property) => match property.entries().iter().next() {
-                Some(first_entry) => match first_entry.value().as_i64() {
+            Some(property) => match property.iter().next() {
+                Some(first_entry) => match first_entry.value().as_integer() {
                     Some(int_entry) => Some((int_entry, first_entry)),
                     None => {
                         return Err(ConfigError::new_kdl_error(
@@ -1894,7 +1897,7 @@ macro_rules! kdl_children_property_first_arg_as_string {
         $kdl_node
             .children()
             .and_then(|c| c.get($property_name))
-            .and_then(|p| p.entries().iter().next())
+            .and_then(|p| p.iter().next())
             .and_then(|p| p.value().as_string())
     };
 }
@@ -1921,12 +1924,12 @@ macro_rules! kdl_children_property_first_arg_as_bool {
 }
 
 #[macro_export]
-macro_rules! kdl_property_first_arg_as_i64 {
+macro_rules! kdl_property_first_arg_as_integer {
     ( $kdl_node:expr, $property_name:expr ) => {
         $kdl_node
             .get($property_name)
             .and_then(|p| p.entries().iter().next())
-            .and_then(|p| p.value().as_i64())
+            .and_then(|p| p.value().as_integer())
     };
 }
 
@@ -1942,9 +1945,8 @@ macro_rules! kdl_get_child_entry_bool_value {
     ( $kdl_node:expr, $child_name:expr ) => {
         $kdl_node
             .children()
-            .and_then(|c| c.get($child_name))
-            .and_then(|c| c.get(0))
-            .and_then(|c| c.value().as_bool())
+            .and_then(|c| c.get_arg($child_name))
+            .and_then(|c| c.as_bool())
     };
 }
 
@@ -1953,9 +1955,8 @@ macro_rules! kdl_get_child_entry_string_value {
     ( $kdl_node:expr, $child_name:expr ) => {
         $kdl_node
             .children()
-            .and_then(|c| c.get($child_name))
-            .and_then(|c| c.get(0))
-            .and_then(|c| c.value().as_string())
+            .and_then(|c| c.get_arg($child_name))
+            .and_then(|c| c.as_string())
     };
 }
 
@@ -1963,14 +1964,13 @@ macro_rules! kdl_get_child_entry_string_value {
 macro_rules! kdl_get_bool_property_or_child_value {
     ( $kdl_node:expr, $name:expr ) => {
         $kdl_node
-            .get($name)
+            .entry($name)
             .and_then(|e| e.value().as_bool())
             .or_else(|| {
                 $kdl_node
                     .children()
-                    .and_then(|c| c.get($name))
-                    .and_then(|c| c.get(0))
-                    .and_then(|c| c.value().as_bool())
+                    .and_then(|c| c.get_arg($name))
+                    .and_then(|c| c.as_bool())
             })
     };
 }
@@ -1978,7 +1978,7 @@ macro_rules! kdl_get_bool_property_or_child_value {
 #[macro_export]
 macro_rules! kdl_get_bool_property_or_child_value_with_error {
     ( $kdl_node:expr, $name:expr ) => {
-        match $kdl_node.get($name) {
+        match $kdl_node.entry($name) {
             Some(e) => match e.value().as_bool() {
                 Some(bool_value) => Some(bool_value),
                 None => {
@@ -1996,7 +1996,7 @@ macro_rules! kdl_get_bool_property_or_child_value_with_error {
                 let child_value = $kdl_node
                     .children()
                     .and_then(|c| c.get($name))
-                    .and_then(|c| c.get(0));
+                    .and_then(|c| c.entry(0));
                 match child_value {
                     Some(e) => match e.value().as_bool() {
                         Some(bool_value) => Some(bool_value),
@@ -2033,11 +2033,11 @@ macro_rules! kdl_get_bool_property_or_child_value_with_error {
 #[macro_export]
 macro_rules! kdl_property_or_child_value_node {
     ( $kdl_node:expr, $name:expr ) => {
-        $kdl_node.get($name).or_else(|| {
+        $kdl_node.entry($name).or_else(|| {
             $kdl_node
                 .children()
                 .and_then(|c| c.get($name))
-                .and_then(|c| c.get(0))
+                .and_then(|c| c.entry(0))
         })
     };
 }
@@ -2054,7 +2054,7 @@ macro_rules! kdl_child_with_name {
 #[macro_export]
 macro_rules! kdl_get_string_property_or_child_value_with_error {
     ( $kdl_node:expr, $name:expr ) => {
-        match $kdl_node.get($name) {
+        match $kdl_node.entry($name) {
             Some(e) => match e.value().as_string() {
                 Some(string_value) => Some(string_value),
                 None => {
@@ -2072,7 +2072,7 @@ macro_rules! kdl_get_string_property_or_child_value_with_error {
                 let child_value = $kdl_node
                     .children()
                     .and_then(|c| c.get($name))
-                    .and_then(|c| c.get(0));
+                    .and_then(|c| c.entry(0));
                 match child_value {
                     Some(e) => match e.value().as_string() {
                         Some(string_value) => Some(string_value),
@@ -2109,11 +2109,11 @@ macro_rules! kdl_get_string_property_or_child_value_with_error {
 #[macro_export]
 macro_rules! kdl_get_property_or_child {
     ( $kdl_node:expr, $name:expr ) => {
-        $kdl_node.get($name).or_else(|| {
+        $kdl_node.entry($name).or_else(|| {
             $kdl_node
                 .children()
                 .and_then(|c| c.get($name))
-                .and_then(|c| c.get(0))
+                .and_then(|c| c.entry(0))
         })
     };
 }
@@ -2122,14 +2122,13 @@ macro_rules! kdl_get_property_or_child {
 macro_rules! kdl_get_int_property_or_child_value {
     ( $kdl_node:expr, $name:expr ) => {
         $kdl_node
-            .get($name)
-            .and_then(|e| e.value().as_i64())
+            .entry($name)
+            .and_then(|e| e.value().as_integer())
             .or_else(|| {
                 $kdl_node
                     .children()
-                    .and_then(|c| c.get($name))
-                    .and_then(|c| c.get(0))
-                    .and_then(|c| c.value().as_i64())
+                    .and_then(|c| c.get_arg($name))
+                    .and_then(|c| c.as_integer())
             })
     };
 }
@@ -2146,7 +2145,7 @@ macro_rules! kdl_get_string_entry {
 #[macro_export]
 macro_rules! kdl_get_int_entry {
     ( $kdl_node:expr, $entry_name:expr ) => {
-        $kdl_node.get($entry_name).and_then(|e| e.value().as_i64())
+        $kdl_node.entry($entry_name).and_then(|e| e.value().as_integer())
     };
 }
 
@@ -2192,7 +2191,7 @@ impl Options {
         let mouse_mode =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_mode").map(|(v, _)| v);
         let scroll_buffer_size =
-            kdl_property_first_arg_as_i64_or_error!(kdl_options, "scroll_buffer_size")
+            kdl_property_first_arg_as_integer_or_error!(kdl_options, "scroll_buffer_size")
                 .map(|(scroll_buffer_size, _entry)| scroll_buffer_size as usize);
         let copy_command = kdl_property_first_arg_as_string_or_error!(kdl_options, "copy_command")
             .map(|(copy_command, _entry)| copy_command.to_string());
@@ -2225,13 +2224,13 @@ impl Options {
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "serialize_pane_viewport")
                 .map(|(v, _)| v);
         let scrollback_lines_to_serialize =
-            kdl_property_first_arg_as_i64_or_error!(kdl_options, "scrollback_lines_to_serialize")
+            kdl_property_first_arg_as_integer_or_error!(kdl_options, "scrollback_lines_to_serialize")
                 .map(|(v, _)| v as usize);
         let styled_underlines =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "styled_underlines")
                 .map(|(v, _)| v);
         let serialization_interval =
-            kdl_property_first_arg_as_i64_or_error!(kdl_options, "serialization_interval")
+            kdl_property_first_arg_as_integer_or_error!(kdl_options, "serialization_interval")
                 .map(|(scroll_buffer_size, _entry)| scroll_buffer_size as u64);
         let disable_session_metadata =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "disable_session_metadata")
@@ -2294,12 +2293,12 @@ impl Options {
         if let Some(simplified_ui) = self.simplified_ui {
             let mut node = create_node(simplified_ui);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node(true);
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2322,12 +2321,12 @@ impl Options {
         if let Some(theme) = &self.theme {
             let mut node = create_node(theme);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node("dracula");
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2347,12 +2346,12 @@ impl Options {
         if let Some(default_mode) = &self.default_mode {
             let mut node = create_node(default_mode);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node(&InputMode::Locked);
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2375,12 +2374,12 @@ impl Options {
         if let Some(default_shell) = &self.default_shell {
             let mut node = create_node(&default_shell.display().to_string());
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node("fish");
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2402,12 +2401,12 @@ impl Options {
         if let Some(default_cwd) = &self.default_cwd {
             let mut node = create_node(&default_cwd.display().to_string());
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node("/tmp");
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2430,12 +2429,12 @@ impl Options {
         if let Some(default_layout) = &self.default_layout {
             let mut node = create_node(&default_layout.display().to_string());
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node("compact");
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2458,12 +2457,12 @@ impl Options {
         if let Some(layout_dir) = &self.layout_dir {
             let mut node = create_node(&layout_dir.display().to_string());
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node("/tmp");
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2486,12 +2485,12 @@ impl Options {
         if let Some(theme_dir) = &self.theme_dir {
             let mut node = create_node(&theme_dir.display().to_string());
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node("/tmp");
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2518,12 +2517,12 @@ impl Options {
         if let Some(mouse_mode) = self.mouse_mode {
             let mut node = create_node(mouse_mode);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node(false);
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2548,12 +2547,12 @@ impl Options {
         if let Some(pane_frames) = self.pane_frames {
             let mut node = create_node(pane_frames);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node(false);
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2579,12 +2578,12 @@ impl Options {
         if let Some(mirror_session) = self.mirror_session {
             let mut node = create_node(mirror_session);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node(true);
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2614,12 +2613,12 @@ impl Options {
                 OnForceClose::Quit => create_node("quit"),
             };
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node("quit");
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2640,18 +2639,18 @@ impl Options {
 
         let create_node = |node_value: usize| -> KdlNode {
             let mut node = KdlNode::new("scroll_buffer_size");
-            node.push(KdlValue::Base10(node_value as i64));
+            node.push(KdlValue::Integer(node_value as i128));
             node
         };
         if let Some(scroll_buffer_size) = self.scroll_buffer_size {
             let mut node = create_node(scroll_buffer_size);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node(10000);
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2681,12 +2680,12 @@ impl Options {
         if let Some(copy_command) = &self.copy_command {
             let mut node = create_node(copy_command);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node("pbcopy");
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2715,12 +2714,12 @@ impl Options {
                 Clipboard::System => create_node("system"),
             };
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node("primary");
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2743,12 +2742,12 @@ impl Options {
         if let Some(copy_on_select) = self.copy_on_select {
             let mut node = create_node(copy_on_select);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node(true);
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2770,12 +2769,12 @@ impl Options {
         if let Some(scrollback_editor) = &self.scrollback_editor {
             let mut node = create_node(&scrollback_editor.display().to_string());
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node("/usr/bin/vim");
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2800,12 +2799,12 @@ impl Options {
         if let Some(session_name) = &self.session_name {
             let mut node = create_node(&session_name);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node("My singleton session");
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2829,12 +2828,12 @@ impl Options {
         if let Some(attach_to_session) = self.attach_to_session {
             let mut node = create_node(attach_to_session);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node(true);
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2858,12 +2857,12 @@ impl Options {
         if let Some(auto_layout) = self.auto_layout {
             let mut node = create_node(auto_layout);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node(false);
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2887,12 +2886,12 @@ impl Options {
         if let Some(session_serialization) = self.session_serialization {
             let mut node = create_node(session_serialization);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node(false);
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2917,12 +2916,12 @@ impl Options {
         if let Some(serialize_pane_viewport) = self.serialize_pane_viewport {
             let mut node = create_node(serialize_pane_viewport);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node(false);
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2939,18 +2938,18 @@ impl Options {
 
         let create_node = |node_value: usize| -> KdlNode {
             let mut node = KdlNode::new("scrollback_lines_to_serialize");
-            node.push(KdlValue::Base10(node_value as i64));
+            node.push(KdlValue::Integer(node_value as i128));
             node
         };
         if let Some(scrollback_lines_to_serialize) = self.scrollback_lines_to_serialize {
             let mut node = create_node(scrollback_lines_to_serialize);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node(10000);
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2975,12 +2974,12 @@ impl Options {
         if let Some(styled_underlines) = self.styled_underlines {
             let mut node = create_node(styled_underlines);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node(false);
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -2994,18 +2993,18 @@ impl Options {
 
         let create_node = |node_value: u64| -> KdlNode {
             let mut node = KdlNode::new("serialization_interval");
-            node.push(KdlValue::Base10(node_value as i64));
+            node.push(KdlValue::Integer(node_value as i128));
             node
         };
         if let Some(serialization_interval) = self.serialization_interval {
             let mut node = create_node(serialization_interval);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node(10000);
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -3029,12 +3028,12 @@ impl Options {
         if let Some(disable_session_metadata) = self.disable_session_metadata {
             let mut node = create_node(disable_session_metadata);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node(false);
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -3057,12 +3056,12 @@ impl Options {
         if let Some(support_kitty_keyboard_protocol) = self.support_kitty_keyboard_protocol {
             let mut node = create_node(support_kitty_keyboard_protocol);
             if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
+                kdl_set_leading(&mut node, format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
             let mut node = create_node(false);
-            node.set_leading(format!("{}\n// ", comment_text));
+            kdl_set_leading(&mut node, format!("{}\n// ", comment_text));
             Some(node)
         } else {
             None
@@ -3206,22 +3205,43 @@ impl Layout {
 }
 
 fn kdl_layout_error(kdl_error: kdl::KdlError, file_name: String, raw_layout: &str) -> ConfigError {
-    let error_message = match kdl_error.kind {
-        kdl::KdlErrorKind::Context("valid node terminator") => {
-            format!("Failed to deserialize KDL node. \nPossible reasons:\n{}\n{}\n{}\n{}",
-            "- Missing `;` after a node name, eg. { node; another_node; }",
-            "- Missing quotations (\") around an argument node eg. { first_node \"argument_node\"; }",
-            "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
-            "- Found an extraneous equal sign (=) between node child arguments and their values. eg. { argument=\"value\" }")
-        },
-        _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
-    };
-    let kdl_error = KdlError {
-        error_message,
-        src: Some(NamedSource::new(file_name, String::from(raw_layout))),
-        offset: Some(kdl_error.span.offset()),
-        len: Some(kdl_error.span.len()),
-        help_message: None,
+    let src = Some(Arc::new(NamedSource::new(&file_name, raw_layout.into())));
+    let kdl_error = if !kdl_error.diagnostics.is_empty()
+        && kdl_error.diagnostics.len() > 1
+    {
+        KdlError {
+            error_message: "Multiple KDL deserialization errors found".into(),
+            src: None,
+            offset: None,
+            len: None,
+            help_message: None,
+            related: kdl_error.diagnostics.into_iter().map(|d| d.into()).map(|mut e: KdlError| {
+                e.src = src.clone();
+                e
+            }).collect(),
+        }
+    } else if let Some(diag) = kdl_error.diagnostics.get(0) {
+        let error_message = diag
+            .help
+            .clone()
+            .unwrap_or_else(|| "Kdl Deserialization Error".into());
+        KdlError {
+            error_message,
+            src,
+            offset: Some(diag.span.offset()),
+            len: Some(diag.span.len()),
+            help_message: None,
+            related: Vec::new(),
+        }
+    } else {
+        KdlError {
+            error_message: format!("{kdl_error}"),
+            src,
+            offset: None,
+            len: None,
+            help_message: None,
+            related: Vec::new(),
+        }
     };
     ConfigError::KdlError(kdl_error)
 }
@@ -3234,7 +3254,7 @@ impl EnvironmentVariables {
             let env_var_str_value =
                 kdl_first_entry_as_string!(env_var).map(|s| format!("{}", s.to_string()));
             let env_var_int_value =
-                kdl_first_entry_as_i64!(env_var).map(|s| format!("{}", s.to_string()));
+                kdl_first_entry_as_integer!(env_var).map(|s| format!("{}", s.to_string()));
             let env_var_value =
                 env_var_str_value
                     .or(env_var_int_value)
@@ -3505,11 +3525,15 @@ impl Keybinds {
             }
             if !actions_have_children {
                 for action in actions.nodes_mut() {
-                    action.set_leading("");
-                    action.set_trailing("; ");
+                    kdl_set_leading(action, "".into());
+                    if let Some(fmt) = action.format_mut() {
+                        fmt.trailing = "; ".into();
+                    }
                 }
-                actions.set_leading(" ");
-                actions.set_trailing("");
+                actions.set_format(kdl::KdlDocumentFormat {
+                    leading: " ".into(),
+                    trailing: "".into(),
+                });
             }
             keybind_node.set_children(actions);
             mode_keybinds.nodes_mut().push(keybind_node);
@@ -3742,7 +3766,7 @@ impl PluginAliases {
         plugins.set_children(plugins_children);
 
         if add_comments {
-            plugins.set_leading(format!(
+            kdl_set_leading(&mut plugins, format!(
                 "\n{}\n{}\n",
                 "// Plugin aliases - can be used to change the implementation of Zellij",
                 "// changing these requires a restart to take effect",
@@ -3808,7 +3832,7 @@ pub fn load_plugins_to_kdl(
     load_plugins.set_children(load_plugins_children);
 
     if add_comments {
-        load_plugins.set_leading(format!(
+        kdl_set_leading(&mut load_plugins, format!(
             "\n{}\n{}\n{}\n",
             "// Plugins to load in the background when a new session starts",
             "// eg. \"file:/path/to/my-plugin.wasm\"",
@@ -4070,7 +4094,8 @@ impl PermissionCache {
             kdl_doucment.nodes_mut().push(node);
         });
 
-        kdl_doucment.fmt();
+        // TODO: autoformat still has some issues
+        // kdl_doucment.autoformat();
         kdl_doucment.to_string()
     }
 }
@@ -4089,7 +4114,7 @@ impl SessionInfo {
         let connected_clients = kdl_document
             .get("connected_clients")
             .and_then(|n| n.entries().iter().next())
-            .and_then(|e| e.value().as_i64())
+            .and_then(|e| e.value().as_integer())
             .map(|c| c as usize)
             .ok_or("Failed to parse connected_clients")?;
         let tabs: Vec<TabInfo> = kdl_document
@@ -4153,7 +4178,7 @@ impl SessionInfo {
         name.push(self.name.clone());
 
         let mut connected_clients = KdlNode::new("connected_clients");
-        connected_clients.push(self.connected_clients as i64);
+        connected_clients.push(self.connected_clients as i128);
 
         let mut tabs = KdlNode::new("tabs");
         let mut tab_children = KdlDocument::new();
@@ -4189,7 +4214,8 @@ impl SessionInfo {
         kdl_document.nodes_mut().push(panes);
         kdl_document.nodes_mut().push(connected_clients);
         kdl_document.nodes_mut().push(available_layouts);
-        kdl_document.fmt();
+        // TODO: autoformat still has some issues
+        // kdl_document.autoformat();
         kdl_document.to_string()
     }
 }
@@ -4201,7 +4227,7 @@ impl TabInfo {
                 kdl_document
                     .get($name)
                     .and_then(|n| n.entries().iter().next())
-                    .and_then(|e| e.value().as_i64())
+                    .and_then(|e| e.value().as_integer())
                     .map(|e| e as $type)
                     .ok_or(format!("Failed to parse tab {}", $name))?
             }};
@@ -4248,7 +4274,7 @@ impl TabInfo {
             .map(|n| n.entries())
         {
             for entry in tab_other_focused_clients {
-                if let Some(entry_parsed) = entry.value().as_i64() {
+                if let Some(entry_parsed) = entry.value().as_integer() {
                     other_focused_clients.push(entry_parsed as u16);
                 }
             }
@@ -4272,7 +4298,7 @@ impl TabInfo {
         let mut kdl_doucment = KdlDocument::new();
 
         let mut position = KdlNode::new("position");
-        position.push(self.position as i64);
+        position.push(self.position as i128);
         kdl_doucment.nodes_mut().push(position);
 
         let mut name = KdlNode::new("name");
@@ -4284,7 +4310,7 @@ impl TabInfo {
         kdl_doucment.nodes_mut().push(active);
 
         let mut panes_to_hide = KdlNode::new("panes_to_hide");
-        panes_to_hide.push(self.panes_to_hide as i64);
+        panes_to_hide.push(self.panes_to_hide as i128);
         kdl_doucment.nodes_mut().push(panes_to_hide);
 
         let mut is_fullscreen_active = KdlNode::new("is_fullscreen_active");
@@ -4302,7 +4328,7 @@ impl TabInfo {
         if !self.other_focused_clients.is_empty() {
             let mut other_focused_clients = KdlNode::new("other_focused_clients");
             for client_id in &self.other_focused_clients {
-                other_focused_clients.push(*client_id as i64);
+                other_focused_clients.push(*client_id as i128);
             }
             kdl_doucment.nodes_mut().push(other_focused_clients);
         }
@@ -4346,7 +4372,7 @@ impl PaneManifest {
                 let mut pane = pane.encode_to_kdl();
 
                 let mut position_node = KdlNode::new("tab_position");
-                position_node.push(*tab_position as i64);
+                position_node.push(*tab_position as i128);
                 pane.nodes_mut().push(position_node);
 
                 pane_node.set_children(pane);
@@ -4365,7 +4391,7 @@ impl PaneInfo {
                 kdl_document
                     .get($name)
                     .and_then(|n| n.entries().iter().next())
-                    .and_then(|e| e.value().as_i64())
+                    .and_then(|e| e.value().as_integer())
                     .map(|e| e as $type)
                     .ok_or(format!("Failed to parse pane {}", $name))?
             }};
@@ -4375,7 +4401,7 @@ impl PaneInfo {
                 kdl_document
                     .get($name)
                     .and_then(|n| n.entries().iter().next())
-                    .and_then(|e| e.value().as_i64())
+                    .and_then(|e| e.value().as_integer())
                     .map(|e| e as $type)
             }};
         }
@@ -4434,8 +4460,8 @@ impl PaneInfo {
                 (entries.next(), entries.next())
             })
             .and_then(|(x, y)| {
-                let x = x.and_then(|x| x.value().as_i64()).map(|x| x as usize);
-                let y = y.and_then(|y| y.value().as_i64()).map(|y| y as usize);
+                let x = x.and_then(|x| x.value().as_integer()).map(|x| x as usize);
+                let y = y.and_then(|y| y.value().as_integer()).map(|y| y as usize);
                 match (x, y) {
                     (Some(x), Some(y)) => Some((x, y)),
                     _ => None,
@@ -4476,7 +4502,7 @@ impl PaneInfo {
         macro_rules! int_node {
             ($name:expr, $val:expr) => {{
                 let mut att = KdlNode::new($name);
-                att.push($val as i64);
+                att.push($val as i128);
                 kdl_doucment.nodes_mut().push(att);
             }};
         }
@@ -4517,8 +4543,8 @@ impl PaneInfo {
         int_node!("pane_content_columns", self.pane_content_columns);
         if let Some((cursor_x, cursor_y)) = self.cursor_coordinates_in_pane {
             let mut cursor_coordinates_in_pane = KdlNode::new("cursor_coordinates_in_pane");
-            cursor_coordinates_in_pane.push(cursor_x as i64);
-            cursor_coordinates_in_pane.push(cursor_y as i64);
+            cursor_coordinates_in_pane.push(cursor_x as i128);
+            cursor_coordinates_in_pane.push(cursor_y as i128);
             kdl_doucment.nodes_mut().push(cursor_coordinates_in_pane);
         }
         if let Some(terminal_command) = &self.terminal_command {
@@ -4555,7 +4581,7 @@ pub fn parse_plugin_user_configuration(
             }
             let config_entry_str_value = kdl_first_entry_as_string!(user_configuration_entry)
                 .map(|s| format!("{}", s.to_string()));
-            let config_entry_int_value = kdl_first_entry_as_i64!(user_configuration_entry)
+            let config_entry_int_value = kdl_first_entry_as_integer!(user_configuration_entry)
                 .map(|s| format!("{}", s.to_string()));
             let config_entry_bool_value = kdl_first_entry_as_bool!(user_configuration_entry)
                 .map(|s| format!("{}", s.to_string()));
