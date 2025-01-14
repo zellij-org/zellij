@@ -15,6 +15,7 @@ use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::Keybinds;
+use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
@@ -249,15 +250,7 @@ pub enum ScreenInstruction {
     TerminalColorRegisters(Vec<(usize, String)>),
     ChangeMode(ModeInfo, ClientId),
     ChangeModeForAllClients(ModeInfo),
-    LeftClick(Position, ClientId),
-    RightClick(Position, ClientId),
-    MiddleClick(Position, ClientId),
-    LeftMouseRelease(Position, ClientId),
-    RightMouseRelease(Position, ClientId),
-    MiddleMouseRelease(Position, ClientId),
-    MouseHoldLeft(Position, ClientId),
-    MouseHoldRight(Position, ClientId),
-    MouseHoldMiddle(Position, ClientId),
+    MouseEvent(MouseEvent, ClientId),
     Copy(ClientId),
     AddClient(
         ClientId,
@@ -522,15 +515,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ToggleActiveSyncTab(..) => ScreenContext::ToggleActiveSyncTab,
             ScreenInstruction::ScrollUpAt(..) => ScreenContext::ScrollUpAt,
             ScreenInstruction::ScrollDownAt(..) => ScreenContext::ScrollDownAt,
-            ScreenInstruction::LeftClick(..) => ScreenContext::LeftClick,
-            ScreenInstruction::RightClick(..) => ScreenContext::RightClick,
-            ScreenInstruction::MiddleClick(..) => ScreenContext::MiddleClick,
-            ScreenInstruction::LeftMouseRelease(..) => ScreenContext::LeftMouseRelease,
-            ScreenInstruction::RightMouseRelease(..) => ScreenContext::RightMouseRelease,
-            ScreenInstruction::MiddleMouseRelease(..) => ScreenContext::MiddleMouseRelease,
-            ScreenInstruction::MouseHoldLeft(..) => ScreenContext::MouseHoldLeft,
-            ScreenInstruction::MouseHoldRight(..) => ScreenContext::MouseHoldRight,
-            ScreenInstruction::MouseHoldMiddle(..) => ScreenContext::MouseHoldMiddle,
+            ScreenInstruction::MouseEvent(..) => ScreenContext::MouseEvent,
             ScreenInstruction::Copy(..) => ScreenContext::Copy,
             ScreenInstruction::ToggleTab(..) => ScreenContext::ToggleTab,
             ScreenInstruction::AddClient(..) => ScreenContext::AddClient,
@@ -3753,56 +3738,13 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::LeftClick(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_left_click(&point, client_id), ?);
-                screen.log_and_report_session_state()?;
-                screen.render(None)?;
-                screen.unblock_input()?;
-            },
-            ScreenInstruction::RightClick(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_right_click(&point, client_id), ?);
-                screen.log_and_report_session_state()?;
-                screen.render(None)?;
-                screen.unblock_input()?;
-            },
-            ScreenInstruction::MiddleClick(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_middle_click(&point, client_id), ?);
-                screen.log_and_report_session_state()?;
-                screen.render(None)?;
-                screen.unblock_input()?;
-            },
-            ScreenInstruction::LeftMouseRelease(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_left_mouse_release(&point, client_id), ?);
-                screen.render(None)?;
-                screen.unblock_input()?;
-            },
-            ScreenInstruction::RightMouseRelease(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_right_mouse_release(&point, client_id), ?);
-                screen.render(None)?;
-            },
-            ScreenInstruction::MiddleMouseRelease(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_middle_mouse_release(&point, client_id), ?);
-                screen.render(None)?;
-            },
-            ScreenInstruction::MouseHoldLeft(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_mouse_hold_left(&point, client_id), ?);
-                screen.render(None)?;
-            },
-            ScreenInstruction::MouseHoldRight(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_mouse_hold_right(&point, client_id), ?);
-                screen.render(None)?;
-            },
-            ScreenInstruction::MouseHoldMiddle(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_mouse_hold_middle(&point, client_id), ?);
+            ScreenInstruction::MouseEvent(event, client_id) => {
+                let state_changed = screen
+                    .get_active_tab_mut(client_id)
+                    .and_then(|tab| tab.handle_mouse_event(&event, client_id))?;
+                if state_changed {
+                    screen.log_and_report_session_state()?;
+                }
                 screen.render(None)?;
             },
             ScreenInstruction::Copy(client_id) => {
