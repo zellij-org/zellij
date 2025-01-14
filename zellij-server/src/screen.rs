@@ -3221,7 +3221,6 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            // TODO: remove these and other mouse events we're no longer using
             ScreenInstruction::ScrollUpAt(point, client_id) => {
                 active_tab_and_connected_client_id!(
                     screen,

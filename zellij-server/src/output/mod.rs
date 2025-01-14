@@ -581,7 +581,6 @@ impl FloatingPanesStack {
                 let mut left_chunk =
                     CharacterChunk::new(left_chunk_characters, left_chunk_x, c_chunk.y);
                 if !c_chunk.selection_and_colors.is_empty() {
-                    // TODO: make sure we don't get a performance hit here
                     left_chunk.selection_and_colors = c_chunk.selection_and_colors.clone();
                 }
 

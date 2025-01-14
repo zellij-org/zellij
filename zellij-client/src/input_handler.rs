@@ -287,42 +287,6 @@ impl InputHandler {
         // This dispatch handles all of the output(s) to terminal
         // pane(s).
         self.dispatch_action(Action::MouseEvent(*mouse_event), None);
-
-        // The rest of this is for the plugin API actions, text
-        // selection, pane move/resize, etc.
-        match mouse_event.event_type {
-            MouseEventType::Press => {
-                // AZL TODO
-                /*
-                if buttons.wheel_up {
-                    self.dispatch_action(Action::ScrollUpAt(point), None);
-                } else if buttons.wheel_down {
-                    self.dispatch_action(Action::ScrollDownAt(point), None);
-                } else if buttons.left {
-                    self.dispatch_action(Action::LeftClick(point), None);
-                } else if buttons.right {
-                    self.dispatch_action(Action::RightClick(point), None);
-                } else if buttons.middle {
-                    self.dispatch_action(Action::MiddleClick(point), None);
-                }
-                */
-            },
-            MouseEventType::Release => {
-                // AZL TODO
-                /*
-                if buttons.left {
-                    self.dispatch_action(Action::LeftMouseRelease(point), None);
-                } else if buttons.right {
-                    self.dispatch_action(Action::RightMouseRelease(point), None);
-                } else if buttons.middle {
-                    self.dispatch_action(Action::MiddleMouseRelease(point), None);
-                }
-                */
-            },
-            MouseEventType::Motion => {
-                // AZL TODO
-            },
-        }
     }
     /// Dispatches an [`Action`].
     ///
