@@ -1729,8 +1729,11 @@ fn move_floating_pane_focus_with_mouse() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.handle_left_click(&Position::new(9, 71), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(9, 71)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_left_mouse_release(
         &MouseEvent::new_left_release_event(Position::new(9, 71)),
         client_id,
@@ -1830,8 +1833,11 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.handle_left_click(&Position::new(4, 71), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(4, 71)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_left_mouse_release(
         &MouseEvent::new_left_release_event(Position::new(4, 71)),
         client_id,
@@ -1931,8 +1937,11 @@ fn drag_pane_with_mouse() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.handle_left_click(&Position::new(5, 71), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_left_mouse_release(
         &MouseEvent::new_left_release_event(Position::new(7, 75)),
         client_id,
@@ -2032,8 +2041,11 @@ fn mark_text_inside_floating_pane() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.handle_left_click(&Position::new(6, 30), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(6, 30)),
+        client_id,
+    )
+    .unwrap();
     assert!(
         tab.selecting_with_mouse_in_pane.is_some(),
         "started selecting with mouse on click"
@@ -2643,8 +2655,11 @@ fn move_floating_pane_with_sixel_image() {
         .unwrap();
     let fixture = read_fixture("sixel-image-500px.six");
     tab.handle_pty_bytes(2, fixture).unwrap();
-    tab.handle_left_click(&Position::new(5, 71), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_left_mouse_release(
         &MouseEvent::new_left_release_event(Position::new(7, 75)),
         client_id,
@@ -2684,8 +2699,11 @@ fn floating_pane_above_sixel_image() {
         .unwrap();
     let fixture = read_fixture("sixel-image-500px.six");
     tab.handle_pty_bytes(1, fixture).unwrap();
-    tab.handle_left_click(&Position::new(5, 71), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_left_mouse_release(
         &MouseEvent::new_left_release_event(Position::new(7, 75)),
         client_id,
@@ -3067,8 +3085,11 @@ fn pane_in_sgr_button_event_tracking_mouse_mode() {
     let sgr_mouse_mode_any_button = String::from("\u{1b}[?1002;1006h"); // button event tracking (1002) with SGR encoding (1006)
     tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec())
         .unwrap();
-    tab.handle_left_click(&Position::new(5, 71), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_left_mouse_motion(
         &MouseEvent::new_left_motion_event(Position::new(9, 72)),
         client_id,
@@ -3147,8 +3168,11 @@ fn pane_in_sgr_normal_event_tracking_mouse_mode() {
     let sgr_mouse_mode_any_button = String::from("\u{1b}[?1000;1006h"); // normal event tracking (1000) with sgr encoding (1006)
     tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec())
         .unwrap();
-    tab.handle_left_click(&Position::new(5, 71), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_left_mouse_motion(
         &MouseEvent::new_left_motion_event(Position::new(9, 72)),
         client_id,
@@ -3227,8 +3251,11 @@ fn pane_in_utf8_button_event_tracking_mouse_mode() {
     let sgr_mouse_mode_any_button = String::from("\u{1b}[?1002;1005h"); // button event tracking (1002) with utf8 encoding (1005)
     tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec())
         .unwrap();
-    tab.handle_left_click(&Position::new(5, 71), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_left_mouse_motion(
         &MouseEvent::new_left_motion_event(Position::new(9, 72)),
         client_id,
@@ -3307,8 +3334,11 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
     let sgr_mouse_mode_any_button = String::from("\u{1b}[?1000;1005h"); // normal event tracking (1000) with sgr encoding (1006)
     tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec())
         .unwrap();
-    tab.handle_left_click(&Position::new(5, 71), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_left_mouse_motion(
         &MouseEvent::new_left_motion_event(Position::new(9, 72)),
         client_id,
@@ -6032,8 +6062,11 @@ fn focus_stacked_pane_over_flexible_pane_with_the_mouse() {
         Some(client_id),
     )
     .unwrap();
-    tab.handle_left_click(&Position::new(1, 71), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(1, 71)),
+        client_id,
+    )
+    .unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6131,10 +6164,16 @@ fn focus_stacked_pane_under_flexible_pane_with_the_mouse() {
         Some(client_id),
     )
     .unwrap();
-    tab.handle_left_click(&Position::new(1, 71), client_id)
-        .unwrap();
-    tab.handle_left_click(&Position::new(9, 71), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(1, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(9, 71)),
+        client_id,
+    )
+    .unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6232,10 +6271,16 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
         Some(client_id),
     )
     .unwrap();
-    tab.handle_left_click(&Position::new(2, 71), client_id)
-        .unwrap();
-    tab.handle_left_click(&Position::new(1, 71), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(2, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(1, 71)),
+        client_id,
+    )
+    .unwrap();
     tab.close_pane(PaneId::Terminal(4), false);
     tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(

@@ -3683,10 +3683,12 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::MouseEvent(event, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_mouse_event(&event, client_id), ?);
-                // TODO: if handle_mouse_event returns true, we need to do
-                // log_and_report_session_state (state changed, eg. floating panes were hidden)
+                let state_changed = screen
+                    .get_active_tab_mut(client_id)
+                    .and_then(|tab| tab.handle_mouse_event(&event, client_id))?;
+                if state_changed {
+                    screen.log_and_report_session_state()?;
+                }
                 screen.render(None)?;
             },
             ScreenInstruction::Copy(client_id) => {

@@ -3184,7 +3184,7 @@ impl Tab {
         point: &Position,
         lines: usize,
         client_id: ClientId,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let err_context = || {
             format!("failed to handle scrollwheel up at position {point:?} for client {client_id}")
         };
@@ -3205,7 +3205,7 @@ impl Tab {
                 pane.scroll_up(lines, client_id);
             }
         }
-        Ok(())
+        Ok(false)
     }
 
     pub fn handle_scrollwheel_down(
@@ -3213,7 +3213,7 @@ impl Tab {
         point: &Position,
         lines: usize,
         client_id: ClientId,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let err_context = || {
             format!(
                 "failed to handle scrollwheel down at position {point:?} for client {client_id}"
@@ -3242,7 +3242,7 @@ impl Tab {
                 }
             }
         }
-        Ok(())
+        Ok(false)
     }
 
     fn get_pane_at(
@@ -3310,7 +3310,9 @@ impl Tab {
         }
     }
 
-    pub fn handle_mouse_event(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<()> {
+    // returns true if the mouse event caused some sort of tab/pane state change that needs to be
+    // reported to plugins
+    pub fn handle_mouse_event(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<bool> {
         let err_context =
             || format!("failed to handle mouse event {event:?} for client {client_id}");
 
@@ -3328,31 +3330,25 @@ impl Tab {
             match event.event_type {
                 MouseEventType::Press => {
                     if pane_id_at_position == active_pane_id {
-                        self.handle_active_pane_left_mouse_press(event, client_id)?;
+                        self.handle_active_pane_left_mouse_press(event, client_id)
                     } else {
-                        self.handle_inactive_pane_left_mouse_press(event, client_id)?;
+                        self.handle_inactive_pane_left_mouse_press(event, client_id)
                     }
                 },
-                MouseEventType::Motion => {
-                    self.handle_left_mouse_motion(event, client_id)?;
-                },
-                MouseEventType::Release => {
-                    self.handle_left_mouse_release(event, client_id)?;
-                },
+                MouseEventType::Motion => self.handle_left_mouse_motion(event, client_id),
+                MouseEventType::Release => self.handle_left_mouse_release(event, client_id),
             }
         } else if event.wheel_up {
-            self.handle_scrollwheel_up(&event.position, 3, client_id)?;
+            self.handle_scrollwheel_up(&event.position, 3, client_id)
         } else if event.wheel_down {
-            self.handle_scrollwheel_down(&event.position, 3, client_id)?;
+            self.handle_scrollwheel_down(&event.position, 3, client_id)
         } else if event.right {
-            self.handle_right_click(&event, client_id)?;
+            self.handle_right_click(&event, client_id)
         } else if event.middle {
-            self.handle_middle_click(&event, client_id)?;
+            self.handle_middle_click(&event, client_id)
         } else {
-            self.handle_mouse_no_click(&event, client_id)?;
+            self.handle_mouse_no_click(&event, client_id)
         }
-        // TODO: encode motion to pane
-        Ok(())
     }
     fn write_mouse_event_to_active_pane(
         &mut self,
@@ -3380,11 +3376,13 @@ impl Tab {
         }
         Ok(())
     }
+    // returns true if the mouse event caused some sort of tab/pane state change that needs to be
+    // reported to plugins
     fn handle_active_pane_left_mouse_press(
         &mut self,
         event: &MouseEvent,
         client_id: ClientId,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let err_context =
             || format!("failed to handle mouse event {event:?} for client {client_id}");
         let floating_panes_are_visible = self.floating_panes.panes_are_visible();
@@ -3397,7 +3395,7 @@ impl Tab {
             let intercepted = pane_at_position.intercept_mouse_event_on_frame(&event, client_id);
             if intercepted {
                 self.set_force_render();
-                return Ok(());
+                return Ok(true);
             } else if floating_panes_are_visible {
                 // start moving if floating pane
                 let search_selectable = false;
@@ -3407,7 +3405,7 @@ impl Tab {
                 {
                     self.swap_layouts.set_is_floating_damaged();
                     self.set_force_render();
-                    return Ok(());
+                    return Ok(true);
                 }
             }
         } else {
@@ -3433,13 +3431,13 @@ impl Tab {
                 }
             }
         }
-        Ok(())
+        Ok(false)
     }
     fn handle_inactive_pane_left_mouse_press(
         &mut self,
         event: &MouseEvent,
         client_id: ClientId,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let err_context =
             || format!("failed to handle mouse event {event:?} for client {client_id}");
         if !self.floating_panes.panes_are_visible() {
@@ -3453,9 +3451,12 @@ impl Tab {
                 // focus it
                 self.show_floating_panes();
                 self.floating_panes.focus_pane(pane_id, client_id);
-                return Ok(());
+                return Ok(true);
             }
         }
+        let active_pane_id_before_click = self
+            .get_active_pane_id(client_id)
+            .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
         self.focus_pane_at(&event.position, client_id)
             .with_context(err_context)?;
         if self.floating_panes.panes_are_visible() {
@@ -3463,12 +3464,25 @@ impl Tab {
             // we do this because this might be the beginning of the user dragging a pane
             // that was not focused
             // TODO: rename move_pane_with_mouse to "start_moving_pane_with_mouse"?
-            self.floating_panes
-                .move_pane_with_mouse(event.position, search_selectable);
+            return Ok(self
+                .floating_panes
+                .move_pane_with_mouse(event.position, search_selectable));
         }
-        Ok(())
+        let active_pane_id_after_click = self
+            .get_active_pane_id(client_id)
+            .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
+        if active_pane_id_before_click != active_pane_id_after_click {
+            // focus changed, need to report it
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
-    fn handle_left_mouse_motion(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<()> {
+    fn handle_left_mouse_motion(
+        &mut self,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<bool> {
         let err_context =
             || format!("failed to handle mouse event {event:?} for client {client_id}");
         let pane_is_being_moved_with_mouse = self.floating_panes.pane_is_being_moved_with_mouse();
@@ -3483,7 +3497,7 @@ impl Tab {
             {
                 self.swap_layouts.set_is_floating_damaged();
                 self.set_force_render();
-                return Ok(());
+                return Ok(true);
             }
         } else if let Some(pane_id_with_selection) = self.selecting_with_mouse_in_pane {
             if let Some(pane_with_selection) = self.get_pane_with_id_mut(pane_id_with_selection) {
@@ -3499,9 +3513,13 @@ impl Tab {
                 self.write_mouse_event_to_active_pane(event, client_id)?;
             }
         }
-        Ok(())
+        Ok(false)
     }
-    fn handle_left_mouse_release(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<()> {
+    fn handle_left_mouse_release(
+        &mut self,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<bool> {
         let err_context =
             || format!("failed to handle mouse event {event:?} for client {client_id}");
         let floating_panes_are_visible = self.floating_panes.panes_are_visible();
@@ -3554,81 +3572,10 @@ impl Tab {
         } else {
             self.write_mouse_event_to_active_pane(event, client_id)?;
         }
-        Ok(())
+        Ok(false)
     }
 
-    pub fn handle_left_click(&mut self, position: &Position, client_id: ClientId) -> Result<()> {
-        let err_context = || {
-            format!(
-                "failed to handle mouse left click at position {position:?} for client {client_id}"
-            )
-        };
-
-        let intercepted = self
-            .get_pane_at(position, false)
-            .with_context(err_context)?
-            .map(|pane| pane.intercept_left_mouse_click(&position, client_id))
-            .unwrap_or(false);
-        if intercepted {
-            self.set_force_render();
-            return Ok(());
-        }
-
-        if !self.floating_panes.panes_are_visible() {
-            let search_selectable = false;
-            if let Ok(Some(pane_id)) = self
-                .floating_panes
-                .get_pinned_pane_id_at(position, search_selectable)
-            {
-                // here, the floating panes are not visible, but there is a pinned pane (always
-                // visible) that has been clicked on - so we make the entire surface visible and
-                // focus it
-                self.show_floating_panes();
-                self.floating_panes.focus_pane(pane_id, client_id);
-                return Ok(());
-            }
-        }
-
-        self.focus_pane_at(position, client_id)
-            .with_context(err_context)?;
-
-        let search_selectable = false;
-        if self.floating_panes.panes_are_visible()
-            && self
-                .floating_panes
-                .move_pane_with_mouse(*position, search_selectable)
-        {
-            self.swap_layouts.set_is_floating_damaged();
-            self.set_force_render();
-            return Ok(());
-        }
-
-        if let Some(pane) = self
-            .get_pane_at(position, false)
-            .with_context(err_context)?
-        {
-            let relative_position = pane.relative_position(position);
-            if let Some(mouse_event) = pane.mouse_left_click(&relative_position, false) {
-                if !pane.position_is_on_frame(position) {
-                    self.write_to_active_terminal(
-                        &None,
-                        mouse_event.into_bytes(),
-                        false,
-                        client_id,
-                    )
-                    .with_context(err_context)?;
-                }
-            } else {
-                pane.start_selection(&relative_position, client_id);
-                if let PaneId::Terminal(_) = pane.pid() {
-                    self.selecting_with_mouse_in_pane = Some(pane.pid());
-                }
-            }
-        };
-        Ok(())
-    }
-
-    pub fn handle_right_click(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<()> {
+    pub fn handle_right_click(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<bool> {
         let err_context = || format!("failed to handle mouse right click for client {client_id}");
 
         let absolute_position = event.position;
@@ -3659,10 +3606,10 @@ impl Tab {
                 }
             }
         };
-        Ok(())
+        Ok(false)
     }
 
-    pub fn handle_middle_click(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<()> {
+    fn handle_middle_click(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<bool> {
         let err_context = || format!("failed to handle mouse middle click for client {client_id}");
         let absolute_position = event.position;
 
@@ -3691,10 +3638,10 @@ impl Tab {
                 }
             }
         };
-        Ok(())
+        Ok(false)
     }
 
-    pub fn handle_mouse_no_click(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<()> {
+    fn handle_mouse_no_click(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<bool> {
         let err_context = || format!("failed to handle mouse no click for client {client_id}");
         let absolute_position = event.position;
 
@@ -3723,7 +3670,7 @@ impl Tab {
                 }
             }
         };
-        Ok(())
+        Ok(false)
     }
 
     fn focus_pane_at(&mut self, point: &Position, client_id: ClientId) -> Result<()> {
@@ -3785,7 +3732,7 @@ impl Tab {
         Ok(())
     }
 
-    pub fn handle_middle_mouse_release(
+    fn handle_middle_mouse_release(
         &mut self,
         position: &Position,
         client_id: ClientId,
