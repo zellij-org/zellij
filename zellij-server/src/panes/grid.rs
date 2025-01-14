@@ -2048,10 +2048,14 @@ impl Grid {
             (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::Normal) if !is_held => {
                 utf8_event()
             },
-            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking) => {
-                utf8_event()
-            },
-            (MouseMode::Sgr, MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking) => sgr_event(),
+            (
+                MouseMode::NoEncoding | MouseMode::Utf8,
+                MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking,
+            ) => utf8_event(),
+            (
+                MouseMode::Sgr,
+                MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking,
+            ) => sgr_event(),
             (MouseMode::Sgr, MouseTracking::Normal) if !is_held => sgr_event(),
             _ => None,
         }
@@ -2101,10 +2105,14 @@ impl Grid {
             (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::Normal) if !is_held => {
                 utf8_event()
             },
-            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking) => {
-                utf8_event()
-            },
-            (MouseMode::Sgr, MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking) => sgr_event(),
+            (
+                MouseMode::NoEncoding | MouseMode::Utf8,
+                MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking,
+            ) => utf8_event(),
+            (
+                MouseMode::Sgr,
+                MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking,
+            ) => sgr_event(),
             (MouseMode::Sgr, MouseTracking::Normal) if !is_held => sgr_event(),
             _ => None,
         }
@@ -2154,10 +2162,14 @@ impl Grid {
             (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::Normal) if !is_held => {
                 utf8_event()
             },
-            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking) => {
-                utf8_event()
-            },
-            (MouseMode::Sgr, MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking) => sgr_event(),
+            (
+                MouseMode::NoEncoding | MouseMode::Utf8,
+                MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking,
+            ) => utf8_event(),
+            (
+                MouseMode::Sgr,
+                MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking,
+            ) => sgr_event(),
             (MouseMode::Sgr, MouseTracking::Normal) if !is_held => sgr_event(),
             _ => None,
         }

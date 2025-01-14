@@ -58,6 +58,21 @@ impl MouseEvent {
         };
         event
     }
+    pub fn new_buttonless_motion(position: Position) -> Self {
+        let event = MouseEvent {
+            event_type: MouseEventType::Motion,
+            left: false,
+            right: false,
+            middle: false,
+            wheel_up: false,
+            wheel_down: false,
+            shift: false,
+            alt: false,
+            ctrl: false,
+            position,
+        };
+        event
+    }
     pub fn new_left_press_event(position: Position) -> Self {
         let event = MouseEvent {
             event_type: MouseEventType::Press,
