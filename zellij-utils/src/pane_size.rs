@@ -158,6 +158,24 @@ impl Dimension {
             },
         }
     }
+    pub fn split_out(&mut self, by: f64) -> Self {
+        match self.constraint {
+            Constraint::Percent(percent) => {
+                let split_out_value = percent / by;
+                let split_out_inner_value = self.inner / by as usize;
+                self.constraint = Constraint::Percent(percent - split_out_value);
+                self.inner = self.inner.saturating_sub(split_out_inner_value);
+                let mut split_out_dimension = Self::percent(split_out_value);
+                split_out_dimension.inner = split_out_inner_value;
+                split_out_dimension
+            }
+            Constraint::Fixed(fixed) => {
+                let split_out_value = fixed / by as usize;
+                self.constraint = Constraint::Fixed(fixed - split_out_value);
+                Self::fixed(split_out_value)
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
@@ -245,6 +263,20 @@ impl PaneGeom {
             self.rows.set_inner(new_rows);
         }
     }
+    pub fn combine_vertically_with(&self, geom_below: &PaneGeom) -> Option<Self> {
+        match (self.rows.constraint, geom_below.rows.constraint) {
+            (Constraint::Percent(self_percent), Constraint::Percent(geom_below_percent)) => {
+                let mut combined = self.clone();
+                combined.rows = Dimension::percent(self_percent + geom_below_percent);
+                combined.rows.inner = self.rows.inner + geom_below.rows.inner;
+                Some(combined)
+            },
+            _ => {
+                log::error!("Can't combine fixed panes");
+                None
+            }
+        }
+    }
 }
 
 impl Display for PaneGeom {
@@ -255,6 +287,7 @@ impl Display for PaneGeom {
         write!(f, r#""cols": {},"#, self.cols.constraint)?;
         write!(f, r#""rows": {},"#, self.rows.constraint)?;
         write!(f, r#""stacked": {}"#, self.is_stacked)?;
+        write!(f, r#""logical_position": {:?}"#, self.logical_position)?;
         write!(f, " }}")?;
 
         Ok(())
