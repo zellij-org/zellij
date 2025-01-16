@@ -2992,6 +2992,17 @@ impl Perform for Grid {
                 "\u{1b}[?0u"
             };
             self.pending_messages_to_pty.push(reply.as_bytes().to_vec());
+        } else if c == 'u' && intermediates == &[b'='] {
+            // kitty keyboard protocol without the stack, just setting.
+            // 0 disables, everything else enables.
+            let count = next_param_or(0);
+            if !self.explicitly_disable_kitty_keyboard_protocol {
+                if count > 0 {
+                    self.supports_kitty_keyboard_protocol = true;
+                } else {
+                    self.supports_kitty_keyboard_protocol = false;
+                }
+            }
         } else if c == 'u' {
             self.restore_cursor_position();
         } else if c == '@' {
