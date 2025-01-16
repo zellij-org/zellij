@@ -6,10 +6,11 @@ use super::layout::{
     SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
 use crate::cli::CliAction;
-use crate::data::{Direction, KeyWithModifier, Resize};
+use crate::data::{Direction, KeyWithModifier, PaneId, Resize};
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
+use crate::input::mouse::{MouseEvent, MouseEventType};
 use crate::input::options::OnForceClose;
 use miette::{NamedSource, Report};
 use serde::{Deserialize, Serialize};
@@ -215,19 +216,11 @@ pub enum Action {
     Run(RunCommandAction),
     /// Detach session and exit
     Detach,
-    LeftClick(Position),
-    RightClick(Position),
-    MiddleClick(Position),
     LaunchOrFocusPlugin(RunPluginOrAlias, bool, bool, bool, bool), // bools => should float,
     // move_to_focused_tab, should_open_in_place, skip_cache
     LaunchPlugin(RunPluginOrAlias, bool, bool, bool, Option<PathBuf>), // bools => should float,
     // should_open_in_place, skip_cache, Option<PathBuf> is cwd
-    LeftMouseRelease(Position),
-    RightMouseRelease(Position),
-    MiddleMouseRelease(Position),
-    MouseHoldLeft(Position),
-    MouseHoldRight(Position),
-    MouseHoldMiddle(Position),
+    MouseEvent(MouseEvent),
     Copy,
     /// Confirm a prompt
     Confirm,
@@ -300,6 +293,8 @@ pub enum Action {
         pane_title: Option<String>,
     },
     ListClients,
+    TogglePanePinned,
+    StackPanes(Vec<PaneId>),
 }
 
 impl Action {
@@ -363,6 +358,7 @@ impl Action {
                 y,
                 width,
                 height,
+                pinned,
             } => {
                 let current_dir = get_current_dir();
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
@@ -398,7 +394,7 @@ impl Action {
                             name,
                             skip_plugin_cache,
                             cwd,
-                            FloatingPaneCoordinates::new(x, y, width, height),
+                            FloatingPaneCoordinates::new(x, y, width, height, pinned),
                         )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePluginPane(
@@ -440,7 +436,7 @@ impl Action {
                         Ok(vec![Action::NewFloatingPane(
                             Some(run_command_action),
                             name,
-                            FloatingPaneCoordinates::new(x, y, width, height),
+                            FloatingPaneCoordinates::new(x, y, width, height, pinned),
                         )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane(Some(run_command_action), name)])
@@ -456,7 +452,7 @@ impl Action {
                         Ok(vec![Action::NewFloatingPane(
                             None,
                             name,
-                            FloatingPaneCoordinates::new(x, y, width, height),
+                            FloatingPaneCoordinates::new(x, y, width, height, pinned),
                         )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane(None, name)])
@@ -476,6 +472,7 @@ impl Action {
                 y,
                 width,
                 height,
+                pinned,
             } => {
                 let mut file = file;
                 let current_dir = get_current_dir();
@@ -494,7 +491,7 @@ impl Action {
                     floating,
                     in_place,
                     start_suppressed,
-                    FloatingPaneCoordinates::new(x, y, width, height),
+                    FloatingPaneCoordinates::new(x, y, width, height, pinned),
                 )])
             },
             CliAction::SwitchMode { input_mode } => {
@@ -738,6 +735,54 @@ impl Action {
                 }])
             },
             CliAction::ListClients => Ok(vec![Action::ListClients]),
+            CliAction::TogglePanePinned => Ok(vec![Action::TogglePanePinned]),
+            CliAction::StackPanes { pane_ids } => {
+                let mut malformed_ids = vec![];
+                let pane_ids = pane_ids
+                    .iter()
+                    .filter_map(|stringified_pane_id| {
+                        if let Some(terminal_pane_id) =
+                            stringified_pane_id.strip_prefix("terminal_")
+                        {
+                            u32::from_str_radix(terminal_pane_id, 10)
+                                .ok()
+                                .or_else(|| {
+                                    malformed_ids.push(stringified_pane_id.to_owned());
+                                    None
+                                })
+                                .map(|id| PaneId::Terminal(id))
+                        } else if let Some(plugin_pane_id) =
+                            stringified_pane_id.strip_prefix("plugin_")
+                        {
+                            u32::from_str_radix(plugin_pane_id, 10)
+                                .ok()
+                                .or_else(|| {
+                                    malformed_ids.push(stringified_pane_id.to_owned());
+                                    None
+                                })
+                                .map(|id| PaneId::Plugin(id))
+                        } else {
+                            u32::from_str_radix(stringified_pane_id, 10)
+                                .ok()
+                                .or_else(|| {
+                                    malformed_ids.push(stringified_pane_id.to_owned());
+                                    None
+                                })
+                                .map(|id| PaneId::Terminal(id))
+                        }
+                    })
+                    .collect();
+                if !malformed_ids.is_empty() {
+                    Err(
+                        format!(
+                            "Malformed pane ids: {}, expecting a space separated list of either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                            malformed_ids.join(", ")
+                        )
+                    )
+                } else {
+                    Ok(vec![Action::StackPanes(pane_ids)])
+                }
+            },
         }
     }
     pub fn launches_plugin(&self, plugin_url: &str) -> bool {
@@ -750,6 +795,14 @@ impl Action {
             },
             _ => false,
         }
+    }
+    pub fn is_mouse_motion(&self) -> bool {
+        if let Action::MouseEvent(mouse_event) = self {
+            if let MouseEventType::Motion = mouse_event.event_type {
+                return true;
+            }
+        }
+        false
     }
 }
 

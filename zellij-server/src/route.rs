@@ -47,20 +47,14 @@ pub(crate) fn route_action(
     let mut should_break = false;
     let err_context = || format!("failed to route action for client {client_id}");
 
-    // forward the action to plugins unless it is a mousehold
-    // this is a bit of a hack around the unfortunate architecture we use with plugins
-    // this will change as soon as we refactor
-    match action {
-        Action::MouseHoldLeft(..) | Action::MouseHoldRight(..) => {},
-        _ => {
-            senders
-                .send_to_plugin(PluginInstruction::Update(vec![(
-                    None,
-                    Some(client_id),
-                    Event::InputReceived,
-                )]))
-                .with_context(err_context)?;
-        },
+    if !action.is_mouse_motion() {
+        senders
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                Some(client_id),
+                Event::InputReceived,
+            )]))
+            .with_context(err_context)?;
     }
 
     match action {
@@ -592,51 +586,9 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
             should_break = true;
         },
-        Action::LeftClick(point) => {
+        Action::MouseEvent(event) => {
             senders
-                .send_to_screen(ScreenInstruction::LeftClick(point, client_id))
-                .with_context(err_context)?;
-        },
-        Action::RightClick(point) => {
-            senders
-                .send_to_screen(ScreenInstruction::RightClick(point, client_id))
-                .with_context(err_context)?;
-        },
-        Action::MiddleClick(point) => {
-            senders
-                .send_to_screen(ScreenInstruction::MiddleClick(point, client_id))
-                .with_context(err_context)?;
-        },
-        Action::LeftMouseRelease(point) => {
-            senders
-                .send_to_screen(ScreenInstruction::LeftMouseRelease(point, client_id))
-                .with_context(err_context)?;
-        },
-        Action::RightMouseRelease(point) => {
-            senders
-                .send_to_screen(ScreenInstruction::RightMouseRelease(point, client_id))
-                .with_context(err_context)?;
-        },
-        Action::MiddleMouseRelease(point) => {
-            senders
-                .send_to_screen(ScreenInstruction::MiddleMouseRelease(point, client_id))
-                .with_context(err_context)?;
-        },
-        Action::MouseHoldLeft(point) => {
-            // TODO: CONTINUE HERE - for some reason we don't see the marked characters when tryin
-            // gto copy something on the web client, let's see what's up
-            senders
-                .send_to_screen(ScreenInstruction::MouseHoldLeft(point, client_id))
-                .with_context(err_context)?;
-        },
-        Action::MouseHoldRight(point) => {
-            senders
-                .send_to_screen(ScreenInstruction::MouseHoldRight(point, client_id))
-                .with_context(err_context)?;
-        },
-        Action::MouseHoldMiddle(point) => {
-            senders
-                .send_to_screen(ScreenInstruction::MouseHoldMiddle(point, client_id))
+                .send_to_screen(ScreenInstruction::MouseEvent(event, client_id))
                 .with_context(err_context)?;
         },
         Action::Copy => {
@@ -968,6 +920,18 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::ListClientsMetadata(
                     default_shell,
                     client_id,
+                ))
+                .with_context(err_context)?;
+        },
+        Action::TogglePanePinned => {
+            senders
+                .send_to_screen(ScreenInstruction::TogglePanePinned(client_id))
+                .with_context(err_context)?;
+        },
+        Action::StackPanes(pane_ids_to_stack) => {
+            senders
+                .send_to_screen(ScreenInstruction::StackPanes(
+                    pane_ids_to_stack.iter().map(|p| PaneId::from(*p)).collect(),
                 ))
                 .with_context(err_context)?;
         },

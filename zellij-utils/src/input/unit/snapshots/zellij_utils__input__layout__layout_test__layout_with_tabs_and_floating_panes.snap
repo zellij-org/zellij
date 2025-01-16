@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 275
+assertion_line: 305
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -47,10 +47,12 @@ Layout {
                     width: None,
                     x: None,
                     y: None,
+                    pinned: None,
                     run: None,
                     focus: None,
                     already_running: false,
                     pane_initial_contents: None,
+                    logical_position: None,
                 },
             ],
         ),
@@ -96,10 +98,12 @@ Layout {
                     width: None,
                     x: None,
                     y: None,
+                    pinned: None,
                     run: None,
                     focus: None,
                     already_running: false,
                     pane_initial_contents: None,
+                    logical_position: None,
                 },
                 FloatingPaneLayout {
                     name: None,
@@ -107,10 +111,12 @@ Layout {
                     width: None,
                     x: None,
                     y: None,
+                    pinned: None,
                     run: None,
                     focus: None,
                     already_running: false,
                     pane_initial_contents: None,
+                    logical_position: None,
                 },
             ],
         ),

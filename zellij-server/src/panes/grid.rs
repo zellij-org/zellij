@@ -17,6 +17,7 @@ use std::{
 use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     data::{Palette, PaletteColor},
+    input::mouse::{MouseEvent, MouseEventType},
     pane_size::SizeInPixels,
     position::Position,
     vte,
@@ -385,6 +386,7 @@ pub enum MouseTracking {
     Off,
     Normal,
     ButtonEventTracking,
+    AnyEventTracking,
 }
 
 impl Default for MouseTracking {
@@ -1144,7 +1146,7 @@ impl Grid {
         )));
     }
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
-        if self.cursor_is_hidden {
+        if self.cursor_is_hidden || self.cursor.x >= self.width || self.cursor.y >= self.height {
             None
         } else {
             Some((self.cursor.x, self.cursor.y))
@@ -1743,9 +1745,11 @@ impl Grid {
     }
     pub fn update_selection(&mut self, to: &Position) {
         let old_selection = self.selection;
-        self.selection.to(*to);
-        self.update_selected_lines(&old_selection, &self.selection.clone());
-        self.mark_for_rerender();
+        if &old_selection.end != to {
+            self.selection.to(*to);
+            self.update_selected_lines(&old_selection, &self.selection.clone());
+            self.mark_for_rerender();
+        }
     }
 
     pub fn end_selection(&mut self, end: &Position) {
@@ -1930,6 +1934,96 @@ impl Grid {
             }
         }
     }
+    fn mouse_buttons_value_x10(&self, event: &MouseEvent) -> u8 {
+        let mut value = 35; // Default to no buttons down.
+        if event.event_type == MouseEventType::Release {
+            return value;
+        }
+        if event.left {
+            value = 32;
+        } else if event.middle {
+            value = 33;
+        } else if event.right {
+            value = 34;
+        } else if event.wheel_up {
+            value = 68;
+        } else if event.wheel_down {
+            value = 69;
+        }
+        if event.event_type == MouseEventType::Motion {
+            value += 32;
+        }
+        if event.shift {
+            value |= 0x04;
+        }
+        if event.alt {
+            value |= 0x08;
+        }
+        if event.ctrl {
+            value |= 0x10;
+        }
+        value
+    }
+    fn mouse_buttons_value_sgr(&self, event: &MouseEvent) -> u8 {
+        let mut value = 3; // Default to no buttons down.
+        if event.left {
+            value = 0;
+        } else if event.middle {
+            value = 1;
+        } else if event.right {
+            value = 2;
+        } else if event.wheel_up {
+            value = 64;
+        } else if event.wheel_down {
+            value = 65;
+        }
+        if event.event_type == MouseEventType::Motion {
+            value += 32;
+        }
+        if event.shift {
+            value |= 0x04;
+        }
+        if event.alt {
+            value |= 0x08;
+        }
+        if event.ctrl {
+            value |= 0x10;
+        }
+        value
+    }
+    pub fn mouse_event_signal(&self, event: &MouseEvent) -> Option<String> {
+        let emit = match (&self.mouse_tracking, event.event_type) {
+            (MouseTracking::Off, _) => false,
+            (MouseTracking::AnyEventTracking, _) => true,
+            (_, MouseEventType::Press | MouseEventType::Release) => true,
+            (MouseTracking::ButtonEventTracking, MouseEventType::Motion) => {
+                event.left | event.right | event.middle | event.wheel_up | event.wheel_down
+            },
+            (_, _) => false,
+        };
+
+        match (emit, &self.mouse_mode) {
+            (true, MouseMode::NoEncoding | MouseMode::Utf8) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', self.mouse_buttons_value_x10(event)];
+                msg.append(&mut utf8_mouse_coordinates(
+                    event.position.column() + 1,
+                    event.position.line() + 1,
+                ));
+                Some(String::from_utf8_lossy(&msg).into())
+            },
+            (true, MouseMode::Sgr) => Some(format!(
+                "\u{1b}[<{:?};{:?};{:?}{}",
+                self.mouse_buttons_value_sgr(event),
+                event.position.column() + 1,
+                event.position.line() + 1,
+                match event.event_type {
+                    MouseEventType::Press | MouseEventType::Motion => 'M',
+                    _ => 'm',
+                }
+            )),
+            (_, _) => None,
+        }
+    }
     pub fn mouse_left_click_signal(&self, position: &Position, is_held: bool) -> Option<String> {
         let utf8_event = || -> Option<String> {
             let button_code = if is_held { b'@' } else { b' ' };
@@ -1954,10 +2048,14 @@ impl Grid {
             (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::Normal) if !is_held => {
                 utf8_event()
             },
-            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::ButtonEventTracking) => {
-                utf8_event()
-            },
-            (MouseMode::Sgr, MouseTracking::ButtonEventTracking) => sgr_event(),
+            (
+                MouseMode::NoEncoding | MouseMode::Utf8,
+                MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking,
+            ) => utf8_event(),
+            (
+                MouseMode::Sgr,
+                MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking,
+            ) => sgr_event(),
             (MouseMode::Sgr, MouseTracking::Normal) if !is_held => sgr_event(),
             _ => None,
         }
@@ -2007,10 +2105,14 @@ impl Grid {
             (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::Normal) if !is_held => {
                 utf8_event()
             },
-            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::ButtonEventTracking) => {
-                utf8_event()
-            },
-            (MouseMode::Sgr, MouseTracking::ButtonEventTracking) => sgr_event(),
+            (
+                MouseMode::NoEncoding | MouseMode::Utf8,
+                MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking,
+            ) => utf8_event(),
+            (
+                MouseMode::Sgr,
+                MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking,
+            ) => sgr_event(),
             (MouseMode::Sgr, MouseTracking::Normal) if !is_held => sgr_event(),
             _ => None,
         }
@@ -2060,10 +2162,14 @@ impl Grid {
             (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::Normal) if !is_held => {
                 utf8_event()
             },
-            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::ButtonEventTracking) => {
-                utf8_event()
-            },
-            (MouseMode::Sgr, MouseTracking::ButtonEventTracking) => sgr_event(),
+            (
+                MouseMode::NoEncoding | MouseMode::Utf8,
+                MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking,
+            ) => utf8_event(),
+            (
+                MouseMode::Sgr,
+                MouseTracking::ButtonEventTracking | MouseTracking::AnyEventTracking,
+            ) => sgr_event(),
             (MouseMode::Sgr, MouseTracking::Normal) if !is_held => sgr_event(),
             _ => None,
         }
@@ -2605,7 +2711,7 @@ impl Perform for Grid {
                             self.mouse_tracking = MouseTracking::Off;
                         },
                         1003 => {
-                            // TBD: any-even mouse tracking
+                            self.mouse_tracking = MouseTracking::Off;
                         },
                         1004 => {
                             self.focus_event_tracking = false;
@@ -2708,7 +2814,7 @@ impl Perform for Grid {
                             self.mouse_tracking = MouseTracking::ButtonEventTracking;
                         },
                         1003 => {
-                            // TBD: any-even mouse tracking
+                            self.mouse_tracking = MouseTracking::AnyEventTracking;
                         },
                         1004 => {
                             self.focus_event_tracking = true;
@@ -2745,7 +2851,7 @@ impl Perform for Grid {
                 for param in params_iter.map(|param| param[0]) {
                     match param {
                         2026 => {
-                            let response = "\u{1b}[2026;2$y";
+                            let response = "\u{1b}[?2026;2$y";
                             self.pending_messages_to_pty
                                 .push(response.as_bytes().to_vec());
                         },

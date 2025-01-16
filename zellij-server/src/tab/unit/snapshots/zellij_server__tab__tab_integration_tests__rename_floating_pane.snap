@@ -1,5 +1,6 @@
 ---
 source: zellij-server/src/tab/./unit/tab_integration_tests.rs
+assertion_line: 2550
 expression: snapshot
 ---
 00 (C): ┌ Pane #1 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -7,7 +8,7 @@ expression: snapshot
 02 (C): │                                                                                                                       │
 03 (C): │                                                                                                                       │
 04 (C): │                                                                                                                       │
-05 (C): │                             ┌ Renamed floating pane ───────────────────────────────────┐                              │
+05 (C): │                             ┌ Renamed floating pane ────────────────────────── PIN [ ] ┐                              │
 06 (C): │                             │                                                          │                              │
 07 (C): │                             │                                                          │                              │
 08 (C): │                             │                                                          │                              │

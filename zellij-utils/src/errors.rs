@@ -306,9 +306,7 @@ pub enum ScreenContext {
     LeftMouseRelease,
     RightMouseRelease,
     MiddleMouseRelease,
-    MouseHoldLeft,
-    MouseHoldRight,
-    MouseHoldMiddle,
+    MouseEvent,
     Copy,
     ToggleTab,
     AddClient,
@@ -373,6 +371,9 @@ pub enum ScreenContext {
     BreakPanesToNewTab,
     BreakPanesToTabWithIndex,
     ListClientsToPlugin,
+    TogglePanePinned,
+    SetFloatingPanePinned,
+    StackPanes,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -435,6 +436,7 @@ pub enum PluginContext {
     Reconfigure,
     FailedToWriteConfigToDisk,
     ListClientsToPlugin,
+    ChangePluginHostDir,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

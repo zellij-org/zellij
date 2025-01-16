@@ -1,18 +1,18 @@
 ---
 source: zellij-server/src/tab/./unit/tab_integration_tests.rs
-assertion_line: 911
+assertion_line: 1363
 expression: snapshot
 ---
 00 (C): ┌ Pane #1 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 01 (C): │                                                                                                                       │
-02 (C): │ ┌ Pane #5 ─────────────── SCROLL:  0/1 ┐                                                                              │
+02 (C): │ ┌ Pane #5 ───── SCROLL:  0/1 | PIN [ ] ┐                                                                              │
 03 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                                                              │
 04 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│ ┐                                                                            │
-05 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│E│─────────────────────────────────────────────┐                              │
+05 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│E│──────────────────────────────────── PIN [ ] ┐                              │
 06 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│E│                                             │                              │
-07 (C): │ └──────────────────────────────────────┘E│───────────────────────────────── SCROLL:  0/1 ┐                            │
+07 (C): │ └──────────────────────────────────────┘E│─────────────────────── SCROLL:  0/1 | PIN [ ] ┐                            │
 08 (C): │   │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                            │
-09 (C): │   └──────────────────────────────────────┘─────────────────────────────────── SCROLL:  0/1 ┐                          │
+09 (C): │   └──────────────────────────────────────┘───────────────────────── SCROLL:  0/1 | PIN [ ] ┐                          │
 10 (C): │                             │ │E│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                          │
 11 (C): │                             │ │E│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                          │
 12 (C): │                             │ │E│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                          │

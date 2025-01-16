@@ -912,6 +912,8 @@ pub enum Event {
     CommandPaneReRun(u32, Context),            // u32 - terminal_pane_id, Option<i32> -
     FailedToWriteConfigToDisk(Option<String>), // String -> the file path we failed to write
     ListClients(Vec<ClientInfo>),
+    HostFolderChanged(PathBuf),               // PathBuf -> new host folder
+    FailedToChangeHostFolder(Option<String>), // String -> the error we got when changing
 }
 
 #[derive(
@@ -942,6 +944,7 @@ pub enum Permission {
     ReadCliPipes,
     MessageAndLaunchOtherPlugins,
     Reconfigure,
+    FullHdAccess,
 }
 
 impl PermissionType {
@@ -963,6 +966,7 @@ impl PermissionType {
                 "Send messages to and launch other plugins".to_owned()
             },
             PermissionType::Reconfigure => "Change Zellij runtime configuration".to_owned(),
+            PermissionType::FullHdAccess => "Full access to the hard-drive".to_owned(),
         }
     }
 }
@@ -1657,6 +1661,7 @@ pub struct FloatingPaneCoordinates {
     pub y: Option<SplitSize>,
     pub width: Option<SplitSize>,
     pub height: Option<SplitSize>,
+    pub pinned: Option<bool>,
 }
 
 impl FloatingPaneCoordinates {
@@ -1665,12 +1670,13 @@ impl FloatingPaneCoordinates {
         y: Option<String>,
         width: Option<String>,
         height: Option<String>,
+        pinned: Option<bool>,
     ) -> Option<Self> {
         let x = x.and_then(|x| SplitSize::from_str(&x).ok());
         let y = y.and_then(|y| SplitSize::from_str(&y).ok());
         let width = width.and_then(|width| SplitSize::from_str(&width).ok());
         let height = height.and_then(|height| SplitSize::from_str(&height).ok());
-        if x.is_none() && y.is_none() && width.is_none() && height.is_none() {
+        if x.is_none() && y.is_none() && width.is_none() && height.is_none() && pinned.is_none() {
             None
         } else {
             Some(FloatingPaneCoordinates {
@@ -1678,6 +1684,7 @@ impl FloatingPaneCoordinates {
                 y,
                 width,
                 height,
+                pinned,
             })
         }
     }
@@ -1893,4 +1900,7 @@ pub enum PluginCommand {
         write_config_to_disk: bool,
     },
     ListClients,
+    ChangeHostFolder(PathBuf),
+    SetFloatingPanePinned(PaneId, bool), // bool -> should be pinned
+    StackPanes(Vec<PaneId>),
 }

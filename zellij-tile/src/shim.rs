@@ -1128,6 +1128,27 @@ pub fn rebind_keys(
     unsafe { host_run_plugin_command() };
 }
 
+pub fn change_host_folder(new_host_folder: PathBuf) {
+    let plugin_command = PluginCommand::ChangeHostFolder(new_host_folder);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn set_floating_pane_pinned(pane_id: PaneId, should_be_pinned: bool) {
+    let plugin_command = PluginCommand::SetFloatingPanePinned(pane_id, should_be_pinned);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn stack_panes(pane_ids: Vec<PaneId>) {
+    let plugin_command = PluginCommand::StackPanes(pane_ids);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 #[allow(unused)]

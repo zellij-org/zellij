@@ -11,25 +11,13 @@ use zellij_utils::{
         actions::Action,
         cast_termwiz_key,
         config::Config,
-        mouse::{MouseButton, MouseEvent},
+        mouse::{MouseEvent, MouseEventType},
         options::Options,
     },
     ipc::{ClientToServerMsg, ExitReason},
-    termwiz::input::InputEvent,
+    position::Position,
+    termwiz::input::{InputEvent, Modifiers, MouseButtons, MouseEvent as TermwizMouseEvent},
 };
-
-#[derive(Debug, Clone, Copy)]
-enum HeldMouseButton {
-    Left,
-    Right,
-    Middle,
-}
-
-impl Default for HeldMouseButton {
-    fn default() -> Self {
-        HeldMouseButton::Left
-    }
-}
 
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputMode`], and keep tracks of the current [`InputMode`].
@@ -43,8 +31,90 @@ struct InputHandler {
     send_client_instructions: SenderWithContext<ClientInstruction>,
     should_exit: bool,
     receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
-    holding_mouse: Option<HeldMouseButton>,
+    mouse_old_event: MouseEvent,
     mouse_mode_active: bool,
+}
+
+fn termwiz_mouse_convert(original_event: &mut MouseEvent, event: &TermwizMouseEvent) {
+    let button_bits = &event.mouse_buttons;
+    original_event.left = button_bits.contains(MouseButtons::LEFT);
+    original_event.right = button_bits.contains(MouseButtons::RIGHT);
+    original_event.middle = button_bits.contains(MouseButtons::MIDDLE);
+    original_event.wheel_up = button_bits.contains(MouseButtons::VERT_WHEEL)
+        && button_bits.contains(MouseButtons::WHEEL_POSITIVE);
+    original_event.wheel_down = button_bits.contains(MouseButtons::VERT_WHEEL)
+        && !button_bits.contains(MouseButtons::WHEEL_POSITIVE);
+
+    let mods = &event.modifiers;
+    original_event.shift = mods.contains(Modifiers::SHIFT);
+    original_event.alt = mods.contains(Modifiers::ALT);
+    original_event.ctrl = mods.contains(Modifiers::CTRL);
+}
+
+fn from_termwiz(old_event: &mut MouseEvent, event: TermwizMouseEvent) -> MouseEvent {
+    // We use the state of old_event vs new_event to determine if this
+    // event is a Press, Release, or Motion.  This is an unfortunate
+    // side effect of the pre-SGR-encoded X10 mouse protocol design in
+    // which release events don't carry information about WHICH
+    // button(s) were released, so we have to maintain a wee bit of
+    // state in between events.
+    //
+    // Note that only Left, Right, and Middle are saved in between
+    // calls.  WheelUp/WheelDown typically do not generate Release
+    // events.
+    let mut new_event = MouseEvent::new();
+    termwiz_mouse_convert(&mut new_event, &event);
+    new_event.position = Position::new(event.y.saturating_sub(1) as i32, event.x.saturating_sub(1));
+
+    if (new_event.left && !old_event.left)
+        || (new_event.right && !old_event.right)
+        || (new_event.middle && !old_event.middle)
+        || new_event.wheel_up
+        || new_event.wheel_down
+    {
+        // This is a mouse Press event.
+        new_event.event_type = MouseEventType::Press;
+
+        // Hang onto the button state.
+        *old_event = new_event;
+    } else if event.mouse_buttons.is_empty()
+        && !old_event.left
+        && !old_event.right
+        && !old_event.middle
+    {
+        // This is a mouse Motion event (no buttons are down).
+        new_event.event_type = MouseEventType::Motion;
+
+        // Hang onto the button state.
+        *old_event = new_event;
+    } else if event.mouse_buttons.is_empty()
+        && (old_event.left || old_event.right || old_event.middle)
+    {
+        // This is a mouse Release event.  Note that we set
+        // old_event.{button} to false (to release), but set ONLY the
+        // new_event that were released to true before sending the
+        // event up.
+        if old_event.left {
+            old_event.left = false;
+            new_event.left = true;
+        }
+        if old_event.right {
+            old_event.right = false;
+            new_event.right = true;
+        }
+        if old_event.middle {
+            old_event.middle = false;
+            new_event.middle = true;
+        }
+        new_event.event_type = MouseEventType::Release;
+    } else {
+        // Dragging with some button down.  Return it as a Motion
+        // event, and hang on to the button state.
+        new_event.event_type = MouseEventType::Motion;
+        *old_event = new_event;
+    }
+
+    new_event
 }
 
 impl InputHandler {
@@ -67,7 +137,7 @@ impl InputHandler {
             send_client_instructions,
             should_exit: false,
             receive_input_instructions,
-            holding_mouse: None,
+            mouse_old_event: MouseEvent::new(),
             mouse_mode_active: false,
         }
     }
@@ -99,8 +169,7 @@ impl InputHandler {
                             self.handle_key(&key, raw_bytes, false);
                         },
                         InputEvent::Mouse(mouse_event) => {
-                            let mouse_event =
-                                zellij_utils::input::mouse::MouseEvent::from(mouse_event);
+                            let mouse_event = from_termwiz(&mut self.mouse_old_event, mouse_event);
                             self.handle_mouse_event(&mouse_event);
                         },
                         InputEvent::Paste(pasted_text) => {
@@ -215,70 +284,9 @@ impl InputHandler {
         }
     }
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {
-        match *mouse_event {
-            MouseEvent::Press(button, point) => match button {
-                MouseButton::WheelUp => {
-                    self.dispatch_action(Action::ScrollUpAt(point), None);
-                },
-                MouseButton::WheelDown => {
-                    self.dispatch_action(Action::ScrollDownAt(point), None);
-                },
-                MouseButton::Left => {
-                    if self.holding_mouse.is_some() {
-                        self.dispatch_action(Action::MouseHoldLeft(point), None);
-                    } else {
-                        self.dispatch_action(Action::LeftClick(point), None);
-                    }
-                    self.holding_mouse = Some(HeldMouseButton::Left);
-                },
-                MouseButton::Right => {
-                    if self.holding_mouse.is_some() {
-                        self.dispatch_action(Action::MouseHoldRight(point), None);
-                    } else {
-                        self.dispatch_action(Action::RightClick(point), None);
-                    }
-                    self.holding_mouse = Some(HeldMouseButton::Right);
-                },
-                MouseButton::Middle => {
-                    if self.holding_mouse.is_some() {
-                        self.dispatch_action(Action::MouseHoldMiddle(point), None);
-                    } else {
-                        self.dispatch_action(Action::MiddleClick(point), None);
-                    }
-                    self.holding_mouse = Some(HeldMouseButton::Middle);
-                },
-            },
-            MouseEvent::Release(point) => {
-                let button_released = self.holding_mouse.unwrap_or_default();
-                match button_released {
-                    HeldMouseButton::Left => {
-                        self.dispatch_action(Action::LeftMouseRelease(point), None)
-                    },
-                    HeldMouseButton::Right => {
-                        self.dispatch_action(Action::RightMouseRelease(point), None)
-                    },
-                    HeldMouseButton::Middle => {
-                        self.dispatch_action(Action::MiddleMouseRelease(point), None)
-                    },
-                };
-                self.holding_mouse = None;
-            },
-            MouseEvent::Hold(point) => {
-                let button_held = self.holding_mouse.unwrap_or_default();
-                match button_held {
-                    HeldMouseButton::Left => {
-                        self.dispatch_action(Action::MouseHoldLeft(point), None)
-                    },
-                    HeldMouseButton::Right => {
-                        self.dispatch_action(Action::MouseHoldRight(point), None)
-                    },
-                    HeldMouseButton::Middle => {
-                        self.dispatch_action(Action::MouseHoldMiddle(point), None)
-                    },
-                };
-                self.holding_mouse = Some(button_held);
-            },
-        }
+        // This dispatch handles all of the output(s) to terminal
+        // pane(s).
+        self.dispatch_action(Action::MouseEvent(*mouse_event), None);
     }
     /// Dispatches an [`Action`].
     ///

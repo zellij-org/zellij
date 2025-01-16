@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/tab/./unit/tab_integration_tests.rs
-assertion_line: 1343
+assertion_line: 2685
 expression: snapshot
 ---
 00 (C): ┌ Pane #1 ──────────────────────────────────────────────────────────────────────────────────────────────── SCROLL:  0/7 ┐
@@ -10,7 +10,7 @@ expression: snapshot
 04 (C): │ixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixe                                                        │
 05 (C): │ixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixe                                                        │
 06 (C): │ixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixe                                                        │
-07 (C): │ixelSixelSixelSixelSixelSixelSixe┌ Pane #2 ─────────────────────────────────────────────────┐                          │
+07 (C): │ixelSixelSixelSixelSixelSixelSixe┌ Pane #2 ──────────────────────────────────────── PIN [ ] ┐                          │
 08 (C): │ixelSixelSixelSixelSixelSixelSixe│                                                          │                          │
 09 (C): │ixelSixelSixelSixelSixelSixelSixe│                                                          │                          │
 10 (C): │ixelSixelSixelSixelSixelSixelSixe│                                                          │                          │

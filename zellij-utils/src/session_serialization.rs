@@ -453,6 +453,14 @@ fn serialize_floating_layout_attributes(
         },
         None => {},
     }
+    match layout.pinned {
+        Some(true) => {
+            let mut node = KdlNode::new("pinned");
+            node.entries_mut().push(KdlEntry::new(KdlValue::Bool(true)));
+            pane_node_children.nodes_mut().push(node);
+        },
+        _ => {},
+    }
 }
 
 fn serialize_start_suspended(command: &Option<String>, pane_node_children: &mut KdlDocument) {
@@ -774,10 +782,12 @@ fn get_floating_panes_layout_from_panegeoms(
                 width: Some(m.geom.cols.into()),
                 x: Some(PercentOrFixed::Fixed(m.geom.x)),
                 y: Some(PercentOrFixed::Fixed(m.geom.y)),
+                pinned: Some(m.geom.is_pinned),
                 run,
                 focus: Some(m.is_focused),
                 already_running: false,
                 pane_initial_contents: m.pane_contents.clone(),
+                logical_position: None,
             }
         })
         .collect()
@@ -1275,6 +1285,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1286,6 +1298,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1301,6 +1315,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1315,6 +1331,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1334,6 +1352,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1347,6 +1367,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1362,6 +1384,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1373,6 +1397,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1386,6 +1412,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1415,6 +1443,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1426,6 +1456,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1441,6 +1473,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1455,6 +1489,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1474,6 +1510,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1487,6 +1525,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1502,6 +1542,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1515,6 +1557,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1528,6 +1572,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1555,6 +1601,8 @@ mod tests {
                         rows: Dimension::fixed(1),
                         cols: Dimension::fixed(10),
                         is_stacked: true,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1565,6 +1613,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: true,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1575,6 +1625,8 @@ mod tests {
                         rows: Dimension::fixed(1),
                         cols: Dimension::fixed(10),
                         is_stacked: true,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1598,6 +1650,8 @@ mod tests {
                     rows: Dimension::percent(100.0),
                     cols: Dimension::percent(100.0),
                     is_stacked: false,
+                    is_pinned: false,
+                    logical_position: None,
                 },
                 ..Default::default()
             }],
@@ -1612,6 +1666,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1622,6 +1678,8 @@ mod tests {
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
                         is_stacked: false,
+                        is_pinned: false,
+                        logical_position: None,
                     },
                     ..Default::default()
                 },
@@ -1753,6 +1811,8 @@ mod tests {
             rows: get_dim(&data["rows"]),
             cols: get_dim(&data["cols"]),
             is_stacked: data["is_stacked"].to_string().parse().unwrap(),
+            is_pinned: false,
+            logical_position: None,
         }
     }
 

@@ -11,7 +11,7 @@ pub struct Event {
     pub name: i32,
     #[prost(
         oneof = "event::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25"
     )]
     pub payload: ::core::option::Option<event::Payload>,
 }
@@ -64,7 +64,23 @@ pub mod event {
         FailedToWriteConfigToDiskPayload(super::FailedToWriteConfigToDiskPayload),
         #[prost(message, tag = "23")]
         ListClientsPayload(super::ListClientsPayload),
+        #[prost(message, tag = "24")]
+        HostFolderChangedPayload(super::HostFolderChangedPayload),
+        #[prost(message, tag = "25")]
+        FailedToChangeHostFolderPayload(super::FailedToChangeHostFolderPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FailedToChangeHostFolderPayload {
+    #[prost(string, optional, tag = "1")]
+    pub error_message: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HostFolderChangedPayload {
+    #[prost(string, tag = "1")]
+    pub new_host_folder_path: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -468,6 +484,8 @@ pub enum EventType {
     CommandPaneReRun = 24,
     FailedToWriteConfigToDisk = 25,
     ListClients = 26,
+    HostFolderChanged = 27,
+    FailedToChangeHostFolder = 28,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -503,6 +521,8 @@ impl EventType {
             EventType::CommandPaneReRun => "CommandPaneReRun",
             EventType::FailedToWriteConfigToDisk => "FailedToWriteConfigToDisk",
             EventType::ListClients => "ListClients",
+            EventType::HostFolderChanged => "HostFolderChanged",
+            EventType::FailedToChangeHostFolder => "FailedToChangeHostFolder",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -535,6 +555,8 @@ impl EventType {
             "CommandPaneReRun" => Some(Self::CommandPaneReRun),
             "FailedToWriteConfigToDisk" => Some(Self::FailedToWriteConfigToDisk),
             "ListClients" => Some(Self::ListClients),
+            "HostFolderChanged" => Some(Self::HostFolderChanged),
+            "FailedToChangeHostFolder" => Some(Self::FailedToChangeHostFolder),
             _ => None,
         }
     }

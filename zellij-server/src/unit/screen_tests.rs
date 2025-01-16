@@ -1328,6 +1328,7 @@ fn open_new_floating_pane_with_custom_coordinates() {
                 y: Some(SplitSize::Fixed(5)),
                 width: Some(SplitSize::Percent(1)),
                 height: Some(SplitSize::Fixed(2)),
+                pinned: None,
             }),
             false,
             Some(1),
@@ -1362,6 +1363,7 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
                 y: Some(SplitSize::Fixed(21)),
                 width: Some(SplitSize::Fixed(10)),
                 height: Some(SplitSize::Fixed(10)),
+                pinned: None,
             }),
             false,
             Some(1),
@@ -2229,6 +2231,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         y: None,
         width: None,
         height: None,
+        pinned: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2272,6 +2275,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         y: None,
         width: None,
         height: None,
+        pinned: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2315,11 +2319,23 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         y: None,
         width: None,
         height: None,
+        pinned: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_thread, screen_thread]);
-    assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
+
+    let new_pane_instruction = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|instruction| match instruction {
+            PtyInstruction::SpawnTerminalVertically(..) => true,
+            _ => false,
+        })
+        .cloned();
+
+    assert_snapshot!(format!("{:?}", new_pane_instruction));
 }
 
 #[test]
@@ -2358,6 +2374,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         y: None,
         width: Some("20%".to_owned()),
         height: None,
+        pinned: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2396,6 +2413,7 @@ pub fn send_cli_edit_action_with_default_parameters() {
         y: None,
         width: None,
         height: None,
+        pinned: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2434,6 +2452,7 @@ pub fn send_cli_edit_action_with_line_number() {
         y: None,
         width: None,
         height: None,
+        pinned: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2472,6 +2491,7 @@ pub fn send_cli_edit_action_with_split_direction() {
         y: None,
         width: None,
         height: None,
+        pinned: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3617,6 +3637,46 @@ pub fn screen_can_move_pane_to_a_new_tab_left() {
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let snapshot_count = snapshots.len();
+    for (_cursor_coordinates, snapshot) in snapshots {
+        assert_snapshot!(format!("{}", snapshot));
+    }
+    assert_snapshot!(format!("{}", snapshot_count));
+}
+
+#[test]
+pub fn send_cli_stack_panes_action() {
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![
+        TiledPaneLayout::default(),
+        TiledPaneLayout::default(),
+        TiledPaneLayout::default(),
+        TiledPaneLayout::default(),
+        TiledPaneLayout::default(),
+    ];
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let stack_panes_action = CliAction::StackPanes {
+        pane_ids: vec!["1".to_owned(), "2".to_owned(), "3".to_owned()],
+    };
+    send_cli_action_to_server(&session_metadata, stack_panes_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
         size,

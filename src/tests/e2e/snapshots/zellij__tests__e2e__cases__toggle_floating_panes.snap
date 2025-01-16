@@ -1,6 +1,6 @@
 ---
 source: src/tests/e2e/cases.rs
-assertion_line: 2027
+assertion_line: 2049
 expression: last_snapshot
 ---
  Zellij (e2e-test)  Tab #1                                                                     Alt <[]>  STAGGERED 
@@ -10,7 +10,7 @@ expression: last_snapshot
 │                                                                                                                      │
 │                                                                                                                      │
 │                                                                                                                      │
-│                             ┌ Pane #2 ─────────────────────────────────────────────────┐                             │
+│                             ┌ Pane #2 ──────────────────────────────────────── PIN [ ] ┐                             │
 │                             │$ █                                                       │                             │
 │                             │                                                          │                             │
 │                             │                                                          │                             │

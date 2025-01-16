@@ -183,6 +183,27 @@ impl TiledPanes {
             .is_some();
         has_room_for_new_pane || pane_grid.has_room_for_new_stacked_pane() || self.panes.is_empty()
     }
+
+    pub fn assign_geom_for_pane_with_run(&mut self, run: Option<Run>) {
+        // here we're removing the first pane we find with this run instruction and re-adding it so
+        // that it gets a new geom similar to how it would when being added to the tab originally
+        if let Some(pane_id) = self
+            .panes
+            .iter()
+            .find_map(|(pid, p)| {
+                if p.invoked_with() == &run {
+                    Some(pid)
+                } else {
+                    None
+                }
+            })
+            .copied()
+        {
+            if let Some(pane) = self.panes.remove(&pane_id) {
+                self.add_pane(pane.pid(), pane, true);
+            }
+        }
+    }
     fn add_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>, should_relayout: bool) {
         if self.panes.is_empty() {
             self.panes.insert(pane_id, pane);
@@ -699,15 +720,26 @@ impl TiledPanes {
                             .render_pane_contents_for_client(*client_id)
                             .with_context(err_context)?;
                     }
+                    let is_floating = false;
                     if self.draw_pane_frames {
                         pane_contents_and_ui
-                            .render_pane_frame(*client_id, client_mode, self.session_is_mirrored)
+                            .render_pane_frame(
+                                *client_id,
+                                client_mode,
+                                self.session_is_mirrored,
+                                is_floating,
+                            )
                             .with_context(err_context)?;
                     } else if pane_is_stacked {
                         // if we have no pane frames but the pane is stacked, we need to render its
                         // frame which will amount to only rendering the title line
                         pane_contents_and_ui
-                            .render_pane_frame(*client_id, client_mode, self.session_is_mirrored)
+                            .render_pane_frame(
+                                *client_id,
+                                client_mode,
+                                self.session_is_mirrored,
+                                is_floating,
+                            )
                             .with_context(err_context)?;
                         // we also need to render its boundaries as normal
                         let boundaries = client_id_to_boundaries
@@ -783,6 +815,16 @@ impl TiledPanes {
             },
             None => {
                 log::error!("Failed to find pane with run: {:?}", run);
+            },
+        }
+    }
+    pub fn set_geom_for_pane_with_id(&mut self, pane_id: &PaneId, geom: PaneGeom) {
+        match self.panes.get_mut(pane_id) {
+            Some(pane) => {
+                pane.set_geom(geom);
+            },
+            None => {
+                log::error!("Failed to find pane with id: {:?}", pane_id);
             },
         }
     }
@@ -1795,6 +1837,9 @@ impl TiledPanes {
         }
         pane_infos
     }
+    pub fn pane_id_is_focused(&self, pane_id: &PaneId) -> bool {
+        self.active_panes.pane_id_is_focused(pane_id)
+    }
     pub fn update_pane_themes(&mut self, theme: Palette) {
         self.style.colors = theme;
         for pane in self.panes.values_mut() {
@@ -1811,6 +1856,14 @@ impl TiledPanes {
         for pane in self.panes.values_mut() {
             pane.update_rounded_corners(rounded_corners);
         }
+    }
+    pub fn stack_panes(
+        &mut self,
+        root_pane_id: PaneId,
+        pane_count_in_stack: usize,
+    ) -> Vec<PaneGeom> {
+        StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+            .new_stack(root_pane_id, pane_count_in_stack)
     }
 }
 

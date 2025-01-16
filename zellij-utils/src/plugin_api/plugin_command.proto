@@ -127,6 +127,9 @@ enum CommandName {
   LoadNewPlugin = 111;
   RebindKeys = 112;
   ListClients = 113;
+  ChangeHostFolder = 114;
+  SetFloatingPanePinned = 115;
+  StackPanes = 116;
 }
 
 message PluginCommand {
@@ -210,7 +213,23 @@ message PluginCommand {
     ReloadPluginPayload reload_plugin_payload = 86;
     LoadNewPluginPayload load_new_plugin_payload = 87;
     RebindKeysPayload rebind_keys_payload = 88;
+    ChangeHostFolderPayload change_host_folder_payload = 89;
+    SetFloatingPanePinnedPayload set_floating_pane_pinned_payload = 90;
+    StackPanesPayload stack_panes_payload = 91;
   }
+}
+
+message StackPanesPayload {
+  repeated PaneId pane_ids = 1;
+}
+
+message SetFloatingPanePinnedPayload {
+  PaneId pane_id = 1;
+  bool should_be_pinned = 2;
+}
+
+message ChangeHostFolderPayload {
+  string new_host_folder = 1;
 }
 
 message RebindKeysPayload {
@@ -479,6 +498,7 @@ message FloatingPaneCoordinates {
   optional FixedOrPercentValue y = 2;
   optional FixedOrPercentValue width = 3;
   optional FixedOrPercentValue height = 4;
+  optional bool pinned = 5;
 }
 
 message FixedOrPercentValue {

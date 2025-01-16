@@ -5,7 +5,7 @@ pub struct Action {
     pub name: i32,
     #[prost(
         oneof = "action::OptionalPayload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49"
     )]
     pub optional_payload: ::core::option::Option<action::OptionalPayload>,
 }
@@ -68,12 +68,6 @@ pub mod action {
         RightMouseReleasePayload(super::Position),
         #[prost(message, tag = "28")]
         MiddleMouseReleasePayload(super::Position),
-        #[prost(message, tag = "29")]
-        MouseHoldLeftPayload(super::Position),
-        #[prost(message, tag = "30")]
-        MouseHoldRightPayload(super::Position),
-        #[prost(message, tag = "31")]
-        MouseHoldMiddlePayload(super::Position),
         #[prost(bytes, tag = "32")]
         SearchInputPayload(::prost::alloc::vec::Vec<u8>),
         #[prost(enumeration = "super::SearchDirection", tag = "33")]
@@ -108,6 +102,8 @@ pub mod action {
         MessagePayload(super::CliPipePayload),
         #[prost(enumeration = "super::MoveTabDirection", tag = "48")]
         MoveTabPayload(i32),
+        #[prost(message, tag = "49")]
+        MouseEventPayload(super::MouseEventPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -252,6 +248,32 @@ pub struct Position {
     #[prost(int64, tag = "1")]
     pub line: i64,
     #[prost(int64, tag = "2")]
+    pub column: i64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MouseEventPayload {
+    #[prost(uint32, tag = "1")]
+    pub event_type: u32,
+    #[prost(bool, tag = "2")]
+    pub left: bool,
+    #[prost(bool, tag = "3")]
+    pub right: bool,
+    #[prost(bool, tag = "4")]
+    pub middle: bool,
+    #[prost(bool, tag = "5")]
+    pub wheel_up: bool,
+    #[prost(bool, tag = "6")]
+    pub wheel_down: bool,
+    #[prost(bool, tag = "7")]
+    pub shift: bool,
+    #[prost(bool, tag = "8")]
+    pub alt: bool,
+    #[prost(bool, tag = "9")]
+    pub ctrl: bool,
+    #[prost(int64, tag = "10")]
+    pub line: i64,
+    #[prost(int64, tag = "11")]
     pub column: i64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -427,9 +449,6 @@ pub enum ActionName {
     LeftMouseRelease = 54,
     RightMouseRelease = 55,
     MiddleMouseRelease = 56,
-    MouseHoldLeft = 57,
-    MouseHoldRight = 58,
-    MouseHoldMiddle = 59,
     SearchInput = 60,
     Search = 61,
     SearchToggleOption = 62,
@@ -455,6 +474,8 @@ pub enum ActionName {
     CliPipe = 82,
     MoveTab = 83,
     KeybindPipe = 84,
+    TogglePanePinned = 85,
+    MouseEvent = 86,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -520,9 +541,6 @@ impl ActionName {
             ActionName::LeftMouseRelease => "LeftMouseRelease",
             ActionName::RightMouseRelease => "RightMouseRelease",
             ActionName::MiddleMouseRelease => "MiddleMouseRelease",
-            ActionName::MouseHoldLeft => "MouseHoldLeft",
-            ActionName::MouseHoldRight => "MouseHoldRight",
-            ActionName::MouseHoldMiddle => "MouseHoldMiddle",
             ActionName::SearchInput => "SearchInput",
             ActionName::Search => "Search",
             ActionName::SearchToggleOption => "SearchToggleOption",
@@ -548,6 +566,8 @@ impl ActionName {
             ActionName::CliPipe => "CliPipe",
             ActionName::MoveTab => "MoveTab",
             ActionName::KeybindPipe => "KeybindPipe",
+            ActionName::TogglePanePinned => "TogglePanePinned",
+            ActionName::MouseEvent => "MouseEvent",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -610,9 +630,6 @@ impl ActionName {
             "LeftMouseRelease" => Some(Self::LeftMouseRelease),
             "RightMouseRelease" => Some(Self::RightMouseRelease),
             "MiddleMouseRelease" => Some(Self::MiddleMouseRelease),
-            "MouseHoldLeft" => Some(Self::MouseHoldLeft),
-            "MouseHoldRight" => Some(Self::MouseHoldRight),
-            "MouseHoldMiddle" => Some(Self::MouseHoldMiddle),
             "SearchInput" => Some(Self::SearchInput),
             "Search" => Some(Self::Search),
             "SearchToggleOption" => Some(Self::SearchToggleOption),
@@ -638,6 +655,8 @@ impl ActionName {
             "CliPipe" => Some(Self::CliPipe),
             "MoveTab" => Some(Self::MoveTab),
             "KeybindPipe" => Some(Self::KeybindPipe),
+            "TogglePanePinned" => Some(Self::TogglePanePinned),
+            "MouseEvent" => Some(Self::MouseEvent),
             _ => None,
         }
     }

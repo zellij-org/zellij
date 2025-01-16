@@ -23,6 +23,7 @@ use zellij_utils::input::layout::{
     FloatingPaneLayout, Layout, PluginUserConfiguration, RunPluginLocation, RunPluginOrAlias,
     SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
+use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::plugins::PluginTag;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
@@ -1728,10 +1729,16 @@ fn move_floating_pane_focus_with_mouse() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.handle_left_click(&Position::new(9, 71), client_id)
-        .unwrap();
-    tab.handle_left_mouse_release(&Position::new(9, 71), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(9, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_left_mouse_release(
+        &MouseEvent::new_left_release_event(Position::new(9, 71)),
+        client_id,
+    )
+    .unwrap();
     tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -1826,10 +1833,16 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.handle_left_click(&Position::new(4, 71), client_id)
-        .unwrap();
-    tab.handle_left_mouse_release(&Position::new(4, 71), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(4, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_left_mouse_release(
+        &MouseEvent::new_left_release_event(Position::new(4, 71)),
+        client_id,
+    )
+    .unwrap();
     tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -1924,10 +1937,16 @@ fn drag_pane_with_mouse() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.handle_left_click(&Position::new(5, 71), client_id)
-        .unwrap();
-    tab.handle_left_mouse_release(&Position::new(7, 75), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_left_mouse_release(
+        &MouseEvent::new_left_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
     tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -2022,16 +2041,22 @@ fn mark_text_inside_floating_pane() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.handle_left_click(&Position::new(6, 30), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(6, 30)),
+        client_id,
+    )
+    .unwrap();
     assert!(
-        tab.selecting_with_mouse,
+        tab.selecting_with_mouse_in_pane.is_some(),
         "started selecting with mouse on click"
     );
-    tab.handle_left_mouse_release(&Position::new(5, 15), client_id)
-        .unwrap();
+    tab.handle_left_mouse_release(
+        &MouseEvent::new_left_release_event(Position::new(5, 15)),
+        client_id,
+    )
+    .unwrap();
     assert!(
-        !tab.selecting_with_mouse,
+        tab.selecting_with_mouse_in_pane.is_none(),
         "stopped selecting with mouse on release"
     );
     tab.render(&mut output).unwrap();
@@ -2630,10 +2655,16 @@ fn move_floating_pane_with_sixel_image() {
         .unwrap();
     let fixture = read_fixture("sixel-image-500px.six");
     tab.handle_pty_bytes(2, fixture).unwrap();
-    tab.handle_left_click(&Position::new(5, 71), client_id)
-        .unwrap();
-    tab.handle_left_mouse_release(&Position::new(7, 75), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_left_mouse_release(
+        &MouseEvent::new_left_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
 
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot_with_sixel(
@@ -2668,10 +2699,16 @@ fn floating_pane_above_sixel_image() {
         .unwrap();
     let fixture = read_fixture("sixel-image-500px.six");
     tab.handle_pty_bytes(1, fixture).unwrap();
-    tab.handle_left_click(&Position::new(5, 71), client_id)
-        .unwrap();
-    tab.handle_left_mouse_release(&Position::new(7, 75), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_left_mouse_release(
+        &MouseEvent::new_left_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
 
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot_with_sixel(
@@ -2754,7 +2791,7 @@ fn close_suppressing_tiled_pane() {
         .unwrap();
     tab.handle_pty_bytes(1, Vec::from("\n\n\nI am the original pane".as_bytes()))
         .unwrap();
-    tab.close_pane(new_pane_id, false, None);
+    tab.close_pane(new_pane_id, false);
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -2786,7 +2823,7 @@ fn close_suppressing_floating_pane() {
         .unwrap();
     tab.handle_pty_bytes(2, Vec::from("\n\n\nI am the original pane".as_bytes()))
         .unwrap();
-    tab.close_pane(editor_pane_id, false, None);
+    tab.close_pane(editor_pane_id, false);
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -2814,7 +2851,7 @@ fn suppress_tiled_pane_float_it_and_close() {
     tab.handle_pty_bytes(1, Vec::from("\n\n\nI am the original pane".as_bytes()))
         .unwrap();
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
-    tab.close_pane(new_pane_id, false, None);
+    tab.close_pane(new_pane_id, false);
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -2847,7 +2884,7 @@ fn suppress_floating_pane_embed_it_and_close_it() {
     tab.handle_pty_bytes(2, Vec::from("\n\n\nI am the original pane".as_bytes()))
         .unwrap();
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
-    tab.close_pane(editor_pane_id, false, None);
+    tab.close_pane(editor_pane_id, false);
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3048,22 +3085,43 @@ fn pane_in_sgr_button_event_tracking_mouse_mode() {
     let sgr_mouse_mode_any_button = String::from("\u{1b}[?1002;1006h"); // button event tracking (1002) with SGR encoding (1006)
     tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec())
         .unwrap();
-    tab.handle_left_click(&Position::new(5, 71), client_id)
-        .unwrap();
-    tab.handle_mouse_hold_left(&Position::new(9, 72), client_id)
-        .unwrap();
-    tab.handle_left_mouse_release(&Position::new(7, 75), client_id)
-        .unwrap();
-    tab.handle_right_click(&Position::new(5, 71), client_id)
-        .unwrap();
-    tab.handle_mouse_hold_right(&Position::new(9, 72), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_left_mouse_motion(
+        &MouseEvent::new_left_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_left_mouse_release(
+        &MouseEvent::new_left_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_right_click(
+        &MouseEvent::new_right_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_right_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_right_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
-    tab.handle_middle_click(&Position::new(5, 71), client_id)
-        .unwrap();
-    tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id)
-        .unwrap();
+    tab.handle_middle_click(
+        &MouseEvent::new_middle_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_middle_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
     tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id)
@@ -3110,22 +3168,43 @@ fn pane_in_sgr_normal_event_tracking_mouse_mode() {
     let sgr_mouse_mode_any_button = String::from("\u{1b}[?1000;1006h"); // normal event tracking (1000) with sgr encoding (1006)
     tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec())
         .unwrap();
-    tab.handle_left_click(&Position::new(5, 71), client_id)
-        .unwrap();
-    tab.handle_mouse_hold_left(&Position::new(9, 72), client_id)
-        .unwrap();
-    tab.handle_left_mouse_release(&Position::new(7, 75), client_id)
-        .unwrap();
-    tab.handle_right_click(&Position::new(5, 71), client_id)
-        .unwrap();
-    tab.handle_mouse_hold_right(&Position::new(9, 72), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_left_mouse_motion(
+        &MouseEvent::new_left_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_left_mouse_release(
+        &MouseEvent::new_left_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_right_click(
+        &MouseEvent::new_right_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_right_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_right_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
-    tab.handle_middle_click(&Position::new(5, 71), client_id)
-        .unwrap();
-    tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id)
-        .unwrap();
+    tab.handle_middle_click(
+        &MouseEvent::new_middle_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_middle_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
     tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id)
@@ -3154,6 +3233,97 @@ fn pane_in_sgr_normal_event_tracking_mouse_mode() {
 }
 
 #[test]
+fn pane_in_sgr_any_event_tracking_mouse_mode() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    let sgr_mouse_mode_any_button = String::from("\u{1b}[?1003;1006h"); // any event tracking (1003) with SGR encoding (1006)
+    tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec())
+        .unwrap();
+    // TODO: CONTINUE HERE - make sure these pass, then add some button-less motions and see what
+    // we track them
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_left_mouse_motion(
+        &MouseEvent::new_left_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_left_mouse_release(
+        &MouseEvent::new_left_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_right_click(
+        &MouseEvent::new_right_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_right_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_right_mouse_release(&Position::new(7, 75), client_id)
+        .unwrap();
+    tab.handle_middle_click(
+        &MouseEvent::new_middle_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_middle_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_middle_mouse_release(&Position::new(7, 75), client_id)
+        .unwrap();
+    tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id)
+        .unwrap();
+    tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id)
+        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_buttonless_motion(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
+
+    pty_instruction_bus.exit();
+
+    assert_eq!(
+        pty_instruction_bus.clone_output(),
+        vec![
+            "\u{1b}[<0;71;5M".to_string(),  // SGR left click
+            "\u{1b}[<32;72;9M".to_string(), // SGR left click (hold)
+            "\u{1b}[<0;75;7m".to_string(),  // SGR left button release
+            "\u{1b}[<2;71;5M".to_string(),  // SGR right click
+            "\u{1b}[<34;72;9M".to_string(), // SGR right click (hold)
+            "\u{1b}[<2;75;7m".to_string(),  // SGR right button release
+            "\u{1b}[<1;71;5M".to_string(),  // SGR middle click
+            "\u{1b}[<33;72;9M".to_string(), // SGR middle click (hold)
+            "\u{1b}[<1;75;7m".to_string(),  // SGR middle button release
+            "\u{1b}[<64;71;5M".to_string(), // SGR scroll up
+            "\u{1b}[<65;71;5M".to_string(), // SGR scroll down
+            "\u{1b}[<35;72;9M".to_string(), // SGR buttonless motion
+        ]
+    );
+}
+
+#[test]
 fn pane_in_utf8_button_event_tracking_mouse_mode() {
     let size = Size {
         cols: 121,
@@ -3172,22 +3342,43 @@ fn pane_in_utf8_button_event_tracking_mouse_mode() {
     let sgr_mouse_mode_any_button = String::from("\u{1b}[?1002;1005h"); // button event tracking (1002) with utf8 encoding (1005)
     tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec())
         .unwrap();
-    tab.handle_left_click(&Position::new(5, 71), client_id)
-        .unwrap();
-    tab.handle_mouse_hold_left(&Position::new(9, 72), client_id)
-        .unwrap();
-    tab.handle_left_mouse_release(&Position::new(7, 75), client_id)
-        .unwrap();
-    tab.handle_right_click(&Position::new(5, 71), client_id)
-        .unwrap();
-    tab.handle_mouse_hold_right(&Position::new(9, 72), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_left_mouse_motion(
+        &MouseEvent::new_left_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_left_mouse_release(
+        &MouseEvent::new_left_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_right_click(
+        &MouseEvent::new_right_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_right_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_right_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
-    tab.handle_middle_click(&Position::new(5, 71), client_id)
-        .unwrap();
-    tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id)
-        .unwrap();
+    tab.handle_middle_click(
+        &MouseEvent::new_middle_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_middle_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
     tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id)
@@ -3234,22 +3425,43 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
     let sgr_mouse_mode_any_button = String::from("\u{1b}[?1000;1005h"); // normal event tracking (1000) with sgr encoding (1006)
     tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec())
         .unwrap();
-    tab.handle_left_click(&Position::new(5, 71), client_id)
-        .unwrap();
-    tab.handle_mouse_hold_left(&Position::new(9, 72), client_id)
-        .unwrap();
-    tab.handle_left_mouse_release(&Position::new(7, 75), client_id)
-        .unwrap();
-    tab.handle_right_click(&Position::new(5, 71), client_id)
-        .unwrap();
-    tab.handle_mouse_hold_right(&Position::new(9, 72), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_left_mouse_motion(
+        &MouseEvent::new_left_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_left_mouse_release(
+        &MouseEvent::new_left_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_right_click(
+        &MouseEvent::new_right_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_right_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_right_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
-    tab.handle_middle_click(&Position::new(5, 71), client_id)
-        .unwrap();
-    tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id)
-        .unwrap();
+    tab.handle_middle_click(
+        &MouseEvent::new_middle_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_middle_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
     tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id)
@@ -3273,6 +3485,95 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
             "\u{1b}[M#k'".to_string(), // utf8 middle click release
             "\u{1b}[M`g%".to_string(), // utf8 scroll up
             "\u{1b}[Mag%".to_string(), // utf8 scroll down
+        ]
+    );
+}
+
+#[test]
+fn pane_in_utf8_any_event_tracking_mouse_mode() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    let sgr_mouse_mode_any_button = String::from("\u{1b}[?1003;1005h"); // any event tracking (1002) with utf8 encoding (1005)
+    tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec())
+        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_left_mouse_motion(
+        &MouseEvent::new_left_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_left_mouse_release(
+        &MouseEvent::new_left_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_right_click(
+        &MouseEvent::new_right_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_right_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_right_mouse_release(&Position::new(7, 75), client_id)
+        .unwrap();
+    tab.handle_middle_click(
+        &MouseEvent::new_middle_press_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_middle_motion_event(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_middle_mouse_release(&Position::new(7, 75), client_id)
+        .unwrap();
+    tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id)
+        .unwrap();
+    tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id)
+        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_buttonless_motion(Position::new(9, 72)),
+        client_id,
+    )
+    .unwrap();
+
+    pty_instruction_bus.exit();
+
+    assert_eq!(
+        pty_instruction_bus.clone_output(),
+        vec![
+            "\u{1b}[M g%".to_string(),  // utf8 left click
+            "\u{1b}[M@h)".to_string(),  // utf8 left click (hold)
+            "\u{1b}[M#k'".to_string(),  // utf8 left button release
+            "\u{1b}[M\"g%".to_string(), // utf8 right click
+            "\u{1b}[MBh)".to_string(),  // utf8 right click (hold)
+            "\u{1b}[M#k'".to_string(),  // utf8 right button release
+            "\u{1b}[M!g%".to_string(),  // utf8 middle click
+            "\u{1b}[MAh)".to_string(),  // utf8 middle click (hold)
+            "\u{1b}[M#k'".to_string(),  // utf8 middle click release
+            "\u{1b}[M`g%".to_string(),  // utf8 scroll up
+            "\u{1b}[Mag%".to_string(),  // utf8 scroll down
+            "\u{1b}[MCh)".to_string(),  // urf8 buttonless motion
         ]
     );
 }
@@ -3757,7 +4058,7 @@ fn can_swap_tiled_layout_at_runtime() {
         Some(client_id),
     )
     .unwrap();
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3830,7 +4131,7 @@ fn can_swap_floating_layout_at_runtime() {
         Some(client_id),
     )
     .unwrap();
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3889,10 +4190,10 @@ fn swapping_layouts_after_resize_snaps_to_current_layout() {
         Some(client_id),
     )
     .unwrap();
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -4502,7 +4803,7 @@ fn move_focus_down_into_stacked_panes() {
                 tab {
                     pane
                     pane split_direction="vertical" {
-                        pane focus=true
+                        pane
                         pane stacked=true { children; }
                     }
                     pane
@@ -4620,7 +4921,7 @@ fn close_main_stacked_pane() {
         Some(client_id),
     )
     .unwrap();
-    tab.close_pane(new_pane_id_2, false, None);
+    tab.close_pane(new_pane_id_2, false);
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -4644,7 +4945,7 @@ fn close_main_stacked_pane_in_mid_stack() {
             swap_tiled_layout {
                 tab {
                     pane split_direction="vertical" {
-                        pane focus=true
+                        pane 
                         pane stacked=true { children; }
                     }
                 }
@@ -4720,7 +5021,7 @@ fn close_main_stacked_pane_in_mid_stack() {
     tab.move_focus_right(client_id);
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
-    tab.close_pane(new_pane_id_3, false, None);
+    tab.close_pane(new_pane_id_3, false);
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -4744,7 +5045,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
             swap_tiled_layout {
                 tab {
                     pane split_direction="vertical" {
-                        pane focus=true
+                        pane
                         pane stacked=true { children; }
                     }
                 }
@@ -4821,7 +5122,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
     tab.move_focus_right(client_id);
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
-    tab.close_pane(new_pane_id_2, false, None);
+    tab.close_pane(new_pane_id_2, false);
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -4845,7 +5146,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
             swap_tiled_layout {
                 tab {
                     pane split_direction="vertical" {
-                        pane focus=true
+                        pane
                         pane stacked=true { children; }
                     }
                 }
@@ -4921,7 +5222,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
     tab.move_focus_right(client_id);
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
-    tab.close_pane(new_pane_id_1, false, None);
+    tab.close_pane(new_pane_id_2, false);
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -5226,7 +5527,6 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
         Some(client_id),
     )
     .unwrap();
-    let _ = tab.move_focus_up(client_id);
     let _ = tab.move_focus_right(client_id);
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
@@ -5534,7 +5834,6 @@ fn can_increase_size_into_pane_stack_non_directionally() {
         Some(client_id),
     )
     .unwrap();
-    let _ = tab.move_focus_up(client_id);
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
     tab.render(&mut output).unwrap();
@@ -5943,8 +6242,11 @@ fn focus_stacked_pane_over_flexible_pane_with_the_mouse() {
         Some(client_id),
     )
     .unwrap();
-    tab.handle_left_click(&Position::new(1, 71), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(1, 71)),
+        client_id,
+    )
+    .unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6042,10 +6344,16 @@ fn focus_stacked_pane_under_flexible_pane_with_the_mouse() {
         Some(client_id),
     )
     .unwrap();
-    tab.handle_left_click(&Position::new(1, 71), client_id)
-        .unwrap();
-    tab.handle_left_click(&Position::new(9, 71), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(1, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(9, 71)),
+        client_id,
+    )
+    .unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6069,7 +6377,7 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
             swap_tiled_layout {
                 tab {
                     pane split_direction="vertical" {
-                        pane focus=true
+                        pane
                         pane stacked=true { children; }
                     }
                     pane
@@ -6143,11 +6451,17 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
         Some(client_id),
     )
     .unwrap();
-    tab.handle_left_click(&Position::new(2, 71), client_id)
-        .unwrap();
-    tab.handle_left_click(&Position::new(1, 71), client_id)
-        .unwrap();
-    tab.close_pane(PaneId::Terminal(4), false, None);
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(2, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(1, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.close_pane(PaneId::Terminal(4), false);
     tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6250,7 +6564,7 @@ fn close_pane_near_stacked_panes() {
         Some(client_id),
     )
     .unwrap();
-    tab.close_pane(PaneId::Terminal(6), false, None);
+    tab.close_pane(PaneId::Terminal(6), false);
     tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6518,8 +6832,10 @@ fn layout_with_plugins_and_commands_swaped_properly() {
 
     let mut command_1 = RunCommand::default();
     command_1.command = PathBuf::from("command1");
+    command_1.hold_on_close = true;
     let mut command_2 = RunCommand::default();
     command_2.command = PathBuf::from("command2");
+    command_2.hold_on_close = true;
     let new_terminal_ids = vec![(1, Some(command_1)), (2, None), (3, Some(command_2))];
     let new_floating_terminal_ids = vec![];
     let mut new_plugin_ids = HashMap::new();
@@ -6551,7 +6867,7 @@ fn layout_with_plugins_and_commands_swaped_properly() {
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6647,8 +6963,8 @@ fn base_layout_is_included_in_swap_layouts() {
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.previous_swap_layout(Some(client_id)).unwrap(); // move back to the base layout
+    tab.next_swap_layout().unwrap();
+    tab.previous_swap_layout().unwrap(); // move back to the base layout
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6740,7 +7056,7 @@ fn swap_layouts_including_command_panes_absent_from_existing_layout() {
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6836,7 +7152,7 @@ fn swap_layouts_not_including_command_panes_present_in_existing_layout() {
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6914,7 +7230,7 @@ fn swap_layouts_including_plugin_panes_absent_from_existing_layout() {
         )),
         true,
     );
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7006,7 +7322,7 @@ fn swap_layouts_not_including_plugin_panes_present_in_existing_layout() {
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7080,9 +7396,9 @@ fn new_pane_in_auto_layout() {
         (62, 11),
         (62, 15),
         (62, 16),
-        (1, 11),
-        (1, 15),
-        (1, 16),
+        (62, 16),
+        (62, 16),
+        (62, 16),
     ];
     for i in 0..7 {
         let new_pane_id = i + 2;
@@ -7175,7 +7491,7 @@ fn when_swapping_tiled_layouts_in_a_damaged_state_layout_and_pane_focus_are_unch
         ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
     )
     .unwrap();
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -7249,7 +7565,7 @@ fn when_swapping_tiled_layouts_in_an_undamaged_state_pane_focuses_on_focused_nod
         true,
     );
     tab.move_focus_down(client_id);
-    tab.next_swap_layout(Some(client_id), true).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -7324,7 +7640,8 @@ fn when_swapping_tiled_layouts_in_an_undamaged_state_with_no_focus_node_pane_foc
         true,
     );
     tab.move_focus_down(client_id);
-    tab.next_swap_layout(Some(client_id), true).unwrap();
+    tab.move_focus_down(client_id);
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -7399,7 +7716,7 @@ fn when_closing_a_pane_in_auto_layout_the_focus_goes_to_last_focused_pane() {
     );
     let _ = tab.move_focus_down(client_id);
     let _ = tab.move_focus_down(client_id);
-    tab.close_pane(PaneId::Terminal(3), false, Some(client_id));
+    tab.close_pane(PaneId::Terminal(3), false);
     tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -7498,7 +7815,7 @@ fn floating_layout_with_plugins_and_commands_swaped_properly() {
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7592,8 +7909,8 @@ fn base_floating_layout_is_included_in_swap_layouts() {
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.previous_swap_layout(Some(client_id)).unwrap(); // move back to the base layout
+    tab.next_swap_layout().unwrap();
+    tab.previous_swap_layout().unwrap(); // move back to the base layout
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7685,7 +8002,7 @@ fn swap_floating_layouts_including_command_panes_absent_from_existing_layout() {
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7781,7 +8098,7 @@ fn swap_floating_layouts_not_including_command_panes_present_in_existing_layout(
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7852,7 +8169,7 @@ fn swap_floating_layouts_including_plugin_panes_absent_from_existing_layout() {
         )),
         true,
     );
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7940,7 +8257,7 @@ fn swap_floating_layouts_not_including_plugin_panes_present_in_existing_layout()
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
-    tab.next_swap_layout(Some(client_id), false).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7974,9 +8291,9 @@ fn new_floating_pane_in_auto_layout() {
                     pane { x "50%"; y "25%"; width "45%"; }
                 }
                 floating_panes max_panes=3 {
-                    pane focus=true { y "55%"; width "45%"; height "45%"; }
                     pane { x "1%"; y "1%"; width "45%"; }
                     pane { x "50%"; y "1%"; width "45%"; }
+                    pane { y "55%"; width "45%"; height "45%"; }
                 }
             }
         }
@@ -8101,7 +8418,7 @@ fn when_swapping_floating_layouts_in_a_damaged_state_layout_and_pane_focus_are_u
         ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
     )
     .unwrap();
-    tab.next_swap_layout(Some(client_id), true).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -8140,7 +8457,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_pane_focuses_on_focused_
         layout {
             swap_floating_layout {
                 floating_panes {
-                    pane focus=true
+                    pane
                     pane
                     pane
                 }
@@ -8174,7 +8491,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_pane_focuses_on_focused_
         )),
         true,
     );
-    tab.next_swap_layout(Some(client_id), true).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -8185,7 +8502,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_pane_focuses_on_focused_
     );
     assert_eq!(
         cursor_coordinates,
-        Some((31, 6)),
+        Some((35, 10)),
         "cursor coordinates moved to the new pane",
     );
 
@@ -8204,7 +8521,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_with_no_focus_node_pane_
     let base_layout = r#"
         layout {
             floating_panes {
-                pane focus=true
+                pane
                 pane
                 pane
             }
@@ -8248,7 +8565,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_with_no_focus_node_pane_
         )),
         true,
     );
-    tab.next_swap_layout(Some(client_id), true).unwrap();
+    tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -8323,7 +8640,7 @@ fn when_closing_a_floating_pane_in_auto_layout_the_focus_goes_to_last_focused_pa
     );
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
-    tab.close_pane(PaneId::Terminal(1), false, Some(client_id));
+    tab.close_pane(PaneId::Terminal(1), false);
     tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(

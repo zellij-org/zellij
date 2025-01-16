@@ -31,7 +31,7 @@ swap_tiled_layout name="vertical" {
 }
 
 swap_tiled_layout name="horizontal" {
-    ui max_panes=5 {
+    ui max_panes=4 {
         pane
         pane
     }
@@ -74,7 +74,7 @@ swap_floating_layout name="enlarged" {
         pane { x "5%"; y 7; width "90%"; height "90%"; }
         pane { x "5%"; y 8; width "90%"; height "90%"; }
         pane { x "5%"; y 9; width "90%"; height "90%"; }
-        pane focus=true { x 10; y 10; width "90%"; height "90%"; }
+        pane { x 10; y 10; width "90%"; height "90%"; }
     }
 }
 
@@ -87,13 +87,13 @@ swap_floating_layout name="spread" {
         pane { x "50%"; y "25%"; width "45%"; }
     }
     floating_panes max_panes=3 {
-        pane focus=true { y "55%"; width "45%"; height "45%"; }
+        pane { y "55%"; width "45%"; height "45%"; }
         pane { x "1%"; y "1%"; width "45%"; }
         pane { x "50%"; y "1%"; width "45%"; }
     }
     floating_panes max_panes=4 {
         pane { x "1%"; y "55%"; width "45%"; height "45%"; }
-        pane focus=true { x "50%"; y "55%"; width "45%"; height "45%"; }
+        pane { x "50%"; y "55%"; width "45%"; height "45%"; }
         pane { x "1%"; y "1%"; width "45%"; height "45%"; }
         pane { x "50%"; y "1%"; width "45%"; height "45%"; }
     }

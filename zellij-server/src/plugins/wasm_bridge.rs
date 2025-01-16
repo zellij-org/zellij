@@ -4,6 +4,7 @@ use crate::plugins::pipes::{
 };
 use crate::plugins::plugin_loader::PluginLoader;
 use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions};
+
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
@@ -18,7 +19,7 @@ use std::{
 use wasmtime::{Engine, Module};
 use zellij_utils::async_channel::Sender;
 use zellij_utils::async_std::task::{self, JoinHandle};
-use zellij_utils::consts::ZELLIJ_CACHE_DIR;
+use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{InputMode, PermissionStatus, PermissionType, PipeMessage, PipeSource};
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::keybinds::Keybinds;
@@ -734,6 +735,107 @@ impl WasmBridge {
                 }
             }
         }
+        Ok(())
+    }
+    pub fn change_plugin_host_dir(
+        &mut self,
+        new_host_dir: PathBuf,
+        plugin_id_to_update: PluginId,
+        client_id_to_update: ClientId,
+    ) -> Result<()> {
+        let plugins_to_change: Vec<(
+            PluginId,
+            ClientId,
+            Arc<Mutex<RunningPlugin>>,
+            Arc<Mutex<Subscriptions>>,
+        )> = self
+            .plugin_map
+            .lock()
+            .unwrap()
+            .running_plugins_and_subscriptions()
+            .iter()
+            .cloned()
+            .filter(|(plugin_id, _client_id, _running_plugin, _subscriptions)| {
+                // TODO: cache this somehow in this case...
+                !&self
+                    .cached_events_for_pending_plugins
+                    .contains_key(&plugin_id)
+            })
+            .collect();
+        task::spawn({
+            let senders = self.senders.clone();
+            async move {
+                match new_host_dir.try_exists() {
+                    Ok(false) => {
+                        log::error!(
+                            "Failed to change folder to {},: folder does not exist",
+                            new_host_dir.display()
+                        );
+                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                            Some(plugin_id_to_update),
+                            Some(client_id_to_update),
+                            Event::FailedToChangeHostFolder(Some(format!(
+                                "Folder {} does not exist",
+                                new_host_dir.display()
+                            ))),
+                        )]));
+                        return;
+                    },
+                    Err(e) => {
+                        log::error!(
+                            "Failed to change folder to {},: {}",
+                            new_host_dir.display(),
+                            e
+                        );
+                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                            Some(plugin_id_to_update),
+                            Some(client_id_to_update),
+                            Event::FailedToChangeHostFolder(Some(e.to_string())),
+                        )]));
+                        return;
+                    },
+                    _ => {},
+                }
+                for (plugin_id, client_id, running_plugin, _subscriptions) in &plugins_to_change {
+                    if plugin_id == &plugin_id_to_update && client_id == &client_id_to_update {
+                        let mut running_plugin = running_plugin.lock().unwrap();
+                        let plugin_env = running_plugin.store.data_mut();
+                        let stdin_pipe = plugin_env.stdin_pipe.clone();
+                        let stdout_pipe = plugin_env.stdout_pipe.clone();
+                        let wasi_ctx = PluginLoader::create_wasi_ctx(
+                            &new_host_dir,
+                            &plugin_env.plugin_own_data_dir,
+                            &plugin_env.plugin_own_cache_dir,
+                            &ZELLIJ_TMP_DIR,
+                            &plugin_env.plugin.location.to_string(),
+                            plugin_env.plugin_id,
+                            stdin_pipe.clone(),
+                            stdout_pipe.clone(),
+                        );
+                        match wasi_ctx {
+                            Ok(wasi_ctx) => {
+                                drop(std::mem::replace(&mut plugin_env.wasi_ctx, wasi_ctx));
+                                plugin_env.plugin_cwd = new_host_dir.clone();
+
+                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                    Some(*plugin_id),
+                                    Some(*client_id),
+                                    Event::HostFolderChanged(new_host_dir.clone()),
+                                )]));
+                            },
+                            Err(e) => {
+                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                    Some(*plugin_id),
+                                    Some(*client_id),
+                                    Event::FailedToChangeHostFolder(Some(e.to_string())),
+                                )]));
+                                log::error!("Failed to create wasi ctx: {}", e);
+                            },
+                        }
+                    }
+                }
+            }
+        });
         Ok(())
     }
     pub fn pipe_messages(

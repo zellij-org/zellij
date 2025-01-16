@@ -1407,11 +1407,13 @@ pub fn split(direction: SplitDirection, rect: &PaneGeom) -> Option<(PaneGeom, Pa
             SplitDirection::Vertical => PaneGeom {
                 x: first_rect.x + 1,
                 cols: first_rect.cols,
+                logical_position: None,
                 ..*rect
             },
             SplitDirection::Horizontal => PaneGeom {
                 y: first_rect.y + 1,
                 rows: first_rect.rows,
+                logical_position: None,
                 ..*rect
             },
         };

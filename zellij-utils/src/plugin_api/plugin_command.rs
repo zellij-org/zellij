@@ -4,9 +4,9 @@ pub use super::generated_api::api::{
     input_mode::InputMode as ProtobufInputMode,
     plugin_command::{
         plugin_command::Payload, BreakPanesToNewTabPayload, BreakPanesToTabWithIndexPayload,
-        ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseTabWithIndexPayload, CommandName,
-        ContextItem, EditScrollbackForPaneWithIdPayload, EnvVariable, ExecCmdPayload,
-        FixedOrPercent as ProtobufFixedOrPercent,
+        ChangeHostFolderPayload, ClearScreenForPaneIdPayload, CliPipeOutputPayload,
+        CloseTabWithIndexPayload, CommandName, ContextItem, EditScrollbackForPaneWithIdPayload,
+        EnvVariable, ExecCmdPayload, FixedOrPercent as ProtobufFixedOrPercent,
         FixedOrPercentValue as ProtobufFixedOrPercentValue,
         FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, HidePaneWithIdPayload,
         HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
@@ -18,10 +18,11 @@ pub use super::generated_api::api::{
         RebindKeysPayload, ReconfigurePayload, ReloadPluginPayload, RequestPluginPermissionPayload,
         RerunCommandPanePayload, ResizePaneIdWithDirectionPayload, ResizePayload,
         RunCommandPayload, ScrollDownInPaneIdPayload, ScrollToBottomInPaneIdPayload,
-        ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetTimeoutPayload,
-        ShowPaneWithIdPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToPayload,
-        TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
-        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetFloatingPanePinnedPayload,
+        SetTimeoutPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
+        SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
+        TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -81,6 +82,7 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
                     None => None,
                 }
             }),
+            pinned: self.pinned,
         }
     }
 }
@@ -132,6 +134,7 @@ impl Into<ProtobufFloatingPaneCoordinates> for FloatingPaneCoordinates {
                 }),
                 None => None,
             },
+            pinned: self.pinned,
         }
     }
 }
@@ -1303,6 +1306,41 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(_) => Err("ListClients should have no payload, found a payload"),
                 None => Ok(PluginCommand::ListClients),
             },
+            Some(CommandName::ChangeHostFolder) => match protobuf_plugin_command.payload {
+                Some(Payload::ChangeHostFolderPayload(change_host_folder_payload)) => {
+                    Ok(PluginCommand::ChangeHostFolder(PathBuf::from(
+                        change_host_folder_payload.new_host_folder,
+                    )))
+                },
+                _ => Err("Mismatched payload for ChangeHostFolder"),
+            },
+            Some(CommandName::SetFloatingPanePinned) => match protobuf_plugin_command.payload {
+                Some(Payload::SetFloatingPanePinnedPayload(set_floating_pane_pinned_payload)) => {
+                    match set_floating_pane_pinned_payload
+                        .pane_id
+                        .and_then(|p| p.try_into().ok())
+                    {
+                        Some(pane_id) => Ok(PluginCommand::SetFloatingPanePinned(
+                            pane_id,
+                            set_floating_pane_pinned_payload.should_be_pinned,
+                        )),
+                        None => Err("PaneId not found!"),
+                    }
+                },
+                _ => Err("Mismatched payload for SetFloatingPanePinned"),
+            },
+            Some(CommandName::StackPanes) => match protobuf_plugin_command.payload {
+                Some(Payload::StackPanesPayload(stack_panes_payload)) => {
+                    Ok(PluginCommand::StackPanes(
+                        stack_panes_payload
+                            .pane_ids
+                            .into_iter()
+                            .filter_map(|p_id| p_id.try_into().ok())
+                            .collect(),
+                    ))
+                },
+                _ => Err("Mismatched payload for SetFloatingPanePinned"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2129,6 +2167,32 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::ListClients => Ok(ProtobufPluginCommand {
                 name: CommandName::ListClients as i32,
                 payload: None,
+            }),
+            PluginCommand::ChangeHostFolder(new_host_folder) => Ok(ProtobufPluginCommand {
+                name: CommandName::ChangeHostFolder as i32,
+                payload: Some(Payload::ChangeHostFolderPayload(ChangeHostFolderPayload {
+                    new_host_folder: new_host_folder.display().to_string(), // TODO: not accurate?
+                })),
+            }),
+            PluginCommand::SetFloatingPanePinned(pane_id, should_be_pinned) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::SetFloatingPanePinned as i32,
+                    payload: Some(Payload::SetFloatingPanePinnedPayload(
+                        SetFloatingPanePinnedPayload {
+                            pane_id: pane_id.try_into().ok(),
+                            should_be_pinned,
+                        },
+                    )),
+                })
+            },
+            PluginCommand::StackPanes(pane_ids) => Ok(ProtobufPluginCommand {
+                name: CommandName::StackPanes as i32,
+                payload: Some(Payload::StackPanesPayload(StackPanesPayload {
+                    pane_ids: pane_ids
+                        .into_iter()
+                        .filter_map(|p_id| p_id.try_into().ok())
+                        .collect(),
+                })),
             }),
         }
     }
