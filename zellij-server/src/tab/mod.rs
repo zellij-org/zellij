@@ -691,7 +691,7 @@ impl Tab {
     ) -> Result<()> {
         self.swap_layouts
             .set_base_layout((layout.clone(), floating_panes_layout.clone()));
-        let should_show_floating_panes = LayoutApplier::new(
+        if let Ok(should_show_floating_panes) = LayoutApplier::new(
             &self.viewport,
             &self.senders,
             &self.sixel_image_store,
@@ -719,16 +719,19 @@ impl Tab {
             new_floating_terminal_ids,
             new_plugin_ids,
             client_id,
-        )?;
-        #[allow(clippy::if_same_then_else)]
-        if should_show_floating_panes && !self.floating_panes.panes_are_visible() {
-            self.toggle_floating_panes(Some(client_id), None)?;
-        } else if !should_show_floating_panes && self.floating_panes.panes_are_visible() {
-            self.toggle_floating_panes(Some(client_id), None)?;
+        ) {
+            #[allow(clippy::if_same_then_else)]
+            if should_show_floating_panes && !self.floating_panes.panes_are_visible() {
+                self.toggle_floating_panes(Some(client_id), None)
+                    .non_fatal();
+            } else if !should_show_floating_panes && self.floating_panes.panes_are_visible() {
+                self.toggle_floating_panes(Some(client_id), None)
+                    .non_fatal();
+            }
+            self.tiled_panes.reapply_pane_frames();
+            self.is_pending = false;
+            self.apply_buffered_instructions().non_fatal();
         }
-        self.tiled_panes.reapply_pane_frames();
-        self.is_pending = false;
-        self.apply_buffered_instructions()?;
         Ok(())
     }
     pub fn swap_layout_info(&self) -> (Option<String>, bool) {
@@ -771,7 +774,8 @@ impl Tab {
                 self.styled_underlines,
                 self.explicitly_disable_kitty_keyboard_protocol,
             )
-            .apply_floating_panes_layout_to_existing_panes(&layout_candidate)?;
+            .apply_floating_panes_layout_to_existing_panes(&layout_candidate)
+            .non_fatal();
         }
         self.set_force_render();
         Ok(())
@@ -805,7 +809,8 @@ impl Tab {
                 self.styled_underlines,
                 self.explicitly_disable_kitty_keyboard_protocol,
             )
-            .apply_tiled_panes_layout_to_existing_panes(&layout_candidate)?;
+            .apply_tiled_panes_layout_to_existing_panes(&layout_candidate)
+            .non_fatal();
         }
         self.tiled_panes.reapply_pane_frames();
         let display_area = *self.display_area.borrow();

@@ -588,7 +588,7 @@ impl<'a> LayoutApplier<'a> {
         for floating_pane_layout in floating_panes_layout {
             let position_and_size = self
                 .floating_panes
-                .position_floating_pane_layout(&floating_pane_layout);
+                .position_floating_pane_layout(&floating_pane_layout)?;
             let pid_to_focus = if floating_pane_layout.already_running {
                 self.floating_panes.set_geom_for_pane_with_run(
                     floating_pane_layout.run.clone(),
@@ -682,7 +682,8 @@ impl<'a> LayoutApplier<'a> {
         // contain partial positioning information (eg. just x coords with no y or size) or no
         // positioning information at all
         for (pane, floating_pane_layout) in panes_to_apply.drain(..) {
-            pane_applier.apply_floating_panes_layout_to_floating_pane(pane, floating_pane_layout);
+            pane_applier
+                .apply_floating_panes_layout_to_floating_pane(pane, floating_pane_layout)?;
         }
 
         // here we apply positioning on a best-effort basis to any remaining panes we've got (these
@@ -969,17 +970,18 @@ impl<'a> PaneApplier<'a> {
         &mut self,
         mut pane: Box<dyn Pane>,
         floating_panes_layout: FloatingPaneLayout,
-    ) {
+    ) -> Result<()> {
         let position_and_size = self
             .floating_panes
-            .position_floating_pane_layout(&floating_panes_layout);
+            .position_floating_pane_layout(&floating_panes_layout)?;
         if let Some(pane_title) = floating_panes_layout.name.as_ref() {
             pane.set_title(pane_title.into());
         }
         if floating_panes_layout.focus.unwrap_or(false) {
             self.new_focused_pane_id = Some(pane.pid());
         }
-        self.apply_position_and_size_to_floating_pane(pane, position_and_size)
+        self.apply_position_and_size_to_floating_pane(pane, position_and_size);
+        Ok(())
     }
     pub fn apply_position_and_size_to_floating_pane(
         &mut self,
