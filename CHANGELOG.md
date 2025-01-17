@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(terminal): cursor overflow issue (https://github.com/zellij-org/zellij/pull/3894)
 * feat(ux): stack panes command (https://github.com/zellij-org/zellij/pull/3905)
 * feat(terminal): mouse AnyEvent tracking (https://github.com/zellij-org/zellij/pull/3538)
+* fix(terminal): support setting kitty keyboard protocol with `CSI=`
 
 ## [0.41.2] - 2024-11-19
 * fix(input): keypresses not being identified properly with kitty keyboard protocol in some terminals (https://github.com/zellij-org/zellij/pull/3725)
