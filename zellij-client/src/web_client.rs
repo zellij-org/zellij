@@ -9,6 +9,7 @@ use std::{fs, path::PathBuf};
 use crate::os_input_output::get_client_os_input;
 use crate::os_input_output::ClientOsApi;
 use crate::input_handler::from_termwiz;
+use crate::keyboard_parser::KittyKeyboardParser;
 use axum::extract::Path as AxumPath;
 use axum::http::header;
 use axum::response::{Html, IntoResponse};
@@ -253,6 +254,10 @@ async fn start_terminal_connection(
 
     // Handle incoming messages (STDIN)
 
+    let explicitly_disable_kitty_keyboard_protocol = config.options
+        .support_kitty_keyboard_protocol
+        .map(|e| !e)
+        .unwrap_or(false);
     let mut mouse_old_event = MouseEvent::new();
     while let Some(Ok(msg)) = client_channel_rx.next().await {
         match msg {
@@ -276,6 +281,7 @@ async fn start_terminal_connection(
                             deserialized_msg.stdin.as_bytes(),
                             client_connection.lock().unwrap().clone(),
                             &mut mouse_old_event,
+                            explicitly_disable_kitty_keyboard_protocol,
                         );
                     },
                     Err(e) => {
@@ -457,7 +463,27 @@ fn render_to_client(
     });
 }
 
-fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>, mouse_old_event: &mut MouseEvent) {
+fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>, mouse_old_event: &mut MouseEvent, explicitly_disable_kitty_keyboard_protocol: bool) {
+
+    if !explicitly_disable_kitty_keyboard_protocol {
+        // first we try to parse with the KittyKeyboardParser
+        // if we fail, we try to parse normally
+        match KittyKeyboardParser::new().parse(&buf) {
+            Some(key_with_modifier) => {
+                log::info!("kitty key: {:?}", key_with_modifier);
+                os_input.send_to_server(ClientToServerMsg::Key(
+                    key_with_modifier.clone(),
+                    buf.to_vec(),
+                    true,
+                ));
+                return;
+            },
+            None => {},
+        }
+    }
+
+
+
     let mut input_parser = InputParser::new();
     let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely
     let mut events = vec![];
@@ -477,10 +503,11 @@ fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>, mouse_old_event: &mut
                     &buf,
                     None, // TODO: config, for ctrl-j etc.
                 );
+                log::info!("not kitty key: {:?}", key);
                 os_input.send_to_server(ClientToServerMsg::Key(
                     key.clone(),
                     buf.to_vec(),
-                    false, // TODO: kitty keyboard support?
+                    false,
                 ));
             },
             InputEvent::Mouse(mouse_event) => {
