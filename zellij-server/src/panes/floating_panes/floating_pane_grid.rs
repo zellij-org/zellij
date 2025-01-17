@@ -763,14 +763,12 @@ impl<'a> FloatingPaneGrid<'a> {
         });
         let active_pane_position = panes
             .iter()
-            .position(|(id, _)| id == current_pane_id)
-            .unwrap();
+            .position(|(id, _)| id == current_pane_id)?;
 
         let next_active_pane_id = panes
             .get(active_pane_position + 1)
             .or_else(|| panes.get(0))
-            .map(|p| p.0)
-            .unwrap();
+            .map(|p| p.0)?;
         Some(next_active_pane_id)
     }
     pub fn previous_selectable_pane_id(&self, current_pane_id: &PaneId) -> Option<PaneId> {
