@@ -682,7 +682,8 @@ impl<'a> LayoutApplier<'a> {
         // contain partial positioning information (eg. just x coords with no y or size) or no
         // positioning information at all
         for (pane, floating_pane_layout) in panes_to_apply.drain(..) {
-            pane_applier.apply_floating_panes_layout_to_floating_pane(pane, floating_pane_layout)?;
+            pane_applier
+                .apply_floating_panes_layout_to_floating_pane(pane, floating_pane_layout)?;
         }
 
         // here we apply positioning on a best-effort basis to any remaining panes we've got (these

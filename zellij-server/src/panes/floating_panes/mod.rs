@@ -262,8 +262,7 @@ impl FloatingPanes {
         &mut self,
         floating_pane_layout: &FloatingPaneLayout,
     ) -> Result<PaneGeom> {
-        let err_context =
-            || format!("failed to find position for floating pane");
+        let err_context = || format!("failed to find position for floating pane");
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
         let floating_pane_grid = FloatingPaneGrid::new(
@@ -272,7 +271,9 @@ impl FloatingPanes {
             display_area,
             viewport,
         );
-        let mut position = floating_pane_grid.find_room_for_new_pane().with_context(err_context)?;
+        let mut position = floating_pane_grid
+            .find_room_for_new_pane()
+            .with_context(err_context)?;
         if let Some(x) = &floating_pane_layout.x {
             position.x = x.to_position(viewport.cols);
         }
@@ -821,8 +822,16 @@ impl FloatingPanes {
         panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
             // TODO: continue
             Ord::cmp(
-                &self.z_indices.iter().position(|id| id == *b_id).unwrap_or(0),
-                &self.z_indices.iter().position(|id| id == *a_id).unwrap_or(0),
+                &self
+                    .z_indices
+                    .iter()
+                    .position(|id| id == *b_id)
+                    .unwrap_or(0),
+                &self
+                    .z_indices
+                    .iter()
+                    .position(|id| id == *a_id)
+                    .unwrap_or(0),
             )
         });
         Ok(panes
@@ -852,8 +861,16 @@ impl FloatingPanes {
         panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
             // TODO: continue
             Ord::cmp(
-                &self.z_indices.iter().position(|id| id == *b_id).unwrap_or(0),
-                &self.z_indices.iter().position(|id| id == *a_id).unwrap_or(0),
+                &self
+                    .z_indices
+                    .iter()
+                    .position(|id| id == *b_id)
+                    .unwrap_or(0),
+                &self
+                    .z_indices
+                    .iter()
+                    .position(|id| id == *a_id)
+                    .unwrap_or(0),
             )
         });
         Ok(panes
@@ -870,8 +887,16 @@ impl FloatingPanes {
 
         panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
             Ord::cmp(
-                &self.z_indices.iter().position(|id| id == *b_id).unwrap_or(0),
-                &self.z_indices.iter().position(|id| id == *a_id).unwrap_or(0),
+                &self
+                    .z_indices
+                    .iter()
+                    .position(|id| id == *b_id)
+                    .unwrap_or(0),
+                &self
+                    .z_indices
+                    .iter()
+                    .position(|id| id == *a_id)
+                    .unwrap_or(0),
             )
         });
         panes.iter().find(|(_, p)| p.contains(point)).is_some()
@@ -911,7 +936,8 @@ impl FloatingPanes {
             viewport,
         );
         floating_pane_grid
-            .move_pane_by(pane_id, move_x_by, move_y_by).non_fatal();
+            .move_pane_by(pane_id, move_x_by, move_y_by)
+            .non_fatal();
         self.set_pane_being_moved_with_mouse(pane_id, *click_position);
         self.set_force_render();
         true
