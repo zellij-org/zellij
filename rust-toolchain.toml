@@ -1,6 +1,6 @@
 # This file is updated by `update-toolchain.sh`
 [toolchain]
 # NOTE: When updating this, modify `rust-version` in `Cargo.toml` accordingly
-channel = "1.75.0"
+channel = "1.81.0"
 components = ["rustfmt", "clippy", "rust-analysis"]
 targets = ["wasm32-wasi", "x86_64-unknown-linux-musl"]

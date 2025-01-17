@@ -558,25 +558,8 @@ impl Action {
                                 format!("{:?}", report)
                             }
                             ConfigError::KdlDeserializationError(kdl_error) => {
-                                let error_message = match kdl_error.kind {
-                                    kdl::KdlErrorKind::Context("valid node terminator") => {
-                                        format!("Failed to deserialize KDL node. \nPossible reasons:\n{}\n{}\n{}\n{}",
-                                        "- Missing `;` after a node name, eg. { node; another_node; }",
-                                        "- Missing quotations (\") around an argument node eg. { first_node \"argument_node\"; }",
-                                        "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
-                                        "- Found an extraneous equal sign (=) between node child arguments and their values. eg. { argument=\"value\" }")
-                                    },
-                                    _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
-                                };
-                                let kdl_error = KdlError {
-                                    error_message,
-                                    src: Some(NamedSource::new(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout))),
-                                    offset: Some(kdl_error.span.offset()),
-                                    len: Some(kdl_error.span.len()),
-                                    help_message: None,
-                                };
                                 let report: Report = kdl_error.into();
-                                format!("{:?}", report)
+                                format!("{:?}", report.with_source_code(NamedSource::new(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout))))
                             },
                             e => format!("{}", e)
                         };
