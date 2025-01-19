@@ -552,38 +552,25 @@ impl<'a> StackedPanes<'a> {
         if all_stacked_pane_positions.is_empty() {
             return None;
         }
-        let (
-            mut new_position_and_size_of_stack,
-            mut position_and_size_of_broken_out_pane
-        ) = self.break_out_stack_geom_down_wards(position_and_size_of_stack, &all_stacked_pane_positions);
-        let flexible_pane_id = self.get_flexible_pane_id(&all_stacked_pane_positions)?;
-        let flexible_pane_id_is_same_as_pane_to_break_out = all_stacked_pane_positions
+        let flexible_pane_id_is_on_the_bottom = all_stacked_pane_positions
             .iter()
             .last()
-            .map(|(last_pane_id_in_stack, _)| {
-                last_pane_id_in_stack == &flexible_pane_id
+            .map(|(_, last_pane_geom_in_stack)| {
+                last_pane_geom_in_stack.rows.is_percent()
             })
             .unwrap_or(false);
-
-        if flexible_pane_id_is_same_as_pane_to_break_out {
-            (
-                new_position_and_size_of_stack,
-                position_and_size_of_broken_out_pane
-            ) = self.break_out_stack_geom_upwards(position_and_size_of_stack, &all_stacked_pane_positions);
-        }
-        let (pane_id_to_break_out, _) = if flexible_pane_id_is_same_as_pane_to_break_out {
-            all_stacked_pane_positions.remove(0)
+        let (new_position_and_size_of_stack, position_and_size_of_broken_out_pane, pane_id_to_break_out) = if flexible_pane_id_is_on_the_bottom {
+            self.break_out_stack_geom_upwards(position_and_size_of_stack, &mut all_stacked_pane_positions)?
         } else {
-            all_stacked_pane_positions.pop()?
+            self.break_out_stack_geom_downwards(position_and_size_of_stack, &mut all_stacked_pane_positions)?
         };
-        let flexible_pane_id_was_broken_out = pane_id_to_break_out == flexible_pane_id;
+        let flexible_pane_id = self.get_flexible_pane_id(&all_stacked_pane_positions)?;
         self.set_geom_of_broken_out_pane(pane_id_to_break_out, position_and_size_of_broken_out_pane);
         pane_ids_that_were_resized.push(pane_id_to_break_out);
         self.reset_stack_size(
             &new_position_and_size_of_stack,
             &all_stacked_pane_positions,
             flexible_pane_id,
-            flexible_pane_id_was_broken_out,
             &mut pane_ids_that_were_resized,
         );
         Some(pane_ids_that_were_resized)
@@ -593,21 +580,16 @@ impl<'a> StackedPanes<'a> {
         new_position_and_size_of_stack: &PaneGeom,
         all_stacked_pane_positions: &Vec<(PaneId, PaneGeom)>,
         flexible_pane_id: PaneId,
-        mut need_to_set_flexible_pane: bool,
         pane_ids_that_were_resized: &mut Vec<PaneId>,
     ) {
         let mut running_pane_geom = new_position_and_size_of_stack.clone();
         let only_one_pane_left_in_stack = all_stacked_pane_positions.len() == 1;
         let count_of_one_liners_in_stack = all_stacked_pane_positions.iter().len().saturating_sub(1);
         let flexible_pane_row_count = running_pane_geom.rows.as_usize().saturating_sub(count_of_one_liners_in_stack);
-
         for (pane_id_in_stack, pane_geom_in_stack) in all_stacked_pane_positions.iter() {
             let logical_position = pane_geom_in_stack.logical_position;
             if only_one_pane_left_in_stack {
                 self.set_geom_of_broken_out_pane(*pane_id_in_stack, running_pane_geom);
-            } else if need_to_set_flexible_pane {
-                self.set_geom_of_flexible_pane(*pane_id_in_stack, &mut running_pane_geom, flexible_pane_row_count, logical_position);
-                need_to_set_flexible_pane = false;
             } else if pane_id_in_stack == &flexible_pane_id {
                 self.set_geom_of_flexible_pane(*pane_id_in_stack, &mut running_pane_geom, flexible_pane_row_count, logical_position);
             } else {
@@ -648,23 +630,25 @@ impl<'a> StackedPanes<'a> {
             pane_in_stack.set_geom(one_liner_geom);
         }
     }
-    fn break_out_stack_geom_upwards(&self, position_and_size_of_stack: PaneGeom, all_stacked_pane_positions: &Vec<(PaneId, PaneGeom)>) -> (PaneGeom, PaneGeom) {
+    fn break_out_stack_geom_upwards(&self, position_and_size_of_stack: PaneGeom, all_stacked_pane_positions: &mut Vec<(PaneId, PaneGeom)>) -> Option<(PaneGeom, PaneGeom, PaneId)> {
         let mut new_position_and_size_of_stack = position_and_size_of_stack.clone();
         let rows_for_broken_out_pane = new_position_and_size_of_stack.rows.split_out(all_stacked_pane_positions.len() as f64);
         let mut position_and_size_of_broken_out_pane = position_and_size_of_stack.clone();
         position_and_size_of_broken_out_pane.is_stacked = false;
         position_and_size_of_broken_out_pane.rows = rows_for_broken_out_pane;
         new_position_and_size_of_stack.y = position_and_size_of_broken_out_pane.y + position_and_size_of_broken_out_pane.rows.as_usize();
-        (new_position_and_size_of_stack, position_and_size_of_broken_out_pane)
+        let pane_id_to_break_out = all_stacked_pane_positions.remove(0).0;
+        Some((new_position_and_size_of_stack, position_and_size_of_broken_out_pane, pane_id_to_break_out))
     }
-    fn break_out_stack_geom_down_wards(&self, position_and_size_of_stack: PaneGeom, all_stacked_pane_positions: &Vec<(PaneId, PaneGeom)>) -> (PaneGeom, PaneGeom) {
+    fn break_out_stack_geom_downwards(&self, position_and_size_of_stack: PaneGeom, all_stacked_pane_positions: &mut Vec<(PaneId, PaneGeom)>) -> Option<(PaneGeom, PaneGeom, PaneId)> {
         let mut new_position_and_size_of_stack = position_and_size_of_stack.clone();
         let rows_for_broken_out_pane = new_position_and_size_of_stack.rows.split_out(all_stacked_pane_positions.len() as f64);
         let mut position_and_size_of_broken_out_pane = position_and_size_of_stack.clone();
         position_and_size_of_broken_out_pane.is_stacked = false;
         position_and_size_of_broken_out_pane.y = new_position_and_size_of_stack.y + new_position_and_size_of_stack.rows.as_usize();
         position_and_size_of_broken_out_pane.rows = rows_for_broken_out_pane;
-        (new_position_and_size_of_stack, position_and_size_of_broken_out_pane)
+        let pane_id_to_break_out = all_stacked_pane_positions.pop()?.0;
+        Some((new_position_and_size_of_stack, position_and_size_of_broken_out_pane, pane_id_to_break_out))
     }
     fn get_flexible_pane_id(&self, all_stacked_pane_positions: &Vec<(PaneId, PaneGeom)>) -> Option<PaneId> {
         let err_context = || "Failed to get flexible pane id";
