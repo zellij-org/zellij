@@ -62,7 +62,7 @@ jobs:
           target: ${{ matrix.target }}
 
       - name: Add WASM target
-        run: rustup target add wasm32-wasi
+        run: rustup target add wasm32-wasip1
 
       - name: Install musl-tools
         if: matrix.os == 'ubuntu-latest'

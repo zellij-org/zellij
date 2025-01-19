@@ -35,7 +35,7 @@ jobs:
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
     - name: Add WASM target
-      run: rustup target add wasm32-wasi
+      run: rustup target add wasm32-wasip1
     - name: Install musl-tools
       run: sudo apt-get install -y --no-install-recommends musl-tools
     - name: Add musl target

@@ -127,7 +127,7 @@ fn move_plugin_to_assets(sh: &Shell, plugin_name: &str) -> anyhow::Result<()> {
         std::env::var_os("CARGO_TARGET_DIR")
             .unwrap_or(crate::project_root().join("target").into_os_string()),
     )
-    .join("wasm32-wasi")
+    .join("wasm32-wasip1")
     .join("release")
     .join(plugin_name)
     .with_extension("wasm");

@@ -211,7 +211,7 @@ plugins {
 }
 
 load_plugins {
-  "file:/usr/src/zellij/wasm32-wasi/release/fixture-plugin-for-tests.wasm" {
+  "file:/usr/src/zellij/wasm32-wasip1/release/fixture-plugin-for-tests.wasm" {
       config_key "config_value"
       config_key2 "config_value2"
   }
