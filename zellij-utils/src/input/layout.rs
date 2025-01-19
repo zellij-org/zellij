@@ -905,9 +905,9 @@ impl TiledPaneLayout {
                     layout_to_split.focus_deepest_pane();
                 }
 
-                split_space(space, &layout_to_split, space, ignore_percent_split_sizes)?
+                split_space(space, &layout_to_split, space, ignore_percent_split_sizes, 0)?
             },
-            None => split_space(space, self, space, ignore_percent_split_sizes)?,
+            None => split_space(space, self, space, ignore_percent_split_sizes, 0)?,
         };
         for (_pane_layout, pane_geom) in layouts.iter() {
             if !pane_geom.is_at_least_minimum_size() {
@@ -1602,6 +1602,7 @@ fn split_space(
     layout: &TiledPaneLayout,
     total_space_to_split: &PaneGeom,
     ignore_percent_split_sizes: bool,
+    mut next_stack_id: usize,
 ) -> Result<Vec<(TiledPaneLayout, PaneGeom)>, &'static str> {
     let sizes: Vec<Option<SplitSize>> = if layout.children_are_stacked {
         let index_of_expanded_pane = layout.children.iter().position(|p| p.is_expanded_in_stack);
@@ -1666,6 +1667,13 @@ fn split_space(
             acc
         }
     });
+    let stacked = if layout.children_are_stacked {
+        let stack_id = next_stack_id;
+        next_stack_id += 1;
+        Some(stack_id)
+    } else {
+        None
+    };
 
     let mut total_pane_size = 0;
     for (&size, _part) in sizes.iter().zip(&*layout.children) {
@@ -1701,7 +1709,7 @@ fn split_space(
                 y: space_to_split.y,
                 cols: split_dimension,
                 rows: inherited_dimension,
-                is_stacked: layout.children_are_stacked,
+                stacked,
                 is_pinned: false,
                 logical_position: None,
             },
@@ -1710,7 +1718,7 @@ fn split_space(
                 y: current_position,
                 cols: inherited_dimension,
                 rows: split_dimension,
-                is_stacked: layout.children_are_stacked,
+                stacked,
                 is_pinned: false,
                 logical_position: None,
             },
@@ -1734,6 +1742,7 @@ fn split_space(
                 part,
                 total_space_to_split,
                 ignore_percent_split_sizes,
+                next_stack_id,
             )?;
             // add the only first child to pane_positions only adding the others after all the
             // childfree panes have been added so that the returned vec will be sorted breadth-first

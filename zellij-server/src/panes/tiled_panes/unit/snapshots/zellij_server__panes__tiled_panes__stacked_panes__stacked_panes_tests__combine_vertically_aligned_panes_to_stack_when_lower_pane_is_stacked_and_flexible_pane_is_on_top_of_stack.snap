@@ -19,7 +19,7 @@ expression: "format!(\"{:#?}\", pane_geoms_after)"
             ),
             inner: 1,
         },
-        is_stacked: false,
+        stacked: None,
         is_pinned: false,
         logical_position: Some(
             1,
@@ -40,7 +40,9 @@ expression: "format!(\"{:#?}\", pane_geoms_after)"
             ),
             inner: 1,
         },
-        is_stacked: true,
+        stacked: Some(
+            0,
+        ),
         is_pinned: false,
         logical_position: Some(
             2,
@@ -61,7 +63,9 @@ expression: "format!(\"{:#?}\", pane_geoms_after)"
             ),
             inner: 1,
         },
-        is_stacked: true,
+        stacked: Some(
+            0,
+        ),
         is_pinned: false,
         logical_position: Some(
             3,
@@ -82,7 +86,9 @@ expression: "format!(\"{:#?}\", pane_geoms_after)"
             ),
             inner: 1,
         },
-        is_stacked: true,
+        stacked: Some(
+            0,
+        ),
         is_pinned: false,
         logical_position: Some(
             4,

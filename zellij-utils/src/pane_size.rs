@@ -16,7 +16,7 @@ pub struct PaneGeom {
     pub y: usize,
     pub rows: Dimension,
     pub cols: Dimension,
-    pub is_stacked: bool,
+    pub stacked: Option<usize>, // usize - stack id
     pub is_pinned: bool,                 // only relevant to floating panes
     pub logical_position: Option<usize>, // relevant when placing this pane in a layout
 }
@@ -28,7 +28,7 @@ impl PartialEq for PaneGeom {
             && self.y == other.y
             && self.rows == other.rows
             && self.cols == other.cols
-            && self.is_stacked == other.is_stacked
+            && self.stacked == other.stacked
     }
 }
 
@@ -277,6 +277,9 @@ impl PaneGeom {
             }
         }
     }
+    pub fn is_stacked(&self) -> bool {
+        self.stacked.is_some()
+    }
 }
 
 impl Display for PaneGeom {
@@ -286,7 +289,7 @@ impl Display for PaneGeom {
         write!(f, r#""y": {},"#, self.y)?;
         write!(f, r#""cols": {},"#, self.cols.constraint)?;
         write!(f, r#""rows": {},"#, self.rows.constraint)?;
-        write!(f, r#""stacked": {}"#, self.is_stacked)?;
+        write!(f, r#""stacked": {:?}"#, self.stacked)?;
         write!(f, r#""logical_position": {:?}"#, self.logical_position)?;
         write!(f, " }}")?;
 

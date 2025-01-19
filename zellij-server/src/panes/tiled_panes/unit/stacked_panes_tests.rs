@@ -50,7 +50,7 @@ macro_rules! mock_stacked_pane {
             rows: mock_pane_rows,
             cols: Dimension::percent(100.0),
             logical_position: $logical_position,
-            is_stacked: true,
+            stacked: Some(0),
             ..Default::default()
         }));
         $mock_panes.insert($pane_id, &mut mock_pane);

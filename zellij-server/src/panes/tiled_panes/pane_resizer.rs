@@ -138,7 +138,7 @@ impl<'a> PaneResizer<'a> {
                 .get(&span.pid)
                 .unwrap()
                 .current_geom()
-                .is_stacked;
+                .is_stacked();
             if pane_is_stacked {
                 let current_geom = StackedPanes::new(self.panes.clone())
                     .position_and_size_of_stack(&span.pid)
@@ -248,10 +248,10 @@ impl<'a> PaneResizer<'a> {
     fn get_span(&self, direction: SplitDirection, pane: &dyn Pane) -> Option<Span> {
         let position_and_size = {
             let pas = pane.current_geom();
-            if pas.is_stacked && pas.rows.is_percent() {
+            if pas.is_stacked() && pas.rows.is_percent() {
                 // this is the main pane of the stack
                 StackedPanes::new(self.panes.clone()).position_and_size_of_stack(&pane.pid())
-            } else if pas.is_stacked {
+            } else if pas.is_stacked() {
                 // this is a one-liner stacked pane and should be handled as the same rect with
                 // the rest of the stack, represented by the main pane in the if branch above
                 None

@@ -33,21 +33,21 @@ impl<'a> StackedPanes<'a> {
         destination_pane_id: &PaneId,
     ) -> Result<()> {
         let err_context = || format!("Failed to move stacked pane focus down");
-        let source_pane_is_stacked = self
+        let source_pane_stack_id = self
             .panes
             .borrow()
             .get(source_pane_id)
             .with_context(err_context)?
             .position_and_size()
-            .is_stacked;
-        let destination_pane_is_stacked = self
+            .stacked;
+        let destination_pane_stack_id = self
             .panes
             .borrow()
             .get(destination_pane_id)
             .with_context(err_context)?
             .position_and_size()
-            .is_stacked;
-        if source_pane_is_stacked && destination_pane_is_stacked {
+            .stacked;
+        if source_pane_stack_id == destination_pane_stack_id {
             let mut panes = self.panes.borrow_mut();
             let source_pane = panes.get_mut(source_pane_id).with_context(err_context)?;
             let mut source_pane_geom = source_pane.position_and_size();
@@ -59,7 +59,7 @@ impl<'a> StackedPanes<'a> {
                 .get_mut(&destination_pane_id)
                 .with_context(err_context)?;
             destination_pane.set_geom(destination_pane_geom);
-        } else if destination_pane_is_stacked {
+        } else if destination_pane_stack_id.is_some() {
             // we're moving down to the highest pane in the stack, we need to expand it and shrink the
             // expanded stack pane
             self.make_highest_pane_in_stack_flexible(destination_pane_id)?;
@@ -68,21 +68,21 @@ impl<'a> StackedPanes<'a> {
     }
     pub fn move_up(&mut self, source_pane_id: &PaneId, destination_pane_id: &PaneId) -> Result<()> {
         let err_context = || format!("Failed to move stacked pane focus up");
-        let source_pane_is_stacked = self
+        let source_pane_stack_id = self
             .panes
             .borrow()
             .get(source_pane_id)
             .with_context(err_context)?
             .position_and_size()
-            .is_stacked;
-        let destination_pane_is_stacked = self
+            .stacked;
+        let destination_pane_stack_id = self
             .panes
             .borrow()
             .get(destination_pane_id)
             .with_context(err_context)?
             .position_and_size()
-            .is_stacked;
-        if source_pane_is_stacked && destination_pane_is_stacked {
+            .stacked;
+        if source_pane_stack_id == destination_pane_stack_id {
             let mut panes = self.panes.borrow_mut();
             let source_pane = panes.get_mut(source_pane_id).with_context(err_context)?;
             let mut source_pane_geom = source_pane.position_and_size();
@@ -95,7 +95,7 @@ impl<'a> StackedPanes<'a> {
                 .get_mut(&destination_pane_id)
                 .with_context(err_context)?;
             destination_pane.set_geom(destination_pane_geom);
-        } else if destination_pane_is_stacked {
+        } else if destination_pane_stack_id.is_some() {
             // we're moving up to the lowest pane in the stack, we need to expand it and shrink the
             // expanded stack pane
             self.make_lowest_pane_in_stack_flexible(destination_pane_id)?;
@@ -188,7 +188,7 @@ impl<'a> StackedPanes<'a> {
             x: first_pane_in_stack.x,
             cols: first_pane_in_stack.cols,
             rows,
-            is_stacked: true, // important because otherwise the minimum stack size will not be
+            stacked: None, // important because otherwise the minimum stack size will not be
             // respected
             ..Default::default()
         })
@@ -337,9 +337,10 @@ impl<'a> StackedPanes<'a> {
         let err_context = || format!("Failed to find stacked panes");
         let panes = self.panes.borrow();
         let pane_in_stack = panes.get(id).with_context(err_context)?;
+        let stack_id = pane_in_stack.position_and_size().stacked;
         let mut all_stacked_pane_positions: Vec<(PaneId, PaneGeom)> = panes
             .iter()
-            .filter(|(_pid, p)| p.position_and_size().is_stacked)
+            .filter(|(_pid, p)| p.position_and_size().is_stacked() && p.position_and_size().stacked == stack_id)
             .filter(|(_pid, p)| {
                 p.position_and_size().x == pane_in_stack.position_and_size().x
                     && p.position_and_size().cols == pane_in_stack.position_and_size().cols
@@ -402,7 +403,7 @@ impl<'a> StackedPanes<'a> {
             self.panes
                 .borrow()
                 .iter()
-                .filter(|(_p_id, p)| p.position_and_size().is_stacked)
+                .filter(|(_p_id, p)| p.position_and_size().is_stacked())
                 .map(|(p_id, _p)| *p_id)
                 .collect()
         };
@@ -472,7 +473,8 @@ impl<'a> StackedPanes<'a> {
             log::error!("Pane not found"); // TODO: better error
             return stacked_geoms;
         };
-        running_stack_geom.is_stacked = true;
+        let stack_id = self.next_stack_id();
+        running_stack_geom.stacked = Some(stack_id);
         let mut pane_index_in_stack = 0;
         loop {
             if pane_index_in_stack == pane_count_in_stack {
@@ -506,11 +508,11 @@ impl<'a> StackedPanes<'a> {
             };
             (geom_of_pane_above, geom_of_pane_below)
         };
-        if geom_of_pane_above.is_stacked && geom_of_pane_below.is_stacked {
+        if geom_of_pane_above.is_stacked() && geom_of_pane_below.is_stacked() {
             // TODO
-        } else if geom_of_pane_above.is_stacked {
+        } else if geom_of_pane_above.is_stacked() {
             self.combine_stack_with_pane_below(pane_id_above, pane_id_below)?;
-        } else if geom_of_pane_below.is_stacked {
+        } else if geom_of_pane_below.is_stacked() {
             self.combine_stack_with_pane_above(pane_id_below, pane_id_above)?;
         } else {
             let pane_above_logical_position = geom_of_pane_above.logical_position;
@@ -521,12 +523,13 @@ impl<'a> StackedPanes<'a> {
                 // nothing to do, likely one of them is a fixed pane
                 return Ok(());
             };
-            geom_of_pane_below.is_stacked = true;
+            let stack_id = self.next_stack_id();
+            geom_of_pane_below.stacked = Some(stack_id);
             geom_of_pane_below.rows.decrease_inner(1);
             geom_of_pane_below.y += 1;
 
             geom_of_pane_above.rows = Dimension::fixed(1);
-            geom_of_pane_above.is_stacked = true;
+            geom_of_pane_above.stacked = Some(stack_id);
 
             geom_of_pane_above.logical_position = pane_above_logical_position;
             geom_of_pane_below.logical_position = pane_below_logical_position;
@@ -559,14 +562,16 @@ impl<'a> StackedPanes<'a> {
                 last_pane_geom_in_stack.rows.is_percent()
             })
             .unwrap_or(false);
-        let (new_position_and_size_of_stack, position_and_size_of_broken_out_pane, pane_id_to_break_out) = if flexible_pane_id_is_on_the_bottom {
+        let (mut new_position_and_size_of_stack, position_and_size_of_broken_out_pane, pane_id_to_break_out) = if flexible_pane_id_is_on_the_bottom {
             self.break_out_stack_geom_upwards(position_and_size_of_stack, &mut all_stacked_pane_positions)?
         } else {
             self.break_out_stack_geom_downwards(position_and_size_of_stack, &mut all_stacked_pane_positions)?
         };
+        let stack_id = all_stacked_pane_positions.iter().next().and_then(|(_, first_geom)| first_geom.stacked)?;
         let flexible_pane_id = self.get_flexible_pane_id(&all_stacked_pane_positions)?;
         self.set_geom_of_broken_out_pane(pane_id_to_break_out, position_and_size_of_broken_out_pane);
         pane_ids_that_were_resized.push(pane_id_to_break_out);
+        new_position_and_size_of_stack.stacked = Some(stack_id);
         self.reset_stack_size(
             &new_position_and_size_of_stack,
             &all_stacked_pane_positions,
@@ -574,6 +579,16 @@ impl<'a> StackedPanes<'a> {
             &mut pane_ids_that_were_resized,
         );
         Some(pane_ids_that_were_resized)
+    }
+    fn next_stack_id(&self) -> usize {
+        let mut highest_stack_id = 0;
+        let panes = self.panes.borrow();
+        for pane in panes.values() {
+            if let Some(stack_id) = pane.position_and_size().stacked {
+                highest_stack_id = std::cmp::max(highest_stack_id, stack_id + 1);
+            }
+        }
+        highest_stack_id
     }
     fn reset_stack_size(
         &self,
@@ -603,7 +618,7 @@ impl<'a> StackedPanes<'a> {
         if let Some(pane_to_break_out) = panes.get_mut(&pane_id_to_break_out) {
             let logical_position_of_pane = pane_to_break_out.current_geom().logical_position;
             position_and_size.logical_position = logical_position_of_pane;
-            position_and_size.is_stacked = false;
+            position_and_size.stacked = None;
             pane_to_break_out.set_geom(position_and_size);
         }
         
@@ -634,7 +649,7 @@ impl<'a> StackedPanes<'a> {
         let mut new_position_and_size_of_stack = position_and_size_of_stack.clone();
         let rows_for_broken_out_pane = new_position_and_size_of_stack.rows.split_out(all_stacked_pane_positions.len() as f64);
         let mut position_and_size_of_broken_out_pane = position_and_size_of_stack.clone();
-        position_and_size_of_broken_out_pane.is_stacked = false;
+        position_and_size_of_broken_out_pane.stacked = None;
         position_and_size_of_broken_out_pane.rows = rows_for_broken_out_pane;
         new_position_and_size_of_stack.y = position_and_size_of_broken_out_pane.y + position_and_size_of_broken_out_pane.rows.as_usize();
         let pane_id_to_break_out = all_stacked_pane_positions.remove(0).0;
@@ -644,7 +659,7 @@ impl<'a> StackedPanes<'a> {
         let mut new_position_and_size_of_stack = position_and_size_of_stack.clone();
         let rows_for_broken_out_pane = new_position_and_size_of_stack.rows.split_out(all_stacked_pane_positions.len() as f64);
         let mut position_and_size_of_broken_out_pane = position_and_size_of_stack.clone();
-        position_and_size_of_broken_out_pane.is_stacked = false;
+        position_and_size_of_broken_out_pane.stacked = None;
         position_and_size_of_broken_out_pane.y = new_position_and_size_of_stack.y + new_position_and_size_of_stack.rows.as_usize();
         position_and_size_of_broken_out_pane.rows = rows_for_broken_out_pane;
         let pane_id_to_break_out = all_stacked_pane_positions.pop()?.0;
@@ -689,13 +704,14 @@ impl<'a> StackedPanes<'a> {
             // nothing to do, likely the pane above is fixed
             return Ok(());
         };
-        let (flexible_pane_id, _flexible_pane_geom) = all_stacked_pane_positions
+        let (flexible_pane_id, flexible_pane_geom) = all_stacked_pane_positions
             .iter()
             .copied()
             .nth(position_of_flexible_pane)
             .with_context(err_context)?;
         all_stacked_pane_positions.insert(0, (*pane_id_above, geom_of_pane_above));
         let rows_to_add_to_flexible_pane = geom_of_pane_above.rows.as_usize().saturating_sub(1);
+        let stack_id = flexible_pane_geom.stacked.ok_or_else(|| anyhow!("Could not find stack id"))?;
 
         let mut panes = self.panes.borrow_mut();
         let mut running_y = new_stack_geom.y;
@@ -703,7 +719,7 @@ impl<'a> StackedPanes<'a> {
             if let Some(pane_in_stack) = panes.get_mut(&pane_id_in_stack) {
                 let mut new_geom_of_pane_in_stack = *pane_geom_in_stack;
                 new_geom_of_pane_in_stack.y = running_y;
-                new_geom_of_pane_in_stack.is_stacked = true;
+                new_geom_of_pane_in_stack.stacked = Some(stack_id);
                 if pane_id_in_stack == &flexible_pane_id {
                     new_geom_of_pane_in_stack.rows = new_stack_geom.rows; // to get the percent
                     new_geom_of_pane_in_stack.rows.set_inner(pane_geom_in_stack.rows.as_usize() + rows_to_add_to_flexible_pane);
@@ -743,13 +759,14 @@ impl<'a> StackedPanes<'a> {
             // nothing to do, likely the pane below is fixed
             return Ok(());
         };
-        let (flexible_pane_id, _flexible_pane_geom) = all_stacked_pane_positions
+        let (flexible_pane_id, flexible_pane_geom) = all_stacked_pane_positions
             .iter()
             .copied()
             .nth(position_of_flexible_pane)
             .with_context(err_context)?;
         all_stacked_pane_positions.push((*pane_id_below, geom_of_pane_below));
         let rows_to_add_to_flexible_pane = geom_of_pane_below.rows.as_usize().saturating_sub(1);
+        let stack_id = flexible_pane_geom.stacked.ok_or_else(|| anyhow!("Could not find stack id"))?;
 
         let mut panes = self.panes.borrow_mut();
         let mut running_y = new_stack_geom.y;
@@ -757,7 +774,7 @@ impl<'a> StackedPanes<'a> {
             if let Some(pane_in_stack) = panes.get_mut(&pane_id_in_stack) {
                 let mut new_geom_of_pane_in_stack = *pane_geom_in_stack;
                 new_geom_of_pane_in_stack.y = running_y;
-                new_geom_of_pane_in_stack.is_stacked = true;
+                new_geom_of_pane_in_stack.stacked = Some(stack_id);
                 if pane_id_in_stack == &flexible_pane_id {
                     new_geom_of_pane_in_stack.rows = new_stack_geom.rows; // to get the percent
                     new_geom_of_pane_in_stack.rows.set_inner(pane_geom_in_stack.rows.as_usize() + rows_to_add_to_flexible_pane);
@@ -776,7 +793,7 @@ impl<'a> StackedPanes<'a> {
         let all_flexible_panes_in_stack: Vec<PaneId> = panes
             .iter()
             .filter(|(_pid, p)| {
-                p.position_and_size().is_stacked && !p.position_and_size().rows.is_fixed()
+                p.position_and_size().is_stacked() && !p.position_and_size().rows.is_fixed()
             })
             .map(|(pid, _p)| *pid)
             .collect();
