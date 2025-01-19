@@ -1394,11 +1394,21 @@ impl<'a> TiledPaneGrid<'a> {
         }
     }
     pub fn unstack_pane_up(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
-        StackedPanes::new(self.panes.clone()).break_pane_out_of_stack(&pane_id)
+        let pane_is_stacked = self.get_pane_geom(pane_id).map(|pane_geom| pane_geom.is_stacked).unwrap_or(false);
+        if pane_is_stacked {
+            StackedPanes::new(self.panes.clone()).break_pane_out_of_stack(&pane_id)
+        } else {
+            None
+        }
     }
-    pub fn stack_pane_down(&mut self, pane_id: &PaneId) -> Result<bool> {
-        // TODO
-        Ok(false)
+    pub fn stack_pane_down(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
+        if let Some(vertically_aligned_pane_id_below) = self.get_vertically_aligned_pane_id_below(pane_id) {
+            StackedPanes::new(self.panes.clone()).combine_vertically_aligned_panes_to_stack(&pane_id, &vertically_aligned_pane_id_below);
+            StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
+            Some(vec![vertically_aligned_pane_id_below, *pane_id])
+        } else {
+            None
+        }
     }
     pub fn unstack_pane_down(&mut self, pane_id: &PaneId) -> Result<bool> {
         // TODO
@@ -1417,6 +1427,12 @@ impl<'a> TiledPaneGrid<'a> {
             return None;
         };
         let panes = self.panes.borrow();
+        let stacked_panes = StackedPanes::new(self.panes.clone());
+        let pane_geom = if pane_geom.is_stacked {
+            stacked_panes.position_and_size_of_stack(pane_id).unwrap_or(pane_geom)
+        } else {
+            pane_geom
+        };
         panes
             .iter()
             .find_map(|(_, p)| {
@@ -1424,7 +1440,41 @@ impl<'a> TiledPaneGrid<'a> {
                     return None;
                 }
                 let candidate_geom = p.current_geom();
+                let candidate_geom = if candidate_geom.is_stacked {
+                    stacked_panes.position_and_size_of_stack(pane_id).unwrap_or(candidate_geom)
+                } else {
+                    candidate_geom
+                };
                 if candidate_geom.y + candidate_geom.rows.as_usize() == pane_geom.y && candidate_geom.x == pane_geom.x && candidate_geom.cols.as_usize() == pane_geom.cols.as_usize() {
+                    return Some(p.pid());
+                }
+                return None
+            })
+    }
+    fn get_vertically_aligned_pane_id_below(&self, pane_id: &PaneId) -> Option<PaneId> {
+        let Some(pane_geom) = self.get_pane_geom(pane_id) else {
+            return None;
+        };
+        let panes = self.panes.borrow();
+        let stacked_panes = StackedPanes::new(self.panes.clone());
+        let pane_geom = if pane_geom.is_stacked {
+            stacked_panes.position_and_size_of_stack(pane_id).unwrap_or(pane_geom)
+        } else {
+            pane_geom
+        };
+        panes
+            .iter()
+            .find_map(|(_, p)| {
+                if !p.selectable() {
+                    return None;
+                }
+                let candidate_geom = p.current_geom();
+                let candidate_geom = if candidate_geom.is_stacked {
+                    stacked_panes.position_and_size_of_stack(pane_id).unwrap_or(candidate_geom)
+                } else {
+                    candidate_geom
+                };
+                if candidate_geom.y == pane_geom.y + pane_geom.rows.as_usize() && candidate_geom.x == pane_geom.x && candidate_geom.cols.as_usize() == pane_geom.cols.as_usize() {
                     return Some(p.pid());
                 }
                 return None

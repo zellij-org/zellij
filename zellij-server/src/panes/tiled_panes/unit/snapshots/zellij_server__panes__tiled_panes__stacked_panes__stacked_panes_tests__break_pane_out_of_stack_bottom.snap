@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/panes/tiled_panes/./unit/stacked_panes_tests.rs
-assertion_line: 156
+assertion_line: 201
 expression: "format!(\"{:#?}\", pane_geoms_after)"
 ---
 [
@@ -50,10 +50,10 @@ expression: "format!(\"{:#?}\", pane_geoms_after)"
         x: 0,
         y: 66,
         rows: Dimension {
-            constraint: Fixed(
-                1,
+            constraint: Percent(
+                11.1,
             ),
-            inner: 1,
+            inner: 11,
         },
         cols: Dimension {
             constraint: Percent(
@@ -61,7 +61,7 @@ expression: "format!(\"{:#?}\", pane_geoms_after)"
             ),
             inner: 1,
         },
-        is_stacked: true,
+        is_stacked: false,
         is_pinned: false,
         logical_position: Some(
             3,
@@ -69,12 +69,12 @@ expression: "format!(\"{:#?}\", pane_geoms_after)"
     },
     PaneGeom {
         x: 0,
-        y: 67,
+        y: 77,
         rows: Dimension {
-            constraint: Percent(
-                22.199999999999996,
+            constraint: Fixed(
+                1,
             ),
-            inner: 22,
+            inner: 1,
         },
         cols: Dimension {
             constraint: Percent(
@@ -90,12 +90,12 @@ expression: "format!(\"{:#?}\", pane_geoms_after)"
     },
     PaneGeom {
         x: 0,
-        y: 89,
+        y: 78,
         rows: Dimension {
             constraint: Percent(
-                11.1,
+                22.199999999999996,
             ),
-            inner: 11,
+            inner: 22,
         },
         cols: Dimension {
             constraint: Percent(
@@ -103,7 +103,7 @@ expression: "format!(\"{:#?}\", pane_geoms_after)"
             ),
             inner: 1,
         },
-        is_stacked: false,
+        is_stacked: true,
         is_pinned: false,
         logical_position: Some(
             5,

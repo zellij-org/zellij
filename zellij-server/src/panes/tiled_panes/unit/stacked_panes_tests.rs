@@ -137,7 +137,29 @@ fn combine_vertically_aligned_panes_to_stack_when_lower_pane_is_stacked_and_flex
 }
 
 #[test]
-fn break_pane_out_of_stack() {
+fn break_pane_out_of_stack_top() {
+    let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
+
+    mock_pane!(PaneId::Terminal(1), Dimension::percent(33.3), 33, 0, 0, Some(1), mock_panes);
+    mock_pane!(PaneId::Terminal(2), Dimension::percent(33.3), 33, 0, 33, Some(2), mock_panes);
+    mock_stacked_pane!(PaneId::Terminal(3), Dimension::percent(33.3), 1, 0, 66, Some(3), mock_panes);
+    mock_stacked_pane!(PaneId::Terminal(4), Dimension::fixed(1), 32, 0, 67, Some(4), mock_panes);
+    mock_stacked_pane!(PaneId::Terminal(5), Dimension::fixed(1), 1, 0, 99, Some(5), mock_panes);
+
+    let mock_panes = Rc::new(RefCell::new(mock_panes));
+    let focused_pane = PaneId::Terminal(3);
+
+    // here the bottom pane should be broken out because the focused pane is the top one and should
+    // remain in the stack
+    StackedPanes::new(mock_panes.clone())
+        .break_pane_out_of_stack(&focused_pane).unwrap();
+    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes.borrow().values().map(|p| p.current_geom()).collect();
+    pane_geoms_after.sort_by(|a, b| a.logical_position.cmp(&b.logical_position));
+    assert_snapshot!(format!("{:#?}", pane_geoms_after));
+}
+
+#[test]
+fn break_pane_out_of_stack_middle() {
     let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
 
     mock_pane!(PaneId::Terminal(1), Dimension::percent(33.3), 33, 0, 0, Some(1), mock_panes);
@@ -149,6 +171,7 @@ fn break_pane_out_of_stack() {
     let mock_panes = Rc::new(RefCell::new(mock_panes));
     let focused_pane = PaneId::Terminal(4);
 
+    // here the bottom pane should be broken out (default behavior)
     StackedPanes::new(mock_panes.clone())
         .break_pane_out_of_stack(&focused_pane).unwrap();
     let mut pane_geoms_after: Vec<PaneGeom> = mock_panes.borrow().values().map(|p| p.current_geom()).collect();
@@ -157,18 +180,20 @@ fn break_pane_out_of_stack() {
 }
 
 #[test]
-fn break_focused_pane_out_of_stack() {
+fn break_pane_out_of_stack_bottom() {
     let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
 
     mock_pane!(PaneId::Terminal(1), Dimension::percent(33.3), 33, 0, 0, Some(1), mock_panes);
     mock_pane!(PaneId::Terminal(2), Dimension::percent(33.3), 33, 0, 33, Some(2), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(3), Dimension::percent(33.3), 32, 0, 66, Some(3), mock_panes);
+    mock_stacked_pane!(PaneId::Terminal(3), Dimension::fixed(1), 32, 0, 66, Some(3), mock_panes);
     mock_stacked_pane!(PaneId::Terminal(4), Dimension::fixed(1), 1, 0, 98, Some(4), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(5), Dimension::fixed(1), 1, 0, 99, Some(5), mock_panes);
+    mock_stacked_pane!(PaneId::Terminal(5), Dimension::percent(33.3), 1, 0, 99, Some(5), mock_panes);
 
     let mock_panes = Rc::new(RefCell::new(mock_panes));
-    let focused_pane = PaneId::Terminal(3);
+    let focused_pane = PaneId::Terminal(5);
 
+    // here the top pane should be broken out, because the focused pane is the bottom one and it
+    // should remain in the stack
     StackedPanes::new(mock_panes.clone())
         .break_pane_out_of_stack(&focused_pane).unwrap();
     let mut pane_geoms_after: Vec<PaneGeom> = mock_panes.borrow().values().map(|p| p.current_geom()).collect();

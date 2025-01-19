@@ -915,7 +915,12 @@ impl TiledPanes {
                         }
                     }
                     Ok(())
-                } else if pane_grid.stack_pane_down(&pane_id)? {
+                } else if let Some(pane_ids_to_resize) = pane_grid.stack_pane_down(&pane_id) {
+                    for pane_id in pane_ids_to_resize {
+                        if let Some(pane) = self.panes.get_mut(&pane_id) {
+                            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
+                        }
+                    }
                     Ok(())
                 } else if pane_grid.stack_pane_right(&pane_id)? {
                     Ok(())
