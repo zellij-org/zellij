@@ -53,28 +53,18 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ matrix.rust }}
-          profile: minimal
-          override: true
-          target: ${{ matrix.target }}
-
-      - name: Add WASM target
-        run: rustup target add wasm32-wasip1
-
       - name: Install musl-tools
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get install -y --no-install-recommends musl-tools
-        
-      # Workaround for <https://github.com/actions/virtual-environments/issues/2557>
-      - name: Switch Xcode SDK
-        if: runner.os == 'macos'
-        run: |
-          cat <<EOF >> "$GITHUB_ENV"
-          SDKROOT=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
-          EOF
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          target: "${{ matrix.target }},wasm32-wasip1"
+          # Just to make sure the cache doesn't interfere with the build here
+          cache: false
+          rustflags: ""
 
       - name: Build release binary
         run: cargo xtask ci cross ${{ matrix.target }}

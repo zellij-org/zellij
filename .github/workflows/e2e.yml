@@ -34,15 +34,15 @@ jobs:
       uses: arduino/setup-protoc@v2
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
-    - name: Add WASM target
-      run: rustup target add wasm32-wasip1
+
     - name: Install musl-tools
       run: sudo apt-get install -y --no-install-recommends musl-tools
-    - name: Add musl target
-      run: rustup target add x86_64-unknown-linux-musl
-      #run: cargo install --debug cargo-make
-    - uses: Swatinem/rust-cache@v2
-      # ensure the target folder exists, otherwise fixtures won't be in the right place
+
+    - name: Install Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        rustflags: ""
+
     - name: Create target folder
       run: mkdir -p ${{ github.workspace }}/target
       # we copy this manually into the target folder instead of mounting it because

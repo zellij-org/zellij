@@ -28,8 +28,10 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
         run: rustup show
-      - uses: Swatinem/rust-cache@v2
       - name: Build
         run: cargo xtask build
 
@@ -50,8 +52,10 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Setup toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
         run: rustup show
-      - uses: Swatinem/rust-cache@v2
       - name: Test
         run: cargo xtask test
 
@@ -62,6 +66,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Setup toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
         run: rustup show
       - name: Check Format
         run: cargo xtask format --check
