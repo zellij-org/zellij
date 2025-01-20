@@ -1,53 +1,52 @@
 //! The `[cli_client]` is used to attach to a running server session
 //! and dispatch actions, that are specified through the command line.
-use std::collections::{BTreeMap, HashMap};
-use std::io::BufRead;
-use std::path::Path;
-use std::process;
-use std::{fs, path::PathBuf};
+use std::{
+    collections::HashMap,
+    env, fs,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
-use crate::os_input_output::get_client_os_input;
-use crate::os_input_output::ClientOsApi;
-use crate::input_handler::from_termwiz;
-use axum::extract::Path as AxumPath;
-use axum::http::header;
-use axum::response::{Html, IntoResponse};
-use axum::routing::get;
-use axum::Router;
+use crate::{
+    input_handler::from_termwiz,
+    os_input_output::{get_client_os_input, ClientOsApi},
+};
+use axum::{
+    extract::{ws::WebSocket, Path as AxumPath, WebSocketUpgrade},
+    http::header,
+    response::{Html, IntoResponse},
+    routing::{any, get},
+    Router,
+};
 use zellij_utils::{
     data::Style,
     errors::prelude::*,
     include_dir,
-    input::actions::Action,
-    input::cast_termwiz_key,
-    input::config::{Config, ConfigError},
-    input::options::Options,
-    input::mouse::{MouseEvent},
-    ipc::{
-        ClientAttributes, ClientToServerMsg, ExitReason, IpcSenderWithContext, ServerToClientMsg,
+    input::{
+        actions::Action, cast_termwiz_key, config::Config, mouse::MouseEvent, options::Options,
     },
-    pane_size::{Size, SizeInPixels},
+    ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     serde::{Deserialize, Serialize},
     serde_json,
+    termwiz::input::{InputEvent, InputParser},
     uuid::Uuid,
 };
-use zellij_utils::termwiz::input::{InputEvent, InputParser, MouseButtons};
 
-use std::sync::{Arc, Mutex};
-
-use futures::{future, prelude::stream::SplitSink, SinkExt};
-use futures::{join, StreamExt};
+use futures::{join, prelude::stream::SplitSink, SinkExt, StreamExt};
 use log::info;
-use std::env;
-use std::time::Duration;
-use tokio::net::{TcpListener, TcpStream};
-use tokio::runtime::Runtime;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::{task, time};
-use tokio_tungstenite::tungstenite::Message;
+
+use tokio::{
+    net::{TcpListener, TcpStream},
+    runtime::Runtime,
+    sync::mpsc::UnboundedReceiver,
+};
+
 use tokio_tungstenite::{
     accept_async, accept_hdr_async,
-    tungstenite::http::{Request, Response},
+    tungstenite::{
+        http::{Request, Response},
+        Message,
+    },
     WebSocketStream,
 };
 
@@ -164,19 +163,36 @@ const ASSETS_DIR: include_dir::Dir<'_> = include_dir::include_dir!("$CARGO_MANIF
 async fn serve_web_client() {
     let addr = "127.0.0.1:8082";
 
-    async fn page_html() -> Html<&'static str> {
+    async fn page_html(path: Option<AxumPath<String>>) -> Html<&'static str> {
+        log::info!("Serving web client html with path: {:?}", path);
         Html(WEB_CLIENT_PAGE)
     }
 
     let app = Router::new()
         .route("/", get(page_html))
-        .route("/assets/*path", get(get_static_asset));
+        .route("/{session}", get(page_html))
+        .route("/assets/{*path}", get(get_static_asset))
+        .route("/ws/default", any(ws_handler))
+        .route("/ws/session/{session}", any(ws_handler));
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 
     log::info!("Started listener on 8082");
 
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn ws_handler(ws: WebSocketUpgrade, path: Option<AxumPath<String>>) -> impl IntoResponse {
+    log::info!("WebSocket connection established with path: {:?}", path);
+    ws.on_upgrade(move |socket| handle_ws(socket))
+}
+
+async fn handle_ws(mut socket: WebSocket) {
+    socket
+        .send(axum::extract::ws::Message::Text("Hello, World!".into()))
+        .await
+        .unwrap();
+    socket.close().await.unwrap();
 }
 
 async fn get_static_asset(AxumPath(path): AxumPath<String>) -> impl IntoResponse {
@@ -486,9 +502,8 @@ fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>, mouse_old_event: &mut
             InputEvent::Mouse(mouse_event) => {
                 let mouse_event = from_termwiz(mouse_old_event, mouse_event);
                 let action = Action::MouseEvent(mouse_event);
-                os_input
-                    .send_to_server(ClientToServerMsg::Action(action, None, None));
-            }
+                os_input.send_to_server(ClientToServerMsg::Action(action, None, None));
+            },
             _ => {
                 log::error!("Unsupported event: {:#?}", input_event);
             },

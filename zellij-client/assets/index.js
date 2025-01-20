@@ -138,4 +138,22 @@ document.addEventListener("DOMContentLoaded", (event) => {
     ws_terminal.onclose = function () {
         console.log("Disconnected from WebSocket terminal server");
     };
+
+    const ws_test = new WebSocket("ws://127.0.0.1:8082/ws/default");
+    ws_test.onopen = function () {
+        console.log("Connected to WebSocket test server");
+    };
+    ws_test.onmessage = function (event) {
+        console.log("test", event.data);
+    };
+
+    const ws_test1 = new WebSocket(
+        "ws://127.0.0.1:8082/ws/session/test-session"
+    );
+    ws_test1.onopen = function () {
+        console.log("Connected to WebSocket test server");
+    };
+    ws_test1.onmessage = function (event) {
+        console.log("test", event.data);
+    };
 });
