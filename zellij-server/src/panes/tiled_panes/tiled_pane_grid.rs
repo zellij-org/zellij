@@ -1392,6 +1392,7 @@ impl<'a> TiledPaneGrid<'a> {
     pub fn stack_pane_up(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
         if let Some(vertically_aligned_pane_id_above) = self.get_vertically_aligned_pane_id_above(pane_id) {
             StackedPanes::new(self.panes.clone()).combine_vertically_aligned_panes_to_stack(&vertically_aligned_pane_id_above, pane_id);
+            StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
             Some(vec![vertically_aligned_pane_id_above, *pane_id])
         } else {
             None
@@ -1442,13 +1443,13 @@ impl<'a> TiledPaneGrid<'a> {
         };
         panes
             .iter()
-            .find_map(|(_, p)| {
+            .find_map(|(candidate_pane_id, p)| {
                 if !p.selectable() {
                     return None;
                 }
                 let candidate_geom = p.current_geom();
                 let candidate_geom = if candidate_geom.is_stacked() {
-                    stacked_panes.position_and_size_of_stack(pane_id).unwrap_or(candidate_geom)
+                    stacked_panes.position_and_size_of_stack(candidate_pane_id).unwrap_or(candidate_geom)
                 } else {
                     candidate_geom
                 };
@@ -1471,13 +1472,13 @@ impl<'a> TiledPaneGrid<'a> {
         };
         panes
             .iter()
-            .find_map(|(_, p)| {
+            .find_map(|(candidate_pane_id, p)| {
                 if !p.selectable() {
                     return None;
                 }
                 let candidate_geom = p.current_geom();
                 let candidate_geom = if candidate_geom.is_stacked() {
-                    stacked_panes.position_and_size_of_stack(pane_id).unwrap_or(candidate_geom)
+                    stacked_panes.position_and_size_of_stack(candidate_pane_id).unwrap_or(candidate_geom)
                 } else {
                     candidate_geom
                 };
