@@ -99,7 +99,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }} 
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
           asset_path: ./target/${{ matrix.target }}/release/${{ steps.make-artifact.outputs.name }}
           asset_name: zellij-${{matrix.target}}.tar.gz
           asset_content_type: application/octet-stream
@@ -109,17 +109,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }} 
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
           asset_path: ./target/${{ matrix.target }}/release/${{ steps.make-checksum.outputs.name }}
           asset_name: zellij-${{matrix.target}}.sha256sum
           asset_content_type: text/plain
 
   create-release:
     runs-on: ubuntu-latest
-    outputs: 
+    outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
-      - name: create_release 
+      - name: create_release
         id: create_release
         uses: actions/create-release@v1
         env:
@@ -128,5 +128,5 @@ jobs:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && '' || github.ref }}
           release_name: Release ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
           draft: ${{ github.event_name == 'workflow_dispatch' }}
-          prerelease: false  
+          prerelease: false
 
