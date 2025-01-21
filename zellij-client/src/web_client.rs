@@ -12,7 +12,10 @@ use crate::{
     os_input_output::{get_client_os_input, ClientOsApi},
 };
 use axum::{
-    extract::{ws::WebSocket, Path as AxumPath, State, WebSocketUpgrade},
+    extract::{
+        ws::{Message, WebSocket},
+        Path as AxumPath, State, WebSocketUpgrade,
+    },
     http::header,
     response::{Html, IntoResponse},
     routing::{any, get},
@@ -32,23 +35,10 @@ use zellij_utils::{
     uuid::Uuid,
 };
 
-use futures::{join, prelude::stream::SplitSink, SinkExt, StreamExt};
+use futures::{prelude::stream::SplitSink, SinkExt, StreamExt};
 use log::info;
 
-use tokio::{
-    net::{TcpListener, TcpStream},
-    runtime::Runtime,
-    sync::mpsc::UnboundedReceiver,
-};
-
-use tokio_tungstenite::{
-    accept_async, accept_hdr_async,
-    tungstenite::{
-        http::{Request, Response},
-        Message,
-    },
-    WebSocketStream,
-};
+use tokio::{runtime::Runtime, sync::mpsc::UnboundedReceiver};
 
 // DEV INSTRUCTIONS:
 // * to run this:
@@ -99,36 +89,12 @@ pub fn start_web_client(session_name: &str, config: Config, config_options: Opti
     let connection_table: ConnectionTable = Arc::new(Mutex::new(HashMap::new()));
 
     let rt = Runtime::new().unwrap();
-    rt.block_on(async {
-        join!(
-            terminal_server(
-                session_name,
-                config.clone(),
-                config_options.clone(),
-                connection_table.clone(),
-            ),
-            serve_web_client(session_name, config, config_options, connection_table),
-        )
-    });
-}
-
-async fn terminal_server(
-    session_name: &str,
-    config: Config,
-    config_options: Options,
-    connection_table: ConnectionTable,
-) {
-    let addr = "127.0.0.1:8080";
-    let listener = TcpListener::bind(addr).await.unwrap();
-    while let Ok((stream, _)) = listener.accept().await {
-        tokio::spawn(start_terminal_connection(
-            stream,
-            session_name.to_owned(),
-            config.clone(),
-            config_options.clone(),
-            connection_table.clone(),
-        ));
-    }
+    rt.block_on(serve_web_client(
+        session_name,
+        config,
+        config_options,
+        connection_table,
+    ));
 }
 
 const WEB_CLIENT_PAGE: &str = include_str!(concat!(
@@ -173,6 +139,8 @@ async fn serve_web_client(
         .route("/assets/{*path}", get(get_static_asset))
         .route("/ws/control/default", any(ws_handler_control))
         .route("/ws/control/session/{session}", any(ws_handler_control))
+        .route("/ws/terminal/default", any(ws_handler_terminal))
+        .route("/ws/terminal/session/{session}", any(ws_handler_terminal))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
@@ -182,20 +150,65 @@ async fn serve_web_client(
     axum::serve(listener, app).await.unwrap();
 }
 
+async fn get_static_asset(AxumPath(path): AxumPath<String>) -> impl IntoResponse {
+    let path = path.trim_start_matches('/');
+
+    match ASSETS_DIR.get_file(path) {
+        None => (
+            [(header::CONTENT_TYPE, "text/html")],
+            "Not Found".as_bytes(),
+        ),
+        Some(file) => {
+            let ext = file.path().extension().and_then(|ext| ext.to_str());
+            let mime_type = get_mime_type(ext);
+            ([(header::CONTENT_TYPE, mime_type)], file.contents())
+        },
+    }
+}
+
+fn get_mime_type(ext: Option<&str>) -> &str {
+    match ext {
+        None => "text/plain",
+        Some(ext) => match ext {
+            "html" => "text/html",
+            "css" => "text/css",
+            "js" => "application/javascript",
+            "wasm" => "application/wasm",
+            "png" => "image/png",
+            "ico" => "image/x-icon",
+            "svg" => "image/svg+xml",
+            _ => "text/plain",
+        },
+    }
+}
+
 async fn ws_handler_control(
     ws: WebSocketUpgrade,
     path: Option<AxumPath<String>>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    log::info!("WebSocket connection established with path: {:?}", path);
-    log::info!("Session name: {}", state.session_name);
+    log::info!(
+        "Control WebSocket connection established with path: {:?}",
+        path
+    );
     ws.on_upgrade(move |socket| handle_ws_control(socket, state))
+}
+
+async fn ws_handler_terminal(
+    ws: WebSocketUpgrade,
+    path: Option<AxumPath<String>>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    log::info!(
+        "Terminal WebSocket connection established with path: {:?}",
+        path
+    );
+
+    ws.on_upgrade(move |socket| handle_ws_terminal(socket, path, state))
 }
 
 async fn handle_ws_control(mut socket: WebSocket, state: AppState) {
     info!("New Control WebSocket connection established");
-
-    use axum::extract::ws::Message;
 
     // Handle incoming messages
     while let Some(Ok(msg)) = socket.next().await {
@@ -234,93 +247,27 @@ async fn handle_ws_control(mut socket: WebSocket, state: AppState) {
     }
 }
 
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    path: Option<AxumPath<String>>,
-    State(state): State<AppState>,
-) -> impl IntoResponse {
-    log::info!("WebSocket connection established with path: {:?}", path);
-    log::info!("Session name: {}", state.session_name);
-    ws.on_upgrade(move |socket| handle_ws(socket))
-}
+async fn handle_ws_terminal(socket: WebSocket, path: Option<AxumPath<String>>, state: AppState) {
+    let session_name = path.map(|p| p.0).unwrap_or(state.session_name.clone());
 
-async fn handle_ws(mut socket: WebSocket) {
-    socket
-        .send(axum::extract::ws::Message::Text("Hello, World!".into()))
-        .await
-        .unwrap();
-    socket.close().await.unwrap();
-}
-
-async fn get_static_asset(AxumPath(path): AxumPath<String>) -> impl IntoResponse {
-    let path = path.trim_start_matches('/');
-
-    match ASSETS_DIR.get_file(path) {
-        None => (
-            [(header::CONTENT_TYPE, "text/html")],
-            "Not Found".as_bytes(),
-        ),
-        Some(file) => {
-            let ext = file.path().extension().and_then(|ext| ext.to_str());
-            let mime_type = get_mime_type(ext);
-            ([(header::CONTENT_TYPE, mime_type)], file.contents())
-        },
-    }
-}
-
-fn get_mime_type(ext: Option<&str>) -> &str {
-    match ext {
-        None => "text/plain",
-        Some(ext) => match ext {
-            "html" => "text/html",
-            "css" => "text/css",
-            "js" => "application/javascript",
-            "wasm" => "application/wasm",
-            "png" => "image/png",
-            "ico" => "image/x-icon",
-            "svg" => "image/svg+xml",
-            _ => "text/plain",
-        },
-    }
-}
-
-async fn start_terminal_connection(
-    stream: tokio::net::TcpStream,
-    mut session_name: String,
-    config: Config,
-    config_options: Options,
-    connection_table: ConnectionTable,
-) {
     let web_client_id = String::from(Uuid::new_v4());
     let os_input = get_client_os_input().unwrap(); // TODO: log error and quit
 
-    connection_table.lock().unwrap().insert(
+    state.connection_table.lock().unwrap().insert(
         web_client_id.to_owned(),
         Arc::new(Mutex::new(Box::new(os_input.clone()))),
     );
 
-    let callback = |req: &Request<_>, response: Response<_>| {
-        let mut request_uri = req.uri().to_string();
-        if request_uri.starts_with('/') {
-            request_uri.remove(0);
-            if !request_uri.is_empty() {
-                session_name = request_uri;
-            }
-        }
-        Ok(response)
-    };
-
-    let ws_stream = accept_hdr_async(stream, callback).await.unwrap();
-    let (client_channel_tx, mut client_channel_rx) = ws_stream.split();
-    info!("New WebSocket connection established");
+    let (client_channel_tx, mut client_channel_rx) = socket.split();
+    info!("New Terminal WebSocket connection established");
     let (stdout_channel_tx, stdout_channel_rx) = tokio::sync::mpsc::unbounded_channel();
 
     zellij_server_listener(
         Box::new(os_input.clone()),
         stdout_channel_tx,
         &session_name,
-        config.clone(),
-        config_options.clone(),
+        state.config.clone(),
+        state.config_options.clone(),
     );
     render_to_client(stdout_channel_rx, web_client_id, client_channel_tx);
 
@@ -333,7 +280,8 @@ async fn start_terminal_connection(
                 let deserialized_msg: Result<StdinMessage, _> = serde_json::from_str(&msg);
                 match deserialized_msg {
                     Ok(deserialized_msg) => {
-                        let Some(client_connection) = connection_table
+                        let Some(client_connection) = state
+                            .connection_table
                             .lock()
                             .unwrap()
                             .get(&deserialized_msg.web_client_id)
@@ -458,7 +406,7 @@ fn zellij_server_listener(
 fn render_to_client(
     mut stdout_channel_rx: UnboundedReceiver<String>,
     web_client_id: String,
-    mut client_channel_tx: SplitSink<WebSocketStream<TcpStream>, Message>,
+    mut client_channel_tx: SplitSink<WebSocket, Message>,
 ) {
     tokio::spawn(async move {
         loop {
@@ -466,7 +414,7 @@ fn render_to_client(
                 match serde_json::to_string(&RenderedBytes::new(rendered_bytes, &web_client_id)) {
                     Ok(rendered_bytes) => {
                         if client_channel_tx
-                            .send(Message::Text(rendered_bytes))
+                            .send(Message::Text(rendered_bytes.into()))
                             .await
                             .is_err()
                         {

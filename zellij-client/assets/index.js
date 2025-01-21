@@ -66,7 +66,7 @@ document.addEventListener("DOMContentLoaded", (event) => {
         );
     });
 
-    let ws_terminal = new WebSocket("ws://127.0.0.1:8080");
+    let ws_terminal = new WebSocket("ws://127.0.0.1:8082/ws/terminal/default");
     // let ws_control = new WebSocket('ws://127.0.0.1:8081');
     let ws_control;
 
