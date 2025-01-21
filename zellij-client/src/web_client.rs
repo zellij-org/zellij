@@ -12,7 +12,7 @@ use crate::{
     os_input_output::{get_client_os_input, ClientOsApi},
 };
 use axum::{
-    extract::{ws::WebSocket, Path as AxumPath, WebSocketUpgrade},
+    extract::{ws::WebSocket, Path as AxumPath, State, WebSocketUpgrade},
     http::header,
     response::{Html, IntoResponse},
     routing::{any, get},
@@ -96,8 +96,7 @@ struct StdinMessage {
 pub fn start_web_client(session_name: &str, config: Config, config_options: Options) {
     log::info!("WebSocket server started and listening on port 8080 and 8081");
 
-    let connection_table: HashMap<String, Arc<Mutex<Box<dyn ClientOsApi>>>> = HashMap::new();
-    let connection_table = Arc::new(Mutex::new(connection_table));
+    let connection_table: ConnectionTable = Arc::new(Mutex::new(HashMap::new()));
 
     let rt = Runtime::new().unwrap();
     rt.block_on(async {
@@ -108,8 +107,7 @@ pub fn start_web_client(session_name: &str, config: Config, config_options: Opti
                 config_options.clone(),
                 connection_table.clone(),
             ),
-            handle_server_control(session_name, config, config_options, connection_table),
-            serve_web_client(),
+            serve_web_client(session_name, config, config_options, connection_table),
         )
     });
 }
@@ -133,25 +131,6 @@ async fn terminal_server(
     }
 }
 
-async fn handle_server_control(
-    session_name: &str,
-    config: Config,
-    config_options: Options,
-    connection_table: ConnectionTable,
-) {
-    let addr = "127.0.0.1:8081";
-    let listener = TcpListener::bind(addr).await.unwrap();
-    while let Ok((stream, _)) = listener.accept().await {
-        tokio::spawn(handle_client_control(
-            stream,
-            session_name.to_owned(),
-            config.clone(),
-            config_options.clone(),
-            connection_table.clone(),
-        ));
-    }
-}
-
 const WEB_CLIENT_PAGE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
@@ -160,8 +139,28 @@ const WEB_CLIENT_PAGE: &str = include_str!(concat!(
 
 const ASSETS_DIR: include_dir::Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/assets");
 
-async fn serve_web_client() {
+#[derive(Clone)]
+struct AppState {
+    connection_table: ConnectionTable,
+    session_name: String,
+    config: Config,
+    config_options: Options,
+}
+
+async fn serve_web_client(
+    session_name: &str,
+    config: Config,
+    config_options: Options,
+    connection_table: ConnectionTable,
+) {
     let addr = "127.0.0.1:8082";
+
+    let state = AppState {
+        connection_table,
+        session_name: session_name.to_owned(),
+        config,
+        config_options,
+    };
 
     async fn page_html(path: Option<AxumPath<String>>) -> Html<&'static str> {
         log::info!("Serving web client html with path: {:?}", path);
@@ -172,8 +171,9 @@ async fn serve_web_client() {
         .route("/", get(page_html))
         .route("/{session}", get(page_html))
         .route("/assets/{*path}", get(get_static_asset))
-        .route("/ws/default", any(ws_handler))
-        .route("/ws/session/{session}", any(ws_handler));
+        .route("/ws/control/default", any(ws_handler_control))
+        .route("/ws/control/session/{session}", any(ws_handler_control))
+        .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 
@@ -182,8 +182,65 @@ async fn serve_web_client() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn ws_handler(ws: WebSocketUpgrade, path: Option<AxumPath<String>>) -> impl IntoResponse {
+async fn ws_handler_control(
+    ws: WebSocketUpgrade,
+    path: Option<AxumPath<String>>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
     log::info!("WebSocket connection established with path: {:?}", path);
+    log::info!("Session name: {}", state.session_name);
+    ws.on_upgrade(move |socket| handle_ws_control(socket, state))
+}
+
+async fn handle_ws_control(mut socket: WebSocket, state: AppState) {
+    info!("New Control WebSocket connection established");
+
+    use axum::extract::ws::Message;
+
+    // Handle incoming messages
+    while let Some(Ok(msg)) = socket.next().await {
+        match msg {
+            Message::Text(msg) => {
+                let deserialized_msg: Result<ControlMessage, _> = serde_json::from_str(&msg);
+                match deserialized_msg {
+                    Ok(deserialized_msg) => {
+                        let Some(client_connection) = state
+                            .connection_table
+                            .lock()
+                            .unwrap()
+                            .get(&deserialized_msg.web_client_id)
+                            .cloned()
+                        else {
+                            log::error!(
+                                "Unknown web_client_id: {}",
+                                deserialized_msg.web_client_id
+                            );
+                            continue;
+                        };
+                        client_connection
+                            .lock()
+                            .unwrap()
+                            .send_to_server(deserialized_msg.message);
+                    },
+                    Err(e) => {
+                        log::error!("Failed to deserialize client msg: {:?}", e);
+                    },
+                }
+            },
+            _ => {
+                log::error!("Unsupported messagetype : {:?}", msg);
+            },
+        }
+    }
+}
+
+async fn ws_handler(
+    ws: WebSocketUpgrade,
+    path: Option<AxumPath<String>>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    log::info!("WebSocket connection established with path: {:?}", path);
+    log::info!("Session name: {}", state.session_name);
     ws.on_upgrade(move |socket| handle_ws(socket))
 }
 
@@ -305,54 +362,6 @@ async fn start_terminal_connection(
         }
     }
     os_input.send_to_server(ClientToServerMsg::ClientExited);
-}
-
-async fn handle_client_control(
-    stream: tokio::net::TcpStream,
-    session_name: String,
-    config: Config,
-    config_options: Options,
-    connection_table: ConnectionTable,
-) {
-    let os_input = get_client_os_input().unwrap(); // TODO: log error and quit
-    let ws_stream = accept_async(stream).await.unwrap();
-    let (mut write, mut read) = ws_stream.split();
-    info!("New Control WebSocket connection established");
-
-    // Handle incoming messages
-    while let Some(Ok(msg)) = read.next().await {
-        match msg {
-            Message::Text(msg) => {
-                let deserialized_msg: Result<ControlMessage, _> = serde_json::from_str(&msg);
-                match deserialized_msg {
-                    Ok(deserialized_msg) => {
-                        let Some(client_connection) = connection_table
-                            .lock()
-                            .unwrap()
-                            .get(&deserialized_msg.web_client_id)
-                            .cloned()
-                        else {
-                            log::error!(
-                                "Unknown web_client_id: {}",
-                                deserialized_msg.web_client_id
-                            );
-                            continue;
-                        };
-                        client_connection
-                            .lock()
-                            .unwrap()
-                            .send_to_server(deserialized_msg.message);
-                    },
-                    Err(e) => {
-                        log::error!("Failed to deserialize client msg: {:?}", e);
-                    },
-                }
-            },
-            _ => {
-                log::error!("Unsupported messagetype : {:?}", msg);
-            },
-        }
-    }
 }
 
 fn zellij_server_listener(
