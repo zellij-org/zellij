@@ -277,6 +277,40 @@ impl PaneGeom {
             }
         }
     }
+    pub fn combine_horizontally_with(&self, geom_to_the_right: &PaneGeom) -> Option<Self> {
+        match (self.cols.constraint, geom_to_the_right.cols.constraint) {
+            (Constraint::Percent(self_percent), Constraint::Percent(geom_to_the_right_percent)) => {
+                let mut combined = self.clone();
+                combined.cols = Dimension::percent(self_percent + geom_to_the_right_percent);
+                combined.cols.inner = self.cols.inner + geom_to_the_right.cols.inner;
+                Some(combined)
+            },
+            _ => {
+                log::error!("Can't combine fixed panes");
+                None
+            }
+        }
+    }
+    pub fn combine_vertically_with_many(&self, geoms_below: &Vec<PaneGeom>) -> Option<Self> {
+        // here we expect the geoms to be sorted by their y and be contiguous (i.e. same x and
+        // width, no overlaps) and be below self
+        let mut combined = self.clone();
+        for geom_below in geoms_below {
+            match (combined.rows.constraint, geom_below.rows.constraint) {
+                (Constraint::Percent(combined_percent), Constraint::Percent(geom_below_percent)) => {
+                    // let mut combined = self.clone();
+                    combined.rows = Dimension::percent(combined_percent + geom_below_percent);
+                    combined.rows.inner = combined.rows.inner + geom_below.rows.inner;
+                    // Some(combined)
+                },
+                _ => {
+                    log::error!("Can't combine fixed panes");
+                    return None;
+                }
+            }
+        }
+        Some(combined)
+    }
     pub fn is_stacked(&self) -> bool {
         self.stacked.is_some()
     }

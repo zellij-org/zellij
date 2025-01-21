@@ -1422,13 +1422,38 @@ impl<'a> TiledPaneGrid<'a> {
         // TODO
         Ok(false)
     }
-    pub fn stack_pane_right(&mut self, pane_id: &PaneId) -> Result<bool> {
-        // TODO
-        Ok(false)
+    pub fn stack_pane_left(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
+
+        let neighboring_pane_ids_to_the_left = self
+            .neighbor_pane_ids(pane_id, Direction::Left)
+            .ok();
+        // TODO: only do this if all neighboring_pane_ids_to_the_left have the same x
+        if let Some(neighboring_pane_ids_to_the_left) = neighboring_pane_ids_to_the_left {
+            if neighboring_pane_ids_to_the_left.is_empty() {
+                return None;
+            }
+            StackedPanes::new(self.panes.clone()).combine_horizontally_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_to_the_left);
+            StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
+            Some(vec![*pane_id])
+        } else {
+            None
+        }
     }
-    pub fn stack_pane_left(&mut self, pane_id: &PaneId) -> Result<bool> {
-        // TODO
-        Ok(false)
+    pub fn stack_pane_right(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
+        let neighboring_pane_ids_to_the_right = self
+            .neighbor_pane_ids(pane_id, Direction::Right)
+            .ok();
+        // TODO: only do this if all neighboring_pane_ids_to_the_left have the same x
+        if let Some(neighboring_pane_ids_to_the_right) = neighboring_pane_ids_to_the_right {
+            if neighboring_pane_ids_to_the_right.is_empty() {
+                return None;
+            }
+            StackedPanes::new(self.panes.clone()).combine_horizontally_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_to_the_right);
+            StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
+            Some(vec![*pane_id])
+        } else {
+            None
+        }
     }
     fn get_vertically_aligned_pane_id_above(&self, pane_id: &PaneId) -> Option<PaneId> {
         let Some(pane_geom) = self.get_pane_geom(pane_id) else {

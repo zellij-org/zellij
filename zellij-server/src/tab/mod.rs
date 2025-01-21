@@ -4296,7 +4296,7 @@ impl Tab {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else if self.tiled_panes.panes_contain(&pane_id) {
-            match self.tiled_panes.resize_pane_with_id(strategy, pane_id) {
+            match self.tiled_panes.resize_pane_with_id(strategy, pane_id, None) {
                 Ok(_) => {},
                 Err(err) => match err.downcast_ref::<ZellijError>() {
                     Some(ZellijError::CantResizeFixedPanes { pane_ids }) => {

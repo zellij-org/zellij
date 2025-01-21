@@ -891,7 +891,7 @@ impl TiledPanes {
             }
         } else {
             if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-                self.resize_pane_with_id(*strategy, active_pane_id)?;
+                self.resize_pane_with_id(*strategy, active_pane_id, None)?;
             }
         }
 
@@ -900,6 +900,9 @@ impl TiledPanes {
     fn stacked_resize_pane_with_id(&mut self, pane_id: PaneId, strategy: &ResizeStrategy) -> Result<()> {
         let err_context = || format!("failed to resize pand with id: {:?}", pane_id);
 
+        let geom_of_pane_to_resize = {
+            self.panes.get(&pane_id).map(|p| p.position_and_size())
+        };
         let mut pane_grid = TiledPaneGrid::new(
             &mut self.panes,
             &self.panes_to_hide,
@@ -922,13 +925,64 @@ impl TiledPanes {
                         }
                     }
                     Ok(())
-                } else if pane_grid.stack_pane_right(&pane_id)? {
-                    Ok(())
-                } else if pane_grid.stack_pane_left(&pane_id)? {
-                    Ok(())
                 } else {
-                    Ok(())
+
+
+                    // try to increment resize left/right
+                    let successfully_resized = {
+                        let mut strategy = *strategy;
+                        strategy.direction = Some(Direction::Left);
+                        strategy.invert_on_boundaries = false;
+                        let resize_percent = geom_of_pane_to_resize.and_then(|g| g.cols.as_percent().map(|percent| (percent / 2.0, percent / 2.0)));
+                        match self.resize_pane_with_id(strategy, pane_id, resize_percent)
+                            .or_else(|_| {
+                                strategy.direction = Some(Direction::Right);
+                                self.resize_pane_with_id(strategy, pane_id, resize_percent)
+                            }) {
+                                Ok(_) => true,
+                                Err(_e) => false
+                            }
+                    };
+                    if successfully_resized {
+                        Ok(())
+                    } else {
+                        let mut pane_grid = TiledPaneGrid::new(
+                            &mut self.panes,
+                            &self.panes_to_hide,
+                            *self.display_area.borrow(),
+                            *self.viewport.borrow(),
+                        );
+                        log::info!("trying to stack left...");
+                        if let Some(pane_ids_to_resize) = pane_grid.stack_pane_left(&pane_id) {
+                            log::info!("got it");
+                            for pane_id in pane_ids_to_resize {
+                                if let Some(pane) = self.panes.get_mut(&pane_id) {
+                                    resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
+                                }
+                            }
+                            Ok(())
+                        } else if let Some(pane_ids_to_resize) = pane_grid.stack_pane_right(&pane_id) {
+                            log::info!("trying to stack right");
+                            for pane_id in pane_ids_to_resize {
+                                log::info!("got it");
+                                if let Some(pane) = self.panes.get_mut(&pane_id) {
+                                    resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
+                                }
+                            }
+                            Ok(())
+                        } else {
+                            log::error!("Failed to resize pane!");
+                            Ok(())
+                        }
+                    }
                 }
+//                 } else if pane_grid.stack_pane_right(&pane_id)? {
+//                     Ok(())
+//                 } else if pane_grid.stack_pane_left(&pane_id)? {
+//                     Ok(())
+//                 } else {
+//                     Ok(())
+//                 }
             }
             Resize::Decrease => {
                 if let Some(pane_ids_to_resize) = pane_grid.unstack_pane_up(&pane_id) {
@@ -950,7 +1004,7 @@ impl TiledPanes {
             }
         }
     }
-    pub fn resize_pane_with_id(&mut self, strategy: ResizeStrategy, pane_id: PaneId) -> Result<()> {
+    pub fn resize_pane_with_id(&mut self, strategy: ResizeStrategy, pane_id: PaneId, resize_percent: Option<(f64, f64)>) -> Result<()> {
         let err_context = || format!("failed to resize pand with id: {:?}", pane_id);
 
         let mut pane_grid = TiledPaneGrid::new(
@@ -962,7 +1016,8 @@ impl TiledPanes {
 
 
         match pane_grid
-            .change_pane_size(&pane_id, &strategy, (RESIZE_PERCENT, RESIZE_PERCENT))
+            // .change_pane_size(&pane_id, &strategy, (RESIZE_PERCENT, RESIZE_PERCENT))
+            .change_pane_size(&pane_id, &strategy, resize_percent.unwrap_or((RESIZE_PERCENT, RESIZE_PERCENT)))
             .with_context(err_context)
         {
             Ok(_) => {},
