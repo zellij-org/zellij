@@ -1,56 +1,45 @@
 //! The `[cli_client]` is used to attach to a running server session
 //! and dispatch actions, that are specified through the command line.
-use std::collections::{BTreeMap, HashMap};
-use std::io::BufRead;
-use std::path::Path;
-use std::process;
-use std::{fs, path::PathBuf};
+use std::{
+    collections::HashMap,
+    env, fs,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
-use crate::os_input_output::get_client_os_input;
-use crate::os_input_output::ClientOsApi;
-use crate::input_handler::from_termwiz;
+use crate::{
+    input_handler::from_termwiz,
+    os_input_output::{get_client_os_input, ClientOsApi},
+};
 use crate::keyboard_parser::KittyKeyboardParser;
-use axum::extract::Path as AxumPath;
-use axum::http::header;
-use axum::response::{Html, IntoResponse};
-use axum::routing::get;
-use axum::Router;
+use axum::{
+    extract::{
+        ws::{Message, WebSocket},
+        Path as AxumPath, State, WebSocketUpgrade,
+    },
+    http::header,
+    response::{Html, IntoResponse},
+    routing::{any, get},
+    Router,
+};
 use zellij_utils::{
     data::Style,
     errors::prelude::*,
     include_dir,
-    input::actions::Action,
-    input::cast_termwiz_key,
-    input::config::{Config, ConfigError},
-    input::options::Options,
-    input::mouse::{MouseEvent},
-    ipc::{
-        ClientAttributes, ClientToServerMsg, ExitReason, IpcSenderWithContext, ServerToClientMsg,
+    input::{
+        actions::Action, cast_termwiz_key, config::Config, mouse::MouseEvent, options::Options,
     },
-    pane_size::{Size, SizeInPixels},
+    ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     serde::{Deserialize, Serialize},
     serde_json,
+    termwiz::input::{InputEvent, InputParser},
     uuid::Uuid,
 };
-use zellij_utils::termwiz::input::{InputEvent, InputParser, MouseButtons};
 
-use std::sync::{Arc, Mutex};
-
-use futures::{future, prelude::stream::SplitSink, SinkExt};
-use futures::{join, StreamExt};
+use futures::{prelude::stream::SplitSink, SinkExt, StreamExt};
 use log::info;
-use std::env;
-use std::time::Duration;
-use tokio::net::{TcpListener, TcpStream};
-use tokio::runtime::Runtime;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::{task, time};
-use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{
-    accept_async, accept_hdr_async,
-    tungstenite::http::{Request, Response},
-    WebSocketStream,
-};
+
+use tokio::{runtime::Runtime, sync::mpsc::UnboundedReceiver};
 
 // DEV INSTRUCTIONS:
 // * to run this:
@@ -98,60 +87,15 @@ struct StdinMessage {
 pub fn start_web_client(session_name: &str, config: Config, config_options: Options) {
     log::info!("WebSocket server started and listening on port 8080 and 8081");
 
-    let connection_table: HashMap<String, Arc<Mutex<Box<dyn ClientOsApi>>>> = HashMap::new();
-    let connection_table = Arc::new(Mutex::new(connection_table));
+    let connection_table: ConnectionTable = Arc::new(Mutex::new(HashMap::new()));
 
     let rt = Runtime::new().unwrap();
-    rt.block_on(async {
-        join!(
-            terminal_server(
-                session_name,
-                config.clone(),
-                config_options.clone(),
-                connection_table.clone(),
-            ),
-            handle_server_control(session_name, config, config_options, connection_table),
-            serve_web_client(),
-        )
-    });
-}
-
-async fn terminal_server(
-    session_name: &str,
-    config: Config,
-    config_options: Options,
-    connection_table: ConnectionTable,
-) {
-    let addr = "127.0.0.1:8080";
-    let listener = TcpListener::bind(addr).await.unwrap();
-    while let Ok((stream, _)) = listener.accept().await {
-        tokio::spawn(start_terminal_connection(
-            stream,
-            session_name.to_owned(),
-            config.clone(),
-            config_options.clone(),
-            connection_table.clone(),
-        ));
-    }
-}
-
-async fn handle_server_control(
-    session_name: &str,
-    config: Config,
-    config_options: Options,
-    connection_table: ConnectionTable,
-) {
-    let addr = "127.0.0.1:8081";
-    let listener = TcpListener::bind(addr).await.unwrap();
-    while let Ok((stream, _)) = listener.accept().await {
-        tokio::spawn(handle_client_control(
-            stream,
-            session_name.to_owned(),
-            config.clone(),
-            config_options.clone(),
-            connection_table.clone(),
-        ));
-    }
+    rt.block_on(serve_web_client(
+        session_name,
+        config,
+        config_options,
+        connection_table,
+    ));
 }
 
 const WEB_CLIENT_PAGE: &str = include_str!(concat!(
@@ -162,16 +106,43 @@ const WEB_CLIENT_PAGE: &str = include_str!(concat!(
 
 const ASSETS_DIR: include_dir::Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/assets");
 
-async fn serve_web_client() {
+#[derive(Clone)]
+struct AppState {
+    connection_table: ConnectionTable,
+    session_name: String,
+    config: Config,
+    config_options: Options,
+}
+
+async fn serve_web_client(
+    session_name: &str,
+    config: Config,
+    config_options: Options,
+    connection_table: ConnectionTable,
+) {
     let addr = "127.0.0.1:8082";
 
-    async fn page_html() -> Html<&'static str> {
+    let state = AppState {
+        connection_table,
+        session_name: session_name.to_owned(),
+        config,
+        config_options,
+    };
+
+    async fn page_html(path: Option<AxumPath<String>>) -> Html<&'static str> {
+        log::info!("Serving web client html with path: {:?}", path);
         Html(WEB_CLIENT_PAGE)
     }
 
     let app = Router::new()
         .route("/", get(page_html))
-        .route("/assets/*path", get(get_static_asset));
+        .route("/{session}", get(page_html))
+        .route("/assets/{*path}", get(get_static_asset))
+        .route("/ws/control/default", any(ws_handler_control))
+        .route("/ws/control/session/{session}", any(ws_handler_control))
+        .route("/ws/terminal/default", any(ws_handler_terminal))
+        .route("/ws/terminal/session/{session}", any(ws_handler_terminal))
+        .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 
@@ -212,49 +183,98 @@ fn get_mime_type(ext: Option<&str>) -> &str {
     }
 }
 
-async fn start_terminal_connection(
-    stream: tokio::net::TcpStream,
-    mut session_name: String,
-    config: Config,
-    config_options: Options,
-    connection_table: ConnectionTable,
-) {
+async fn ws_handler_control(
+    ws: WebSocketUpgrade,
+    path: Option<AxumPath<String>>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    log::info!(
+        "Control WebSocket connection established with path: {:?}",
+        path
+    );
+    ws.on_upgrade(move |socket| handle_ws_control(socket, state))
+}
+
+async fn ws_handler_terminal(
+    ws: WebSocketUpgrade,
+    path: Option<AxumPath<String>>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    log::info!(
+        "Terminal WebSocket connection established with path: {:?}",
+        path
+    );
+
+    ws.on_upgrade(move |socket| handle_ws_terminal(socket, path, state))
+}
+
+async fn handle_ws_control(mut socket: WebSocket, state: AppState) {
+    info!("New Control WebSocket connection established");
+
+    // Handle incoming messages
+    while let Some(Ok(msg)) = socket.next().await {
+        match msg {
+            Message::Text(msg) => {
+                let deserialized_msg: Result<ControlMessage, _> = serde_json::from_str(&msg);
+                match deserialized_msg {
+                    Ok(deserialized_msg) => {
+                        let Some(client_connection) = state
+                            .connection_table
+                            .lock()
+                            .unwrap()
+                            .get(&deserialized_msg.web_client_id)
+                            .cloned()
+                        else {
+                            log::error!(
+                                "Unknown web_client_id: {}",
+                                deserialized_msg.web_client_id
+                            );
+                            continue;
+                        };
+                        client_connection
+                            .lock()
+                            .unwrap()
+                            .send_to_server(deserialized_msg.message);
+                    },
+                    Err(e) => {
+                        log::error!("Failed to deserialize client msg: {:?}", e);
+                    },
+                }
+            },
+            _ => {
+                log::error!("Unsupported messagetype : {:?}", msg);
+            },
+        }
+    }
+}
+
+async fn handle_ws_terminal(socket: WebSocket, path: Option<AxumPath<String>>, state: AppState) {
+    let session_name = path.map(|p| p.0).unwrap_or(state.session_name.clone());
+
     let web_client_id = String::from(Uuid::new_v4());
     let os_input = get_client_os_input().unwrap(); // TODO: log error and quit
 
-    connection_table.lock().unwrap().insert(
+    state.connection_table.lock().unwrap().insert(
         web_client_id.to_owned(),
         Arc::new(Mutex::new(Box::new(os_input.clone()))),
     );
 
-    let callback = |req: &Request<_>, response: Response<_>| {
-        let mut request_uri = req.uri().to_string();
-        if request_uri.starts_with('/') {
-            request_uri.remove(0);
-            if !request_uri.is_empty() {
-                session_name = request_uri;
-            }
-        }
-        Ok(response)
-    };
-
-    let ws_stream = accept_hdr_async(stream, callback).await.unwrap();
-    let (client_channel_tx, mut client_channel_rx) = ws_stream.split();
-    info!("New WebSocket connection established");
+    let (client_channel_tx, mut client_channel_rx) = socket.split();
+    info!("New Terminal WebSocket connection established");
     let (stdout_channel_tx, stdout_channel_rx) = tokio::sync::mpsc::unbounded_channel();
 
     zellij_server_listener(
         Box::new(os_input.clone()),
         stdout_channel_tx,
         &session_name,
-        config.clone(),
-        config_options.clone(),
+        state.config.clone(),
+        state.config_options.clone(),
     );
     render_to_client(stdout_channel_rx, web_client_id, client_channel_tx);
 
     // Handle incoming messages (STDIN)
 
-    let explicitly_disable_kitty_keyboard_protocol = config.options
+    let explicitly_disable_kitty_keyboard_protocol = state.config.options
         .support_kitty_keyboard_protocol
         .map(|e| !e)
         .unwrap_or(false);
@@ -265,7 +285,8 @@ async fn start_terminal_connection(
                 let deserialized_msg: Result<StdinMessage, _> = serde_json::from_str(&msg);
                 match deserialized_msg {
                     Ok(deserialized_msg) => {
-                        let Some(client_connection) = connection_table
+                        let Some(client_connection) = state
+                            .connection_table
                             .lock()
                             .unwrap()
                             .get(&deserialized_msg.web_client_id)
@@ -295,54 +316,6 @@ async fn start_terminal_connection(
         }
     }
     os_input.send_to_server(ClientToServerMsg::ClientExited);
-}
-
-async fn handle_client_control(
-    stream: tokio::net::TcpStream,
-    session_name: String,
-    config: Config,
-    config_options: Options,
-    connection_table: ConnectionTable,
-) {
-    let os_input = get_client_os_input().unwrap(); // TODO: log error and quit
-    let ws_stream = accept_async(stream).await.unwrap();
-    let (mut write, mut read) = ws_stream.split();
-    info!("New Control WebSocket connection established");
-
-    // Handle incoming messages
-    while let Some(Ok(msg)) = read.next().await {
-        match msg {
-            Message::Text(msg) => {
-                let deserialized_msg: Result<ControlMessage, _> = serde_json::from_str(&msg);
-                match deserialized_msg {
-                    Ok(deserialized_msg) => {
-                        let Some(client_connection) = connection_table
-                            .lock()
-                            .unwrap()
-                            .get(&deserialized_msg.web_client_id)
-                            .cloned()
-                        else {
-                            log::error!(
-                                "Unknown web_client_id: {}",
-                                deserialized_msg.web_client_id
-                            );
-                            continue;
-                        };
-                        client_connection
-                            .lock()
-                            .unwrap()
-                            .send_to_server(deserialized_msg.message);
-                    },
-                    Err(e) => {
-                        log::error!("Failed to deserialize client msg: {:?}", e);
-                    },
-                }
-            },
-            _ => {
-                log::error!("Unsupported messagetype : {:?}", msg);
-            },
-        }
-    }
 }
 
 fn zellij_server_listener(
@@ -439,7 +412,7 @@ fn zellij_server_listener(
 fn render_to_client(
     mut stdout_channel_rx: UnboundedReceiver<String>,
     web_client_id: String,
-    mut client_channel_tx: SplitSink<WebSocketStream<TcpStream>, Message>,
+    mut client_channel_tx: SplitSink<WebSocket, Message>,
 ) {
     tokio::spawn(async move {
         loop {
@@ -447,7 +420,7 @@ fn render_to_client(
                 match serde_json::to_string(&RenderedBytes::new(rendered_bytes, &web_client_id)) {
                     Ok(rendered_bytes) => {
                         if client_channel_tx
-                            .send(Message::Text(rendered_bytes))
+                            .send(Message::Text(rendered_bytes.into()))
                             .await
                             .is_err()
                         {
@@ -513,9 +486,8 @@ fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>, mouse_old_event: &mut
             InputEvent::Mouse(mouse_event) => {
                 let mouse_event = from_termwiz(mouse_old_event, mouse_event);
                 let action = Action::MouseEvent(mouse_event);
-                os_input
-                    .send_to_server(ClientToServerMsg::Action(action, None, None));
-            }
+                os_input.send_to_server(ClientToServerMsg::Action(action, None, None));
+            },
             _ => {
                 log::error!("Unsupported event: {:#?}", input_event);
             },
