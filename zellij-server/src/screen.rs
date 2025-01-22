@@ -3741,11 +3741,16 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::MouseEvent(event, client_id) => {
                 let state_changed = screen
                     .get_active_tab_mut(client_id)
-                    .and_then(|tab| tab.handle_mouse_event(&event, client_id))?;
-                if state_changed {
-                    screen.log_and_report_session_state()?;
+                    .and_then(|tab| tab.handle_mouse_event(&event, client_id));
+                match state_changed {
+                    Ok(state_changed) => {
+                        if state_changed {
+                            screen.log_and_report_session_state()?;
+                        }
+                        screen.render(None)?;
+                    },
+                    Err(err) => Err::<(), _>(err).non_fatal(),
                 }
-                screen.render(None)?;
             },
             ScreenInstruction::Copy(client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
