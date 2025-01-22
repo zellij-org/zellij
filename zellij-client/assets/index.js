@@ -34,35 +34,33 @@ document.addEventListener("DOMContentLoaded", (event) => {
       if (ev.metaKey) {
         modifier_string += super_value;
       }
-      console.log(ev);
       let key_code = ev.key.charCodeAt(0);
       send_ansi_key(`\x1b[${key_code};${modifier_string}u`);
     };
     term.attachCustomKeyEventHandler((ev) => {
-        // workarounds for https://github.com/xtermjs/xterm.js/blob/41e8ae395937011d6bf6c7cb618b851791aed395/src/common/input/Keyboard.ts#L158
         if (ev.type === "keydown") {
-          console.log(ev);
-          let modifiers_count = 0;
-          let shift_keycode = 16;
-          let alt_keycode = 17;
-          let ctrl_keycode = 18;
-          if (ev.altKey) {
-            modifiers_count += 1;
-          }
-          if (ev.ctrlKey) {
-            modifiers_count += 1;
-          }
-          if (ev.shiftKey) {
-            modifiers_count += 1;
-          }
-          if (ev.metaKey) {
-            modifiers_count += 1;
-          }
-          if ((modifiers_count > 1 || ev.metaKey) && ev.keyCode != shift_keycode && ev.keyCode != alt_keycode && ev.keyCode != ctrl_keycode) {
-            encode_kitty_key(ev);
-            return false;
-          }
-            // TODO: CONTINUE HERE - alt + doesn't seem to be sent... fix it
+            let modifiers_count = 0;
+            let shift_keycode = 16;
+            let alt_keycode = 17;
+            let ctrl_keycode = 18;
+            if (ev.altKey) {
+              modifiers_count += 1;
+            }
+            if (ev.ctrlKey) {
+              modifiers_count += 1;
+            }
+            if (ev.shiftKey) {
+              modifiers_count += 1;
+            }
+            if (ev.metaKey) {
+              modifiers_count += 1;
+            }
+            if ((modifiers_count > 1 || ev.metaKey) && ev.keyCode != shift_keycode && ev.keyCode != alt_keycode && ev.keyCode != ctrl_keycode) {
+              ev.preventDefault();
+              encode_kitty_key(ev);
+              return false;
+            }
+            // workarounds for https://github.com/xtermjs/xterm.js/blob/41e8ae395937011d6bf6c7cb618b851791aed395/src/common/input/Keyboard.ts#L158
             if (ev.key == "ArrowLeft" && ev.altKey) {
                 ev.preventDefault();
                 send_ansi_key("\x1b[1;3D");
@@ -81,6 +79,12 @@ document.addEventListener("DOMContentLoaded", (event) => {
             if (ev.key == "ArrowDown" && ev.altKey) {
                 ev.preventDefault();
                 send_ansi_key("\x1b[1;3B");
+                return false;
+            }
+            if ((ev.key == "=" && ev.altKey) || (ev.key == "+" && ev.altKey) || (ev.key == "-" && ev.altKey)) {
+                // these are not properly handled by xterm.js, so we bypass it and encode them as kitty to make things easier
+                ev.preventDefault();
+                encode_kitty_key(ev);
                 return false;
             }
         }

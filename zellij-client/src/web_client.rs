@@ -41,6 +41,9 @@ use log::info;
 
 use tokio::{runtime::Runtime, sync::mpsc::UnboundedReceiver};
 
+const BRACKETED_PASTE_START: [u8; 6] = [27, 91, 50, 48, 48, 126]; // \u{1b}[200~
+const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201~
+
 // DEV INSTRUCTIONS:
 // * to run this:
 //      - ps ax | grep web | grep zellij | grep target | awk \'{print $1}\' | xargs kill -9 # this
@@ -443,7 +446,6 @@ fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>, mouse_old_event: &mut
         // if we fail, we try to parse normally
         match KittyKeyboardParser::new().parse(&buf) {
             Some(key_with_modifier) => {
-                log::info!("kitty key: {:?}", key_with_modifier);
                 os_input.send_to_server(ClientToServerMsg::Key(
                     key_with_modifier.clone(),
                     buf.to_vec(),
@@ -476,7 +478,6 @@ fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>, mouse_old_event: &mut
                     &buf,
                     None, // TODO: config, for ctrl-j etc.
                 );
-                log::info!("not kitty key: {:?}", key);
                 os_input.send_to_server(ClientToServerMsg::Key(
                     key.clone(),
                     buf.to_vec(),
@@ -488,6 +489,29 @@ fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>, mouse_old_event: &mut
                 let action = Action::MouseEvent(mouse_event);
                 os_input.send_to_server(ClientToServerMsg::Action(action, None, None));
             },
+            InputEvent::Paste(pasted_text) => {
+                os_input.send_to_server(
+                    ClientToServerMsg::Action(
+                        Action::Write(None, BRACKETED_PASTE_START.to_vec(), false),
+                        None,
+                        None
+                    )
+                );
+                os_input.send_to_server(
+                    ClientToServerMsg::Action(
+                        Action::Write(None, pasted_text.as_bytes().to_vec(), false),
+                        None,
+                        None
+                    )
+                );
+                os_input.send_to_server(
+                    ClientToServerMsg::Action(
+                        Action::Write(None, BRACKETED_PASTE_END.to_vec(), false),
+                        None,
+                        None
+                    )
+                );
+            }
             _ => {
                 log::error!("Unsupported event: {:#?}", input_event);
             },
