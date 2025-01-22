@@ -1397,7 +1397,12 @@ impl From<Palette> for Styling {
                 background: Default::default(),
             },
             frame_unselected: StyleDeclaration {
-                base: palette.orange,
+                /*
+                 * Explicitly use default text 256 color for forward loading old themes
+                 * Keeps older themes backward compatible (frame_selected was always None before)
+                 * without forcing this struct to have a special optional case for new themes
+                 */
+                base: PaletteColor::EightBit(7),
                 emphasis_0: palette.pink,
                 emphasis_1: palette.gray,
                 emphasis_2: palette.brown,
