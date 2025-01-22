@@ -299,8 +299,30 @@ impl PaneGeom {
             match (combined.rows.constraint, geom_below.rows.constraint) {
                 (Constraint::Percent(combined_percent), Constraint::Percent(geom_below_percent)) => {
                     // let mut combined = self.clone();
+                    let new_rows_inner = combined.rows.inner + geom_below.rows.inner;
                     combined.rows = Dimension::percent(combined_percent + geom_below_percent);
-                    combined.rows.inner = combined.rows.inner + geom_below.rows.inner;
+                    combined.rows.inner = new_rows_inner;
+                    // Some(combined)
+                },
+                _ => {
+                    log::error!("Can't combine fixed panes");
+                    return None;
+                }
+            }
+        }
+        Some(combined)
+    }
+    pub fn combine_horizontally_with_many(&self, geoms_to_the_right: &Vec<PaneGeom>) -> Option<Self> {
+        // here we expect the geoms to be sorted by their x and be contiguous (i.e. same x and
+        // width, no overlaps) and be right of self
+        let mut combined = self.clone();
+        for geom_to_the_right in geoms_to_the_right {
+            match (combined.cols.constraint, geom_to_the_right.cols.constraint) {
+                (Constraint::Percent(combined_percent), Constraint::Percent(geom_to_the_right_percent)) => {
+                    // let mut combined = self.clone();
+                    let new_cols = combined.cols.inner + geom_to_the_right.cols.inner;
+                    combined.cols = Dimension::percent(combined_percent + geom_to_the_right_percent);
+                    combined.cols.inner = new_cols;
                     // Some(combined)
                 },
                 _ => {
