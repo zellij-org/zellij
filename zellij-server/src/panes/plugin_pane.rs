@@ -747,9 +747,9 @@ impl PluginPane {
     }
     fn display_request_permission_message(&self, plugin_permission: &PluginPermission) -> String {
         let bold_white = style!(self.style.colors.text_unselected.base).bold();
-        let cyan = style!(self.style.colors.text_unselected.emphasis_2).bold();
-        let orange = style!(self.style.colors.text_unselected.emphasis_1).bold();
-        let green = style!(self.style.colors.text_unselected.emphasis_3).bold();
+        let cyan = style!(self.style.colors.text_unselected.emphasis_1).bold();
+        let orange = style!(self.style.colors.text_unselected.emphasis_0).bold();
+        let green = style!(self.style.colors.text_unselected.emphasis_2).bold();
 
         let mut messages = String::new();
         let permissions: BTreeSet<PermissionType> =

@@ -985,7 +985,7 @@ pub fn render_first_run_banner(
             let bold_text = RESET_STYLES.bold(Some(AnsiCode::On));
             let command_color_text = RESET_STYLES
                 .foreground(Some(AnsiCode::from(
-                    style.colors.text_unselected.emphasis_3,
+                    style.colors.text_unselected.emphasis_2,
                 )))
                 .bold(Some(AnsiCode::On));
             let waiting_to_run_text = "Waiting to run: ";
@@ -1012,7 +1012,7 @@ pub fn render_first_run_banner(
             let controls_bare_text_fourth_part = "> exit";
             let controls_color = RESET_STYLES
                 .foreground(Some(AnsiCode::from(
-                    style.colors.text_unselected.emphasis_1,
+                    style.colors.text_unselected.emphasis_0,
                 )))
                 .bold(Some(AnsiCode::On));
             let controls_line_length = controls_bare_text_first_part.len()
@@ -1066,7 +1066,7 @@ pub fn render_first_run_banner(
             let controls_bare_text_fourth_part = "> exit";
             let controls_color = RESET_STYLES
                 .foreground(Some(AnsiCode::from(
-                    style.colors.text_unselected.emphasis_1,
+                    style.colors.text_unselected.emphasis_0,
                 )))
                 .bold(Some(AnsiCode::On));
             let controls_line_length = controls_bare_text_first_part.len()

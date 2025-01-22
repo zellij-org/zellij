@@ -50,10 +50,10 @@ fn to_style_declaration(
     parsed_array.map(|arr| StyleDeclaration {
         base: arr[0],
         background: arr[1],
-        emphasis_1: arr[2],
-        emphasis_2: arr[3],
-        emphasis_3: arr[4],
-        emphasis_4: arr[5],
+        emphasis_0: arr[2],
+        emphasis_1: arr[3],
+        emphasis_2: arr[4],
+        emphasis_3: arr[5],
     })
 }
 
@@ -131,10 +131,10 @@ impl TryFrom<StyleDeclaration> for Vec<ProtobufColor> {
         Ok(vec![
             colors.base.try_into()?,
             colors.background.try_into()?,
+            colors.emphasis_0.try_into()?,
             colors.emphasis_1.try_into()?,
             colors.emphasis_2.try_into()?,
             colors.emphasis_3.try_into()?,
-            colors.emphasis_4.try_into()?,
         ])
     }
 }

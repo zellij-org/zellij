@@ -5631,6 +5631,13 @@ Config {
                             2,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             2,
@@ -5646,13 +5653,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            2,
-                            2,
-                            2,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             2,
                             2,
@@ -5675,6 +5675,13 @@ Config {
                             2,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             2,
@@ -5690,13 +5697,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            2,
-                            2,
-                            2,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             2,
                             2,
@@ -5719,6 +5719,13 @@ Config {
                             2,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             2,
@@ -5734,13 +5741,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            2,
-                            2,
-                            2,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             2,
                             2,
@@ -5763,6 +5763,13 @@ Config {
                             2,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             2,
@@ -5778,13 +5785,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            2,
-                            2,
-                            2,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             2,
                             2,
@@ -5803,6 +5803,13 @@ Config {
                     background: EightBit(
                         0,
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             2,
@@ -5818,13 +5825,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            2,
-                            2,
-                            2,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             2,
                             2,
@@ -5847,6 +5847,13 @@ Config {
                             2,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             2,
@@ -5862,13 +5869,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            2,
-                            2,
-                            2,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             2,
                             2,
@@ -5891,6 +5891,13 @@ Config {
                             2,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             2,
@@ -5906,13 +5913,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            2,
-                            2,
-                            2,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             2,
                             2,
@@ -5935,6 +5935,13 @@ Config {
                             2,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             2,
@@ -5950,13 +5957,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            2,
-                            2,
-                            2,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             2,
                             2,
@@ -5979,6 +5979,13 @@ Config {
                             2,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             2,
@@ -5994,13 +6001,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            2,
-                            2,
-                            2,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             2,
                             2,
@@ -6019,16 +6019,16 @@ Config {
                     background: EightBit(
                         0,
                     ),
+                    emphasis_0: EightBit(
+                        0,
+                    ),
                     emphasis_1: EightBit(
                         0,
                     ),
                     emphasis_2: EightBit(
                         0,
                     ),
-                    emphasis_3: EightBit(
-                        0,
-                    ),
-                    emphasis_4: Rgb(
+                    emphasis_3: Rgb(
                         (
                             2,
                             2,
@@ -6047,6 +6047,13 @@ Config {
                     background: EightBit(
                         0,
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             2,
@@ -6061,14 +6068,7 @@ Config {
                             2,
                         ),
                     ),
-                    emphasis_3: Rgb(
-                        (
-                            2,
-                            2,
-                            2,
-                        ),
-                    ),
-                    emphasis_4: EightBit(
+                    emphasis_3: EightBit(
                         0,
                     ),
                 },
@@ -6083,6 +6083,13 @@ Config {
                     background: EightBit(
                         0,
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             2,
@@ -6098,13 +6105,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            2,
-                            2,
-                            2,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             2,
                             2,
@@ -6123,6 +6123,13 @@ Config {
                     background: EightBit(
                         0,
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             2,
@@ -6144,13 +6151,6 @@ Config {
                             2,
                         ),
                     ),
-                    emphasis_4: Rgb(
-                        (
-                            2,
-                            2,
-                            2,
-                        ),
-                    ),
                 },
                 exit_code_error: StyleDeclaration {
                     base: Rgb(
@@ -6163,20 +6163,20 @@ Config {
                     background: EightBit(
                         0,
                     ),
-                    emphasis_1: Rgb(
+                    emphasis_0: Rgb(
                         (
                             2,
                             2,
                             2,
                         ),
                     ),
+                    emphasis_1: EightBit(
+                        0,
+                    ),
                     emphasis_2: EightBit(
                         0,
                     ),
                     emphasis_3: EightBit(
-                        0,
-                    ),
-                    emphasis_4: EightBit(
                         0,
                     ),
                 },
@@ -6252,6 +6252,13 @@ Config {
                             1,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -6267,13 +6274,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -6296,6 +6296,13 @@ Config {
                             1,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -6311,13 +6318,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -6340,6 +6340,13 @@ Config {
                             1,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -6355,13 +6362,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -6384,6 +6384,13 @@ Config {
                             1,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -6399,13 +6406,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -6424,6 +6424,13 @@ Config {
                     background: EightBit(
                         0,
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -6439,13 +6446,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -6468,6 +6468,13 @@ Config {
                             1,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -6483,13 +6490,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -6512,6 +6512,13 @@ Config {
                             1,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -6527,13 +6534,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -6556,6 +6556,13 @@ Config {
                             1,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -6571,13 +6578,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -6600,6 +6600,13 @@ Config {
                             1,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -6615,13 +6622,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -6640,16 +6640,16 @@ Config {
                     background: EightBit(
                         0,
                     ),
+                    emphasis_0: EightBit(
+                        0,
+                    ),
                     emphasis_1: EightBit(
                         0,
                     ),
                     emphasis_2: EightBit(
                         0,
                     ),
-                    emphasis_3: EightBit(
-                        0,
-                    ),
-                    emphasis_4: Rgb(
+                    emphasis_3: Rgb(
                         (
                             1,
                             1,
@@ -6668,6 +6668,13 @@ Config {
                     background: EightBit(
                         0,
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -6682,14 +6689,7 @@ Config {
                             1,
                         ),
                     ),
-                    emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: EightBit(
+                    emphasis_3: EightBit(
                         0,
                     ),
                 },
@@ -6704,6 +6704,13 @@ Config {
                     background: EightBit(
                         0,
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -6719,13 +6726,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -6744,6 +6744,13 @@ Config {
                     background: EightBit(
                         0,
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -6765,13 +6772,6 @@ Config {
                             1,
                         ),
                     ),
-                    emphasis_4: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
                 },
                 exit_code_error: StyleDeclaration {
                     base: Rgb(
@@ -6784,20 +6784,20 @@ Config {
                     background: EightBit(
                         0,
                     ),
-                    emphasis_1: Rgb(
+                    emphasis_0: Rgb(
                         (
                             1,
                             1,
                             1,
                         ),
                     ),
+                    emphasis_1: EightBit(
+                        0,
+                    ),
                     emphasis_2: EightBit(
                         0,
                     ),
                     emphasis_3: EightBit(
-                        0,
-                    ),
-                    emphasis_4: EightBit(
                         0,
                     ),
                 },
@@ -6873,6 +6873,13 @@ Config {
                             1,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -6888,13 +6895,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -6917,6 +6917,13 @@ Config {
                             1,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -6932,13 +6939,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -6961,6 +6961,13 @@ Config {
                             1,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -6976,13 +6983,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -7005,6 +7005,13 @@ Config {
                             1,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -7020,13 +7027,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -7045,6 +7045,13 @@ Config {
                     background: EightBit(
                         0,
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -7060,13 +7067,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -7089,6 +7089,13 @@ Config {
                             1,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -7104,13 +7111,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -7133,6 +7133,13 @@ Config {
                             1,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -7148,13 +7155,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -7177,6 +7177,13 @@ Config {
                             1,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -7192,13 +7199,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -7221,6 +7221,13 @@ Config {
                             1,
                         ),
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -7236,13 +7243,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -7261,16 +7261,16 @@ Config {
                     background: EightBit(
                         0,
                     ),
+                    emphasis_0: EightBit(
+                        0,
+                    ),
                     emphasis_1: EightBit(
                         0,
                     ),
                     emphasis_2: EightBit(
                         0,
                     ),
-                    emphasis_3: EightBit(
-                        0,
-                    ),
-                    emphasis_4: Rgb(
+                    emphasis_3: Rgb(
                         (
                             1,
                             1,
@@ -7289,6 +7289,13 @@ Config {
                     background: EightBit(
                         0,
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -7303,14 +7310,7 @@ Config {
                             1,
                         ),
                     ),
-                    emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: EightBit(
+                    emphasis_3: EightBit(
                         0,
                     ),
                 },
@@ -7325,6 +7325,13 @@ Config {
                     background: EightBit(
                         0,
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -7340,13 +7347,6 @@ Config {
                         ),
                     ),
                     emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                    emphasis_4: Rgb(
                         (
                             1,
                             1,
@@ -7365,6 +7365,13 @@ Config {
                     background: EightBit(
                         0,
                     ),
+                    emphasis_0: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
                     emphasis_1: Rgb(
                         (
                             1,
@@ -7386,13 +7393,6 @@ Config {
                             1,
                         ),
                     ),
-                    emphasis_4: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
                 },
                 exit_code_error: StyleDeclaration {
                     base: Rgb(
@@ -7405,20 +7405,20 @@ Config {
                     background: EightBit(
                         0,
                     ),
-                    emphasis_1: Rgb(
+                    emphasis_0: Rgb(
                         (
                             1,
                             1,
                             1,
                         ),
                     ),
+                    emphasis_1: EightBit(
+                        0,
+                    ),
                     emphasis_2: EightBit(
                         0,
                     ),
                     emphasis_3: EightBit(
-                        0,
-                    ),
-                    emphasis_4: EightBit(
                         0,
                     ),
                 },

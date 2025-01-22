@@ -1249,10 +1249,10 @@ impl StyleDeclaration {
 
         doc.nodes_mut().push(self.base.to_kdl("base"));
         doc.nodes_mut().push(self.background.to_kdl("background"));
+        doc.nodes_mut().push(self.emphasis_0.to_kdl("emphasis_0"));
         doc.nodes_mut().push(self.emphasis_1.to_kdl("emphasis_1"));
         doc.nodes_mut().push(self.emphasis_2.to_kdl("emphasis_2"));
         doc.nodes_mut().push(self.emphasis_3.to_kdl("emphasis_3"));
-        doc.nodes_mut().push(self.emphasis_4.to_kdl("emphasis_4"));
         node.set_children(doc);
         node
     }
@@ -3996,10 +3996,10 @@ impl Themes {
                 Ok(StyleDeclaration {
                     base: PaletteColor::try_from(("base", colors))?,
                     background: PaletteColor::try_from(("background", colors)).unwrap_or_default(),
+                    emphasis_0: PaletteColor::try_from(("emphasis_0", colors))?,
                     emphasis_1: PaletteColor::try_from(("emphasis_1", colors))?,
                     emphasis_2: PaletteColor::try_from(("emphasis_2", colors))?,
                     emphasis_3: PaletteColor::try_from(("emphasis_3", colors))?,
-                    emphasis_4: PaletteColor::try_from(("emphasis_4", colors))?,
                 })
             },
             None => Ok(default),

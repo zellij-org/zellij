@@ -104,7 +104,7 @@ fn color_elements(palette: Styling, different_color_alternates: bool) -> Colored
             )
             .bold(),
             char_shortcut: style!(
-                palette.ribbon_selected.emphasis_1,
+                palette.ribbon_selected.emphasis_0,
                 palette.ribbon_selected.background
             )
             .bold(),
@@ -128,7 +128,7 @@ fn color_elements(palette: Styling, different_color_alternates: bool) -> Colored
             )
             .bold(),
             char_shortcut: style!(
-                palette.ribbon_unselected.emphasis_1,
+                palette.ribbon_unselected.emphasis_0,
                 palette.ribbon_unselected.background
             )
             .bold(),
@@ -148,7 +148,7 @@ fn color_elements(palette: Styling, different_color_alternates: bool) -> Colored
             prefix_separator: style!(background, alternate_background_color),
             char_left_separator: style!(background, alternate_background_color).bold(),
             char_shortcut: style!(
-                palette.ribbon_unselected.emphasis_1,
+                palette.ribbon_unselected.emphasis_0,
                 alternate_background_color
             )
             .bold(),
@@ -447,8 +447,8 @@ pub fn style_key_with_modifier(
     }
 
     let text_color = palette_match!(palette.text_unselected.base);
-    let green_color = palette_match!(palette.text_unselected.emphasis_3);
-    let orange_color = palette_match!(palette.text_unselected.emphasis_1);
+    let green_color = palette_match!(palette.text_unselected.emphasis_2);
+    let orange_color = palette_match!(palette.text_unselected.emphasis_0);
     let mut ret = vec![];
 
     let common_modifiers = get_common_modifiers(keyvec.iter().collect());

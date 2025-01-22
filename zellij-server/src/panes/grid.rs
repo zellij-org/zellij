@@ -1117,12 +1117,12 @@ impl Grid {
                         let (select_background_palette, select_foreground_palette) =
                             if Some(res) == self.search_results.active.as_ref() {
                                 (
-                                    style.colors.text_unselected.emphasis_1,
+                                    style.colors.text_unselected.emphasis_0,
                                     style.colors.text_unselected.background,
                                 )
                             } else {
                                 (
-                                    style.colors.text_unselected.emphasis_3,
+                                    style.colors.text_unselected.emphasis_2,
                                     style.colors.text_unselected.background,
                                 )
                             };

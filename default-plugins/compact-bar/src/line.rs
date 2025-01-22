@@ -126,7 +126,7 @@ fn left_more_message(
         palette.ribbon_unselected.base,
         palette.text_unselected.background,
     );
-    let plus_ribbon_bg = palette.text_selected.emphasis_1;
+    let plus_ribbon_bg = palette.text_selected.emphasis_0;
     let left_separator = style!(sep_color, plus_ribbon_bg).paint(separator);
     let more_styled_text = style!(text_color, plus_ribbon_bg).bold().paint(more_text);
     let right_separator = style!(plus_ribbon_bg, sep_color).paint(separator);
@@ -160,7 +160,7 @@ fn right_more_message(
         palette.ribbon_unselected.base,
         palette.text_unselected.background,
     );
-    let plus_ribbon_bg = palette.text_selected.emphasis_1;
+    let plus_ribbon_bg = palette.text_selected.emphasis_0;
     let left_separator = style!(sep_color, plus_ribbon_bg).paint(separator);
     let more_styled_text = style!(text_color, plus_ribbon_bg).bold().paint(more_text);
     let right_separator = style!(plus_ribbon_bg, sep_color).paint(separator);
@@ -184,9 +184,9 @@ fn tab_line_prefix(
     let prefix_text_len = prefix_text.chars().count();
     let text_color = palette.text_unselected.base;
     let bg_color = palette.text_unselected.background;
-    let locked_mode_color = palette.text_unselected.emphasis_4;
-    let normal_mode_color = palette.text_unselected.emphasis_3;
-    let other_modes_color = palette.text_unselected.emphasis_1;
+    let locked_mode_color = palette.text_unselected.emphasis_3;
+    let normal_mode_color = palette.text_unselected.emphasis_2;
+    let other_modes_color = palette.text_unselected.emphasis_0;
 
     let prefix_styled_text = style!(text_color, bg_color).bold().paint(prefix_text);
     let mut parts = vec![LinePart {

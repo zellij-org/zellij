@@ -132,10 +132,10 @@ impl Text {
 
     pub fn style_of_index(&self, index: usize, style: &StyleDeclaration) -> Option<PaletteColor> {
         let index_variant_styles = [
+            style.emphasis_0,
             style.emphasis_1,
             style.emphasis_2,
             style.emphasis_3,
-            style.emphasis_4,
         ];
         for i in (0..=3).rev() {
             // we do this in reverse to give precedence to the last applied

@@ -772,103 +772,103 @@ mod config_test {
                 named_theme {
                     text_unselected {
                         base "#DCD7BA"
-                        emphasis_1 "#DCD7CD"
-                        emphasis_2 "#DCD8DD"
-                        emphasis_3 "#DCD899"
-                        emphasis_4 "#ACD7CD"
+                        emphasis_0 "#DCD7CD"
+                        emphasis_1 "#DCD8DD"
+                        emphasis_2 "#DCD899"
+                        emphasis_3 "#ACD7CD"
                         background   "#1F1F28"
                     }
                     text_selected {
                         base "#16161D"
+                        emphasis_0 "#16161D"
                         emphasis_1 "#16161D"
                         emphasis_2 "#16161D"
                         emphasis_3 "#16161D"
-                        emphasis_4 "#16161D"
                         background   "#9CABCA"
                     }
                     ribbon_unselected {
                         base "#DCD7BA"
-                        emphasis_1 "#7FB4CA"
-                        emphasis_2 "#A3D4D5"
-                        emphasis_3 "#7AA89F"
-                        emphasis_4 "#DCD819"
+                        emphasis_0 "#7FB4CA"
+                        emphasis_1 "#A3D4D5"
+                        emphasis_2 "#7AA89F"
+                        emphasis_3 "#DCD819"
                         background   "#252535"
                     }
                     ribbon_selected {
                         base "#16161D"
-                        emphasis_1 "#181820"
-                        emphasis_2 "#1A1A22"
-                        emphasis_3 "#2A2A37"
-                        emphasis_4 "#363646"
+                        emphasis_0 "#181820"
+                        emphasis_1 "#1A1A22"
+                        emphasis_2 "#2A2A37"
+                        emphasis_3 "#363646"
                         background   "#76946A"
                     }
                     table_title {
                         base "#DCD7BA"
-                        emphasis_1 "#7FB4CA"
-                        emphasis_2 "#A3D4D5"
-                        emphasis_3 "#7AA89F"
-                        emphasis_4 "#DCD819"
+                        emphasis_0 "#7FB4CA"
+                        emphasis_1 "#A3D4D5"
+                        emphasis_2 "#7AA89F"
+                        emphasis_3 "#DCD819"
                         background   "#252535"
                     }
                     table_cell_unselected {
                         base "#DCD7BA"
-                        emphasis_1 "#DCD7CD"
-                        emphasis_2 "#DCD8DD"
-                        emphasis_3 "#DCD899"
-                        emphasis_4 "#ACD7CD"
+                        emphasis_0 "#DCD7CD"
+                        emphasis_1 "#DCD8DD"
+                        emphasis_2 "#DCD899"
+                        emphasis_3 "#ACD7CD"
                         background   "#1F1F28"
                     }
                     table_cell_selected {
                         base "#16161D"
-                        emphasis_1 "#181820"
-                        emphasis_2 "#1A1A22"
-                        emphasis_3 "#2A2A37"
-                        emphasis_4 "#363646"
+                        emphasis_0 "#181820"
+                        emphasis_1 "#1A1A22"
+                        emphasis_2 "#2A2A37"
+                        emphasis_3 "#363646"
                         background   "#76946A"
                     }
                     list_unselected {
                         base "#DCD7BA"
-                        emphasis_1 "#DCD7CD"
-                        emphasis_2 "#DCD8DD"
-                        emphasis_3 "#DCD899"
-                        emphasis_4 "#ACD7CD"
+                        emphasis_0 "#DCD7CD"
+                        emphasis_1 "#DCD8DD"
+                        emphasis_2 "#DCD899"
+                        emphasis_3 "#ACD7CD"
                         background   "#1F1F28"
                     }
                     list_selected {
                         base "#16161D"
-                        emphasis_1 "#181820"
-                        emphasis_2 "#1A1A22"
-                        emphasis_3 "#2A2A37"
-                        emphasis_4 "#363646"
+                        emphasis_0 "#181820"
+                        emphasis_1 "#1A1A22"
+                        emphasis_2 "#2A2A37"
+                        emphasis_3 "#363646"
                         background   "#76946A"
                     }
                     frame_unselected {
                         base "#DCD8DD"
-                        emphasis_1 "#7FB4CA"
-                        emphasis_2 "#A3D4D5"
-                        emphasis_3 "#7AA89F"
-                        emphasis_4 "#DCD819"
+                        emphasis_0 "#7FB4CA"
+                        emphasis_1 "#A3D4D5"
+                        emphasis_2 "#7AA89F"
+                        emphasis_3 "#DCD819"
                     }
                     frame_selected {
                         base "#76946A"
-                        emphasis_1 "#C34043"
-                        emphasis_2 "#C8C093"
-                        emphasis_3 "#ACD7CD"
-                        emphasis_4 "#DCD819"
+                        emphasis_0 "#C34043"
+                        emphasis_1 "#C8C093"
+                        emphasis_2 "#ACD7CD"
+                        emphasis_3 "#DCD819"
                     }
                     exit_code_success {
                         base "#76946A"
+                        emphasis_0 "#76946A"
                         emphasis_1 "#76946A"
                         emphasis_2 "#76946A"
                         emphasis_3 "#76946A"
-                        emphasis_4 "#76946A"
                     }
                     exit_code_error {
                         base "#C34043"
+                        emphasis_0 "#C34043"
                         emphasis_1 "#C34043"
                         emphasis_2 "#C34043"
                         emphasis_3 "#C34043"
-                        emphasis_4 "#C34043"
                     }
                 }
             }
@@ -883,106 +883,106 @@ mod config_test {
                 palette: Styling {
                     text_unselected: StyleDeclaration {
                         base: PaletteColor::Rgb((220, 215, 186)),
-                        emphasis_1: PaletteColor::Rgb((220, 215, 205)),
-                        emphasis_2: PaletteColor::Rgb((220, 216, 221)),
-                        emphasis_3: PaletteColor::Rgb((220, 216, 153)),
-                        emphasis_4: PaletteColor::Rgb((172, 215, 205)),
+                        emphasis_0: PaletteColor::Rgb((220, 215, 205)),
+                        emphasis_1: PaletteColor::Rgb((220, 216, 221)),
+                        emphasis_2: PaletteColor::Rgb((220, 216, 153)),
+                        emphasis_3: PaletteColor::Rgb((172, 215, 205)),
                         background: PaletteColor::Rgb((31, 31, 40)),
                     },
                     text_selected: StyleDeclaration {
                         base: PaletteColor::Rgb((22, 22, 29)),
+                        emphasis_0: PaletteColor::Rgb((22, 22, 29)),
                         emphasis_1: PaletteColor::Rgb((22, 22, 29)),
                         emphasis_2: PaletteColor::Rgb((22, 22, 29)),
                         emphasis_3: PaletteColor::Rgb((22, 22, 29)),
-                        emphasis_4: PaletteColor::Rgb((22, 22, 29)),
                         background: PaletteColor::Rgb((156, 171, 202)),
                     },
                     ribbon_unselected: StyleDeclaration {
                         base: PaletteColor::Rgb((220, 215, 186)),
-                        emphasis_1: PaletteColor::Rgb((127, 180, 202)),
-                        emphasis_2: PaletteColor::Rgb((163, 212, 213)),
-                        emphasis_3: PaletteColor::Rgb((122, 168, 159)),
-                        emphasis_4: PaletteColor::Rgb((220, 216, 25)),
+                        emphasis_0: PaletteColor::Rgb((127, 180, 202)),
+                        emphasis_1: PaletteColor::Rgb((163, 212, 213)),
+                        emphasis_2: PaletteColor::Rgb((122, 168, 159)),
+                        emphasis_3: PaletteColor::Rgb((220, 216, 25)),
                         background: PaletteColor::Rgb((37, 37, 53)),
                     },
                     ribbon_selected: StyleDeclaration {
                         base: PaletteColor::Rgb((22, 22, 29)),
-                        emphasis_1: PaletteColor::Rgb((24, 24, 32)),
-                        emphasis_2: PaletteColor::Rgb((26, 26, 34)),
-                        emphasis_3: PaletteColor::Rgb((42, 42, 55)),
-                        emphasis_4: PaletteColor::Rgb((54, 54, 70)),
+                        emphasis_0: PaletteColor::Rgb((24, 24, 32)),
+                        emphasis_1: PaletteColor::Rgb((26, 26, 34)),
+                        emphasis_2: PaletteColor::Rgb((42, 42, 55)),
+                        emphasis_3: PaletteColor::Rgb((54, 54, 70)),
                         background: PaletteColor::Rgb((118, 148, 106)),
                     },
                     table_title: StyleDeclaration {
                         base: PaletteColor::Rgb((220, 215, 186)),
-                        emphasis_1: PaletteColor::Rgb((127, 180, 202)),
-                        emphasis_2: PaletteColor::Rgb((163, 212, 213)),
-                        emphasis_3: PaletteColor::Rgb((122, 168, 159)),
-                        emphasis_4: PaletteColor::Rgb((220, 216, 25)),
+                        emphasis_0: PaletteColor::Rgb((127, 180, 202)),
+                        emphasis_1: PaletteColor::Rgb((163, 212, 213)),
+                        emphasis_2: PaletteColor::Rgb((122, 168, 159)),
+                        emphasis_3: PaletteColor::Rgb((220, 216, 25)),
                         background: PaletteColor::Rgb((37, 37, 53)),
                     },
                     table_cell_unselected: StyleDeclaration {
                         base: PaletteColor::Rgb((220, 215, 186)),
-                        emphasis_1: PaletteColor::Rgb((220, 215, 205)),
-                        emphasis_2: PaletteColor::Rgb((220, 216, 221)),
-                        emphasis_3: PaletteColor::Rgb((220, 216, 153)),
-                        emphasis_4: PaletteColor::Rgb((172, 215, 205)),
+                        emphasis_0: PaletteColor::Rgb((220, 215, 205)),
+                        emphasis_1: PaletteColor::Rgb((220, 216, 221)),
+                        emphasis_2: PaletteColor::Rgb((220, 216, 153)),
+                        emphasis_3: PaletteColor::Rgb((172, 215, 205)),
                         background: PaletteColor::Rgb((31, 31, 40)),
                     },
                     table_cell_selected: StyleDeclaration {
                         base: PaletteColor::Rgb((22, 22, 29)),
-                        emphasis_1: PaletteColor::Rgb((24, 24, 32)),
-                        emphasis_2: PaletteColor::Rgb((26, 26, 34)),
-                        emphasis_3: PaletteColor::Rgb((42, 42, 55)),
-                        emphasis_4: PaletteColor::Rgb((54, 54, 70)),
+                        emphasis_0: PaletteColor::Rgb((24, 24, 32)),
+                        emphasis_1: PaletteColor::Rgb((26, 26, 34)),
+                        emphasis_2: PaletteColor::Rgb((42, 42, 55)),
+                        emphasis_3: PaletteColor::Rgb((54, 54, 70)),
                         background: PaletteColor::Rgb((118, 148, 106)),
                     },
                     list_unselected: StyleDeclaration {
                         base: PaletteColor::Rgb((220, 215, 186)),
-                        emphasis_1: PaletteColor::Rgb((220, 215, 205)),
-                        emphasis_2: PaletteColor::Rgb((220, 216, 221)),
-                        emphasis_3: PaletteColor::Rgb((220, 216, 153)),
-                        emphasis_4: PaletteColor::Rgb((172, 215, 205)),
+                        emphasis_0: PaletteColor::Rgb((220, 215, 205)),
+                        emphasis_1: PaletteColor::Rgb((220, 216, 221)),
+                        emphasis_2: PaletteColor::Rgb((220, 216, 153)),
+                        emphasis_3: PaletteColor::Rgb((172, 215, 205)),
                         background: PaletteColor::Rgb((31, 31, 40)),
                     },
                     list_selected: StyleDeclaration {
                         base: PaletteColor::Rgb((22, 22, 29)),
-                        emphasis_1: PaletteColor::Rgb((24, 24, 32)),
-                        emphasis_2: PaletteColor::Rgb((26, 26, 34)),
-                        emphasis_3: PaletteColor::Rgb((42, 42, 55)),
-                        emphasis_4: PaletteColor::Rgb((54, 54, 70)),
+                        emphasis_0: PaletteColor::Rgb((24, 24, 32)),
+                        emphasis_1: PaletteColor::Rgb((26, 26, 34)),
+                        emphasis_2: PaletteColor::Rgb((42, 42, 55)),
+                        emphasis_3: PaletteColor::Rgb((54, 54, 70)),
                         background: PaletteColor::Rgb((118, 148, 106)),
                     },
                     frame_unselected: StyleDeclaration {
                         base: PaletteColor::Rgb((220, 216, 221)),
-                        emphasis_1: PaletteColor::Rgb((127, 180, 202)),
-                        emphasis_2: PaletteColor::Rgb((163, 212, 213)),
-                        emphasis_3: PaletteColor::Rgb((122, 168, 159)),
-                        emphasis_4: PaletteColor::Rgb((220, 216, 25)),
+                        emphasis_0: PaletteColor::Rgb((127, 180, 202)),
+                        emphasis_1: PaletteColor::Rgb((163, 212, 213)),
+                        emphasis_2: PaletteColor::Rgb((122, 168, 159)),
+                        emphasis_3: PaletteColor::Rgb((220, 216, 25)),
                         ..Default::default()
                     },
                     frame_selected: StyleDeclaration {
                         base: PaletteColor::Rgb((118, 148, 106)),
-                        emphasis_1: PaletteColor::Rgb((195, 64, 67)),
-                        emphasis_2: PaletteColor::Rgb((200, 192, 147)),
-                        emphasis_3: PaletteColor::Rgb((172, 215, 205)),
-                        emphasis_4: PaletteColor::Rgb((220, 216, 25)),
+                        emphasis_0: PaletteColor::Rgb((195, 64, 67)),
+                        emphasis_1: PaletteColor::Rgb((200, 192, 147)),
+                        emphasis_2: PaletteColor::Rgb((172, 215, 205)),
+                        emphasis_3: PaletteColor::Rgb((220, 216, 25)),
                         ..Default::default()
                     },
                     exit_code_success: StyleDeclaration {
                         base: PaletteColor::Rgb((118, 148, 106)),
+                        emphasis_0: PaletteColor::Rgb((118, 148, 106)),
                         emphasis_1: PaletteColor::Rgb((118, 148, 106)),
                         emphasis_2: PaletteColor::Rgb((118, 148, 106)),
                         emphasis_3: PaletteColor::Rgb((118, 148, 106)),
-                        emphasis_4: PaletteColor::Rgb((118, 148, 106)),
                         ..Default::default()
                     },
                     exit_code_error: StyleDeclaration {
                         base: PaletteColor::Rgb((195, 64, 67)),
+                        emphasis_0: PaletteColor::Rgb((195, 64, 67)),
                         emphasis_1: PaletteColor::Rgb((195, 64, 67)),
                         emphasis_2: PaletteColor::Rgb((195, 64, 67)),
                         emphasis_3: PaletteColor::Rgb((195, 64, 67)),
-                        emphasis_4: PaletteColor::Rgb((195, 64, 67)),
                         ..Default::default()
                     },
                     ..Default::default()
@@ -1000,9 +1000,9 @@ mod config_test {
                 named_theme {
                     text_unselected {
                         base "#DCD7BA"
-                        emphasis_2 "#DCD8DD"
-                        emphasis_3 "#DCD899"
-                        emphasis_4 "#ACD7CD"
+                        emphasis_1 "#DCD8DD"
+                        emphasis_2 "#DCD899"
+                        emphasis_3 "#ACD7CD"
                         background   "#1F1F28"
                     }
                 }
@@ -1019,7 +1019,7 @@ mod config_test {
             help_message: _,
         })) = config
         {
-            assert_eq!(error_message, "Missing theme color: emphasis_1")
+            assert_eq!(error_message, "Missing theme color: emphasis_0")
         }
     }
 
@@ -1030,10 +1030,10 @@ mod config_test {
                 named_theme {
                     text_unselected {
                         base "#DCD7BA"
-                        emphasis_1 "#DCD7CD"
-                        emphasis_2 "#DCD8DD"
-                        emphasis_3 "#DCD899"
-                        emphasis_4 "#ACD7CD"
+                        emphasis_0 "#DCD7CD"
+                        emphasis_1 "#DCD8DD"
+                        emphasis_2 "#DCD899"
+                        emphasis_3 "#ACD7CD"
                         background   "#1F1F28"
                     }
                 }
@@ -1049,10 +1049,10 @@ mod config_test {
                 palette: Styling {
                     text_unselected: StyleDeclaration {
                         base: PaletteColor::Rgb((220, 215, 186)),
-                        emphasis_1: PaletteColor::Rgb((220, 215, 205)),
-                        emphasis_2: PaletteColor::Rgb((220, 216, 221)),
-                        emphasis_3: PaletteColor::Rgb((220, 216, 153)),
-                        emphasis_4: PaletteColor::Rgb((172, 215, 205)),
+                        emphasis_0: PaletteColor::Rgb((220, 215, 205)),
+                        emphasis_1: PaletteColor::Rgb((220, 216, 221)),
+                        emphasis_2: PaletteColor::Rgb((220, 216, 153)),
+                        emphasis_3: PaletteColor::Rgb((172, 215, 205)),
                         background: PaletteColor::Rgb((31, 31, 40)),
                     },
                     ..Default::default()

@@ -86,7 +86,7 @@ impl ListItem {
                     indices.clone().map(|i| {
                         (
                             SpanStyle::ForegroundBold(
-                                self.colors.palette.text_unselected.emphasis_4,
+                                self.colors.palette.text_unselected.emphasis_3,
                             ),
                             i,
                         )
@@ -110,7 +110,7 @@ impl ListItem {
                     indices.clone().map(|i| {
                         (
                             SpanStyle::ForegroundBold(
-                                self.colors.palette.text_unselected.emphasis_4,
+                                self.colors.palette.text_unselected.emphasis_3,
                             ),
                             i,
                         )
@@ -129,7 +129,7 @@ impl ListItem {
                     indices.clone().map(|i| {
                         (
                             SpanStyle::ForegroundBold(
-                                self.colors.palette.text_unselected.emphasis_4,
+                                self.colors.palette.text_unselected.emphasis_3,
                             ),
                             i,
                         )
@@ -396,7 +396,7 @@ pub fn build_session_ui_line(session_ui_info: &SessionUiInfo, colors: Colors) ->
         )]));
     let session_name_span = UiSpan::TruncatableUiSpan(TruncatableUiSpan::new(
         session_name.clone(),
-        SpanStyle::ForegroundBold(colors.palette.text_unselected.emphasis_1),
+        SpanStyle::ForegroundBold(colors.palette.text_unselected.emphasis_0),
     ));
     let tab_and_pane_count = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
         StringAndLength::new(
@@ -449,7 +449,7 @@ pub fn build_tab_ui_line(tab_ui_info: &TabUiInfo, colors: Colors) -> Vec<UiSpan>
         )]));
     let tab_name_span = UiSpan::TruncatableUiSpan(TruncatableUiSpan::new(
         tab_name.clone(),
-        SpanStyle::ForegroundBold(colors.palette.text_unselected.emphasis_2),
+        SpanStyle::ForegroundBold(colors.palette.text_unselected.emphasis_1),
     ));
     let connected_users_count_span = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
         StringAndLength::new(
@@ -1009,19 +1009,19 @@ impl Colors {
     }
 
     pub fn connected_users(&self, text: &str) -> String {
-        self.color(&self.palette.text_unselected.emphasis_3, text)
+        self.color(&self.palette.text_unselected.emphasis_2, text)
     }
 
     pub fn session_and_folder_entry(&self, text: &str) -> String {
-        self.color(&self.palette.text_unselected.emphasis_1, text)
+        self.color(&self.palette.text_unselected.emphasis_0, text)
     }
 
     pub fn current_session_marker(&self, text: &str) -> String {
-        self.color(&self.palette.text_unselected.emphasis_1, text)
+        self.color(&self.palette.text_unselected.emphasis_0, text)
     }
 
     pub fn pane_count(&self, text: &str) -> String {
-        self.color(&self.palette.text_unselected.emphasis_3, text)
+        self.color(&self.palette.text_unselected.emphasis_2, text)
     }
 
     pub fn exit_code_error(&self, text: &str) -> String {
@@ -1029,11 +1029,11 @@ impl Colors {
     }
 
     pub fn tab_count(&self, text: &str) -> String {
-        self.color(&self.palette.text_unselected.emphasis_2, text)
+        self.color(&self.palette.text_unselected.emphasis_1, text)
     }
 
     pub fn shortcuts(&self, text: &str) -> String {
-        self.color(&self.palette.text_unselected.emphasis_4, text)
+        self.color(&self.palette.text_unselected.emphasis_3, text)
     }
 }
 

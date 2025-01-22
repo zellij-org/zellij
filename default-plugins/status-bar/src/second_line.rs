@@ -349,7 +349,7 @@ pub fn keybinds(help: &ModeInfo, tip_name: &str, max_width: usize) -> LinePart {
 }
 
 pub fn text_copied_hint(palette: &Styling, copy_destination: CopyDestination) -> LinePart {
-    let green_color = palette_match!(palette.text_unselected.emphasis_3);
+    let green_color = palette_match!(palette.text_unselected.emphasis_2);
     let hint = match copy_destination {
         CopyDestination::Command => "Text piped to external command",
         #[cfg(not(target_os = "macos"))]
@@ -366,7 +366,7 @@ pub fn text_copied_hint(palette: &Styling, copy_destination: CopyDestination) ->
 
 pub fn system_clipboard_error(palette: &Styling) -> LinePart {
     let hint = " Error using the system clipboard.";
-    let red_color = palette_match!(palette.text_unselected.emphasis_4);
+    let red_color = palette_match!(palette.text_unselected.emphasis_3);
     LinePart {
         part: Style::new().fg(red_color).bold().paint(hint).to_string(),
         len: hint.len(),
@@ -375,8 +375,8 @@ pub fn system_clipboard_error(palette: &Styling) -> LinePart {
 
 pub fn fullscreen_panes_to_hide(palette: &Styling, panes_to_hide: usize) -> LinePart {
     let text_color = palette_match!(palette.text_unselected.base);
-    let green_color = palette_match!(palette.text_unselected.emphasis_3);
-    let orange_color = palette_match!(palette.text_unselected.emphasis_1);
+    let green_color = palette_match!(palette.text_unselected.emphasis_2);
+    let orange_color = palette_match!(palette.text_unselected.emphasis_0);
     let shortcut_left_separator = Style::new().fg(text_color).bold().paint(" (");
     let shortcut_right_separator = Style::new().fg(text_color).bold().paint("): ");
     let fullscreen = "FULLSCREEN";
@@ -406,8 +406,8 @@ pub fn floating_panes_are_visible(mode_info: &ModeInfo) -> LinePart {
     let palette = mode_info.style.colors;
     let km = &mode_info.get_mode_keybinds();
     let white_color = palette_match!(palette.text_unselected.base);
-    let green_color = palette_match!(palette.text_unselected.emphasis_3);
-    let orange_color = palette_match!(palette.text_unselected.emphasis_1);
+    let green_color = palette_match!(palette.text_unselected.emphasis_2);
+    let orange_color = palette_match!(palette.text_unselected.emphasis_0);
     let shortcut_left_separator = Style::new().fg(white_color).bold().paint(" (");
     let shortcut_right_separator = Style::new().fg(white_color).bold().paint("): ");
     let floating_panes = "FLOATING PANES VISIBLE";
@@ -461,8 +461,8 @@ pub fn floating_panes_are_visible(mode_info: &ModeInfo) -> LinePart {
 
 pub fn locked_fullscreen_panes_to_hide(palette: &Styling, panes_to_hide: usize) -> LinePart {
     let text_color = palette_match!(palette.text_unselected.base);
-    let green_color = palette_match!(palette.text_unselected.emphasis_3);
-    let orange_color = palette_match!(palette.text_unselected.emphasis_1);
+    let green_color = palette_match!(palette.text_unselected.emphasis_2);
+    let orange_color = palette_match!(palette.text_unselected.emphasis_0);
     let locked_text = " -- INTERFACE LOCKED -- ";
     let shortcut_left_separator = Style::new().fg(text_color).bold().paint(" (");
     let shortcut_right_separator = Style::new().fg(text_color).bold().paint("): ");
@@ -493,7 +493,7 @@ pub fn locked_fullscreen_panes_to_hide(palette: &Styling, panes_to_hide: usize) 
 
 pub fn locked_floating_panes_are_visible(palette: &Styling) -> LinePart {
     let white_color = palette_match!(palette.text_unselected.base);
-    let orange_color = palette_match!(palette.text_unselected.emphasis_1);
+    let orange_color = palette_match!(palette.text_unselected.emphasis_0);
     let shortcut_left_separator = Style::new().fg(white_color).bold().paint(" (");
     let shortcut_right_separator = Style::new().fg(white_color).bold().paint(")");
     let locked_text = " -- INTERFACE LOCKED -- ";
