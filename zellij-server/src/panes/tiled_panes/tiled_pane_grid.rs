@@ -1389,14 +1389,111 @@ impl<'a> TiledPaneGrid<'a> {
     pub fn make_room_in_stack_for_pane(&mut self) -> Result<PaneGeom> {
         StackedPanes::new(self.panes.clone()).make_room_for_new_pane()
     }
-    pub fn stack_pane_up(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
-        if let Some(vertically_aligned_pane_id_above) = self.get_vertically_aligned_pane_id_above(pane_id) {
-            StackedPanes::new(self.panes.clone()).combine_vertically_aligned_panes_to_stack(&vertically_aligned_pane_id_above, pane_id);
-            StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
-            Some(vec![vertically_aligned_pane_id_above, *pane_id])
-        } else {
-            None
+    fn pane_ids_have_the_same_y(&self, pane_ids: &[PaneId]) -> bool {
+        let panes = self.panes.borrow();
+        let mut pane_y = None;
+        let mut panes_all_have_the_same_y = true;
+        for p_id in pane_ids {
+            if let Some(pane) = panes.get(p_id) {
+                match pane_y {
+                    Some(pane_y) => {
+                        if pane_y != pane.position_and_size().y {
+                            panes_all_have_the_same_y = false;
+                        }
+                    },
+                    None => {
+                        pane_y = Some(pane.position_and_size().y);
+                    }
+                }
+            }
         }
+        panes_all_have_the_same_y
+    }
+    fn pane_ids_have_the_same_x(&self, pane_ids: &[PaneId]) -> bool {
+        let panes = self.panes.borrow();
+        let mut pane_x = None;
+        let mut panes_all_have_the_same_x = true;
+        for p_id in pane_ids {
+            if let Some(pane) = panes.get(p_id) {
+                match pane_x {
+                    Some(pane_x) => {
+                        if pane_x != pane.position_and_size().x {
+                            panes_all_have_the_same_x = false;
+                        }
+                    },
+                    None => {
+                        pane_x = Some(pane.position_and_size().x);
+                    }
+                }
+            }
+        }
+        panes_all_have_the_same_x
+    }
+    fn pane_ids_have_the_same_height(&self, pane_ids: &[PaneId]) -> bool {
+        let panes = self.panes.borrow();
+        let mut pane_height = None;
+        let mut panes_all_have_the_same_height = true;
+        for p_id in pane_ids {
+            if let Some(pane) = panes.get(p_id) {
+                match pane_height {
+                    Some(pane_height) => {
+                        if pane_height != pane.position_and_size().rows.as_usize() {
+                            panes_all_have_the_same_height = false;
+                        }
+                    },
+                    None => {
+                        pane_height = Some(pane.position_and_size().rows.as_usize());
+                    }
+                }
+            }
+        }
+        panes_all_have_the_same_height
+    }
+    fn pane_ids_have_the_same_width(&self, pane_ids: &[PaneId]) -> bool {
+        let panes = self.panes.borrow();
+        let mut pane_width = None;
+        let mut panes_all_have_the_same_width = true;
+        for p_id in pane_ids {
+            if let Some(pane) = panes.get(p_id) {
+                match pane_width {
+                    Some(pane_width) => {
+                        if pane_width != pane.position_and_size().cols.as_usize() {
+                            panes_all_have_the_same_width = false;
+                        }
+                    },
+                    None => {
+                        pane_width = Some(pane.position_and_size().cols.as_usize());
+                    }
+                }
+            }
+        }
+        panes_all_have_the_same_width
+    }
+    pub fn stack_pane_up(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
+        let neighboring_pane_ids_above = {
+            let panes = self.panes.borrow();
+            let root_pane_geom = self.get_pane_geom(pane_id)?;
+            self
+                .neighbor_pane_ids(pane_id, Direction::Up).ok()?.iter()
+                .filter(|pane_id| {
+                    self.pane_is_between_vertical_borders(pane_id, root_pane_geom.x, root_pane_geom.x + root_pane_geom.cols.as_usize())
+                })
+                .copied()
+                .collect::<Vec<_>>()
+        };
+        if !self.pane_ids_have_the_same_y(&neighboring_pane_ids_above) {
+            // bail, we don't want to stack up at all in this case
+            return None
+        }
+        let pane_is_selectable = |pane_id| {
+            self.panes.borrow().get(pane_id).map(|pane| pane.selectable()).unwrap_or(false)
+        };
+        if neighboring_pane_ids_above.is_empty() || neighboring_pane_ids_above.iter().any(|p| !pane_is_selectable(p)) { // TODO: add selectable to other methods
+            return None;
+        }
+        StackedPanes::new(self.panes.clone()).combine_vertically_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_above);
+        StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
+        Some(vec![*pane_id])
     }
     pub fn unstack_pane_up(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
         let pane_is_stacked = self
@@ -1410,50 +1507,94 @@ impl<'a> TiledPaneGrid<'a> {
         }
     }
     pub fn stack_pane_down(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
-        if let Some(vertically_aligned_pane_id_below) = self.get_vertically_aligned_pane_id_below(pane_id) {
-            StackedPanes::new(self.panes.clone()).combine_vertically_aligned_panes_to_stack(&pane_id, &vertically_aligned_pane_id_below);
-            StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
-            Some(vec![vertically_aligned_pane_id_below, *pane_id])
-        } else {
-            None
+        let neighboring_pane_ids_below = {
+            let panes = self.panes.borrow();
+            let root_pane_geom = self.get_pane_geom(pane_id)?;
+            self
+                .neighbor_pane_ids(pane_id, Direction::Down).ok()?.iter()
+                .filter(|pane_id| {
+                    self.pane_is_between_vertical_borders(pane_id, root_pane_geom.x, root_pane_geom.x + root_pane_geom.cols.as_usize())
+                })
+                .copied()
+                .collect::<Vec<_>>()
+        };
+        if !self.pane_ids_have_the_same_height(&neighboring_pane_ids_below) {
+            // bail, we don't want to stack up at all in this case
+            return None
         }
+        let pane_is_selectable = |pane_id| {
+            self.panes.borrow().get(pane_id).map(|pane| pane.selectable()).unwrap_or(false)
+        };
+        if neighboring_pane_ids_below.is_empty() || neighboring_pane_ids_below.iter().any(|p| !pane_is_selectable(p)) { // TODO: add selectable to other methods
+            return None;
+        }
+        StackedPanes::new(self.panes.clone()).combine_vertically_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_below);
+        StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
+        Some(vec![*pane_id])
     }
     pub fn unstack_pane_down(&mut self, pane_id: &PaneId) -> Result<bool> {
         // TODO
         Ok(false)
     }
     pub fn stack_pane_left(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
+        // TODO: CONTINUE HERE (21/01) - there's a bug where if we try to stack a stack left even
+        // with one pane, it doesn't work - with multiple panes it causes chaos
 
-        let neighboring_pane_ids_to_the_left = self
-            .neighbor_pane_ids(pane_id, Direction::Left)
-            .ok();
-        // TODO: only do this if all neighboring_pane_ids_to_the_left have the same x
-        if let Some(neighboring_pane_ids_to_the_left) = neighboring_pane_ids_to_the_left {
-            if neighboring_pane_ids_to_the_left.is_empty() {
-                return None;
-            }
-            StackedPanes::new(self.panes.clone()).combine_horizontally_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_to_the_left);
-            StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
-            Some(vec![*pane_id])
-        } else {
-            None
+        let neighboring_pane_ids_to_the_left = {
+            let panes = self.panes.borrow();
+            // let root_pane_geom = panes.get(pane_id)?.position_and_size();
+            let root_pane_geom = self.get_pane_geom(pane_id)?;
+            self
+                .neighbor_pane_ids(pane_id, Direction::Left).ok()?.iter()
+                .filter(|pane_id| {
+                    self.pane_is_between_horizontal_borders(pane_id, root_pane_geom.y, root_pane_geom.y + root_pane_geom.rows.as_usize())
+                })
+                .copied()
+                .collect::<Vec<_>>()
+        };
+        if !self.pane_ids_have_the_same_x(&neighboring_pane_ids_to_the_left) {
+            // bail, we don't want to stack up at all in this case
+            return None
         }
+        let pane_is_selectable = |pane_id| {
+            self.panes.borrow().get(pane_id).map(|pane| pane.selectable()).unwrap_or(false)
+        };
+        if neighboring_pane_ids_to_the_left.is_empty() || neighboring_pane_ids_to_the_left.iter().any(|p| !pane_is_selectable(p)) { // TODO: add selectable to other methods
+            return None;
+        }
+        StackedPanes::new(self.panes.clone()).combine_horizontally_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_to_the_left);
+        StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
+        Some(vec![*pane_id])
     }
     pub fn stack_pane_right(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
-        let neighboring_pane_ids_to_the_right = self
-            .neighbor_pane_ids(pane_id, Direction::Right)
-            .ok();
-        // TODO: only do this if all neighboring_pane_ids_to_the_left have the same x
-        if let Some(neighboring_pane_ids_to_the_right) = neighboring_pane_ids_to_the_right {
-            if neighboring_pane_ids_to_the_right.is_empty() {
-                return None;
-            }
-            StackedPanes::new(self.panes.clone()).combine_horizontally_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_to_the_right);
-            StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
-            Some(vec![*pane_id])
-        } else {
-            None
+
+        let neighboring_pane_ids_to_the_right = {
+            let panes = self.panes.borrow();
+            let root_pane_geom = self.get_pane_geom(pane_id)?;
+            self
+                .neighbor_pane_ids(pane_id, Direction::Right).ok()?.iter()
+                .filter(|pane_id| {
+                    self.pane_is_between_horizontal_borders(pane_id, root_pane_geom.y, root_pane_geom.y + root_pane_geom.rows.as_usize())
+                })
+                .copied()
+                .collect::<Vec<_>>()
+        };
+        if !self.pane_ids_have_the_same_width(&neighboring_pane_ids_to_the_right) {
+            // bail, we don't want to stack up at all in this case
+            return None
         }
+        let pane_is_selectable = |pane_id| {
+            self.panes.borrow().get(pane_id).map(|pane| pane.selectable()).unwrap_or(false)
+        };
+        if neighboring_pane_ids_to_the_right.is_empty() || neighboring_pane_ids_to_the_right.iter().any(|p| !pane_is_selectable(p)) { // TODO: add selectable to other methods
+            return None;
+        }
+        if neighboring_pane_ids_to_the_right.is_empty() {
+            return None;
+        }
+        StackedPanes::new(self.panes.clone()).combine_horizontally_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_to_the_right);
+        StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
+        Some(vec![*pane_id])
     }
     fn get_vertically_aligned_pane_id_above(&self, pane_id: &PaneId) -> Option<PaneId> {
         let Some(pane_geom) = self.get_pane_geom(pane_id) else {

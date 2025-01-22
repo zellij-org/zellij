@@ -952,9 +952,7 @@ impl TiledPanes {
                             *self.display_area.borrow(),
                             *self.viewport.borrow(),
                         );
-                        log::info!("trying to stack left...");
                         if let Some(pane_ids_to_resize) = pane_grid.stack_pane_left(&pane_id) {
-                            log::info!("got it");
                             for pane_id in pane_ids_to_resize {
                                 if let Some(pane) = self.panes.get_mut(&pane_id) {
                                     resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
@@ -962,9 +960,7 @@ impl TiledPanes {
                             }
                             Ok(())
                         } else if let Some(pane_ids_to_resize) = pane_grid.stack_pane_right(&pane_id) {
-                            log::info!("trying to stack right");
                             for pane_id in pane_ids_to_resize {
-                                log::info!("got it");
                                 if let Some(pane) = self.panes.get_mut(&pane_id) {
                                     resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
                                 }

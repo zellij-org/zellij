@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/panes/tiled_panes/./unit/stacked_panes_tests.rs
-assertion_line: 115
+assertion_line: 172
 expression: "format!(\"{:#?}\", pane_geoms_after)"
 ---
 [
@@ -29,29 +29,6 @@ expression: "format!(\"{:#?}\", pane_geoms_after)"
         x: 0,
         y: 33,
         rows: Dimension {
-            constraint: Fixed(
-                1,
-            ),
-            inner: 1,
-        },
-        cols: Dimension {
-            constraint: Percent(
-                100.0,
-            ),
-            inner: 1,
-        },
-        stacked: Some(
-            0,
-        ),
-        is_pinned: false,
-        logical_position: Some(
-            2,
-        ),
-    },
-    PaneGeom {
-        x: 0,
-        y: 34,
-        rows: Dimension {
             constraint: Percent(
                 66.6,
             ),
@@ -64,7 +41,30 @@ expression: "format!(\"{:#?}\", pane_geoms_after)"
             inner: 1,
         },
         stacked: Some(
-            0,
+            1,
+        ),
+        is_pinned: false,
+        logical_position: Some(
+            2,
+        ),
+    },
+    PaneGeom {
+        x: 0,
+        y: 98,
+        rows: Dimension {
+            constraint: Fixed(
+                1,
+            ),
+            inner: 1,
+        },
+        cols: Dimension {
+            constraint: Percent(
+                100.0,
+            ),
+            inner: 1,
+        },
+        stacked: Some(
+            1,
         ),
         is_pinned: false,
         logical_position: Some(
@@ -87,7 +87,7 @@ expression: "format!(\"{:#?}\", pane_geoms_after)"
             inner: 1,
         },
         stacked: Some(
-            0,
+            1,
         ),
         is_pinned: false,
         logical_position: Some(
