@@ -328,84 +328,95 @@ fn zellij_server_listener(
     config: Config,
     config_options: Options,
 ) {
-    let zellij_ipc_pipe: PathBuf = {
-        let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
-        fs::create_dir_all(&sock_dir).unwrap();
-        zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
-        sock_dir.push(session_name);
-        sock_dir
-    };
-
-    let full_screen_ws = os_input.get_terminal_size_using_fd(0);
-
-    let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
-    let enter_alternate_screen = "\u{1b}[?1049h";
-    let bracketed_paste = "\u{1b}[?2004h";
-    let enter_kitty_keyboard_mode = "\u{1b}[>1u";
-    let enable_mouse_mode = "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1015h\u{1b}[?1006h";
-    let _ = stdout_channel_tx.send(clear_client_terminal_attributes.to_owned());
-    let _ = stdout_channel_tx.send(enter_alternate_screen.to_owned());
-    let _ = stdout_channel_tx.send(bracketed_paste.to_owned());
-    let _ = stdout_channel_tx.send(enable_mouse_mode.to_owned());
-    let _ = stdout_channel_tx.send(enter_kitty_keyboard_mode.to_owned());
-
-    let palette = config
-        .theme_config(config_options.theme.as_ref())
-        .unwrap_or_else(|| os_input.load_palette());
-    let client_attributes = ClientAttributes {
-        size: full_screen_ws,
-        style: Style {
-            colors: palette,
-            rounded_corners: config.ui.pane_frames.rounded_corners,
-            hide_session_name: config.ui.pane_frames.hide_session_name,
-        },
-    };
-
-    let is_web_client = true;
-    let first_message = ClientToServerMsg::AttachClient(
-        client_attributes,
-        config.clone(),
-        config_options.clone(),
-        None,
-        None,
-        is_web_client,
-    );
-
-    os_input.connect_to_server(&*zellij_ipc_pipe);
-    os_input.send_to_server(first_message);
-
     let _server_listener_thread = std::thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
+            let session_name = session_name.to_owned();
             move || {
-                loop {
-                    match os_input.recv_from_server() {
-                        //             Some((ServerToClientMsg::UnblockInputThread, _)) => {
-                        //                 break;
-                        //             },
-                        //             Some((ServerToClientMsg::Log(log_lines), _)) => {
-                        //                 log_lines.iter().for_each(|line| println!("{line}"));
-                        //                 break;
-                        //             },
-                        //             Some((ServerToClientMsg::LogError(log_lines), _)) => {
-                        //                 log_lines.iter().for_each(|line| eprintln!("{line}"));
-                        //                 process::exit(2);
-                        //             },
-                        Some((ServerToClientMsg::Exit(exit_reason), _)) => {
-                            match exit_reason {
-                                ExitReason::Error(e) => {
-                                    eprintln!("{}", e);
-                                    // process::exit(2);
-                                },
-                                _ => {},
+                let mut reconnect_to_session = None;
+                'reconnect_loop: loop {
+                    let zellij_ipc_pipe: PathBuf = {
+                        let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
+                        fs::create_dir_all(&sock_dir).unwrap();
+                        zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
+                        sock_dir.push(session_name.clone());
+                        sock_dir
+                    };
+
+                    let full_screen_ws = os_input.get_terminal_size_using_fd(0);
+
+                    let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
+                    let enter_alternate_screen = "\u{1b}[?1049h";
+                    let bracketed_paste = "\u{1b}[?2004h";
+                    let enter_kitty_keyboard_mode = "\u{1b}[>1u";
+                    let enable_mouse_mode = "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1015h\u{1b}[?1006h";
+                    let _ = stdout_channel_tx.send(clear_client_terminal_attributes.to_owned());
+                    let _ = stdout_channel_tx.send(enter_alternate_screen.to_owned());
+                    let _ = stdout_channel_tx.send(bracketed_paste.to_owned());
+                    let _ = stdout_channel_tx.send(enable_mouse_mode.to_owned());
+                    let _ = stdout_channel_tx.send(enter_kitty_keyboard_mode.to_owned());
+
+                    let palette = config
+                        .theme_config(config_options.theme.as_ref())
+                        .unwrap_or_else(|| os_input.load_palette());
+                    let client_attributes = ClientAttributes {
+                        size: full_screen_ws,
+                        style: Style {
+                            colors: palette,
+                            rounded_corners: config.ui.pane_frames.rounded_corners,
+                            hide_session_name: config.ui.pane_frames.hide_session_name,
+                        },
+                    };
+
+                    let is_web_client = true;
+                    let first_message = ClientToServerMsg::AttachClient(
+                        client_attributes,
+                        config.clone(),
+                        config_options.clone(),
+                        None,
+                        None,
+                        is_web_client,
+                    );
+
+                    os_input.connect_to_server(&*zellij_ipc_pipe);
+                    os_input.send_to_server(first_message);
+
+                    loop {
+                        match os_input.recv_from_server() {
+                            //             Some((ServerToClientMsg::UnblockInputThread, _)) => {
+                            //                 break;
+                            //             },
+                            //             Some((ServerToClientMsg::Log(log_lines), _)) => {
+                            //                 log_lines.iter().for_each(|line| println!("{line}"));
+                            //                 break;
+                            //             },
+                            //             Some((ServerToClientMsg::LogError(log_lines), _)) => {
+                            //                 log_lines.iter().for_each(|line| eprintln!("{line}"));
+                            //                 process::exit(2);
+                            //             },
+                            Some((ServerToClientMsg::Exit(exit_reason), _)) => {
+                                match exit_reason {
+                                    ExitReason::Error(e) => {
+                                        eprintln!("{}", e);
+                                        // process::exit(2);
+                                    },
+                                    _ => {},
+                                }
+                                os_input.send_to_server(ClientToServerMsg::ClientExited);
+                                break;
+                            },
+                            Some((ServerToClientMsg::Render(bytes), _)) => {
+                                let _ = stdout_channel_tx.send(bytes);
+                            },
+                            Some((ServerToClientMsg::SwitchSession(connect_to_session), _)) => {
+                                reconnect_to_session = Some(connect_to_session);
+                                continue;
                             }
-                            os_input.send_to_server(ClientToServerMsg::ClientExited);
-                            break;
-                        },
-                        Some((ServerToClientMsg::Render(bytes), _)) => {
-                            let _ = stdout_channel_tx.send(bytes);
-                        },
-                        _ => {},
+                            _ => {},
+                        }
+                    }
+                    if reconnect_to_session.is_none() {
+                        break;
                     }
                 }
             }
