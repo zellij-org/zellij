@@ -35,9 +35,6 @@ message Action {
     Position left_mouse_release_payload = 26;
     Position right_mouse_release_payload = 27;
     Position middle_mouse_release_payload = 28;
-    Position mouse_hold_left_payload = 29;
-    Position mouse_hold_right_payload = 30;
-    Position mouse_hold_middle_payload = 31;
     bytes search_input_payload = 32;
     SearchDirection search_payload = 33;
     SearchOption search_toggle_option_payload = 34;
@@ -55,6 +52,7 @@ message Action {
     LaunchOrFocusPluginPayload launch_plugin_payload = 46;
     CliPipePayload message_payload = 47;
     MoveTabDirection move_tab_payload = 48;
+    MouseEventPayload mouse_event_payload = 49;
   }
 }
 
@@ -216,9 +214,6 @@ enum ActionName {
     LeftMouseRelease = 54;
     RightMouseRelease = 55;
     MiddleMouseRelease = 56;
-    MouseHoldLeft = 57;
-    MouseHoldRight = 58;
-    MouseHoldMiddle = 59;
     SearchInput = 60;
     Search = 61;
     SearchToggleOption = 62;
@@ -245,11 +240,26 @@ enum ActionName {
     MoveTab = 83;
     KeybindPipe = 84;
     TogglePanePinned = 85;
+    MouseEvent = 86;
 }
 
 message Position {
   int64 line = 1;
   int64 column = 2;
+}
+
+message MouseEventPayload {
+  uint32 event_type = 1;
+  bool left = 2;
+  bool right = 3;
+  bool middle = 4;
+  bool wheel_up = 5;
+  bool wheel_down = 6;
+  bool shift = 7;
+  bool alt = 8;
+  bool ctrl = 9;
+  int64 line = 10;
+  int64 column = 11;
 }
 
 message RunCommandAction {

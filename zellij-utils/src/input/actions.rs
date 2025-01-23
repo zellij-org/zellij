@@ -10,6 +10,7 @@ use crate::data::{Direction, KeyWithModifier, PaneId, Resize};
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
+use crate::input::mouse::{MouseEvent, MouseEventType};
 use crate::input::options::OnForceClose;
 use miette::{NamedSource, Report};
 use serde::{Deserialize, Serialize};
@@ -215,19 +216,11 @@ pub enum Action {
     Run(RunCommandAction),
     /// Detach session and exit
     Detach,
-    LeftClick(Position),
-    RightClick(Position),
-    MiddleClick(Position),
     LaunchOrFocusPlugin(RunPluginOrAlias, bool, bool, bool, bool), // bools => should float,
     // move_to_focused_tab, should_open_in_place, skip_cache
     LaunchPlugin(RunPluginOrAlias, bool, bool, bool, Option<PathBuf>), // bools => should float,
     // should_open_in_place, skip_cache, Option<PathBuf> is cwd
-    LeftMouseRelease(Position),
-    RightMouseRelease(Position),
-    MiddleMouseRelease(Position),
-    MouseHoldLeft(Position),
-    MouseHoldRight(Position),
-    MouseHoldMiddle(Position),
+    MouseEvent(MouseEvent),
     Copy,
     /// Confirm a prompt
     Confirm,
@@ -802,6 +795,14 @@ impl Action {
             },
             _ => false,
         }
+    }
+    pub fn is_mouse_motion(&self) -> bool {
+        if let Action::MouseEvent(mouse_event) = self {
+            if let MouseEventType::Motion = mouse_event.event_type {
+                return true;
+            }
+        }
+        false
     }
 }
 

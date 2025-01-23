@@ -14,6 +14,7 @@ use std::fmt::Debug;
 use std::rc::Rc;
 use std::time::{self, Instant};
 use zellij_utils::input::command::RunCommand;
+use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     data::{
@@ -575,14 +576,16 @@ impl Pane for TerminalPane {
         if cursor_at_the_bottom {
             self.grid.scroll_up_one_line();
             self.selection_scrolled_at = time::Instant::now();
+            self.set_should_render(true);
         } else if cursor_at_the_top {
             self.grid.scroll_down_one_line();
             self.selection_scrolled_at = time::Instant::now();
+            self.set_should_render(true);
         } else if cursor_in_the_middle {
+            // here we'll only render if the selection was updated, and that'll be handled by the
+            // grid
             self.grid.update_selection(to);
         }
-
-        self.set_should_render(true);
     }
 
     fn end_selection(&mut self, end: &Position, _client_id: ClientId) {
@@ -631,6 +634,10 @@ impl Pane for TerminalPane {
 
     fn exclude_from_sync(&self) -> bool {
         self.exclude_from_sync
+    }
+
+    fn mouse_event(&self, event: &MouseEvent) -> Option<String> {
+        self.grid.mouse_event_signal(event)
     }
 
     fn mouse_left_click(&self, position: &Position, is_held: bool) -> Option<String> {
@@ -837,6 +844,20 @@ impl Pane for TerminalPane {
                 if client_frame.clicked_on_pinned(relative_position) {
                     self.toggle_pinned();
                     return true;
+                }
+            }
+        }
+        false
+    }
+    fn intercept_mouse_event_on_frame(&mut self, event: &MouseEvent, client_id: ClientId) -> bool {
+        if self.position_is_on_frame(&event.position) {
+            let relative_position = self.relative_position(&event.position);
+            if let MouseEventType::Press = event.event_type {
+                if let Some(client_frame) = self.frame.get_mut(&client_id) {
+                    if client_frame.clicked_on_pinned(relative_position) {
+                        self.toggle_pinned();
+                        return true;
+                    }
                 }
             }
         }

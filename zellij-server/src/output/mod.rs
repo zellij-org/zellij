@@ -578,8 +578,12 @@ impl FloatingPanesStack {
                     .with_context(err_context)?;
                 let left_chunk_x = c_chunk_left_side;
                 let right_chunk_x = pane_right_edge + 1;
-                let left_chunk =
+                let mut left_chunk =
                     CharacterChunk::new(left_chunk_characters, left_chunk_x, c_chunk.y);
+                if !c_chunk.selection_and_colors.is_empty() {
+                    left_chunk.selection_and_colors = c_chunk.selection_and_colors.clone();
+                }
+
                 c_chunk.x = right_chunk_x;
                 c_chunk.terminal_characters = right_chunk_characters;
                 return Ok(Some(left_chunk));
