@@ -783,7 +783,6 @@ impl<'a> StackedPanes<'a> {
                 } else {
                     other_pane_ids_and_geoms.push((*neighboring_pane_id, geom_of_neighboring_pane));
                 }
-                // other_pane_ids_and_geoms.push((*neighboring_pane_id, geom_of_neighboring_pane));
             }
             (geom_of_main_stack, other_pane_ids_and_geoms)
         };

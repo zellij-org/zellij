@@ -898,11 +898,6 @@ impl TiledPanes {
         Ok(())
     }
     fn stacked_resize_pane_with_id(&mut self, pane_id: PaneId, strategy: &ResizeStrategy) -> Result<()> {
-        let err_context = || format!("failed to resize pand with id: {:?}", pane_id);
-
-        let geom_of_pane_to_resize = {
-            self.panes.get(&pane_id).map(|p| p.position_and_size())
-        };
         let resize_percent = Some((30.0, 30.0));
         match strategy.resize {
             Resize::Increase => {
