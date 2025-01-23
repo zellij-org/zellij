@@ -496,7 +496,6 @@ impl<'a> StackedPanes<'a> {
         stacked_geoms
     }
     pub fn combine_vertically_aligned_panes_to_stack(&mut self, root_pane_id: &PaneId, neighboring_pane_ids: Vec<PaneId>) -> Result<()> {
-        log::info!("combine_vertically_aligned_panes_to_stack");
         let err_context = || "Failed to combine vertically aligned panes to stack";
         let (mut geom_of_main_pane, mut other_pane_ids_and_geoms, mut extra_stacked_geoms_of_main_pane) = {
             let panes = self.panes.borrow();
@@ -621,7 +620,6 @@ impl<'a> StackedPanes<'a> {
         Ok(())
     }
     pub fn combine_horizontally_aligned_panes_to_stack(&mut self, root_pane_id: &PaneId, neighboring_pane_ids: Vec<PaneId>) -> Result<()> {
-        log::info!("combine_horizontally_aligned_panes_to_stack");
         let root_pane_id_is_stacked = {
             let panes = self.panes.borrow();
             panes.get(root_pane_id).map(|p| p.position_and_size().is_stacked()).unwrap_or(false)
@@ -727,7 +725,6 @@ impl<'a> StackedPanes<'a> {
             let original_geom_of_main_pane = panes.get(&root_pane_id).ok_or_else(|| anyhow!("Failed to find root geom"))?.position_and_size(); // for sorting purposes
             all_stacked_geoms.push((*root_pane_id, original_geom_of_main_pane));
 
-            log::info!("all_stacked_geoms before: {:#?}", all_stacked_geoms);
             all_stacked_geoms.sort_by(|(a_id, a_geom), (b_id, b_geom)| {
                 if a_geom.x == b_geom.x {
                     a_geom.y.cmp(&b_geom.y)
@@ -735,8 +732,6 @@ impl<'a> StackedPanes<'a> {
                     a_geom.x.cmp(&b_geom.x)
                 }
             });
-            log::info!("***");
-            log::info!("all_stacked_geoms after: {:#?}", all_stacked_geoms);
 
 
             for (pane_id, mut pane_geom) in all_stacked_geoms {

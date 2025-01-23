@@ -1469,18 +1469,52 @@ impl<'a> TiledPaneGrid<'a> {
         }
         panes_all_have_the_same_width
     }
-    pub fn stack_pane_up(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
-        let neighboring_pane_ids_above = {
-            let panes = self.panes.borrow();
-            let root_pane_geom = self.get_pane_geom(pane_id)?;
-            self
-                .neighbor_pane_ids(pane_id, Direction::Up).ok()?.iter()
-                .filter(|pane_id| {
-                    self.pane_is_between_vertical_borders(pane_id, root_pane_geom.x, root_pane_geom.x + root_pane_geom.cols.as_usize())
-                })
-                .copied()
-                .collect::<Vec<_>>()
+    pub fn direct_neighboring_pane_ids_above(&self, root_pane_id: &PaneId) -> Vec<PaneId> {
+        // here we look for panes that are directly above the provided root pane but that do not
+        // exceed its vertical borders (x and x + cols)
+        let Some(root_pane_geom) = self.get_pane_geom(root_pane_id) else {
+            log::error!("Could nto find root pane geom");
+            return vec![];
         };
+        let Some(neighbor_pane_ids) = self.neighbor_pane_ids(root_pane_id, Direction::Up).ok() else {
+            log::error!("Could not find neighbor pane ids above");
+            return vec![];
+        };
+        let neighbor_pane_ids = neighbor_pane_ids.iter()
+            .filter(|pane_id| {
+                self.pane_is_between_vertical_borders(pane_id, root_pane_geom.x, root_pane_geom.x + root_pane_geom.cols.as_usize())
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        // we only want to return these if they cover the entire vertical surface of the root pane id
+        // (as in - one of the panes contains its x and one of the panes contains its x + cols)
+        let mut boundaries_of_pane_ids = vec![];
+        for p_id in &neighbor_pane_ids {
+            let mut vertical_boundaries_of_pane = self.get_vertical_boundaries_of_pane(p_id);
+            boundaries_of_pane_ids.append(&mut vertical_boundaries_of_pane);
+        }
+        if boundaries_of_pane_ids.contains(&root_pane_geom.x) && boundaries_of_pane_ids.contains(&(root_pane_geom.x + root_pane_geom.cols.as_usize())) {
+            neighbor_pane_ids
+        } else {
+            vec![]
+        }
+    }
+    fn get_vertical_boundaries_of_pane(&self, pane_id: &PaneId) -> Vec<usize> {
+        let Some(geom_of_pane) = self.get_pane_geom(pane_id) else {
+            log::error!("Could not find geom of pawne");
+            return vec![];
+        };
+        vec![geom_of_pane.x, geom_of_pane.x + geom_of_pane.cols.as_usize()]
+    }
+    fn get_horizontal_boundaries_of_pane(&self, pane_id: &PaneId) -> Vec<usize> {
+        let Some(geom_of_pane) = self.get_pane_geom(pane_id) else {
+            log::error!("Could not find geom of pawne");
+            return vec![];
+        };
+        vec![geom_of_pane.y, geom_of_pane.y + geom_of_pane.rows.as_usize()]
+    }
+    pub fn stack_pane_up(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
+        let neighboring_pane_ids_above = self.direct_neighboring_pane_ids_above(pane_id);
         if !self.pane_ids_have_the_same_y(&neighboring_pane_ids_above) {
             // bail, we don't want to stack up at all in this case
             return None
@@ -1506,18 +1540,38 @@ impl<'a> TiledPaneGrid<'a> {
             None
         }
     }
-    pub fn stack_pane_down(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
-        let neighboring_pane_ids_below = {
-            let panes = self.panes.borrow();
-            let root_pane_geom = self.get_pane_geom(pane_id)?;
-            self
-                .neighbor_pane_ids(pane_id, Direction::Down).ok()?.iter()
-                .filter(|pane_id| {
-                    self.pane_is_between_vertical_borders(pane_id, root_pane_geom.x, root_pane_geom.x + root_pane_geom.cols.as_usize())
-                })
-                .copied()
-                .collect::<Vec<_>>()
+    pub fn direct_neighboring_pane_ids_below(&self, root_pane_id: &PaneId) -> Vec<PaneId> {
+        // here we look for panes that are directly below the provided root pane but that do not
+        // exceed its vertical borders (x and x + cols)
+        let Some(root_pane_geom) = self.get_pane_geom(root_pane_id) else {
+            log::error!("Could nto find root pane geom");
+            return vec![];
         };
+        let Some(neighbor_pane_ids) = self.neighbor_pane_ids(root_pane_id, Direction::Down).ok() else {
+            log::error!("Could not find neighbor pane ids above");
+            return vec![];
+        };
+        let neighbor_pane_ids = neighbor_pane_ids.iter()
+            .filter(|pane_id| {
+                self.pane_is_between_vertical_borders(pane_id, root_pane_geom.x, root_pane_geom.x + root_pane_geom.cols.as_usize())
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        // we only want to return these if they cover the entire vertical surface of the root pane id
+        // (as in - one of the panes contains its x and one of the panes contains its x + cols)
+        let mut boundaries_of_pane_ids = vec![];
+        for p_id in &neighbor_pane_ids {
+            let mut vertical_boundaries_of_pane = self.get_vertical_boundaries_of_pane(p_id);
+            boundaries_of_pane_ids.append(&mut vertical_boundaries_of_pane);
+        }
+        if boundaries_of_pane_ids.contains(&root_pane_geom.x) && boundaries_of_pane_ids.contains(&(root_pane_geom.x + root_pane_geom.cols.as_usize())) {
+            neighbor_pane_ids
+        } else {
+            vec![]
+        }
+    }
+    pub fn stack_pane_down(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
+        let neighboring_pane_ids_below = self.direct_neighboring_pane_ids_below(pane_id);
         if !self.pane_ids_have_the_same_height(&neighboring_pane_ids_below) {
             // bail, we don't want to stack up at all in this case
             return None
@@ -1536,24 +1590,40 @@ impl<'a> TiledPaneGrid<'a> {
         // TODO
         Ok(false)
     }
-    pub fn stack_pane_left(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
-        // TODO: CONTINUE HERE (21/01) - there's a bug where if we try to stack a stack left even
-        // with one pane, it doesn't work - with multiple panes it causes chaos
-
-        let neighboring_pane_ids_to_the_left = {
-            let panes = self.panes.borrow();
-            // let root_pane_geom = panes.get(pane_id)?.position_and_size();
-            let root_pane_geom = self.get_pane_geom(pane_id)?;
-            self
-                .neighbor_pane_ids(pane_id, Direction::Left).ok()?.iter()
-                .filter(|pane_id| {
-                    self.pane_is_between_horizontal_borders(pane_id, root_pane_geom.y, root_pane_geom.y + root_pane_geom.rows.as_usize())
-                })
-                .copied()
-                .collect::<Vec<_>>()
+    pub fn direct_neighboring_pane_ids_to_the_left(&self, root_pane_id: &PaneId) -> Vec<PaneId> {
+        // here we look for panes that are directly to the left the provided root pane but that do not
+        // exceed its horizontal borders (y and y + rows)
+        let Some(root_pane_geom) = self.get_pane_geom(root_pane_id) else {
+            log::error!("Could nto find root pane geom");
+            return vec![];
         };
+        let Some(neighbor_pane_ids) = self.neighbor_pane_ids(root_pane_id, Direction::Left).ok() else {
+            log::error!("Could not find neighbor pane ids to the left");
+            return vec![];
+        };
+        let neighbor_pane_ids = neighbor_pane_ids.iter()
+            .filter(|pane_id| {
+                self.pane_is_between_horizontal_borders(pane_id, root_pane_geom.y, root_pane_geom.y + root_pane_geom.rows.as_usize())
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        // we only want to return these if they cover the entire horizontal surface of the root pane id
+        // (as in - one of the panes contains its y and one of the panes contains its y + rows)
+        let mut boundaries_of_pane_ids = vec![];
+        for p_id in &neighbor_pane_ids {
+            let mut horizontal_boundaries_of_pane = self.get_horizontal_boundaries_of_pane(p_id);
+            boundaries_of_pane_ids.append(&mut horizontal_boundaries_of_pane);
+        }
+        if boundaries_of_pane_ids.contains(&root_pane_geom.y) && boundaries_of_pane_ids.contains(&(root_pane_geom.y + root_pane_geom.rows.as_usize())) {
+            neighbor_pane_ids
+        } else {
+            vec![]
+        }
+    }
+    pub fn stack_pane_left(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
+        let neighboring_pane_ids_to_the_left = self.direct_neighboring_pane_ids_to_the_left(pane_id);
         if !self.pane_ids_have_the_same_x(&neighboring_pane_ids_to_the_left) {
-            // bail, we don't want to stack up at all in this case
+            // bail, we don't want to stack left at all in this case
             return None
         }
         let pane_is_selectable = |pane_id| {
@@ -1566,19 +1636,38 @@ impl<'a> TiledPaneGrid<'a> {
         StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
         Some(vec![*pane_id])
     }
-    pub fn stack_pane_right(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
-
-        let neighboring_pane_ids_to_the_right = {
-            let panes = self.panes.borrow();
-            let root_pane_geom = self.get_pane_geom(pane_id)?;
-            self
-                .neighbor_pane_ids(pane_id, Direction::Right).ok()?.iter()
-                .filter(|pane_id| {
-                    self.pane_is_between_horizontal_borders(pane_id, root_pane_geom.y, root_pane_geom.y + root_pane_geom.rows.as_usize())
-                })
-                .copied()
-                .collect::<Vec<_>>()
+    pub fn direct_neighboring_pane_ids_to_the_right(&self, root_pane_id: &PaneId) -> Vec<PaneId> {
+        // here we look for panes that are directly to the right the provided root pane but that do not
+        // exceed its horizontal borders (y and y + rows)
+        let Some(root_pane_geom) = self.get_pane_geom(root_pane_id) else {
+            log::error!("Could nto find root pane geom");
+            return vec![];
         };
+        let Some(neighbor_pane_ids) = self.neighbor_pane_ids(root_pane_id, Direction::Right).ok() else {
+            log::error!("Could not find neighbor pane ids to the right");
+            return vec![];
+        };
+        let neighbor_pane_ids = neighbor_pane_ids.iter()
+            .filter(|pane_id| {
+                self.pane_is_between_horizontal_borders(pane_id, root_pane_geom.y, root_pane_geom.y + root_pane_geom.rows.as_usize())
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        // we only want to return these if they cover the entire horizontal surface of the root pane id
+        // (as in - one of the panes contains its y and one of the panes contains its y + rows)
+        let mut boundaries_of_pane_ids = vec![];
+        for p_id in &neighbor_pane_ids {
+            let mut horizontal_boundaries_of_pane = self.get_horizontal_boundaries_of_pane(p_id);
+            boundaries_of_pane_ids.append(&mut horizontal_boundaries_of_pane);
+        }
+        if boundaries_of_pane_ids.contains(&root_pane_geom.y) && boundaries_of_pane_ids.contains(&(root_pane_geom.y + root_pane_geom.rows.as_usize())) {
+            neighbor_pane_ids
+        } else {
+            vec![]
+        }
+    }
+    pub fn stack_pane_right(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
+        let neighboring_pane_ids_to_the_right = self.direct_neighboring_pane_ids_to_the_right(pane_id);
         if !self.pane_ids_have_the_same_width(&neighboring_pane_ids_to_the_right) {
             // bail, we don't want to stack up at all in this case
             return None
