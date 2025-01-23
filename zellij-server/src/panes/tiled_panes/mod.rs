@@ -898,20 +898,12 @@ impl TiledPanes {
         Ok(())
     }
     fn stacked_resize_pane_with_id(&mut self, pane_id: PaneId, strategy: &ResizeStrategy) -> Result<()> {
-        // TODO: CONTINUE HERE - tweak this until satisfied with the functionality, then move on to
-        // tombstones
         let err_context = || format!("failed to resize pand with id: {:?}", pane_id);
 
         let geom_of_pane_to_resize = {
             self.panes.get(&pane_id).map(|p| p.position_and_size())
         };
         let resize_percent = Some((30.0, 30.0));
-        // TODO:
-        // if we have neighboring pane ids in the relevant direction, try to do the 30% then try to
-        // stack - if this fails, try to do the 30% in each direction - if that fails do a normal
-        // resize
-
-
         match strategy.resize {
             Resize::Increase => {
                 let (
@@ -1077,7 +1069,6 @@ impl TiledPanes {
                         }
                     }
                 }
-                // TODO: normal non-stacked resize here
                 Ok(())
             }
             Resize::Decrease => {
@@ -1095,10 +1086,6 @@ impl TiledPanes {
                     }
                     Ok(())
                 } else if pane_grid.unstack_pane_down(&pane_id)? {
-                    // Ok(())
-//                 } else if pane_grid.unstack_pane_right(&pane_id)? {
-//                     Ok(())
-//                 } else if pane_grid.unstack_pane_left(&pane_id)? {
                     Ok(())
                 } else {
                     Ok(())
@@ -1118,7 +1105,6 @@ impl TiledPanes {
 
 
         match pane_grid
-            // .change_pane_size(&pane_id, &strategy, (RESIZE_PERCENT, RESIZE_PERCENT))
             .change_pane_size(&pane_id, &strategy, resize_percent.unwrap_or((RESIZE_PERCENT, RESIZE_PERCENT)))
             .with_context(err_context)
         {
