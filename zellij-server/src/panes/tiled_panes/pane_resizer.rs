@@ -156,7 +156,6 @@ impl<'a> PaneResizer<'a> {
                     },
                 };
                 StackedPanes::new(self.panes.clone()).resize_panes_in_stack(&span.pid, new_geom)?;
-                // TODO: test with geom_override (fullscreen)
                 if new_geom.rows.as_usize() != current_geom.rows.as_usize()
                     || new_geom.cols.as_usize() != current_geom.cols.as_usize()
                 {

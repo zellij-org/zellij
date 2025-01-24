@@ -269,7 +269,7 @@ impl<'a> StackedPanes<'a> {
             .iter()
             .nth(position_of_flexible_pane)
             .with_context(err_context)?;
-        let current_rows = all_stacked_pane_positions.len() + (flexible_pane.rows.as_usize() - 1);
+        let current_rows = all_stacked_pane_positions.len() + (flexible_pane.rows.as_usize().saturating_sub(1));
         let new_rows = new_full_stack_geom.rows.as_usize();
 
         let adjust_stack_geoms = |new_flexible_pane_geom: PaneGeom| -> Result<()> {
@@ -309,14 +309,11 @@ impl<'a> StackedPanes<'a> {
                 .set_geom(new_flexible_pane_geom);
             adjust_stack_geoms(new_flexible_pane_geom)?;
         } else {
-            if new_rows < all_stacked_pane_positions.len() {
-                return Err(anyhow!("Not enough room for stacked panes"));
-            }
-            let rows_deficit = current_rows - new_rows;
+            let rows_deficit = current_rows.saturating_sub(new_rows);
             let mut new_flexible_pane_geom = *flexible_pane;
             new_flexible_pane_geom
                 .rows
-                .set_inner(new_flexible_pane_geom.rows.as_usize() - rows_deficit);
+                .set_inner(new_flexible_pane_geom.rows.as_usize().saturating_sub(rows_deficit));
             self.panes
                 .borrow_mut()
                 .get_mut(&flexible_pane_id)
