@@ -176,6 +176,17 @@ impl Dimension {
             }
         }
     }
+    pub fn reduce_by(&mut self, by: f64, by_inner: usize) {
+        match self.constraint {
+            Constraint::Percent(percent) => {
+                self.constraint = Constraint::Percent(percent - by);
+                self.inner = self.inner.saturating_sub(by_inner);
+            }
+            Constraint::Fixed(_fixed) => {
+                log::error!("Cannot reduce_by fixed dimensions");
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
