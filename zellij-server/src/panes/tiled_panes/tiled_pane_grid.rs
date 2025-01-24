@@ -1586,10 +1586,6 @@ impl<'a> TiledPaneGrid<'a> {
         StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
         Some(vec![*pane_id])
     }
-    pub fn unstack_pane_down(&mut self, pane_id: &PaneId) -> Result<bool> {
-        // TODO
-        Ok(false)
-    }
     pub fn direct_neighboring_pane_ids_to_the_left(&self, root_pane_id: &PaneId) -> Vec<PaneId> {
         // here we look for panes that are directly to the left the provided root pane but that do not
         // exceed its horizontal borders (y and y + rows)

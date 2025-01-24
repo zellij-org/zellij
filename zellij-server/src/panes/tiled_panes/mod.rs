@@ -897,8 +897,156 @@ impl TiledPanes {
 
         Ok(())
     }
+    fn resize_or_stack_pane_up(&mut self, pane_id: PaneId, resize_percent: (f64, f64)) -> bool {
+        // true - successfully resized
+        let mut strategy = ResizeStrategy::new(Resize::Increase, Some(Direction::Up));
+        strategy.invert_on_boundaries = false;
+        let successfully_resized_up = match self.resize_pane_with_id(
+            strategy,
+            pane_id,
+            Some(resize_percent),
+        ) {
+            Ok(_) => true,
+            Err(_) => false
+        };
+        if successfully_resized_up {
+            return true;
+        } else {
+            let mut pane_grid = TiledPaneGrid::new(
+                &mut self.panes,
+                &self.panes_to_hide,
+                *self.display_area.borrow(),
+                *self.viewport.borrow(),
+            );
+            if let Some(pane_ids_to_resize) = pane_grid.stack_pane_up(&pane_id) {
+                for pane_id in pane_ids_to_resize {
+                    if let Some(pane) = self.panes.get_mut(&pane_id) {
+                        let _ = resize_pty!(
+                            pane,
+                            self.os_api,
+                            self.senders,
+                            self.character_cell_size
+                        );
+                    }
+                }
+                return true;
+            }
+        }
+        false
+    }
+    fn resize_or_stack_pane_down(&mut self, pane_id: PaneId, resize_percent: (f64, f64)) -> bool {
+        // true - successfully resized
+        let mut strategy = ResizeStrategy::new(Resize::Increase, Some(Direction::Down));
+        strategy.invert_on_boundaries = false;
+        let successfully_resized_up = match self.resize_pane_with_id(
+            strategy,
+            pane_id,
+            Some(resize_percent),
+        ) {
+            Ok(_) => true,
+            Err(_) => false
+        };
+        if successfully_resized_up {
+            return true;
+        } else {
+            let mut pane_grid = TiledPaneGrid::new(
+                &mut self.panes,
+                &self.panes_to_hide,
+                *self.display_area.borrow(),
+                *self.viewport.borrow(),
+            );
+            if let Some(pane_ids_to_resize) = pane_grid.stack_pane_down(&pane_id) {
+                for pane_id in pane_ids_to_resize {
+                    if let Some(pane) = self.panes.get_mut(&pane_id) {
+                        let _ = resize_pty!(
+                            pane,
+                            self.os_api,
+                            self.senders,
+                            self.character_cell_size
+                        );
+                    }
+                }
+                return true;
+            }
+        }
+        false
+    }
+    fn resize_or_stack_pane_left(&mut self, pane_id: PaneId, resize_percent: (f64, f64)) -> bool {
+        // true - successfully resized
+        let mut strategy = ResizeStrategy::new(Resize::Increase, Some(Direction::Left));
+        strategy.invert_on_boundaries = false;
+        let successfully_resized_up = match self.resize_pane_with_id(
+            strategy,
+            pane_id,
+            Some(resize_percent),
+        ) {
+            Ok(_) => true,
+            Err(_) => false
+        };
+        if successfully_resized_up {
+            return true;
+        } else {
+            let mut pane_grid = TiledPaneGrid::new(
+                &mut self.panes,
+                &self.panes_to_hide,
+                *self.display_area.borrow(),
+                *self.viewport.borrow(),
+            );
+            if let Some(pane_ids_to_resize) = pane_grid.stack_pane_left(&pane_id) {
+                for pane_id in pane_ids_to_resize {
+                    if let Some(pane) = self.panes.get_mut(&pane_id) {
+                        let _ = resize_pty!(
+                            pane,
+                            self.os_api,
+                            self.senders,
+                            self.character_cell_size
+                        );
+                    }
+                }
+                return true;
+            }
+        }
+        false
+    }
+    fn resize_or_stack_pane_right(&mut self, pane_id: PaneId, resize_percent: (f64, f64)) -> bool {
+        // true - successfully resized
+        let mut strategy = ResizeStrategy::new(Resize::Increase, Some(Direction::Right));
+        strategy.invert_on_boundaries = false;
+        let successfully_resized_up = match self.resize_pane_with_id(
+            strategy,
+            pane_id,
+            Some(resize_percent),
+        ) {
+            Ok(_) => true,
+            Err(_) => false
+        };
+        if successfully_resized_up {
+            return true;
+        } else {
+            let mut pane_grid = TiledPaneGrid::new(
+                &mut self.panes,
+                &self.panes_to_hide,
+                *self.display_area.borrow(),
+                *self.viewport.borrow(),
+            );
+            if let Some(pane_ids_to_resize) = pane_grid.stack_pane_right(&pane_id) {
+                for pane_id in pane_ids_to_resize {
+                    if let Some(pane) = self.panes.get_mut(&pane_id) {
+                        let _ = resize_pty!(
+                            pane,
+                            self.os_api,
+                            self.senders,
+                            self.character_cell_size
+                        );
+                    }
+                }
+                return true;
+            }
+        }
+        false
+    }
     fn stacked_resize_pane_with_id(&mut self, pane_id: PaneId, strategy: &ResizeStrategy) -> Result<()> {
-        let resize_percent = Some((30.0, 30.0));
+        let resize_percent = (30.0, 30.0);
         match strategy.resize {
             Resize::Increase => {
                 let (
@@ -921,150 +1069,27 @@ impl TiledPanes {
                     )
                 };
                 if !direct_neighboring_pane_ids_above.is_empty() {
-                    let mut strategy = *strategy;
-                    strategy.direction = Some(Direction::Up);
-                    strategy.invert_on_boundaries = false;
-                    let successfully_resized_up = match self.resize_pane_with_id(
-                        strategy,
-                        pane_id,
-                        resize_percent
-                    ) {
-                        Ok(_) => true,
-                        Err(_) => false
-                    };
-                    if successfully_resized_up {
-                        return Ok(())
-                    } else {
-                        let mut pane_grid = TiledPaneGrid::new(
-                            &mut self.panes,
-                            &self.panes_to_hide,
-                            *self.display_area.borrow(),
-                            *self.viewport.borrow(),
-                        );
-                        if let Some(pane_ids_to_resize) = pane_grid.stack_pane_up(&pane_id) {
-                            for pane_id in pane_ids_to_resize {
-                                if let Some(pane) = self.panes.get_mut(&pane_id) {
-                                    let _ = resize_pty!(
-                                        pane,
-                                        self.os_api,
-                                        self.senders,
-                                        self.character_cell_size
-                                    );
-                                }
-                            }
-                            return Ok(())
-                        }
-                    }
-                 }
-                 if !direct_neighboring_pane_ids_below.is_empty() {
-                    let mut strategy = *strategy;
-                    strategy.direction = Some(Direction::Down);
-                    strategy.invert_on_boundaries = false;
-                    let successfully_resized_down = match self.resize_pane_with_id(
-                        strategy,
-                        pane_id,
-                        resize_percent
-                    ) {
-                        Ok(_) => true,
-                        Err(_) => false
-                    };
-                    if successfully_resized_down {
+                    if self.resize_or_stack_pane_up(pane_id, resize_percent) {
                         return Ok(());
-                    } else {
-                        let mut pane_grid = TiledPaneGrid::new(
-                            &mut self.panes,
-                            &self.panes_to_hide,
-                            *self.display_area.borrow(),
-                            *self.viewport.borrow(),
-                        );
-                        if let Some(pane_ids_to_resize) = pane_grid.stack_pane_down(&pane_id) {
-                            for pane_id in pane_ids_to_resize {
-                                if let Some(pane) = self.panes.get_mut(&pane_id) {
-                                    let _ = resize_pty!(
-                                        pane,
-                                        self.os_api,
-                                        self.senders,
-                                        self.character_cell_size
-                                    );
-                                }
-                            }
-                            return Ok(());
-                        }
                     }
-                 }
+                }
+                if !direct_neighboring_pane_ids_below.is_empty() {
+                   if self.resize_or_stack_pane_down(pane_id, resize_percent) {
+                       return Ok(());
+                   }
+                }
                 if !direct_neighboring_pane_ids_to_the_left.is_empty() {
-                    let mut strategy = *strategy;
-                    strategy.direction = Some(Direction::Left);
-                    strategy.invert_on_boundaries = false;
-                    let successfully_resized_left = match self.resize_pane_with_id(
-                        strategy,
-                        pane_id,
-                        resize_percent
-                    ) {
-                        Ok(_) => true,
-                        Err(_) => false
-                    };
-                    if successfully_resized_left {
-                        return Ok(());
-                    } else {
-                        let mut pane_grid = TiledPaneGrid::new(
-                            &mut self.panes,
-                            &self.panes_to_hide,
-                            *self.display_area.borrow(),
-                            *self.viewport.borrow(),
-                        );
-                        if let Some(pane_ids_to_resize) = pane_grid.stack_pane_left(&pane_id) {
-                            for pane_id in pane_ids_to_resize {
-                                if let Some(pane) = self.panes.get_mut(&pane_id) {
-                                    let _ = resize_pty!(
-                                        pane,
-                                        self.os_api,
-                                        self.senders,
-                                        self.character_cell_size
-                                    );
-                                }
-                            }
-                            return Ok(());
-                        }
-                    }
+                   if self.resize_or_stack_pane_left(pane_id, resize_percent) {
+                       return Ok(());
+                   }
                 }
                 if !direct_neighboring_pane_ids_to_the_right.is_empty() {
-                    let mut strategy = *strategy;
-                    strategy.direction = Some(Direction::Right);
-                    strategy.invert_on_boundaries = false;
-                    let successfully_resized_right = match self.resize_pane_with_id(
-                        strategy,
-                        pane_id,
-                        resize_percent
-                    ) {
-                        Ok(_) => true,
-                        Err(_) => false
-                    };
-                    if successfully_resized_right {
-                        return Ok(());
-                    } else {
-                        let mut pane_grid = TiledPaneGrid::new(
-                            &mut self.panes,
-                            &self.panes_to_hide,
-                            *self.display_area.borrow(),
-                            *self.viewport.borrow(),
-                        );
-                        if let Some(pane_ids_to_resize) = pane_grid.stack_pane_right(&pane_id) {
-                            for pane_id in pane_ids_to_resize {
-                                if let Some(pane) = self.panes.get_mut(&pane_id) {
-                                    let _ = resize_pty!(
-                                        pane,
-                                        self.os_api,
-                                        self.senders,
-                                        self.character_cell_size
-                                    );
-                                }
-                            }
-                            return Ok(());
-                        }
-                    }
+                   if self.resize_or_stack_pane_right(pane_id, resize_percent) {
+                       return Ok(());
+                   }
                 }
-                Ok(())
+                // normal resize if we can't do anything...
+                self.resize_pane_with_id(*strategy, pane_id, None)
             }
             Resize::Decrease => {
                 let mut pane_grid = TiledPaneGrid::new(
@@ -1080,10 +1105,9 @@ impl TiledPanes {
                         }
                     }
                     Ok(())
-                } else if pane_grid.unstack_pane_down(&pane_id)? {
-                    Ok(())
                 } else {
-                    Ok(())
+                    // normal resize if we were not inside a stack
+                    self.resize_pane_with_id(*strategy, pane_id, None)
                 }
             }
         }
