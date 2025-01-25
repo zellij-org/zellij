@@ -71,6 +71,8 @@ pub struct TiledPanes {
     senders: ThreadSenders,
     window_title: Option<String>,
     client_id_to_boundaries: HashMap<ClientId, Boundaries>,
+    tombstones_before_increase: Option<(PaneId, Vec<HashMap<PaneId, PaneGeom>>)>,
+    tombstones_before_decrease: Option<(PaneId, Vec<HashMap<PaneId, PaneGeom>>)>,
 }
 
 impl TiledPanes {
@@ -107,6 +109,8 @@ impl TiledPanes {
             senders,
             window_title: None,
             client_id_to_boundaries: HashMap::new(),
+            tombstones_before_increase: None,
+            tombstones_before_decrease: None,
         }
     }
     pub fn add_pane_with_existing_geom(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>) {
@@ -1045,10 +1049,84 @@ impl TiledPanes {
         }
         false
     }
-    fn stacked_resize_pane_with_id(&mut self, pane_id: PaneId, strategy: &ResizeStrategy) -> Result<()> {
+    fn update_tombstones_before_increase(&mut self, focused_pane_id: PaneId, pane_state: HashMap<PaneId, PaneGeom>) {
+        match self.tombstones_before_increase.as_mut() {
+            Some((focused_pane_id_in_tombstone, pane_geoms)) => {
+                let last_state = pane_geoms.last();
+                let last_state_has_same_pane_count = last_state.map(|last_state| last_state.len() == pane_state.len()).unwrap_or(false);
+                let last_state_equals_current_state = last_state.map(|last_state| last_state == &pane_state).unwrap_or(false);
+                if last_state_equals_current_state {
+                    return;
+                }
+                if *focused_pane_id_in_tombstone == focused_pane_id && last_state_has_same_pane_count {
+                    log::info!("0 updating tombstone");
+                    pane_geoms.push(pane_state);
+                } else {
+                    log::info!("1 updating tombstone");
+                    self.clear_tombstones();
+                    self.tombstones_before_increase = Some((focused_pane_id, vec![pane_state]));
+                }
+            },
+            None => {
+                log::info!("2 updating tombstone");
+                self.clear_tombstones();
+                self.tombstones_before_increase = Some((focused_pane_id, vec![pane_state]));
+            }
+        }
+    }
+    // TODO: merge these functions
+    fn update_tombstones_before_decrease(&mut self, focused_pane_id: PaneId, pane_state: HashMap<PaneId, PaneGeom>) {
+        match self.tombstones_before_decrease.as_mut() {
+            Some((focused_pane_id_in_tombstone, pane_geoms)) => {
+                let last_state = pane_geoms.last();
+                let last_state_has_same_pane_count = last_state.map(|last_state| last_state.len() == pane_state.len()).unwrap_or(false);
+                let last_state_equals_current_state = last_state.map(|last_state| last_state == &pane_state).unwrap_or(false);
+                if last_state_equals_current_state {
+                    return;
+                }
+                if *focused_pane_id_in_tombstone == focused_pane_id && last_state_has_same_pane_count {
+                    pane_geoms.push(pane_state);
+                } else {
+                    self.clear_tombstones();
+                    self.tombstones_before_decrease = Some((focused_pane_id, vec![pane_state]));
+                }
+            },
+            None => {
+                    self.clear_tombstones();
+                self.tombstones_before_decrease = Some((focused_pane_id, vec![pane_state]));
+            }
+        }
+    }
+    fn clear_tombstones(&mut self) {
+        self.tombstones_before_increase = None;
+        self.tombstones_before_decrease = None;
+    }
+    fn stacked_resize_pane_with_id(&mut self, pane_id: PaneId, strategy: &ResizeStrategy) -> Result<bool> {
         let resize_percent = (30.0, 30.0);
         match strategy.resize {
             Resize::Increase => {
+                match self.tombstones_before_decrease.as_mut() {
+                    Some((tombstone_pane_id, tombstone_pane_state)) if *tombstone_pane_id == pane_id => {
+                        if let Some(last_state) = tombstone_pane_state.pop() {
+                            if last_state.len() == self.panes.len() {
+                                for (pane_id, pane_geom) in last_state {
+                                    self.panes.get_mut(&pane_id).map(|pane| pane.set_geom(pane_geom));
+                                }
+                                return Ok(true);
+                            } else {
+                                self.tombstones_before_decrease = None;
+                            }
+                        }
+                    },
+                    _ => {}
+                }
+
+                let mut current_pane_state = HashMap::new();
+                for (pane_id, pane) in &self.panes {
+                    current_pane_state.insert(*pane_id, pane.current_geom());
+                }
+
+
                 let (
                     direct_neighboring_pane_ids_above,
                     direct_neighboring_pane_ids_below,
@@ -1068,30 +1146,67 @@ impl TiledPanes {
                         pane_grid.direct_neighboring_pane_ids_to_the_right(&pane_id),
                     )
                 };
+                // TODO:
+                // if we successfully resized, we push the whole pane state to self.tombstones
                 if !direct_neighboring_pane_ids_above.is_empty() {
                     if self.resize_or_stack_pane_up(pane_id, resize_percent) {
-                        return Ok(());
+                        self.update_tombstones_before_increase(pane_id, current_pane_state);
+                        return Ok(true);
                     }
                 }
                 if !direct_neighboring_pane_ids_below.is_empty() {
                    if self.resize_or_stack_pane_down(pane_id, resize_percent) {
-                       return Ok(());
+                        self.update_tombstones_before_increase(pane_id, current_pane_state);
+                       return Ok(true);
                    }
                 }
                 if !direct_neighboring_pane_ids_to_the_left.is_empty() {
                    if self.resize_or_stack_pane_left(pane_id, resize_percent) {
-                       return Ok(());
+                        self.update_tombstones_before_increase(pane_id, current_pane_state);
+                       return Ok(true);
                    }
                 }
                 if !direct_neighboring_pane_ids_to_the_right.is_empty() {
                    if self.resize_or_stack_pane_right(pane_id, resize_percent) {
-                       return Ok(());
+                        self.update_tombstones_before_increase(pane_id, current_pane_state);
+                       return Ok(true);
                    }
                 }
                 // normal resize if we can't do anything...
-                self.resize_pane_with_id(*strategy, pane_id, None)
+                match self.resize_pane_with_id(*strategy, pane_id, None) {
+                    Ok(size_changed) => {
+                        log::info!("OK of resize_pane_with_id");
+                        if size_changed {
+                            self.update_tombstones_before_increase(pane_id, current_pane_state);
+                        }
+                        return Ok(size_changed);
+                    },
+                    Err(e) => Err(e)
+                }
             }
             Resize::Decrease => {
+                match self.tombstones_before_increase.as_mut() {
+                    Some((tombstone_pane_id, tombstone_pane_state)) if *tombstone_pane_id == pane_id => {
+                        if let Some(last_state) = tombstone_pane_state.pop() {
+                            if last_state.len() == self.panes.len() {
+                                for (pane_id, pane_geom) in last_state {
+                                    self.panes.get_mut(&pane_id).map(|pane| pane.set_geom(pane_geom));
+                                }
+                                return Ok(true);
+                            } else {
+                                self.tombstones_before_increase = None;
+                            }
+                        }
+                    },
+                    _ => {}
+                }
+
+                let mut current_pane_state = HashMap::new();
+                for (pane_id, pane) in &self.panes {
+                    current_pane_state.insert(*pane_id, pane.current_geom());
+                }
+
+
                 let mut pane_grid = TiledPaneGrid::new(
                     &mut self.panes,
                     &self.panes_to_hide,
@@ -1104,15 +1219,24 @@ impl TiledPanes {
                             resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
                         }
                     }
-                    Ok(())
+                    self.update_tombstones_before_decrease(pane_id, current_pane_state);
+                    Ok(true)
                 } else {
                     // normal resize if we were not inside a stack
-                    self.resize_pane_with_id(*strategy, pane_id, None)
+                    match self.resize_pane_with_id(*strategy, pane_id, None) {
+                        Ok(pane_size_changed) => {
+                            if pane_size_changed {
+                                self.update_tombstones_before_decrease(pane_id, current_pane_state);
+                            }
+                            Ok(pane_size_changed)
+                        },
+                        Err(e) => Err(e)
+                    }
                 }
             }
         }
     }
-    pub fn resize_pane_with_id(&mut self, strategy: ResizeStrategy, pane_id: PaneId, resize_percent: Option<(f64, f64)>) -> Result<()> {
+    pub fn resize_pane_with_id(&mut self, strategy: ResizeStrategy, pane_id: PaneId, resize_percent: Option<(f64, f64)>) -> Result<bool> {
         let err_context = || format!("failed to resize pand with id: {:?}", pane_id);
 
         let mut pane_grid = TiledPaneGrid::new(
@@ -1123,11 +1247,14 @@ impl TiledPanes {
         );
 
 
+        let mut pane_size_changed = false;
         match pane_grid
             .change_pane_size(&pane_id, &strategy, resize_percent.unwrap_or((RESIZE_PERCENT, RESIZE_PERCENT)))
             .with_context(err_context)
         {
-            Ok(_) => {},
+            Ok(changed) => {
+                pane_size_changed = changed;
+            },
             Err(err) => match err.downcast_ref::<ZellijError>() {
                 Some(ZellijError::PaneSizeUnchanged) => {
                     // try once more with double the resize percent, but let's keep it at that
@@ -1155,10 +1282,11 @@ impl TiledPanes {
         }
 
         for pane in self.panes.values_mut() {
+            // TODO: only for the panes whose width/height actually changed
             resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
         }
         self.reset_boundaries();
-        Ok(())
+        Ok(pane_size_changed)
     }
 
     pub fn focus_next_pane(&mut self, client_id: ClientId) {
