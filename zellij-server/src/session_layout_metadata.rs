@@ -3,10 +3,11 @@ use crate::ClientId;
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use zellij_utils::common_path::common_path_all;
+use zellij_utils::input::layout::LayoutConfig;
 use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::{
     input::command::RunCommand,
-    input::layout::{Layout, Run, RunPlugin, RunPluginOrAlias},
+    input::layout::{Run, RunPlugin, RunPluginOrAlias},
     input::plugins::PluginAliases,
     session_serialization::{
         extract_command_and_args, extract_edit_and_line_number, extract_plugin_and_config,
@@ -16,7 +17,7 @@ use zellij_utils::{
 
 #[derive(Default, Debug, Clone)]
 pub struct SessionLayoutMetadata {
-    default_layout: Box<Layout>,
+    default_layout_config: Box<LayoutConfig>,
     global_cwd: Option<PathBuf>,
     pub default_shell: Option<PathBuf>,
     pub default_editor: Option<PathBuf>,
@@ -24,9 +25,9 @@ pub struct SessionLayoutMetadata {
 }
 
 impl SessionLayoutMetadata {
-    pub fn new(default_layout: Box<Layout>) -> Self {
+    pub fn new(default_layout_config: Box<LayoutConfig>) -> Self {
         SessionLayoutMetadata {
-            default_layout,
+            default_layout_config,
             ..Default::default()
         }
     }
@@ -110,7 +111,8 @@ impl SessionLayoutMetadata {
         // 1. The current number of panes is different than the number of panes in the base layout
         //    (meaning a pane was opened or closed)
         // 2. One or more terminal panes are running a command that is not the default shell
-        let base_layout_pane_count = self.default_layout.pane_count();
+        let active_layout = self.default_layout_config.get_active_layout();
+        let base_layout_pane_count = active_layout.pane_count();
         let current_pane_count = self.pane_count();
         if current_pane_count != base_layout_pane_count {
             return true;
@@ -302,15 +304,16 @@ impl SessionLayoutMetadata {
         self.default_editor = Some(default_editor);
     }
     pub fn update_plugin_aliases_in_default_layout(&mut self, plugin_aliases: &PluginAliases) {
-        self.default_layout
-            .populate_plugin_aliases_in_layout(&plugin_aliases);
+        for layout in self.default_layout_config.iter_mut() {
+            layout.populate_plugin_aliases_in_layout(&plugin_aliases);
+        }
     }
 }
 
 impl Into<GlobalLayoutManifest> for SessionLayoutMetadata {
     fn into(self) -> GlobalLayoutManifest {
         GlobalLayoutManifest {
-            default_layout: self.default_layout,
+            default_layout_config: self.default_layout_config,
             default_shell: self.default_shell,
             global_cwd: self.global_cwd,
             tabs: self

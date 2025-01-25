@@ -11,6 +11,7 @@ use crate::{
 use async_std::task::{self, JoinHandle};
 use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
+use zellij_utils::input::layout::LayoutConfig;
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
@@ -19,7 +20,7 @@ use zellij_utils::{
     errors::{ContextType, PtyContext},
     input::{
         command::{OpenFilePayload, RunCommand, TerminalAction},
-        layout::{FloatingPaneLayout, Layout, Run, RunPluginOrAlias, TiledPaneLayout},
+        layout::{FloatingPaneLayout, Run, RunPluginOrAlias, TiledPaneLayout},
     },
     pane_size::Size,
     session_serialization,
@@ -142,7 +143,7 @@ pub(crate) struct Pty {
     default_editor: Option<PathBuf>,
 }
 
-pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
+pub(crate) fn pty_thread_main(mut pty: Pty, layout_config: Box<LayoutConfig>) -> Result<()> {
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
@@ -544,14 +545,16 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             ) => {
                 let err_context = || format!("failed to open new tab for client {}", client_id);
 
+                let active_layout = layout_config.get_active_layout();
+
                 let floating_panes_layout = if floating_panes_layout.is_empty() {
-                    layout.new_tab().1
+                    active_layout.new_tab().1
                 } else {
                     floating_panes_layout
                 };
                 pty.spawn_terminals_for_layout(
                     cwd,
-                    tab_layout.unwrap_or_else(|| layout.new_tab().0),
+                    tab_layout.unwrap_or_else(|| active_layout.new_tab().0),
                     floating_panes_layout,
                     terminal_action.clone(),
                     plugin_ids,

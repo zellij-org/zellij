@@ -5,8 +5,9 @@ use std::path::PathBuf;
 use crate::{
     input::layout::PluginUserConfiguration,
     input::layout::{
-        FloatingPaneLayout, Layout, LayoutConstraint, PercentOrFixed, Run, RunPluginOrAlias,
-        SplitDirection, SplitSize, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+        FloatingPaneLayout, Layout, LayoutConfig, LayoutConstraint, PercentOrFixed, Run,
+        RunPluginOrAlias, SplitDirection, SplitSize, SwapFloatingLayout, SwapTiledLayout,
+        TiledPaneLayout,
     },
     pane_size::{Constraint, PaneGeom},
 };
@@ -15,7 +16,7 @@ use crate::{
 pub struct GlobalLayoutManifest {
     pub global_cwd: Option<PathBuf>,
     pub default_shell: Option<PathBuf>,
-    pub default_layout: Box<Layout>,
+    pub default_layout_config: Box<LayoutConfig>,
     pub tabs: Vec<(String, TabLayoutManifest)>,
 }
 
@@ -44,39 +45,47 @@ pub fn serialize_session_layout(
     // BTreeMap is the pane contents and their file names
     let mut document = KdlDocument::new();
     let mut pane_contents = BTreeMap::new();
-    let mut layout_node = KdlNode::new("layout");
-    let mut layout_node_children = KdlDocument::new();
-    if let Some(global_cwd) = serialize_global_cwd(&global_layout_manifest.global_cwd) {
-        layout_node_children.nodes_mut().push(global_cwd);
-    }
-    match serialize_multiple_tabs(global_layout_manifest.tabs, &mut pane_contents) {
-        Ok(mut serialized_tabs) => {
-            layout_node_children
-                .nodes_mut()
-                .append(&mut serialized_tabs);
-        },
-        Err(e) => {
-            return Err(e);
-        },
-    }
-    serialize_new_tab_template(
-        global_layout_manifest.default_layout.template,
-        &mut pane_contents,
-        &mut layout_node_children,
-    );
-    serialize_swap_tiled_layouts(
-        global_layout_manifest.default_layout.swap_tiled_layouts,
-        &mut pane_contents,
-        &mut layout_node_children,
-    );
-    serialize_swap_floating_layouts(
-        global_layout_manifest.default_layout.swap_floating_layouts,
-        &mut pane_contents,
-        &mut layout_node_children,
-    );
+    for layout in global_layout_manifest.default_layout_config.iter() {
+        let mut layout_node = KdlNode::new("layout");
+        let mut layout_node_children = KdlDocument::new();
+        if let Some(global_cwd) = serialize_global_cwd(&global_layout_manifest.global_cwd) {
+            layout_node_children.nodes_mut().push(global_cwd);
+        }
 
-    layout_node.set_children(layout_node_children);
-    document.nodes_mut().push(layout_node);
+        // I am not quite sure what global_layout_manifest.tabs is containing since the layouts
+        // themselves do contain tabs. Is this the manually opened tabs by the user that are not
+        // tracked in the layout?
+        match serialize_multiple_tabs(global_layout_manifest.tabs.clone(), &mut pane_contents) {
+            Ok(mut serialized_tabs) => {
+                layout_node_children
+                    .nodes_mut()
+                    .append(&mut serialized_tabs);
+            },
+            Err(e) => {
+                return Err(e);
+            },
+        }
+
+        // cloning the values here might not be the most efficient way of serializing the layout
+        serialize_new_tab_template(
+            layout.template.clone(),
+            &mut pane_contents,
+            &mut layout_node_children,
+        );
+        serialize_swap_tiled_layouts(
+            layout.swap_tiled_layouts.clone(),
+            &mut pane_contents,
+            &mut layout_node_children,
+        );
+        serialize_swap_floating_layouts(
+            layout.swap_floating_layouts.clone(),
+            &mut pane_contents,
+            &mut layout_node_children,
+        );
+
+        layout_node.set_children(layout_node_children);
+        document.nodes_mut().push(layout_node);
+    }
     Ok((document.to_string(), pane_contents))
 }
 

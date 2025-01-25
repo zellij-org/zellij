@@ -21,6 +21,7 @@ use zellij_utils::data::{
     CommandType, ConnectToSession, FloatingPaneCoordinates, HttpVerb, KeyWithModifier, LayoutInfo,
     MessageToPlugin, OriginatingPlugin, PermissionStatus, PermissionType, PluginPermission,
 };
+use zellij_utils::input::layout::LayoutConfig;
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::{
     async_std::task,
@@ -40,7 +41,7 @@ use zellij_utils::{
     input::{
         actions::Action,
         command::{OpenFilePayload, RunCommand, RunCommandAction, TerminalAction},
-        layout::{Layout, RunPluginOrAlias},
+        layout::RunPluginOrAlias,
     },
     plugin_api::{
         plugin_command::ProtobufPluginCommand,
@@ -60,7 +61,7 @@ macro_rules! apply_action {
             $env.capabilities.clone(),
             $env.client_attributes.clone(),
             $env.default_shell.clone(),
-            $env.default_layout.clone(),
+            $env.default_layout_config.clone(),
             None,
             $env.keybinds.clone(),
             $env.default_mode.clone(),
@@ -1009,34 +1010,39 @@ fn switch_to_mode(env: &PluginEnv, input_mode: InputMode) {
 
 fn new_tabs_with_layout(env: &PluginEnv, raw_layout: &str) -> Result<()> {
     // TODO: cwd
-    let layout = Layout::from_str(
+    let layout_config = LayoutConfig::from_str(
         &raw_layout,
         format!("Layout from plugin: {}", env.name()),
         None,
         None,
     )
     .map_err(|e| anyhow!("Failed to parse layout: {:?}", e))?;
-    apply_layout(env, layout);
+    apply_layout(env, layout_config);
     Ok(())
 }
 
 fn new_tabs_with_layout_info(env: &PluginEnv, layout_info: LayoutInfo) -> Result<()> {
     // TODO: cwd
-    let layout = Layout::from_layout_info(&env.layout_dir, layout_info)
+    let layout_config = LayoutConfig::from_layout_info(&env.layout_dir, layout_info)
         .map_err(|e| anyhow!("Failed to parse layout: {:?}", e))?;
-    apply_layout(env, layout);
+    apply_layout(env, layout_config);
     Ok(())
 }
 
-fn apply_layout(env: &PluginEnv, layout: Layout) {
+fn apply_layout(env: &PluginEnv, layout_config: LayoutConfig) {
+    let active_layout = layout_config.get_active_layout();
     let mut tabs_to_open = vec![];
-    let tabs = layout.tabs();
+    let tabs = active_layout.tabs();
     if tabs.is_empty() {
-        let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
-        let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
+        let swap_tiled_layouts = Some(active_layout.swap_tiled_layouts.clone());
+        let swap_floating_layouts = Some(active_layout.swap_floating_layouts.clone());
         let action = Action::NewTab(
-            layout.template.as_ref().map(|t| t.0.clone()),
-            layout.template.map(|t| t.1).unwrap_or_default(),
+            active_layout.template.as_ref().map(|t| t.0.clone()),
+            active_layout
+                .template
+                .as_ref()
+                .map(|t| t.1.clone())
+                .unwrap_or_default(),
             swap_tiled_layouts,
             swap_floating_layouts,
             None,
@@ -1044,13 +1050,13 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
         );
         tabs_to_open.push(action);
     } else {
-        let focused_tab_index = layout.focused_tab_index().unwrap_or(0);
+        let focused_tab_index = active_layout.focused_tab_index().unwrap_or(0);
         for (tab_index, (tab_name, tiled_pane_layout, floating_pane_layout)) in
-            layout.tabs().into_iter().enumerate()
+            active_layout.tabs().into_iter().enumerate()
         {
             let should_focus_tab = tab_index == focused_tab_index;
-            let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
-            let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
+            let swap_tiled_layouts = Some(active_layout.swap_tiled_layouts.clone());
+            let swap_floating_layouts = Some(active_layout.swap_floating_layouts.clone());
             let action = Action::NewTab(
                 Some(tiled_pane_layout),
                 floating_pane_layout,
@@ -1141,7 +1147,7 @@ fn switch_session(
     if let Some(LayoutInfo::Stringified(stringified_layout)) = layout.as_ref() {
         // we verify the stringified layout here to fail early rather than when parsing it at the
         // session-switching phase
-        if let Err(e) = Layout::from_kdl(&stringified_layout, None, None, None) {
+        if let Err(e) = LayoutConfig::from_kdl(&stringified_layout, None, None, None) {
             return Err(anyhow!("Failed to deserialize layout: {}", e));
         }
     }

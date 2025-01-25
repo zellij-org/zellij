@@ -3,6 +3,7 @@ use std::os::unix::fs::FileTypeExt;
 use std::time::{Duration, SystemTime};
 use std::{fs, io, process};
 use suggest::Suggest;
+use zellij_utils::input::layout::LayoutConfig;
 use zellij_utils::{
     anyhow,
     consts::{
@@ -11,7 +12,6 @@ use zellij_utils::{
     },
     envs,
     humantime::format_duration,
-    input::layout::Layout,
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
 };
@@ -40,7 +40,7 @@ pub(crate) fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
     }
 }
 
-pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
+pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, LayoutConfig)> {
     match fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
         Ok(files_in_session_info_folder) => {
             let files_that_are_folders = files_in_session_info_folder
@@ -62,7 +62,7 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
                         Ok(created) => Some(created),
                         Err(_e) => None,
                     };
-                    let layout = match Layout::from_kdl(
+                    let layout = match LayoutConfig::from_kdl(
                         &raw_layout,
                         Some(layout_file_name.display().to_string()),
                         None,
@@ -362,13 +362,13 @@ pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
 }
 
 // if the session is resurrecable, the returned layout is the one to be used to resurrect it
-pub(crate) fn resurrection_layout(session_name_to_resurrect: &str) -> Option<Layout> {
+pub(crate) fn resurrection_layout(session_name_to_resurrect: &str) -> Option<LayoutConfig> {
     let resurrectable_sessions = get_resurrectable_sessions();
     resurrectable_sessions
         .iter()
-        .find_map(|(name, _timestamp, layout)| {
+        .find_map(|(name, _timestamp, layout_config)| {
             if name == session_name_to_resurrect {
-                Some(layout.clone())
+                Some(layout_config.clone())
             } else {
                 None
             }

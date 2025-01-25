@@ -2367,41 +2367,11 @@ impl<'a> KdlLayoutParser<'a> {
             .append(&mut swap_floating_layouts);
         Ok(existing_layout)
     }
-    pub fn parse(&mut self) -> Result<Layout, ConfigError> {
-        let kdl_layout: KdlDocument = self.raw_layout.parse()?;
-        let layout_node = kdl_layout
-            .nodes()
-            .iter()
-            .find(|n| kdl_name!(n) == "layout")
-            .ok_or(ConfigError::new_layout_kdl_error(
-                "No layout found".into(),
-                kdl_layout.span().offset(),
-                kdl_layout.span().len(),
-            ))?;
-        let has_multiple_layout_nodes = kdl_layout
-            .nodes()
-            .iter()
-            .filter(|n| kdl_name!(n) == "layout")
-            .count()
-            > 1;
-        let mut non_layout_nodes_in_root = kdl_layout
-            .nodes()
-            .iter()
-            .filter(|n| kdl_name!(n) != "layout" && self.is_a_reserved_word(kdl_name!(n)));
-        if let Some(first_non_layout_node) = non_layout_nodes_in_root.next() {
-            return Err(ConfigError::new_layout_kdl_error(
-                "This node should be inside the main \"layout\" node".into(),
-                first_non_layout_node.span().offset(),
-                first_non_layout_node.span().len(),
-            ));
-        }
-        if has_multiple_layout_nodes {
-            return Err(ConfigError::new_layout_kdl_error(
-                "Only one layout node per file allowed".into(),
-                kdl_layout.span().offset(),
-                kdl_layout.span().len(),
-            ));
-        }
+    pub fn parse_layout_block(
+        &mut self,
+        layout_node: &KdlNode,
+        kdl_layout: &KdlDocument,
+    ) -> Result<Layout, ConfigError> {
         let mut child_tabs = vec![];
         let mut child_panes = vec![];
         let mut child_floating_panes = vec![];
@@ -2409,7 +2379,9 @@ impl<'a> KdlLayoutParser<'a> {
         let mut swap_floating_layouts = vec![];
         if let Some(children) = kdl_children_nodes!(layout_node) {
             self.populate_global_cwd(layout_node)?;
-            self.populate_pane_templates(children, &kdl_layout)?;
+            self.populate_pane_templates(children, &kdl_layout)?; // this might not be the most
+                                                                  // efficient way of handling this since pane templates will be shared in one layout
+                                                                  // file
             self.populate_tab_templates(children)?;
             self.populate_swap_tiled_layouts(children, &mut swap_tiled_layouts)?;
             self.populate_swap_floating_layouts(children, &mut swap_floating_layouts)?;
@@ -2467,5 +2439,32 @@ impl<'a> KdlLayoutParser<'a> {
                 swap_floating_layouts,
             )
         }
+    }
+    pub fn parse(&mut self) -> Result<Vec<Layout>, ConfigError> {
+        let kdl_layout: KdlDocument = self.raw_layout.parse()?;
+
+        let mut non_layout_nodes_in_root = kdl_layout
+            .nodes()
+            .iter()
+            .filter(|n| kdl_name!(n) != "layout" && self.is_a_reserved_word(kdl_name!(n)));
+
+        if let Some(first_non_layout_node) = non_layout_nodes_in_root.next() {
+            return Err(ConfigError::new_layout_kdl_error(
+                "This node should be inside the main \"layout\" node".into(),
+                first_non_layout_node.span().offset(),
+                first_non_layout_node.span().len(),
+            ));
+        }
+
+        let layout_nodes: Vec<&KdlNode> = kdl_layout
+            .nodes()
+            .iter()
+            .filter(|n| kdl_name!(n) == "layout")
+            .collect();
+
+        layout_nodes
+            .iter()
+            .map(|layout_node| self.parse_layout_block(layout_node, &kdl_layout))
+            .collect()
     }
 }

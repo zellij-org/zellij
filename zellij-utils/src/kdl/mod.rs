@@ -8,7 +8,7 @@ use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
-    Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, SplitSize,
+    Layout, LayoutConfig, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, SplitSize,
 };
 use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
@@ -1410,17 +1410,16 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .clone()
                     .or_else(|| get_layout_dir(find_default_config_dir()));
                 let (path_to_raw_layout, raw_layout, swap_layouts) =
-                    Layout::stringified_from_path_or_default(layout.as_ref(), layout_dir).map_err(
-                        |e| {
+                    LayoutConfig::stringified_from_path_or_default(layout.as_ref(), layout_dir)
+                        .map_err(|e| {
                             ConfigError::new_kdl_error(
                                 format!("Failed to load layout: {}", e),
                                 kdl_action.span().offset(),
                                 kdl_action.span().len(),
                             )
-                        },
-                    )?;
+                        })?;
 
-                let layout = Layout::from_str(
+                let layout_config = LayoutConfig::from_str(
                     &raw_layout,
                     path_to_raw_layout,
                     swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())),
@@ -1434,10 +1433,12 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     )
                 })?;
 
-                let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
-                let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
+                let active_layout = layout_config.get_active_layout();
 
-                let mut tabs = layout.tabs();
+                let swap_tiled_layouts = Some(active_layout.swap_tiled_layouts.clone());
+                let swap_floating_layouts = Some(active_layout.swap_floating_layouts.clone());
+
+                let mut tabs = active_layout.tabs();
                 if tabs.len() > 1 {
                     return Err(ConfigError::new_kdl_error(
                         "Tab layout cannot itself have tabs".to_string(),
@@ -1458,7 +1459,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         should_change_focus_to_new_tab,
                     ))
                 } else {
-                    let (layout, floating_panes_layout) = layout.new_tab();
+                    let (layout, floating_panes_layout) = active_layout.new_tab();
                     let should_change_focus_to_new_tab = layout.focus.unwrap_or(true);
 
                     Ok(Action::NewTab(
@@ -3159,7 +3160,7 @@ impl Options {
     }
 }
 
-impl Layout {
+impl LayoutConfig {
     pub fn from_kdl(
         raw_layout: &str,
         file_name: Option<String>,
@@ -3167,7 +3168,7 @@ impl Layout {
         cwd: Option<PathBuf>,
     ) -> Result<Self, ConfigError> {
         let mut kdl_layout_parser = KdlLayoutParser::new(raw_layout, cwd, file_name.clone());
-        let layout = kdl_layout_parser.parse().map_err(|e| match e {
+        let layouts = kdl_layout_parser.parse().map_err(|e| match e {
             ConfigError::KdlError(kdl_error) => ConfigError::KdlError(kdl_error.add_src(
                 file_name.unwrap_or_else(|| "N/A".to_owned()),
                 String::from(raw_layout),
@@ -3183,24 +3184,39 @@ impl Layout {
             Some((raw_swap_layout_filename, raw_swap_layout)) => {
                 // here we use the same parser to parse the swap layout so that we can reuse assets
                 // (eg. pane and tab templates)
-                kdl_layout_parser
-                    .parse_external_swap_layouts(raw_swap_layout, layout)
-                    .map_err(|e| match e {
-                        ConfigError::KdlError(kdl_error) => {
-                            ConfigError::KdlError(kdl_error.add_src(
-                                String::from(raw_swap_layout_filename),
-                                String::from(raw_swap_layout),
-                            ))
-                        },
-                        ConfigError::KdlDeserializationError(kdl_error) => kdl_layout_error(
-                            kdl_error,
-                            raw_swap_layout_filename.into(),
-                            raw_swap_layout,
-                        ),
-                        e => e,
+                let new_layouts: Vec<Layout> = layouts
+                    .into_iter()
+                    .map(|layout| {
+                        kdl_layout_parser
+                            .parse_external_swap_layouts(raw_swap_layout, layout)
+                            .map_err(|e| match e {
+                                ConfigError::KdlError(kdl_error) => {
+                                    ConfigError::KdlError(kdl_error.add_src(
+                                        String::from(raw_swap_layout_filename),
+                                        String::from(raw_swap_layout),
+                                    ))
+                                },
+                                ConfigError::KdlDeserializationError(kdl_error) => {
+                                    kdl_layout_error(
+                                        kdl_error,
+                                        raw_swap_layout_filename.into(),
+                                        raw_swap_layout,
+                                    )
+                                },
+                                e => e,
+                            })
                     })
+                    .collect::<Result<Vec<Layout>, ConfigError>>()?;
+
+                Ok(Self {
+                    layouts: new_layouts,
+                    selected_layout: 0,
+                })
             },
-            None => Ok(layout),
+            None => Ok(Self {
+                layouts,
+                selected_layout: 0,
+            }),
         }
     }
 }

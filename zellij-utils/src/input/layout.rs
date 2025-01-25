@@ -663,6 +663,12 @@ pub type SwapFloatingLayout = (
 ); // Option<String> is the swap layout name
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct LayoutConfig {
+    pub layouts: Vec<Layout>,
+    pub selected_layout: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Layout {
     pub tabs: Vec<(Option<String>, TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     pub focused_tab_index: Option<usize>,
@@ -1115,7 +1121,39 @@ impl Default for LayoutParts {
     }
 }
 
-impl Layout {
+impl LayoutConfig {
+    pub fn get_active_layout(&self) -> &Layout {
+        &self.layouts[self.selected_layout]
+    }
+
+    pub fn get_active_layout_mut(&mut self) -> &mut Layout {
+        &mut self.layouts[self.selected_layout]
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Layout> {
+        self.layouts.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Layout> {
+        self.layouts.iter_mut()
+    }
+
+    pub fn next_layout(&mut self) {
+        if self.selected_layout + 1 == self.layouts.len() {
+            self.selected_layout = 0;
+        } else {
+            self.selected_layout += 1;
+        }
+    }
+
+    pub fn previous_layout(&mut self) {
+        if self.selected_layout == 0 {
+            self.selected_layout = self.layouts.len() - 1;
+        } else {
+            self.selected_layout -= 1;
+        }
+    }
+
     pub fn list_available_layouts(
         layout_dir: Option<PathBuf>,
         default_layout_name: &Option<String>,
@@ -1134,7 +1172,7 @@ impl Layout {
                 let mut available_layouts = vec![];
                 for file in layout_files {
                     if let Ok(file) = file {
-                        if Layout::from_path_or_default_without_config(
+                        if LayoutConfig::from_path_or_default_without_config(
                             Some(&file.path()),
                             layout_dir.clone(),
                         )
@@ -1172,10 +1210,11 @@ impl Layout {
         });
         available_layouts
     }
+
     pub fn from_layout_info(
         layout_dir: &Option<PathBuf>,
         layout_info: LayoutInfo,
-    ) -> Result<Layout, ConfigError> {
+    ) -> Result<LayoutConfig, ConfigError> {
         let mut should_start_layout_commands_suspended = false;
         let (path_to_raw_layout, raw_layout, raw_swap_layouts) = match layout_info {
             LayoutInfo::File(layout_name_without_extension) => {
@@ -1198,22 +1237,22 @@ impl Layout {
             },
             LayoutInfo::Stringified(stringified_layout) => (None, stringified_layout, None),
         };
-        let mut layout = Layout::from_kdl(
+        let mut layout_config = LayoutConfig::from_kdl(
             &raw_layout,
             path_to_raw_layout,
             raw_swap_layouts
                 .as_ref()
                 .map(|(r, f)| (r.as_str(), f.as_str())),
             None,
-        );
+        )?;
         if should_start_layout_commands_suspended {
-            layout
-                .iter_mut()
-                .next()
-                .map(|l| l.recursively_add_start_suspended_including_template(Some(true)));
+            let _ = layout_config.iter_mut().map(|layout| {
+                layout.recursively_add_start_suspended_including_template(Some(true))
+            });
         }
-        layout
+        Ok(layout_config)
     }
+
     pub fn stringified_from_path_or_default(
         layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
@@ -1226,13 +1265,13 @@ impl Layout {
                 // See the gh issue for more: https://github.com/zellij-org/zellij/issues/1412#issuecomment-1131559720
                 if layout_path.extension().is_some() || layout_path.components().count() > 1 {
                     // We look localy!
-                    Layout::stringified_from_path(layout_path)
+                    LayoutConfig::stringified_from_path(layout_path)
                 } else {
                     // We look in the default dir
-                    Layout::stringified_from_dir(layout_path, layout_dir.as_ref())
+                    LayoutConfig::stringified_from_dir(layout_path, layout_dir.as_ref())
                 }
             },
-            None => Layout::stringified_from_dir(
+            None => LayoutConfig::stringified_from_dir(
                 &std::path::PathBuf::from("default"),
                 layout_dir.as_ref(),
             ),
@@ -1259,10 +1298,10 @@ impl Layout {
         layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
         config: Config,
-    ) -> Result<(Layout, Config), ConfigError> {
+    ) -> Result<(LayoutConfig, Config), ConfigError> {
         let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
-            Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
-        let layout = Layout::from_kdl(
+            LayoutConfig::stringified_from_path_or_default(layout_path, layout_dir)?;
+        let layout_config = LayoutConfig::from_kdl(
             &raw_layout,
             Some(path_to_raw_layout),
             raw_swap_layouts
@@ -1271,10 +1310,10 @@ impl Layout {
             None,
         )?;
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
-        Ok((layout, config))
+        Ok((layout_config, config))
     }
     #[cfg(not(target_family = "wasm"))]
-    pub fn from_url(url: &str, config: Config) -> Result<(Layout, Config), ConfigError> {
+    pub fn from_url(url: &str, config: Config) -> Result<(LayoutConfig, Config), ConfigError> {
         let raw_layout = task::block_on(async move {
             let download = Downloader::download_without_cache(url).await;
             match download {
@@ -1282,21 +1321,25 @@ impl Layout {
                 Err(e) => Err(ConfigError::DownloadError(format!("{}", e))),
             }
         })?;
-        let mut layout = Layout::from_kdl(&raw_layout, Some(url.into()), None, None)?;
-        layout.recursively_add_start_suspended_including_template(Some(true));
+        let mut layout_config = LayoutConfig::from_kdl(&raw_layout, Some(url.into()), None, None)?;
+
+        let _ = layout_config.iter_mut().map(|layout| {
+            layout.recursively_add_start_suspended_including_template(Some(true));
+        });
+
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
-        Ok((layout, config))
+        Ok((layout_config, config))
     }
     pub fn from_stringified_layout(
         stringified_layout: &str,
         config: Config,
-    ) -> Result<(Layout, Config), ConfigError> {
-        let layout = Layout::from_kdl(&stringified_layout, None, None, None)?;
+    ) -> Result<(LayoutConfig, Config), ConfigError> {
+        let layout_config = LayoutConfig::from_kdl(&stringified_layout, None, None, None)?;
         let config = Config::from_kdl(&stringified_layout, Some(config))?; // this merges the two config, with
-        Ok((layout, config))
+        Ok((layout_config, config))
     }
     #[cfg(target_family = "wasm")]
-    pub fn from_url(_url: &str, _config: Config) -> Result<(Layout, Config), ConfigError> {
+    pub fn from_url(_url: &str, _config: Config) -> Result<(LayoutConfig, Config), ConfigError> {
         Err(ConfigError::DownloadError(format!(
             "Unsupported platform, cannot download layout from the web"
         )))
@@ -1304,10 +1347,10 @@ impl Layout {
     pub fn from_path_or_default_without_config(
         layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
-    ) -> Result<Layout, ConfigError> {
+    ) -> Result<LayoutConfig, ConfigError> {
         let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
-            Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
-        let layout = Layout::from_kdl(
+            LayoutConfig::stringified_from_path_or_default(layout_path, layout_dir)?;
+        let layout_config = LayoutConfig::from_kdl(
             &raw_layout,
             Some(path_to_raw_layout),
             raw_swap_layouts
@@ -1315,16 +1358,16 @@ impl Layout {
                 .map(|(r, f)| (r.as_str(), f.as_str())),
             None,
         )?;
-        Ok(layout)
+        Ok(layout_config)
     }
     pub fn from_default_assets(
         layout_name: &Path,
         _layout_dir: Option<PathBuf>,
         config: Config,
-    ) -> Result<(Layout, Config), ConfigError> {
+    ) -> Result<(LayoutConfig, Config), ConfigError> {
         let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
-            Layout::stringified_from_default_assets(layout_name)?;
-        let layout = Layout::from_kdl(
+            LayoutConfig::stringified_from_default_assets(layout_name)?;
+        let layout_config = LayoutConfig::from_kdl(
             &raw_layout,
             Some(path_to_raw_layout),
             raw_swap_layouts
@@ -1333,15 +1376,15 @@ impl Layout {
             None,
         )?;
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
-        Ok((layout, config))
+        Ok((layout_config, config))
     }
     pub fn from_str(
         raw: &str,
         path_to_raw_layout: String,
         swap_layouts: Option<(&str, &str)>, // Option<path_to_swap_layout, stringified_swap_layout>
         cwd: Option<PathBuf>,
-    ) -> Result<Layout, ConfigError> {
-        Layout::from_kdl(raw, Some(path_to_raw_layout), swap_layouts, cwd)
+    ) -> Result<LayoutConfig, ConfigError> {
+        LayoutConfig::from_kdl(raw, Some(path_to_raw_layout), swap_layouts, cwd)
     }
     pub fn stringified_from_dir(
         layout: &PathBuf,
@@ -1354,13 +1397,13 @@ impl Layout {
                 if layout_path.with_extension("kdl").exists() {
                     Self::stringified_from_path(layout_path)
                 } else {
-                    Layout::stringified_from_default_assets(layout)
+                    LayoutConfig::stringified_from_default_assets(layout)
                 }
             },
             None => {
                 let home = find_default_config_dir();
                 let Some(home) = home else {
-                    return Layout::stringified_from_default_assets(layout);
+                    return LayoutConfig::stringified_from_default_assets(layout);
                 };
 
                 let layout_path = &home.join(layout);
@@ -1477,6 +1520,427 @@ impl Layout {
         Ok(String::from_utf8(setup::CLASSIC_SWAP_LAYOUT.to_vec())?)
     }
 
+    pub fn stringified_welcome_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::WELCOME_LAYOUT.to_vec())?)
+    }
+}
+
+impl Layout {
+    // since the LayoutConfig struct does handle all the direct communication with the kdl layout
+    // file these methods that parse that file will be copied over and should be marked as deprecated
+    #[deprecated(note = "list_availabe_layouts has been moved from Layout to LayoutConfig")]
+    pub fn list_available_layouts(
+        layout_dir: Option<PathBuf>,
+        default_layout_name: &Option<String>,
+    ) -> Vec<LayoutInfo> {
+        let mut available_layouts = layout_dir
+            .clone()
+            .or_else(|| default_layout_dir())
+            .and_then(|layout_dir| match std::fs::read_dir(layout_dir) {
+                Ok(layout_files) => Some(layout_files),
+                Err(e) => {
+                    log::error!("Failed to read layout dir: {:?}", e);
+                    None
+                },
+            })
+            .map(|layout_files| {
+                let mut available_layouts = vec![];
+                for file in layout_files {
+                    if let Ok(file) = file {
+                        if Layout::from_path_or_default_without_config(
+                            Some(&file.path()),
+                            layout_dir.clone(),
+                        )
+                        .is_ok()
+                        {
+                            if let Some(file_name) = file.path().file_stem() {
+                                available_layouts
+                                    .push(LayoutInfo::File(file_name.to_string_lossy().to_string()))
+                            }
+                        }
+                    }
+                }
+                available_layouts
+            })
+            .unwrap_or_else(Default::default);
+        let default_layout_name = default_layout_name
+            .as_ref()
+            .map(|d| d.as_str())
+            .unwrap_or("default");
+        available_layouts.push(LayoutInfo::BuiltIn("default".to_owned()));
+        available_layouts.push(LayoutInfo::BuiltIn("strider".to_owned()));
+        available_layouts.push(LayoutInfo::BuiltIn("disable-status-bar".to_owned()));
+        available_layouts.push(LayoutInfo::BuiltIn("compact".to_owned()));
+        available_layouts.push(LayoutInfo::BuiltIn("classic".to_owned()));
+        available_layouts.sort_by(|a, b| {
+            let a_name = a.name();
+            let b_name = b.name();
+            if a_name == default_layout_name {
+                return Ordering::Less;
+            } else if b_name == default_layout_name {
+                return Ordering::Greater;
+            } else {
+                a_name.cmp(&b_name)
+            }
+        });
+        available_layouts
+    }
+    #[deprecated(note = "from_layout_info has been moved from Layout to LayoutConfig")]
+    pub fn from_layout_info(
+        layout_dir: &Option<PathBuf>,
+        layout_info: LayoutInfo,
+    ) -> Result<LayoutConfig, ConfigError> {
+        let mut should_start_layout_commands_suspended = false;
+        let (path_to_raw_layout, raw_layout, raw_swap_layouts) = match layout_info {
+            LayoutInfo::File(layout_name_without_extension) => {
+                let layout_dir = layout_dir.clone().or_else(|| default_layout_dir());
+                let (path_to_layout, stringified_layout, swap_layouts) =
+                    Self::stringified_from_dir(
+                        &PathBuf::from(layout_name_without_extension),
+                        layout_dir.as_ref(),
+                    )?;
+                (Some(path_to_layout), stringified_layout, swap_layouts)
+            },
+            LayoutInfo::BuiltIn(layout_name) => {
+                let (path_to_layout, stringified_layout, swap_layouts) =
+                    Self::stringified_from_default_assets(&PathBuf::from(layout_name))?;
+                (Some(path_to_layout), stringified_layout, swap_layouts)
+            },
+            LayoutInfo::Url(url) => {
+                should_start_layout_commands_suspended = true;
+                (Some(url.clone()), Self::stringified_from_url(&url)?, None)
+            },
+            LayoutInfo::Stringified(stringified_layout) => (None, stringified_layout, None),
+        };
+        let mut layout_config = LayoutConfig::from_kdl(
+            &raw_layout,
+            path_to_raw_layout,
+            raw_swap_layouts
+                .as_ref()
+                .map(|(r, f)| (r.as_str(), f.as_str())),
+            None,
+        )?;
+        if should_start_layout_commands_suspended {
+            let _ = layout_config.iter_mut().map(|layout| {
+                layout.recursively_add_start_suspended_including_template(Some(true))
+            });
+        }
+        Ok(layout_config)
+    }
+    #[deprecated(
+        note = "stringified_from_path_or_default has been moved from Layout to LayoutConfig"
+    )]
+    pub fn stringified_from_path_or_default(
+        layout_path: Option<&PathBuf>,
+        layout_dir: Option<PathBuf>,
+    ) -> Result<(String, String, Option<(String, String)>), ConfigError> {
+        // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
+        match layout_path {
+            Some(layout_path) => {
+                // The way we determine where to look for the layout is similar to
+                // how a path would look for an executable.
+                // See the gh issue for more: https://github.com/zellij-org/zellij/issues/1412#issuecomment-1131559720
+                if layout_path.extension().is_some() || layout_path.components().count() > 1 {
+                    // We look localy!
+                    Layout::stringified_from_path(layout_path)
+                } else {
+                    // We look in the default dir
+                    Layout::stringified_from_dir(layout_path, layout_dir.as_ref())
+                }
+            },
+            None => Layout::stringified_from_dir(
+                &std::path::PathBuf::from("default"),
+                layout_dir.as_ref(),
+            ),
+        }
+    }
+    #[cfg(not(target_family = "wasm"))]
+    #[deprecated(note = "stringified_from_url has been moved from Layout to LayoutConfig")]
+    pub fn stringified_from_url(url: &str) -> Result<String, ConfigError> {
+        let raw_layout = task::block_on(async move {
+            let download = Downloader::download_without_cache(url).await;
+            match download {
+                Ok(stringified) => Ok(stringified),
+                Err(e) => Err(ConfigError::DownloadError(format!("{}", e))),
+            }
+        })?;
+        Ok(raw_layout)
+    }
+    #[cfg(target_family = "wasm")]
+    pub fn stringified_from_url(_url: &str) -> Result<String, ConfigError> {
+        // silently fail - this should not happen in plugins and legacy architecture is hard
+        let raw_layout = String::new();
+        Ok(raw_layout)
+    }
+    #[deprecated(note = "from_path_or_default has been moved from Layout to LayoutConfig")]
+    pub fn from_path_or_default(
+        layout_path: Option<&PathBuf>,
+        layout_dir: Option<PathBuf>,
+        config: Config,
+    ) -> Result<(LayoutConfig, Config), ConfigError> {
+        let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
+            Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
+        let layout_config = LayoutConfig::from_kdl(
+            &raw_layout,
+            Some(path_to_raw_layout),
+            raw_swap_layouts
+                .as_ref()
+                .map(|(r, f)| (r.as_str(), f.as_str())),
+            None,
+        )?;
+        let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
+        Ok((layout_config, config))
+    }
+    #[cfg(not(target_family = "wasm"))]
+    #[deprecated(note = "from_url has been moved from Layout to LayoutConfig")]
+    pub fn from_url(url: &str, config: Config) -> Result<(LayoutConfig, Config), ConfigError> {
+        let raw_layout = task::block_on(async move {
+            let download = Downloader::download_without_cache(url).await;
+            match download {
+                Ok(stringified) => Ok(stringified),
+                Err(e) => Err(ConfigError::DownloadError(format!("{}", e))),
+            }
+        })?;
+        let mut layout_config = LayoutConfig::from_kdl(&raw_layout, Some(url.into()), None, None)?;
+
+        layout_config.iter_mut().map(|layout| {
+            layout.recursively_add_start_suspended_including_template(Some(true));
+        });
+
+        let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
+        Ok((layout_config, config))
+    }
+    #[deprecated(note = "from_url has been moved from Layout to LayoutConfig")]
+    pub fn from_stringified_layout(
+        stringified_layout: &str,
+        config: Config,
+    ) -> Result<(LayoutConfig, Config), ConfigError> {
+        let layout_config = LayoutConfig::from_kdl(&stringified_layout, None, None, None)?;
+        let config = Config::from_kdl(&stringified_layout, Some(config))?; // this merges the two config, with
+        Ok((layout_config, config))
+    }
+    #[cfg(target_family = "wasm")]
+    pub fn from_url(_url: &str, _config: Config) -> Result<(Layout, Config), ConfigError> {
+        Err(ConfigError::DownloadError(format!(
+            "Unsupported platform, cannot download layout from the web"
+        )))
+    }
+    #[deprecated(
+        note = "from_path_or_default_without_config has been moved from Layout to LayoutConfig"
+    )]
+    pub fn from_path_or_default_without_config(
+        layout_path: Option<&PathBuf>,
+        layout_dir: Option<PathBuf>,
+    ) -> Result<LayoutConfig, ConfigError> {
+        let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
+            Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
+        let layout_config = LayoutConfig::from_kdl(
+            &raw_layout,
+            Some(path_to_raw_layout),
+            raw_swap_layouts
+                .as_ref()
+                .map(|(r, f)| (r.as_str(), f.as_str())),
+            None,
+        )?;
+        Ok(layout_config)
+    }
+    #[deprecated(note = "from_default_assets has been moved from Layout to LayoutConfig")]
+    pub fn from_default_assets(
+        layout_name: &Path,
+        _layout_dir: Option<PathBuf>,
+        config: Config,
+    ) -> Result<(LayoutConfig, Config), ConfigError> {
+        let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
+            Layout::stringified_from_default_assets(layout_name)?;
+        let layout_config = LayoutConfig::from_kdl(
+            &raw_layout,
+            Some(path_to_raw_layout),
+            raw_swap_layouts
+                .as_ref()
+                .map(|(r, f)| (r.as_str(), f.as_str())),
+            None,
+        )?;
+        let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
+        Ok((layout_config, config))
+    }
+    #[deprecated(note = "from_str has been moved from Layout to LayoutConfig")]
+    pub fn from_str(
+        raw: &str,
+        path_to_raw_layout: String,
+        swap_layouts: Option<(&str, &str)>, // Option<path_to_swap_layout, stringified_swap_layout>
+        cwd: Option<PathBuf>,
+    ) -> Result<LayoutConfig, ConfigError> {
+        LayoutConfig::from_kdl(raw, Some(path_to_raw_layout), swap_layouts, cwd)
+    }
+    #[deprecated(note = "stringified_from_dir has been moved from Layout to LayoutConfig")]
+    pub fn stringified_from_dir(
+        layout: &PathBuf,
+        layout_dir: Option<&PathBuf>,
+    ) -> Result<(String, String, Option<(String, String)>), ConfigError> {
+        // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
+        match layout_dir {
+            Some(dir) => {
+                let layout_path = &dir.join(layout);
+                if layout_path.with_extension("kdl").exists() {
+                    Self::stringified_from_path(layout_path)
+                } else {
+                    Layout::stringified_from_default_assets(layout)
+                }
+            },
+            None => {
+                let home = find_default_config_dir();
+                let Some(home) = home else {
+                    return Layout::stringified_from_default_assets(layout);
+                };
+
+                let layout_path = &home.join(layout);
+                Self::stringified_from_path(layout_path)
+            },
+        }
+    }
+    #[deprecated(note = "stringified_from_path has been moved from Layout to LayoutConfig")]
+    pub fn stringified_from_path(
+        layout_path: &Path,
+    ) -> Result<(String, String, Option<(String, String)>), ConfigError> {
+        // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
+        let mut layout_file = File::open(&layout_path)
+            .or_else(|_| File::open(&layout_path.with_extension("kdl")))
+            .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
+
+        let swap_layout_and_path = Layout::swap_layout_and_path(&layout_path);
+
+        let mut kdl_layout = String::new();
+        layout_file
+            .read_to_string(&mut kdl_layout)
+            .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
+        Ok((
+            layout_path.as_os_str().to_string_lossy().into(),
+            kdl_layout,
+            swap_layout_and_path,
+        ))
+    }
+    #[deprecated(
+        note = "stringified_from_default_assets has been moved from Layout to LayoutConfig"
+    )]
+    pub fn stringified_from_default_assets(
+        path: &Path,
+    ) -> Result<(String, String, Option<(String, String)>), ConfigError> {
+        // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
+        // TODO: ideally these should not be hard-coded
+        // we should load layouts by name from the config
+        // and load them from a hashmap or some such
+        match path.to_str() {
+            Some("default") => Ok((
+                "Default layout".into(),
+                Self::stringified_default_from_assets()?,
+                Some((
+                    "Default swap layout".into(),
+                    Self::stringified_default_swap_from_assets()?,
+                )),
+            )),
+            Some("strider") => Ok((
+                "Strider layout".into(),
+                Self::stringified_strider_from_assets()?,
+                Some((
+                    "Strider swap layout".into(),
+                    Self::stringified_strider_swap_from_assets()?,
+                )),
+            )),
+            Some("disable-status-bar") => Ok((
+                "Disable Status Bar layout".into(),
+                Self::stringified_disable_status_from_assets()?,
+                None,
+            )),
+            Some("compact") => Ok((
+                "Compact layout".into(),
+                Self::stringified_compact_from_assets()?,
+                Some((
+                    "Compact layout swap".into(),
+                    Self::stringified_compact_swap_from_assets()?,
+                )),
+            )),
+            Some("classic") => Ok((
+                "Classic layout".into(),
+                Self::stringified_classic_from_assets()?,
+                Some((
+                    "Classiclayout swap".into(),
+                    Self::stringified_classic_swap_from_assets()?,
+                )),
+            )),
+            Some("welcome") => Ok((
+                "Welcome screen layout".into(),
+                Self::stringified_welcome_from_assets()?,
+                None,
+            )),
+            None | Some(_) => Err(ConfigError::IoPath(
+                std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
+                path.into(),
+            )),
+        }
+    }
+    #[deprecated(
+        note = "stringified_default_from_assets has been moved from Layout to LayoutConfig"
+    )]
+    pub fn stringified_default_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?)
+    }
+    #[deprecated(
+        note = "stringified_default_swap_from_assets has been moved from Layout to LayoutConfig"
+    )]
+    pub fn stringified_default_swap_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::DEFAULT_SWAP_LAYOUT.to_vec())?)
+    }
+    #[deprecated(
+        note = "stringified_strider_from_assets has been moved from Layout to LayoutConfig"
+    )]
+    pub fn stringified_strider_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?)
+    }
+    #[deprecated(
+        note = "stringified_strider_swap_from_assets has been moved from Layout to LayoutConfig"
+    )]
+    pub fn stringified_strider_swap_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::STRIDER_SWAP_LAYOUT.to_vec())?)
+    }
+
+    #[deprecated(
+        note = "stringified_disable_status_from_assets has been moved from Layout to LayoutConfig"
+    )]
+    pub fn stringified_disable_status_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?)
+    }
+
+    #[deprecated(
+        note = "stringified_compact_from_assets has been moved from Layout to LayoutConfig"
+    )]
+    pub fn stringified_compact_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::COMPACT_BAR_LAYOUT.to_vec())?)
+    }
+
+    #[deprecated(
+        note = "stringified_compact_swap_from_assets has been moved from Layout to LayoutConfig"
+    )]
+    pub fn stringified_compact_swap_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::COMPACT_BAR_SWAP_LAYOUT.to_vec())?)
+    }
+
+    #[deprecated(
+        note = "stringified_classic_from_assets has been moved from Layout to LayoutConfig"
+    )]
+    pub fn stringified_classic_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::CLASSIC_LAYOUT.to_vec())?)
+    }
+
+    #[deprecated(
+        note = "stringified_classic_swap_from_assets has been moved from Layout to LayoutConfig"
+    )]
+    pub fn stringified_classic_swap_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::CLASSIC_SWAP_LAYOUT.to_vec())?)
+    }
+
+    #[deprecated(
+        note = "stringified_welcome_from_assets has been moved from Layout to LayoutConfig"
+    )]
     pub fn stringified_welcome_from_assets() -> Result<String, ConfigError> {
         Ok(String::from_utf8(setup::WELCOME_LAYOUT.to_vec())?)
     }

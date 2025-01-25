@@ -2,7 +2,7 @@
 
 use super::command::{OpenFilePayload, RunCommandAction};
 use super::layout::{
-    FloatingPaneLayout, Layout, PluginAlias, RunPlugin, RunPluginLocation, RunPluginOrAlias,
+    FloatingPaneLayout, LayoutConfig, PluginAlias, RunPlugin, RunPluginLocation, RunPluginOrAlias,
     SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
 use crate::cli::CliAction;
@@ -548,15 +548,18 @@ impl Action {
                         should_start_layout_commands_suspended = true;
                         (
                             layout_url.to_owned(),
-                            Layout::stringified_from_url(layout_url)
+                            LayoutConfig::stringified_from_url(layout_url)
                                 .map_err(|e| format!("Failed to load layout: {}", e))?,
                             None,
                         )
                     } else {
-                        Layout::stringified_from_path_or_default(Some(&layout_path), layout_dir)
-                            .map_err(|e| format!("Failed to load layout: {}", e))?
+                        LayoutConfig::stringified_from_path_or_default(
+                            Some(&layout_path),
+                            layout_dir,
+                        )
+                        .map_err(|e| format!("Failed to load layout: {}", e))?
                     };
-                    let mut layout = Layout::from_str(&raw_layout, path_to_raw_layout, swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())), cwd).map_err(|e| {
+                    let mut layout_config = LayoutConfig::from_str(&raw_layout, path_to_raw_layout, swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())), cwd).map_err(|e| {
                         let stringified_error = match e {
                             ConfigError::KdlError(kdl_error) => {
                                 let error = kdl_error.add_src(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout));
@@ -588,13 +591,16 @@ impl Action {
                         };
                         stringified_error
                     })?;
+                    let active_layout = layout_config.get_active_layout_mut();
                     if should_start_layout_commands_suspended {
-                        layout.recursively_add_start_suspended_including_template(Some(true));
+                        active_layout
+                            .recursively_add_start_suspended_including_template(Some(true));
                     }
-                    let mut tabs = layout.tabs();
+                    let mut tabs = active_layout.tabs();
                     if !tabs.is_empty() {
-                        let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
-                        let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
+                        let swap_tiled_layouts = Some(active_layout.swap_tiled_layouts.clone());
+                        let swap_floating_layouts =
+                            Some(active_layout.swap_floating_layouts.clone());
                         let mut new_tab_actions = vec![];
                         let mut has_focused_tab = tabs
                             .iter()
@@ -621,9 +627,10 @@ impl Action {
                         }
                         Ok(new_tab_actions)
                     } else {
-                        let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
-                        let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
-                        let (layout, floating_panes_layout) = layout.new_tab();
+                        let swap_tiled_layouts = Some(active_layout.swap_tiled_layouts.clone());
+                        let swap_floating_layouts =
+                            Some(active_layout.swap_floating_layouts.clone());
+                        let (layout, floating_panes_layout) = active_layout.new_tab();
                         let should_change_focus_to_new_tab = true;
                         Ok(vec![Action::NewTab(
                             Some(layout),

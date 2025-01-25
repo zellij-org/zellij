@@ -25,6 +25,7 @@ use std::{
     thread,
 };
 use zellij_utils::envs;
+use zellij_utils::input::layout::LayoutConfig;
 use zellij_utils::nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;
 
@@ -51,7 +52,7 @@ use zellij_utils::{
         config::Config,
         get_mode_info,
         keybinds::Keybinds,
-        layout::{FloatingPaneLayout, Layout, PluginAlias, Run, RunPluginOrAlias},
+        layout::{FloatingPaneLayout, PluginAlias, Run, RunPluginOrAlias},
         options::Options,
         plugins::PluginAliases,
     },
@@ -69,7 +70,7 @@ pub enum ServerInstruction {
         Box<CliArgs>,
         Box<Config>,  // represents the saved config
         Box<Options>, // represents the runtime configuration options
-        Box<Layout>,
+        Box<LayoutConfig>,
         Box<PluginAliases>,
         bool, // should launch setup wizard
         ClientId,
@@ -299,7 +300,7 @@ pub(crate) struct SessionMetaData {
     pub capabilities: PluginCapabilities,
     pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
-    pub layout: Box<Layout>,
+    pub layout_config: Box<LayoutConfig>,
     pub current_input_modes: HashMap<ClientId, InputMode>,
     pub session_configuration: SessionConfiguration,
 
@@ -607,7 +608,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 opts,
                 config,
                 runtime_config_options,
-                layout,
+                layout_config,
                 plugin_aliases,
                 should_launch_setup_wizard,
                 client_id,
@@ -618,7 +619,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     client_attributes.clone(),
                     SessionOptions {
                         opts,
-                        layout: layout.clone(),
+                        layout_config: layout_config.clone(),
                         config_options: runtime_config_options.clone(),
                     },
                     *config.clone(),
@@ -677,10 +678,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .unwrap()
                 };
 
-                if layout.has_tabs() {
-                    let focused_tab_index = layout.focused_tab_index().unwrap_or(0);
+                let active_layout = layout_config.get_active_layout();
+
+                if active_layout.has_tabs() {
+                    let focused_tab_index = active_layout.focused_tab_index().unwrap_or(0);
                     for (tab_index, (tab_name, tab_layout, floating_panes_layout)) in
-                        layout.tabs().into_iter().enumerate()
+                        active_layout.tabs().into_iter().enumerate()
                     {
                         let should_focus_tab = tab_index == focused_tab_index;
                         spawn_tabs(
@@ -688,15 +691,18 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             floating_panes_layout.clone(),
                             tab_name,
                             (
-                                layout.swap_tiled_layouts.clone(),
-                                layout.swap_floating_layouts.clone(),
+                                active_layout.swap_tiled_layouts.clone(),
+                                active_layout.swap_floating_layouts.clone(),
                             ),
                             should_focus_tab,
                         );
                     }
                 } else {
-                    let mut floating_panes =
-                        layout.template.map(|t| t.1).clone().unwrap_or_default();
+                    let mut floating_panes = active_layout
+                        .template
+                        .clone()
+                        .map(|t| t.1)
+                        .unwrap_or_default();
                     if should_launch_setup_wizard {
                         // we only do this here (and only once) because otherwise it will be
                         // intrusive
@@ -708,8 +714,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         floating_panes,
                         None,
                         (
-                            layout.swap_tiled_layouts.clone(),
-                            layout.swap_floating_layouts.clone(),
+                            active_layout.swap_tiled_layouts.clone(),
+                            active_layout.swap_floating_layouts.clone(),
                         ),
                         true,
                     );
@@ -1241,7 +1247,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 pub struct SessionOptions {
     pub opts: Box<CliArgs>,
     pub config_options: Box<Options>,
-    pub layout: Box<Layout>,
+    pub layout_config: Box<LayoutConfig>,
 }
 
 fn init_session(
@@ -1256,7 +1262,7 @@ fn init_session(
     let SessionOptions {
         opts,
         config_options,
-        layout,
+        layout_config,
     } = options;
     config.options = config.options.merge(*config_options.clone());
 
@@ -1313,7 +1319,7 @@ fn init_session(
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
         .spawn({
-            let layout = layout.clone();
+            let layout_config = layout_config.clone();
             let pty = Pty::new(
                 Bus::new(
                     vec![pty_receiver],
@@ -1329,7 +1335,7 @@ fn init_session(
                 config_options.scrollback_editor.clone(),
             );
 
-            move || pty_thread_main(pty, layout.clone()).fatal()
+            move || pty_thread_main(pty, layout_config.clone()).fatal()
         })
         .unwrap();
 
@@ -1351,7 +1357,7 @@ fn init_session(
 
             let client_attributes_clone = client_attributes.clone();
             let debug = opts.debug;
-            let layout = layout.clone();
+            let layout_config = layout_config.clone();
             let config = config.clone();
             move || {
                 screen_thread_main(
@@ -1360,7 +1366,7 @@ fn init_session(
                     client_attributes_clone,
                     config,
                     debug,
-                    layout,
+                    layout_config,
                 )
                 .fatal();
             }
@@ -1383,7 +1389,7 @@ fn init_session(
             );
             let engine = get_engine();
 
-            let layout = layout.clone();
+            let layout_config = layout_config.clone();
             let client_attributes = client_attributes.clone();
             let default_shell = default_shell.clone();
             let capabilities = capabilities.clone();
@@ -1394,7 +1400,7 @@ fn init_session(
                     plugin_bus,
                     engine,
                     data_dir,
-                    layout,
+                    layout_config,
                     layout_dir,
                     path_to_default_shell,
                     zellij_cwd,
@@ -1466,7 +1472,7 @@ fn init_session(
         capabilities,
         default_shell,
         client_attributes,
-        layout,
+        layout_config,
         session_configuration: Default::default(),
         current_input_modes: HashMap::new(),
         screen_thread: Some(screen_thread),

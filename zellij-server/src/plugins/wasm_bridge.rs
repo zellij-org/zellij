@@ -23,6 +23,7 @@ use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{InputMode, PermissionStatus, PermissionType, PipeMessage, PipeSource};
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::keybinds::Keybinds;
+use zellij_utils::input::layout::LayoutConfig;
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 use zellij_utils::plugin_api::event::ProtobufEvent;
@@ -39,7 +40,7 @@ use zellij_utils::{
     errors::prelude::*,
     input::{
         command::TerminalAction,
-        layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias},
+        layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias},
         plugins::PluginConfig,
     },
     ipc::ClientAttributes,
@@ -99,7 +100,7 @@ pub struct WasmBridge {
     capabilities: PluginCapabilities,
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
-    default_layout: Box<Layout>,
+    default_layout_config: Box<LayoutConfig>,
     cached_plugin_map:
         HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>>,
     pending_pipes: PendingPipes,
@@ -121,7 +122,7 @@ impl WasmBridge {
         capabilities: PluginCapabilities,
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
-        default_layout: Box<Layout>,
+        default_layout_config: Box<LayoutConfig>,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
         default_keybinds: Keybinds,
@@ -152,7 +153,7 @@ impl WasmBridge {
             capabilities,
             client_attributes,
             default_shell,
-            default_layout,
+            default_layout_config,
             cached_plugin_map: HashMap::new(),
             pending_pipes: Default::default(),
             layout_dir,
@@ -215,7 +216,7 @@ impl WasmBridge {
                     let capabilities = self.capabilities.clone();
                     let client_attributes = self.client_attributes.clone();
                     let default_shell = self.default_shell.clone();
-                    let default_layout = self.default_layout.clone();
+                    let default_layout_config = self.default_layout_config.clone();
                     let layout_dir = self.layout_dir.clone();
                     let downloader = self.downloader.clone();
                     let default_mode = self
@@ -273,7 +274,7 @@ impl WasmBridge {
                             capabilities,
                             client_attributes,
                             default_shell,
-                            default_layout,
+                            default_layout_config,
                             skip_cache,
                             layout_dir,
                             default_mode,
@@ -367,7 +368,7 @@ impl WasmBridge {
             let capabilities = self.capabilities.clone();
             let client_attributes = self.client_attributes.clone();
             let default_shell = self.default_shell.clone();
-            let default_layout = self.default_layout.clone();
+            let default_layout_config = self.default_layout_config.clone();
             let layout_dir = self.layout_dir.clone();
             async move {
                 match PluginLoader::reload_plugin(
@@ -383,7 +384,7 @@ impl WasmBridge {
                     capabilities.clone(),
                     client_attributes.clone(),
                     default_shell.clone(),
-                    default_layout.clone(),
+                    default_layout_config.clone(),
                     layout_dir.clone(),
                 ) {
                     Ok(_) => {
@@ -442,7 +443,7 @@ impl WasmBridge {
             let capabilities = self.capabilities.clone();
             let client_attributes = self.client_attributes.clone();
             let default_shell = self.default_shell.clone();
-            let default_layout = self.default_layout.clone();
+            let default_layout_config = self.default_layout_config.clone();
             let layout_dir = self.layout_dir.clone();
             async move {
                 match PluginLoader::reload_plugin(
@@ -458,7 +459,7 @@ impl WasmBridge {
                     capabilities.clone(),
                     client_attributes.clone(),
                     default_shell.clone(),
-                    default_layout.clone(),
+                    default_layout_config.clone(),
                     layout_dir.clone(),
                 ) {
                     Ok(_) => {
@@ -484,7 +485,7 @@ impl WasmBridge {
                                 capabilities.clone(),
                                 client_attributes.clone(),
                                 default_shell.clone(),
-                                default_layout.clone(),
+                                default_layout_config.clone(),
                                 layout_dir.clone(),
                             ) {
                                 Ok(_) => {
@@ -543,7 +544,7 @@ impl WasmBridge {
             self.capabilities.clone(),
             self.client_attributes.clone(),
             self.default_shell.clone(),
-            self.default_layout.clone(),
+            self.default_layout_config.clone(),
             self.layout_dir.clone(),
             self.default_mode,
             self.keybinds

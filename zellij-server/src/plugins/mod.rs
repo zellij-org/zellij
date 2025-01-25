@@ -32,7 +32,9 @@ use zellij_utils::{
     input::{
         command::TerminalAction,
         keybinds::Keybinds,
-        layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout},
+        layout::{
+            FloatingPaneLayout, LayoutConfig, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout,
+        },
         plugins::PluginAliases,
     },
     ipc::ClientAttributes,
@@ -214,7 +216,7 @@ pub(crate) fn plugin_thread_main(
     bus: Bus<PluginInstruction>,
     engine: Engine,
     data_dir: PathBuf,
-    mut layout: Box<Layout>,
+    mut layout_config: Box<LayoutConfig>,
     layout_dir: Option<PathBuf>,
     path_to_default_shell: PathBuf,
     zellij_cwd: PathBuf,
@@ -234,7 +236,8 @@ pub(crate) fn plugin_thread_main(
     info!("Wasm main thread starts");
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
-    layout.populate_plugin_aliases_in_layout(&plugin_aliases);
+    let active_layout = layout_config.get_active_layout_mut();
+    active_layout.populate_plugin_aliases_in_layout(&plugin_aliases);
 
     // use this channel to ensure that tasks spawned from this thread terminate before exiting
     // https://tokio.rs/tokio/topics/shutdown#waiting-for-things-to-finish-shutting-down
@@ -249,7 +252,7 @@ pub(crate) fn plugin_thread_main(
         capabilities,
         client_attributes,
         default_shell,
-        layout.clone(),
+        layout_config.clone(),
         layout_dir,
         default_mode,
         default_keybinds,
@@ -427,8 +430,9 @@ pub(crate) fn plugin_thread_main(
                     client_id
                 };
 
+                let active_layout = layout_config.get_active_layout();
                 let mut plugin_ids: HashMap<RunPluginOrAlias, Vec<PluginId>> = HashMap::new();
-                tab_layout = tab_layout.or_else(|| Some(layout.new_tab().0));
+                tab_layout = tab_layout.or_else(|| Some(active_layout.new_tab().0));
                 tab_layout.as_mut().map(|t| {
                     t.populate_plugin_aliases_in_layout(&plugin_aliases);
                     if let Some(cwd) = cwd.as_ref() {
@@ -443,11 +447,11 @@ pub(crate) fn plugin_thread_main(
                 });
                 let mut extracted_run_instructions = tab_layout
                     .clone()
-                    .unwrap_or_else(|| layout.new_tab().0)
+                    .unwrap_or_else(|| active_layout.new_tab().0)
                     .extract_run_instructions();
                 let size = Size::default();
                 let floating_panes_layout = if floating_panes_layout.is_empty() {
-                    layout.new_tab().1
+                    active_layout.new_tab().1
                 } else {
                     floating_panes_layout
                 };

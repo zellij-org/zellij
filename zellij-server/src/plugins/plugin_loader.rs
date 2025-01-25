@@ -16,6 +16,7 @@ use url::Url;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 use wasmtime_wasi::{preview1::WasiP1Ctx, DirPerms, FilePerms, WasiCtxBuilder};
 use zellij_utils::consts::ZELLIJ_PLUGIN_ARTIFACT_DIR;
+use zellij_utils::input::layout::LayoutConfig;
 use zellij_utils::prost::Message;
 
 use crate::{
@@ -30,7 +31,6 @@ use zellij_utils::{
     errors::prelude::*,
     input::command::TerminalAction,
     input::keybinds::Keybinds,
-    input::layout::Layout,
     input::plugins::PluginConfig,
     ipc::ClientAttributes,
     pane_size::Size,
@@ -68,7 +68,7 @@ pub struct PluginLoader<'a> {
     capabilities: PluginCapabilities,
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
-    default_layout: Box<Layout>,
+    default_layout_config: Box<LayoutConfig>,
     layout_dir: Option<PathBuf>,
     default_mode: InputMode,
     keybinds: Keybinds,
@@ -89,7 +89,7 @@ impl<'a> PluginLoader<'a> {
         capabilities: PluginCapabilities,
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
-        default_layout: Box<Layout>,
+        default_layout_config: Box<LayoutConfig>,
         layout_dir: Option<PathBuf>,
     ) -> Result<()> {
         let err_context = || format!("failed to reload plugin {plugin_id} from memory");
@@ -114,7 +114,7 @@ impl<'a> PluginLoader<'a> {
             capabilities,
             client_attributes,
             default_shell,
-            default_layout,
+            default_layout_config,
             layout_dir,
         )?;
         plugin_loader
@@ -149,7 +149,7 @@ impl<'a> PluginLoader<'a> {
         capabilities: PluginCapabilities,
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
-        default_layout: Box<Layout>,
+        default_layout_config: Box<LayoutConfig>,
         skip_cache: bool,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
@@ -172,7 +172,7 @@ impl<'a> PluginLoader<'a> {
             capabilities,
             client_attributes,
             default_shell,
-            default_layout,
+            default_layout_config,
             layout_dir,
             default_mode,
             keybinds,
@@ -226,7 +226,7 @@ impl<'a> PluginLoader<'a> {
         capabilities: PluginCapabilities,
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
-        default_layout: Box<Layout>,
+        default_layout_config: Box<LayoutConfig>,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
         keybinds: Keybinds,
@@ -250,7 +250,7 @@ impl<'a> PluginLoader<'a> {
                 capabilities.clone(),
                 client_attributes.clone(),
                 default_shell.clone(),
-                default_layout.clone(),
+                default_layout_config.clone(),
                 layout_dir.clone(),
                 default_mode,
                 keybinds.clone(),
@@ -279,7 +279,7 @@ impl<'a> PluginLoader<'a> {
         capabilities: PluginCapabilities,
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
-        default_layout: Box<Layout>,
+        default_layout_config: Box<LayoutConfig>,
         layout_dir: Option<PathBuf>,
     ) -> Result<()> {
         let err_context = || format!("failed to reload plugin id {plugin_id}");
@@ -305,7 +305,7 @@ impl<'a> PluginLoader<'a> {
             capabilities,
             client_attributes,
             default_shell,
-            default_layout,
+            default_layout_config,
             layout_dir,
         )?;
         plugin_loader
@@ -337,7 +337,7 @@ impl<'a> PluginLoader<'a> {
         capabilities: PluginCapabilities,
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
-        default_layout: Box<Layout>,
+        default_layout_config: Box<LayoutConfig>,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
         keybinds: Keybinds,
@@ -370,7 +370,7 @@ impl<'a> PluginLoader<'a> {
             capabilities,
             client_attributes,
             default_shell,
-            default_layout,
+            default_layout_config,
             layout_dir,
             default_mode,
             keybinds,
@@ -390,7 +390,7 @@ impl<'a> PluginLoader<'a> {
         capabilities: PluginCapabilities,
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
-        default_layout: Box<Layout>,
+        default_layout_config: Box<LayoutConfig>,
         layout_dir: Option<PathBuf>,
     ) -> Result<Self> {
         let err_context = || "Failed to find existing plugin";
@@ -430,7 +430,7 @@ impl<'a> PluginLoader<'a> {
             capabilities,
             client_attributes,
             default_shell,
-            default_layout,
+            default_layout_config,
             layout_dir,
             default_mode,
             keybinds,
@@ -450,7 +450,7 @@ impl<'a> PluginLoader<'a> {
         capabilities: PluginCapabilities,
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
-        default_layout: Box<Layout>,
+        default_layout_config: Box<LayoutConfig>,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
         keybinds: Keybinds,
@@ -487,7 +487,7 @@ impl<'a> PluginLoader<'a> {
             capabilities,
             client_attributes,
             default_shell,
-            default_layout,
+            default_layout_config,
             layout_dir,
             default_mode,
             keybinds,
@@ -740,7 +740,7 @@ impl<'a> PluginLoader<'a> {
                     self.capabilities.clone(),
                     self.client_attributes.clone(),
                     self.default_shell.clone(),
-                    self.default_layout.clone(),
+                    self.default_layout_config.clone(),
                     self.layout_dir.clone(),
                     self.default_mode,
                     self.keybinds.clone(),
@@ -860,7 +860,7 @@ impl<'a> PluginLoader<'a> {
             capabilities: self.capabilities.clone(),
             client_attributes: self.client_attributes.clone(),
             default_shell: self.default_shell.clone(),
-            default_layout: self.default_layout.clone(),
+            default_layout_config: self.default_layout_config.clone(),
             plugin_cwd: self.plugin_cwd.clone(),
             input_pipes_to_unblock: Arc::new(Mutex::new(HashSet::new())),
             input_pipes_to_block: Arc::new(Mutex::new(HashSet::new())),

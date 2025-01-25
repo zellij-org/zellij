@@ -13,6 +13,7 @@ use wasmtime_wasi::{
     HostInputStream, HostOutputStream, StdinStream, StdoutStream, StreamError, StreamResult,
     Subscribe,
 };
+use zellij_utils::input::layout::LayoutConfig;
 
 use crate::{thread_bus::ThreadSenders, ClientId};
 
@@ -23,7 +24,7 @@ use zellij_utils::{
     data::PluginCapabilities,
     input::command::TerminalAction,
     input::keybinds::Keybinds,
-    input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation},
+    input::layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation},
     input::plugins::PluginConfig,
     ipc::ClientAttributes,
 };
@@ -300,7 +301,7 @@ pub struct PluginEnv {
     pub capabilities: PluginCapabilities,
     pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
-    pub default_layout: Box<Layout>,
+    pub default_layout_config: Box<LayoutConfig>, //I hope this does not break anything
     pub layout_dir: Option<PathBuf>,
     pub plugin_cwd: PathBuf,
     pub input_pipes_to_unblock: Arc<Mutex<HashSet<String>>>,

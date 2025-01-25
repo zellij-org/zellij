@@ -15,6 +15,7 @@ use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::Keybinds;
+use zellij_utils::input::layout::LayoutConfig;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
@@ -22,7 +23,7 @@ use zellij_utils::{
     envs::set_session_name,
     input::command::TerminalAction,
     input::layout::{
-        FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
+        FloatingPaneLayout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
         TiledPaneLayout,
     },
     position::Position,
@@ -343,7 +344,7 @@ pub enum ScreenInstruction {
         u32, // u32 - plugin_id
         PluginPermission,
     ),
-    BreakPane(Box<Layout>, Option<TerminalAction>, ClientId),
+    BreakPane(Box<LayoutConfig>, Option<TerminalAction>, ClientId),
     BreakPaneRight(ClientId),
     BreakPaneLeft(ClientId),
     UpdateSessionInfos(
@@ -693,7 +694,7 @@ pub(crate) struct Screen {
     // also be this session
     resurrectable_sessions: BTreeMap<String, Duration>, // String is the session name, duration is
     // its creation time
-    default_layout: Box<Layout>,
+    default_layout_config: Box<LayoutConfig>,
     default_shell: Option<PathBuf>,
     styled_underlines: bool,
     arrow_fonts: bool,
@@ -714,7 +715,7 @@ impl Screen {
         session_is_mirrored: bool,
         copy_options: CopyOptions,
         debug: bool,
-        default_layout: Box<Layout>,
+        default_layout_config: Box<LayoutConfig>,
         default_layout_name: Option<String>,
         default_shell: Option<PathBuf>,
         session_serialization: bool,
@@ -754,7 +755,7 @@ impl Screen {
             debug,
             session_name,
             session_infos_on_machine,
-            default_layout,
+            default_layout_config,
             default_layout_name,
             default_shell,
             session_serialization,
@@ -1613,8 +1614,10 @@ impl Screen {
         // because this is mostly about HD access - it does however throw off the timing in the
         // tests and causes them to flake, which is why we skip it here
         #[cfg(not(test))]
-        let available_layouts =
-            Layout::list_available_layouts(self.layout_dir.clone(), &self.default_layout_name);
+        let available_layouts = LayoutConfig::list_available_layouts(
+            self.layout_dir.clone(),
+            &self.default_layout_name,
+        );
         #[cfg(test)]
         let available_layouts = vec![];
         let session_info = SessionInfo {
@@ -2141,11 +2144,12 @@ impl Screen {
     pub fn break_pane(
         &mut self,
         default_shell: Option<TerminalAction>,
-        default_layout: Box<Layout>,
+        default_layout_config: Box<LayoutConfig>,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || "failed break pane out of tab".to_string();
         let active_tab = self.get_active_tab_mut(client_id)?;
+        let active_layout = default_layout_config.get_active_layout();
         if active_tab.get_selectable_tiled_panes_count() > 1
             || active_tab.get_visible_selectable_floating_panes_count() > 0
         {
@@ -2159,12 +2163,12 @@ impl Screen {
             let active_pane_run_instruction = active_pane.invoked_with().clone();
             let tab_index = self.get_new_tab_index();
             let swap_layouts = (
-                default_layout.swap_tiled_layouts.clone(),
-                default_layout.swap_floating_layouts.clone(),
+                active_layout.swap_tiled_layouts.clone(),
+                active_layout.swap_floating_layouts.clone(),
             );
             self.new_tab(tab_index, swap_layouts, None, Some(client_id))?;
             let tab = self.tabs.get_mut(&tab_index).with_context(err_context)?;
-            let (mut tiled_panes_layout, mut floating_panes_layout) = default_layout.new_tab();
+            let (mut tiled_panes_layout, mut floating_panes_layout) = active_layout.new_tab();
             if pane_to_break_is_floating {
                 tab.show_floating_panes();
                 tab.add_floating_pane(active_pane, active_pane_id, None)?;
@@ -2226,11 +2230,13 @@ impl Screen {
             }
         }
 
-        let (mut tiled_panes_layout, floating_panes_layout) = self.default_layout.new_tab();
+        let active_layout = self.default_layout_config.get_active_layout();
+
+        let (mut tiled_panes_layout, floating_panes_layout) = active_layout.new_tab();
         let tab_index = self.get_new_tab_index();
         let swap_layouts = (
-            self.default_layout.swap_tiled_layouts.clone(),
-            self.default_layout.swap_floating_layouts.clone(),
+            active_layout.swap_tiled_layouts.clone(),
+            active_layout.swap_floating_layouts.clone(),
         );
         if should_change_focus_to_new_tab {
             self.new_tab(tab_index, swap_layouts, None, Some(client_id))?;
@@ -2529,7 +2535,8 @@ impl Screen {
             .context("failed to unblock input")
     }
     fn get_layout_metadata(&self, default_shell: Option<PathBuf>) -> SessionLayoutMetadata {
-        let mut session_layout_metadata = SessionLayoutMetadata::new(self.default_layout.clone());
+        let mut session_layout_metadata =
+            SessionLayoutMetadata::new(self.default_layout_config.clone());
         if let Some(default_shell) = default_shell {
             session_layout_metadata.update_default_shell(default_shell);
         }
@@ -2677,7 +2684,7 @@ pub(crate) fn screen_thread_main(
     client_attributes: ClientAttributes,
     config: Config,
     debug: bool,
-    default_layout: Box<Layout>,
+    default_layout_config: Box<LayoutConfig>,
 ) -> Result<()> {
     let config_options = config.options;
     let arrow_fonts = !config_options.simplified_ui.unwrap_or_default();
@@ -2726,7 +2733,7 @@ pub(crate) fn screen_thread_main(
         session_is_mirrored,
         copy_options,
         debug,
-        default_layout,
+        default_layout_config,
         default_layout_name,
         default_shell,
         session_serialization,
@@ -4380,8 +4387,8 @@ pub(crate) fn screen_thread_main(
                     );
                 }
             },
-            ScreenInstruction::BreakPane(default_layout, default_shell, client_id) => {
-                screen.break_pane(default_shell, default_layout, client_id)?;
+            ScreenInstruction::BreakPane(default_layout_config, default_shell, client_id) => {
+                screen.break_pane(default_shell, default_layout_config, client_id)?;
             },
             ScreenInstruction::BreakPaneRight(client_id) => {
                 screen.break_pane_to_new_tab(Direction::Right, client_id)?;

@@ -3,8 +3,8 @@ use crate::{
     cli::CliArgs,
     data::{ClientId, ConnectToSession, KeyWithModifier, Style},
     errors::{get_current_ctx, prelude::*, ErrorContext},
-    input::config::Config,
     input::{actions::Action, layout::Layout, options::Options, plugins::PluginAliases},
+    input::{config::Config, layout::LayoutConfig},
     pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::LocalSocketStream;
@@ -76,7 +76,7 @@ pub enum ClientToServerMsg {
         Box<CliArgs>,
         Box<Config>,  // represents the saved configuration
         Box<Options>, // represents the runtime configuration
-        Box<Layout>,
+        Box<LayoutConfig>,
         Box<PluginAliases>,
         bool, // should launch setup wizard
     ),

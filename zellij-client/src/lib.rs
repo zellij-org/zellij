@@ -16,6 +16,7 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use zellij_utils::errors::FatalError;
+use zellij_utils::input::layout::LayoutConfig;
 
 use zellij_utils::notify_debouncer_full::notify::{self, Event, RecursiveMode, Watcher};
 use zellij_utils::setup::Setup;
@@ -25,6 +26,7 @@ use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
 };
+use zellij_utils::cli::CliArgs;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{set_permissions, ZELLIJ_SOCK_DIR},
@@ -36,7 +38,6 @@ use zellij_utils::{
     pane_size::Size,
     termwiz::input::InputEvent,
 };
-use zellij_utils::{cli::CliArgs, input::layout::Layout};
 
 /// Instructions related to the client-side application
 #[derive(Debug, Clone)]
@@ -140,7 +141,7 @@ fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
 pub enum ClientInfo {
     Attach(String, Options),
     New(String),
-    Resurrect(String, Layout),
+    Resurrect(String, LayoutConfig),
 }
 
 impl ClientInfo {
@@ -169,14 +170,14 @@ pub fn start_client(
     config: Config,          // saved to disk (or default?)
     config_options: Options, // CLI options merged into (getting priority over) saved config options
     info: ClientInfo,
-    layout: Option<Layout>,
+    layout_config: Option<LayoutConfig>,
     tab_position_to_focus: Option<usize>,
     pane_id_to_focus: Option<(u32, bool)>, // (pane_id, is_plugin)
     is_a_reconnect: bool,
     start_detached_and_exit: bool,
 ) -> Option<ConnectToSession> {
     if start_detached_and_exit {
-        start_server_detached(os_input, opts, config, config_options, info, layout);
+        start_server_detached(os_input, opts, config, config_options, info, layout_config);
         return None;
     }
     info!("Starting Zellij client!");
@@ -275,7 +276,7 @@ pub fn start_client(
                     Box::new(opts.clone()),
                     Box::new(config.clone()),
                     Box::new(config_options.clone()),
-                    Box::new(layout.unwrap()),
+                    Box::new(layout_config.unwrap()),
                     Box::new(config.plugins.clone()),
                     should_launch_setup_wizard,
                 ),
@@ -609,7 +610,7 @@ pub fn start_server_detached(
     config: Config,
     config_options: Options,
     info: ClientInfo,
-    layout: Option<Layout>,
+    layout_config: Option<LayoutConfig>,
 ) {
     envs::set_zellij("0".to_string());
     config.env.set_vars();
@@ -652,7 +653,7 @@ pub fn start_server_detached(
                     Box::new(opts),
                     Box::new(config.clone()),
                     Box::new(config_options.clone()),
-                    Box::new(layout.unwrap()),
+                    Box::new(layout_config.unwrap()),
                     Box::new(config.plugins.clone()),
                     should_launch_setup_wizard,
                 ),

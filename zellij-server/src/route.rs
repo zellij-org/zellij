@@ -13,6 +13,7 @@ use crate::{
 use std::thread;
 use std::time::Duration;
 use uuid::Uuid;
+use zellij_utils::input::layout::LayoutConfig;
 use zellij_utils::{
     channels::SenderWithContext,
     data::{Direction, Event, InputMode, PluginCapabilities, ResizeStrategy},
@@ -22,7 +23,6 @@ use zellij_utils::{
         command::TerminalAction,
         get_mode_info,
         keybinds::Keybinds,
-        layout::Layout,
     },
     ipc::{
         ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg,
@@ -39,7 +39,7 @@ pub(crate) fn route_action(
     capabilities: PluginCapabilities,
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
-    default_layout: Box<Layout>,
+    default_layout_config: Box<LayoutConfig>,
     mut seen_cli_pipes: Option<&mut HashSet<String>>,
     client_keybinds: Keybinds,
     default_mode: InputMode,
@@ -503,11 +503,12 @@ pub(crate) fn route_action(
             tab_name,
             should_change_focus_to_new_tab,
         ) => {
+            let active_layout = default_layout_config.get_active_layout();
             let shell = default_shell.clone();
             let swap_tiled_layouts =
-                swap_tiled_layouts.unwrap_or_else(|| default_layout.swap_tiled_layouts.clone());
+                swap_tiled_layouts.unwrap_or_else(|| active_layout.swap_tiled_layouts.clone());
             let swap_floating_layouts = swap_floating_layouts
-                .unwrap_or_else(|| default_layout.swap_floating_layouts.clone());
+                .unwrap_or_else(|| active_layout.swap_floating_layouts.clone());
             senders
                 .send_to_screen(ScreenInstruction::NewTab(
                     None,
@@ -548,8 +549,9 @@ pub(crate) fn route_action(
         },
         Action::GoToTabName(name, create) => {
             let shell = default_shell.clone();
-            let swap_tiled_layouts = default_layout.swap_tiled_layouts.clone();
-            let swap_floating_layouts = default_layout.swap_floating_layouts.clone();
+            let active_layout = default_layout_config.get_active_layout();
+            let swap_tiled_layouts = active_layout.swap_tiled_layouts.clone();
+            let swap_floating_layouts = active_layout.swap_floating_layouts.clone();
             senders
                 .send_to_screen(ScreenInstruction::GoToTabName(
                     name,
@@ -841,7 +843,7 @@ pub(crate) fn route_action(
         Action::BreakPane => {
             senders
                 .send_to_screen(ScreenInstruction::BreakPane(
-                    default_layout.clone(),
+                    default_layout_config.clone(),
                     default_shell.clone(),
                     client_id,
                 ))
@@ -1039,7 +1041,7 @@ pub(crate) fn route_thread_main(
                                                 rlocked_sessions.capabilities.clone(),
                                                 rlocked_sessions.client_attributes.clone(),
                                                 rlocked_sessions.default_shell.clone(),
-                                                rlocked_sessions.layout.clone(),
+                                                rlocked_sessions.layout_config.clone(),
                                                 Some(&mut seen_cli_pipes),
                                                 keybinds.clone(),
                                                 rlocked_sessions
@@ -1071,7 +1073,7 @@ pub(crate) fn route_thread_main(
                                     rlocked_sessions.capabilities.clone(),
                                     rlocked_sessions.client_attributes.clone(),
                                     rlocked_sessions.default_shell.clone(),
-                                    rlocked_sessions.layout.clone(),
+                                    rlocked_sessions.layout_config.clone(),
                                     Some(&mut seen_cli_pipes),
                                     rlocked_sessions
                                         .session_configuration
@@ -1157,7 +1159,7 @@ pub(crate) fn route_thread_main(
                             cli_args,
                             config,
                             runtime_config_options,
-                            layout,
+                            layout_config,
                             plugin_aliases,
                             should_launch_setup_wizard,
                         ) => {
@@ -1166,7 +1168,7 @@ pub(crate) fn route_thread_main(
                                 cli_args,
                                 config,
                                 runtime_config_options,
-                                layout,
+                                layout_config,
                                 plugin_aliases,
                                 should_launch_setup_wizard,
                                 client_id,

@@ -1,5 +1,6 @@
 #[cfg(not(target_family = "wasm"))]
 use crate::consts::ASSET_MAP;
+use crate::input::layout::LayoutConfig;
 use crate::input::theme::Themes;
 use crate::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
@@ -368,7 +369,7 @@ impl Setup {
     /// 3. config options (`config.kdl`)
     pub fn from_cli_args(
         cli_args: &CliArgs,
-    ) -> Result<(Config, Layout, Options, Config, Options), ConfigError> {
+    ) -> Result<(Config, LayoutConfig, Options, Config, Options), ConfigError> {
         // note that this can potentially exit the process
         Setup::handle_setup_commands(cli_args);
         let config = Config::try_from(cli_args)?;
@@ -666,7 +667,7 @@ impl Setup {
         cli_config_options: Option<&Options>,
         config: Config,
         cli_args: &CliArgs,
-    ) -> Result<(Layout, Config), ConfigError> {
+    ) -> Result<(LayoutConfig, Config), ConfigError> {
         // find the layout folder relative to which we'll look for our layout
         let layout_dir = cli_config_options
             .as_ref()
@@ -698,11 +699,11 @@ impl Setup {
                 }
             })
         {
-            Layout::from_url(layout_url, config)
+            LayoutConfig::from_url(layout_url, config)
         } else {
             // we merge-override the config here because the layout might contain configuration
             // that needs to take precedence
-            Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir.clone(), config)
+            LayoutConfig::from_path_or_default(chosen_layout.as_ref(), layout_dir.clone(), config)
         }
     }
     fn handle_setup_commands(cli_args: &CliArgs) {
