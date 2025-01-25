@@ -232,6 +232,7 @@ impl TiledPanes {
                     Ok(new_pane_geom) => {
                         pane.set_geom(new_pane_geom);
                         self.panes.insert(pane_id, pane); // TODO: is set_geom the right one?
+                        self.set_force_render(); // TODO: why do we need this?
                         return;
                     },
                     Err(e) => {
@@ -1174,6 +1175,7 @@ impl TiledPanes {
                                 for (pane_id, pane_geom) in last_state {
                                     self.panes.get_mut(&pane_id).map(|pane| pane.set_geom(pane_geom));
                                 }
+                                self.reapply_pane_frames();
                                 return Ok(true);
                             } else {
                                 self.tombstones_before_decrease = None;
@@ -1253,6 +1255,7 @@ impl TiledPanes {
                                 for (pane_id, pane_geom) in last_state {
                                     self.panes.get_mut(&pane_id).map(|pane| pane.set_geom(pane_geom));
                                 }
+                                self.reapply_pane_frames();
                                 return Ok(true);
                             } else {
                                 self.tombstones_before_increase = None;
@@ -1280,16 +1283,31 @@ impl TiledPanes {
                             resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
                         }
                     }
+                    self.reapply_pane_frames();
                     self.update_tombstones_before_decrease(pane_id, current_pane_state);
                     Ok(true)
                 } else {
                     // normal resize if we were not inside a stack
-                    match self.resize_pane_with_id(*strategy, pane_id, None) {
+                    // first try with our custom resize_percent
+                    match self.resize_pane_with_id(*strategy, pane_id, Some(resize_percent)) {
                         Ok(pane_size_changed) => {
                             if pane_size_changed {
                                 self.update_tombstones_before_decrease(pane_id, current_pane_state);
+                                self.reapply_pane_frames();
+                                Ok(pane_size_changed)
+                            } else {
+                                // if it doesn't work, try with the default resize percent
+                                match self.resize_pane_with_id(*strategy, pane_id, None) {
+                                    Ok(pane_size_changed) => {
+                                        if pane_size_changed {
+                                            self.update_tombstones_before_decrease(pane_id, current_pane_state);
+                                            self.reapply_pane_frames();
+                                        }
+                                        Ok(pane_size_changed)
+                                    },
+                                    Err(e) => Err(e)
+                                }
                             }
-                            Ok(pane_size_changed)
                         },
                         Err(e) => Err(e)
                     }
