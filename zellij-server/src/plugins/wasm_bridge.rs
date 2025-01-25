@@ -591,8 +591,6 @@ impl WasmBridge {
                 task::spawn({
                     let senders = self.senders.clone();
                     let running_plugin = running_plugin.clone();
-                    let plugin_id = plugin_id;
-                    let client_id = client_id;
                     let _s = shutdown_sender.clone();
                     async move {
                         let mut running_plugin = running_plugin.lock().unwrap();
