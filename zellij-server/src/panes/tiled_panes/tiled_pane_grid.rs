@@ -54,7 +54,7 @@ impl<'a> TiledPaneGrid<'a> {
         let mut pane_resizer = PaneResizer::new(self.panes.clone());
         pane_resizer.layout(direction, space)
     }
-    fn get_pane_geom(&self, pane_id: &PaneId) -> Option<PaneGeom> {
+    pub fn get_pane_geom(&self, pane_id: &PaneId) -> Option<PaneGeom> {
         let panes = self.panes.borrow();
         let pane_to_check = panes.get(pane_id)?;
         let pane_geom = pane_to_check.current_geom();
@@ -1374,6 +1374,31 @@ impl<'a> TiledPaneGrid<'a> {
             direction.map(|direction| (*t_id_to_split, direction))
         })
     }
+    pub fn split_pane(
+        &self,
+        active_pane_id: &PaneId,
+        cursor_height_width_ratio: Option<usize>,
+    ) -> Option<(PaneId, SplitDirection)> {
+        let panes = self.panes.borrow();
+        let Some(pane_to_split) = panes.get(active_pane_id) else {
+            return None;
+        };
+        let direction = if pane_to_split.rows()
+            * cursor_height_width_ratio.unwrap_or(DEFAULT_CURSOR_HEIGHT_WIDTH_RATIO)
+            > pane_to_split.cols()
+            // && pane_to_split.rows() > pane_to_split.min_height() * 2
+            && pane_to_split.rows() > 10 * 2
+        {
+            Some(SplitDirection::Horizontal)
+        // } else if pane_to_split.cols() > pane_to_split.min_width() * 2 {
+        } else if pane_to_split.cols() > 30 * 2 {
+            Some(SplitDirection::Vertical)
+        } else {
+            None
+        };
+
+        direction.map(|direction| (*active_pane_id, direction))
+    }
     pub fn has_room_for_new_stacked_pane(&self) -> bool {
         let panes = self.panes.borrow();
         let flexible_pane_in_stack: Vec<(&PaneId, &&mut Box<dyn Pane>)> = panes
@@ -1388,6 +1413,9 @@ impl<'a> TiledPaneGrid<'a> {
     }
     pub fn make_room_in_stack_for_pane(&mut self) -> Result<PaneGeom> {
         StackedPanes::new(self.panes.clone()).make_room_for_new_pane()
+    }
+    pub fn make_room_in_stack_of_pane_id_for_pane(&mut self, pane_id: &PaneId) -> Result<PaneGeom> {
+        StackedPanes::new(self.panes.clone()).make_room_for_new_pane_in_stack(pane_id)
     }
     fn pane_ids_have_the_same_y(&self, pane_ids: &[PaneId]) -> bool {
         let panes = self.panes.borrow();
@@ -1976,6 +2004,15 @@ impl<'a> TiledPaneGrid<'a> {
         StackedPanes::new(self.panes.clone()).combine_horizontally_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_to_the_right);
         StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
         Some(vec![*pane_id])
+    }
+    pub fn next_stack_id(&self) -> usize {
+        StackedPanes::new(self.panes.clone()).next_stack_id()
+    }
+    pub fn make_pane_stacked(&mut self, pane_id: &PaneId) -> Result<()> {
+        let mut geom_of_active_pane = self.get_pane_geom(pane_id).ok_or_else(|| anyhow!("Failed to get pane geom"))?;
+        geom_of_active_pane.stacked = Some(self.next_stack_id());
+        self.panes.borrow_mut().get_mut(pane_id).ok_or_else(|| anyhow!("Failed to get pane geom"))?.set_geom(geom_of_active_pane);
+        Ok(())
     }
     fn get_vertically_aligned_pane_id_above(&self, pane_id: &PaneId) -> Option<PaneId> {
         let Some(pane_geom) = self.get_pane_geom(pane_id) else {
