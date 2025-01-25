@@ -898,9 +898,15 @@ impl TiledPanes {
         }
     }
     pub fn resize(&mut self, new_screen_size: Size) {
-        self.clear_tombstones();
         // this is blocked out to appease the borrow checker
         {
+            // TODO: move elsewhere
+            {
+                let display_area = {self.display_area.borrow().clone()};
+                if new_screen_size.rows != display_area.rows || new_screen_size.cols != display_area.cols {
+                    self.clear_tombstones();
+                }
+            }
             let mut display_area = self.display_area.borrow_mut();
             let mut viewport = self.viewport.borrow_mut();
             let Size { rows, cols } = new_screen_size;
@@ -1155,7 +1161,7 @@ impl TiledPanes {
                 }
             },
             None => {
-                    self.clear_tombstones();
+                self.clear_tombstones();
                 self.tombstones_before_decrease = Some((focused_pane_id, vec![pane_state]));
             }
         }
@@ -1241,6 +1247,9 @@ impl TiledPanes {
                     Ok(size_changed) => {
                         if size_changed {
                             self.update_tombstones_before_increase(pane_id, current_pane_state);
+                        } else {
+                            self.toggle_pane_fullscreen(pane_id);
+                            return Ok(self.fullscreen_is_active.is_some());
                         }
                         return Ok(size_changed);
                     },
@@ -1248,6 +1257,11 @@ impl TiledPanes {
                 }
             }
             Resize::Decrease => {
+                if self.fullscreen_is_active.is_some() {
+                    self.unset_fullscreen();
+                    return Ok(true);
+                }
+
                 match self.tombstones_before_increase.as_mut() {
                     Some((tombstone_pane_id, tombstone_pane_state)) if *tombstone_pane_id == pane_id => {
                         if let Some(last_state) = tombstone_pane_state.pop() {
