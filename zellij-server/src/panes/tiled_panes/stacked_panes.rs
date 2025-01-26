@@ -265,11 +265,10 @@ impl<'a> StackedPanes<'a> {
         let all_stacked_pane_positions = self.positions_in_stack(id).with_context(err_context)?;
         let position_of_flexible_pane =
             self.position_of_flexible_pane(&all_stacked_pane_positions)?;
-        let (flexible_pane_id, flexible_pane) = all_stacked_pane_positions
+        let (_flexible_pane_id, flexible_pane) = all_stacked_pane_positions
             .iter()
             .nth(position_of_flexible_pane)
             .with_context(err_context)?;
-        let current_rows = all_stacked_pane_positions.len() + (flexible_pane.rows.as_usize().saturating_sub(1));
         let new_rows = new_full_stack_geom.rows.as_usize();
 
         let adjust_stack_geoms = |new_flexible_pane_geom: PaneGeom| -> Result<()> {
@@ -295,32 +294,14 @@ impl<'a> StackedPanes<'a> {
             }
             Ok(())
         };
-
-        if new_rows >= current_rows {
-            let extra_rows = new_rows - current_rows;
-            let mut new_flexible_pane_geom = *flexible_pane;
-            new_flexible_pane_geom
-                .rows
-                .set_inner(new_flexible_pane_geom.rows.as_usize() + extra_rows);
-            self.panes
-                .borrow_mut()
-                .get_mut(&flexible_pane_id)
-                .with_context(err_context)?
-                .set_geom(new_flexible_pane_geom);
-            adjust_stack_geoms(new_flexible_pane_geom)?;
-        } else {
-            let rows_deficit = current_rows.saturating_sub(new_rows);
-            let mut new_flexible_pane_geom = *flexible_pane;
-            new_flexible_pane_geom
-                .rows
-                .set_inner(new_flexible_pane_geom.rows.as_usize().saturating_sub(rows_deficit));
-            self.panes
-                .borrow_mut()
-                .get_mut(&flexible_pane_id)
-                .with_context(err_context)?
-                .set_geom(new_flexible_pane_geom);
-            adjust_stack_geoms(new_flexible_pane_geom)?;
-        }
+        let new_rows_for_flexible_pane = new_rows.saturating_sub(all_stacked_pane_positions.len()) + 1;
+        let mut new_flexible_pane_geom = new_full_stack_geom;
+        new_flexible_pane_geom.stacked = flexible_pane.stacked;
+        new_flexible_pane_geom.logical_position = flexible_pane.logical_position;
+        new_flexible_pane_geom
+            .rows
+            .set_inner(new_rows_for_flexible_pane);
+        adjust_stack_geoms(new_flexible_pane_geom)?;
         Ok(())
     }
     fn pane_is_one_liner(&self, id: &PaneId) -> Result<bool> {

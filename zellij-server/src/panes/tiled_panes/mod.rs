@@ -433,10 +433,18 @@ impl TiledPanes {
     pub fn can_split_pane_horizontally(&mut self, client_id: ClientId) -> bool {
         if let Some(active_pane_id) = &self.active_panes.get(&client_id) {
             if let Some(active_pane) = self.panes.get_mut(active_pane_id) {
-                let full_pane_size = active_pane.position_and_size();
-                if full_pane_size.rows.as_usize() < MIN_TERMINAL_HEIGHT * 2
-                    || full_pane_size.is_stacked()
-                {
+                let mut full_pane_size = active_pane.position_and_size();
+
+                if full_pane_size.is_stacked() {
+                    let Some(position_and_size_of_stack) = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+                        .position_and_size_of_stack(&active_pane_id) else {
+                            log::error!("Failed to find position and size of stack");
+                            return false;
+                        };
+                    full_pane_size = position_and_size_of_stack;
+                }
+
+                if full_pane_size.rows.as_usize() < MIN_TERMINAL_HEIGHT * 2 {
                     return false;
                 } else {
                     return split(SplitDirection::Horizontal, &full_pane_size).is_some();
@@ -448,29 +456,24 @@ impl TiledPanes {
     pub fn can_split_pane_vertically(&mut self, client_id: ClientId) -> bool {
         if let Some(active_pane_id) = &self.active_panes.get(&client_id) {
             if let Some(active_pane) = self.panes.get_mut(active_pane_id) {
-                let full_pane_size = active_pane.position_and_size();
-                if full_pane_size.cols.as_usize() < MIN_TERMINAL_WIDTH * 2
-                    || full_pane_size.is_stacked()
-                {
+                let mut full_pane_size = active_pane.position_and_size();
+
+                if full_pane_size.is_stacked() {
+                    let Some(position_and_size_of_stack) = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+                        .position_and_size_of_stack(&active_pane_id) else {
+                            log::error!("Failed to find position and size of stack");
+                            return false;
+                        };
+                    full_pane_size = position_and_size_of_stack;
+                }
+
+                if full_pane_size.cols.as_usize() < MIN_TERMINAL_WIDTH * 2 {
                     return false;
                 }
                 return split(SplitDirection::Vertical, &full_pane_size).is_some();
             }
         }
         false
-    }
-    pub fn can_split_active_pane_horizontally(&self, client_id: ClientId) -> bool {
-        let active_pane_id = &self.active_panes.get(&client_id).unwrap();
-        let active_pane = self.panes.get(active_pane_id).unwrap();
-        let full_pane_size = active_pane.position_and_size();
-        if full_pane_size.rows.is_fixed() || full_pane_size.is_stacked() {
-            return false;
-        }
-        if split(SplitDirection::Horizontal, &full_pane_size).is_some() {
-            true
-        } else {
-            false
-        }
     }
     pub fn split_pane_horizontally(
         &mut self,
@@ -479,28 +482,36 @@ impl TiledPanes {
         client_id: ClientId,
     ) {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
+        let mut full_pane_size = self.panes.get(active_pane_id).map(|p| p.position_and_size()).unwrap();
+        if full_pane_size.is_stacked() {
+            match StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+                .position_and_size_of_stack(&active_pane_id) {
+                    Some(position_and_size_of_stack) => {
+                        full_pane_size = position_and_size_of_stack;
+                    },
+                    None => {
+                        log::error!("Failed to find position and size of stack");
+                    }
+                }
+        }
         let active_pane = self.panes.get_mut(active_pane_id).unwrap();
-        let full_pane_size = active_pane.position_and_size();
         if let Some((top_winsize, bottom_winsize)) =
             split(SplitDirection::Horizontal, &full_pane_size)
         {
-            active_pane.set_geom(top_winsize);
+            if active_pane.position_and_size().is_stacked() {
+                match StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+                    .resize_panes_in_stack(&active_pane_id, top_winsize) {
+                        Ok(_) => {},
+                        Err(e)=> {
+                            log::error!("Failed to resize stack: {}", e);
+                        }
+                    }
+            } else {
+                active_pane.set_geom(top_winsize);
+            }
             new_pane.set_geom(bottom_winsize);
             self.panes.insert(pid, new_pane);
             self.relayout(SplitDirection::Vertical);
-        }
-    }
-    pub fn can_split_active_pane_vertically(&self, client_id: ClientId) -> bool {
-        let active_pane_id = &self.active_panes.get(&client_id).unwrap();
-        let active_pane = self.panes.get(active_pane_id).unwrap();
-        let full_pane_size = active_pane.position_and_size();
-        if full_pane_size.cols.is_fixed() || full_pane_size.is_stacked() {
-            return false;
-        }
-        if split(SplitDirection::Vertical, &full_pane_size).is_some() {
-            true
-        } else {
-            false
         }
     }
     pub fn split_pane_vertically(
@@ -510,12 +521,33 @@ impl TiledPanes {
         client_id: ClientId,
     ) {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
+        let mut full_pane_size = self.panes.get(active_pane_id).map(|p| p.position_and_size()).unwrap();
+        if full_pane_size.is_stacked() {
+            match StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+                .position_and_size_of_stack(&active_pane_id) {
+                    Some(position_and_size_of_stack) => {
+                        full_pane_size = position_and_size_of_stack;
+                    },
+                    None => {
+                        log::error!("Failed to find position and size of stack");
+                    }
+                }
+        }
         let active_pane = self.panes.get_mut(active_pane_id).unwrap();
-        let full_pane_size = active_pane.position_and_size();
         if let Some((left_winsize, right_winsize)) =
             split(SplitDirection::Vertical, &full_pane_size)
         {
-            active_pane.set_geom(left_winsize);
+            if active_pane.position_and_size().is_stacked() {
+                match StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+                    .resize_panes_in_stack(&active_pane_id, left_winsize) {
+                        Ok(_) => {},
+                        Err(e)=> {
+                            log::error!("Failed to resize stack: {}", e);
+                        }
+                    }
+            } else {
+                active_pane.set_geom(left_winsize);
+            }
             new_pane.set_geom(right_winsize);
             self.panes.insert(pid, new_pane);
             self.relayout(SplitDirection::Horizontal);
