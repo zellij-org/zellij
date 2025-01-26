@@ -655,6 +655,7 @@ pub(crate) struct Screen {
     size: Size,
     pixel_dimensions: PixelDimensions,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+    stacked_resize: Rc<RefCell<bool>>,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     /// The overlay that is drawn on top of [`Pane`]'s', [`Tab`]'s and the [`Screen`]
     overlay: OverlayWindow,
@@ -723,6 +724,7 @@ impl Screen {
             size: client_attributes.size,
             pixel_dimensions: Default::default(),
             character_cell_size: Rc::new(RefCell::new(None)),
+            stacked_resize: Rc::new(RefCell::new(true)),
             sixel_image_store: Rc::new(RefCell::new(SixelImageStore::default())),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashSet::new())),
@@ -1326,6 +1328,7 @@ impl Screen {
             tab_name,
             self.size,
             self.character_cell_size.clone(),
+            self.stacked_resize.clone(),
             self.sixel_image_store.clone(),
             self.bus
                 .os_input

@@ -61,6 +61,7 @@ pub struct TiledPanes {
     connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
     mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+    stacked_resize: Rc<RefCell<bool>>,
     default_mode_info: ModeInfo,
     style: Style,
     session_is_mirrored: bool,
@@ -84,6 +85,7 @@ impl TiledPanes {
         connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
         mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+        stacked_resize: Rc<RefCell<bool>>,
         session_is_mirrored: bool,
         draw_pane_frames: bool,
         default_mode_info: ModeInfo,
@@ -99,6 +101,7 @@ impl TiledPanes {
             connected_clients_in_app,
             mode_info,
             character_cell_size,
+            stacked_resize,
             default_mode_info,
             style,
             session_is_mirrored,
@@ -220,12 +223,12 @@ impl TiledPanes {
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
-        let stacked_resizes = true; // TODO: from config
+        let stacked_resize = { *self.stacked_resize.borrow() };
         let client_id = 1; // TODO: as Option<ClientId> in function
         let active_pane_id = self.active_panes.get(&client_id).unwrap(); // TODO: no unwrap
         // TODO: make sure to also call this in has_room_for_new_pane
 
-        if stacked_resizes {
+        if stacked_resize {
             if pane_grid.get_pane_geom(active_pane_id).unwrap().is_stacked() { // TODO: no unwrap
                 // try to add the pane to the stack of the active pane
                 match pane_grid.make_room_in_stack_of_pane_id_for_pane(active_pane_id) {
@@ -241,7 +244,7 @@ impl TiledPanes {
                 }
             }
         }
-        if stacked_resizes {
+        if stacked_resize {
             let pane_id_and_split_direction =
                 pane_grid.split_pane(active_pane_id, cursor_height_width_ratio);
                 // pane_grid.find_room_for_new_pane(cursor_height_width_ratio);
@@ -992,8 +995,7 @@ impl TiledPanes {
         client_id: ClientId,
         strategy: &ResizeStrategy,
     ) -> Result<()> {
-        let stacked_resize = true; // TODO: from config
-        if stacked_resize && strategy.direction.is_none() {
+        if *self.stacked_resize.borrow() && strategy.direction.is_none() {
             if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
                 self.stacked_resize_pane_with_id(active_pane_id, strategy)?;
             }

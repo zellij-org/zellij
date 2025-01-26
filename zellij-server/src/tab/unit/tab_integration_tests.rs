@@ -220,6 +220,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let character_cell_info = Rc::new(RefCell::new(None));
+    let stacked_resize = Rc::new(RefCell::new(true));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -234,6 +235,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         name,
         size,
         character_cell_info,
+        stacked_resize,
         sixel_image_store,
         os_api,
         senders,
@@ -279,6 +281,7 @@ fn create_new_tab_with_swap_layouts(
         HashMap<RunPluginOrAlias, Vec<u32>>,
     )>,
     draw_pane_frames: bool,
+    stacked_resize: bool,
 ) -> Tab {
     set_session_name("test".into());
     let index = 0;
@@ -299,6 +302,7 @@ fn create_new_tab_with_swap_layouts(
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let character_cell_info = Rc::new(RefCell::new(None));
+    let stacked_resize = Rc::new(RefCell::new(stacked_resize));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -313,6 +317,7 @@ fn create_new_tab_with_swap_layouts(
         name,
         size,
         character_cell_info,
+        stacked_resize,
         sixel_image_store,
         os_api,
         senders,
@@ -380,6 +385,7 @@ fn create_new_tab_with_os_api(
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let character_cell_info = Rc::new(RefCell::new(None));
+    let stacked_resize = Rc::new(RefCell::new(true));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -394,6 +400,7 @@ fn create_new_tab_with_os_api(
         name,
         size,
         character_cell_info,
+        stacked_resize,
         sixel_image_store,
         os_api,
         senders,
@@ -445,6 +452,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let character_cell_info = Rc::new(RefCell::new(None));
+    let stacked_resize = Rc::new(RefCell::new(true));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -461,6 +469,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         name,
         size,
         character_cell_info,
+        stacked_resize,
         sixel_image_store,
         os_api,
         senders,
@@ -528,6 +537,7 @@ fn create_new_tab_with_mock_pty_writer(
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let character_cell_info = Rc::new(RefCell::new(None));
+    let stacked_resize = Rc::new(RefCell::new(true));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -542,6 +552,7 @@ fn create_new_tab_with_mock_pty_writer(
         name,
         size,
         character_cell_info,
+        stacked_resize,
         sixel_image_store,
         os_api,
         senders,
@@ -601,6 +612,7 @@ fn create_new_tab_with_sixel_support(
         width: 8,
         height: 21,
     })));
+    let stacked_resize = Rc::new(RefCell::new(true));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -614,6 +626,7 @@ fn create_new_tab_with_sixel_support(
         name,
         size,
         character_cell_size,
+        stacked_resize,
         sixel_image_store,
         os_api,
         senders,
@@ -4039,12 +4052,14 @@ fn can_swap_tiled_layout_at_runtime() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
 
@@ -4100,12 +4115,14 @@ fn can_swap_floating_layout_at_runtime() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -4171,12 +4188,14 @@ fn swapping_layouts_after_resize_snaps_to_current_layout() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
 
@@ -4227,12 +4246,14 @@ fn swap_tiled_layout_with_stacked_children() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -4298,12 +4319,14 @@ fn swap_tiled_layout_with_only_stacked_children() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -4372,12 +4395,14 @@ fn swap_tiled_layout_with_stacked_children_and_no_pane_frames() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         false,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -4446,12 +4471,14 @@ fn move_focus_up_with_stacked_panes() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -4522,12 +4549,14 @@ fn move_focus_down_with_stacked_panes() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -4602,12 +4631,14 @@ fn move_focus_right_into_stacked_panes() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     for i in 0..12 {
         let new_pane_id = i + 2;
@@ -4671,12 +4702,14 @@ fn move_focus_left_into_stacked_panes() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     for i in 0..13 {
         let new_pane_id = i + 2;
@@ -4742,12 +4775,14 @@ fn move_focus_up_into_stacked_panes() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     for i in 0..4 {
         let new_pane_id = i + 3;
@@ -4814,12 +4849,14 @@ fn move_focus_down_into_stacked_panes() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     for i in 0..4 {
         let new_pane_id = i + 3;
@@ -4880,12 +4917,14 @@ fn close_main_stacked_pane() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -4955,12 +4994,14 @@ fn close_main_stacked_pane_in_mid_stack() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -5055,12 +5096,14 @@ fn close_one_liner_stacked_pane_below_main_pane() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -5156,12 +5199,14 @@ fn close_one_liner_stacked_pane_above_main_pane() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -5256,12 +5301,14 @@ fn can_increase_size_of_main_pane_in_stack_horizontally() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -5360,12 +5407,14 @@ fn can_increase_size_of_main_pane_in_stack_vertically() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -5464,12 +5513,14 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = false;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -5563,12 +5614,14 @@ fn can_increase_size_into_pane_stack_horizontally() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -5666,12 +5719,14 @@ fn can_increase_size_into_pane_stack_vertically() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -5748,6 +5803,7 @@ fn can_increase_size_into_pane_stack_vertically() {
 
 #[test]
 fn can_increase_size_into_pane_stack_non_directionally() {
+    // note - this is not the default behavior, by default stacked_resize is enabled (set to true)
     let size = Size {
         cols: 121,
         rows: 40,
@@ -5771,12 +5827,14 @@ fn can_increase_size_into_pane_stack_non_directionally() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = false;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -5869,12 +5927,14 @@ fn decreasing_size_of_whole_tab_treats_stacked_panes_properly() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -5969,12 +6029,14 @@ fn increasing_size_of_whole_tab_treats_stacked_panes_properly() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -6074,12 +6136,14 @@ fn cannot_decrease_stack_size_beyond_minimum_height() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -6179,12 +6243,14 @@ fn focus_stacked_pane_over_flexible_pane_with_the_mouse() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -6281,12 +6347,14 @@ fn focus_stacked_pane_under_flexible_pane_with_the_mouse() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -6388,12 +6456,14 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -6501,12 +6571,14 @@ fn close_pane_near_stacked_panes() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -6605,12 +6677,14 @@ fn focus_next_pane_expands_stacked_panes() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -6705,12 +6779,14 @@ fn stacked_panes_can_become_fullscreen() {
     let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
         (swap_tiled_layouts, swap_floating_layouts),
         None,
         true,
+        stacked_resize,
     );
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -6852,6 +6928,7 @@ fn layout_with_plugins_and_commands_swaped_properly() {
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -6864,6 +6941,7 @@ fn layout_with_plugins_and_commands_swaped_properly() {
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
@@ -6948,6 +7026,7 @@ fn base_layout_is_included_in_swap_layouts() {
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -6960,6 +7039,7 @@ fn base_layout_is_included_in_swap_layouts() {
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
@@ -7041,6 +7121,7 @@ fn swap_layouts_including_command_panes_absent_from_existing_layout() {
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -7053,6 +7134,7 @@ fn swap_layouts_including_command_panes_absent_from_existing_layout() {
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
@@ -7137,6 +7219,7 @@ fn swap_layouts_not_including_command_panes_present_in_existing_layout() {
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -7149,6 +7232,7 @@ fn swap_layouts_not_including_command_panes_present_in_existing_layout() {
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
@@ -7217,6 +7301,7 @@ fn swap_layouts_including_plugin_panes_absent_from_existing_layout() {
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -7229,6 +7314,7 @@ fn swap_layouts_including_plugin_panes_absent_from_existing_layout() {
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
@@ -7307,6 +7393,7 @@ fn swap_layouts_not_including_plugin_panes_present_in_existing_layout() {
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -7319,6 +7406,7 @@ fn swap_layouts_not_including_plugin_panes_present_in_existing_layout() {
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
@@ -7377,6 +7465,7 @@ fn new_pane_in_auto_layout() {
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -7389,6 +7478,7 @@ fn new_pane_in_auto_layout() {
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
 
     let mut expected_cursor_coordinates = vec![
@@ -7472,6 +7562,7 @@ fn when_swapping_tiled_layouts_in_a_damaged_state_layout_and_pane_focus_are_unch
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -7484,6 +7575,7 @@ fn when_swapping_tiled_layouts_in_a_damaged_state_layout_and_pane_focus_are_unch
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     tab.move_focus_down(client_id);
     tab.resize(
@@ -7551,6 +7643,7 @@ fn when_swapping_tiled_layouts_in_an_undamaged_state_pane_focuses_on_focused_nod
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -7563,6 +7656,7 @@ fn when_swapping_tiled_layouts_in_an_undamaged_state_pane_focuses_on_focused_nod
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     tab.move_focus_down(client_id);
     tab.next_swap_layout().unwrap();
@@ -7626,6 +7720,7 @@ fn when_swapping_tiled_layouts_in_an_undamaged_state_with_no_focus_node_pane_foc
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -7638,6 +7733,7 @@ fn when_swapping_tiled_layouts_in_an_undamaged_state_with_no_focus_node_pane_foc
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     tab.move_focus_down(client_id);
     tab.move_focus_down(client_id);
@@ -7701,6 +7797,7 @@ fn when_closing_a_pane_in_auto_layout_the_focus_goes_to_last_focused_pane() {
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -7713,6 +7810,7 @@ fn when_closing_a_pane_in_auto_layout_the_focus_goes_to_last_focused_pane() {
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     let _ = tab.move_focus_down(client_id);
     let _ = tab.move_focus_down(client_id);
@@ -7800,6 +7898,7 @@ fn floating_layout_with_plugins_and_commands_swaped_properly() {
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -7812,6 +7911,7 @@ fn floating_layout_with_plugins_and_commands_swaped_properly() {
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
@@ -7894,6 +7994,7 @@ fn base_floating_layout_is_included_in_swap_layouts() {
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -7906,6 +8007,7 @@ fn base_floating_layout_is_included_in_swap_layouts() {
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
@@ -7987,6 +8089,7 @@ fn swap_floating_layouts_including_command_panes_absent_from_existing_layout() {
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -7999,6 +8102,7 @@ fn swap_floating_layouts_including_command_panes_absent_from_existing_layout() {
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
@@ -8083,6 +8187,7 @@ fn swap_floating_layouts_not_including_command_panes_present_in_existing_layout(
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -8095,6 +8200,7 @@ fn swap_floating_layouts_not_including_command_panes_present_in_existing_layout(
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
@@ -8156,6 +8262,7 @@ fn swap_floating_layouts_including_plugin_panes_absent_from_existing_layout() {
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -8168,6 +8275,7 @@ fn swap_floating_layouts_including_plugin_panes_absent_from_existing_layout() {
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
@@ -8242,6 +8350,7 @@ fn swap_floating_layouts_not_including_plugin_panes_present_in_existing_layout()
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -8254,6 +8363,7 @@ fn swap_floating_layouts_not_including_plugin_panes_present_in_existing_layout()
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
@@ -8312,6 +8422,7 @@ fn new_floating_pane_in_auto_layout() {
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -8324,6 +8435,7 @@ fn new_floating_pane_in_auto_layout() {
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
 
     let mut expected_cursor_coordinates = vec![(62, 11), (62, 6), (31, 12)];
@@ -8400,6 +8512,7 @@ fn when_swapping_floating_layouts_in_a_damaged_state_layout_and_pane_focus_are_u
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -8412,6 +8525,7 @@ fn when_swapping_floating_layouts_in_a_damaged_state_layout_and_pane_focus_are_u
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     tab.resize(
         client_id,
@@ -8478,6 +8592,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_pane_focuses_on_focused_
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -8490,6 +8605,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_pane_focuses_on_focused_
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
@@ -8552,6 +8668,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_with_no_focus_node_pane_
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -8564,6 +8681,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_with_no_focus_node_pane_
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     tab.next_swap_layout().unwrap();
     tab.render(&mut output).unwrap();
@@ -8625,6 +8743,7 @@ fn when_closing_a_floating_pane_in_auto_layout_the_focus_goes_to_last_focused_pa
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -8637,6 +8756,7 @@ fn when_closing_a_floating_pane_in_auto_layout_the_focus_goes_to_last_focused_pa
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
@@ -8691,6 +8811,7 @@ fn when_resizing_whole_tab_with_auto_layout_and_floating_panes_the_layout_is_mai
         Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
     let swap_tiled_layouts = swap_layout.swap_tiled_layouts.clone();
     let swap_floating_layouts = swap_layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
     let mut tab = create_new_tab_with_swap_layouts(
         size,
         ModeInfo::default(),
@@ -8703,6 +8824,7 @@ fn when_resizing_whole_tab_with_auto_layout_and_floating_panes_the_layout_is_mai
             new_plugin_ids,
         )),
         true,
+        stacked_resize,
     );
     let new_size = Size {
         cols: 150,
