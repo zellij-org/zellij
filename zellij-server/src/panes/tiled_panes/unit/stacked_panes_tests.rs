@@ -1,31 +1,24 @@
+use crate::{panes::tiled_panes::StackedPanes, panes::PaneId, tab::Pane};
 use insta::assert_snapshot;
-use crate::{
-    panes::PaneId,
-    panes::tiled_panes::StackedPanes,
-    tab::Pane,
-};
-use zellij_utils::pane_size::{Dimension, PaneGeom};
-use zellij_utils::pane_size::{Offset};
-use zellij_utils::input::layout::Run;
-use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 use zellij_utils::errors::prelude::*;
+use zellij_utils::input::layout::Run;
+use zellij_utils::pane_size::Offset;
+use zellij_utils::pane_size::{Dimension, PaneGeom};
 
+use crate::ui::pane_boundaries_frame::FrameParams;
 use crate::{
     output::{CharacterChunk, SixelImageChunk},
     pty::VteBytes,
-    ClientId
-};
-use crate::ui::{pane_boundaries_frame::FrameParams};
-use zellij_utils::{
-    data::{InputMode, PaletteColor},
+    ClientId,
 };
 use std::time::Instant;
+use zellij_utils::data::{InputMode, PaletteColor};
 
 macro_rules! mock_pane {
     ($pane_id:expr, $dimension:expr, $inner:expr, $x:expr, $y:expr, $logical_position:expr, $mock_panes:expr) => {
-
         let mut mock_pane_rows = $dimension;
         mock_pane_rows.set_inner($inner);
         let mut mock_pane: Box<dyn Pane> = Box::new(MockPane::new(PaneGeom {
@@ -37,12 +30,11 @@ macro_rules! mock_pane {
             ..Default::default()
         }));
         $mock_panes.insert($pane_id, &mut mock_pane);
-    }
+    };
 }
 
 macro_rules! mock_pane_with_cols {
     ($pane_id:expr, $rows_dimension:expr, $rows_inner:expr, $cols_dimension:expr, $cols_inner:expr, $x:expr, $y:expr, $logical_position:expr, $mock_panes:expr) => {
-
         let mut mock_pane_rows = $rows_dimension;
         mock_pane_rows.set_inner($rows_inner);
         let mut mock_pane_cols = $cols_dimension;
@@ -56,11 +48,10 @@ macro_rules! mock_pane_with_cols {
             ..Default::default()
         }));
         $mock_panes.insert($pane_id, &mut mock_pane);
-    }
+    };
 }
 macro_rules! mock_stacked_pane {
     ($pane_id:expr, $dimension:expr, $inner:expr, $x:expr, $y:expr, $logical_position:expr, $mock_panes:expr) => {
-
         let mut mock_pane_rows = $dimension;
         mock_pane_rows.set_inner($inner);
         let mut mock_pane: Box<dyn Pane> = Box::new(MockPane::new(PaneGeom {
@@ -73,12 +64,11 @@ macro_rules! mock_stacked_pane {
             ..Default::default()
         }));
         $mock_panes.insert($pane_id, &mut mock_pane);
-    }
+    };
 }
 
 macro_rules! mock_stacked_pane_with_id {
     ($pane_id:expr, $dimension:expr, $inner:expr, $x:expr, $y:expr, $logical_position:expr, $mock_panes:expr, $stack_id:expr) => {
-
         let mut mock_pane_rows = $dimension;
         mock_pane_rows.set_inner($inner);
         let mut mock_pane: Box<dyn Pane> = Box::new(MockPane::new(PaneGeom {
@@ -91,12 +81,11 @@ macro_rules! mock_stacked_pane_with_id {
             ..Default::default()
         }));
         $mock_panes.insert($pane_id, &mut mock_pane);
-    }
+    };
 }
 
 macro_rules! mock_stacked_pane_with_cols_and_id {
     ($pane_id:expr, $rows_dimension:expr, $rows_inner:expr, $cols_dimension:expr, $cols_inner:expr, $x:expr, $y:expr, $logical_position:expr, $mock_panes:expr, $stack_id:expr) => {
-
         let mut mock_pane_rows = $rows_dimension;
         mock_pane_rows.set_inner($rows_inner);
         let mut mock_pane_cols = $cols_dimension;
@@ -111,23 +100,44 @@ macro_rules! mock_stacked_pane_with_cols_and_id {
             ..Default::default()
         }));
         $mock_panes.insert($pane_id, &mut mock_pane);
-    }
+    };
 }
 
 #[test]
 fn combine_vertically_aligned_panes_to_stack() {
     let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
 
-    mock_pane!(PaneId::Terminal(1), Dimension::percent(50.0), 50, 0, 0, Some(1), mock_panes);
-    mock_pane!(PaneId::Terminal(2), Dimension::percent(50.0), 50, 0, 50, Some(2), mock_panes);
+    mock_pane!(
+        PaneId::Terminal(1),
+        Dimension::percent(50.0),
+        50,
+        0,
+        0,
+        Some(1),
+        mock_panes
+    );
+    mock_pane!(
+        PaneId::Terminal(2),
+        Dimension::percent(50.0),
+        50,
+        0,
+        50,
+        Some(2),
+        mock_panes
+    );
 
     let mock_panes = Rc::new(RefCell::new(mock_panes));
     let pane_id_above = PaneId::Terminal(1);
     let pane_id_below = PaneId::Terminal(2);
 
     StackedPanes::new(mock_panes.clone())
-        .combine_vertically_aligned_panes_to_stack(&pane_id_above, vec![pane_id_below]).unwrap();
-    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes.borrow().values().map(|p| p.current_geom()).collect();
+        .combine_vertically_aligned_panes_to_stack(&pane_id_above, vec![pane_id_below])
+        .unwrap();
+    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes
+        .borrow()
+        .values()
+        .map(|p| p.current_geom())
+        .collect();
     pane_geoms_after.sort_by(|a, b| a.logical_position.cmp(&b.logical_position));
     assert_snapshot!(format!("{:#?}", pane_geoms_after));
 }
@@ -136,59 +146,180 @@ fn combine_vertically_aligned_panes_to_stack() {
 fn combine_vertically_aligned_panes_to_stack_when_lower_pane_is_stacked() {
     let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
 
-    mock_pane!(PaneId::Terminal(1), Dimension::percent(33.3), 33, 0, 0, Some(1), mock_panes);
-    mock_pane!(PaneId::Terminal(2), Dimension::percent(33.3), 33, 0, 33, Some(2), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(3), Dimension::fixed(1), 1, 0, 66, Some(3), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(4), Dimension::percent(33.3), 33, 0, 67, Some(4), mock_panes);
+    mock_pane!(
+        PaneId::Terminal(1),
+        Dimension::percent(33.3),
+        33,
+        0,
+        0,
+        Some(1),
+        mock_panes
+    );
+    mock_pane!(
+        PaneId::Terminal(2),
+        Dimension::percent(33.3),
+        33,
+        0,
+        33,
+        Some(2),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(3),
+        Dimension::fixed(1),
+        1,
+        0,
+        66,
+        Some(3),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(4),
+        Dimension::percent(33.3),
+        33,
+        0,
+        67,
+        Some(4),
+        mock_panes
+    );
 
     let mock_panes = Rc::new(RefCell::new(mock_panes));
     let pane_id_above = PaneId::Terminal(2);
     let pane_id_below = PaneId::Terminal(4);
 
     StackedPanes::new(mock_panes.clone())
-        .combine_vertically_aligned_panes_to_stack(&pane_id_above, vec![pane_id_below]).unwrap();
-    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes.borrow().values().map(|p| p.current_geom()).collect();
+        .combine_vertically_aligned_panes_to_stack(&pane_id_above, vec![pane_id_below])
+        .unwrap();
+    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes
+        .borrow()
+        .values()
+        .map(|p| p.current_geom())
+        .collect();
     pane_geoms_after.sort_by(|a, b| a.logical_position.cmp(&b.logical_position));
     assert_snapshot!(format!("{:#?}", pane_geoms_after));
 }
 
 #[test]
-fn combine_vertically_aligned_panes_to_stack_when_lower_pane_is_stacked_and_flexible_pane_is_on_top_of_stack() {
+fn combine_vertically_aligned_panes_to_stack_when_lower_pane_is_stacked_and_flexible_pane_is_on_top_of_stack(
+) {
     let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
 
-    mock_pane!(PaneId::Terminal(1), Dimension::percent(33.3), 33, 0, 0, Some(1), mock_panes);
-    mock_pane!(PaneId::Terminal(2), Dimension::percent(33.3), 33, 0, 33, Some(2), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(3), Dimension::percent(33.3), 33, 0, 66, Some(3), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(4), Dimension::fixed(1), 1, 0, 99, Some(4), mock_panes);
+    mock_pane!(
+        PaneId::Terminal(1),
+        Dimension::percent(33.3),
+        33,
+        0,
+        0,
+        Some(1),
+        mock_panes
+    );
+    mock_pane!(
+        PaneId::Terminal(2),
+        Dimension::percent(33.3),
+        33,
+        0,
+        33,
+        Some(2),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(3),
+        Dimension::percent(33.3),
+        33,
+        0,
+        66,
+        Some(3),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(4),
+        Dimension::fixed(1),
+        1,
+        0,
+        99,
+        Some(4),
+        mock_panes
+    );
 
     let mock_panes = Rc::new(RefCell::new(mock_panes));
     let pane_id_above = PaneId::Terminal(2);
     let pane_id_below = PaneId::Terminal(3);
 
     StackedPanes::new(mock_panes.clone())
-        .combine_vertically_aligned_panes_to_stack(&pane_id_above, vec![pane_id_below]).unwrap();
-    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes.borrow().values().map(|p| p.current_geom()).collect();
+        .combine_vertically_aligned_panes_to_stack(&pane_id_above, vec![pane_id_below])
+        .unwrap();
+    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes
+        .borrow()
+        .values()
+        .map(|p| p.current_geom())
+        .collect();
     pane_geoms_after.sort_by(|a, b| a.logical_position.cmp(&b.logical_position));
     assert_snapshot!(format!("{:#?}", pane_geoms_after));
 }
 
 #[test]
-fn combine_vertically_aligned_panes_to_stack_when_lower_pane_is_stacked_and_flexible_pane_is_mid_stack() {
+fn combine_vertically_aligned_panes_to_stack_when_lower_pane_is_stacked_and_flexible_pane_is_mid_stack(
+) {
     let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
 
-    mock_pane!(PaneId::Terminal(1), Dimension::percent(33.3), 33, 0, 0, Some(1), mock_panes);
-    mock_pane!(PaneId::Terminal(2), Dimension::percent(33.3), 33, 0, 33, Some(2), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(3), Dimension::fixed(1), 1, 0, 66, Some(3), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(4), Dimension::percent(33.3), 32, 0, 67, Some(4), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(5), Dimension::fixed(1), 1, 0, 99, Some(5), mock_panes);
+    mock_pane!(
+        PaneId::Terminal(1),
+        Dimension::percent(33.3),
+        33,
+        0,
+        0,
+        Some(1),
+        mock_panes
+    );
+    mock_pane!(
+        PaneId::Terminal(2),
+        Dimension::percent(33.3),
+        33,
+        0,
+        33,
+        Some(2),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(3),
+        Dimension::fixed(1),
+        1,
+        0,
+        66,
+        Some(3),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(4),
+        Dimension::percent(33.3),
+        32,
+        0,
+        67,
+        Some(4),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(5),
+        Dimension::fixed(1),
+        1,
+        0,
+        99,
+        Some(5),
+        mock_panes
+    );
 
     let mock_panes = Rc::new(RefCell::new(mock_panes));
     let pane_id_above = PaneId::Terminal(2);
     let pane_id_below = PaneId::Terminal(4);
 
     StackedPanes::new(mock_panes.clone())
-        .combine_vertically_aligned_panes_to_stack(&pane_id_above, vec![pane_id_below]).unwrap();
-    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes.borrow().values().map(|p| p.current_geom()).collect();
+        .combine_vertically_aligned_panes_to_stack(&pane_id_above, vec![pane_id_below])
+        .unwrap();
+    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes
+        .borrow()
+        .values()
+        .map(|p| p.current_geom())
+        .collect();
     pane_geoms_after.sort_by(|a, b| a.logical_position.cmp(&b.logical_position));
     assert_snapshot!(format!("{:#?}", pane_geoms_after));
 }
@@ -197,19 +328,69 @@ fn combine_vertically_aligned_panes_to_stack_when_lower_pane_is_stacked_and_flex
 fn combine_vertically_aligned_panes_to_stack_when_both_are_stacked() {
     let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
 
-    mock_stacked_pane_with_id!(PaneId::Terminal(1), Dimension::percent(50.0), 49, 0, 0, Some(1), mock_panes, 0);
-    mock_stacked_pane_with_id!(PaneId::Terminal(2), Dimension::fixed(1), 1, 0, 49, Some(2), mock_panes, 0);
-    mock_stacked_pane_with_id!(PaneId::Terminal(3), Dimension::fixed(1), 1, 0, 50, Some(3), mock_panes, 1);
-    mock_stacked_pane_with_id!(PaneId::Terminal(4), Dimension::percent(50.0), 48, 0, 51, Some(4), mock_panes, 1);
-    mock_stacked_pane_with_id!(PaneId::Terminal(5), Dimension::fixed(1), 1, 0, 99, Some(5), mock_panes, 1);
+    mock_stacked_pane_with_id!(
+        PaneId::Terminal(1),
+        Dimension::percent(50.0),
+        49,
+        0,
+        0,
+        Some(1),
+        mock_panes,
+        0
+    );
+    mock_stacked_pane_with_id!(
+        PaneId::Terminal(2),
+        Dimension::fixed(1),
+        1,
+        0,
+        49,
+        Some(2),
+        mock_panes,
+        0
+    );
+    mock_stacked_pane_with_id!(
+        PaneId::Terminal(3),
+        Dimension::fixed(1),
+        1,
+        0,
+        50,
+        Some(3),
+        mock_panes,
+        1
+    );
+    mock_stacked_pane_with_id!(
+        PaneId::Terminal(4),
+        Dimension::percent(50.0),
+        48,
+        0,
+        51,
+        Some(4),
+        mock_panes,
+        1
+    );
+    mock_stacked_pane_with_id!(
+        PaneId::Terminal(5),
+        Dimension::fixed(1),
+        1,
+        0,
+        99,
+        Some(5),
+        mock_panes,
+        1
+    );
 
     let mock_panes = Rc::new(RefCell::new(mock_panes));
     let pane_id_above = PaneId::Terminal(2);
     let pane_id_below = PaneId::Terminal(4);
 
     StackedPanes::new(mock_panes.clone())
-        .combine_vertically_aligned_panes_to_stack(&pane_id_above, vec![pane_id_below]).unwrap();
-    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes.borrow().values().map(|p| p.current_geom()).collect();
+        .combine_vertically_aligned_panes_to_stack(&pane_id_above, vec![pane_id_below])
+        .unwrap();
+    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes
+        .borrow()
+        .values()
+        .map(|p| p.current_geom())
+        .collect();
     pane_geoms_after.sort_by(|a, b| a.logical_position.cmp(&b.logical_position));
     assert_snapshot!(format!("{:#?}", pane_geoms_after));
 }
@@ -218,20 +399,72 @@ fn combine_vertically_aligned_panes_to_stack_when_both_are_stacked() {
 fn combine_vertically_aligned_panes_to_stack_with_multiple_non_stacked_neighbors() {
     let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
 
-    mock_pane_with_cols!(PaneId::Terminal(1), Dimension::percent(50.0), 50, Dimension::percent(50.0), 50, 0, 0, Some(1), mock_panes);
-    mock_pane_with_cols!(PaneId::Terminal(2), Dimension::percent(50.0), 50, Dimension::percent(50.0), 50, 50, 0, Some(2), mock_panes);
+    mock_pane_with_cols!(
+        PaneId::Terminal(1),
+        Dimension::percent(50.0),
+        50,
+        Dimension::percent(50.0),
+        50,
+        0,
+        0,
+        Some(1),
+        mock_panes
+    );
+    mock_pane_with_cols!(
+        PaneId::Terminal(2),
+        Dimension::percent(50.0),
+        50,
+        Dimension::percent(50.0),
+        50,
+        50,
+        0,
+        Some(2),
+        mock_panes
+    );
 
-    mock_stacked_pane_with_id!(PaneId::Terminal(3), Dimension::fixed(1), 1, 0, 50, Some(3), mock_panes, 1);
-    mock_stacked_pane_with_id!(PaneId::Terminal(4), Dimension::percent(50.0), 48, 0, 51, Some(4), mock_panes, 1);
-    mock_stacked_pane_with_id!(PaneId::Terminal(5), Dimension::fixed(1), 1, 0, 99, Some(5), mock_panes, 1);
+    mock_stacked_pane_with_id!(
+        PaneId::Terminal(3),
+        Dimension::fixed(1),
+        1,
+        0,
+        50,
+        Some(3),
+        mock_panes,
+        1
+    );
+    mock_stacked_pane_with_id!(
+        PaneId::Terminal(4),
+        Dimension::percent(50.0),
+        48,
+        0,
+        51,
+        Some(4),
+        mock_panes,
+        1
+    );
+    mock_stacked_pane_with_id!(
+        PaneId::Terminal(5),
+        Dimension::fixed(1),
+        1,
+        0,
+        99,
+        Some(5),
+        mock_panes,
+        1
+    );
 
     let mock_panes = Rc::new(RefCell::new(mock_panes));
     let root_pane_id = PaneId::Terminal(4);
     let pane_ids_above = vec![PaneId::Terminal(1), PaneId::Terminal(2)];
 
     StackedPanes::new(mock_panes.clone())
-        .combine_vertically_aligned_panes_to_stack(&root_pane_id, pane_ids_above).unwrap();
-    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes.borrow().values().map(|p| p.current_geom()).collect();
+        .combine_vertically_aligned_panes_to_stack(&root_pane_id, pane_ids_above)
+        .unwrap();
+    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes
+        .borrow()
+        .values()
+        .map(|p| p.current_geom())
+        .collect();
     pane_geoms_after.sort_by(|a, b| a.logical_position.cmp(&b.logical_position));
     assert_snapshot!(format!("{:#?}", pane_geoms_after));
 }
@@ -240,21 +473,85 @@ fn combine_vertically_aligned_panes_to_stack_with_multiple_non_stacked_neighbors
 fn combine_vertically_aligned_panes_to_stack_with_multiple_stacked_neighbors() {
     let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
 
-    mock_pane_with_cols!(PaneId::Terminal(1), Dimension::percent(50.0), 50, Dimension::percent(50.0), 50, 0, 0, Some(1), mock_panes);
-    mock_stacked_pane_with_cols_and_id!(PaneId::Terminal(2), Dimension::percent(50.0), 49, Dimension::percent(50.0), 50, 50, 0, Some(2), mock_panes, 2);
-    mock_stacked_pane_with_cols_and_id!(PaneId::Terminal(3), Dimension::fixed(1), 1, Dimension::percent(50.0), 50, 50, 49, Some(3), mock_panes, 2);
+    mock_pane_with_cols!(
+        PaneId::Terminal(1),
+        Dimension::percent(50.0),
+        50,
+        Dimension::percent(50.0),
+        50,
+        0,
+        0,
+        Some(1),
+        mock_panes
+    );
+    mock_stacked_pane_with_cols_and_id!(
+        PaneId::Terminal(2),
+        Dimension::percent(50.0),
+        49,
+        Dimension::percent(50.0),
+        50,
+        50,
+        0,
+        Some(2),
+        mock_panes,
+        2
+    );
+    mock_stacked_pane_with_cols_and_id!(
+        PaneId::Terminal(3),
+        Dimension::fixed(1),
+        1,
+        Dimension::percent(50.0),
+        50,
+        50,
+        49,
+        Some(3),
+        mock_panes,
+        2
+    );
 
-    mock_stacked_pane_with_id!(PaneId::Terminal(4), Dimension::fixed(1), 1, 0, 50, Some(4), mock_panes, 1);
-    mock_stacked_pane_with_id!(PaneId::Terminal(5), Dimension::percent(50.0), 48, 0, 51, Some(5), mock_panes, 1);
-    mock_stacked_pane_with_id!(PaneId::Terminal(6), Dimension::fixed(1), 1, 0, 99, Some(6), mock_panes, 1);
+    mock_stacked_pane_with_id!(
+        PaneId::Terminal(4),
+        Dimension::fixed(1),
+        1,
+        0,
+        50,
+        Some(4),
+        mock_panes,
+        1
+    );
+    mock_stacked_pane_with_id!(
+        PaneId::Terminal(5),
+        Dimension::percent(50.0),
+        48,
+        0,
+        51,
+        Some(5),
+        mock_panes,
+        1
+    );
+    mock_stacked_pane_with_id!(
+        PaneId::Terminal(6),
+        Dimension::fixed(1),
+        1,
+        0,
+        99,
+        Some(6),
+        mock_panes,
+        1
+    );
 
     let mock_panes = Rc::new(RefCell::new(mock_panes));
     let root_pane_id = PaneId::Terminal(5);
     let pane_ids_above = vec![PaneId::Terminal(1), PaneId::Terminal(2)];
 
     StackedPanes::new(mock_panes.clone())
-        .combine_vertically_aligned_panes_to_stack(&root_pane_id, pane_ids_above).unwrap();
-    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes.borrow().values().map(|p| p.current_geom()).collect();
+        .combine_vertically_aligned_panes_to_stack(&root_pane_id, pane_ids_above)
+        .unwrap();
+    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes
+        .borrow()
+        .values()
+        .map(|p| p.current_geom())
+        .collect();
     pane_geoms_after.sort_by(|a, b| a.logical_position.cmp(&b.logical_position));
     assert_snapshot!(format!("{:#?}", pane_geoms_after));
 }
@@ -263,17 +560,52 @@ fn combine_vertically_aligned_panes_to_stack_with_multiple_stacked_neighbors() {
 fn combine_horizontally_aligned_panes_to_stack() {
     let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
 
-    mock_pane_with_cols!(PaneId::Terminal(1), Dimension::percent(100.0), 100, Dimension::percent(50.0), 50, 0, 0, Some(1), mock_panes);
-    mock_pane_with_cols!(PaneId::Terminal(2), Dimension::percent(50.0), 50, Dimension::percent(50.0), 50, 50, 0, Some(2), mock_panes);
-    mock_pane_with_cols!(PaneId::Terminal(3), Dimension::percent(50.0), 50, Dimension::percent(50.0), 50, 50, 50, Some(3), mock_panes);
+    mock_pane_with_cols!(
+        PaneId::Terminal(1),
+        Dimension::percent(100.0),
+        100,
+        Dimension::percent(50.0),
+        50,
+        0,
+        0,
+        Some(1),
+        mock_panes
+    );
+    mock_pane_with_cols!(
+        PaneId::Terminal(2),
+        Dimension::percent(50.0),
+        50,
+        Dimension::percent(50.0),
+        50,
+        50,
+        0,
+        Some(2),
+        mock_panes
+    );
+    mock_pane_with_cols!(
+        PaneId::Terminal(3),
+        Dimension::percent(50.0),
+        50,
+        Dimension::percent(50.0),
+        50,
+        50,
+        50,
+        Some(3),
+        mock_panes
+    );
 
     let mock_panes = Rc::new(RefCell::new(mock_panes));
     let pane_id_of_main_stack = PaneId::Terminal(1);
     let neighboring_pane_ids = vec![PaneId::Terminal(2), PaneId::Terminal(3)];
 
     StackedPanes::new(mock_panes.clone())
-        .combine_horizontally_aligned_panes_to_stack(&pane_id_of_main_stack, neighboring_pane_ids).unwrap();
-    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes.borrow().values().map(|p| p.current_geom()).collect();
+        .combine_horizontally_aligned_panes_to_stack(&pane_id_of_main_stack, neighboring_pane_ids)
+        .unwrap();
+    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes
+        .borrow()
+        .values()
+        .map(|p| p.current_geom())
+        .collect();
     pane_geoms_after.sort_by(|a, b| a.logical_position.cmp(&b.logical_position));
     assert_snapshot!(format!("{:#?}", pane_geoms_after));
 }
@@ -282,20 +614,78 @@ fn combine_horizontally_aligned_panes_to_stack() {
 fn combine_horizontally_aligned_panes_to_stack_when_left_pane_is_stacked() {
     let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
 
-    mock_stacked_pane_with_cols_and_id!(PaneId::Terminal(1), Dimension::percent(100.0), 98, Dimension::percent(50.0), 50, 0, 0, Some(1), mock_panes, 0);
-    mock_stacked_pane_with_cols_and_id!(PaneId::Terminal(2), Dimension::fixed(1), 1, Dimension::percent(50.0), 50, 0, 98, Some(2), mock_panes, 0);
-    mock_stacked_pane_with_cols_and_id!(PaneId::Terminal(3), Dimension::fixed(1), 1, Dimension::percent(50.0), 50, 0, 99, Some(3), mock_panes, 0);
+    mock_stacked_pane_with_cols_and_id!(
+        PaneId::Terminal(1),
+        Dimension::percent(100.0),
+        98,
+        Dimension::percent(50.0),
+        50,
+        0,
+        0,
+        Some(1),
+        mock_panes,
+        0
+    );
+    mock_stacked_pane_with_cols_and_id!(
+        PaneId::Terminal(2),
+        Dimension::fixed(1),
+        1,
+        Dimension::percent(50.0),
+        50,
+        0,
+        98,
+        Some(2),
+        mock_panes,
+        0
+    );
+    mock_stacked_pane_with_cols_and_id!(
+        PaneId::Terminal(3),
+        Dimension::fixed(1),
+        1,
+        Dimension::percent(50.0),
+        50,
+        0,
+        99,
+        Some(3),
+        mock_panes,
+        0
+    );
 
-    mock_pane_with_cols!(PaneId::Terminal(4), Dimension::percent(50.0), 50, Dimension::percent(50.0), 50, 50, 0, Some(4), mock_panes);
-    mock_pane_with_cols!(PaneId::Terminal(5), Dimension::percent(50.0), 50, Dimension::percent(50.0), 50, 50, 50, Some(5), mock_panes);
+    mock_pane_with_cols!(
+        PaneId::Terminal(4),
+        Dimension::percent(50.0),
+        50,
+        Dimension::percent(50.0),
+        50,
+        50,
+        0,
+        Some(4),
+        mock_panes
+    );
+    mock_pane_with_cols!(
+        PaneId::Terminal(5),
+        Dimension::percent(50.0),
+        50,
+        Dimension::percent(50.0),
+        50,
+        50,
+        50,
+        Some(5),
+        mock_panes
+    );
 
     let mock_panes = Rc::new(RefCell::new(mock_panes));
     let pane_id_of_main_stack = PaneId::Terminal(1);
     let neighboring_pane_ids = vec![PaneId::Terminal(4), PaneId::Terminal(5)];
 
     StackedPanes::new(mock_panes.clone())
-        .combine_horizontally_aligned_panes_to_stack(&pane_id_of_main_stack, neighboring_pane_ids).unwrap();
-    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes.borrow().values().map(|p| p.current_geom()).collect();
+        .combine_horizontally_aligned_panes_to_stack(&pane_id_of_main_stack, neighboring_pane_ids)
+        .unwrap();
+    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes
+        .borrow()
+        .values()
+        .map(|p| p.current_geom())
+        .collect();
     pane_geoms_after.sort_by(|a, b| a.logical_position.cmp(&b.logical_position));
     assert_snapshot!(format!("{:#?}", pane_geoms_after));
 }
@@ -304,20 +694,78 @@ fn combine_horizontally_aligned_panes_to_stack_when_left_pane_is_stacked() {
 fn combine_horizontally_aligned_panes_to_stack_when_right_pane_is_stacked() {
     let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
 
-    mock_stacked_pane_with_cols_and_id!(PaneId::Terminal(1), Dimension::percent(100.0), 98, Dimension::percent(50.0), 50, 50, 0, Some(1), mock_panes, 0);
-    mock_stacked_pane_with_cols_and_id!(PaneId::Terminal(2), Dimension::fixed(1), 1, Dimension::percent(50.0), 50, 50, 98, Some(2), mock_panes, 0);
-    mock_stacked_pane_with_cols_and_id!(PaneId::Terminal(3), Dimension::fixed(1), 1, Dimension::percent(50.0), 50, 50, 99, Some(3), mock_panes, 0);
+    mock_stacked_pane_with_cols_and_id!(
+        PaneId::Terminal(1),
+        Dimension::percent(100.0),
+        98,
+        Dimension::percent(50.0),
+        50,
+        50,
+        0,
+        Some(1),
+        mock_panes,
+        0
+    );
+    mock_stacked_pane_with_cols_and_id!(
+        PaneId::Terminal(2),
+        Dimension::fixed(1),
+        1,
+        Dimension::percent(50.0),
+        50,
+        50,
+        98,
+        Some(2),
+        mock_panes,
+        0
+    );
+    mock_stacked_pane_with_cols_and_id!(
+        PaneId::Terminal(3),
+        Dimension::fixed(1),
+        1,
+        Dimension::percent(50.0),
+        50,
+        50,
+        99,
+        Some(3),
+        mock_panes,
+        0
+    );
 
-    mock_pane_with_cols!(PaneId::Terminal(4), Dimension::percent(50.0), 50, Dimension::percent(50.0), 50, 0, 0, Some(4), mock_panes);
-    mock_pane_with_cols!(PaneId::Terminal(5), Dimension::percent(50.0), 50, Dimension::percent(50.0), 50, 0, 50, Some(5), mock_panes);
+    mock_pane_with_cols!(
+        PaneId::Terminal(4),
+        Dimension::percent(50.0),
+        50,
+        Dimension::percent(50.0),
+        50,
+        0,
+        0,
+        Some(4),
+        mock_panes
+    );
+    mock_pane_with_cols!(
+        PaneId::Terminal(5),
+        Dimension::percent(50.0),
+        50,
+        Dimension::percent(50.0),
+        50,
+        0,
+        50,
+        Some(5),
+        mock_panes
+    );
 
     let mock_panes = Rc::new(RefCell::new(mock_panes));
     let pane_id_of_main_stack = PaneId::Terminal(1);
     let neighboring_pane_ids = vec![PaneId::Terminal(4), PaneId::Terminal(5)];
 
     StackedPanes::new(mock_panes.clone())
-        .combine_horizontally_aligned_panes_to_stack(&pane_id_of_main_stack, neighboring_pane_ids).unwrap();
-    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes.borrow().values().map(|p| p.current_geom()).collect();
+        .combine_horizontally_aligned_panes_to_stack(&pane_id_of_main_stack, neighboring_pane_ids)
+        .unwrap();
+    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes
+        .borrow()
+        .values()
+        .map(|p| p.current_geom())
+        .collect();
     pane_geoms_after.sort_by(|a, b| a.logical_position.cmp(&b.logical_position));
     assert_snapshot!(format!("{:#?}", pane_geoms_after));
 }
@@ -326,11 +774,51 @@ fn combine_horizontally_aligned_panes_to_stack_when_right_pane_is_stacked() {
 fn break_pane_out_of_stack_top() {
     let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
 
-    mock_pane!(PaneId::Terminal(1), Dimension::percent(33.3), 33, 0, 0, Some(1), mock_panes);
-    mock_pane!(PaneId::Terminal(2), Dimension::percent(33.3), 33, 0, 33, Some(2), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(3), Dimension::percent(33.3), 1, 0, 66, Some(3), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(4), Dimension::fixed(1), 32, 0, 67, Some(4), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(5), Dimension::fixed(1), 1, 0, 99, Some(5), mock_panes);
+    mock_pane!(
+        PaneId::Terminal(1),
+        Dimension::percent(33.3),
+        33,
+        0,
+        0,
+        Some(1),
+        mock_panes
+    );
+    mock_pane!(
+        PaneId::Terminal(2),
+        Dimension::percent(33.3),
+        33,
+        0,
+        33,
+        Some(2),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(3),
+        Dimension::percent(33.3),
+        1,
+        0,
+        66,
+        Some(3),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(4),
+        Dimension::fixed(1),
+        32,
+        0,
+        67,
+        Some(4),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(5),
+        Dimension::fixed(1),
+        1,
+        0,
+        99,
+        Some(5),
+        mock_panes
+    );
 
     let mock_panes = Rc::new(RefCell::new(mock_panes));
     let focused_pane = PaneId::Terminal(3);
@@ -338,8 +826,13 @@ fn break_pane_out_of_stack_top() {
     // here the bottom pane should be broken out because the focused pane is the top one and should
     // remain in the stack
     StackedPanes::new(mock_panes.clone())
-        .break_pane_out_of_stack(&focused_pane).unwrap();
-    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes.borrow().values().map(|p| p.current_geom()).collect();
+        .break_pane_out_of_stack(&focused_pane)
+        .unwrap();
+    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes
+        .borrow()
+        .values()
+        .map(|p| p.current_geom())
+        .collect();
     pane_geoms_after.sort_by(|a, b| a.logical_position.cmp(&b.logical_position));
     assert_snapshot!(format!("{:#?}", pane_geoms_after));
 }
@@ -348,19 +841,64 @@ fn break_pane_out_of_stack_top() {
 fn break_pane_out_of_stack_middle() {
     let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
 
-    mock_pane!(PaneId::Terminal(1), Dimension::percent(33.3), 33, 0, 0, Some(1), mock_panes);
-    mock_pane!(PaneId::Terminal(2), Dimension::percent(33.3), 33, 0, 33, Some(2), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(3), Dimension::fixed(1), 1, 0, 66, Some(3), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(4), Dimension::percent(33.3), 32, 0, 67, Some(4), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(5), Dimension::fixed(1), 1, 0, 99, Some(5), mock_panes);
+    mock_pane!(
+        PaneId::Terminal(1),
+        Dimension::percent(33.3),
+        33,
+        0,
+        0,
+        Some(1),
+        mock_panes
+    );
+    mock_pane!(
+        PaneId::Terminal(2),
+        Dimension::percent(33.3),
+        33,
+        0,
+        33,
+        Some(2),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(3),
+        Dimension::fixed(1),
+        1,
+        0,
+        66,
+        Some(3),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(4),
+        Dimension::percent(33.3),
+        32,
+        0,
+        67,
+        Some(4),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(5),
+        Dimension::fixed(1),
+        1,
+        0,
+        99,
+        Some(5),
+        mock_panes
+    );
 
     let mock_panes = Rc::new(RefCell::new(mock_panes));
     let focused_pane = PaneId::Terminal(4);
 
     // here the bottom pane should be broken out (default behavior)
     StackedPanes::new(mock_panes.clone())
-        .break_pane_out_of_stack(&focused_pane).unwrap();
-    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes.borrow().values().map(|p| p.current_geom()).collect();
+        .break_pane_out_of_stack(&focused_pane)
+        .unwrap();
+    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes
+        .borrow()
+        .values()
+        .map(|p| p.current_geom())
+        .collect();
     pane_geoms_after.sort_by(|a, b| a.logical_position.cmp(&b.logical_position));
     assert_snapshot!(format!("{:#?}", pane_geoms_after));
 }
@@ -369,11 +907,51 @@ fn break_pane_out_of_stack_middle() {
 fn break_pane_out_of_stack_bottom() {
     let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
 
-    mock_pane!(PaneId::Terminal(1), Dimension::percent(33.3), 33, 0, 0, Some(1), mock_panes);
-    mock_pane!(PaneId::Terminal(2), Dimension::percent(33.3), 33, 0, 33, Some(2), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(3), Dimension::fixed(1), 32, 0, 66, Some(3), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(4), Dimension::fixed(1), 1, 0, 98, Some(4), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(5), Dimension::percent(33.3), 1, 0, 99, Some(5), mock_panes);
+    mock_pane!(
+        PaneId::Terminal(1),
+        Dimension::percent(33.3),
+        33,
+        0,
+        0,
+        Some(1),
+        mock_panes
+    );
+    mock_pane!(
+        PaneId::Terminal(2),
+        Dimension::percent(33.3),
+        33,
+        0,
+        33,
+        Some(2),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(3),
+        Dimension::fixed(1),
+        32,
+        0,
+        66,
+        Some(3),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(4),
+        Dimension::fixed(1),
+        1,
+        0,
+        98,
+        Some(4),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(5),
+        Dimension::percent(33.3),
+        1,
+        0,
+        99,
+        Some(5),
+        mock_panes
+    );
 
     let mock_panes = Rc::new(RefCell::new(mock_panes));
     let focused_pane = PaneId::Terminal(5);
@@ -381,8 +959,13 @@ fn break_pane_out_of_stack_bottom() {
     // here the top pane should be broken out, because the focused pane is the bottom one and it
     // should remain in the stack
     StackedPanes::new(mock_panes.clone())
-        .break_pane_out_of_stack(&focused_pane).unwrap();
-    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes.borrow().values().map(|p| p.current_geom()).collect();
+        .break_pane_out_of_stack(&focused_pane)
+        .unwrap();
+    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes
+        .borrow()
+        .values()
+        .map(|p| p.current_geom())
+        .collect();
     pane_geoms_after.sort_by(|a, b| a.logical_position.cmp(&b.logical_position));
     assert_snapshot!(format!("{:#?}", pane_geoms_after));
 }
@@ -391,24 +974,69 @@ fn break_pane_out_of_stack_bottom() {
 fn break_next_to_last_pane_out_of_stack() {
     let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
 
-    mock_pane!(PaneId::Terminal(1), Dimension::percent(33.3), 33, 0, 0, Some(1), mock_panes);
-    mock_pane!(PaneId::Terminal(2), Dimension::percent(33.3), 33, 0, 33, Some(2), mock_panes);
-    mock_pane!(PaneId::Terminal(3), Dimension::percent(22.1), 22, 0, 66, Some(3), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(4), Dimension::percent(11.2), 11, 0, 88, Some(4), mock_panes);
-    mock_stacked_pane!(PaneId::Terminal(5), Dimension::fixed(1), 1, 0, 99, Some(5), mock_panes);
+    mock_pane!(
+        PaneId::Terminal(1),
+        Dimension::percent(33.3),
+        33,
+        0,
+        0,
+        Some(1),
+        mock_panes
+    );
+    mock_pane!(
+        PaneId::Terminal(2),
+        Dimension::percent(33.3),
+        33,
+        0,
+        33,
+        Some(2),
+        mock_panes
+    );
+    mock_pane!(
+        PaneId::Terminal(3),
+        Dimension::percent(22.1),
+        22,
+        0,
+        66,
+        Some(3),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(4),
+        Dimension::percent(11.2),
+        11,
+        0,
+        88,
+        Some(4),
+        mock_panes
+    );
+    mock_stacked_pane!(
+        PaneId::Terminal(5),
+        Dimension::fixed(1),
+        1,
+        0,
+        99,
+        Some(5),
+        mock_panes
+    );
 
     let mock_panes = Rc::new(RefCell::new(mock_panes));
     let focused_pane = PaneId::Terminal(4);
 
     StackedPanes::new(mock_panes.clone())
-        .break_pane_out_of_stack(&focused_pane).unwrap();
-    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes.borrow().values().map(|p| p.current_geom()).collect();
+        .break_pane_out_of_stack(&focused_pane)
+        .unwrap();
+    let mut pane_geoms_after: Vec<PaneGeom> = mock_panes
+        .borrow()
+        .values()
+        .map(|p| p.current_geom())
+        .collect();
     pane_geoms_after.sort_by(|a, b| a.logical_position.cmp(&b.logical_position));
     assert_snapshot!(format!("{:#?}", pane_geoms_after));
 }
 
 struct MockPane {
-    pane_geom: PaneGeom
+    pane_geom: PaneGeom,
 }
 
 impl MockPane {

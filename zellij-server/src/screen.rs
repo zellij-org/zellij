@@ -367,6 +367,7 @@ pub enum ScreenInstruction {
         auto_layout: bool,
         rounded_corners: bool,
         hide_session_name: bool,
+        stacked_resize: bool,
     },
     RerunCommandPane(u32), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
@@ -712,6 +713,7 @@ impl Screen {
         arrow_fonts: bool,
         layout_dir: Option<PathBuf>,
         explicitly_disable_kitty_keyboard_protocol: bool,
+        stacked_resize: bool,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -724,7 +726,7 @@ impl Screen {
             size: client_attributes.size,
             pixel_dimensions: Default::default(),
             character_cell_size: Rc::new(RefCell::new(None)),
-            stacked_resize: Rc::new(RefCell::new(true)),
+            stacked_resize: Rc::new(RefCell::new(stacked_resize)),
             sixel_image_store: Rc::new(RefCell::new(SixelImageStore::default())),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashSet::new())),
@@ -2431,6 +2433,7 @@ impl Screen {
         auto_layout: bool,
         rounded_corners: bool,
         hide_session_name: bool,
+        stacked_resize: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
@@ -2448,6 +2451,9 @@ impl Screen {
             .update_arrow_fonts(should_support_arrow_fonts);
         self.default_mode_info
             .update_hide_session_name(hide_session_name);
+        {
+            *self.stacked_resize.borrow_mut() = stacked_resize;
+        }
         if let Some(copy_to_clipboard) = copy_to_clipboard {
             self.copy_options.clipboard = copy_to_clipboard;
         }
@@ -2750,6 +2756,7 @@ pub(crate) fn screen_thread_main(
         // explicitly_disable_kitty_keyboard_protocol is false and vice versa
         .unwrap_or(false); // by default, we try to support this if the terminal supports it and
                            // the program running inside a pane requests it
+    let stacked_resize = config_options.stacked_resize.unwrap_or(true);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -2781,6 +2788,7 @@ pub(crate) fn screen_thread_main(
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
+        stacked_resize,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
@@ -4496,6 +4504,7 @@ pub(crate) fn screen_thread_main(
                 auto_layout,
                 rounded_corners,
                 hide_session_name,
+                stacked_resize,
             } => {
                 screen
                     .reconfigure(
@@ -4511,6 +4520,7 @@ pub(crate) fn screen_thread_main(
                         auto_layout,
                         rounded_corners,
                         hide_session_name,
+                        stacked_resize,
                         client_id,
                     )
                     .non_fatal();

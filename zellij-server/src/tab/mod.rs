@@ -4260,7 +4260,8 @@ impl Tab {
             if should_auto_layout {
                 // no need to relayout here, we'll do it when reapplying the swap layout
                 // below
-                self.tiled_panes.insert_pane_without_relayout(pane_id, pane, client_id);
+                self.tiled_panes
+                    .insert_pane_without_relayout(pane_id, pane, client_id);
             } else {
                 self.tiled_panes.insert_pane(pane_id, pane, client_id);
             }
@@ -4350,7 +4351,10 @@ impl Tab {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else if self.tiled_panes.panes_contain(&pane_id) {
-            match self.tiled_panes.resize_pane_with_id(strategy, pane_id, None) {
+            match self
+                .tiled_panes
+                .resize_pane_with_id(strategy, pane_id, None)
+            {
                 Ok(_) => {},
                 Err(err) => match err.downcast_ref::<ZellijError>() {
                     Some(ZellijError::CantResizeFixedPanes { pane_ids }) => {

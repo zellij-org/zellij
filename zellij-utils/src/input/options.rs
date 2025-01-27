@@ -161,6 +161,12 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub support_kitty_keyboard_protocol: Option<bool>,
+
+    /// Whether to stack panes when resizing beyond a certain size
+    /// default is true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub stacked_resize: Option<bool>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -239,6 +245,7 @@ impl Options {
         let support_kitty_keyboard_protocol = other
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
+        let stacked_resize = other.stacked_resize.or(self.stacked_resize);
 
         Options {
             simplified_ui,
@@ -268,6 +275,7 @@ impl Options {
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
+            stacked_resize,
         }
     }
 
@@ -326,6 +334,7 @@ impl Options {
         let support_kitty_keyboard_protocol = other
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
+        let stacked_resize = other.stacked_resize.or(self.stacked_resize);
 
         Options {
             simplified_ui,
@@ -355,6 +364,7 @@ impl Options {
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
+            stacked_resize,
         }
     }
 
@@ -420,6 +430,7 @@ impl From<CliOptions> for Options {
             styled_underlines: opts.styled_underlines,
             serialization_interval: opts.serialization_interval,
             support_kitty_keyboard_protocol: opts.support_kitty_keyboard_protocol,
+            stacked_resize: opts.stacked_resize,
             ..Default::default()
         }
     }

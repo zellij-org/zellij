@@ -855,9 +855,11 @@ fn increase_tiled_pane_sizes_with_stacked_resizes_into_uneven_panes() {
         .unwrap();
     }
     tab.move_focus_up(client_id).unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, client_id).unwrap();
+    tab.vertical_split(PaneId::Terminal(4), None, client_id)
+        .unwrap();
     tab.move_focus_right(client_id).unwrap();
-    tab.horizontal_split(PaneId::Terminal(5), None, client_id).unwrap();
+    tab.horizontal_split(PaneId::Terminal(5), None, client_id)
+        .unwrap();
     tab.move_focus_down(client_id).unwrap();
 
     // increase twice, once to add the short pane into the stack and shorten the larger one, and
@@ -919,7 +921,8 @@ fn split_stack_vertically() {
         .unwrap();
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, client_id).unwrap();
+    tab.vertical_split(PaneId::Terminal(4), None, client_id)
+        .unwrap();
 
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
@@ -958,7 +961,8 @@ fn split_stack_horizontally() {
         .unwrap();
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
-    tab.horizontal_split(PaneId::Terminal(4), None, client_id).unwrap();
+    tab.horizontal_split(PaneId::Terminal(4), None, client_id)
+        .unwrap();
 
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
@@ -7751,12 +7755,7 @@ fn new_pane_in_stacked_resizes() {
         stacked_resize,
     );
 
-    let mut expected_cursor_coordinates = vec![
-        (101, 1),
-        (101, 21),
-        (151, 21),
-        (151, 22),
-    ];
+    let mut expected_cursor_coordinates = vec![(101, 1), (101, 21), (151, 21), (151, 22)];
     for i in 0..4 {
         let new_pane_id = i + 2;
         tab.new_pane(

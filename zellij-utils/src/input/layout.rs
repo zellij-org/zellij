@@ -905,7 +905,13 @@ impl TiledPaneLayout {
                     layout_to_split.focus_deepest_pane();
                 }
 
-                split_space(space, &layout_to_split, space, ignore_percent_split_sizes, 0)?
+                split_space(
+                    space,
+                    &layout_to_split,
+                    space,
+                    ignore_percent_split_sizes,
+                    0,
+                )?
             },
             None => split_space(space, self, space, ignore_percent_split_sizes, 0)?,
         };
