@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 5563
+assertion_line: 5598
 expression: fake_config_stringified
 ---
 keybinds clear-defaults=true {
@@ -432,4 +432,9 @@ load_plugins {
 // Default: true (if the host terminal supports it)
 // 
 // support_kitty_keyboard_protocol false
+ 
+// Whether to stack panes when resizing beyond a certain size
+// Default: true
+// 
+// stacked_resize false
 

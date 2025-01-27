@@ -408,3 +408,14 @@ load_plugins {
 // Default: true (if the host terminal supports it)
 //
 // support_kitty_keyboard_protocol false
+
+// Enable or disable support for the enhanced Kitty Keyboard Protocol (the host terminal must also support it)
+// (Requires restart)
+// Default: true (if the host terminal supports it)
+//
+// support_kitty_keyboard_protocol false
+
+// Whether to stack panes when resizing beyond a certain size
+// Default: true
+//
+// stacked_resize false

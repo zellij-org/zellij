@@ -3071,6 +3071,34 @@ impl Options {
             None
         }
     }
+    fn stacked_resize_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// Whether to stack panes when resizing beyond a certain size",
+            "// Default: true",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("stacked_resize");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(stacked_resize) = self.stacked_resize {
+            let mut node = create_node(stacked_resize);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
@@ -3157,6 +3185,9 @@ impl Options {
             self.support_kitty_keyboard_protocol_to_kdl(add_comments)
         {
             nodes.push(support_kitty_keyboard_protocol);
+        }
+        if let Some(stacked_resize) = self.stacked_resize_to_kdl(add_comments) {
+            nodes.push(stacked_resize);
         }
         nodes
     }
