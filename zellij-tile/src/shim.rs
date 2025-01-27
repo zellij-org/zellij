@@ -339,7 +339,7 @@ pub fn go_to_previous_tab() {
     unsafe { host_run_plugin_command() };
 }
 
-pub fn report_panic(info: &std::panic::PanicInfo) {
+pub fn report_panic(info: &std::panic::PanicHookInfo) {
     let panic_payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
         format!("{}", s)
     } else {

@@ -433,7 +433,7 @@ impl RunPlugin {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Hash, Default, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, Eq)]
 pub struct PluginAlias {
     pub name: String,
     pub configuration: Option<PluginUserConfiguration>,
@@ -443,7 +443,16 @@ pub struct PluginAlias {
 
 impl PartialEq for PluginAlias {
     fn eq(&self, other: &Self) -> bool {
+        // NOTE: Keep this in sync with what the `Hash` trait impl does.
         self.name == other.name && self.configuration == other.configuration
+    }
+}
+
+impl std::hash::Hash for PluginAlias {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // NOTE: Keep this in sync with what the `PartiqlEq` trait impl does.
+        self.name.hash(state);
+        self.configuration.hash(state);
     }
 }
 

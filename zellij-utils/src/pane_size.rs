@@ -10,7 +10,7 @@ use crate::position::Position;
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
 /// in character rows and columns.
-#[derive(Clone, Copy, Default, Debug, Serialize, Deserialize, Hash)]
+#[derive(Clone, Copy, Default, Debug, Serialize, Deserialize)]
 pub struct PaneGeom {
     pub x: usize,
     pub y: usize,
@@ -24,11 +24,23 @@ pub struct PaneGeom {
 impl PartialEq for PaneGeom {
     fn eq(&self, other: &Self) -> bool {
         // compare all except is_pinned
+        // NOTE: Keep this in sync with what the `Hash` trait impl does.
         self.x == other.x
             && self.y == other.y
             && self.rows == other.rows
             && self.cols == other.cols
             && self.stacked == other.stacked
+    }
+}
+
+impl std::hash::Hash for PaneGeom {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // NOTE: Keep this in sync with what the `PartiqlEq` trait impl does.
+        self.x.hash(state);
+        self.y.hash(state);
+        self.rows.hash(state);
+        self.cols.hash(state);
+        self.is_stacked.hash(state);
     }
 }
 

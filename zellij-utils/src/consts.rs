@@ -94,7 +94,7 @@ mod not_wasm {
     //
     // - `zellij-utils/assets/plugins`: When building in release mode OR when the
     //   `plugins_from_target` feature IS NOT set
-    // - `zellij-utils/../target/wasm32-wasi/debug`: When building in debug mode AND the
+    // - `zellij-utils/../target/wasm32-wasip1/debug`: When building in debug mode AND the
     //   `plugins_from_target` feature IS set
     macro_rules! add_plugin {
         ($assets:expr, $plugin:literal) => {
@@ -110,7 +110,7 @@ mod not_wasm {
                 #[cfg(all(feature = "plugins_from_target", debug_assertions))]
                 include_bytes!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
-                    "/../target/wasm32-wasi/debug/",
+                    "/../target/wasm32-wasip1/debug/",
                     $plugin
                 ))
                 .to_vec(),

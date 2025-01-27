@@ -33,7 +33,7 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
         crate::status(&msg);
         println!("{}", msg);
 
-        // Override wasm32-wasi target for plugins only
+        // Override wasm32-wasip1 target for plugins only
         let cmd = if crate_name.contains("plugins") {
             cmd!(sh, "{cargo} test --target {host_triple} --")
         } else {
@@ -48,7 +48,7 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
 }
 
 // Determine the target triple of the host. We explicitly run all tests against the host
-// architecture so we can test the plugins, too (they default to wasm32-wasi otherwise).
+// architecture so we can test the plugins, too (they default to wasm32-wasip1 otherwise).
 pub fn host_target_triple(sh: &Shell) -> anyhow::Result<String> {
     let rustc_ver = cmd!(sh, "rustc -vV")
         .read()
