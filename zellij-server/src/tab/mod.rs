@@ -4260,9 +4260,9 @@ impl Tab {
             if should_auto_layout {
                 // no need to relayout here, we'll do it when reapplying the swap layout
                 // below
-                self.tiled_panes.insert_pane_without_relayout(pane_id, pane);
+                self.tiled_panes.insert_pane_without_relayout(pane_id, pane, client_id);
             } else {
-                self.tiled_panes.insert_pane(pane_id, pane);
+                self.tiled_panes.insert_pane(pane_id, pane, client_id);
             }
             self.set_should_clear_display_before_rendering();
             if let Some(client_id) = client_id {

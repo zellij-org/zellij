@@ -1379,6 +1379,9 @@ impl<'a> TiledPaneGrid<'a> {
         active_pane_id: &PaneId,
         cursor_height_width_ratio: Option<usize>,
     ) -> Option<(PaneId, SplitDirection)> {
+        // right now the minimum here is hard-coded to a sane "I don't want my terminal smaller"
+        // number, but we might want to change this to be a percentage of the current screen if it
+        // feels better
         let panes = self.panes.borrow();
         let Some(pane_to_split) = panes.get(active_pane_id) else {
             return None;
@@ -1386,11 +1389,9 @@ impl<'a> TiledPaneGrid<'a> {
         let direction = if pane_to_split.rows()
             * cursor_height_width_ratio.unwrap_or(DEFAULT_CURSOR_HEIGHT_WIDTH_RATIO)
             > pane_to_split.cols()
-            // && pane_to_split.rows() > pane_to_split.min_height() * 2
             && pane_to_split.rows() > 10 * 2
         {
             Some(SplitDirection::Horizontal)
-        // } else if pane_to_split.cols() > pane_to_split.min_width() * 2 {
         } else if pane_to_split.cols() > 30 * 2 {
             Some(SplitDirection::Vertical)
         } else {
@@ -1834,7 +1835,7 @@ impl<'a> TiledPaneGrid<'a> {
         let pane_is_selectable = |pane_id| {
             self.panes.borrow().get(pane_id).map(|pane| pane.selectable()).unwrap_or(false)
         };
-        if neighboring_pane_ids_above.is_empty() || neighboring_pane_ids_above.iter().any(|p| !pane_is_selectable(p)) { // TODO: add selectable to other methods
+        if neighboring_pane_ids_above.is_empty() || neighboring_pane_ids_above.iter().any(|p| !pane_is_selectable(p)) {
             return None;
         }
         StackedPanes::new(self.panes.clone()).combine_vertically_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_above);
@@ -1895,7 +1896,7 @@ impl<'a> TiledPaneGrid<'a> {
         let pane_is_selectable = |pane_id| {
             self.panes.borrow().get(pane_id).map(|pane| pane.selectable()).unwrap_or(false)
         };
-        if neighboring_pane_ids_below.is_empty() || neighboring_pane_ids_below.iter().any(|p| !pane_is_selectable(p)) { // TODO: add selectable to other methods
+        if neighboring_pane_ids_below.is_empty() || neighboring_pane_ids_below.iter().any(|p| !pane_is_selectable(p)) {
             return None;
         }
         StackedPanes::new(self.panes.clone()).combine_vertically_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_below);
@@ -1945,7 +1946,7 @@ impl<'a> TiledPaneGrid<'a> {
         let pane_is_selectable = |pane_id| {
             self.panes.borrow().get(pane_id).map(|pane| pane.selectable()).unwrap_or(false)
         };
-        if neighboring_pane_ids_to_the_left.is_empty() || neighboring_pane_ids_to_the_left.iter().any(|p| !pane_is_selectable(p)) { // TODO: add selectable to other methods
+        if neighboring_pane_ids_to_the_left.is_empty() || neighboring_pane_ids_to_the_left.iter().any(|p| !pane_is_selectable(p)) {
             return None;
         }
         StackedPanes::new(self.panes.clone()).combine_horizontally_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_to_the_left);
@@ -1995,7 +1996,7 @@ impl<'a> TiledPaneGrid<'a> {
         let pane_is_selectable = |pane_id| {
             self.panes.borrow().get(pane_id).map(|pane| pane.selectable()).unwrap_or(false)
         };
-        if neighboring_pane_ids_to_the_right.is_empty() || neighboring_pane_ids_to_the_right.iter().any(|p| !pane_is_selectable(p)) { // TODO: add selectable to other methods
+        if neighboring_pane_ids_to_the_right.is_empty() || neighboring_pane_ids_to_the_right.iter().any(|p| !pane_is_selectable(p)) {
             return None;
         }
         if neighboring_pane_ids_to_the_right.is_empty() {

@@ -169,13 +169,13 @@ impl TiledPanes {
         self.reapply_pane_frames();
         removed_pane
     }
-    pub fn insert_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
+    pub fn insert_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>, client_id: Option<ClientId>) {
         let should_relayout = true;
-        self.add_pane(pane_id, pane, should_relayout);
+        self.add_pane(pane_id, pane, should_relayout, client_id);
     }
-    pub fn insert_pane_without_relayout(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
+    pub fn insert_pane_without_relayout(&mut self, pane_id: PaneId, pane: Box<dyn Pane>, client_id: Option<ClientId>) {
         let should_relayout = false;
-        self.add_pane(pane_id, pane, should_relayout);
+        self.add_pane(pane_id, pane, should_relayout, client_id);
     }
     pub fn has_room_for_new_pane(&mut self) -> bool {
         let cursor_height_width_ratio = self.cursor_height_width_ratio();
@@ -207,14 +207,22 @@ impl TiledPanes {
             .copied()
         {
             if let Some(pane) = self.panes.remove(&pane_id) {
-                self.add_pane(pane.pid(), pane, true);
+                self.add_pane(pane.pid(), pane, true, None);
             }
         }
     }
-    fn add_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>, should_relayout: bool) {
+    fn add_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>, should_relayout: bool, client_id: Option<ClientId>) {
         if self.panes.is_empty() {
             self.panes.insert(pane_id, pane);
             return;
+        }
+        let stacked_resize = { *self.stacked_resize.borrow() };
+
+        if let Some(client_id) = client_id {
+            if stacked_resize {
+                self.add_pane_with_stacked_resize(pane_id, pane, should_relayout, client_id);
+                return;
+            }
         }
         let cursor_height_width_ratio = self.cursor_height_width_ratio();
         let mut pane_grid = TiledPaneGrid::new(
@@ -223,101 +231,98 @@ impl TiledPanes {
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
-        let stacked_resize = { *self.stacked_resize.borrow() };
-        let client_id = 1; // TODO: as Option<ClientId> in function
-        let active_pane_id = self.active_panes.get(&client_id).unwrap(); // TODO: no unwrap
-        // TODO: make sure to also call this in has_room_for_new_pane
-
-        if stacked_resize {
-            if pane_grid.get_pane_geom(active_pane_id).unwrap().is_stacked() { // TODO: no unwrap
-                // try to add the pane to the stack of the active pane
+        // TODO: make sure this is really the same as the pre-stacked-resizes function... and
+        // behaves the same and all
+        let pane_id_and_split_direction =
+            pane_grid.find_room_for_new_pane(cursor_height_width_ratio);
+        match pane_id_and_split_direction {
+            Some((pane_id_to_split, split_direction)) => {
+                // this unwrap is safe because floating panes should not be visible if there are no floating panes
+                let pane_to_split = self.panes.get_mut(&pane_id_to_split).unwrap();
+                let size_of_both_panes = pane_to_split.position_and_size();
+                if let Some((first_geom, second_geom)) = split(split_direction, &size_of_both_panes)
+                {
+                    pane_to_split.set_geom(first_geom);
+                    pane.set_geom(second_geom);
+                    self.panes.insert(pane_id, pane);
+                    if should_relayout {
+                        self.relayout(!split_direction);
+                    }
+                }
+            },
+            None => {
+                // we couldn't add the pane normally, let's see if there's room in one of the
+                // stacks...
+                match pane_grid.make_room_in_stack_for_pane() {
+                    Ok(new_pane_geom) => {
+                        pane.set_geom(new_pane_geom);
+                        self.panes.insert(pane_id, pane); // TODO: is set_geom the right one?
+                    },
+                    Err(e) => {
+                        log::error!("Failed to add pane to stack: {:?}", e);
+                    },
+                }
+            },
+        }
+    }
+    fn add_pane_with_stacked_resize(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>, should_relayout: bool, client_id: ClientId) {
+        let cursor_height_width_ratio = self.cursor_height_width_ratio();
+        let mut pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        let Some(active_pane_id) = self.active_panes.get(&client_id) else {
+            log::error!("Could not find active pane id for client_id");
+            return;
+        };
+        if pane_grid.get_pane_geom(active_pane_id).map(|p| p.is_stacked()).unwrap_or(false) {
+            // try to add the pane to the stack of the active pane
+            match pane_grid.make_room_in_stack_of_pane_id_for_pane(active_pane_id) {
+                Ok(new_pane_geom) => {
+                    pane.set_geom(new_pane_geom);
+                    self.panes.insert(pane_id, pane);
+                    self.set_force_render(); // TODO: why do we need this?
+                    return;
+                },
+                Err(e) => {
+                    log::error!("Failed to add pane to stack: {:?}", e);
+                },
+            }
+        }
+        let pane_id_and_split_direction =
+            pane_grid.split_pane(active_pane_id, cursor_height_width_ratio);
+        match pane_id_and_split_direction {
+            Some((pane_id_to_split, split_direction)) => {
+                // this unwrap is safe because floating panes should not be visible if there are no floating panes
+                let pane_to_split = self.panes.get_mut(&pane_id_to_split).unwrap();
+                let size_of_both_panes = pane_to_split.position_and_size();
+                if let Some((first_geom, second_geom)) = split(split_direction, &size_of_both_panes)
+                {
+                    pane_to_split.set_geom(first_geom);
+                    pane.set_geom(second_geom);
+                    self.panes.insert(pane_id, pane);
+                    if should_relayout {
+                        self.relayout(!split_direction);
+                    }
+                }
+            },
+            None => {
+                // we couldn't add the pane normally, let's see if there's room in one of the
+                // stacks...
+                let _ = pane_grid.make_pane_stacked(active_pane_id);
                 match pane_grid.make_room_in_stack_of_pane_id_for_pane(active_pane_id) {
                     Ok(new_pane_geom) => {
                         pane.set_geom(new_pane_geom);
                         self.panes.insert(pane_id, pane); // TODO: is set_geom the right one?
-                        self.set_force_render(); // TODO: why do we need this?
                         return;
                     },
                     Err(e) => {
                         log::error!("Failed to add pane to stack: {:?}", e);
                     },
                 }
-            }
-        }
-        if stacked_resize {
-            let pane_id_and_split_direction =
-                pane_grid.split_pane(active_pane_id, cursor_height_width_ratio);
-                // pane_grid.find_room_for_new_pane(cursor_height_width_ratio);
-            match pane_id_and_split_direction {
-                Some((pane_id_to_split, split_direction)) => {
-                    // this unwrap is safe because floating panes should not be visible if there are no floating panes
-                    let pane_to_split = self.panes.get_mut(&pane_id_to_split).unwrap();
-                    let size_of_both_panes = pane_to_split.position_and_size();
-                    if let Some((first_geom, second_geom)) = split(split_direction, &size_of_both_panes)
-                    {
-                        pane_to_split.set_geom(first_geom);
-                        pane.set_geom(second_geom);
-                        self.panes.insert(pane_id, pane);
-                        if should_relayout {
-                            self.relayout(!split_direction);
-                        }
-                    }
-                },
-                None => {
-                    // we couldn't add the pane normally, let's see if there's room in one of the
-                    // stacks...
-                    // TODO CONTINUE HERE: try to make a stack out of the active pane and add this pane to it
-                    // but first put all of the custom stuff in this function behind a hard coded
-                    // stacked_resize config
-
-
-                    pane_grid.make_pane_stacked(active_pane_id).unwrap(); // TODO: no unwrap
-                    match pane_grid.make_room_in_stack_of_pane_id_for_pane(active_pane_id) {
-                        Ok(new_pane_geom) => {
-                            pane.set_geom(new_pane_geom);
-                            self.panes.insert(pane_id, pane); // TODO: is set_geom the right one?
-                            return;
-                        },
-                        Err(e) => {
-                            log::error!("Failed to add pane to stack: {:?}", e);
-                        },
-                    }
-                },
-            }
-        } else {
-            // TODO: make sure this is really the same as the pre-stacked-resizes function... and
-            // behaves the same and all
-            let pane_id_and_split_direction =
-                pane_grid.find_room_for_new_pane(cursor_height_width_ratio);
-            match pane_id_and_split_direction {
-                Some((pane_id_to_split, split_direction)) => {
-                    // this unwrap is safe because floating panes should not be visible if there are no floating panes
-                    let pane_to_split = self.panes.get_mut(&pane_id_to_split).unwrap();
-                    let size_of_both_panes = pane_to_split.position_and_size();
-                    if let Some((first_geom, second_geom)) = split(split_direction, &size_of_both_panes)
-                    {
-                        pane_to_split.set_geom(first_geom);
-                        pane.set_geom(second_geom);
-                        self.panes.insert(pane_id, pane);
-                        if should_relayout {
-                            self.relayout(!split_direction);
-                        }
-                    }
-                },
-                None => {
-                    // we couldn't add the pane normally, let's see if there's room in one of the
-                    // stacks...
-                    match pane_grid.make_room_in_stack_for_pane() {
-                        Ok(new_pane_geom) => {
-                            pane.set_geom(new_pane_geom);
-                            self.panes.insert(pane_id, pane); // TODO: is set_geom the right one?
-                        },
-                        Err(e) => {
-                            log::error!("Failed to add pane to stack: {:?}", e);
-                        },
-                    }
-                },
-            }
+            },
         }
     }
     pub fn fixed_pane_geoms(&self) -> Vec<Viewport> {
@@ -932,15 +937,15 @@ impl TiledPanes {
             },
         }
     }
+    fn display_area_changed(&self, new_screen_size: Size) -> bool {
+        let display_area = self.display_area.borrow();
+        new_screen_size.rows != display_area.rows || new_screen_size.cols != display_area.cols
+    }
     pub fn resize(&mut self, new_screen_size: Size) {
         // this is blocked out to appease the borrow checker
         {
-            // TODO: move elsewhere
-            {
-                let display_area = {self.display_area.borrow().clone()};
-                if new_screen_size.rows != display_area.rows || new_screen_size.cols != display_area.cols {
-                    self.clear_tombstones();
-                }
+            if self.display_area_changed(new_screen_size) {
+                self.clear_tombstones();
             }
             let mut display_area = self.display_area.borrow_mut();
             let mut viewport = self.viewport.borrow_mut();
@@ -1178,7 +1183,6 @@ impl TiledPanes {
             }
         }
     }
-    // TODO: merge these functions
     fn update_tombstones_before_decrease(&mut self, focused_pane_id: PaneId, pane_state: HashMap<PaneId, PaneGeom>) {
         match self.tombstones_before_decrease.as_mut() {
             Some((focused_pane_id_in_tombstone, pane_geoms)) => {
@@ -1251,8 +1255,6 @@ impl TiledPanes {
                         pane_grid.direct_neighboring_pane_ids_to_the_right(&pane_id),
                     )
                 };
-                // TODO:
-                // if we successfully resized, we push the whole pane state to self.tombstones
                 if !direct_neighboring_pane_ids_above.is_empty() {
                     if self.resize_or_stack_pane_up(pane_id, resize_percent) {
                         self.update_tombstones_before_increase(pane_id, current_pane_state);
