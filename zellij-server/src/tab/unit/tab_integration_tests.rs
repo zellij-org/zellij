@@ -779,6 +779,198 @@ fn take_snapshot_and_cursor_position(
 }
 
 #[test]
+fn increase_tiled_pane_sizes_with_stacked_resizes() {
+    // this is the default resizing algorithm
+    let size = Size {
+        cols: 200,
+        rows: 40,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+    for i in 2..5 {
+        let new_pane_id_1 = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id_1,
+            None,
+            None,
+            None,
+            None,
+            false,
+            Some(client_id),
+        )
+        .unwrap();
+    }
+
+    // first we increase until fullscreen and once more to make sure we don't increase beyond it
+    for _ in 0..=6 {
+        tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+            .unwrap();
+        tab.render(&mut output).unwrap();
+        let snapshot = take_snapshot(
+            output.serialize().unwrap().get(&client_id).unwrap(),
+            size.rows,
+            size.cols,
+            Palette::default(),
+        );
+        assert_snapshot!(snapshot);
+    }
+
+    // then we decrease until the original position
+    for _ in 0..=5 {
+        tab.resize(client_id, ResizeStrategy::new(Resize::Decrease, None))
+            .unwrap();
+        tab.render(&mut output).unwrap();
+        let snapshot = take_snapshot(
+            output.serialize().unwrap().get(&client_id).unwrap(),
+            size.rows,
+            size.cols,
+            Palette::default(),
+        );
+        assert_snapshot!(snapshot);
+    }
+}
+
+#[test]
+fn increase_tiled_pane_sizes_with_stacked_resizes_into_uneven_panes() {
+    // this is the default resizing algorithm
+    let size = Size {
+        cols: 200,
+        rows: 40,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+    for i in 2..4 {
+        let new_pane_id_1 = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id_1,
+            None,
+            None,
+            None,
+            None,
+            false,
+            Some(client_id),
+        )
+        .unwrap();
+    }
+    tab.move_focus_up(client_id).unwrap();
+    tab.vertical_split(PaneId::Terminal(4), None, client_id).unwrap();
+    tab.move_focus_right(client_id).unwrap();
+    tab.horizontal_split(PaneId::Terminal(5), None, client_id).unwrap();
+    tab.move_focus_down(client_id).unwrap();
+
+    // increase twice, once to add the short pane into the stack and shorten the larger one, and
+    // once to add the remaining two panes (the one we shortened and the extra one near it)
+    for _ in 0..2 {
+        tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+            .unwrap();
+        tab.render(&mut output).unwrap();
+        let snapshot = take_snapshot(
+            output.serialize().unwrap().get(&client_id).unwrap(),
+            size.rows,
+            size.cols,
+            Palette::default(),
+        );
+        eprintln!("increase: \n{}", snapshot);
+        assert_snapshot!(snapshot);
+    }
+
+    // then we decrease until the original position
+    for _ in 0..2 {
+        tab.resize(client_id, ResizeStrategy::new(Resize::Decrease, None))
+            .unwrap();
+        tab.render(&mut output).unwrap();
+        let snapshot = take_snapshot(
+            output.serialize().unwrap().get(&client_id).unwrap(),
+            size.rows,
+            size.cols,
+            Palette::default(),
+        );
+        eprintln!("decrease: \n{}", snapshot);
+        assert_snapshot!(snapshot);
+    }
+}
+
+#[test]
+fn split_stack_vertically() {
+    let size = Size {
+        cols: 200,
+        rows: 40,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+    for i in 2..4 {
+        let new_pane_id_1 = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id_1,
+            None,
+            None,
+            None,
+            None,
+            false,
+            Some(client_id),
+        )
+        .unwrap();
+    }
+    // the below resizes will end up stacking the panes
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+        .unwrap();
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+        .unwrap();
+    tab.vertical_split(PaneId::Terminal(4), None, client_id).unwrap();
+
+    tab.render(&mut output).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn split_stack_horizontally() {
+    let size = Size {
+        cols: 200,
+        rows: 40,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+    for i in 2..4 {
+        let new_pane_id_1 = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id_1,
+            None,
+            None,
+            None,
+            None,
+            false,
+            Some(client_id),
+        )
+        .unwrap();
+    }
+    // the below resizes will end up stacking the panes
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+        .unwrap();
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+        .unwrap();
+    tab.horizontal_split(PaneId::Terminal(4), None, client_id).unwrap();
+
+    tab.render(&mut output).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
 fn dump_screen() {
     let size = Size {
         cols: 121,
@@ -7510,6 +7702,82 @@ fn new_pane_in_auto_layout() {
             size.cols,
             Palette::default(),
         );
+        let (expected_x, expected_y) = expected_cursor_coordinates.remove(0);
+        assert_eq!(
+            cursor_coordinates,
+            Some((expected_x, expected_y)),
+            "cursor coordinates moved to the new pane",
+        );
+        assert_snapshot!(snapshot);
+    }
+}
+
+#[test]
+fn new_pane_in_stacked_resizes() {
+    let size = Size {
+        cols: 200,
+        rows: 40,
+    };
+    let client_id = 1;
+    let mut output = Output::default();
+    let base_layout = r#"
+        layout
+    "#;
+    let (base_layout, base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+
+    let new_terminal_ids = vec![(1, None), (2, None), (3, None)];
+    let new_floating_terminal_ids = vec![];
+    let new_plugin_ids = HashMap::new();
+
+    let swap_tiled_layouts = vec![];
+    let swap_floating_layouts = vec![];
+    let stacked_resize = true;
+    let mut tab = create_new_tab_with_swap_layouts(
+        size,
+        ModeInfo::default(),
+        (swap_tiled_layouts, swap_floating_layouts),
+        Some((
+            base_layout,
+            base_floating_layout,
+            new_terminal_ids,
+            new_floating_terminal_ids,
+            new_plugin_ids,
+        )),
+        true,
+        stacked_resize,
+    );
+
+    let mut expected_cursor_coordinates = vec![
+        (101, 1),
+        (101, 21),
+        (151, 21),
+        (151, 22),
+    ];
+    for i in 0..4 {
+        let new_pane_id = i + 2;
+        tab.new_pane(
+            PaneId::Terminal(new_pane_id),
+            None,
+            None,
+            None,
+            None,
+            false,
+            Some(client_id),
+        )
+        .unwrap();
+        tab.render(&mut output).unwrap();
+
+        let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
+            output.serialize().unwrap().get(&client_id).unwrap(),
+            size.rows,
+            size.cols,
+            Palette::default(),
+        );
+        eprintln!("{}", snapshot);
         let (expected_x, expected_y) = expected_cursor_coordinates.remove(0);
         assert_eq!(
             cursor_coordinates,

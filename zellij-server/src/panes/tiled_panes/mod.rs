@@ -998,6 +998,7 @@ impl TiledPanes {
         if *self.stacked_resize.borrow() && strategy.direction.is_none() {
             if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
                 self.stacked_resize_pane_with_id(active_pane_id, strategy)?;
+                self.reapply_pane_frames();
             }
         } else {
             if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
@@ -1282,8 +1283,12 @@ impl TiledPanes {
                         if size_changed {
                             self.update_tombstones_before_increase(pane_id, current_pane_state);
                         } else {
-                            self.toggle_pane_fullscreen(pane_id);
-                            return Ok(self.fullscreen_is_active.is_some());
+                            if self.fullscreen_is_active.is_none() {
+                                self.toggle_pane_fullscreen(pane_id);
+                                return Ok(self.fullscreen_is_active.is_some());
+                            } else {
+                                return Ok(false);
+                            }
                         }
                         return Ok(size_changed);
                     },

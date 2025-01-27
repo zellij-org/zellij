@@ -901,6 +901,82 @@ pub fn toggle_focused_pane_fullscreen() {
 }
 
 #[test]
+pub fn toggle_focused_pane_fullscreen_with_stacked_resizes() {
+    // note - this is the default
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    for i in 2..5 {
+        let new_pane_id = PaneId::Terminal(i);
+        tab.new_pane(new_pane_id, None, None, None, None, false, Some(1))
+            .unwrap();
+    }
+    tab.toggle_active_pane_fullscreen(1);
+    assert_eq!(
+        tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap().x(),
+        0,
+        "Pane x is on screen edge"
+    );
+    assert_eq!(
+        tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap().y(),
+        0,
+        "Pane y is on screen edge"
+    );
+    assert_eq!(
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(4))
+            .unwrap()
+            .cols(),
+        121,
+        "Pane cols match fullscreen cols"
+    );
+    assert_eq!(
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(4))
+            .unwrap()
+            .rows(),
+        20,
+        "Pane rows match fullscreen rows"
+    );
+    tab.toggle_active_pane_fullscreen(1);
+    assert_eq!(
+        tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap().x(),
+        61,
+        "Pane x is back to its original position"
+    );
+    assert_eq!(
+        tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap().y(),
+        2,
+        "Pane y is back to its original position"
+    );
+    assert_eq!(
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(4))
+            .unwrap()
+            .cols(),
+        60,
+        "Pane cols are back at their original position"
+    );
+    assert_eq!(
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(4))
+            .unwrap()
+            .rows(),
+        18,
+        "Pane rows are back at their original position"
+    );
+    // we don't test if all other panes are hidden because this logic is done in the render
+    // function and we already test that in the e2e tests
+}
+
+#[test]
 fn switch_to_next_pane_fullscreen() {
     let size = Size {
         cols: 121,
@@ -14209,6 +14285,29 @@ pub fn nondirectional_resize_increase_with_1_pane() {
         rows: 10,
     };
     let stacked_resize = false; // note - this is not the default
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab_resize_increase(&mut tab, 1);
+
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().position_and_size().y,
+        0,
+        "There is only 1 pane so both coordinates should be 0"
+    );
+
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().position_and_size().x,
+        0,
+        "There is only 1 pane so both coordinates should be 0"
+    );
+}
+
+#[test]
+pub fn nondirectional_resize_increase_with_1_pane_with_stacked_resizes() {
+    let size = Size {
+        cols: 121,
+        rows: 10,
+    };
+    let stacked_resize = true; // note - this is not the default
     let mut tab = create_new_tab(size, stacked_resize);
     tab_resize_increase(&mut tab, 1);
 
