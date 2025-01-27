@@ -31,6 +31,7 @@ jobs:
       - name: Setup toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          cache: false
           rustflags: ""
 
       - name: Build
