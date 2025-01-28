@@ -25,6 +25,7 @@ impl TryFrom<ProtobufStyle> for Style {
     }
 }
 
+#[allow(deprecated)]
 impl TryFrom<Style> for ProtobufStyle {
     type Error = &'static str;
     fn try_from(style: Style) -> Result<Self, &'static str> {
