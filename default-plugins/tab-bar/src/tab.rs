@@ -31,7 +31,7 @@ pub fn render_tab(
     let separator_width = separator.width();
 
     let alternate_tab_color = if is_alternate_tab {
-        palette.text_unselected.background
+        palette.ribbon_unselected.emphasis_1
     } else {
         palette.ribbon_unselected.background
     };

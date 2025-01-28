@@ -27,7 +27,7 @@ pub fn render_tab(
     let focused_clients = tab.other_focused_clients.as_slice();
     let separator_width = separator.width();
     let alternate_tab_color = if is_alternate_tab {
-        palette.ribbon_unselected.emphasis_0
+        palette.ribbon_unselected.emphasis_1
     } else {
         palette.ribbon_unselected.background
     };
