@@ -18,7 +18,7 @@ use crate::{
 };
 use stacked_panes::StackedPanes;
 use zellij_utils::{
-    data::{Direction, ModeInfo, Palette, PaneInfo, Resize, ResizeStrategy, Style, Styling},
+    data::{Direction, ModeInfo, PaneInfo, Resize, ResizeStrategy, Style, Styling},
     errors::prelude::*,
     input::{
         command::RunCommand,
