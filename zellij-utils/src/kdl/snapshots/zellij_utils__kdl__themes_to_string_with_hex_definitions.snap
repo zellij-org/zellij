@@ -41,19 +41,19 @@ themes {
             background 0
             emphasis_0 208 135 112
             emphasis_1 136 192 208
-            emphasis_2 191 97 106
+            emphasis_2 163 190 140
             emphasis_3 180 142 173
         }
         table_cell_selected {
-            base 163 190 140
+            base 229 233 240
             background 46 52 64
             emphasis_0 208 135 112
             emphasis_1 136 192 208
-            emphasis_2 191 97 106
+            emphasis_2 163 190 140
             emphasis_3 180 142 173
         }
         table_cell_unselected {
-            base 216 222 233
+            base 229 233 240
             background 59 66 82
             emphasis_0 208 135 112
             emphasis_1 136 192 208
@@ -61,15 +61,15 @@ themes {
             emphasis_3 180 142 173
         }
         list_selected {
-            base 163 190 140
+            base 229 233 240
             background 46 52 64
             emphasis_0 208 135 112
             emphasis_1 136 192 208
-            emphasis_2 191 97 106
+            emphasis_2 163 190 140
             emphasis_3 180 142 173
         }
         list_unselected {
-            base 216 222 233
+            base 229 233 240
             background 46 52 64
             emphasis_0 208 135 112
             emphasis_1 136 192 208
@@ -85,7 +85,7 @@ themes {
             emphasis_3 0
         }
         frame_unselected {
-            base 208 135 112
+            base 7
             background 0
             emphasis_0 0
             emphasis_1 0
@@ -93,12 +93,12 @@ themes {
             emphasis_3 59 66 82
         }
         frame_highlight {
-            base 163 190 140
+            base 208 135 112
             background 0
-            emphasis_0 163 190 140
-            emphasis_1 163 190 140
-            emphasis_2 163 190 140
-            emphasis_3 163 190 140
+            emphasis_0 208 135 112
+            emphasis_1 208 135 112
+            emphasis_2 208 135 112
+            emphasis_3 208 135 112
         }
         exit_code_success {
             base 163 190 140

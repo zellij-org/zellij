@@ -41,19 +41,19 @@ themes {
             background 0
             emphasis_0 255 184 108
             emphasis_1 139 233 253
-            emphasis_2 255 85 85
+            emphasis_2 80 250 123
             emphasis_3 255 121 198
         }
         table_cell_selected {
-            base 80 250 123
+            base 255 255 255
             background 40 42 54
             emphasis_0 255 184 108
             emphasis_1 139 233 253
-            emphasis_2 255 85 85
+            emphasis_2 80 250 123
             emphasis_3 255 121 198
         }
         table_cell_unselected {
-            base 248 248 242
+            base 255 255 255
             background 0 0 0
             emphasis_0 255 184 108
             emphasis_1 139 233 253
@@ -61,15 +61,15 @@ themes {
             emphasis_3 255 121 198
         }
         list_selected {
-            base 80 250 123
+            base 255 255 255
             background 40 42 54
             emphasis_0 255 184 108
             emphasis_1 139 233 253
-            emphasis_2 255 85 85
+            emphasis_2 80 250 123
             emphasis_3 255 121 198
         }
         list_unselected {
-            base 248 248 242
+            base 255 255 255
             background 40 42 54
             emphasis_0 255 184 108
             emphasis_1 139 233 253
@@ -85,7 +85,7 @@ themes {
             emphasis_3 0
         }
         frame_unselected {
-            base 255 184 108
+            base 7
             background 0
             emphasis_0 0
             emphasis_1 0
@@ -93,12 +93,12 @@ themes {
             emphasis_3 0 0 0
         }
         frame_highlight {
-            base 80 250 123
+            base 255 184 108
             background 0
-            emphasis_0 80 250 123
-            emphasis_1 80 250 123
-            emphasis_2 80 250 123
-            emphasis_3 80 250 123
+            emphasis_0 255 184 108
+            emphasis_1 255 184 108
+            emphasis_2 255 184 108
+            emphasis_3 255 184 108
         }
         exit_code_success {
             base 80 250 123
@@ -167,19 +167,19 @@ themes {
             background 0
             emphasis_0 208 135 112
             emphasis_1 136 192 208
-            emphasis_2 191 97 106
+            emphasis_2 163 190 140
             emphasis_3 180 142 173
         }
         table_cell_selected {
-            base 163 190 140
+            base 229 233 240
             background 46 52 64
             emphasis_0 208 135 112
             emphasis_1 136 192 208
-            emphasis_2 191 97 106
+            emphasis_2 163 190 140
             emphasis_3 180 142 173
         }
         table_cell_unselected {
-            base 216 222 233
+            base 229 233 240
             background 59 66 82
             emphasis_0 208 135 112
             emphasis_1 136 192 208
@@ -187,15 +187,15 @@ themes {
             emphasis_3 180 142 173
         }
         list_selected {
-            base 163 190 140
+            base 229 233 240
             background 46 52 64
             emphasis_0 208 135 112
             emphasis_1 136 192 208
-            emphasis_2 191 97 106
+            emphasis_2 163 190 140
             emphasis_3 180 142 173
         }
         list_unselected {
-            base 216 222 233
+            base 229 233 240
             background 46 52 64
             emphasis_0 208 135 112
             emphasis_1 136 192 208
@@ -211,7 +211,7 @@ themes {
             emphasis_3 0
         }
         frame_unselected {
-            base 208 135 112
+            base 7
             background 0
             emphasis_0 0
             emphasis_1 0
@@ -219,12 +219,12 @@ themes {
             emphasis_3 59 66 82
         }
         frame_highlight {
-            base 163 190 140
+            base 208 135 112
             background 0
-            emphasis_0 163 190 140
-            emphasis_1 163 190 140
-            emphasis_2 163 190 140
-            emphasis_3 163 190 140
+            emphasis_0 208 135 112
+            emphasis_1 208 135 112
+            emphasis_2 208 135 112
+            emphasis_3 208 135 112
         }
         exit_code_success {
             base 163 190 140

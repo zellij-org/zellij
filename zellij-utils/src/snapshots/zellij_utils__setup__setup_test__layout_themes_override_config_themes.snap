@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 841
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -6009,12 +6008,8 @@ Config {
                     ),
                 },
                 frame_unselected: StyleDeclaration {
-                    base: Rgb(
-                        (
-                            2,
-                            2,
-                            2,
-                        ),
+                    base: EightBit(
+                        7,
                     ),
                     background: EightBit(
                         0,
@@ -6630,12 +6625,8 @@ Config {
                     ),
                 },
                 frame_unselected: StyleDeclaration {
-                    base: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
+                    base: EightBit(
+                        7,
                     ),
                     background: EightBit(
                         0,
@@ -7251,12 +7242,8 @@ Config {
                     ),
                 },
                 frame_unselected: StyleDeclaration {
-                    base: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
+                    base: EightBit(
+                        7,
                     ),
                     background: EightBit(
                         0,
@@ -7600,4 +7587,5 @@ Config {
         },
     },
     env: {},
-
+    background_plugins: {},
+}

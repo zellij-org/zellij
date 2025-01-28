@@ -209,9 +209,9 @@ expression: "format!(\"{:#?}\", theme)"
                 ),
                 emphasis_2: Rgb(
                     (
-                        255,
-                        85,
-                        85,
+                        80,
+                        250,
+                        123,
                     ),
                 ),
                 emphasis_3: Rgb(
@@ -225,9 +225,9 @@ expression: "format!(\"{:#?}\", theme)"
             table_cell_unselected: StyleDeclaration {
                 base: Rgb(
                     (
-                        248,
-                        248,
-                        242,
+                        255,
+                        255,
+                        255,
                     ),
                 ),
                 background: Rgb(
@@ -269,9 +269,9 @@ expression: "format!(\"{:#?}\", theme)"
             table_cell_selected: StyleDeclaration {
                 base: Rgb(
                     (
-                        80,
-                        250,
-                        123,
+                        255,
+                        255,
+                        255,
                     ),
                 ),
                 background: Rgb(
@@ -297,9 +297,9 @@ expression: "format!(\"{:#?}\", theme)"
                 ),
                 emphasis_2: Rgb(
                     (
-                        255,
-                        85,
-                        85,
+                        80,
+                        250,
+                        123,
                     ),
                 ),
                 emphasis_3: Rgb(
@@ -313,9 +313,9 @@ expression: "format!(\"{:#?}\", theme)"
             list_unselected: StyleDeclaration {
                 base: Rgb(
                     (
-                        248,
-                        248,
-                        242,
+                        255,
+                        255,
+                        255,
                     ),
                 ),
                 background: Rgb(
@@ -357,9 +357,9 @@ expression: "format!(\"{:#?}\", theme)"
             list_selected: StyleDeclaration {
                 base: Rgb(
                     (
-                        80,
-                        250,
-                        123,
+                        255,
+                        255,
+                        255,
                     ),
                 ),
                 background: Rgb(
@@ -385,9 +385,9 @@ expression: "format!(\"{:#?}\", theme)"
                 ),
                 emphasis_2: Rgb(
                     (
-                        255,
-                        85,
-                        85,
+                        80,
+                        250,
+                        123,
                     ),
                 ),
                 emphasis_3: Rgb(
@@ -399,12 +399,8 @@ expression: "format!(\"{:#?}\", theme)"
                 ),
             },
             frame_unselected: StyleDeclaration {
-                base: Rgb(
-                    (
-                        255,
-                        184,
-                        108,
-                    ),
+                base: EightBit(
+                    7,
                 ),
                 background: EightBit(
                     0,
@@ -465,9 +461,9 @@ expression: "format!(\"{:#?}\", theme)"
             frame_highlight: StyleDeclaration {
                 base: Rgb(
                     (
-                        80,
-                        250,
-                        123,
+                        255,
+                        184,
+                        108,
                     ),
                 ),
                 background: EightBit(
@@ -475,30 +471,30 @@ expression: "format!(\"{:#?}\", theme)"
                 ),
                 emphasis_0: Rgb(
                     (
-                        80,
-                        250,
-                        123,
+                        255,
+                        184,
+                        108,
                     ),
                 ),
                 emphasis_1: Rgb(
                     (
-                        80,
-                        250,
-                        123,
+                        255,
+                        184,
+                        108,
                     ),
                 ),
                 emphasis_2: Rgb(
                     (
-                        80,
-                        250,
-                        123,
+                        255,
+                        184,
+                        108,
                     ),
                 ),
                 emphasis_3: Rgb(
                     (
-                        80,
-                        250,
-                        123,
+                        255,
+                        184,
+                        108,
                     ),
                 ),
             },
