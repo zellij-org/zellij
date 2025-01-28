@@ -48,6 +48,7 @@ features = [
   'component-model',
   'std',
   'gc',
+  'gc-drc',
 ]
 
 [dev-dependencies]
