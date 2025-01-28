@@ -5610,6 +5610,7 @@ Config {
         serialization_interval: None,
         disable_session_metadata: None,
         support_kitty_keyboard_protocol: None,
+        stacked_resize: None,
     },
     themes: {},
     plugins: PluginAliases {

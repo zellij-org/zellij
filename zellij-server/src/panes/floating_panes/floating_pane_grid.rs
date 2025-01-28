@@ -856,7 +856,7 @@ pub fn half_size_middle_geom(space: &Viewport, offset: usize) -> PaneGeom {
         y: space.y + (space.rows as f64 / 4.0).round() as usize + offset,
         cols: Dimension::fixed(space.cols / 2),
         rows: Dimension::fixed(space.rows / 2),
-        is_stacked: false,
+        stacked: None,
         is_pinned: false,
         logical_position: None,
     };
@@ -871,7 +871,7 @@ fn half_size_top_left_geom(space: &Viewport, offset: usize) -> PaneGeom {
         y: space.y + 2 + offset,
         cols: Dimension::fixed(space.cols / 3),
         rows: Dimension::fixed(space.rows / 3),
-        is_stacked: false,
+        stacked: None,
         is_pinned: false,
         logical_position: None,
     };
@@ -886,7 +886,7 @@ fn half_size_top_right_geom(space: &Viewport, offset: usize) -> PaneGeom {
         y: space.y + 2 + offset,
         cols: Dimension::fixed(space.cols / 3),
         rows: Dimension::fixed(space.rows / 3),
-        is_stacked: false,
+        stacked: None,
         is_pinned: false,
         logical_position: None,
     };
@@ -901,7 +901,7 @@ fn half_size_bottom_left_geom(space: &Viewport, offset: usize) -> PaneGeom {
         y: ((space.y + space.rows) - (space.rows / 3) - 2).saturating_sub(offset),
         cols: Dimension::fixed(space.cols / 3),
         rows: Dimension::fixed(space.rows / 3),
-        is_stacked: false,
+        stacked: None,
         is_pinned: false,
         logical_position: None,
     };
@@ -916,7 +916,7 @@ fn half_size_bottom_right_geom(space: &Viewport, offset: usize) -> PaneGeom {
         y: ((space.y + space.rows) - (space.rows / 3) - 2).saturating_sub(offset),
         cols: Dimension::fixed(space.cols / 3),
         rows: Dimension::fixed(space.rows / 3),
-        is_stacked: false,
+        stacked: None,
         is_pinned: false,
         logical_position: None,
     };

@@ -16,7 +16,7 @@ pub struct PaneGeom {
     pub y: usize,
     pub rows: Dimension,
     pub cols: Dimension,
-    pub is_stacked: bool,
+    pub stacked: Option<usize>,          // usize - stack id
     pub is_pinned: bool,                 // only relevant to floating panes
     pub logical_position: Option<usize>, // relevant when placing this pane in a layout
 }
@@ -29,7 +29,7 @@ impl PartialEq for PaneGeom {
             && self.y == other.y
             && self.rows == other.rows
             && self.cols == other.cols
-            && self.is_stacked == other.is_stacked
+            && self.stacked == other.stacked
     }
 }
 
@@ -40,7 +40,7 @@ impl std::hash::Hash for PaneGeom {
         self.y.hash(state);
         self.rows.hash(state);
         self.cols.hash(state);
-        self.is_stacked.hash(state);
+        self.stacked.hash(state);
     }
 }
 
@@ -170,6 +170,35 @@ impl Dimension {
             },
         }
     }
+    pub fn split_out(&mut self, by: f64) -> Self {
+        match self.constraint {
+            Constraint::Percent(percent) => {
+                let split_out_value = percent / by;
+                let split_out_inner_value = self.inner / by as usize;
+                self.constraint = Constraint::Percent(percent - split_out_value);
+                self.inner = self.inner.saturating_sub(split_out_inner_value);
+                let mut split_out_dimension = Self::percent(split_out_value);
+                split_out_dimension.inner = split_out_inner_value;
+                split_out_dimension
+            },
+            Constraint::Fixed(fixed) => {
+                let split_out_value = fixed / by as usize;
+                self.constraint = Constraint::Fixed(fixed - split_out_value);
+                Self::fixed(split_out_value)
+            },
+        }
+    }
+    pub fn reduce_by(&mut self, by: f64, by_inner: usize) {
+        match self.constraint {
+            Constraint::Percent(percent) => {
+                self.constraint = Constraint::Percent(percent - by);
+                self.inner = self.inner.saturating_sub(by_inner);
+            },
+            Constraint::Fixed(_fixed) => {
+                log::error!("Cannot reduce_by fixed dimensions");
+            },
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
@@ -257,6 +286,85 @@ impl PaneGeom {
             self.rows.set_inner(new_rows);
         }
     }
+    pub fn combine_vertically_with(&self, geom_below: &PaneGeom) -> Option<Self> {
+        match (self.rows.constraint, geom_below.rows.constraint) {
+            (Constraint::Percent(self_percent), Constraint::Percent(geom_below_percent)) => {
+                let mut combined = self.clone();
+                combined.rows = Dimension::percent(self_percent + geom_below_percent);
+                combined.rows.inner = self.rows.inner + geom_below.rows.inner;
+                Some(combined)
+            },
+            _ => {
+                log::error!("Can't combine fixed panes");
+                None
+            },
+        }
+    }
+    pub fn combine_horizontally_with(&self, geom_to_the_right: &PaneGeom) -> Option<Self> {
+        match (self.cols.constraint, geom_to_the_right.cols.constraint) {
+            (Constraint::Percent(self_percent), Constraint::Percent(geom_to_the_right_percent)) => {
+                let mut combined = self.clone();
+                combined.cols = Dimension::percent(self_percent + geom_to_the_right_percent);
+                combined.cols.inner = self.cols.inner + geom_to_the_right.cols.inner;
+                Some(combined)
+            },
+            _ => {
+                log::error!("Can't combine fixed panes");
+                None
+            },
+        }
+    }
+    pub fn combine_vertically_with_many(&self, geoms_below: &Vec<PaneGeom>) -> Option<Self> {
+        // here we expect the geoms to be sorted by their y and be contiguous (i.e. same x and
+        // width, no overlaps) and be below self
+        let mut combined = self.clone();
+        for geom_below in geoms_below {
+            match (combined.rows.constraint, geom_below.rows.constraint) {
+                (
+                    Constraint::Percent(combined_percent),
+                    Constraint::Percent(geom_below_percent),
+                ) => {
+                    let new_rows_inner = combined.rows.inner + geom_below.rows.inner;
+                    combined.rows = Dimension::percent(combined_percent + geom_below_percent);
+                    combined.rows.inner = new_rows_inner;
+                },
+                _ => {
+                    log::error!("Can't combine fixed panes");
+                    return None;
+                },
+            }
+        }
+        Some(combined)
+    }
+    pub fn combine_horizontally_with_many(
+        &self,
+        geoms_to_the_right: &Vec<PaneGeom>,
+    ) -> Option<Self> {
+        // here we expect the geoms to be sorted by their x and be contiguous (i.e. same x and
+        // width, no overlaps) and be right of self
+        let mut combined = self.clone();
+        for geom_to_the_right in geoms_to_the_right {
+            match (combined.cols.constraint, geom_to_the_right.cols.constraint) {
+                (
+                    Constraint::Percent(combined_percent),
+                    Constraint::Percent(geom_to_the_right_percent),
+                ) => {
+                    let new_cols = combined.cols.inner + geom_to_the_right.cols.inner;
+                    combined.cols =
+                        Dimension::percent(combined_percent + geom_to_the_right_percent);
+                    combined.cols.inner = new_cols;
+                },
+                _ => {
+                    log::error!("Can't combine fixed panes");
+                    return None;
+                },
+            }
+        }
+        Some(combined)
+    }
+    pub fn is_stacked(&self) -> bool {
+        self.stacked.is_some()
+    }
 }
 
 impl Display for PaneGeom {
@@ -266,7 +374,8 @@ impl Display for PaneGeom {
         write!(f, r#""y": {},"#, self.y)?;
         write!(f, r#""cols": {},"#, self.cols.constraint)?;
         write!(f, r#""rows": {},"#, self.rows.constraint)?;
-        write!(f, r#""stacked": {}"#, self.is_stacked)?;
+        write!(f, r#""stacked": {:?}"#, self.stacked)?;
+        write!(f, r#""logical_position": {:?}"#, self.logical_position)?;
         write!(f, " }}")?;
 
         Ok(())

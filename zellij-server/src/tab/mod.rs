@@ -157,6 +157,7 @@ pub(crate) struct Tab {
     viewport: Rc<RefCell<Viewport>>, // includes all non-UI panes
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+    stacked_resize: Rc<RefCell<bool>>,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     os_api: Box<dyn ServerOsApi>,
     pub senders: ThreadSenders,
@@ -564,6 +565,7 @@ impl Tab {
         name: String,
         display_area: Size,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+        stacked_resize: Rc<RefCell<bool>>,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
@@ -608,6 +610,7 @@ impl Tab {
             connected_clients_in_app.clone(),
             mode_info.clone(),
             character_cell_size.clone(),
+            stacked_resize.clone(),
             session_is_mirrored,
             draw_pane_frames,
             default_mode_info.clone(),
@@ -647,6 +650,7 @@ impl Tab {
             viewport,
             display_area,
             character_cell_size,
+            stacked_resize,
             sixel_image_store,
             synchronize_is_active: false,
             os_api,
@@ -4256,9 +4260,10 @@ impl Tab {
             if should_auto_layout {
                 // no need to relayout here, we'll do it when reapplying the swap layout
                 // below
-                self.tiled_panes.insert_pane_without_relayout(pane_id, pane);
+                self.tiled_panes
+                    .insert_pane_without_relayout(pane_id, pane, client_id);
             } else {
-                self.tiled_panes.insert_pane(pane_id, pane);
+                self.tiled_panes.insert_pane(pane_id, pane, client_id);
             }
             self.set_should_clear_display_before_rendering();
             if let Some(client_id) = client_id {
@@ -4346,7 +4351,10 @@ impl Tab {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else if self.tiled_panes.panes_contain(&pane_id) {
-            match self.tiled_panes.resize_pane_with_id(strategy, pane_id) {
+            match self
+                .tiled_panes
+                .resize_pane_with_id(strategy, pane_id, None)
+            {
                 Ok(_) => {},
                 Err(err) => match err.downcast_ref::<ZellijError>() {
                     Some(ZellijError::CantResizeFixedPanes { pane_ids }) => {

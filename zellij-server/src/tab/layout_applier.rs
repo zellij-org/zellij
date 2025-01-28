@@ -1000,7 +1000,7 @@ impl<'a> PaneApplier<'a> {
     ) {
         for pane_id in remaining_pane_ids {
             if let Some(pane) = existing_tab_state.remove_pane(&pane_id) {
-                self.tiled_panes.insert_pane(pane.pid(), pane);
+                self.tiled_panes.insert_pane(pane.pid(), pane, None);
             }
         }
     }

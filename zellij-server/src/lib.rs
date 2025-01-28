@@ -363,6 +363,7 @@ impl SessionMetaData {
                     auto_layout: new_config.options.auto_layout.unwrap_or(true),
                     rounded_corners: new_config.ui.pane_frames.rounded_corners,
                     hide_session_name: new_config.ui.pane_frames.hide_session_name,
+                    stacked_resize: new_config.options.stacked_resize.unwrap_or(true),
                 })
                 .unwrap();
             self.senders

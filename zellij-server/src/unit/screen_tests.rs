@@ -271,6 +271,7 @@ fn create_new_screen(size: Size) -> Screen {
     let styled_underlines = true;
     let arrow_fonts = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
+    let stacked_resize = true;
     let screen = Screen::new(
         bus,
         &client_attributes,
@@ -291,6 +292,7 @@ fn create_new_screen(size: Size) -> Screen {
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
+        stacked_resize,
     );
     screen
 }

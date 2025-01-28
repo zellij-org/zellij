@@ -455,7 +455,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
-            is_stacked: false,
+            stacked: None,
             is_pinned: false,
             logical_position: None,
         };
@@ -493,7 +493,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
-            is_stacked: false,
+            stacked: None,
             is_pinned: false,
             logical_position: None,
         };
@@ -531,7 +531,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
-            is_stacked: false,
+            stacked: None,
             is_pinned: false,
             logical_position: None,
         };
@@ -572,7 +572,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
-            is_stacked: false,
+            stacked: None,
             is_pinned: false,
             logical_position: None,
         };
@@ -620,7 +620,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
-            is_stacked: false,
+            stacked: None,
             is_pinned: false,
             logical_position: None,
         };
@@ -658,7 +658,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
-            is_stacked: false,
+            stacked: None,
             is_pinned: false,
             logical_position: None,
         };
@@ -696,7 +696,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
-            is_stacked: false,
+            stacked: None,
             is_pinned: false,
             logical_position: None,
         };
@@ -735,7 +735,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
-            is_stacked: false,
+            stacked: None,
             is_pinned: false,
             logical_position: None,
         };

@@ -143,7 +143,7 @@ fn tab_resize_right(tab: &mut Tab, id: ClientId) {
     .unwrap();
 }
 
-fn create_new_tab(size: Size) -> Tab {
+fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
     let index = 0;
     let position = 0;
     let name = String::new();
@@ -158,6 +158,7 @@ fn create_new_tab(size: Size) -> Tab {
     let session_is_mirrored = true;
     let mut connected_clients = HashSet::new();
     let character_cell_info = Rc::new(RefCell::new(None));
+    let stacked_resize = Rc::new(RefCell::new(stacked_resize));
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
@@ -174,6 +175,7 @@ fn create_new_tab(size: Size) -> Tab {
         name,
         size,
         character_cell_info,
+        stacked_resize,
         sixel_image_store,
         os_api,
         senders,
@@ -222,6 +224,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let session_is_mirrored = true;
     let mut connected_clients = HashSet::new();
     let character_cell_info = Rc::new(RefCell::new(None));
+    let stacked_resize = Rc::new(RefCell::new(true));
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
@@ -238,6 +241,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         name,
         size,
         character_cell_info,
+        stacked_resize,
         sixel_image_store,
         os_api,
         senders,
@@ -302,12 +306,14 @@ fn create_new_tab_with_cell_size(
     let arrow_fonts = true;
     let styled_underlines = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
+    let stacked_resize = Rc::new(RefCell::new(true));
     let mut tab = Tab::new(
         index,
         position,
         name,
         size,
         character_cell_size,
+        stacked_resize,
         sixel_image_store,
         os_api,
         senders,
@@ -347,7 +353,8 @@ fn write_to_suppressed_pane() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
 
     // Suppress pane 2 and remove it from active panes
@@ -374,7 +381,8 @@ fn split_panes_vertically() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
     tab.vertical_split(new_pane_id, None, 1).unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "The tab has two panes");
@@ -470,7 +478,8 @@ fn split_panes_horizontally() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
     tab.horizontal_split(new_pane_id, None, 1).unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "The tab has two panes");
@@ -568,7 +577,8 @@ fn split_largest_pane() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = false; // note - this is not the default
+    let mut tab = create_new_tab(size, stacked_resize);
     for i in 2..5 {
         let new_pane_id = PaneId::Terminal(i);
         tab.new_pane(new_pane_id, None, None, None, None, false, Some(1))
@@ -752,7 +762,8 @@ fn split_largest_pane() {
 #[test]
 pub fn cannot_split_panes_vertically_when_active_pane_is_too_small() {
     let size = Size { cols: 8, rows: 20 };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     assert_eq!(
         tab.tiled_panes.panes.len(),
@@ -764,7 +775,8 @@ pub fn cannot_split_panes_vertically_when_active_pane_is_too_small() {
 #[test]
 pub fn cannot_split_panes_horizontally_when_active_pane_is_too_small() {
     let size = Size { cols: 121, rows: 4 };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     assert_eq!(
         tab.tiled_panes.panes.len(),
@@ -776,7 +788,8 @@ pub fn cannot_split_panes_horizontally_when_active_pane_is_too_small() {
 #[test]
 pub fn cannot_split_largest_pane_when_there_is_no_room() {
     let size = Size { cols: 8, rows: 4 };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.new_pane(PaneId::Terminal(2), None, None, None, None, false, Some(1))
         .unwrap();
     assert_eq!(
@@ -818,7 +831,8 @@ pub fn toggle_focused_pane_fullscreen() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = false; // note - this is not the default
+    let mut tab = create_new_tab(size, stacked_resize);
     for i in 2..5 {
         let new_pane_id = PaneId::Terminal(i);
         tab.new_pane(new_pane_id, None, None, None, None, false, Some(1))
@@ -887,13 +901,90 @@ pub fn toggle_focused_pane_fullscreen() {
 }
 
 #[test]
+pub fn toggle_focused_pane_fullscreen_with_stacked_resizes() {
+    // note - this is the default
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    for i in 2..5 {
+        let new_pane_id = PaneId::Terminal(i);
+        tab.new_pane(new_pane_id, None, None, None, None, false, Some(1))
+            .unwrap();
+    }
+    tab.toggle_active_pane_fullscreen(1);
+    assert_eq!(
+        tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap().x(),
+        0,
+        "Pane x is on screen edge"
+    );
+    assert_eq!(
+        tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap().y(),
+        0,
+        "Pane y is on screen edge"
+    );
+    assert_eq!(
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(4))
+            .unwrap()
+            .cols(),
+        121,
+        "Pane cols match fullscreen cols"
+    );
+    assert_eq!(
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(4))
+            .unwrap()
+            .rows(),
+        20,
+        "Pane rows match fullscreen rows"
+    );
+    tab.toggle_active_pane_fullscreen(1);
+    assert_eq!(
+        tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap().x(),
+        61,
+        "Pane x is back to its original position"
+    );
+    assert_eq!(
+        tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap().y(),
+        2,
+        "Pane y is back to its original position"
+    );
+    assert_eq!(
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(4))
+            .unwrap()
+            .cols(),
+        60,
+        "Pane cols are back at their original position"
+    );
+    assert_eq!(
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(4))
+            .unwrap()
+            .rows(),
+        18,
+        "Pane rows are back at their original position"
+    );
+    // we don't test if all other panes are hidden because this logic is done in the render
+    // function and we already test that in the e2e tests
+}
+
+#[test]
 fn switch_to_next_pane_fullscreen() {
     let size = Size {
         cols: 121,
         rows: 20,
     };
 
-    let mut active_tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut active_tab = create_new_tab(size, stacked_resize);
 
     active_tab
         .new_pane(PaneId::Terminal(1), None, None, None, None, false, Some(1))
@@ -931,7 +1022,8 @@ fn switch_to_prev_pane_fullscreen() {
         cols: 121,
         rows: 20,
     };
-    let mut active_tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut active_tab = create_new_tab(size, stacked_resize);
 
     //testing four consecutive switches in fullscreen mode
 
@@ -979,7 +1071,8 @@ pub fn close_pane_with_another_pane_above_it() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
     tab.horizontal_split(new_pane_id, None, 1).unwrap();
     tab.close_focused_pane(1).unwrap();
@@ -1044,7 +1137,8 @@ pub fn close_pane_with_another_pane_below_it() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
     tab.horizontal_split(new_pane_id, None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
@@ -1107,7 +1201,8 @@ pub fn close_pane_with_another_pane_to_the_left() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
     tab.vertical_split(new_pane_id, None, 1).unwrap();
     tab.close_focused_pane(1).unwrap();
@@ -1169,7 +1264,8 @@ pub fn close_pane_with_another_pane_to_the_right() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
     tab.vertical_split(new_pane_id, None, 1).unwrap();
     tab.move_focus_left(1).unwrap();
@@ -1234,7 +1330,8 @@ pub fn close_pane_with_multiple_panes_above_it() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     tab.horizontal_split(new_pane_id_1, None, 1).unwrap();
@@ -1345,7 +1442,8 @@ pub fn close_pane_with_multiple_panes_below_it() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     tab.horizontal_split(new_pane_id_1, None, 1).unwrap();
@@ -1455,7 +1553,8 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     tab.vertical_split(new_pane_id_1, None, 1).unwrap();
@@ -1566,7 +1665,8 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     tab.vertical_split(new_pane_id_1, None, 1).unwrap();
@@ -1676,7 +1776,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -1976,7 +2077,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -2277,7 +2379,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -2581,7 +2684,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -2873,7 +2977,8 @@ pub fn move_focus_down() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
 
     tab.horizontal_split(new_pane_id, None, 1).unwrap();
@@ -2893,7 +2998,8 @@ pub fn move_focus_down_to_the_most_recently_used_pane() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -2922,7 +3028,8 @@ pub fn move_focus_up() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
 
     tab.horizontal_split(new_pane_id, None, 1).unwrap();
@@ -2941,7 +3048,8 @@ pub fn move_focus_up_to_the_most_recently_used_pane() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -2971,7 +3079,8 @@ pub fn move_focus_left() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
 
     tab.vertical_split(new_pane_id, None, 1).unwrap();
@@ -2990,7 +3099,8 @@ pub fn move_focus_left_to_the_most_recently_used_pane() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -3020,7 +3130,8 @@ pub fn move_focus_right() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
 
     tab.vertical_split(new_pane_id, None, 1).unwrap();
@@ -3040,7 +3151,8 @@ pub fn move_focus_right_to_the_most_recently_used_pane() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -3069,7 +3181,8 @@ pub fn move_active_pane_down() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
 
     tab.horizontal_split(new_pane_id, None, 1).unwrap();
@@ -3094,7 +3207,8 @@ pub fn move_active_pane_down_to_the_most_recently_used_position() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -3128,7 +3242,8 @@ pub fn move_active_pane_up() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
 
     tab.horizontal_split(new_pane_id, None, 1).unwrap();
@@ -3152,7 +3267,8 @@ pub fn move_active_pane_up_to_the_most_recently_used_position() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -3188,7 +3304,8 @@ pub fn move_active_pane_left() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
 
     tab.vertical_split(new_pane_id, None, 1).unwrap();
@@ -3212,7 +3329,8 @@ pub fn move_active_pane_left_to_the_most_recently_used_position() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -3248,7 +3366,8 @@ pub fn move_active_pane_right() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
 
     tab.vertical_split(new_pane_id, None, 1).unwrap();
@@ -3273,7 +3392,8 @@ pub fn move_active_pane_right_to_the_most_recently_used_position() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -3316,7 +3436,8 @@ pub fn resize_down_with_pane_above() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
     tab.horizontal_split(new_pane_id, None, 1).unwrap();
     tab_resize_down(&mut tab, 1);
@@ -3422,7 +3543,8 @@ pub fn resize_down_with_pane_below() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
     tab.horizontal_split(new_pane_id, None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
@@ -3533,7 +3655,8 @@ pub fn resize_down_with_panes_above_and_below() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let first_pane_id = PaneId::Terminal(1);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -3686,7 +3809,8 @@ pub fn resize_down_with_multiple_panes_above() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let first_pane_id = PaneId::Terminal(1);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
@@ -3840,7 +3964,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let pane_above_and_left = PaneId::Terminal(1);
     let pane_to_the_left = PaneId::Terminal(2);
     let focused_pane = PaneId::Terminal(3);
@@ -4040,7 +4165,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let pane_to_the_left = PaneId::Terminal(1);
     let pane_below_and_left = PaneId::Terminal(2);
     let pane_below = PaneId::Terminal(3);
@@ -4239,7 +4365,8 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let pane_above = PaneId::Terminal(1);
     let focused_pane = PaneId::Terminal(2);
     let pane_to_the_right = PaneId::Terminal(3);
@@ -4440,7 +4567,8 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     let focused_pane = PaneId::Terminal(1);
     let pane_below = PaneId::Terminal(2);
     let pane_below_and_right = PaneId::Terminal(3);
@@ -4640,7 +4768,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, 1).unwrap();
@@ -4925,7 +5054,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, 1).unwrap();
@@ -5209,7 +5339,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         cols: 122,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
@@ -5583,7 +5714,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         cols: 122,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
@@ -5957,7 +6089,8 @@ pub fn cannot_resize_down_when_pane_below_is_at_minimum_height() {
         cols: 121,
         rows: 10,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_down(&mut tab, 1);
@@ -6137,7 +6270,8 @@ pub fn resize_left_with_pane_to_the_left() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab_resize_left(&mut tab, 1);
 
@@ -6240,7 +6374,8 @@ pub fn resize_left_with_pane_to_the_right() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_left(&mut tab, 1);
@@ -6345,7 +6480,8 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.move_focus_left(1).unwrap();
@@ -6493,7 +6629,8 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_left(1).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
@@ -6643,7 +6780,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
@@ -6837,7 +6975,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
@@ -7032,7 +7171,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
@@ -7225,7 +7365,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
@@ -7421,7 +7562,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, 1).unwrap();
@@ -7706,7 +7848,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, 1).unwrap();
@@ -7992,7 +8135,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         cols: 121,
         rows: 70,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, 1).unwrap();
@@ -8367,7 +8511,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         cols: 121,
         rows: 70,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, 1).unwrap();
@@ -8738,7 +8883,8 @@ pub fn cannot_resize_left_when_pane_to_the_left_is_at_minimum_width() {
     // █ == focused pane
 
     let size = Size { cols: 10, rows: 20 };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab_resize_left(&mut tab, 1);
 
@@ -8779,7 +8925,8 @@ pub fn resize_right_with_pane_to_the_left() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab_resize_right(&mut tab, 1);
 
@@ -8883,7 +9030,8 @@ pub fn resize_right_with_pane_to_the_right() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_right(&mut tab, 1);
@@ -8988,7 +9136,8 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.move_focus_left(1).unwrap();
@@ -9137,7 +9286,8 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_left(1).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
@@ -9287,7 +9437,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_left(1).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
@@ -9480,7 +9631,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_left(1).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
@@ -9675,7 +9827,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_left(1).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
@@ -9870,7 +10023,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_left(1).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
@@ -10068,7 +10222,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, 1).unwrap();
@@ -10352,7 +10507,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, 1).unwrap();
@@ -10637,7 +10793,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         cols: 121,
         rows: 70,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, 1).unwrap();
@@ -11011,7 +11168,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         cols: 121,
         rows: 70,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, 1).unwrap();
@@ -11381,7 +11539,8 @@ pub fn cannot_resize_right_when_pane_to_the_left_is_at_minimum_width() {
     // └─┴─┘                   └─┴─┘
     // █ == focused pane
     let size = Size { cols: 10, rows: 20 };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab_resize_right(&mut tab, 1);
 
@@ -11469,7 +11628,8 @@ pub fn resize_up_with_pane_above() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab_resize_up(&mut tab, 1);
 
@@ -11574,7 +11734,8 @@ pub fn resize_up_with_pane_below() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_up(&mut tab, 1);
@@ -11683,7 +11844,8 @@ pub fn resize_up_with_panes_above_and_below() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
@@ -11832,7 +11994,8 @@ pub fn resize_up_with_multiple_panes_above() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
@@ -11981,7 +12144,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
@@ -12176,7 +12340,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
@@ -12372,7 +12537,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
@@ -12568,7 +12734,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
@@ -12765,7 +12932,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, 1).unwrap();
@@ -13048,7 +13216,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         cols: 121,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, 1).unwrap();
@@ -13332,7 +13501,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         cols: 122,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
@@ -13705,7 +13875,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         cols: 122,
         rows: 30,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
@@ -14078,7 +14249,8 @@ pub fn cannot_resize_up_when_pane_above_is_at_minimum_height() {
         cols: 121,
         rows: 10,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.horizontal_split(PaneId::Terminal(2), None, 1).unwrap();
     tab_resize_down(&mut tab, 1);
 
@@ -14112,7 +14284,31 @@ pub fn nondirectional_resize_increase_with_1_pane() {
         cols: 121,
         rows: 10,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = false; // note - this is not the default
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab_resize_increase(&mut tab, 1);
+
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().position_and_size().y,
+        0,
+        "There is only 1 pane so both coordinates should be 0"
+    );
+
+    assert_eq!(
+        tab.get_active_pane(1).unwrap().position_and_size().x,
+        0,
+        "There is only 1 pane so both coordinates should be 0"
+    );
+}
+
+#[test]
+pub fn nondirectional_resize_increase_with_1_pane_with_stacked_resizes() {
+    let size = Size {
+        cols: 121,
+        rows: 10,
+    };
+    let stacked_resize = true; // note - this is not the default
+    let mut tab = create_new_tab(size, stacked_resize);
     tab_resize_increase(&mut tab, 1);
 
     assert_eq!(
@@ -14134,7 +14330,8 @@ pub fn nondirectional_resize_increase_with_1_pane_to_left() {
         cols: 121,
         rows: 10,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = false; // note - this is not the default
+    let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     tab.vertical_split(new_pane_id_1, None, 1).unwrap();
     tab_resize_increase(&mut tab, 1);
@@ -14168,7 +14365,8 @@ pub fn nondirectional_resize_increase_with_2_panes_to_left() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = false; // note - this is not the default
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_left(1).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
@@ -14226,7 +14424,8 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_above() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = false; // note - this is not the default
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.move_focus_left(1).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
@@ -14282,7 +14481,8 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_to_left() {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = false; // note - this is not the default
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.move_focus_left(1).unwrap();
@@ -14338,7 +14538,8 @@ pub fn nondirectional_resize_increase_with_pane_above_aligned_right_with_current
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = false; // note - this is not the default
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.move_focus_left(1).unwrap();
@@ -14419,7 +14620,8 @@ fn correctly_resize_frameless_panes_on_pane_close() {
     let cols = 60;
     let rows = 20;
     let size = Size { cols, rows };
-    let mut tab = create_new_tab(size);
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
     tab.set_pane_frames(false);
 
     // a single frameless pane should take up all available space
