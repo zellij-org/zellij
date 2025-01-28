@@ -22,9 +22,16 @@ pub fn ribbon(
         character_style(declaration.base, declaration.background),
         character_style(declaration.background, background),
     );
+
+    let (arrow, padding) = if arrow_fonts {
+        (ARROW_SEPARATOR, Some(2))
+    } else {
+        ("", None)
+    };
+
     let (text, _text_width) = stringify_text(
         &content,
-        None,
+        padding,
         &component_coordinates,
         &declaration,
         text_style,
@@ -32,7 +39,6 @@ pub fn ribbon(
     let mut stringified = component_coordinates
         .map(|c| c.to_string())
         .unwrap_or_else(|| String::new());
-    let arrow = if arrow_fonts { ARROW_SEPARATOR } else { "" };
     stringified.push_str(&format!(
         "{}{}{}{} {} {}{}{}",
         RESET_STYLES,

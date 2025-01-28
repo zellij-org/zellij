@@ -58,9 +58,13 @@ pub fn stringify_text(
             break;
         }
         text_width += character_width;
-        let character_with_styling =
-            color_index_character(character, i, &text, style, base_text_style);
-        stringified.push_str(&character_with_styling);
+        if !text.indices.is_empty() {
+            let character_with_styling =
+                color_index_character(character, i, &text, style, base_text_style);
+            stringified.push_str(&character_with_styling);
+        } else {
+            stringified.push(character)
+        }
     }
     let coordinates_width = coordinates.as_ref().and_then(|c| c.width);
     match (coordinates_width, base_text_style.background) {
