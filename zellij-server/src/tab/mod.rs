@@ -4487,6 +4487,24 @@ impl Tab {
             self.tiled_panes.expand_pane_in_stack(root_pane_id);
         }
     }
+    pub fn change_floating_pane_coordinates(&mut self, pane_id: &PaneId, floating_pane_coordinates: FloatingPaneCoordinates) -> Result<()> {
+        // TODO: CONTINUE HERE - add this to the plugin API, then write some tests
+        let err_context = || format!("Failed to change floating pane coordinates");
+
+        let pane = self.floating_panes
+            .get_pane_mut(*pane_id).with_context(err_context)?;
+
+        let viewport = self.viewport.borrow();
+        let mut pane_geom = pane.position_and_size();
+        if let Some(pinned) = floating_pane_coordinates.pinned.as_ref() {
+            pane.set_pinned(*pinned);
+        }
+        pane_geom.adjust_coordinates(floating_pane_coordinates, *viewport);
+        pane.set_geom(pane_geom);
+
+        self.swap_layouts.set_is_floating_damaged();
+        Ok(())
+    }
     fn new_scrollback_editor_pane(&self, pid: u32) -> TerminalPane {
         let next_terminal_position = self.get_next_terminal_position();
         let mut new_pane = TerminalPane::new(

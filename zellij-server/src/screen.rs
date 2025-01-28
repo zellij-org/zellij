@@ -401,6 +401,7 @@ pub enum ScreenInstruction {
     TogglePanePinned(ClientId),
     SetFloatingPanePinned(PaneId, bool),
     StackPanes(Vec<PaneId>),
+    ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -608,6 +609,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TogglePanePinned(..) => ScreenContext::TogglePanePinned,
             ScreenInstruction::SetFloatingPanePinned(..) => ScreenContext::SetFloatingPanePinned,
             ScreenInstruction::StackPanes(..) => ScreenContext::StackPanes,
+            ScreenInstruction::ChangeFloatingPanesCoordinates(..) => ScreenContext::ChangeFloatingPanesCoordinates,
         }
     }
 }
@@ -2563,6 +2565,16 @@ impl Screen {
         self.tabs
             .get_mut(&root_tab_id)
             .map(|t| t.stack_panes(root_pane_id, panes_to_stack));
+    }
+    pub fn change_floating_panes_coordinates(&mut self, pane_ids_and_coordinates: Vec<(PaneId, FloatingPaneCoordinates)>) {
+        for (pane_id, coordinates) in pane_ids_and_coordinates {
+            for (tab_id, tab) in self.tabs.iter_mut() {
+                if tab.has_pane_with_pid(&pane_id) {
+                    tab.change_floating_pane_coordinates(&pane_id, coordinates).non_fatal();
+                    break;
+                }
+            }
+        }
     }
     fn unblock_input(&self) -> Result<()> {
         self.bus
@@ -4740,6 +4752,11 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::StackPanes(pane_ids_to_stack) => {
                 screen.stack_panes(pane_ids_to_stack);
+                let _ = screen.unblock_input();
+                let _ = screen.render(None);
+            },
+            ScreenInstruction::ChangeFloatingPanesCoordinates(pane_ids_and_coordinates) => {
+                screen.change_floating_panes_coordinates(pane_ids_and_coordinates);
                 let _ = screen.unblock_input();
                 let _ = screen.render(None);
             },

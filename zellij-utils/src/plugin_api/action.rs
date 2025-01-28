@@ -1246,6 +1246,7 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::CliPipe { .. }
             | Action::ListClients
             | Action::StackPanes(..)
+            | Action::ChangeFloatingPaneCoordinates(..)
             | Action::SkipConfirm(..) => Err("Unsupported action"),
         }
     }
