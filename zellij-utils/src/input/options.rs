@@ -166,6 +166,11 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub enable_web_server: Option<bool>,
+
+    /// The name of the session to create when starting Zellij
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub web_client_font: Option<String>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -245,6 +250,9 @@ impl Options {
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
         let enable_web_server = other.enable_web_server.or(self.enable_web_server);
+        let web_client_font = other
+            .web_client_font
+            .or_else(|| self.web_client_font.clone());
 
         Options {
             simplified_ui,
@@ -275,6 +283,7 @@ impl Options {
             disable_session_metadata,
             support_kitty_keyboard_protocol,
             enable_web_server,
+            web_client_font,
         }
     }
 
@@ -334,6 +343,9 @@ impl Options {
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
         let enable_web_server = other.enable_web_server.or(self.enable_web_server);
+        let web_client_font = other
+            .web_client_font
+            .or_else(|| self.web_client_font.clone());
 
         Options {
             simplified_ui,
@@ -364,6 +376,7 @@ impl Options {
             disable_session_metadata,
             support_kitty_keyboard_protocol,
             enable_web_server,
+            web_client_font,
         }
     }
 
@@ -430,6 +443,7 @@ impl From<CliOptions> for Options {
             serialization_interval: opts.serialization_interval,
             support_kitty_keyboard_protocol: opts.support_kitty_keyboard_protocol,
             enable_web_server: opts.enable_web_server,
+            web_client_font: opts.web_client_font,
             ..Default::default()
         }
     }

@@ -7,11 +7,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use crate::keyboard_parser::KittyKeyboardParser;
 use crate::{
     input_handler::from_termwiz,
     os_input_output::{get_client_os_input, ClientOsApi},
 };
-use crate::keyboard_parser::KittyKeyboardParser;
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -88,7 +88,7 @@ struct StdinMessage {
 }
 
 pub fn start_web_client(session_name: &str, config: Config, config_options: Options) {
-    log::info!("WebSocket server started and listening on port 8080 and 8081");
+    log::info!("WebSocket server started and listening on port 8082");
 
     let connection_table: ConnectionTable = Arc::new(Mutex::new(HashMap::new()));
 
@@ -277,7 +277,9 @@ async fn handle_ws_terminal(socket: WebSocket, path: Option<AxumPath<String>>, s
 
     // Handle incoming messages (STDIN)
 
-    let explicitly_disable_kitty_keyboard_protocol = state.config.options
+    let explicitly_disable_kitty_keyboard_protocol = state
+        .config
+        .options
         .support_kitty_keyboard_protocol
         .map(|e| !e)
         .unwrap_or(false);
@@ -450,8 +452,12 @@ fn render_to_client(
     });
 }
 
-fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>, mouse_old_event: &mut MouseEvent, explicitly_disable_kitty_keyboard_protocol: bool) {
-
+fn parse_stdin(
+    buf: &[u8],
+    os_input: Box<dyn ClientOsApi>,
+    mouse_old_event: &mut MouseEvent,
+    explicitly_disable_kitty_keyboard_protocol: bool,
+) {
     if !explicitly_disable_kitty_keyboard_protocol {
         // first we try to parse with the KittyKeyboardParser
         // if we fail, we try to parse normally
@@ -467,8 +473,6 @@ fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>, mouse_old_event: &mut
             None => {},
         }
     }
-
-
 
     let mut input_parser = InputParser::new();
     let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely
@@ -489,11 +493,7 @@ fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>, mouse_old_event: &mut
                     &buf,
                     None, // TODO: config, for ctrl-j etc.
                 );
-                os_input.send_to_server(ClientToServerMsg::Key(
-                    key.clone(),
-                    buf.to_vec(),
-                    false,
-                ));
+                os_input.send_to_server(ClientToServerMsg::Key(key.clone(), buf.to_vec(), false));
             },
             InputEvent::Mouse(mouse_event) => {
                 let mouse_event = from_termwiz(mouse_old_event, mouse_event);
@@ -501,28 +501,22 @@ fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>, mouse_old_event: &mut
                 os_input.send_to_server(ClientToServerMsg::Action(action, None, None));
             },
             InputEvent::Paste(pasted_text) => {
-                os_input.send_to_server(
-                    ClientToServerMsg::Action(
-                        Action::Write(None, BRACKETED_PASTE_START.to_vec(), false),
-                        None,
-                        None
-                    )
-                );
-                os_input.send_to_server(
-                    ClientToServerMsg::Action(
-                        Action::Write(None, pasted_text.as_bytes().to_vec(), false),
-                        None,
-                        None
-                    )
-                );
-                os_input.send_to_server(
-                    ClientToServerMsg::Action(
-                        Action::Write(None, BRACKETED_PASTE_END.to_vec(), false),
-                        None,
-                        None
-                    )
-                );
-            }
+                os_input.send_to_server(ClientToServerMsg::Action(
+                    Action::Write(None, BRACKETED_PASTE_START.to_vec(), false),
+                    None,
+                    None,
+                ));
+                os_input.send_to_server(ClientToServerMsg::Action(
+                    Action::Write(None, pasted_text.as_bytes().to_vec(), false),
+                    None,
+                    None,
+                ));
+                os_input.send_to_server(ClientToServerMsg::Action(
+                    Action::Write(None, BRACKETED_PASTE_END.to_vec(), false),
+                    None,
+                    None,
+                ));
+            },
             _ => {
                 log::error!("Unsupported event: {:#?}", input_event);
             },
