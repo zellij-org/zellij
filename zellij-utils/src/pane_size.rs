@@ -40,7 +40,7 @@ impl std::hash::Hash for PaneGeom {
         self.y.hash(state);
         self.rows.hash(state);
         self.cols.hash(state);
-        self.is_stacked.hash(state);
+        self.stacked.hash(state);
     }
 }
 

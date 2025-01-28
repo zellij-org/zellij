@@ -42,7 +42,6 @@ jobs:
     - name: Install Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
-        cache: false
         rustflags: ""
 
     - name: Create target folder
