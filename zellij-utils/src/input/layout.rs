@@ -8,6 +8,9 @@
 //  place.
 //  If plugins should be able to depend on the layout system
 //  then [`zellij-utils`] could be a proper place.
+
+#![allow(clippy::derived_hash_with_manual_eq)]
+
 #[cfg(not(target_family = "wasm"))]
 use crate::downloader::Downloader;
 use crate::{
