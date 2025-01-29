@@ -10,6 +10,7 @@ use std::{
 use crate::{
     input_handler::from_termwiz,
     os_input_output::{get_client_os_input, ClientOsApi},
+    spawn_server,
 };
 use crate::keyboard_parser::KittyKeyboardParser;
 use axum::{
@@ -23,7 +24,10 @@ use axum::{
     Router,
 };
 use zellij_utils::{
-    data::Style,
+    cli::CliArgs,
+    input::layout::Layout,
+    envs,
+    data::{Style, ConnectToSession, LayoutInfo},
     errors::prelude::*,
     include_dir,
     input::{
@@ -34,6 +38,10 @@ use zellij_utils::{
     serde_json,
     termwiz::input::{InputEvent, InputParser},
     uuid::Uuid,
+    consts::{ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR, session_layout_cache_file_name},
+    interprocess::local_socket::LocalSocketStream,
+    ipc::{IpcReceiverWithContext, IpcSenderWithContext},
+    setup::{find_default_config_dir, get_layout_dir, Setup},
 };
 
 use futures::{prelude::stream::SplitSink, SinkExt, StreamExt};
@@ -333,15 +341,18 @@ fn zellij_server_listener(
         .spawn({
             let session_name = session_name.to_owned();
             move || {
-                let mut reconnect_to_session = None;
+                let mut reconnect_to_session: Option<ConnectToSession> = None;
                 'reconnect_loop: loop {
-                    let zellij_ipc_pipe: PathBuf = {
-                        let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
-                        fs::create_dir_all(&sock_dir).unwrap();
-                        zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
-                        sock_dir.push(session_name.clone());
-                        sock_dir
-                    };
+                    let reconnect_info = reconnect_to_session.take();
+                    let is_a_reconnect = reconnect_info.is_some();
+                    let session_name = reconnect_info.as_ref().and_then(|r| r.name.to_owned()).unwrap_or_else(|| session_name.clone());
+//                     let zellij_ipc_pipe: PathBuf = {
+//                         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
+//                         fs::create_dir_all(&sock_dir).unwrap();
+//                         zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
+//                         sock_dir.push(session_name);
+//                         sock_dir
+//                     };
 
                     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
 
@@ -368,17 +379,106 @@ fn zellij_server_listener(
                         },
                     };
 
+                    // TODO:
+                    // if the session name exists, do the below, otherwise call the spawn server
+                    // function
                     let is_web_client = true;
-                    let first_message = ClientToServerMsg::AttachClient(
-                        client_attributes,
-                        config.clone(),
-                        config_options.clone(),
-                        None,
-                        None,
-                        is_web_client,
-                    );
+                    let (first_message, zellij_ipc_pipe) = if !is_a_reconnect || session_exists(&session_name).unwrap_or(false) { // TODO: handle error
+                                                                                                               //
+                        log::info!("attaching to: {:?}", session_name);
+                        let zellij_ipc_pipe: PathBuf = {
+                            let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
+                            fs::create_dir_all(&sock_dir).unwrap();
+                            zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
+                            sock_dir.push(session_name);
+                            sock_dir
+                        };
 
-                    os_input.connect_to_server(&*zellij_ipc_pipe);
+                        let first_message = ClientToServerMsg::AttachClient(
+                            client_attributes,
+                            config.clone(),
+                            config_options.clone(),
+                            None,
+                            None,
+                            is_web_client,
+                        );
+                        (first_message, zellij_ipc_pipe)
+                    } else {
+                        let force_run_commands = false; // TODO: from config for resurrection
+                                                        // layout
+                        let resurrection_layout =
+                            resurrection_layout(&session_name).map(|mut resurrection_layout| {
+                                if force_run_commands {
+                                    resurrection_layout.recursively_add_start_suspended(Some(false));
+                                }
+                                resurrection_layout
+                            });
+
+
+
+
+
+                        match resurrection_layout {
+                            Some(resurrection_layout) => {
+                                spawn_new_session(
+                                    &session_name,
+                                    is_web_client,
+                                    os_input.clone(),
+                                    config.clone(),
+                                    config_options.clone(),
+                                    Some(resurrection_layout),
+                                    client_attributes
+                                )
+                            },
+                            None => {
+                                let layout_dir = config.options.layout_dir.clone().or_else(|| {
+                                    // get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir))
+                                    get_layout_dir(find_default_config_dir())
+                                });
+                                let new_session_layout = match reconnect_info.as_ref().and_then(|r| r.layout.clone()) {
+                                    Some(LayoutInfo::BuiltIn(layout_name)) => Layout::from_default_assets(
+                                        &PathBuf::from(layout_name),
+                                        layout_dir.clone(),
+                                        config.clone(),
+                                        // config_without_layout.clone(),
+                                    ),
+                                    Some(LayoutInfo::File(layout_name)) => Layout::from_path_or_default(
+                                        Some(&PathBuf::from(layout_name)),
+                                        layout_dir.clone(),
+                                        config.clone(),
+                                        // config_without_layout.clone(),
+                                    ),
+                                    Some(LayoutInfo::Url(url)) => Layout::from_url(&url, config.clone()),
+                                    // Some(LayoutInfo::Url(url)) => Layout::from_url(&url, config_without_layout.clone()),
+                                    Some(LayoutInfo::Stringified(stringified_layout)) => Layout::from_stringified_layout(
+                                        &stringified_layout,
+                                        config.clone(),
+                                        // config_without_layout.clone(),
+                                    ),
+                                    None => Ok(Default::default())
+                                };
+
+                                spawn_new_session(
+                                    &session_name,
+                                    is_web_client,
+                                    os_input.clone(),
+                                    config.clone(),
+                                    config_options.clone(),
+                                    new_session_layout.ok().map(|(l, c)| l), // TODO: handle config
+                                    client_attributes
+                                )
+
+                            }
+                        }
+
+
+
+
+
+
+                    };
+
+                    os_input.connect_to_server(&zellij_ipc_pipe);
                     os_input.send_to_server(first_message);
 
                     loop {
@@ -527,5 +627,215 @@ fn parse_stdin(buf: &[u8], os_input: Box<dyn ClientOsApi>, mouse_old_event: &mut
                 log::error!("Unsupported event: {:#?}", input_event);
             },
         }
+    }
+}
+
+fn spawn_new_session(
+    name: &str,
+    is_web_client: bool,
+    mut os_input: Box<dyn ClientOsApi>,
+    config: Config,
+    config_opts: Options,
+    layout: Option<Layout>,
+    client_attributes: ClientAttributes,
+) -> (ClientToServerMsg, PathBuf){
+    let debug = false;
+    envs::set_session_name(name.to_owned());
+    os_input.update_session_name(name.to_owned());
+
+    let zellij_ipc_pipe: PathBuf = {
+        let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
+        fs::create_dir_all(&sock_dir).unwrap();
+        zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
+        sock_dir.push(name);
+        sock_dir
+    };
+
+
+
+    spawn_server(&*zellij_ipc_pipe, debug).unwrap();
+
+//     let successfully_written_config =
+//         Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &config_opts);
+    // if we successfully wrote the config to disk, it means two things:
+    // 1. It did not exist beforehand
+    // 2. The config folder is writeable
+    //
+    // If these two are true, we should launch the setup wizard, if even one of them is
+    // false, we should never launch it.
+    // let should_launch_setup_wizard = successfully_written_config;
+    let should_launch_setup_wizard = false;
+    let cli_args = CliArgs::default(); // TODO: what do we do about this and the above setup
+                                       // wizard?
+
+    (
+        ClientToServerMsg::NewClient(
+            client_attributes,
+            Box::new(cli_args),
+            Box::new(config.clone()),
+            // Box::new(config_options.clone()),
+            Box::new(config_opts.clone()), // TODO: what is the difference?
+            Box::new(layout.unwrap()),
+            Box::new(config.plugins.clone()),
+            should_launch_setup_wizard,
+        ),
+        zellij_ipc_pipe,
+    )
+}
+
+// TODO: these are duplicates, let's move the sessions module from the root crate to zellij-utils
+pub(crate) fn session_exists(name: &str) -> Result<bool, std::io::ErrorKind> {
+    match match_session_name(name) {
+        Ok(SessionNameMatch::Exact(_)) => Ok(true),
+        Ok(_) => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+pub(crate) fn match_session_name(prefix: &str) -> Result<SessionNameMatch, std::io::ErrorKind> {
+    let sessions = get_sessions()?;
+
+    let filtered_sessions: Vec<_> = sessions
+        .iter()
+        .filter(|s| s.0.starts_with(prefix))
+        .collect();
+
+    if filtered_sessions.iter().any(|s| s.0 == prefix) {
+        return Ok(SessionNameMatch::Exact(prefix.to_string()));
+    }
+
+    Ok({
+        match &filtered_sessions[..] {
+            [] => SessionNameMatch::None,
+            [s] => SessionNameMatch::UniquePrefix(s.0.to_string()),
+            _ => SessionNameMatch::AmbiguousPrefix(
+                filtered_sessions.into_iter().map(|s| s.0.clone()).collect(),
+            ),
+        }
+    })
+}
+
+use std::os::unix::fs::FileTypeExt;
+use std::{io, process};
+pub(crate) fn get_sessions() -> Result<Vec<(String, std::time::Duration)>, std::io::ErrorKind> {
+    match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
+        Ok(files) => {
+            let mut sessions = Vec::new();
+            files.for_each(|file| {
+                let file = file.unwrap();
+                let file_name = file.file_name().into_string().unwrap();
+                let ctime = std::fs::metadata(&file.path())
+                    .ok()
+                    .and_then(|f| f.created().ok())
+                    .and_then(|d| d.elapsed().ok())
+                    .unwrap_or_default();
+                let duration = std::time::Duration::from_secs(ctime.as_secs());
+                if file.file_type().unwrap().is_socket() && assert_socket(&file_name) {
+                    sessions.push((file_name, duration));
+                }
+            });
+            Ok(sessions)
+        },
+        Err(err) if std::io::ErrorKind::NotFound != err.kind() => Err(err.kind()),
+        Err(_) => Ok(Vec::with_capacity(0)),
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum SessionNameMatch {
+    AmbiguousPrefix(Vec<String>),
+    UniquePrefix(String),
+    Exact(String),
+    None,
+}
+
+fn assert_socket(name: &str) -> bool {
+    let path = &*ZELLIJ_SOCK_DIR.join(name);
+    match LocalSocketStream::connect(path) {
+        Ok(stream) => {
+            let mut sender = IpcSenderWithContext::new(stream);
+            let _ = sender.send(ClientToServerMsg::ConnStatus);
+            let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
+            match receiver.recv() {
+                Some((ServerToClientMsg::Connected, _)) => true,
+                None | Some((_, _)) => false,
+            }
+        },
+        Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
+            drop(fs::remove_file(path));
+            false
+        },
+        Err(_) => false,
+    }
+}
+
+// if the session is resurrecable, the returned layout is the one to be used to resurrect it
+pub(crate) fn resurrection_layout(session_name_to_resurrect: &str) -> Option<Layout> {
+    let resurrectable_sessions = get_resurrectable_sessions();
+    resurrectable_sessions
+        .iter()
+        .find_map(|(name, _timestamp, layout)| {
+            if name == session_name_to_resurrect {
+                Some(layout.clone())
+            } else {
+                None
+            }
+        })
+}
+
+pub(crate) fn get_resurrectable_sessions() -> Vec<(String, std::time::Duration, Layout)> {
+    match fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
+        Ok(files_in_session_info_folder) => {
+            let files_that_are_folders = files_in_session_info_folder
+                .filter_map(|f| f.ok().map(|f| f.path()))
+                .filter(|f| f.is_dir());
+            files_that_are_folders
+                .filter_map(|folder_name| {
+                    let layout_file_name =
+                        session_layout_cache_file_name(&folder_name.display().to_string());
+                    let raw_layout = match std::fs::read_to_string(&layout_file_name) {
+                        Ok(raw_layout) => raw_layout,
+                        Err(_e) => {
+                            return None;
+                        },
+                    };
+                    let ctime = match std::fs::metadata(&layout_file_name)
+                        .and_then(|metadata| metadata.created())
+                    {
+                        Ok(created) => Some(created),
+                        Err(_e) => None,
+                    };
+                    let layout = match Layout::from_kdl(
+                        &raw_layout,
+                        Some(layout_file_name.display().to_string()),
+                        None,
+                        None,
+                    ) {
+                        Ok(layout) => layout,
+                        Err(e) => {
+                            log::error!("Failed to parse resurrection layout file: {}", e);
+                            return None;
+                        },
+                    };
+                    let elapsed_duration = ctime
+                        .map(|ctime| {
+                            std::time::Duration::from_secs(ctime.elapsed().ok().unwrap_or_default().as_secs())
+                        })
+                        .unwrap_or_default();
+                    let session_name = folder_name
+                        .file_name()
+                        .map(|f| std::path::PathBuf::from(f).display().to_string())?;
+                    Some((session_name, elapsed_duration, layout))
+                })
+                .collect()
+        },
+        Err(e) => {
+            log::error!(
+                "Failed to read session_info cache folder: \"{:?}\": {:?}",
+                &*ZELLIJ_SESSION_INFO_CACHE_DIR,
+                e
+            );
+            vec![]
+        },
     }
 }

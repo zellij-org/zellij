@@ -151,7 +151,7 @@ fn spawn_web_server(socket_path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
+pub fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
     let mut cmd = Command::new(current_exe()?);
     cmd.arg("--server");
     cmd.arg(socket_path);
