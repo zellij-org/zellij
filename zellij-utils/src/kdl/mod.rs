@@ -2244,6 +2244,10 @@ impl Options {
         let enable_web_server =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "enable_web_server")
                 .map(|(v, _)| v);
+        let web_client_font =
+            kdl_property_first_arg_as_string_or_error!(kdl_options, "web_client_font")
+                .map(|(web_client_font, _entry)| web_client_font.to_string());
+
         Ok(Options {
             simplified_ui,
             theme,
@@ -2273,6 +2277,7 @@ impl Options {
             disable_session_metadata,
             support_kitty_keyboard_protocol,
             enable_web_server,
+            web_client_font,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -3101,6 +3106,35 @@ impl Options {
             None
         }
     }
+    fn web_client_font_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Font to use for the built in web client",
+            "// When enabled, navigate to http://localhost:8082",
+            "// Default: None",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("web_client_font");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(web_client_font) = &self.web_client_font {
+            let mut node = create_node(web_client_font);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("monospace");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
@@ -3190,6 +3224,9 @@ impl Options {
         }
         if let Some(enable_web_server) = self.enable_web_server_to_kdl(add_comments) {
             nodes.push(enable_web_server);
+        }
+        if let Some(web_client_font) = self.web_client_font_to_kdl(add_comments) {
+            nodes.push(web_client_font);
         }
         nodes
     }
