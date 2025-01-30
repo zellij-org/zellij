@@ -22,7 +22,7 @@ pub use super::generated_api::api::{
         SetTimeoutPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
         SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
         TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload, ChangeFloatingPanesCoordinatesPayload, PaneIdAndFloatingPaneCoordinates,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1339,7 +1339,23 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                             .collect(),
                     ))
                 },
-                _ => Err("Mismatched payload for SetFloatingPanePinned"),
+                _ => Err("Mismatched payload for StackPanes"),
+            },
+            Some(CommandName::ChangeFloatingPanesCoordinates) => match protobuf_plugin_command.payload {
+                Some(Payload::ChangeFloatingPanesCoordinatesPayload(change_floating_panes_coordinates_payload)) => {
+                    Ok(PluginCommand::ChangeFloatingPanesCoordinates(
+                        change_floating_panes_coordinates_payload
+                            .pane_ids_and_floating_panes_coordinates
+                            .into_iter()
+                            .filter_map(|p_id_a_fp| {
+                                let pane_id: PaneId = p_id_a_fp.pane_id?.try_into().ok()?;
+                                let floating_pane_coordinates: FloatingPaneCoordinates = p_id_a_fp.floating_pane_coordinates?.try_into().ok()?;
+                                Some((pane_id, floating_pane_coordinates))
+                            })
+                            .collect(),
+                    ))
+                },
+                _ => Err("Mismatched payload for ChangeFloatingPanesCoordinates"),
             },
             None => Err("Unrecognized plugin command"),
         }
@@ -2191,6 +2207,20 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     pane_ids: pane_ids
                         .into_iter()
                         .filter_map(|p_id| p_id.try_into().ok())
+                        .collect(),
+                })),
+            }),
+            PluginCommand::ChangeFloatingPanesCoordinates(pane_ids_and_floating_panes_coordinates) => Ok(ProtobufPluginCommand {
+                name: CommandName::ChangeFloatingPanesCoordinates as i32,
+                payload: Some(Payload::ChangeFloatingPanesCoordinatesPayload(ChangeFloatingPanesCoordinatesPayload {
+                    pane_ids_and_floating_panes_coordinates: pane_ids_and_floating_panes_coordinates
+                        .into_iter()
+                        .filter_map(|(p_id, floating_pane_coordinates)| {
+                            Some(PaneIdAndFloatingPaneCoordinates {
+                                pane_id: Some(p_id.try_into().ok()?),
+                                floating_pane_coordinates: Some(floating_pane_coordinates.try_into().ok()?),
+                            })
+                        })
                         .collect(),
                 })),
             }),

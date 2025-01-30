@@ -3251,8 +3251,6 @@ fn pane_in_sgr_any_event_tracking_mouse_mode() {
     let sgr_mouse_mode_any_button = String::from("\u{1b}[?1003;1006h"); // any event tracking (1003) with SGR encoding (1006)
     tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec())
         .unwrap();
-    // TODO: CONTINUE HERE - make sure these pass, then add some button-less motions and see what
-    // we track them
     tab.handle_mouse_event(
         &MouseEvent::new_left_press_event(Position::new(5, 71)),
         client_id,

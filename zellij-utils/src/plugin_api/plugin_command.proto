@@ -130,6 +130,7 @@ enum CommandName {
   ChangeHostFolder = 114;
   SetFloatingPanePinned = 115;
   StackPanes = 116;
+  ChangeFloatingPanesCoordinates = 117;
 }
 
 message PluginCommand {
@@ -216,7 +217,12 @@ message PluginCommand {
     ChangeHostFolderPayload change_host_folder_payload = 89;
     SetFloatingPanePinnedPayload set_floating_pane_pinned_payload = 90;
     StackPanesPayload stack_panes_payload = 91;
+    ChangeFloatingPanesCoordinatesPayload change_floating_panes_coordinates_payload = 92;
   }
+}
+
+message ChangeFloatingPanesCoordinatesPayload {
+  repeated PaneIdAndFloatingPaneCoordinates pane_ids_and_floating_panes_coordinates = 1;
 }
 
 message StackPanesPayload {
@@ -486,6 +492,11 @@ message ResizePayload {
 
 message MovePayload {
   resize.MoveDirection direction = 1;
+}
+
+message PaneIdAndFloatingPaneCoordinates {
+  PaneId pane_id = 1;
+  FloatingPaneCoordinates floating_pane_coordinates = 2;
 }
 
 message IdAndNewName {

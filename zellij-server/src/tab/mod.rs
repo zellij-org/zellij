@@ -4491,16 +4491,8 @@ impl Tab {
         // TODO: CONTINUE HERE - add this to the plugin API, then write some tests
         let err_context = || format!("Failed to change floating pane coordinates");
 
-        let pane = self.floating_panes
-            .get_pane_mut(*pane_id).with_context(err_context)?;
-
-        let viewport = self.viewport.borrow();
-        let mut pane_geom = pane.position_and_size();
-        if let Some(pinned) = floating_pane_coordinates.pinned.as_ref() {
-            pane.set_pinned(*pinned);
-        }
-        pane_geom.adjust_coordinates(floating_pane_coordinates, *viewport);
-        pane.set_geom(pane_geom);
+        self.floating_panes.change_pane_coordinates(*pane_id, floating_pane_coordinates);
+        self.set_force_render();
 
         self.swap_layouts.set_is_floating_damaged();
         Ok(())

@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -180,7 +180,19 @@ pub mod plugin_command {
         SetFloatingPanePinnedPayload(super::SetFloatingPanePinnedPayload),
         #[prost(message, tag = "91")]
         StackPanesPayload(super::StackPanesPayload),
+        #[prost(message, tag = "92")]
+        ChangeFloatingPanesCoordinatesPayload(
+            super::ChangeFloatingPanesCoordinatesPayload,
+        ),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ChangeFloatingPanesCoordinatesPayload {
+    #[prost(message, repeated, tag = "1")]
+    pub pane_ids_and_floating_panes_coordinates: ::prost::alloc::vec::Vec<
+        PaneIdAndFloatingPaneCoordinates,
+    >,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -598,6 +610,14 @@ pub struct MovePayload {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneIdAndFloatingPaneCoordinates {
+    #[prost(message, optional, tag = "1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag = "2")]
+    pub floating_pane_coordinates: ::core::option::Option<FloatingPaneCoordinates>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct IdAndNewName {
     /// pane id or tab index
     #[prost(uint32, tag = "1")]
@@ -747,6 +767,7 @@ pub enum CommandName {
     ChangeHostFolder = 114,
     SetFloatingPanePinned = 115,
     StackPanes = 116,
+    ChangeFloatingPanesCoordinates = 117,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -874,6 +895,9 @@ impl CommandName {
             CommandName::ChangeHostFolder => "ChangeHostFolder",
             CommandName::SetFloatingPanePinned => "SetFloatingPanePinned",
             CommandName::StackPanes => "StackPanes",
+            CommandName::ChangeFloatingPanesCoordinates => {
+                "ChangeFloatingPanesCoordinates"
+            }
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -998,6 +1022,9 @@ impl CommandName {
             "ChangeHostFolder" => Some(Self::ChangeHostFolder),
             "SetFloatingPanePinned" => Some(Self::SetFloatingPanePinned),
             "StackPanes" => Some(Self::StackPanes),
+            "ChangeFloatingPanesCoordinates" => {
+                Some(Self::ChangeFloatingPanesCoordinates)
+            }
             _ => None,
         }
     }
