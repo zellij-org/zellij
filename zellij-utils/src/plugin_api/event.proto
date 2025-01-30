@@ -303,6 +303,10 @@ message TabInfo {
     repeated uint32 other_focused_clients = 8;
     optional string active_swap_layout_name = 9;
     bool is_swap_layout_dirty = 10;
+    uint32 viewport_rows = 11;
+    uint32 viewport_columns = 12;
+    uint32 display_area_rows = 13;
+    uint32 display_area_columns = 14;
 }
 
 message ModeUpdatePayload {

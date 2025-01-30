@@ -1070,6 +1070,10 @@ impl TryFrom<ProtobufTabInfo> for TabInfo {
                 .collect(),
             active_swap_layout_name: protobuf_tab_info.active_swap_layout_name,
             is_swap_layout_dirty: protobuf_tab_info.is_swap_layout_dirty,
+            viewport_rows: protobuf_tab_info.viewport_rows as usize,
+            viewport_columns: protobuf_tab_info.viewport_columns as usize,
+            display_area_rows: protobuf_tab_info.display_area_rows as usize,
+            display_area_columns: protobuf_tab_info.display_area_columns as usize,
         })
     }
 }
@@ -1092,6 +1096,10 @@ impl TryFrom<TabInfo> for ProtobufTabInfo {
                 .collect(),
             active_swap_layout_name: tab_info.active_swap_layout_name,
             is_swap_layout_dirty: tab_info.is_swap_layout_dirty,
+            viewport_rows: tab_info.viewport_rows as u32,
+            viewport_columns: tab_info.viewport_columns as u32,
+            display_area_rows: tab_info.display_area_rows as u32,
+            display_area_columns: tab_info.display_area_columns as u32,
         })
     }
 }

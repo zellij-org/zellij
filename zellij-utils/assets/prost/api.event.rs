@@ -406,6 +406,14 @@ pub struct TabInfo {
     pub active_swap_layout_name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag = "10")]
     pub is_swap_layout_dirty: bool,
+    #[prost(uint32, tag = "11")]
+    pub viewport_rows: u32,
+    #[prost(uint32, tag = "12")]
+    pub viewport_columns: u32,
+    #[prost(uint32, tag = "13")]
+    pub display_area_rows: u32,
+    #[prost(uint32, tag = "14")]
+    pub display_area_columns: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
