@@ -1483,6 +1483,10 @@ fn serialize_tab_update_event_with_non_default_values() {
             other_focused_clients: vec![2, 3, 4],
             active_swap_layout_name: Some("my cool swap layout".to_owned()),
             is_swap_layout_dirty: false,
+            viewport_rows: 10,
+            viewport_columns: 10,
+            display_area_rows: 10,
+            display_area_columns: 10,
         },
         TabInfo {
             position: 1,
@@ -1495,6 +1499,10 @@ fn serialize_tab_update_event_with_non_default_values() {
             other_focused_clients: vec![1, 5, 111],
             active_swap_layout_name: None,
             is_swap_layout_dirty: true,
+            viewport_rows: 10,
+            viewport_columns: 10,
+            display_area_rows: 10,
+            display_area_columns: 10,
         },
         TabInfo::default(),
     ]);
@@ -1762,6 +1770,10 @@ fn serialize_session_update_event_with_non_default_values() {
             other_focused_clients: vec![2, 3, 4],
             active_swap_layout_name: Some("my cool swap layout".to_owned()),
             is_swap_layout_dirty: false,
+            viewport_rows: 10,
+            viewport_columns: 10,
+            display_area_rows: 10,
+            display_area_columns: 10,
         },
         TabInfo {
             position: 1,
@@ -1774,6 +1786,10 @@ fn serialize_session_update_event_with_non_default_values() {
             other_focused_clients: vec![1, 5, 111],
             active_swap_layout_name: None,
             is_swap_layout_dirty: true,
+            viewport_rows: 10,
+            viewport_columns: 10,
+            display_area_rows: 10,
+            display_area_columns: 10,
         },
         TabInfo::default(),
     ];
