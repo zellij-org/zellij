@@ -742,34 +742,12 @@ impl Action {
                 let pane_ids = pane_ids
                     .iter()
                     .filter_map(|stringified_pane_id| {
-                        if let Some(terminal_pane_id) =
-                            stringified_pane_id.strip_prefix("terminal_")
-                        {
-                            u32::from_str_radix(terminal_pane_id, 10)
-                                .ok()
-                                .or_else(|| {
-                                    malformed_ids.push(stringified_pane_id.to_owned());
-                                    None
-                                })
-                                .map(|id| PaneId::Terminal(id))
-                        } else if let Some(plugin_pane_id) =
-                            stringified_pane_id.strip_prefix("plugin_")
-                        {
-                            u32::from_str_radix(plugin_pane_id, 10)
-                                .ok()
-                                .or_else(|| {
-                                    malformed_ids.push(stringified_pane_id.to_owned());
-                                    None
-                                })
-                                .map(|id| PaneId::Plugin(id))
-                        } else {
-                            u32::from_str_radix(stringified_pane_id, 10)
-                                .ok()
-                                .or_else(|| {
-                                    malformed_ids.push(stringified_pane_id.to_owned());
-                                    None
-                                })
-                                .map(|id| PaneId::Terminal(id))
+                        match PaneId::from_str(stringified_pane_id) {
+                            Ok(pane_id) => Some(pane_id),
+                            Err(_e) => {
+                                malformed_ids.push(stringified_pane_id.to_owned());
+                                None
+                            }
                         }
                     })
                     .collect();
@@ -785,43 +763,15 @@ impl Action {
                 }
             },
             CliAction::ChangeFloatingPaneCoordinates { pane_id, x, y, width, height, pinned } => {
-                let mut malformed_ids = vec![];
                 let Some(coordinates) = FloatingPaneCoordinates::new(x, y, width, height, pinned) else {
                     return Err(format!("Failed to parse floating pane coordinates"));
                 };
-                // TODO: extract same logic from above in StackedPanes to function or some such
-                let parsed_pane_id = if let Some(terminal_pane_id) = pane_id.strip_prefix("terminal_") {
-                    u32::from_str_radix(terminal_pane_id, 10)
-                        .ok()
-                        .or_else(|| {
-                            malformed_ids.push(pane_id.to_owned());
-                            None
-                        })
-                        .map(|id| PaneId::Terminal(id))
-                } else if let Some(plugin_pane_id) =
-                    pane_id.strip_prefix("plugin_")
-                {
-                    u32::from_str_radix(plugin_pane_id, 10)
-                        .ok()
-                        .or_else(|| {
-                            malformed_ids.push(pane_id.to_owned());
-                            None
-                        })
-                        .map(|id| PaneId::Plugin(id))
-                } else {
-                    u32::from_str_radix(&pane_id, 10)
-                        .ok()
-                        .or_else(|| {
-                            malformed_ids.push(pane_id.to_owned());
-                            None
-                        })
-                        .map(|id| PaneId::Terminal(id))
-                };
+                let parsed_pane_id = PaneId::from_str(&pane_id);
                 match parsed_pane_id {
-                    Some(parsed_pane_id) => {
+                    Ok(parsed_pane_id) => {
                         Ok(vec![Action::ChangeFloatingPaneCoordinates(parsed_pane_id, coordinates)])
                     },
-                    None => {
+                    Err(_e) => {
                         Err(format!(
                             "Malformed pane id: {}, expecting a space separated list of either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
                             pane_id

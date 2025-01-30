@@ -1523,6 +1523,27 @@ pub enum PaneId {
     Plugin(u32),
 }
 
+impl FromStr for PaneId {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(stringified_pane_id: &str) -> Result<Self, Self::Err> {
+        if let Some(terminal_stringified_pane_id) = stringified_pane_id.strip_prefix("terminal_") {
+            u32::from_str_radix(terminal_stringified_pane_id, 10)
+                .map(|id| PaneId::Terminal(id))
+                .map_err(|e| e.into())
+        } else if let Some(plugin_pane_id) =
+            stringified_pane_id.strip_prefix("plugin_")
+        {
+            u32::from_str_radix(plugin_pane_id, 10)
+                .map(|id| PaneId::Plugin(id))
+                .map_err(|e| e.into())
+        } else {
+            u32::from_str_radix(&stringified_pane_id, 10)
+                .map(|id| PaneId::Terminal(id))
+                .map_err(|e| e.into())
+        }
+    }
+}
+
 impl MessageToPlugin {
     pub fn new(message_name: impl Into<String>) -> Self {
         MessageToPlugin {
