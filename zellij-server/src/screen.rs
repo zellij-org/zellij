@@ -609,7 +609,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TogglePanePinned(..) => ScreenContext::TogglePanePinned,
             ScreenInstruction::SetFloatingPanePinned(..) => ScreenContext::SetFloatingPanePinned,
             ScreenInstruction::StackPanes(..) => ScreenContext::StackPanes,
-            ScreenInstruction::ChangeFloatingPanesCoordinates(..) => ScreenContext::ChangeFloatingPanesCoordinates,
+            ScreenInstruction::ChangeFloatingPanesCoordinates(..) => {
+                ScreenContext::ChangeFloatingPanesCoordinates
+            },
         }
     }
 }
@@ -2578,11 +2580,15 @@ impl Screen {
             .get_mut(&root_tab_id)
             .map(|t| t.stack_panes(root_pane_id, panes_to_stack));
     }
-    pub fn change_floating_panes_coordinates(&mut self, pane_ids_and_coordinates: Vec<(PaneId, FloatingPaneCoordinates)>) {
+    pub fn change_floating_panes_coordinates(
+        &mut self,
+        pane_ids_and_coordinates: Vec<(PaneId, FloatingPaneCoordinates)>,
+    ) {
         for (pane_id, coordinates) in pane_ids_and_coordinates {
             for (_tab_id, tab) in self.tabs.iter_mut() {
                 if tab.has_pane_with_pid(&pane_id) {
-                    tab.change_floating_pane_coordinates(&pane_id, coordinates).non_fatal();
+                    tab.change_floating_pane_coordinates(&pane_id, coordinates)
+                        .non_fatal();
                     break;
                 }
             }

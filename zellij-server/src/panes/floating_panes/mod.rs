@@ -1,6 +1,6 @@
 pub mod floating_pane_grid;
 use zellij_utils::{
-    data::{Direction, PaneInfo, ResizeStrategy, FloatingPaneCoordinates},
+    data::{Direction, FloatingPaneCoordinates, PaneInfo, ResizeStrategy},
     position::Position,
 };
 
@@ -728,7 +728,11 @@ impl FloatingPanes {
             let _ = self.set_pane_frames();
         }
     }
-    pub fn change_pane_coordinates(&mut self, pane_id: PaneId, new_coordinates: FloatingPaneCoordinates) -> Result<()> {
+    pub fn change_pane_coordinates(
+        &mut self,
+        pane_id: PaneId,
+        new_coordinates: FloatingPaneCoordinates,
+    ) -> Result<()> {
         let err_context = || format!("Failed to change_pane_coordinates");
 
         {

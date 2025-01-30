@@ -3713,7 +3713,11 @@ pub fn send_cli_change_floating_pane_coordinates_action() {
         height: Some("10".to_owned()),
         pinned: None,
     };
-    send_cli_action_to_server(&session_metadata, change_floating_pane_coordinates_action, client_id);
+    send_cli_action_to_server(
+        &session_metadata,
+        change_floating_pane_coordinates_action,
+        client_id,
+    );
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(

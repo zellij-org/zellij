@@ -1149,7 +1149,9 @@ pub fn stack_panes(pane_ids: Vec<PaneId>) {
     unsafe { host_run_plugin_command() };
 }
 
-pub fn change_floating_panes_coordinates(pane_ids_and_coordinates: Vec<(PaneId, FloatingPaneCoordinates)>) {
+pub fn change_floating_panes_coordinates(
+    pane_ids_and_coordinates: Vec<(PaneId, FloatingPaneCoordinates)>,
+) {
     let plugin_command = PluginCommand::ChangeFloatingPanesCoordinates(pane_ids_and_coordinates);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());

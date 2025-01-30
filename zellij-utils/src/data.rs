@@ -1530,9 +1530,7 @@ impl FromStr for PaneId {
             u32::from_str_radix(terminal_stringified_pane_id, 10)
                 .map(|id| PaneId::Terminal(id))
                 .map_err(|e| e.into())
-        } else if let Some(plugin_pane_id) =
-            stringified_pane_id.strip_prefix("plugin_")
-        {
+        } else if let Some(plugin_pane_id) = stringified_pane_id.strip_prefix("plugin_") {
             u32::from_str_radix(plugin_pane_id, 10)
                 .map(|id| PaneId::Plugin(id))
                 .map_err(|e| e.into())

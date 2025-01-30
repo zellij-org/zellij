@@ -4,9 +4,10 @@ pub use super::generated_api::api::{
     input_mode::InputMode as ProtobufInputMode,
     plugin_command::{
         plugin_command::Payload, BreakPanesToNewTabPayload, BreakPanesToTabWithIndexPayload,
-        ChangeHostFolderPayload, ClearScreenForPaneIdPayload, CliPipeOutputPayload,
-        CloseTabWithIndexPayload, CommandName, ContextItem, EditScrollbackForPaneWithIdPayload,
-        EnvVariable, ExecCmdPayload, FixedOrPercent as ProtobufFixedOrPercent,
+        ChangeFloatingPanesCoordinatesPayload, ChangeHostFolderPayload,
+        ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseTabWithIndexPayload, CommandName,
+        ContextItem, EditScrollbackForPaneWithIdPayload, EnvVariable, ExecCmdPayload,
+        FixedOrPercent as ProtobufFixedOrPercent,
         FixedOrPercentValue as ProtobufFixedOrPercentValue,
         FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, HidePaneWithIdPayload,
         HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
@@ -14,15 +15,16 @@ pub use super::generated_api::api::{
         MovePaneWithPaneIdPayload, MovePayload, NewPluginArgs as ProtobufNewPluginArgs,
         NewTabsWithLayoutInfoPayload, OpenCommandPanePayload, OpenFilePayload,
         PageScrollDownInPaneIdPayload, PageScrollUpInPaneIdPayload, PaneId as ProtobufPaneId,
-        PaneType as ProtobufPaneType, PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
-        RebindKeysPayload, ReconfigurePayload, ReloadPluginPayload, RequestPluginPermissionPayload,
+        PaneIdAndFloatingPaneCoordinates, PaneType as ProtobufPaneType,
+        PluginCommand as ProtobufPluginCommand, PluginMessagePayload, RebindKeysPayload,
+        ReconfigurePayload, ReloadPluginPayload, RequestPluginPermissionPayload,
         RerunCommandPanePayload, ResizePaneIdWithDirectionPayload, ResizePayload,
         RunCommandPayload, ScrollDownInPaneIdPayload, ScrollToBottomInPaneIdPayload,
         ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetFloatingPanePinnedPayload,
         SetTimeoutPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
         SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
         TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload, ChangeFloatingPanesCoordinatesPayload, PaneIdAndFloatingPaneCoordinates,
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1341,21 +1343,24 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for StackPanes"),
             },
-            Some(CommandName::ChangeFloatingPanesCoordinates) => match protobuf_plugin_command.payload {
-                Some(Payload::ChangeFloatingPanesCoordinatesPayload(change_floating_panes_coordinates_payload)) => {
-                    Ok(PluginCommand::ChangeFloatingPanesCoordinates(
+            Some(CommandName::ChangeFloatingPanesCoordinates) => {
+                match protobuf_plugin_command.payload {
+                    Some(Payload::ChangeFloatingPanesCoordinatesPayload(
+                        change_floating_panes_coordinates_payload,
+                    )) => Ok(PluginCommand::ChangeFloatingPanesCoordinates(
                         change_floating_panes_coordinates_payload
                             .pane_ids_and_floating_panes_coordinates
                             .into_iter()
                             .filter_map(|p_id_a_fp| {
                                 let pane_id: PaneId = p_id_a_fp.pane_id?.try_into().ok()?;
-                                let floating_pane_coordinates: FloatingPaneCoordinates = p_id_a_fp.floating_pane_coordinates?.try_into().ok()?;
+                                let floating_pane_coordinates: FloatingPaneCoordinates =
+                                    p_id_a_fp.floating_pane_coordinates?.try_into().ok()?;
                                 Some((pane_id, floating_pane_coordinates))
                             })
                             .collect(),
-                    ))
-                },
-                _ => Err("Mismatched payload for ChangeFloatingPanesCoordinates"),
+                    )),
+                    _ => Err("Mismatched payload for ChangeFloatingPanesCoordinates"),
+                }
             },
             None => Err("Unrecognized plugin command"),
         }
@@ -2210,19 +2215,26 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                         .collect(),
                 })),
             }),
-            PluginCommand::ChangeFloatingPanesCoordinates(pane_ids_and_floating_panes_coordinates) => Ok(ProtobufPluginCommand {
+            PluginCommand::ChangeFloatingPanesCoordinates(
+                pane_ids_and_floating_panes_coordinates,
+            ) => Ok(ProtobufPluginCommand {
                 name: CommandName::ChangeFloatingPanesCoordinates as i32,
-                payload: Some(Payload::ChangeFloatingPanesCoordinatesPayload(ChangeFloatingPanesCoordinatesPayload {
-                    pane_ids_and_floating_panes_coordinates: pane_ids_and_floating_panes_coordinates
-                        .into_iter()
-                        .filter_map(|(p_id, floating_pane_coordinates)| {
-                            Some(PaneIdAndFloatingPaneCoordinates {
-                                pane_id: Some(p_id.try_into().ok()?),
-                                floating_pane_coordinates: Some(floating_pane_coordinates.try_into().ok()?),
-                            })
-                        })
-                        .collect(),
-                })),
+                payload: Some(Payload::ChangeFloatingPanesCoordinatesPayload(
+                    ChangeFloatingPanesCoordinatesPayload {
+                        pane_ids_and_floating_panes_coordinates:
+                            pane_ids_and_floating_panes_coordinates
+                                .into_iter()
+                                .filter_map(|(p_id, floating_pane_coordinates)| {
+                                    Some(PaneIdAndFloatingPaneCoordinates {
+                                        pane_id: Some(p_id.try_into().ok()?),
+                                        floating_pane_coordinates: Some(
+                                            floating_pane_coordinates.try_into().ok()?,
+                                        ),
+                                    })
+                                })
+                                .collect(),
+                    },
+                )),
             }),
         }
     }

@@ -741,15 +741,15 @@ impl Action {
                 let mut malformed_ids = vec![];
                 let pane_ids = pane_ids
                     .iter()
-                    .filter_map(|stringified_pane_id| {
-                        match PaneId::from_str(stringified_pane_id) {
+                    .filter_map(
+                        |stringified_pane_id| match PaneId::from_str(stringified_pane_id) {
                             Ok(pane_id) => Some(pane_id),
                             Err(_e) => {
                                 malformed_ids.push(stringified_pane_id.to_owned());
                                 None
-                            }
-                        }
-                    })
+                            },
+                        },
+                    )
                     .collect();
                 if !malformed_ids.is_empty() {
                     Err(
@@ -762,8 +762,16 @@ impl Action {
                     Ok(vec![Action::StackPanes(pane_ids)])
                 }
             },
-            CliAction::ChangeFloatingPaneCoordinates { pane_id, x, y, width, height, pinned } => {
-                let Some(coordinates) = FloatingPaneCoordinates::new(x, y, width, height, pinned) else {
+            CliAction::ChangeFloatingPaneCoordinates {
+                pane_id,
+                x,
+                y,
+                width,
+                height,
+                pinned,
+            } => {
+                let Some(coordinates) = FloatingPaneCoordinates::new(x, y, width, height, pinned)
+                else {
                     return Err(format!("Failed to parse floating pane coordinates"));
                 };
                 let parsed_pane_id = PaneId::from_str(&pane_id);
@@ -778,7 +786,7 @@ impl Action {
                         ))
                     }
                 }
-            }
+            },
         }
     }
     pub fn launches_plugin(&self, plugin_url: &str) -> bool {

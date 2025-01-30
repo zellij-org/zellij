@@ -4282,7 +4282,7 @@ impl TabInfo {
             viewport_rows,
             viewport_columns,
             display_area_rows,
-            display_area_columns
+            display_area_columns,
         })
     }
     pub fn encode_to_kdl(&self) -> KdlDocument {

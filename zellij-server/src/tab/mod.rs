@@ -4487,8 +4487,13 @@ impl Tab {
             self.tiled_panes.expand_pane_in_stack(root_pane_id);
         }
     }
-    pub fn change_floating_pane_coordinates(&mut self, pane_id: &PaneId, floating_pane_coordinates: FloatingPaneCoordinates) -> Result<()> {
-        self.floating_panes.change_pane_coordinates(*pane_id, floating_pane_coordinates)?;
+    pub fn change_floating_pane_coordinates(
+        &mut self,
+        pane_id: &PaneId,
+        floating_pane_coordinates: FloatingPaneCoordinates,
+    ) -> Result<()> {
+        self.floating_panes
+            .change_pane_coordinates(*pane_id, floating_pane_coordinates)?;
         self.set_force_render();
         self.swap_layouts.set_is_floating_damaged();
         Ok(())

@@ -937,9 +937,10 @@ pub(crate) fn route_action(
         },
         Action::ChangeFloatingPaneCoordinates(pane_id, coordinates) => {
             senders
-                .send_to_screen(ScreenInstruction::ChangeFloatingPanesCoordinates(
-                    vec![(pane_id.into(), coordinates)]
-                ))
+                .send_to_screen(ScreenInstruction::ChangeFloatingPanesCoordinates(vec![(
+                    pane_id.into(),
+                    coordinates,
+                )]))
                 .with_context(err_context)?;
         },
     }

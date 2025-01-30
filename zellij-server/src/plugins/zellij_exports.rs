@@ -362,7 +362,13 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         stack_panes(env, pane_ids.into_iter().map(|p_id| p_id.into()).collect())
                     },
                     PluginCommand::ChangeFloatingPanesCoordinates(pane_ids_and_coordinates) => {
-                        change_floating_panes_coordinates(env, pane_ids_and_coordinates.into_iter().map(|(p_id, coordinates)| (p_id.into(), coordinates)).collect())
+                        change_floating_panes_coordinates(
+                            env,
+                            pane_ids_and_coordinates
+                                .into_iter()
+                                .map(|(p_id, coordinates)| (p_id.into(), coordinates))
+                                .collect(),
+                        )
                     },
                 },
                 (PermissionStatus::Denied, permission) => {
@@ -1533,10 +1539,15 @@ fn stack_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
         .send_to_screen(ScreenInstruction::StackPanes(pane_ids));
 }
 
-fn change_floating_panes_coordinates(env: &PluginEnv, pane_ids_and_coordinates: Vec<(PaneId, FloatingPaneCoordinates)>) {
+fn change_floating_panes_coordinates(
+    env: &PluginEnv,
+    pane_ids_and_coordinates: Vec<(PaneId, FloatingPaneCoordinates)>,
+) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::ChangeFloatingPanesCoordinates(pane_ids_and_coordinates));
+        .send_to_screen(ScreenInstruction::ChangeFloatingPanesCoordinates(
+            pane_ids_and_coordinates,
+        ));
 }
 
 fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
