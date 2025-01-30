@@ -4488,11 +4488,8 @@ impl Tab {
         }
     }
     pub fn change_floating_pane_coordinates(&mut self, pane_id: &PaneId, floating_pane_coordinates: FloatingPaneCoordinates) -> Result<()> {
-        let err_context = || format!("Failed to change floating pane coordinates");
-
-        self.floating_panes.change_pane_coordinates(*pane_id, floating_pane_coordinates);
+        self.floating_panes.change_pane_coordinates(*pane_id, floating_pane_coordinates)?;
         self.set_force_render();
-
         self.swap_layouts.set_is_floating_damaged();
         Ok(())
     }

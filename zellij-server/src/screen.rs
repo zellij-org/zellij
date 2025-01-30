@@ -2580,7 +2580,7 @@ impl Screen {
     }
     pub fn change_floating_panes_coordinates(&mut self, pane_ids_and_coordinates: Vec<(PaneId, FloatingPaneCoordinates)>) {
         for (pane_id, coordinates) in pane_ids_and_coordinates {
-            for (tab_id, tab) in self.tabs.iter_mut() {
+            for (_tab_id, tab) in self.tabs.iter_mut() {
                 if tab.has_pane_with_pid(&pane_id) {
                     tab.change_floating_pane_coordinates(&pane_id, coordinates).non_fatal();
                     break;
