@@ -1070,6 +1070,10 @@ impl TryFrom<ProtobufTabInfo> for TabInfo {
                 .collect(),
             active_swap_layout_name: protobuf_tab_info.active_swap_layout_name,
             is_swap_layout_dirty: protobuf_tab_info.is_swap_layout_dirty,
+            viewport_rows: protobuf_tab_info.viewport_rows as usize,
+            viewport_columns: protobuf_tab_info.viewport_columns as usize,
+            display_area_rows: protobuf_tab_info.display_area_rows as usize,
+            display_area_columns: protobuf_tab_info.display_area_columns as usize,
         })
     }
 }
@@ -1092,6 +1096,10 @@ impl TryFrom<TabInfo> for ProtobufTabInfo {
                 .collect(),
             active_swap_layout_name: tab_info.active_swap_layout_name,
             is_swap_layout_dirty: tab_info.is_swap_layout_dirty,
+            viewport_rows: tab_info.viewport_rows as u32,
+            viewport_columns: tab_info.viewport_columns as u32,
+            display_area_rows: tab_info.display_area_rows as u32,
+            display_area_columns: tab_info.display_area_columns as u32,
         })
     }
 }
@@ -1475,6 +1483,10 @@ fn serialize_tab_update_event_with_non_default_values() {
             other_focused_clients: vec![2, 3, 4],
             active_swap_layout_name: Some("my cool swap layout".to_owned()),
             is_swap_layout_dirty: false,
+            viewport_rows: 10,
+            viewport_columns: 10,
+            display_area_rows: 10,
+            display_area_columns: 10,
         },
         TabInfo {
             position: 1,
@@ -1487,6 +1499,10 @@ fn serialize_tab_update_event_with_non_default_values() {
             other_focused_clients: vec![1, 5, 111],
             active_swap_layout_name: None,
             is_swap_layout_dirty: true,
+            viewport_rows: 10,
+            viewport_columns: 10,
+            display_area_rows: 10,
+            display_area_columns: 10,
         },
         TabInfo::default(),
     ]);
@@ -1754,6 +1770,10 @@ fn serialize_session_update_event_with_non_default_values() {
             other_focused_clients: vec![2, 3, 4],
             active_swap_layout_name: Some("my cool swap layout".to_owned()),
             is_swap_layout_dirty: false,
+            viewport_rows: 10,
+            viewport_columns: 10,
+            display_area_rows: 10,
+            display_area_columns: 10,
         },
         TabInfo {
             position: 1,
@@ -1766,6 +1786,10 @@ fn serialize_session_update_event_with_non_default_values() {
             other_focused_clients: vec![1, 5, 111],
             active_swap_layout_name: None,
             is_swap_layout_dirty: true,
+            viewport_rows: 10,
+            viewport_columns: 10,
+            display_area_rows: 10,
+            display_area_columns: 10,
         },
         TabInfo::default(),
     ];

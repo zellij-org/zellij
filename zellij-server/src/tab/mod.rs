@@ -4495,6 +4495,23 @@ impl Tab {
             self.tiled_panes.expand_pane_in_stack(root_pane_id);
         }
     }
+    pub fn change_floating_pane_coordinates(
+        &mut self,
+        pane_id: &PaneId,
+        floating_pane_coordinates: FloatingPaneCoordinates,
+    ) -> Result<()> {
+        self.floating_panes
+            .change_pane_coordinates(*pane_id, floating_pane_coordinates)?;
+        self.set_force_render();
+        self.swap_layouts.set_is_floating_damaged();
+        Ok(())
+    }
+    pub fn get_viewport(&self) -> Viewport {
+        self.viewport.borrow().clone()
+    }
+    pub fn get_display_area(&self) -> Size {
+        self.display_area.borrow().clone()
+    }
     fn new_scrollback_editor_pane(&self, pid: u32) -> TerminalPane {
         let next_terminal_position = self.get_next_terminal_position();
         let mut new_pane = TerminalPane::new(

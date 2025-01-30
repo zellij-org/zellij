@@ -1,6 +1,6 @@
 pub mod floating_pane_grid;
 use zellij_utils::{
-    data::{Direction, PaneInfo, ResizeStrategy},
+    data::{Direction, FloatingPaneCoordinates, PaneInfo, ResizeStrategy},
     position::Position,
 };
 
@@ -727,6 +727,27 @@ impl FloatingPanes {
             current_position.set_should_render(true);
             let _ = self.set_pane_frames();
         }
+    }
+    pub fn change_pane_coordinates(
+        &mut self,
+        pane_id: PaneId,
+        new_coordinates: FloatingPaneCoordinates,
+    ) -> Result<()> {
+        let err_context = || format!("Failed to change_pane_coordinates");
+
+        {
+            let viewport = { self.viewport.borrow().clone() };
+            let pane = self.get_pane_mut(pane_id).with_context(err_context)?;
+            let mut pane_geom = pane.position_and_size();
+            if let Some(pinned) = new_coordinates.pinned.as_ref() {
+                pane.set_pinned(*pinned);
+            }
+            pane_geom.adjust_coordinates(new_coordinates, viewport);
+            pane.set_geom(pane_geom);
+            pane.set_should_render(true);
+        }
+        let _ = self.set_pane_frames();
+        Ok(())
     }
     pub fn move_clients_out_of_pane(&mut self, pane_id: PaneId) {
         let active_panes: Vec<(ClientId, PaneId)> = self

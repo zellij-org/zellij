@@ -374,6 +374,7 @@ pub enum ScreenContext {
     TogglePanePinned,
     SetFloatingPanePinned,
     StackPanes,
+    ChangeFloatingPanesCoordinates,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

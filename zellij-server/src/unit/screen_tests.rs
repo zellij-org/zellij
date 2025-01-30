@@ -3689,3 +3689,46 @@ pub fn send_cli_stack_panes_action() {
     }
     assert_snapshot!(format!("{}", snapshot_count));
 }
+
+#[test]
+pub fn send_cli_change_floating_pane_coordinates_action() {
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let initial_tiled_layout = TiledPaneLayout::default();
+    let initial_floating_panes = vec![FloatingPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_tiled_layout), initial_floating_panes);
+
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let change_floating_pane_coordinates_action = CliAction::ChangeFloatingPaneCoordinates {
+        pane_id: "0".to_owned(),
+        x: Some("0".to_owned()),
+        y: Some("0".to_owned()),
+        width: Some("10".to_owned()),
+        height: Some("10".to_owned()),
+        pinned: None,
+    };
+    send_cli_action_to_server(
+        &session_metadata,
+        change_floating_pane_coordinates_action,
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let snapshot_count = snapshots.len();
+    for (_cursor_coordinates, snapshot) in snapshots {
+        assert_snapshot!(format!("{}", snapshot));
+    }
+    assert_snapshot!(format!("{}", snapshot_count));
+}
