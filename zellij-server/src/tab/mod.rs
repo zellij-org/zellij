@@ -928,6 +928,7 @@ impl Tab {
             };
             self.tiled_panes
                 .focus_pane_if_client_not_focused(focus_pane_id, client_id);
+            self.floating_panes.focus_first_pane_if_client_not_focused(client_id);
             self.connected_clients.borrow_mut().insert(client_id);
             self.mode_info.borrow_mut().insert(
                 client_id,

@@ -24,7 +24,7 @@ pub use super::generated_api::api::{
         SetTimeoutPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
         SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
         TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload, OpenCommandPaneNearPluginPayload, OpenCommandPaneFloatingNearPluginPayload, OpenTerminalNearPluginPayload, OpenTerminalFloatingNearPluginPayload, OpenTerminalInPlaceOfPluginPayload, OpenCommandPaneInPlaceOfPluginPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1362,6 +1362,108 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     _ => Err("Mismatched payload for ChangeFloatingPanesCoordinates"),
                 }
             },
+            Some(CommandName::OpenCommandPaneNearPlugin) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenCommandPaneNearPluginPayload(command_to_run_payload)) => {
+                    match command_to_run_payload.command_to_run {
+                        Some(command_to_run) => {
+                            let context: BTreeMap<String, String> = command_to_run_payload
+                                .context
+                                .into_iter()
+                                .map(|e| (e.name, e.value))
+                                .collect();
+                            Ok(PluginCommand::OpenCommandPaneNearPlugin(
+                                command_to_run.try_into()?,
+                                context,
+                            ))
+                        },
+                        None => Err("Malformed open command pane near plugin payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for OpenCommandPaneNearPlugin"),
+            },
+            Some(CommandName::OpenTerminalNearPlugin) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenTerminalNearPluginPayload(open_terminal_near_plugin_payload)) => {
+                    match open_terminal_near_plugin_payload.file_to_open {
+                        Some(file_to_open) => {
+                            Ok(PluginCommand::OpenTerminalNearPlugin(file_to_open.try_into()?))
+                        },
+                        None => Err("Malformed open terminal near plugin payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for OpenTerminalNearPluginPayload"),
+            },
+            Some(CommandName::OpenTerminalFloatingNearPlugin) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenTerminalFloatingNearPluginPayload(open_terminal_floating_near_plugin_payload)) => {
+                    let floating_pane_coordinates = open_terminal_floating_near_plugin_payload
+                        .floating_pane_coordinates
+                        .map(|f| f.into());
+                    match open_terminal_floating_near_plugin_payload.file_to_open {
+                        Some(file_to_open) => {
+                            Ok(PluginCommand::OpenTerminalFloatingNearPlugin(
+                                file_to_open.try_into()?,
+                                floating_pane_coordinates
+                            ))
+                        },
+                        None => Err("Malformed open terminal floating near plugin payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for OpenTerminalFloatingNearPlugin"),
+            },
+            Some(CommandName::OpenTerminalInPlaceOfPlugin) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenTerminalInPlaceOfPluginPayload(open_terminal_in_place_of_plugin_payload)) => {
+                    match open_terminal_in_place_of_plugin_payload.file_to_open {
+                        Some(file_to_open) => {
+                            Ok(PluginCommand::OpenTerminalInPlaceOfPlugin(
+                                file_to_open.try_into()?,
+                            ))
+                        },
+                        None => Err("Malformed open terminal in place of plugin payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for OpenTerminalInPlaceOfPlugin"),
+            },
+            Some(CommandName::OpenCommandPaneFloatingNearPlugin) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenCommandPaneFloatingNearPluginPayload(open_command_pane_floating_near_plugin)) => {
+                    match open_command_pane_floating_near_plugin.command_to_run {
+                        Some(command_to_run) => {
+                            let context: BTreeMap<String, String> = open_command_pane_floating_near_plugin
+                                .context
+                                .into_iter()
+                                .map(|e| (e.name, e.value))
+                                .collect();
+                            let floating_pane_coordinates = open_command_pane_floating_near_plugin
+                                .floating_pane_coordinates
+                                .map(|f| f.into());
+                            Ok(PluginCommand::OpenCommandPaneFloatingNearPlugin(
+                                command_to_run.try_into()?,
+                                floating_pane_coordinates,
+                                context,
+                            ))
+                        },
+                        None => Err("Malformed open command pane floating near plugin payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for OpenCommandPaneFloatingNearPlugin"),
+            },
+            Some(CommandName::OpenCommandPaneInPlaceOfPlugin) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenCommandPaneInPlaceOfPluginPayload(open_command_pane_in_place_of_plugin_payload)) => {
+                    match open_command_pane_in_place_of_plugin_payload.command_to_run {
+                        Some(command_to_run) => {
+                            let context: BTreeMap<String, String> = open_command_pane_in_place_of_plugin_payload
+                                .context
+                                .into_iter()
+                                .map(|e| (e.name, e.value))
+                                .collect();
+                            Ok(PluginCommand::OpenCommandPaneInPlaceOfPlugin(
+                                command_to_run.try_into()?,
+                                context,
+                            ))
+                        },
+                        None => Err("Malformed open command pane in place of plugin payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for OpenCommandPaneInPlaceOfPlugin"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2236,6 +2338,73 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
+            PluginCommand::OpenCommandPaneNearPlugin(command_to_run, context) => {
+                let context: Vec<_> = context
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenCommandPaneNearPlugin as i32,
+                    payload: Some(Payload::OpenCommandPaneNearPluginPayload(OpenCommandPaneNearPluginPayload {
+                        command_to_run: Some(command_to_run.try_into()?),
+                        floating_pane_coordinates: None,
+                        context,
+                    })),
+                })
+            },
+            PluginCommand::OpenCommandPaneFloatingNearPlugin(command_to_run, floating_pane_coordinates, context) => {
+                let context: Vec<_> = context
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenCommandPaneFloatingNearPlugin as i32,
+                    payload: Some(Payload::OpenCommandPaneFloatingNearPluginPayload(OpenCommandPaneFloatingNearPluginPayload {
+                        command_to_run: Some(command_to_run.try_into()?),
+                        floating_pane_coordinates: floating_pane_coordinates.map(|f| f.into()),
+                        context,
+                    })),
+                })
+            },
+            PluginCommand::OpenTerminalNearPlugin(cwd) => Ok(ProtobufPluginCommand {
+                name: CommandName::OpenTerminalNearPlugin as i32,
+                payload: Some(Payload::OpenTerminalNearPluginPayload(OpenTerminalNearPluginPayload {
+                    file_to_open: Some(cwd.try_into()?),
+                    context: vec![], // will be added in the future
+                })),
+            }),
+            PluginCommand::OpenTerminalFloatingNearPlugin(cwd, floating_pane_coordinates) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenTerminalFloatingNearPlugin as i32,
+                    payload: Some(Payload::OpenTerminalFloatingNearPluginPayload(OpenTerminalFloatingNearPluginPayload {
+                        file_to_open: Some(cwd.try_into()?),
+                        floating_pane_coordinates: floating_pane_coordinates.map(|f| f.into()),
+                        context: vec![], // will be added in the future
+                    })),
+                })
+            },
+            PluginCommand::OpenTerminalInPlaceOfPlugin(cwd) => Ok(ProtobufPluginCommand {
+                name: CommandName::OpenTerminalInPlaceOfPlugin as i32,
+                payload: Some(Payload::OpenTerminalInPlaceOfPluginPayload(OpenTerminalInPlaceOfPluginPayload {
+                    file_to_open: Some(cwd.try_into()?),
+                    context: vec![], // will be added in the future
+                })),
+            }),
+            PluginCommand::OpenCommandPaneInPlaceOfPlugin(command_to_run, context) => {
+                let context: Vec<_> = context
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenCommandPaneInPlaceOfPlugin as i32,
+                    payload: Some(Payload::OpenCommandPaneInPlaceOfPluginPayload(
+                        OpenCommandPaneInPlaceOfPluginPayload {
+                            command_to_run: Some(command_to_run.try_into()?),
+                            context,
+                        },
+                    )),
+                })
+            },
         }
     }
 }
