@@ -1,5 +1,5 @@
 use super::{is_too_high, is_too_wide, stringify_text, Coordinates, Text};
-use crate::panes::terminal_character::{AnsiCode, RESET_STYLES};
+use crate::panes::{terminal_character::{AnsiCode, RESET_STYLES}, CharacterStyles};
 use std::collections::BTreeMap;
 use zellij_utils::{data::Style, shared::ansi_len};
 
@@ -20,21 +20,20 @@ pub fn table(
             break;
         }
         for cell in row {
-            let (reset_styles_for_item, declaration) = if is_title_row {
-                (RESET_STYLES.background(None), style.colors.table_title)
+            let declaration = if is_title_row {
+                style.colors.table_title
             } else {
                 if cell.selected {
-                    (
-                        RESET_STYLES
-                            .background(Some(style.colors.table_cell_selected.background.into())),
-                        style.colors.table_cell_selected,
-                    )
+                    style.colors.table_cell_selected
                 } else {
-                    (
-                        RESET_STYLES.background(None),
-                        style.colors.table_cell_unselected,
-                    )
+                    style.colors.table_cell_unselected
                 }
+            };
+
+            let text_style = if cell.opaque || cell.selected {
+                CharacterStyles::from(declaration).background(Some(declaration.background.into()))
+            } else {
+                CharacterStyles::from(declaration)
             };
             // here we intentionally don't pass our coordinates even if we have them, because
             // these cells have already been padded and truncated
@@ -43,11 +42,11 @@ pub fn table(
                 None,
                 &None,
                 &declaration,
-                reset_styles_for_item.bold(Some(AnsiCode::On)),
+                text_style.bold(Some(AnsiCode::On)),
             );
             stringified.push_str(&format!(
                 "{}{} {}",
-                reset_styles_for_item, text, RESET_STYLES
+                text_style, text, RESET_STYLES
             ));
         }
         let next_row_instruction = coordinates
