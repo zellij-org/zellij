@@ -914,6 +914,7 @@ pub enum Event {
     ListClients(Vec<ClientInfo>),
     HostFolderChanged(PathBuf),               // PathBuf -> new host folder
     FailedToChangeHostFolder(Option<String>), // String -> the error we got when changing
+    PastedText(String),
 }
 
 #[derive(

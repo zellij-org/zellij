@@ -52,6 +52,7 @@ enum EventType {
     ListClients = 26;
     HostFolderChanged = 27;
     FailedToChangeHostFolder = 28;
+    PastedText = 29;
 }
 
 message EventNameList {
@@ -85,7 +86,12 @@ message Event {
     ListClientsPayload list_clients_payload = 23;
     HostFolderChangedPayload host_folder_changed_payload = 24;
     FailedToChangeHostFolderPayload failed_to_change_host_folder_payload = 25;
+    PastedTextPayload pasted_text_payload = 26;
   }
+}
+
+message PastedTextPayload {
+  string pasted_text = 1;
 }
 
 message FailedToChangeHostFolderPayload {

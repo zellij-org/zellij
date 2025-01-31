@@ -213,6 +213,7 @@ impl Pane for TerminalPane {
         key_with_modifier: &Option<KeyWithModifier>,
         raw_input_bytes: Vec<u8>,
         raw_input_bytes_are_kitty: bool,
+        _client_id: Option<ClientId>,
     ) -> Option<AdjustedInput> {
         // there are some cases in which the terminal state means that input sent to it
         // needs to be adjusted.
