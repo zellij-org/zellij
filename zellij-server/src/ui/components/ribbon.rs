@@ -24,7 +24,7 @@ pub fn ribbon(
     );
 
     let (arrow, padding) = if arrow_fonts {
-        (ARROW_SEPARATOR, Some(2))
+        (ARROW_SEPARATOR, Some(4))
     } else {
         ("", None)
     };
