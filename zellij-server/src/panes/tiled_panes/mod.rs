@@ -235,7 +235,7 @@ impl TiledPanes {
         let stacked_resize = { *self.stacked_resize.borrow() };
 
         if let Some(client_id) = client_id {
-            if stacked_resize {
+            if stacked_resize && self.is_connected(&client_id) {
                 self.add_pane_with_stacked_resize(pane_id, pane, should_relayout, client_id);
                 return;
             }
@@ -2405,6 +2405,9 @@ impl TiledPanes {
     ) -> Vec<PaneGeom> {
         StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
             .new_stack(root_pane_id, pane_count_in_stack)
+    }
+    fn is_connected(&self, client_id: &ClientId) -> bool {
+        self.connected_clients.borrow().contains(&client_id)
     }
 }
 
