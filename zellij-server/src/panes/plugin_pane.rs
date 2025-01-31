@@ -296,16 +296,17 @@ impl Pane for PluginPane {
             if let Some(text_being_pasted) = self.text_being_pasted.take() {
                 match String::from_utf8(text_being_pasted) {
                     Ok(pasted_text) => {
-                        let _ = self.send_plugin_instructions
+                        let _ = self
+                            .send_plugin_instructions
                             .send(PluginInstruction::Update(vec![(
                                 Some(self.pid),
                                 client_id,
-                                Event::PastedText(pasted_text)
+                                Event::PastedText(pasted_text),
                             )]));
                     },
                     Err(e) => {
                         log::error!("Failed to convert pasted bytes as utf8 {:?}", e);
-                    }
+                    },
                 }
             }
             None

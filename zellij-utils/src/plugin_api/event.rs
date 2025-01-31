@@ -350,11 +350,9 @@ impl TryFrom<ProtobufEvent> for Event {
                 _ => Err("Malformed payload for the FailedToChangeHostFolder Event"),
             },
             Some(ProtobufEventType::PastedText) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::PastedTextPayload(
-                    pasted_text_payload,
-                )) => Ok(Event::PastedText(
-                    pasted_text_payload.pasted_text,
-                )),
+                Some(ProtobufEventPayload::PastedTextPayload(pasted_text_payload)) => {
+                    Ok(Event::PastedText(pasted_text_payload.pasted_text))
+                },
                 _ => Err("Malformed payload for the PastedText Event"),
             },
             None => Err("Unknown Protobuf Event"),
@@ -723,9 +721,9 @@ impl TryFrom<Event> for ProtobufEvent {
             }),
             Event::PastedText(pasted_text) => Ok(ProtobufEvent {
                 name: ProtobufEventType::PastedText as i32,
-                payload: Some(event::Payload::PastedTextPayload(
-                    PastedTextPayload { pasted_text },
-                )),
+                payload: Some(event::Payload::PastedTextPayload(PastedTextPayload {
+                    pasted_text,
+                })),
             }),
         }
     }
