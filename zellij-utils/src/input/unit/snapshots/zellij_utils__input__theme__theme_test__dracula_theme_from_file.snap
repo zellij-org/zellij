@@ -320,9 +320,9 @@ expression: "format!(\"{:#?}\", theme)"
                 ),
                 background: Rgb(
                     (
-                        40,
-                        42,
-                        54,
+                        0,
+                        0,
+                        0,
                     ),
                 ),
                 emphasis_0: Rgb(

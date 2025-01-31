@@ -70,7 +70,7 @@ themes {
         }
         list_unselected {
             base 90
-            background 10
+            background 20
             emphasis_0 254
             emphasis_1 80
             emphasis_2 40
