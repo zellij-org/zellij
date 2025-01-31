@@ -100,6 +100,7 @@ pub(crate) struct PluginPane {
     arrow_fonts: bool,
     styled_underlines: bool,
     should_be_suppressed: bool,
+    text_being_pasted: Option<Vec<u8>>,
 }
 
 impl PluginPane {
@@ -154,6 +155,7 @@ impl PluginPane {
             arrow_fonts,
             styled_underlines,
             should_be_suppressed: false,
+            text_being_pasted: None,
         };
         for client_id in currently_connected_clients {
             plugin.handle_plugin_bytes(client_id, initial_loading_message.as_bytes().to_vec());
@@ -248,8 +250,9 @@ impl Pane for PluginPane {
     fn adjust_input_to_terminal(
         &mut self,
         key_with_modifier: &Option<KeyWithModifier>,
-        raw_input_bytes: Vec<u8>,
+        mut raw_input_bytes: Vec<u8>,
         _raw_input_bytes_are_kitty: bool,
+        client_id: Option<ClientId>,
     ) -> Option<AdjustedInput> {
         if let Some(requesting_permissions) = &self.requesting_permissions {
             let permissions = requesting_permissions.permissions.clone();
@@ -286,10 +289,29 @@ impl Pane for PluginPane {
             }
         } else if let Some(key_with_modifier) = key_with_modifier {
             Some(AdjustedInput::WriteKeyToPlugin(key_with_modifier.clone()))
-        } else if raw_input_bytes.as_slice() == BRACKETED_PASTE_BEGIN
-            || raw_input_bytes.as_slice() == BRACKETED_PASTE_END
-        {
-            // plugins do not need bracketed paste
+        } else if raw_input_bytes.as_slice() == BRACKETED_PASTE_BEGIN {
+            self.text_being_pasted = Some(vec![]);
+            None
+        } else if raw_input_bytes.as_slice() == BRACKETED_PASTE_END {
+            if let Some(text_being_pasted) = self.text_being_pasted.take() {
+                match String::from_utf8(text_being_pasted) {
+                    Ok(pasted_text) => {
+                        let _ = self
+                            .send_plugin_instructions
+                            .send(PluginInstruction::Update(vec![(
+                                Some(self.pid),
+                                client_id,
+                                Event::PastedText(pasted_text),
+                            )]));
+                    },
+                    Err(e) => {
+                        log::error!("Failed to convert pasted bytes as utf8 {:?}", e);
+                    },
+                }
+            }
+            None
+        } else if let Some(pasted_text) = self.text_being_pasted.as_mut() {
+            pasted_text.append(&mut raw_input_bytes);
             None
         } else {
             Some(AdjustedInput::WriteBytesToTerminal(raw_input_bytes))

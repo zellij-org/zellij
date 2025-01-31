@@ -229,6 +229,7 @@ pub trait Pane {
         _key_with_modifier: &Option<KeyWithModifier>,
         _raw_input_bytes: Vec<u8>,
         _raw_input_bytes_are_kitty: bool,
+        _client_id: Option<ClientId>,
     ) -> Option<AdjustedInput> {
         None
     }
@@ -1874,6 +1875,7 @@ impl Tab {
                     key_with_modifier,
                     raw_input_bytes,
                     raw_input_bytes_are_kitty,
+                    client_id,
                 ) {
                     Some(AdjustedInput::WriteBytesToTerminal(adjusted_input)) => {
                         self.senders
@@ -1916,6 +1918,7 @@ impl Tab {
                 key_with_modifier,
                 raw_input_bytes,
                 raw_input_bytes_are_kitty,
+                client_id,
             ) {
                 Some(AdjustedInput::WriteKeyToPlugin(key_with_modifier)) => {
                     self.senders

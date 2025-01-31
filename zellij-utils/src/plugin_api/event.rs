@@ -349,6 +349,12 @@ impl TryFrom<ProtobufEvent> for Event {
                 )),
                 _ => Err("Malformed payload for the FailedToChangeHostFolder Event"),
             },
+            Some(ProtobufEventType::PastedText) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PastedTextPayload(pasted_text_payload)) => {
+                    Ok(Event::PastedText(pasted_text_payload.pasted_text))
+                },
+                _ => Err("Malformed payload for the PastedText Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -712,6 +718,12 @@ impl TryFrom<Event> for ProtobufEvent {
                 payload: Some(event::Payload::FailedToChangeHostFolderPayload(
                     FailedToChangeHostFolderPayload { error_message },
                 )),
+            }),
+            Event::PastedText(pasted_text) => Ok(ProtobufEvent {
+                name: ProtobufEventType::PastedText as i32,
+                payload: Some(event::Payload::PastedTextPayload(PastedTextPayload {
+                    pasted_text,
+                })),
             }),
         }
     }
@@ -1268,6 +1280,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::ListClients => EventType::ListClients,
             ProtobufEventType::HostFolderChanged => EventType::HostFolderChanged,
             ProtobufEventType::FailedToChangeHostFolder => EventType::FailedToChangeHostFolder,
+            ProtobufEventType::PastedText => EventType::PastedText,
         })
     }
 }
@@ -1305,6 +1318,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::ListClients => ProtobufEventType::ListClients,
             EventType::HostFolderChanged => ProtobufEventType::HostFolderChanged,
             EventType::FailedToChangeHostFolder => ProtobufEventType::FailedToChangeHostFolder,
+            EventType::PastedText => ProtobufEventType::PastedText,
         })
     }
 }
