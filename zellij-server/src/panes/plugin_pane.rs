@@ -294,16 +294,19 @@ impl Pane for PluginPane {
             None
         } else if raw_input_bytes.as_slice() == BRACKETED_PASTE_END {
             if let Some(text_being_pasted) = self.text_being_pasted.take() {
-                log::info!("can has pasted text: {:?}", text_being_pasted);
-                let _ = self.send_plugin_instructions
-                    .send(PluginInstruction::Update(vec![(
-                        Some(self.pid),
-                        client_id,
-                        // TODO CONTINUE HERE: instead of doing this, do a normal from_utf8 and do
-                        // this on success... on failure, send a new `PastedBytes` `Event` with the
-                        // raw_bytes
-                        Event::PastedText(String::from_utf8_lossy(&text_being_pasted).to_string())
-                    )]));
+                match String::from_utf8(text_being_pasted) {
+                    Ok(pasted_text) => {
+                        let _ = self.send_plugin_instructions
+                            .send(PluginInstruction::Update(vec![(
+                                Some(self.pid),
+                                client_id,
+                                Event::PastedText(pasted_text)
+                            )]));
+                    },
+                    Err(e) => {
+                        log::error!("Failed to convert pasted bytes as utf8 {:?}", e);
+                    }
+                }
             }
             None
         } else if let Some(pasted_text) = self.text_being_pasted.as_mut() {
