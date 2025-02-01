@@ -131,6 +131,15 @@ enum CommandName {
   SetFloatingPanePinned = 115;
   StackPanes = 116;
   ChangeFloatingPanesCoordinates = 117;
+  OpenCommandPaneNearPlugin = 118;
+  OpenTerminalNearPlugin = 119;
+  OpenTerminalFloatingNearPlugin = 120;
+  OpenTerminalInPlaceOfPlugin = 121;
+  OpenCommandPaneFloatingNearPlugin = 122;
+  OpenCommandPaneInPlaceOfPlugin = 123;
+  OpenFileNearPlugin = 124;
+  OpenFileFloatingNearPlugin = 125;
+  OpenFileInPlaceOfPlugin = 126;
 }
 
 message PluginCommand {
@@ -218,7 +227,67 @@ message PluginCommand {
     SetFloatingPanePinnedPayload set_floating_pane_pinned_payload = 90;
     StackPanesPayload stack_panes_payload = 91;
     ChangeFloatingPanesCoordinatesPayload change_floating_panes_coordinates_payload = 92;
+    OpenCommandPaneNearPluginPayload open_command_pane_near_plugin_payload = 93;
+    OpenTerminalNearPluginPayload open_terminal_near_plugin_payload = 94;
+    OpenTerminalFloatingNearPluginPayload open_terminal_floating_near_plugin_payload = 95;
+    OpenTerminalInPlaceOfPluginPayload open_terminal_in_place_of_plugin_payload = 96;
+    OpenCommandPaneFloatingNearPluginPayload open_command_pane_floating_near_plugin_payload = 97;
+    OpenCommandPaneInPlaceOfPluginPayload open_command_pane_in_place_of_plugin_payload = 98;
+    OpenFileNearPluginPayload open_file_near_plugin_payload = 99;
+    OpenFileFloatingNearPluginPayload open_file_floating_near_plugin_payload = 100;
+    OpenFileInPlaceOfPluginPayload open_file_in_place_of_plugin_payload = 101;
   }
+}
+
+message OpenFileInPlaceOfPluginPayload {
+  file.File file_to_open = 1;
+  optional FloatingPaneCoordinates floating_pane_coordinates = 2;
+  repeated ContextItem context = 3;
+}
+
+message OpenFileFloatingNearPluginPayload {
+  file.File file_to_open = 1;
+  optional FloatingPaneCoordinates floating_pane_coordinates = 2;
+  repeated ContextItem context = 3;
+}
+
+message OpenFileNearPluginPayload {
+  file.File file_to_open = 1;
+  optional FloatingPaneCoordinates floating_pane_coordinates = 2;
+  repeated ContextItem context = 3;
+}
+
+message OpenCommandPaneInPlaceOfPluginPayload {
+  command.Command command_to_run = 1;
+  repeated ContextItem context = 3;
+}
+
+message OpenCommandPaneFloatingNearPluginPayload {
+  command.Command command_to_run = 1;
+  optional FloatingPaneCoordinates floating_pane_coordinates = 2;
+  repeated ContextItem context = 3;
+}
+
+message OpenTerminalInPlaceOfPluginPayload {
+  file.File file_to_open = 1;
+  repeated ContextItem context = 3;
+}
+
+message OpenTerminalFloatingNearPluginPayload {
+  file.File file_to_open = 1;
+  optional FloatingPaneCoordinates floating_pane_coordinates = 2;
+  repeated ContextItem context = 3;
+}
+
+message OpenTerminalNearPluginPayload {
+  file.File file_to_open = 1;
+  repeated ContextItem context = 3;
+}
+
+message OpenCommandPaneNearPluginPayload {
+  command.Command command_to_run = 1;
+  optional FloatingPaneCoordinates floating_pane_coordinates = 2;
+  repeated ContextItem context = 3;
 }
 
 message ChangeFloatingPanesCoordinatesPayload {

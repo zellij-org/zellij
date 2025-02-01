@@ -2923,8 +2923,34 @@ pub(crate) fn screen_thread_main(
                             log::error!("Tab index not found: {:?}", tab_index);
                         }
                     },
-                    ClientTabIndexOrPaneId::PaneId(_pane_id) => {
-                        log::error!("cannot open a pane with a pane id??");
+                    ClientTabIndexOrPaneId::PaneId(pane_id) => {
+                        let mut found = false;
+                        let all_tabs = screen.get_tabs_mut();
+                        for tab in all_tabs.values_mut() {
+                            if tab.has_pane_with_pid(&pane_id) {
+                                tab.new_pane(
+                                    pid,
+                                    initial_pane_title,
+                                    should_float,
+                                    invoked_with,
+                                    floating_pane_coordinates,
+                                    start_suppressed,
+                                    None,
+                                )?;
+                                if let Some(hold_for_command) = hold_for_command {
+                                    let is_first_run = true;
+                                    tab.hold_pane(pid, None, is_first_run, hold_for_command);
+                                }
+                                found = true;
+                                break;
+                            }
+                        }
+                        if !found {
+                            log::error!(
+                                "Failed to find tab containing pane with id: {:?}",
+                                pane_id
+                            );
+                        }
                     },
                 };
                 screen.unblock_input()?;

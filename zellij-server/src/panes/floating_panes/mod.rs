@@ -816,6 +816,16 @@ impl FloatingPanes {
             None => self.focus_pane(pane_id, client_id),
         }
     }
+    pub fn focus_first_pane_if_client_not_focused(&mut self, client_id: ClientId) {
+        match self.active_panes.get(&client_id) {
+            Some(already_focused_pane_id) => self.focus_pane(*already_focused_pane_id, client_id),
+            None => {
+                if let Some(first_pane_id) = self.panes.iter().next().map(|(p_id, _)| *p_id) {
+                    self.focus_pane(first_pane_id, client_id);
+                }
+            },
+        }
+    }
     pub fn defocus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
         self.z_indices.retain(|p_id| *p_id != pane_id);
         self.active_panes.remove(&client_id, &mut self.panes);
