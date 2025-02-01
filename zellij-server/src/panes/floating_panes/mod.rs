@@ -823,7 +823,7 @@ impl FloatingPanes {
                 if let Some(first_pane_id) = self.panes.iter().next().map(|(p_id, _)| *p_id) {
                     self.focus_pane(first_pane_id, client_id);
                 }
-            }
+            },
         }
     }
     pub fn defocus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {

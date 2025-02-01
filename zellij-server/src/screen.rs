@@ -2946,7 +2946,10 @@ pub(crate) fn screen_thread_main(
                             }
                         }
                         if !found {
-                            log::error!("Failed to find tab containing pane with id: {:?}", pane_id);
+                            log::error!(
+                                "Failed to find tab containing pane with id: {:?}",
+                                pane_id
+                            );
                         }
                     },
                 };

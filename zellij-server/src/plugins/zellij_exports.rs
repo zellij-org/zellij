@@ -101,13 +101,20 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         context,
                     ) => open_file_floating(env, file_to_open, floating_pane_coordinates, context),
                     PluginCommand::OpenTerminal(cwd) => open_terminal(env, cwd.path.try_into()?),
-                    PluginCommand::OpenTerminalNearPlugin(cwd) => open_terminal_near_plugin(env, cwd.path.try_into()?),
+                    PluginCommand::OpenTerminalNearPlugin(cwd) => {
+                        open_terminal_near_plugin(env, cwd.path.try_into()?)
+                    },
                     PluginCommand::OpenTerminalFloating(cwd, floating_pane_coordinates) => {
                         open_terminal_floating(env, cwd.path.try_into()?, floating_pane_coordinates)
                     },
-                    PluginCommand::OpenTerminalFloatingNearPlugin(cwd, floating_pane_coordinates) => {
-                        open_terminal_floating_near_plugin(env, cwd.path.try_into()?, floating_pane_coordinates)
-                    },
+                    PluginCommand::OpenTerminalFloatingNearPlugin(
+                        cwd,
+                        floating_pane_coordinates,
+                    ) => open_terminal_floating_near_plugin(
+                        env,
+                        cwd.path.try_into()?,
+                        floating_pane_coordinates,
+                    ),
                     PluginCommand::OpenCommandPane(command_to_run, context) => {
                         open_command_pane(env, command_to_run, context)
                     },
@@ -400,7 +407,12 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         file_to_open,
                         floating_pane_coordinates,
                         context,
-                    ) => open_file_floating_near_plugin(env, file_to_open, floating_pane_coordinates, context),
+                    ) => open_file_floating_near_plugin(
+                        env,
+                        file_to_open,
+                        floating_pane_coordinates,
+                        context,
+                    ),
                     PluginCommand::OpenFileInPlaceOfPlugin(file_to_open, context) => {
                         open_file_in_place_of_plugin(env, file_to_open, context)
                     },
@@ -629,15 +641,20 @@ fn open_file_in_place(
     apply_action!(action, error_msg, env);
 }
 
-fn open_file_near_plugin(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String, String>) {
+fn open_file_near_plugin(
+    env: &PluginEnv,
+    file_to_open: FileToOpen,
+    context: BTreeMap<String, String>,
+) {
     let cwd = file_to_open
         .cwd
         .map(|cwd| env.plugin_cwd.join(cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let path = env.plugin_cwd.join(file_to_open.path);
-    let open_file_payload = OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
-        OriginatingPlugin::new(env.plugin_id, env.client_id, context),
-    );
+    let open_file_payload =
+        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
+            OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+        );
     let title = format!("Editing: {}", open_file_payload.path.display());
     let should_float = false;
     let start_suppressed = false;
@@ -653,15 +670,21 @@ fn open_file_near_plugin(env: &PluginEnv, file_to_open: FileToOpen, context: BTr
     let _ = env.senders.send_to_pty(pty_instr);
 }
 
-fn open_file_floating_near_plugin(env: &PluginEnv, file_to_open: FileToOpen, floating_pane_coordinates: Option<FloatingPaneCoordinates>, context: BTreeMap<String, String>) {
+fn open_file_floating_near_plugin(
+    env: &PluginEnv,
+    file_to_open: FileToOpen,
+    floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+    context: BTreeMap<String, String>,
+) {
     let cwd = file_to_open
         .cwd
         .map(|cwd| env.plugin_cwd.join(cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let path = env.plugin_cwd.join(file_to_open.path);
-    let open_file_payload = OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
-        OriginatingPlugin::new(env.plugin_id, env.client_id, context),
-    );
+    let open_file_payload =
+        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
+            OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+        );
     let title = format!("Editing: {}", open_file_payload.path.display());
     let should_float = true;
     let start_suppressed = false;
@@ -677,15 +700,20 @@ fn open_file_floating_near_plugin(env: &PluginEnv, file_to_open: FileToOpen, flo
     let _ = env.senders.send_to_pty(pty_instr);
 }
 
-fn open_file_in_place_of_plugin(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String, String>) {
+fn open_file_in_place_of_plugin(
+    env: &PluginEnv,
+    file_to_open: FileToOpen,
+    context: BTreeMap<String, String>,
+) {
     let cwd = file_to_open
         .cwd
         .map(|cwd| env.plugin_cwd.join(cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let path = env.plugin_cwd.join(file_to_open.path);
-    let open_file_payload = OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
-        OriginatingPlugin::new(env.plugin_id, env.client_id, context),
-    );
+    let open_file_payload =
+        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
+            OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+        );
     let title = format!("Editing: {}", open_file_payload.path.display());
     let open_file = TerminalAction::OpenFile(open_file_payload);
     let pty_instr = PtyInstruction::SpawnInPlaceTerminal(
@@ -731,7 +759,7 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
         name,
         None,
         false,
-        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id))
+        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
     ));
 }
 
@@ -778,7 +806,7 @@ fn open_terminal_floating_near_plugin(
         name,
         floating_pane_coordinates,
         false,
-        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id))
+        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
     ));
 }
 
@@ -810,17 +838,19 @@ fn open_terminal_in_place_of_plugin(env: &PluginEnv, cwd: PathBuf) {
     });
     default_shell.change_cwd(cwd);
     let name = None;
-    let _ = env.senders.send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
-        Some(default_shell),
-        name,
-        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
-    ));
+    let _ = env
+        .senders
+        .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
+            Some(default_shell),
+            name,
+            ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        ));
 }
 
 fn open_command_pane_in_place_of_plugin(
     env: &PluginEnv,
     command_to_run: CommandToRun,
-    context: BTreeMap<String, String>
+    context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
     let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
@@ -843,11 +873,13 @@ fn open_command_pane_in_place_of_plugin(
         )),
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
-    let _ = env.senders.send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
-        Some(run_cmd),
-        name,
-        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
-    ));
+    let _ = env
+        .senders
+        .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
+            Some(run_cmd),
+            name,
+            ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        ));
 }
 
 fn open_command_pane(
@@ -913,7 +945,7 @@ fn open_command_pane_near_plugin(
         name,
         None,
         false,
-        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id))
+        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
     ));
 }
 
@@ -982,7 +1014,7 @@ fn open_command_pane_floating_near_plugin(
         name,
         floating_pane_coordinates,
         false,
-        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id))
+        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
     ));
 }
 

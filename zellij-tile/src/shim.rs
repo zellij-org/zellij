@@ -118,7 +118,8 @@ pub fn open_file_floating_near_plugin(
     coordinates: Option<FloatingPaneCoordinates>,
     context: BTreeMap<String, String>,
 ) {
-    let plugin_command = PluginCommand::OpenFileFloatingNearPlugin(file_to_open, coordinates, context);
+    let plugin_command =
+        PluginCommand::OpenFileFloatingNearPlugin(file_to_open, coordinates, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -208,7 +209,10 @@ pub fn open_command_pane(command_to_run: CommandToRun, context: BTreeMap<String,
 /// Open a new command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
 /// This variant is the same as `open_command_pane` except it opens the pane in the same tab as the
 /// plugin regardless of whether the user is focused on it
-pub fn open_command_pane_near_plugin(command_to_run: CommandToRun, context: BTreeMap<String, String>) {
+pub fn open_command_pane_near_plugin(
+    command_to_run: CommandToRun,
+    context: BTreeMap<String, String>,
+) {
     let plugin_command = PluginCommand::OpenCommandPaneNearPlugin(command_to_run, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
@@ -254,7 +258,10 @@ pub fn open_command_pane_in_place(command_to_run: CommandToRun, context: BTreeMa
 /// Open a new in place command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
 /// This variant is the same as open_command_pane_in_place, except that it always replaces the
 /// plugin pane rather than whichever pane the user is focused on
-pub fn open_command_pane_in_place_of_plugin(command_to_run: CommandToRun, context: BTreeMap<String, String>) {
+pub fn open_command_pane_in_place_of_plugin(
+    command_to_run: CommandToRun,
+    context: BTreeMap<String, String>,
+) {
     let plugin_command = PluginCommand::OpenCommandPaneInPlaceOfPlugin(command_to_run, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
