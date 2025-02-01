@@ -104,6 +104,33 @@ pub fn open_file_in_place(file_to_open: FileToOpen, context: BTreeMap<String, St
     unsafe { host_run_plugin_command() };
 }
 
+/// Open a file in the user's default `$EDITOR` in a new pane near th eplugin
+pub fn open_file_near_plugin(file_to_open: FileToOpen, context: BTreeMap<String, String>) {
+    let plugin_command = PluginCommand::OpenFileNearPlugin(file_to_open, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Open a file in the user's default `$EDITOR` in a new floating pane near the plugin
+pub fn open_file_floating_near_plugin(
+    file_to_open: FileToOpen,
+    coordinates: Option<FloatingPaneCoordinates>,
+    context: BTreeMap<String, String>,
+) {
+    let plugin_command = PluginCommand::OpenFileFloatingNearPlugin(file_to_open, coordinates, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Open a file in the user's default `$EDITOR`, replacing the plugin pane
+pub fn open_file_in_place_of_plugin(file_to_open: FileToOpen, context: BTreeMap<String, String>) {
+    let plugin_command = PluginCommand::OpenFileInPlaceOfPlugin(file_to_open, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
 /// Open a new terminal pane to the specified location on the host filesystem
 pub fn open_terminal<P: AsRef<Path>>(path: P) {
     let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());

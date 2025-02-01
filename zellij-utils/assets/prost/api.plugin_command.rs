@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -202,7 +202,43 @@ pub mod plugin_command {
         OpenCommandPaneInPlaceOfPluginPayload(
             super::OpenCommandPaneInPlaceOfPluginPayload,
         ),
+        #[prost(message, tag = "99")]
+        OpenFileNearPluginPayload(super::OpenFileNearPluginPayload),
+        #[prost(message, tag = "100")]
+        OpenFileFloatingNearPluginPayload(super::OpenFileFloatingNearPluginPayload),
+        #[prost(message, tag = "101")]
+        OpenFileInPlaceOfPluginPayload(super::OpenFileInPlaceOfPluginPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenFileInPlaceOfPluginPayload {
+    #[prost(message, optional, tag = "1")]
+    pub file_to_open: ::core::option::Option<super::file::File>,
+    #[prost(message, optional, tag = "2")]
+    pub floating_pane_coordinates: ::core::option::Option<FloatingPaneCoordinates>,
+    #[prost(message, repeated, tag = "3")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenFileFloatingNearPluginPayload {
+    #[prost(message, optional, tag = "1")]
+    pub file_to_open: ::core::option::Option<super::file::File>,
+    #[prost(message, optional, tag = "2")]
+    pub floating_pane_coordinates: ::core::option::Option<FloatingPaneCoordinates>,
+    #[prost(message, repeated, tag = "3")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenFileNearPluginPayload {
+    #[prost(message, optional, tag = "1")]
+    pub file_to_open: ::core::option::Option<super::file::File>,
+    #[prost(message, optional, tag = "2")]
+    pub floating_pane_coordinates: ::core::option::Option<FloatingPaneCoordinates>,
+    #[prost(message, repeated, tag = "3")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -846,6 +882,9 @@ pub enum CommandName {
     OpenTerminalInPlaceOfPlugin = 121,
     OpenCommandPaneFloatingNearPlugin = 122,
     OpenCommandPaneInPlaceOfPlugin = 123,
+    OpenFileNearPlugin = 124,
+    OpenFileFloatingNearPlugin = 125,
+    OpenFileInPlaceOfPlugin = 126,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -988,6 +1027,9 @@ impl CommandName {
             CommandName::OpenCommandPaneInPlaceOfPlugin => {
                 "OpenCommandPaneInPlaceOfPlugin"
             }
+            CommandName::OpenFileNearPlugin => "OpenFileNearPlugin",
+            CommandName::OpenFileFloatingNearPlugin => "OpenFileFloatingNearPlugin",
+            CommandName::OpenFileInPlaceOfPlugin => "OpenFileInPlaceOfPlugin",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1127,6 +1169,9 @@ impl CommandName {
             "OpenCommandPaneInPlaceOfPlugin" => {
                 Some(Self::OpenCommandPaneInPlaceOfPlugin)
             }
+            "OpenFileNearPlugin" => Some(Self::OpenFileNearPlugin),
+            "OpenFileFloatingNearPlugin" => Some(Self::OpenFileFloatingNearPlugin),
+            "OpenFileInPlaceOfPlugin" => Some(Self::OpenFileInPlaceOfPlugin),
             _ => None,
         }
     }

@@ -393,6 +393,17 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                                 .collect(),
                         )
                     },
+                    PluginCommand::OpenFileNearPlugin(file_to_open, context) => {
+                        open_file_near_plugin(env, file_to_open, context)
+                    },
+                    PluginCommand::OpenFileFloatingNearPlugin(
+                        file_to_open,
+                        floating_pane_coordinates,
+                        context,
+                    ) => open_file_floating_near_plugin(env, file_to_open, floating_pane_coordinates, context),
+                    PluginCommand::OpenFileInPlaceOfPlugin(file_to_open, context) => {
+                        open_file_in_place_of_plugin(env, file_to_open, context)
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -616,6 +627,73 @@ fn open_file_in_place(
         None,
     );
     apply_action!(action, error_msg, env);
+}
+
+fn open_file_near_plugin(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String, String>) {
+    let cwd = file_to_open
+        .cwd
+        .map(|cwd| env.plugin_cwd.join(cwd))
+        .or_else(|| Some(env.plugin_cwd.clone()));
+    let path = env.plugin_cwd.join(file_to_open.path);
+    let open_file_payload = OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
+        OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+    );
+    let title = format!("Editing: {}", open_file_payload.path.display());
+    let should_float = false;
+    let start_suppressed = false;
+    let open_file = TerminalAction::OpenFile(open_file_payload);
+    let pty_instr = PtyInstruction::SpawnTerminal(
+        Some(open_file),
+        Some(should_float),
+        Some(title),
+        None,
+        start_suppressed,
+        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+    );
+    let _ = env.senders.send_to_pty(pty_instr);
+}
+
+fn open_file_floating_near_plugin(env: &PluginEnv, file_to_open: FileToOpen, floating_pane_coordinates: Option<FloatingPaneCoordinates>, context: BTreeMap<String, String>) {
+    let cwd = file_to_open
+        .cwd
+        .map(|cwd| env.plugin_cwd.join(cwd))
+        .or_else(|| Some(env.plugin_cwd.clone()));
+    let path = env.plugin_cwd.join(file_to_open.path);
+    let open_file_payload = OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
+        OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+    );
+    let title = format!("Editing: {}", open_file_payload.path.display());
+    let should_float = true;
+    let start_suppressed = false;
+    let open_file = TerminalAction::OpenFile(open_file_payload);
+    let pty_instr = PtyInstruction::SpawnTerminal(
+        Some(open_file),
+        Some(should_float),
+        Some(title),
+        floating_pane_coordinates,
+        start_suppressed,
+        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+    );
+    let _ = env.senders.send_to_pty(pty_instr);
+}
+
+fn open_file_in_place_of_plugin(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String, String>) {
+    let cwd = file_to_open
+        .cwd
+        .map(|cwd| env.plugin_cwd.join(cwd))
+        .or_else(|| Some(env.plugin_cwd.clone()));
+    let path = env.plugin_cwd.join(file_to_open.path);
+    let open_file_payload = OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
+        OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+    );
+    let title = format!("Editing: {}", open_file_payload.path.display());
+    let open_file = TerminalAction::OpenFile(open_file_payload);
+    let pty_instr = PtyInstruction::SpawnInPlaceTerminal(
+        Some(open_file),
+        Some(title),
+        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+    );
+    let _ = env.senders.send_to_pty(pty_instr);
 }
 
 fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
@@ -2075,6 +2153,9 @@ fn check_command_permission(
     let permission = match command {
         PluginCommand::OpenFile(..)
         | PluginCommand::OpenFileFloating(..)
+        | PluginCommand::OpenFileNearPlugin(..)
+        | PluginCommand::OpenFileFloatingNearPlugin(..)
+        | PluginCommand::OpenFileInPlaceOfPlugin(..)
         | PluginCommand::OpenFileInPlace(..) => PermissionType::OpenFiles,
         PluginCommand::OpenTerminal(..)
         | PluginCommand::OpenTerminalNearPlugin(..)

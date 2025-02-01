@@ -24,7 +24,7 @@ pub use super::generated_api::api::{
         SetTimeoutPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
         SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
         TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload, OpenCommandPaneNearPluginPayload, OpenCommandPaneFloatingNearPluginPayload, OpenTerminalNearPluginPayload, OpenTerminalFloatingNearPluginPayload, OpenTerminalInPlaceOfPluginPayload, OpenCommandPaneInPlaceOfPluginPayload
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload, OpenCommandPaneNearPluginPayload, OpenCommandPaneFloatingNearPluginPayload, OpenTerminalNearPluginPayload, OpenTerminalFloatingNearPluginPayload, OpenTerminalInPlaceOfPluginPayload, OpenCommandPaneInPlaceOfPluginPayload, OpenFileNearPluginPayload, OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1464,6 +1464,62 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for OpenCommandPaneInPlaceOfPlugin"),
             },
+            Some(CommandName::OpenFileNearPlugin) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenFileNearPluginPayload(file_to_open_payload)) => {
+                    match file_to_open_payload.file_to_open {
+                        Some(file_to_open) => {
+                            let context: BTreeMap<String, String> = file_to_open_payload
+                                .context
+                                .into_iter()
+                                .map(|e| (e.name, e.value))
+                                .collect();
+                            Ok(PluginCommand::OpenFileNearPlugin(file_to_open.try_into()?, context))
+                        },
+                        None => Err("Malformed open file payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for OpenFileNearPlugin"),
+            },
+            Some(CommandName::OpenFileFloatingNearPlugin) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenFileFloatingNearPluginPayload(file_to_open_payload)) => {
+                    let floating_pane_coordinates = file_to_open_payload
+                        .floating_pane_coordinates
+                        .map(|f| f.into());
+                    let context: BTreeMap<String, String> = file_to_open_payload
+                        .context
+                        .into_iter()
+                        .map(|e| (e.name, e.value))
+                        .collect();
+                    match file_to_open_payload.file_to_open {
+                        Some(file_to_open) => Ok(PluginCommand::OpenFileFloatingNearPlugin(
+                            file_to_open.try_into()?,
+                            floating_pane_coordinates,
+                            context,
+                        )),
+                        None => Err("Malformed open file payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for OpenFileFloatingNearPlugin"),
+            },
+            Some(CommandName::OpenFileInPlaceOfPlugin) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenFileInPlaceOfPluginPayload(file_to_open_payload)) => {
+                    match file_to_open_payload.file_to_open {
+                        Some(file_to_open) => {
+                            let context: BTreeMap<String, String> = file_to_open_payload
+                                .context
+                                .into_iter()
+                                .map(|e| (e.name, e.value))
+                                .collect();
+                            Ok(PluginCommand::OpenFileInPlaceOfPlugin(
+                                file_to_open.try_into()?,
+                                context,
+                            ))
+                        },
+                        None => Err("Malformed open file in place payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for OpenFileInPlaceOfPlugin"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2405,6 +2461,41 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
+            PluginCommand::OpenFileNearPlugin(file_to_open, context) => Ok(ProtobufPluginCommand {
+                name: CommandName::OpenFileNearPlugin as i32,
+                payload: Some(Payload::OpenFileNearPluginPayload(OpenFileNearPluginPayload {
+                    file_to_open: Some(file_to_open.try_into()?),
+                    floating_pane_coordinates: None,
+                    context: context
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
+                })),
+            }),
+            PluginCommand::OpenFileFloatingNearPlugin(file_to_open, floating_pane_coordinates, context) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenFileFloatingNearPlugin as i32,
+                    payload: Some(Payload::OpenFileFloatingNearPluginPayload(OpenFileFloatingNearPluginPayload {
+                        file_to_open: Some(file_to_open.try_into()?),
+                        floating_pane_coordinates: floating_pane_coordinates.map(|f| f.into()),
+                        context: context
+                            .into_iter()
+                            .map(|(name, value)| ContextItem { name, value })
+                            .collect(),
+                    })),
+                })
+            },
+            PluginCommand::OpenFileInPlaceOfPlugin(file_to_open, context) => Ok(ProtobufPluginCommand {
+                name: CommandName::OpenFileInPlaceOfPlugin as i32,
+                payload: Some(Payload::OpenFileInPlaceOfPluginPayload(OpenFileInPlaceOfPluginPayload {
+                    file_to_open: Some(file_to_open.try_into()?),
+                    floating_pane_coordinates: None,
+                    context: context
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
+                })),
+            }),
         }
     }
 }

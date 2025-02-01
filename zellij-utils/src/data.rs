@@ -1939,4 +1939,7 @@ pub enum PluginCommand {
     OpenTerminalInPlaceOfPlugin(FileToOpen),
     OpenCommandPaneFloatingNearPlugin(CommandToRun, Option<FloatingPaneCoordinates>, Context),
     OpenCommandPaneInPlaceOfPlugin(CommandToRun, Context),
+    OpenFileNearPlugin(FileToOpen, Context),
+    OpenFileFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>, Context),
+    OpenFileInPlaceOfPlugin(FileToOpen, Context),
 }
