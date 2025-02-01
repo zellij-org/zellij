@@ -325,6 +325,8 @@ pub enum ScreenContext {
     SearchToggleWrap,
     AddRedPaneFrameColorOverride,
     ClearPaneFrameColorOverride,
+    PreviousLayout,
+    NextLayout,
     PreviousSwapLayout,
     NextSwapLayout,
     QueryTabNames,

@@ -39,7 +39,7 @@ pub(crate) fn route_action(
     capabilities: PluginCapabilities,
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
-    default_layout_config: Box<LayoutConfig>,
+    mut default_layout_config: Box<LayoutConfig>,
     mut seen_cli_pipes: Option<&mut HashSet<String>>,
     client_keybinds: Keybinds,
     default_mode: InputMode,
@@ -692,6 +692,22 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::ToggleMouseMode => {}, // Handled client side
+        Action::NextLayout => {
+            senders
+                .send_to_screen(ScreenInstruction::NextLayout(
+                    default_shell.clone(),
+                    client_id,
+                ))
+                .with_context(err_context)?;
+        },
+        Action::PreviousLayout => {
+            senders
+                .send_to_screen(ScreenInstruction::PreviousLayout(
+                    default_shell.clone(),
+                    client_id,
+                ))
+                .with_context(err_context)?;
+        },
         Action::PreviousSwapLayout => {
             senders
                 .send_to_screen(ScreenInstruction::PreviousSwapLayout(client_id))

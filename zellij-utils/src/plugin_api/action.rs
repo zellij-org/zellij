@@ -1171,6 +1171,14 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::ToggleMouseMode as i32,
                 optional_payload: None,
             }),
+            Action::PreviousLayout => Ok(ProtobufAction {
+                name: ProtobufActionName::PreviousLayout as i32,
+                optional_payload: None,
+            }),
+            Action::NextLayout => Ok(ProtobufAction {
+                name: ProtobufActionName::NextLayout as i32,
+                optional_payload: None,
+            }),
             Action::PreviousSwapLayout => Ok(ProtobufAction {
                 name: ProtobufActionName::PreviousSwapLayout as i32,
                 optional_payload: None,

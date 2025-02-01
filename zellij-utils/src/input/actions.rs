@@ -242,6 +242,8 @@ pub enum Action {
     /// Toggle case sensitivity of search
     SearchToggleOption(SearchOption),
     ToggleMouseMode,
+    NextLayout,
+    PreviousLayout,
     PreviousSwapLayout,
     NextSwapLayout,
     /// Query all tab names

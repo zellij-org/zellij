@@ -1654,6 +1654,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                           // filled from the active pane == better UX
                 ))
             },
+            "NextLayout" => Ok(Action::NextLayout),
+            "PreviousLayout" => Ok(Action::PreviousLayout),
             "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
             "NextSwapLayout" => Ok(Action::NextSwapLayout),
             "BreakPane" => Ok(Action::BreakPane),

@@ -278,6 +278,8 @@ pub enum ScreenInstruction {
     SearchToggleWrap(ClientId),
     AddRedPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional error text
     ClearPaneFrameColorOverride(Vec<PaneId>),
+    NextLayout(Option<TerminalAction>, ClientId),
+    PreviousLayout(Option<TerminalAction>, ClientId),
     PreviousSwapLayout(ClientId),
     NextSwapLayout(ClientId),
     QueryTabNames(ClientId),
@@ -553,6 +555,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ClearPaneFrameColorOverride(..) => {
                 ScreenContext::ClearPaneFrameColorOverride
             },
+            ScreenInstruction::PreviousLayout(..) => ScreenContext::PreviousLayout,
+            ScreenInstruction::NextLayout(..) => ScreenContext::NextLayout,
             ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
             ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
             ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
@@ -1235,6 +1239,7 @@ impl Screen {
                 .non_fatal();
         }
         if output.is_dirty() {
+            log::info!("Output was dirty and re rendered screen");
             let serialized_output = output.serialize().context(err_context)?;
             let _ = self
                 .bus
@@ -1371,6 +1376,60 @@ impl Screen {
         self.tabs.insert(tab_index, tab);
         Ok(())
     }
+
+    pub fn update_layout(
+        &mut self,
+        shell: Option<TerminalAction>,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let tabs_to_delete: Vec<u16> = self.tabs.iter().map(|(_, tab)| tab.index as u16).collect();
+
+        let mut instructions_to_open = vec![];
+
+        let mut active_layout = self.default_layout_config.get_active_layout().clone();
+
+        if active_layout.tabs.is_empty() {
+            let (new_tiled_pane_layout, new_floating_panes_layout) = active_layout.new_tab();
+            active_layout
+                .tabs
+                .push((None, new_tiled_pane_layout, new_floating_panes_layout));
+        }
+
+        let swap_tiled_layouts = active_layout.swap_tiled_layouts.clone();
+        let swap_floating_layouts = active_layout.swap_floating_layouts.clone();
+
+        let mut is_first = true;
+
+        // enumerate makes this look though but is useful for consistent tab names
+        for (index, (name, tiled_pane_layout, floating_panes_layout)) in
+            active_layout.tabs.drain(..).enumerate()
+        {
+            let instruction = ScreenInstruction::NewTab(
+                None,
+                shell.clone(),
+                Some(tiled_pane_layout),
+                floating_panes_layout,
+                name.or(Some(format!("Tab #{}", index + 1))),
+                (swap_tiled_layouts.clone(), swap_floating_layouts.clone()),
+                is_first,
+                client_id,
+            );
+            instructions_to_open.push(instruction);
+
+            is_first = false;
+        }
+
+        for &tab_index in tabs_to_delete.iter() {
+            instructions_to_open.push(ScreenInstruction::CloseTab(tab_index));
+        }
+
+        for instruction in instructions_to_open {
+            self.bus.senders.send_to_screen(instruction)?;
+        }
+
+        Ok(())
+    }
+
     pub fn apply_layout(
         &mut self,
         layout: TiledPaneLayout,
@@ -3896,6 +3955,22 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 screen.render(None)?;
+            },
+            ScreenInstruction::PreviousLayout(shell, client_id) => {
+                screen.default_layout_config.previous_layout();
+
+                screen.update_layout(shell, client_id)?;
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+                screen.unblock_input()?;
+            },
+            ScreenInstruction::NextLayout(shell, client_id) => {
+                screen.default_layout_config.next_layout();
+
+                screen.update_layout(shell, client_id)?;
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+                screen.unblock_input()?;
             },
             ScreenInstruction::PreviousSwapLayout(client_id) => {
                 active_tab_and_connected_client_id!(

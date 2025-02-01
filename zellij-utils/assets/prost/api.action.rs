@@ -456,6 +456,8 @@ pub enum ActionName {
     MoveTab = 83,
     KeybindPipe = 84,
     TogglePanePinned = 85,
+    PreviousLayout = 86,
+    NextLayout = 87,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -528,6 +530,8 @@ impl ActionName {
             ActionName::Search => "Search",
             ActionName::SearchToggleOption => "SearchToggleOption",
             ActionName::ToggleMouseMode => "ToggleMouseMode",
+            ActionName::PreviousLayout => "PreviousLayout",
+            ActionName::NextLayout => "NextLayout",
             ActionName::PreviousSwapLayout => "PreviousSwapLayout",
             ActionName::NextSwapLayout => "NextSwapLayout",
             ActionName::QueryTabNames => "QueryTabNames",
