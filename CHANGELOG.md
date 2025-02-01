@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(ux): stacked-resize (https://github.com/zellij-org/zellij/pull/3957)
 * feat(plugins): API to change the position and size of floating pane, as well as know the viewport size (https://github.com/zellij-org/zellij/pull/3958)
 * feat(plugins): add `PastedText` event (https://github.com/zellij-org/zellij/pull/3962)
+* feat(plugins): APIs to open panes near plugin (https://github.com/zellij-org/zellij/pull/3966)
 
 ## [0.41.2] - 2024-11-19
 * fix(input): keypresses not being identified properly with kitty keyboard protocol in some terminals (https://github.com/zellij-org/zellij/pull/3725)
