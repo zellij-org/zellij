@@ -322,6 +322,8 @@ message ModeUpdatePayload {
   bool arrow_fonts_support = 4;
   optional string session_name = 5;
   optional input_mode.InputMode base_mode = 6;
+  optional string editor = 7;
+  optional string shell = 8;
 }
 
 message InputModeKeybinds {

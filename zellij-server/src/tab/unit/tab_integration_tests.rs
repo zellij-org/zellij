@@ -251,11 +251,12 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         (vec![], vec![]),
-        None,
+        PathBuf::from("my_default_shell"),
         debug,
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        None,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -333,11 +334,12 @@ fn create_new_tab_with_swap_layouts(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         swap_layouts,
-        None,
+        PathBuf::from("my_default_shell"),
         debug,
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        None,
     );
     let (
         base_layout,
@@ -416,11 +418,12 @@ fn create_new_tab_with_os_api(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
-        None,
+        PathBuf::from("my_default_shell"),
         debug,
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        None,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -485,11 +488,12 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
-        None,
+        PathBuf::from("my_default_shell"),
         debug,
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        None,
     );
     let pane_ids = tab_layout
         .extract_run_instructions()
@@ -568,11 +572,12 @@ fn create_new_tab_with_mock_pty_writer(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
-        None,
+        PathBuf::from("my_default_shell"),
         debug,
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        None,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -642,11 +647,12 @@ fn create_new_tab_with_sixel_support(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
-        None,
+        PathBuf::from("my_default_shell"),
         debug,
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        None,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),

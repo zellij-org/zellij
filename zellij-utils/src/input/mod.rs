@@ -43,6 +43,8 @@ mod not_wasm {
             style: attributes.style,
             capabilities,
             session_name,
+            editor: None,
+            shell: None,
         }
     }
 

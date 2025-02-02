@@ -40,7 +40,7 @@ use crate::{
     panes::sixel::SixelImageStore,
     panes::PaneId,
     plugins::{PluginId, PluginInstruction, PluginRenderAsset},
-    pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
+    pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     tab::{SuppressedPanes, Tab},
     thread_bus::Bus,
     ui::{
@@ -368,6 +368,7 @@ pub enum ScreenInstruction {
         rounded_corners: bool,
         hide_session_name: bool,
         stacked_resize: bool,
+        default_editor: Option<PathBuf>,
     },
     RerunCommandPane(u32), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
@@ -687,12 +688,13 @@ pub(crate) struct Screen {
     resurrectable_sessions: BTreeMap<String, Duration>, // String is the session name, duration is
     // its creation time
     default_layout: Box<Layout>,
-    default_shell: Option<PathBuf>,
+    default_shell: PathBuf,
     styled_underlines: bool,
     arrow_fonts: bool,
     layout_dir: Option<PathBuf>,
     default_layout_name: Option<String>,
     explicitly_disable_kitty_keyboard_protocol: bool,
+    default_editor: Option<PathBuf>,
 }
 
 impl Screen {
@@ -709,7 +711,7 @@ impl Screen {
         debug: bool,
         default_layout: Box<Layout>,
         default_layout_name: Option<String>,
-        default_shell: Option<PathBuf>,
+        default_shell: PathBuf,
         session_serialization: bool,
         serialize_pane_viewport: bool,
         scrollback_lines_to_serialize: Option<usize>,
@@ -718,6 +720,7 @@ impl Screen {
         layout_dir: Option<PathBuf>,
         explicitly_disable_kitty_keyboard_protocol: bool,
         stacked_resize: bool,
+        default_editor: Option<PathBuf>,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -760,6 +763,7 @@ impl Screen {
             resurrectable_sessions,
             layout_dir,
             explicitly_disable_kitty_keyboard_protocol,
+            default_editor,
         }
     }
 
@@ -1359,6 +1363,7 @@ impl Screen {
             self.arrow_fonts,
             self.styled_underlines,
             self.explicitly_disable_kitty_keyboard_protocol,
+            self.default_editor.clone(),
         );
         for (client_id, mode_info) in &self.mode_info {
             tab.change_mode_info(mode_info.clone(), *client_id);
@@ -1650,7 +1655,7 @@ impl Screen {
     }
     fn dump_layout_to_hd(&mut self) -> Result<()> {
         let err_context = || format!("Failed to log and report session state");
-        let session_layout_metadata = self.get_layout_metadata(self.default_shell.clone());
+        let session_layout_metadata = self.get_layout_metadata(Some(self.default_shell.clone()));
         self.bus
             .senders
             .send_to_plugin(PluginInstruction::LogLayoutToHd(session_layout_metadata))
@@ -2450,6 +2455,7 @@ impl Screen {
         rounded_corners: bool,
         hide_session_name: bool,
         stacked_resize: bool,
+        default_editor: Option<PathBuf>,
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
@@ -2458,7 +2464,8 @@ impl Screen {
         self.default_mode_info.update_theme(theme);
         self.default_mode_info
             .update_rounded_corners(rounded_corners);
-        self.default_shell = default_shell.clone();
+        self.default_shell = default_shell.clone().unwrap_or_else(|| get_default_shell());
+        self.default_editor = default_editor.clone().or_else(|| get_default_editor());
         self.auto_layout = auto_layout;
         self.copy_options.command = copy_command.clone();
         self.copy_options.copy_on_select = copy_on_select;
@@ -2477,6 +2484,7 @@ impl Screen {
             tab.update_theme(theme);
             tab.update_rounded_corners(rounded_corners);
             tab.update_default_shell(default_shell.clone());
+            tab.update_default_editor(self.default_editor.clone());
             tab.update_auto_layout(auto_layout);
             tab.update_copy_options(&self.copy_options);
             tab.set_pane_frames(pane_frames);
@@ -2749,6 +2757,19 @@ impl Screen {
     }
 }
 
+#[cfg(not(test))]
+fn get_default_editor() -> Option<PathBuf> {
+    std::env::var("EDITOR")
+        .or_else(|_| std::env::var("VISUAL"))
+        .map(|e| PathBuf::from(e))
+        .ok()
+}
+
+#[cfg(test)]
+fn get_default_editor() -> Option<PathBuf> {
+    None
+}
+
 // The box is here in order to make the
 // NewClient enum smaller
 #[allow(clippy::boxed_local)]
@@ -2769,7 +2790,20 @@ pub(crate) fn screen_thread_main(
     let scrollback_lines_to_serialize = config_options.scrollback_lines_to_serialize;
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
     let layout_dir = config_options.layout_dir;
-    let default_shell = config_options.default_shell;
+    #[cfg(test)]
+    let default_shell = config_options
+        .default_shell
+        .clone()
+        .unwrap_or(PathBuf::from("/bin/sh"));
+    #[cfg(not(test))]
+    let default_shell = config_options
+        .default_shell
+        .clone()
+        .unwrap_or_else(|| get_default_shell());
+    let default_editor = config_options
+        .scrollback_editor
+        .clone()
+        .or_else(|| get_default_editor());
     let default_layout_name = config_options
         .default_layout
         .map(|l| format!("{}", l.display()));
@@ -2819,6 +2853,7 @@ pub(crate) fn screen_thread_main(
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
         stacked_resize,
+        default_editor,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
@@ -3240,7 +3275,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::DumpLayoutToPlugin(plugin_id) => {
                 let err_context = || format!("Failed to dump layout");
                 let session_layout_metadata =
-                    screen.get_layout_metadata(screen.default_shell.clone());
+                    screen.get_layout_metadata(Some(screen.default_shell.clone()));
                 screen
                     .bus
                     .senders
@@ -3254,7 +3289,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ListClientsToPlugin(plugin_id, client_id) => {
                 let err_context = || format!("Failed to dump layout");
                 let session_layout_metadata =
-                    screen.get_layout_metadata(screen.default_shell.clone());
+                    screen.get_layout_metadata(Some(screen.default_shell.clone()));
                 screen
                     .bus
                     .senders
@@ -4561,6 +4596,7 @@ pub(crate) fn screen_thread_main(
                 rounded_corners,
                 hide_session_name,
                 stacked_resize,
+                default_editor,
             } => {
                 screen
                     .reconfigure(
@@ -4577,6 +4613,7 @@ pub(crate) fn screen_thread_main(
                         rounded_corners,
                         hide_session_name,
                         stacked_resize,
+                        default_editor,
                         client_id,
                     )
                     .non_fatal();

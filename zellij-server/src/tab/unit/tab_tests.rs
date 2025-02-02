@@ -191,11 +191,12 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
-        None,
+        PathBuf::from("my_default_shell"),
         debug,
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        None,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -257,11 +258,12 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
-        None,
+        PathBuf::from("my_default_shell"),
         debug,
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        None,
     );
     let mut new_terminal_ids = vec![];
     for i in 0..layout.extract_run_instructions().len() {
@@ -329,11 +331,12 @@ fn create_new_tab_with_cell_size(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
-        None,
+        PathBuf::from("my_default_shell"),
         debug,
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        None,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),

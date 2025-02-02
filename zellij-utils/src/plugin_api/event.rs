@@ -1157,6 +1157,10 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             .and_then(|m| m.try_into().ok())
             .ok_or("malformed payload for mode_info")?;
         let session_name = protobuf_mode_update_payload.session_name;
+        let editor = protobuf_mode_update_payload
+            .editor
+            .map(|e| PathBuf::from(e));
+        let shell = protobuf_mode_update_payload.shell.map(|s| PathBuf::from(s));
         let capabilities = PluginCapabilities {
             arrow_fonts: protobuf_mode_update_payload.arrow_fonts_support,
         };
@@ -1167,6 +1171,8 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             capabilities,
             session_name,
             base_mode,
+            editor,
+            shell,
         };
         Ok(mode_info)
     }
@@ -1182,6 +1188,8 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
         let style: ProtobufStyle = mode_info.style.try_into()?;
         let arrow_fonts_support: bool = mode_info.capabilities.arrow_fonts;
         let session_name = mode_info.session_name;
+        let editor = mode_info.editor.map(|e| e.display().to_string());
+        let shell = mode_info.shell.map(|s| s.display().to_string());
         let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
         for (input_mode, input_mode_keybinds) in mode_info.keybinds {
             let mode: ProtobufInputMode = input_mode.try_into()?;
@@ -1213,6 +1221,8 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             arrow_fonts_support,
             session_name,
             base_mode: base_mode.map(|b_m| b_m as i32),
+            editor,
+            shell,
         })
     }
 }
@@ -1455,6 +1465,8 @@ fn serialize_mode_update_event_with_non_default_values() {
         capabilities: PluginCapabilities { arrow_fonts: false },
         session_name: Some("my awesome test session".to_owned()),
         base_mode: Some(InputMode::Locked),
+        editor: Some(PathBuf::from("my_awesome_editor")),
+        shell: Some(PathBuf::from("my_awesome_shell")),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
