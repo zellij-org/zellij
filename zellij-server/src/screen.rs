@@ -2067,6 +2067,7 @@ impl Screen {
                     plugin_pane_to_move_to_active_tab,
                     pane_id,
                     None,
+                    true,
                 )?;
             } else {
                 new_active_tab.hide_floating_panes();
@@ -2180,7 +2181,7 @@ impl Screen {
             let (mut tiled_panes_layout, mut floating_panes_layout) = default_layout.new_tab();
             if pane_to_break_is_floating {
                 tab.show_floating_panes();
-                tab.add_floating_pane(active_pane, active_pane_id, None)?;
+                tab.add_floating_pane(active_pane, active_pane_id, None, true)?;
                 if let Some(already_running_layout) = floating_panes_layout
                     .iter_mut()
                     .find(|i| i.run == active_pane_run_instruction)
@@ -2304,7 +2305,7 @@ impl Screen {
 
             if pane_to_break_is_floating {
                 new_active_tab.show_floating_panes();
-                new_active_tab.add_floating_pane(active_pane, active_pane_id, None)?;
+                new_active_tab.add_floating_pane(active_pane, active_pane_id, None, true)?;
             } else {
                 new_active_tab.hide_floating_panes();
                 new_active_tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
