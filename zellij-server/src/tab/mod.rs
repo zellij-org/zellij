@@ -4190,7 +4190,8 @@ impl Tab {
         match self.suppressed_panes.remove(&pane_id) {
             Some(pane) => {
                 self.show_floating_panes();
-                self.add_floating_pane(pane.1, pane_id, None, true).non_fatal();
+                self.add_floating_pane(pane.1, pane_id, None, true)
+                    .non_fatal();
                 self.floating_panes.focus_pane_for_all_clients(pane_id);
             },
             None => {
@@ -4526,7 +4527,10 @@ impl Tab {
         if !self.floating_panes.panes_contain(pane_id) {
             // if these panes are not floating, we make them floating (assuming doing so wouldn't
             // be removing the last selectable tiled pane in the tab, which would close it)
-            if (self.tiled_panes.panes_contain(&pane_id) && self.get_selectable_tiled_panes().count() <= 1) || self.suppressed_panes.contains_key(pane_id) {
+            if (self.tiled_panes.panes_contain(&pane_id)
+                && self.get_selectable_tiled_panes().count() <= 1)
+                || self.suppressed_panes.contains_key(pane_id)
+            {
                 if let Some(pane) = self.extract_pane(*pane_id, true) {
                     self.add_floating_pane(pane, *pane_id, None, false)?;
                 }
