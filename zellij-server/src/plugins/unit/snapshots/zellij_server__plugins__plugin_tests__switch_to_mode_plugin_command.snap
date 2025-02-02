@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 1043
+assertion_line: 1143
 expression: "format!(\"{:#?}\", switch_to_mode_event)"
 ---
 Some(
@@ -76,6 +76,8 @@ Some(
             session_name: Some(
                 "zellij-test",
             ),
+            editor: None,
+            shell: None,
         },
         1,
     ),
