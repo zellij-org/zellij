@@ -188,7 +188,8 @@ pub(crate) struct Tab {
     pending_instructions: Vec<BufferedTabInstruction>, // instructions that came while the tab was
     // pending and need to be re-applied
     swap_layouts: SwapLayouts,
-    default_shell: Option<PathBuf>,
+    default_shell: PathBuf,
+    default_editor: Option<PathBuf>,
     debug: bool,
     arrow_fonts: bool,
     styled_underlines: bool,
@@ -582,11 +583,12 @@ impl Tab {
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>),
-        default_shell: Option<PathBuf>,
+        default_shell: PathBuf,
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
         explicitly_disable_kitty_keyboard_protocol: bool,
+        default_editor: Option<PathBuf>,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -682,6 +684,7 @@ impl Tab {
             arrow_fonts,
             styled_underlines,
             explicitly_disable_kitty_keyboard_protocol,
+            default_editor,
         }
     }
 
@@ -886,8 +889,13 @@ impl Tab {
         let mode_infos = self.mode_info.borrow();
         let mut plugin_updates = vec![];
         for client_id in self.connected_clients.borrow().iter() {
-            let mode_info = mode_infos.get(client_id).unwrap_or(&self.default_mode_info);
-            plugin_updates.push((None, Some(*client_id), Event::ModeUpdate(mode_info.clone())));
+            let mut mode_info = mode_infos
+                .get(client_id)
+                .unwrap_or(&self.default_mode_info)
+                .clone();
+            mode_info.shell = Some(self.default_shell.clone());
+            mode_info.editor = self.default_editor.clone();
+            plugin_updates.push((None, Some(*client_id), Event::ModeUpdate(mode_info)));
         }
         self.senders
             .send_to_plugin(PluginInstruction::Update(plugin_updates))
@@ -1906,7 +1914,7 @@ impl Tab {
                         self.senders
                             .send_to_pty(PtyInstruction::DropToShellInPane {
                                 pane_id: PaneId::Terminal(active_terminal_id),
-                                shell: self.default_shell.clone(),
+                                shell: Some(self.default_shell.clone()),
                                 working_dir,
                             })
                             .with_context(err_context)?;
@@ -4418,8 +4426,15 @@ impl Tab {
             pane.update_arrow_fonts(should_support_arrow_fonts);
         }
     }
-    pub fn update_default_shell(&mut self, default_shell: Option<PathBuf>) {
-        self.default_shell = default_shell;
+    pub fn update_default_shell(&mut self, mut default_shell: Option<PathBuf>) {
+        if let Some(default_shell) = default_shell.take() {
+            self.default_shell = default_shell;
+        }
+    }
+    pub fn update_default_editor(&mut self, mut default_editor: Option<PathBuf>) {
+        if let Some(default_editor) = default_editor.take() {
+            self.default_editor = Some(default_editor);
+        }
     }
     pub fn update_copy_options(&mut self, copy_options: &CopyOptions) {
         self.clipboard_provider = match &copy_options.command {

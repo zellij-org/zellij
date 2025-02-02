@@ -364,6 +364,7 @@ impl SessionMetaData {
                     rounded_corners: new_config.ui.pane_frames.rounded_corners,
                     hide_session_name: new_config.ui.pane_frames.hide_session_name,
                     stacked_resize: new_config.options.stacked_resize.unwrap_or(true),
+                    default_editor: new_config.options.scrollback_editor.clone(),
                 })
                 .unwrap();
             self.senders

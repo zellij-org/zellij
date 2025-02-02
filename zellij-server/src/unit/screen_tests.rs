@@ -261,7 +261,7 @@ fn create_new_screen(size: Size) -> Screen {
     let copy_options = CopyOptions::default();
     let default_layout = Box::new(Layout::default());
     let default_layout_name = None;
-    let default_shell = None;
+    let default_shell = PathBuf::from("my_default_shell");
     let session_serialization = true;
     let serialize_pane_viewport = false;
     let scrollback_lines_to_serialize = None;
@@ -293,6 +293,7 @@ fn create_new_screen(size: Size) -> Screen {
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
         stacked_resize,
+        None,
     );
     screen
 }
