@@ -1,6 +1,0 @@
----
-source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 901
-expression: "format!(\"{:?}\", layout_error)"
----
-KdlError(KdlError { error_message: "Only one layout node per file allowed", src: Some(NamedSource { name: "layout_file_name", source: "<redacted>"), offset: Some(0), len: Some(31), help_message: Some("For more information, please see our layout guide: https://zellij.dev/documentation/creating-a-layout.html") })
