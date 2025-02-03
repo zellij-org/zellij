@@ -105,6 +105,12 @@ impl TryFrom<ProtobufStyling> for Styling {
     type Error = &'static str;
 
     fn try_from(proto: ProtobufStyling) -> std::result::Result<Self, Self::Error> {
+        let frame_unselected = if proto.frame_unselected.len() > 0 {
+            Some(color_definitions!(proto, frame_unselected, 6))
+        } else {
+            None
+        };
+
         Ok(Styling {
             text_unselected: color_definitions!(proto, text_unselected, 6),
             text_selected: color_definitions!(proto, text_selected, 6),
@@ -115,7 +121,7 @@ impl TryFrom<ProtobufStyling> for Styling {
             table_cell_selected: color_definitions!(proto, table_cell_selected, 6),
             list_unselected: color_definitions!(proto, list_unselected, 6),
             list_selected: color_definitions!(proto, list_selected, 6),
-            frame_unselected: color_definitions!(proto, frame_unselected, 6),
+            frame_unselected,
             frame_selected: color_definitions!(proto, frame_selected, 6),
             frame_highlight: color_definitions!(proto, frame_highlight, 6),
             exit_code_success: color_definitions!(proto, exit_code_success, 6),
@@ -163,6 +169,11 @@ impl TryFrom<Styling> for ProtobufStyling {
     type Error = &'static str;
 
     fn try_from(style: Styling) -> std::result::Result<Self, Self::Error> {
+        let frame_unselected_vec = match style.frame_unselected {
+            None => Ok(Vec::new()),
+            Some(frame_unselected) => frame_unselected.try_into(),
+        };
+
         Ok(ProtobufStyling {
             text_unselected: style.text_unselected.try_into()?,
             text_selected: style.text_selected.try_into()?,
@@ -173,7 +184,7 @@ impl TryFrom<Styling> for ProtobufStyling {
             table_cell_selected: style.table_cell_selected.try_into()?,
             list_unselected: style.list_unselected.try_into()?,
             list_selected: style.list_selected.try_into()?,
-            frame_unselected: style.frame_unselected.try_into()?,
+            frame_unselected: frame_unselected_vec?,
             frame_selected: style.frame_selected.try_into()?,
             frame_highlight: style.frame_highlight.try_into()?,
             exit_code_success: style.exit_code_success.try_into()?,

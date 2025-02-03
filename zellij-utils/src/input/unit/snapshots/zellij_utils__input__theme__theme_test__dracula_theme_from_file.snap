@@ -398,30 +398,7 @@ expression: "format!(\"{:#?}\", theme)"
                     ),
                 ),
             },
-            frame_unselected: StyleDeclaration {
-                base: EightBit(
-                    7,
-                ),
-                background: EightBit(
-                    0,
-                ),
-                emphasis_0: EightBit(
-                    0,
-                ),
-                emphasis_1: EightBit(
-                    0,
-                ),
-                emphasis_2: EightBit(
-                    0,
-                ),
-                emphasis_3: Rgb(
-                    (
-                        0,
-                        0,
-                        0,
-                    ),
-                ),
-            },
+            frame_unselected: None,
             frame_selected: StyleDeclaration {
                 base: Rgb(
                     (

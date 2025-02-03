@@ -6007,30 +6007,7 @@ Config {
                         ),
                     ),
                 },
-                frame_unselected: StyleDeclaration {
-                    base: EightBit(
-                        7,
-                    ),
-                    background: EightBit(
-                        0,
-                    ),
-                    emphasis_0: EightBit(
-                        0,
-                    ),
-                    emphasis_1: EightBit(
-                        0,
-                    ),
-                    emphasis_2: EightBit(
-                        0,
-                    ),
-                    emphasis_3: Rgb(
-                        (
-                            2,
-                            2,
-                            2,
-                        ),
-                    ),
-                },
+                frame_unselected: None,
                 frame_selected: StyleDeclaration {
                     base: Rgb(
                         (
@@ -6624,30 +6601,7 @@ Config {
                         ),
                     ),
                 },
-                frame_unselected: StyleDeclaration {
-                    base: EightBit(
-                        7,
-                    ),
-                    background: EightBit(
-                        0,
-                    ),
-                    emphasis_0: EightBit(
-                        0,
-                    ),
-                    emphasis_1: EightBit(
-                        0,
-                    ),
-                    emphasis_2: EightBit(
-                        0,
-                    ),
-                    emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                },
+                frame_unselected: None,
                 frame_selected: StyleDeclaration {
                     base: Rgb(
                         (
@@ -7241,30 +7195,7 @@ Config {
                         ),
                     ),
                 },
-                frame_unselected: StyleDeclaration {
-                    base: EightBit(
-                        7,
-                    ),
-                    background: EightBit(
-                        0,
-                    ),
-                    emphasis_0: EightBit(
-                        0,
-                    ),
-                    emphasis_1: EightBit(
-                        0,
-                    ),
-                    emphasis_2: EightBit(
-                        0,
-                    ),
-                    emphasis_3: Rgb(
-                        (
-                            1,
-                            1,
-                            1,
-                        ),
-                    ),
-                },
+                frame_unselected: None,
                 frame_selected: StyleDeclaration {
                     base: Rgb(
                         (

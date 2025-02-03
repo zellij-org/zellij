@@ -1140,6 +1140,21 @@ pub struct Style {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum Coloration {
+    NoStyling,
+    Styled(StyleDeclaration),
+}
+
+impl Coloration {
+    pub fn with_fallback(&self, fallback: StyleDeclaration) -> StyleDeclaration {
+        match &self {
+            Coloration::NoStyling => fallback,
+            Coloration::Styled(style) => *style,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Styling {
     pub text_unselected: StyleDeclaration,
     pub text_selected: StyleDeclaration,
@@ -1150,7 +1165,7 @@ pub struct Styling {
     pub table_cell_selected: StyleDeclaration,
     pub list_unselected: StyleDeclaration,
     pub list_selected: StyleDeclaration,
-    pub frame_unselected: StyleDeclaration,
+    pub frame_unselected: Option<StyleDeclaration>,
     pub frame_selected: StyleDeclaration,
     pub frame_highlight: StyleDeclaration,
     pub exit_code_success: StyleDeclaration,
@@ -1231,14 +1246,7 @@ pub const DEFAULT_STYLES: Styling = Styling {
         emphasis_3: PaletteColor::EightBit(default_colors::PURPLE),
         background: PaletteColor::EightBit(default_colors::GRAY),
     },
-    frame_unselected: StyleDeclaration {
-        base: PaletteColor::EightBit(default_colors::BRIGHT_GRAY),
-        emphasis_0: PaletteColor::EightBit(default_colors::PINK),
-        emphasis_1: PaletteColor::EightBit(default_colors::GRAY),
-        emphasis_2: PaletteColor::EightBit(default_colors::BROWN),
-        emphasis_3: PaletteColor::EightBit(default_colors::BLACK),
-        background: PaletteColor::EightBit(default_colors::GRAY),
-    },
+    frame_unselected: None,
     frame_selected: StyleDeclaration {
         base: PaletteColor::EightBit(default_colors::GREEN),
         emphasis_0: PaletteColor::EightBit(default_colors::ORANGE),
@@ -1396,19 +1404,7 @@ impl From<Palette> for Styling {
                 emphasis_3: palette.purple,
                 background: Default::default(),
             },
-            frame_unselected: StyleDeclaration {
-                /*
-                 * Explicitly use default text 256 color for forward loading old themes
-                 * Keeps older themes backward compatible (frame_selected was always None before)
-                 * without forcing this struct to have a special optional case for new themes
-                 */
-                base: PaletteColor::EightBit(7),
-                emphasis_0: palette.pink,
-                emphasis_1: palette.gray,
-                emphasis_2: palette.brown,
-                emphasis_3: palette.black,
-                background: Default::default(),
-            },
+            frame_unselected: None,
             frame_selected: StyleDeclaration {
                 base: palette.green,
                 emphasis_0: palette.orange,

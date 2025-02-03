@@ -3983,8 +3983,7 @@ impl Themes {
     fn style_declaration_from_node(
         style_node: &KdlNode,
         style_descriptor: &str,
-        default: StyleDeclaration,
-    ) -> Result<StyleDeclaration, ConfigError> {
+    ) -> Result<Option<StyleDeclaration>, ConfigError> {
         let descriptor_node = kdl_child_with_name!(style_node, style_descriptor);
 
         match descriptor_node {
@@ -3993,16 +3992,16 @@ impl Themes {
                     descriptor,
                     format!("Missing colors for {}", style_descriptor)
                 );
-                Ok(StyleDeclaration {
+                Ok(Some(StyleDeclaration {
                     base: PaletteColor::try_from(("base", colors))?,
                     background: PaletteColor::try_from(("background", colors)).unwrap_or_default(),
                     emphasis_0: PaletteColor::try_from(("emphasis_0", colors))?,
                     emphasis_1: PaletteColor::try_from(("emphasis_1", colors))?,
                     emphasis_2: PaletteColor::try_from(("emphasis_2", colors))?,
                     emphasis_3: PaletteColor::try_from(("emphasis_3", colors))?,
-                })
+                }))
             },
-            None => Ok(default),
+            None => Ok(None),
         }
     }
 
@@ -4083,73 +4082,73 @@ impl Themes {
                     text_unselected: Themes::style_declaration_from_node(
                         theme_config,
                         "text_unselected",
-                        DEFAULT_STYLES.text_unselected,
-                    )?,
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.text_unselected))?,
                     text_selected: Themes::style_declaration_from_node(
                         theme_config,
                         "text_selected",
-                        DEFAULT_STYLES.text_selected,
-                    )?,
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.text_selected))?,
                     ribbon_unselected: Themes::style_declaration_from_node(
                         theme_config,
                         "ribbon_unselected",
-                        DEFAULT_STYLES.ribbon_unselected,
-                    )?,
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.ribbon_unselected))?,
                     ribbon_selected: Themes::style_declaration_from_node(
                         theme_config,
                         "ribbon_selected",
-                        DEFAULT_STYLES.ribbon_selected,
-                    )?,
-                    table_title: Themes::style_declaration_from_node(
-                        theme_config,
-                        "table_title",
-                        DEFAULT_STYLES.table_title,
-                    )?,
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.ribbon_selected))?,
+                    table_title: Themes::style_declaration_from_node(theme_config, "table_title")
+                        .map(|maybe_style| {
+                        maybe_style.unwrap_or(DEFAULT_STYLES.table_title)
+                    })?,
                     table_cell_unselected: Themes::style_declaration_from_node(
                         theme_config,
                         "table_cell_unselected",
-                        DEFAULT_STYLES.table_cell_unselected,
-                    )?,
+                    )
+                    .map(|maybe_style| {
+                        maybe_style.unwrap_or(DEFAULT_STYLES.table_cell_unselected)
+                    })?,
                     table_cell_selected: Themes::style_declaration_from_node(
                         theme_config,
                         "table_cell_selected",
-                        DEFAULT_STYLES.table_cell_selected,
-                    )?,
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.table_cell_selected))?,
                     list_unselected: Themes::style_declaration_from_node(
                         theme_config,
                         "list_unselected",
-                        DEFAULT_STYLES.list_unselected,
-                    )?,
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.list_unselected))?,
                     list_selected: Themes::style_declaration_from_node(
                         theme_config,
                         "list_selected",
-                        DEFAULT_STYLES.list_selected,
-                    )?,
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.list_selected))?,
                     frame_unselected: Themes::style_declaration_from_node(
                         theme_config,
                         "frame_unselected",
-                        DEFAULT_STYLES.frame_unselected,
                     )?,
                     frame_selected: Themes::style_declaration_from_node(
                         theme_config,
                         "frame_selected",
-                        DEFAULT_STYLES.frame_selected,
-                    )?,
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.frame_selected))?,
                     frame_highlight: Themes::style_declaration_from_node(
                         theme_config,
                         "frame_highlight",
-                        DEFAULT_STYLES.frame_highlight,
-                    )?,
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.frame_highlight))?,
                     exit_code_success: Themes::style_declaration_from_node(
                         theme_config,
                         "exit_code_success",
-                        DEFAULT_STYLES.exit_code_success,
-                    )?,
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.exit_code_success))?,
                     exit_code_error: Themes::style_declaration_from_node(
                         theme_config,
                         "exit_code_error",
-                        DEFAULT_STYLES.exit_code_error,
-                    )?,
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.exit_code_error))?,
                     multiplayer_user_colors: Themes::multiplayer_colors(theme_config)
                         .unwrap_or_default(),
                 };
@@ -4221,6 +4220,7 @@ impl Themes {
             has_themes = true;
             let mut current_theme_node = KdlNode::new(theme_name.clone());
             let mut current_theme_node_children = KdlDocument::new();
+
             current_theme_node_children
                 .nodes_mut()
                 .push(theme.palette.text_unselected.to_kdl("text_unselected"));
@@ -4257,9 +4257,15 @@ impl Themes {
             current_theme_node_children
                 .nodes_mut()
                 .push(theme.palette.frame_selected.to_kdl("frame_selected"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.frame_unselected.to_kdl("frame_unselected"));
+
+            match theme.palette.frame_unselected {
+                None => {},
+                Some(frame_unselected_style) => {
+                    current_theme_node_children
+                        .nodes_mut()
+                        .push(frame_unselected_style.to_kdl("frame_unselected"));
+                },
+            }
             current_theme_node_children
                 .nodes_mut()
                 .push(theme.palette.frame_highlight.to_kdl("frame_highlight"));

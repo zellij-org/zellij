@@ -953,14 +953,14 @@ mod config_test {
                         emphasis_3: PaletteColor::Rgb((54, 54, 70)),
                         background: PaletteColor::Rgb((118, 148, 106)),
                     },
-                    frame_unselected: StyleDeclaration {
+                    frame_unselected: Some(StyleDeclaration {
                         base: PaletteColor::Rgb((220, 216, 221)),
                         emphasis_0: PaletteColor::Rgb((127, 180, 202)),
                         emphasis_1: PaletteColor::Rgb((163, 212, 213)),
                         emphasis_2: PaletteColor::Rgb((122, 168, 159)),
                         emphasis_3: PaletteColor::Rgb((220, 216, 25)),
                         ..Default::default()
-                    },
+                    }),
                     frame_selected: StyleDeclaration {
                         base: PaletteColor::Rgb((118, 148, 106)),
                         emphasis_0: PaletteColor::Rgb((195, 64, 67)),
