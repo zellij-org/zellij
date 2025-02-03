@@ -662,7 +662,7 @@ pub type SwapFloatingLayout = (
     Option<String>,
 ); // Option<String> is the swap layout name
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct LayoutConfig {
     pub layouts: Vec<Layout>,
     pub selected_layout: usize,
@@ -1118,6 +1118,17 @@ impl LayoutParts {
 impl Default for LayoutParts {
     fn default() -> Self {
         LayoutParts::Panes(vec![])
+    }
+}
+
+impl Default for LayoutConfig {
+    fn default() -> Self {
+        let layouts = vec![Layout::default()];
+
+        Self {
+            layouts,
+            selected_layout: 0,
+        }
     }
 }
 

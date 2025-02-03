@@ -43,49 +43,63 @@ pub fn serialize_session_layout(
     global_layout_manifest: GlobalLayoutManifest,
 ) -> Result<(String, BTreeMap<String, String>), &'static str> {
     // BTreeMap is the pane contents and their file names
+    let mut layout_config = global_layout_manifest.default_layout_config;
+
     let mut document = KdlDocument::new();
     let mut pane_contents = BTreeMap::new();
-    for layout in global_layout_manifest.default_layout_config.iter() {
+
+    // since the user would like to use the currently selected layout on startup again most likely
+    // we will have to add that first
+    layout_config.layouts.swap(0, layout_config.selected_layout);
+    layout_config.selected_layout = 0; // not sure if this is needed
+
+    for (i, layout) in layout_config.layouts.drain(..).enumerate() {
         let mut layout_node = KdlNode::new("layout");
         let mut layout_node_children = KdlDocument::new();
+
         if let Some(global_cwd) = serialize_global_cwd(&global_layout_manifest.global_cwd) {
             layout_node_children.nodes_mut().push(global_cwd);
         }
 
-        // I am not quite sure what global_layout_manifest.tabs is containing since the layouts
-        // themselves do contain tabs. Is this the manually opened tabs by the user that are not
-        // tracked in the layout?
-        match serialize_multiple_tabs(global_layout_manifest.tabs.clone(), &mut pane_contents) {
-            Ok(mut serialized_tabs) => {
-                layout_node_children
-                    .nodes_mut()
-                    .append(&mut serialized_tabs);
-            },
-            Err(e) => {
-                return Err(e);
-            },
-        }
-
-        // cloning the values here might not be the most efficient way of serializing the layout
         serialize_new_tab_template(
-            layout.template.clone(),
+            layout.template,
             &mut pane_contents,
             &mut layout_node_children,
         );
         serialize_swap_tiled_layouts(
-            layout.swap_tiled_layouts.clone(),
+            layout.swap_tiled_layouts,
             &mut pane_contents,
             &mut layout_node_children,
         );
         serialize_swap_floating_layouts(
-            layout.swap_floating_layouts.clone(),
+            layout.swap_floating_layouts,
             &mut pane_contents,
             &mut layout_node_children,
         );
 
+        if i == layout_config.selected_layout {
+            // I am not quite sure what global_layout_manifest.tabs is containing since the layouts
+            // themselves do contain tabs. Is this the manually opened tabs by the user that are not
+            // tracked in the layout?
+            // I am assuming this for now. That would also mean though that these non layout tabs will also
+            // keep appearing when switching back to the main layout. Ig that could be fine?
+            match serialize_multiple_tabs(global_layout_manifest.tabs.clone(), &mut pane_contents) {
+                Ok(mut serialized_tabs) => {
+                    layout_node_children
+                        .nodes_mut()
+                        .append(&mut serialized_tabs);
+                },
+                Err(e) => {
+                    return Err(e);
+                },
+            }
+        }
+
         layout_node.set_children(layout_node_children);
         document.nodes_mut().push(layout_node);
     }
+    println!("{:?}", document);
+
     Ok((document.to_string(), pane_contents))
 }
 
@@ -1717,11 +1731,12 @@ mod tests {
             FloatingPaneLayout::default(),
             FloatingPaneLayout::default(),
         ];
-        let mut default_layout = Layout::default();
-        default_layout.template = Some((tiled_panes_layout, floating_panes_layout));
-        let default_layout = Box::new(default_layout);
+        let mut default_layout_config = LayoutConfig::default();
+        let active_layout = default_layout_config.get_active_layout_mut();
+        active_layout.template = Some((tiled_panes_layout, floating_panes_layout));
+        let default_layout_config = Box::new(default_layout_config);
         let global_layout_manifest = GlobalLayoutManifest {
-            default_layout,
+            default_layout_config,
             ..Default::default()
         };
         let kdl = serialize_session_layout(global_layout_manifest).unwrap();
@@ -1733,7 +1748,8 @@ mod tests {
             children: vec![TiledPaneLayout::default(), TiledPaneLayout::default()],
             ..Default::default()
         };
-        let mut default_layout = Layout::default();
+        let mut default_layout_config = LayoutConfig::default();
+        let mut active_layout = default_layout_config.get_active_layout_mut();
         let mut swap_tiled_layout_1 = BTreeMap::new();
         let mut swap_tiled_layout_2 = BTreeMap::new();
         swap_tiled_layout_1.insert(LayoutConstraint::MaxPanes(1), tiled_panes_layout.clone());
@@ -1749,10 +1765,10 @@ mod tests {
             (swap_tiled_layout_1, None),
             (swap_tiled_layout_2, Some("swap_tiled_layout_2".to_owned())),
         ];
-        default_layout.swap_tiled_layouts = swap_tiled_layouts;
-        let default_layout = Box::new(default_layout);
+        active_layout.swap_tiled_layouts = swap_tiled_layouts;
+        let default_layout_config = Box::new(default_layout_config);
         let global_layout_manifest = GlobalLayoutManifest {
-            default_layout,
+            default_layout_config,
             ..Default::default()
         };
         let kdl = serialize_session_layout(global_layout_manifest).unwrap();
@@ -1765,7 +1781,8 @@ mod tests {
             FloatingPaneLayout::default(),
             FloatingPaneLayout::default(),
         ];
-        let mut default_layout = Layout::default();
+        let mut default_layout_config = LayoutConfig::default();
+        let mut active_layout = default_layout_config.get_active_layout_mut();
         let mut swap_floating_layout_1 = BTreeMap::new();
         let mut swap_floating_layout_2 = BTreeMap::new();
         swap_floating_layout_1.insert(LayoutConstraint::MaxPanes(1), floating_panes_layout.clone());
@@ -1796,10 +1813,10 @@ mod tests {
                 Some("swap_floating_layout_2".to_owned()),
             ),
         ];
-        default_layout.swap_floating_layouts = swap_floating_layouts;
-        let default_layout = Box::new(default_layout);
+        active_layout.swap_floating_layouts = swap_floating_layouts;
+        let default_layout_config = Box::new(default_layout_config);
         let global_layout_manifest = GlobalLayoutManifest {
-            default_layout,
+            default_layout_config,
             ..Default::default()
         };
         let kdl = serialize_session_layout(global_layout_manifest).unwrap();
