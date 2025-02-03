@@ -3321,7 +3321,7 @@ pub fn screen_cannot_break_last_selectable_pane_to_a_new_tab() {
     );
 
     let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
+        Box::new(LayoutConfig::default()),
         Default::default(),
         1,
     ));
