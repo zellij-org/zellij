@@ -216,8 +216,13 @@ impl TiledPanes {
             })
             .copied()
         {
-            if let Some(pane) = self.panes.remove(&pane_id) {
-                self.add_pane(pane.pid(), pane, true, None);
+            if let Some(mut pane) = self.panes.remove(&pane_id) {
+                // we must strip the logical position here because it's likely a straggler from
+                // this pane's previous tab and would cause chaos if considered in the new one
+                let mut pane_geom = pane.position_and_size();
+                pane_geom.logical_position = None;
+                pane.set_geom(pane_geom);
+                self.add_pane_with_existing_geom(pane.pid(), pane);
             }
         }
     }
