@@ -637,7 +637,7 @@ impl Pane for TerminalPane {
         self.exclude_from_sync
     }
 
-    fn mouse_event(&self, event: &MouseEvent) -> Option<String> {
+    fn mouse_event(&self, event: &MouseEvent, _client_id: ClientId) -> Option<String> {
         self.grid.mouse_event_signal(event)
     }
 

@@ -39,6 +39,7 @@ members = [
     "default-plugins/session-manager",
     "default-plugins/configuration",
     "default-plugins/plugin-manager",
+    "default-plugins/about",
     "zellij-client",
     "zellij-server",
     "zellij-utils",

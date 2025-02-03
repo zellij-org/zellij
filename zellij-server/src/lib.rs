@@ -704,6 +704,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         // intrusive
                         let setup_wizard = setup_wizard_floating_pane();
                         floating_panes.push(setup_wizard);
+                    } else {
+                        // TODO: only if cache is writable and we haven't already shown it in this
+                        // version
+                        let about = about_floating_pane();
+                        floating_panes.push(about);
                     }
                     spawn_tabs(
                         None,
@@ -1488,6 +1493,17 @@ fn setup_wizard_floating_pane() -> FloatingPaneLayout {
         None,
     ))));
     setup_wizard_pane
+}
+
+fn about_floating_pane() -> FloatingPaneLayout {
+    let mut about_pane = FloatingPaneLayout::new();
+    let configuration = BTreeMap::from_iter([("is_release_notes".to_owned(), "true".to_owned())]);
+    about_pane.run = Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias::new(
+        "about",
+        &Some(configuration),
+        None,
+    ))));
+    about_pane
 }
 
 #[cfg(not(feature = "singlepass"))]

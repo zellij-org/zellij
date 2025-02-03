@@ -828,6 +828,7 @@ pub enum Mouse {
     RightClick(isize, usize), // line and column
     Hold(isize, usize),       // line and column
     Release(isize, usize),    // line and column
+    Hover(isize, usize),    // line and column
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
