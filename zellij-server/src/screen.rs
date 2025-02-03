@@ -12,6 +12,7 @@ use zellij_utils::data::{
     Direction, KeyWithModifier, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo,
 };
 use zellij_utils::errors::prelude::*;
+use zellij_utils::home::default_layout_dir;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::Keybinds;
@@ -1239,7 +1240,6 @@ impl Screen {
                 .non_fatal();
         }
         if output.is_dirty() {
-            log::info!("Output was dirty and re rendered screen");
             let serialized_output = output.serialize().context(err_context)?;
             let _ = self
                 .bus
@@ -1383,9 +1383,7 @@ impl Screen {
         client_id: ClientId,
     ) -> Result<()> {
         let tabs_to_delete: Vec<u16> = self.tabs.iter().map(|(_, tab)| tab.index as u16).collect();
-
         let mut instructions_to_open = vec![];
-
         let mut active_layout = self.default_layout_config.get_active_layout().clone();
 
         if active_layout.tabs.is_empty() {
@@ -1395,15 +1393,19 @@ impl Screen {
                 .push((None, new_tiled_pane_layout, new_floating_panes_layout));
         }
 
-        let swap_tiled_layouts = active_layout.swap_tiled_layouts.clone();
-        let swap_floating_layouts = active_layout.swap_floating_layouts.clone();
+        let swap_tiled_layouts = active_layout.swap_tiled_layouts;
+        let swap_floating_layouts = active_layout.swap_floating_layouts;
 
         let mut is_first = true;
 
-        // enumerate makes this look though but is useful for consistent tab names
+        // enumerate makes this look though but it is useful for consistent tab names
         for (index, (name, tiled_pane_layout, floating_panes_layout)) in
             active_layout.tabs.drain(..).enumerate()
         {
+            // using usize::MAX should be fine
+            let should_focus =
+                index == active_layout.focused_tab_index.unwrap_or(usize::MAX) || is_first;
+
             let instruction = ScreenInstruction::NewTab(
                 None,
                 shell.clone(),
@@ -1411,7 +1413,7 @@ impl Screen {
                 floating_panes_layout,
                 name.or(Some(format!("Tab #{}", index + 1))),
                 (swap_tiled_layouts.clone(), swap_floating_layouts.clone()),
-                is_first,
+                should_focus,
                 client_id,
             );
             instructions_to_open.push(instruction);
@@ -3960,17 +3962,11 @@ pub(crate) fn screen_thread_main(
                 screen.default_layout_config.previous_layout();
 
                 screen.update_layout(shell, client_id)?;
-                screen.render(None)?;
-                screen.log_and_report_session_state()?;
-                screen.unblock_input()?;
             },
             ScreenInstruction::NextLayout(shell, client_id) => {
                 screen.default_layout_config.next_layout();
 
                 screen.update_layout(shell, client_id)?;
-                screen.render(None)?;
-                screen.log_and_report_session_state()?;
-                screen.unblock_input()?;
             },
             ScreenInstruction::PreviousSwapLayout(client_id) => {
                 active_tab_and_connected_client_id!(
