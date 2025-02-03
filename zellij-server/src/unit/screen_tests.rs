@@ -16,7 +16,7 @@ use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
 use zellij_utils::input::config::Config;
 use zellij_utils::input::layout::{
-    FloatingPaneLayout, Layout, PluginAlias, PluginUserConfiguration, Run, RunPlugin,
+    FloatingPaneLayout, Layout, LayoutConfig, PluginAlias, PluginUserConfiguration, Run, RunPlugin,
     RunPluginLocation, RunPluginOrAlias, SplitDirection, SplitSize, TiledPaneLayout,
 };
 use zellij_utils::input::options::Options;
@@ -121,7 +121,7 @@ fn send_cli_action_to_server(
     let capabilities = PluginCapabilities::default();
     let client_attributes = ClientAttributes::default();
     let default_shell = None;
-    let default_layout = Box::new(Layout::default());
+    let default_layout_config = Box::new(LayoutConfig::default());
     let default_mode = session_metadata
         .session_configuration
         .get_client_configuration(&client_id)
@@ -141,7 +141,7 @@ fn send_cli_action_to_server(
             capabilities,
             client_attributes.clone(),
             default_shell.clone(),
-            default_layout.clone(),
+            default_layout_config.clone(),
             None,
             client_keybinds.clone(),
             default_mode,
@@ -259,7 +259,7 @@ fn create_new_screen(size: Size) -> Screen {
     let auto_layout = true;
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
-    let default_layout = Box::new(Layout::default());
+    let default_layout_config = Box::new(LayoutConfig::default());
     let default_layout_name = None;
     let default_shell = None;
     let session_serialization = true;
@@ -281,7 +281,7 @@ fn create_new_screen(size: Size) -> Screen {
         session_is_mirrored,
         copy_options,
         debug,
-        default_layout,
+        default_layout_config,
         default_layout_name,
         default_shell,
         session_serialization,
@@ -347,7 +347,7 @@ impl MockScreen {
                     client_attributes,
                     config,
                     debug,
-                    Box::new(Layout::default()),
+                    Box::new(LayoutConfig::default()),
                 )
                 .expect("TEST")
             })
@@ -425,7 +425,7 @@ impl MockScreen {
                     client_attributes,
                     config,
                     debug,
-                    Box::new(Layout::default()),
+                    Box::new(LayoutConfig::default()),
                 )
                 .expect("TEST")
             })
@@ -527,7 +527,7 @@ impl MockScreen {
     }
     pub fn clone_session_metadata(&self) -> SessionMetaData {
         // hack that only clones the clonable parts of SessionMetaData
-        let layout = Box::new(Layout::default()); // this is not actually correct!!
+        let layout_config = Box::new(LayoutConfig::default()); // this is not actually correct!!
         SessionMetaData {
             senders: self.session_metadata.senders.clone(),
             capabilities: self.session_metadata.capabilities.clone(),
@@ -539,7 +539,7 @@ impl MockScreen {
             pty_writer_thread: None,
             background_jobs_thread: None,
             session_configuration: self.session_metadata.session_configuration.clone(),
-            layout,
+            layout_config,
             current_input_modes: self.session_metadata.current_input_modes.clone(),
         }
     }
@@ -577,7 +577,7 @@ impl MockScreen {
             arrow_fonts: Default::default(),
         };
 
-        let layout = Box::new(Layout::default()); // this is not actually correct!!
+        let layout_config = Box::new(LayoutConfig::default()); // this is not actually correct!!
         let session_metadata = SessionMetaData {
             senders: ThreadSenders {
                 to_screen: Some(to_screen.clone()),
@@ -596,7 +596,7 @@ impl MockScreen {
             plugin_thread: None,
             pty_writer_thread: None,
             background_jobs_thread: None,
-            layout,
+            layout_config,
             session_configuration: Default::default(),
             current_input_modes: HashMap::new(),
         };
@@ -3263,7 +3263,7 @@ pub fn screen_can_break_pane_to_a_new_tab() {
     );
 
     let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
+        Box::new(LayoutConfig::default()),
         Default::default(),
         1,
     ));
@@ -3362,7 +3362,7 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
     );
 
     let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
+        Box::new(LayoutConfig::default()),
         Default::default(),
         1,
     ));
@@ -3435,7 +3435,7 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
     );
 
     let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
+        Box::new(LayoutConfig::default()),
         Default::default(),
         1,
     ));
@@ -3506,7 +3506,7 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
     );
 
     let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
+        Box::new(LayoutConfig::default()),
         Default::default(),
         1,
     ));
@@ -3573,7 +3573,7 @@ pub fn screen_can_move_pane_to_a_new_tab_right() {
     );
 
     let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
+        Box::new(LayoutConfig::default()),
         Default::default(),
         1,
     ));
@@ -3621,7 +3621,7 @@ pub fn screen_can_move_pane_to_a_new_tab_left() {
     );
 
     let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
+        Box::new(LayoutConfig::default()),
         Default::default(),
         1,
     ));

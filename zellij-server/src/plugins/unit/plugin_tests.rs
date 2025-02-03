@@ -13,7 +13,8 @@ use zellij_utils::data::{
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::layout::{
-    Layout, PluginAlias, PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias,
+    LayoutConfig, PluginAlias, PluginUserConfiguration, RunPlugin, RunPluginLocation,
+    RunPluginOrAlias,
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::input::plugins::PluginAliases;
@@ -358,7 +359,7 @@ fn create_plugin_thread(
                 plugin_bus,
                 engine,
                 data_dir,
-                Box::new(Layout::default()),
+                Box::new(LayoutConfig::default()),
                 None,
                 default_shell,
                 zellij_cwd,
@@ -442,7 +443,7 @@ fn create_plugin_thread_with_server_receiver(
                 plugin_bus,
                 engine,
                 data_dir,
-                Box::new(Layout::default()),
+                Box::new(LayoutConfig::default()),
                 None,
                 default_shell,
                 zellij_cwd,
@@ -532,7 +533,7 @@ fn create_plugin_thread_with_pty_receiver(
                 plugin_bus,
                 engine,
                 data_dir,
-                Box::new(Layout::default()),
+                Box::new(LayoutConfig::default()),
                 None,
                 default_shell,
                 zellij_cwd,
@@ -617,7 +618,7 @@ fn create_plugin_thread_with_background_jobs_receiver(
                 plugin_bus,
                 engine,
                 data_dir,
-                Box::new(Layout::default()),
+                Box::new(LayoutConfig::default()),
                 None,
                 default_shell,
                 zellij_cwd,
