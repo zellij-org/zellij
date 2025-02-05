@@ -25,21 +25,21 @@ use axum::{
 };
 use zellij_utils::{
     cli::CliArgs,
-    input::layout::Layout,
+    data::{ConnectToSession, LayoutInfo, Style},
     envs,
-    data::{Style, ConnectToSession, LayoutInfo},
     errors::prelude::*,
     include_dir,
+    input::layout::Layout,
     input::{
         actions::Action, cast_termwiz_key, config::Config, mouse::MouseEvent, options::Options,
     },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     serde::{Deserialize, Serialize},
     serde_json,
+    sessions::{resurrection_layout, session_exists},
+    setup::{find_default_config_dir, get_layout_dir},
     termwiz::input::{InputEvent, InputParser},
     uuid::Uuid,
-    setup::{find_default_config_dir, get_layout_dir},
-    sessions::{session_exists, resurrection_layout}
 };
 
 use futures::{prelude::stream::SplitSink, SinkExt, StreamExt};
@@ -146,10 +146,9 @@ async fn serve_web_client(
         .route("/", get(page_html))
         .route("/{session}", get(page_html))
         .route("/assets/{*path}", get(get_static_asset))
-        .route("/ws/control/default", any(ws_handler_control))
-        .route("/ws/control/session/{session}", any(ws_handler_control))
-        .route("/ws/terminal/default", any(ws_handler_terminal))
-        .route("/ws/terminal/session/{session}", any(ws_handler_terminal))
+        .route("/ws/control", any(ws_handler_control))
+        .route("/ws/terminal", any(ws_handler_terminal))
+        .route("/ws/terminal/{session}", any(ws_handler_terminal))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
@@ -257,7 +256,13 @@ async fn handle_ws_control(mut socket: WebSocket, state: AppState) {
 }
 
 async fn handle_ws_terminal(socket: WebSocket, path: Option<AxumPath<String>>, state: AppState) {
-    let session_name = path.map(|p| p.0).unwrap_or(state.session_name.clone());
+    let session_name = path
+        .map(|p| {
+            let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
+            sock_dir.push(p.0);
+            sock_dir.to_str().unwrap().to_owned()
+        })
+        .unwrap_or(state.session_name.clone());
 
     let web_client_id = String::from(Uuid::new_v4());
     let os_input = get_client_os_input().unwrap(); // TODO: log error and quit
@@ -268,7 +273,10 @@ async fn handle_ws_terminal(socket: WebSocket, path: Option<AxumPath<String>>, s
     );
 
     let (client_channel_tx, mut client_channel_rx) = socket.split();
-    info!("New Terminal WebSocket connection established");
+    info!(
+        "New Terminal WebSocket connection established {}",
+        session_name
+    );
     let (stdout_channel_tx, stdout_channel_rx) = tokio::sync::mpsc::unbounded_channel();
 
     zellij_server_listener(
@@ -600,7 +608,7 @@ fn spawn_new_session(
     config_opts: Options,
     layout: Option<Layout>,
     client_attributes: ClientAttributes,
-) -> (ClientToServerMsg, PathBuf){
+) -> (ClientToServerMsg, PathBuf) {
     let debug = false;
     envs::set_session_name(name.to_owned());
     os_input.update_session_name(name.to_owned());
@@ -613,13 +621,11 @@ fn spawn_new_session(
         sock_dir
     };
 
-
-
     spawn_server(&*zellij_ipc_pipe, debug).unwrap();
 
     // TODO: make this happen
-//     let successfully_written_config =
-//         Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &config_opts);
+    //     let successfully_written_config =
+    //         Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &config_opts);
     // if we successfully wrote the config to disk, it means two things:
     // 1. It did not exist beforehand
     // 2. The config folder is writeable
