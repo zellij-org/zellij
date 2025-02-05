@@ -1,6 +1,13 @@
 use dialoguer::Confirm;
 use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 
+use zellij_client::{
+    old_config_converter::{
+        config_yaml_to_config_kdl, convert_old_yaml_files, layout_yaml_to_layout_kdl,
+    },
+    os_input_output::get_client_os_input,
+    start_client as start_client_impl, ClientInfo,
+};
 use zellij_utils::sessions::{
     assert_dead_session, assert_session, assert_session_ne, delete_session as delete_session_impl,
     get_active_session, get_name_generator, get_resurrectable_session_names,
@@ -8,13 +15,6 @@ use zellij_utils::sessions::{
     kill_session as kill_session_impl, match_session_name, print_sessions,
     print_sessions_with_index, resurrection_layout, session_exists, ActiveSession,
     SessionNameMatch,
-};
-use zellij_client::{
-    old_config_converter::{
-        config_yaml_to_config_kdl, convert_old_yaml_files, layout_yaml_to_layout_kdl,
-    },
-    os_input_output::get_client_os_input,
-    start_client as start_client_impl, ClientInfo,
 };
 
 #[cfg(feature = "web_server_capability")]
@@ -153,7 +153,7 @@ pub(crate) fn start_server(path: PathBuf, debug: bool) {
 
 // TODO: rename to start_web_server?
 #[cfg(feature = "web_server_capability")]
-pub(crate) fn start_web_client(session_name: String, debug: bool, opts: CliArgs) {
+pub(crate) fn start_web_client(path: String, debug: bool, opts: CliArgs) {
     let current_umask = umask(Mode::all());
     umask(current_umask);
     daemonize::Daemonize::new()
@@ -184,7 +184,7 @@ pub(crate) fn start_web_client(session_name: String, debug: bool, opts: CliArgs)
     // Set instance-wide debug mode
     zellij_utils::consts::DEBUG_MODE.set(debug).unwrap();
     // let os_input = get_os_input(get_client_os_input);
-    start_web_client_impl(&session_name, config, config_options);
+    start_web_client_impl(&path, config, config_options);
 }
 
 #[cfg(not(feature = "web_server_capability"))]

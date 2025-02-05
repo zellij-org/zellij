@@ -93,14 +93,17 @@ struct StdinMessage {
     stdin: String,
 }
 
-pub fn start_web_client(session_name: &str, config: Config, config_options: Options) {
-    log::info!("WebSocket server started and listening on port 8082");
+pub fn start_web_client(ipc_path: &str, config: Config, config_options: Options) {
+    log::info!(
+        "WebSocket server started and listening on port 8082, with ipc_path {}",
+        ipc_path
+    );
 
     let connection_table: ConnectionTable = Arc::new(Mutex::new(HashMap::new()));
 
     let rt = Runtime::new().unwrap();
     rt.block_on(serve_web_client(
-        session_name,
+        ipc_path,
         config,
         config_options,
         connection_table,
@@ -118,13 +121,13 @@ const ASSETS_DIR: include_dir::Dir<'_> = include_dir::include_dir!("$CARGO_MANIF
 #[derive(Clone)]
 struct AppState {
     connection_table: ConnectionTable,
-    session_name: String,
+    ipc_path: String,
     config: Config,
     config_options: Options,
 }
 
 async fn serve_web_client(
-    session_name: &str,
+    ipc_path: &str,
     config: Config,
     config_options: Options,
     connection_table: ConnectionTable,
@@ -133,7 +136,7 @@ async fn serve_web_client(
 
     let state = AppState {
         connection_table,
-        session_name: session_name.to_owned(),
+        ipc_path: ipc_path.to_owned(),
         config,
         config_options,
     };
@@ -205,15 +208,15 @@ async fn ws_handler_control(
 
 async fn ws_handler_terminal(
     ws: WebSocketUpgrade,
-    path: Option<AxumPath<String>>,
+    session_name: Option<AxumPath<String>>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
     log::info!(
-        "Terminal WebSocket connection established with path: {:?}",
-        path
+        "Terminal WebSocket connection established with session_name: {:?}",
+        session_name
     );
 
-    ws.on_upgrade(move |socket| handle_ws_terminal(socket, path, state))
+    ws.on_upgrade(move |socket| handle_ws_terminal(socket, session_name, state))
 }
 
 async fn handle_ws_control(mut socket: WebSocket, state: AppState) {
@@ -256,14 +259,18 @@ async fn handle_ws_control(mut socket: WebSocket, state: AppState) {
     }
 }
 
-async fn handle_ws_terminal(socket: WebSocket, path: Option<AxumPath<String>>, state: AppState) {
-    let session_name = path
+async fn handle_ws_terminal(
+    socket: WebSocket,
+    session_name: Option<AxumPath<String>>,
+    state: AppState,
+) {
+    let ipc_path = session_name
         .map(|p| {
             let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
             sock_dir.push(p.0);
             sock_dir.to_str().unwrap().to_owned()
         })
-        .unwrap_or(state.session_name.clone());
+        .unwrap_or(state.ipc_path.clone());
 
     let web_client_id = String::from(Uuid::new_v4());
     let os_input = get_client_os_input().unwrap(); // TODO: log error and quit
@@ -274,16 +281,13 @@ async fn handle_ws_terminal(socket: WebSocket, path: Option<AxumPath<String>>, s
     );
 
     let (client_channel_tx, mut client_channel_rx) = socket.split();
-    info!(
-        "New Terminal WebSocket connection established {}",
-        session_name
-    );
+    info!("New Terminal WebSocket connection established {}", ipc_path);
     let (stdout_channel_tx, stdout_channel_rx) = tokio::sync::mpsc::unbounded_channel();
 
     zellij_server_listener(
         Box::new(os_input.clone()),
         stdout_channel_tx,
-        &session_name,
+        &ipc_path,
         state.config.clone(),
         state.config_options.clone(),
     );
@@ -340,20 +344,23 @@ async fn handle_ws_terminal(socket: WebSocket, path: Option<AxumPath<String>>, s
 fn zellij_server_listener(
     os_input: Box<dyn ClientOsApi>,
     stdout_channel_tx: tokio::sync::mpsc::UnboundedSender<String>,
-    session_name: &str,
+    ipc_path: &str,
     config: Config,
     config_options: Options,
 ) {
     let _server_listener_thread = std::thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
-            let session_name = session_name.to_owned();
+            let path = ipc_path.to_owned();
             move || {
                 let mut reconnect_to_session: Option<ConnectToSession> = None;
                 'reconnect_loop: loop {
                     let reconnect_info = reconnect_to_session.take();
-                    let is_a_reconnect = reconnect_info.is_some();
-                    let session_name = reconnect_info.as_ref().and_then(|r| r.name.to_owned()).unwrap_or_else(|| session_name.clone());
+                    let path = reconnect_info.as_ref().and_then(|r| r.name.to_owned()).map(|name| {
+                        let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
+                        sock_dir.push(name);
+                        sock_dir.to_str().unwrap().to_owned()
+                    }).unwrap_or_else(|| path.clone());
 
                     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
 
@@ -380,13 +387,15 @@ fn zellij_server_listener(
                         },
                     };
 
+                    let session_name = PathBuf::from(path.clone()).file_name().unwrap().to_str().unwrap().to_owned();
+
                     let is_web_client = true;
-                    let (first_message, zellij_ipc_pipe) = if !is_a_reconnect || session_exists(&session_name).unwrap_or(false) { // TODO: handle error
+                    let (first_message, zellij_ipc_pipe) = if session_exists(&session_name).unwrap_or(false) { // TODO: handle error
                         let zellij_ipc_pipe: PathBuf = {
                             let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
                             fs::create_dir_all(&sock_dir).unwrap();
                             zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
-                            sock_dir.push(session_name);
+                            sock_dir.push(path);
                             sock_dir
                         };
                         let first_message = ClientToServerMsg::AttachClient(
@@ -412,7 +421,7 @@ fn zellij_server_listener(
                         match resurrection_layout {
                             Some(resurrection_layout) => {
                                 spawn_new_session(
-                                    &session_name,
+                                    &path,
                                     is_web_client,
                                     os_input.clone(),
                                     config.clone(),
@@ -445,7 +454,7 @@ fn zellij_server_listener(
                                 };
 
                                 spawn_new_session(
-                                    &session_name,
+                                    &path,
                                     is_web_client,
                                     os_input.clone(),
                                     config.clone(),
