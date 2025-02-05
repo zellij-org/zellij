@@ -1144,14 +1144,11 @@ pub(crate) fn route_thread_main(
                             pane_id_to_focus,
                             is_web_client,
                         ) => {
-                            // TODO: if web clients are disabled in the config, we should not allow
-                            // this connection if is_web_client is true
                             let allow_web_connections = rlocked_sessions
                                 .as_ref()
                                 .map(|rlocked_sessions| {
                                     rlocked_sessions
-                                        .session_configuration
-                                        .is_web_server_enabled()
+                                        .is_web_server_enabled
                                 })
                                 .unwrap_or(false);
                             let should_allow_connection = !is_web_client || allow_web_connections;

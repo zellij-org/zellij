@@ -294,22 +294,6 @@ impl SessionConfiguration {
 
         (full_reconfigured_config, config_changed)
     }
-    #[cfg(feature = "web_server_capability")]
-    pub fn is_web_server_enabled(&self) -> bool {
-        let is_enabled_in_runtime_config = self
-            .runtime_config
-            .values()
-            .any(|config| config.options.enable_web_server.unwrap_or(false));
-        let is_enabled_in_saved_config = self
-            .saved_config
-            .values()
-            .any(|config| config.options.enable_web_server.unwrap_or(false));
-        is_enabled_in_runtime_config || is_enabled_in_saved_config
-    }
-    #[cfg(not(feature = "web_server_capability"))]
-    pub fn is_web_server_enabled(&self) -> bool {
-        false
-    }
 }
 
 pub(crate) struct SessionMetaData {
@@ -320,7 +304,9 @@ pub(crate) struct SessionMetaData {
     pub layout: Box<Layout>,
     pub current_input_modes: HashMap<ClientId, InputMode>,
     pub session_configuration: SessionConfiguration,
-
+    pub is_web_server_enabled: bool, // this is a special attribute explicitly set on session
+                                     // initialization because we don't want it to be overridden by
+                                     // configuration changes
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
@@ -1492,6 +1478,10 @@ fn init_session(
         plugin_thread: Some(plugin_thread),
         pty_writer_thread: Some(pty_writer_thread),
         background_jobs_thread: Some(background_jobs_thread),
+        #[cfg(feature = "web_server_capability")]
+        is_web_server_enabled: config.options.enable_web_server.unwrap_or(false),
+        #[cfg(not(feature = "web_server_capability"))]
+        is_web_server_enabled: false,
     }
 }
 
