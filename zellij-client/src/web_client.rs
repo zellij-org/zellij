@@ -9,6 +9,7 @@ use std::{
 
 use crate::keyboard_parser::KittyKeyboardParser;
 use crate::{
+    report_changes_in_config_file,
     input_handler::from_termwiz,
     os_input_output::{get_client_os_input, ClientOsApi},
     spawn_server,
@@ -452,6 +453,10 @@ fn zellij_server_listener(
                     os_input.connect_to_server(&zellij_ipc_pipe);
                     os_input.send_to_server(first_message);
 
+                    // we keep the _config_file_watcher here so that it's dropped on the next round
+                    // of the reconnect loop
+                    // TODO: get actual CliArgs
+                    let _config_file_watcher = report_changes_in_config_file(&CliArgs::default(), &os_input);
                     loop {
                         match os_input.recv_from_server() {
                             //             Some((ServerToClientMsg::UnblockInputThread, _)) => {
@@ -481,6 +486,26 @@ fn zellij_server_listener(
                             Some((ServerToClientMsg::SwitchSession(connect_to_session), _)) => {
                                 reconnect_to_session = Some(connect_to_session);
                                 continue 'reconnect_loop;
+                            },
+                            Some((ServerToClientMsg::WriteConfigToDisk{ config }, _)) => {
+                                // TODO: get config path from actual CLI args and differentiate
+                                // between sessions (this is also a bug in the CLI client)
+                                match Config::write_config_to_disk(config, &CliArgs::default()) {
+                                    Ok(written_config) => {
+                                        let _ = os_input
+                                            .send_to_server(ClientToServerMsg::ConfigWrittenToDisk(written_config));
+                                    },
+                                    Err(e) => {
+                                        let error_path = e
+                                            .as_ref()
+                                            .map(|p| p.display().to_string())
+                                            .unwrap_or_else(String::new);
+                                        log::error!("Failed to write config to disk: {}", error_path);
+                                        let _ = os_input
+                                            .send_to_server(ClientToServerMsg::FailedToWriteConfigToDisk(e));
+                                    },
+                                }
+
                             }
                             _ => {},
                         }

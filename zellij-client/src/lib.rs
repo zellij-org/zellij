@@ -720,7 +720,7 @@ pub fn start_server_detached(
     os_input.send_to_server(first_msg);
 }
 
-fn report_changes_in_config_file(
+pub fn report_changes_in_config_file(
     opts: &CliArgs,
     os_input: &Box<dyn ClientOsApi>,
 ) -> Option<Box<dyn Watcher>> {
