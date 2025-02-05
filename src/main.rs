@@ -1,5 +1,4 @@
 mod commands;
-mod sessions;
 #[cfg(test)]
 mod tests;
 

@@ -58,6 +58,8 @@ futures = "0.3.28"
 openssl-sys = { version = "0.9.93", features = ["vendored"], optional = true }
 isahc = { version = "1.7.2", default-features = false, features = ["http2", "text-decoding"] }
 curl-sys = { version = "0.4", features = ["force-system-lib-on-osx"], optional = true }
+names = { version = "0.14.0", default-features = false }
+suggest = "0.4.0"
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }

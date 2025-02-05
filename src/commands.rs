@@ -1,7 +1,7 @@
 use dialoguer::Confirm;
 use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 
-use crate::sessions::{
+use zellij_utils::sessions::{
     assert_dead_session, assert_session, assert_session_ne, delete_session as delete_session_impl,
     get_active_session, get_name_generator, get_resurrectable_session_names,
     get_resurrectable_sessions, get_sessions, get_sessions_sorted_by_mtime,
@@ -39,7 +39,7 @@ use zellij_utils::{
     setup::{find_default_config_dir, get_layout_dir, Setup},
 };
 
-pub(crate) use crate::sessions::list_sessions;
+pub(crate) use zellij_utils::sessions::list_sessions;
 
 pub(crate) fn kill_all_sessions(yes: bool) {
     match get_sessions() {

@@ -42,6 +42,7 @@ use zellij_utils::{
     interprocess::local_socket::LocalSocketStream,
     ipc::{IpcReceiverWithContext, IpcSenderWithContext},
     setup::{find_default_config_dir, get_layout_dir, Setup},
+    sessions::{session_exists, match_session_name, get_sessions, resurrection_layout, get_resurrectable_sessions}
 };
 
 use futures::{prelude::stream::SplitSink, SinkExt, StreamExt};
@@ -60,7 +61,6 @@ const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201~
 //      - point the browser at localhost:8082
 
 // TODO:
-// - handle switching sessions
 // - place control and terminal channels on different endpoints rather than different ports
 // - use http headers to communicate client_id rather than the payload so that we can get rid of
 // one serialization level
@@ -675,161 +675,4 @@ fn spawn_new_session(
         ),
         zellij_ipc_pipe,
     )
-}
-
-// TODO: these are duplicates, let's move the sessions module from the root crate to zellij-utils
-pub(crate) fn session_exists(name: &str) -> Result<bool, std::io::ErrorKind> {
-    match match_session_name(name) {
-        Ok(SessionNameMatch::Exact(_)) => Ok(true),
-        Ok(_) => Ok(false),
-        Err(e) => Err(e),
-    }
-}
-
-pub(crate) fn match_session_name(prefix: &str) -> Result<SessionNameMatch, std::io::ErrorKind> {
-    let sessions = get_sessions()?;
-
-    let filtered_sessions: Vec<_> = sessions
-        .iter()
-        .filter(|s| s.0.starts_with(prefix))
-        .collect();
-
-    if filtered_sessions.iter().any(|s| s.0 == prefix) {
-        return Ok(SessionNameMatch::Exact(prefix.to_string()));
-    }
-
-    Ok({
-        match &filtered_sessions[..] {
-            [] => SessionNameMatch::None,
-            [s] => SessionNameMatch::UniquePrefix(s.0.to_string()),
-            _ => SessionNameMatch::AmbiguousPrefix(
-                filtered_sessions.into_iter().map(|s| s.0.clone()).collect(),
-            ),
-        }
-    })
-}
-
-use std::os::unix::fs::FileTypeExt;
-use std::{io, process};
-pub(crate) fn get_sessions() -> Result<Vec<(String, std::time::Duration)>, std::io::ErrorKind> {
-    match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
-        Ok(files) => {
-            let mut sessions = Vec::new();
-            files.for_each(|file| {
-                let file = file.unwrap();
-                let file_name = file.file_name().into_string().unwrap();
-                let ctime = std::fs::metadata(&file.path())
-                    .ok()
-                    .and_then(|f| f.created().ok())
-                    .and_then(|d| d.elapsed().ok())
-                    .unwrap_or_default();
-                let duration = std::time::Duration::from_secs(ctime.as_secs());
-                if file.file_type().unwrap().is_socket() && assert_socket(&file_name) {
-                    sessions.push((file_name, duration));
-                }
-            });
-            Ok(sessions)
-        },
-        Err(err) if std::io::ErrorKind::NotFound != err.kind() => Err(err.kind()),
-        Err(_) => Ok(Vec::with_capacity(0)),
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum SessionNameMatch {
-    AmbiguousPrefix(Vec<String>),
-    UniquePrefix(String),
-    Exact(String),
-    None,
-}
-
-fn assert_socket(name: &str) -> bool {
-    let path = &*ZELLIJ_SOCK_DIR.join(name);
-    match LocalSocketStream::connect(path) {
-        Ok(stream) => {
-            let mut sender = IpcSenderWithContext::new(stream);
-            let _ = sender.send(ClientToServerMsg::ConnStatus);
-            let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
-            match receiver.recv() {
-                Some((ServerToClientMsg::Connected, _)) => true,
-                None | Some((_, _)) => false,
-            }
-        },
-        Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
-            drop(fs::remove_file(path));
-            false
-        },
-        Err(_) => false,
-    }
-}
-
-// if the session is resurrecable, the returned layout is the one to be used to resurrect it
-pub(crate) fn resurrection_layout(session_name_to_resurrect: &str) -> Option<Layout> {
-    let resurrectable_sessions = get_resurrectable_sessions();
-    resurrectable_sessions
-        .iter()
-        .find_map(|(name, _timestamp, layout)| {
-            if name == session_name_to_resurrect {
-                Some(layout.clone())
-            } else {
-                None
-            }
-        })
-}
-
-pub(crate) fn get_resurrectable_sessions() -> Vec<(String, std::time::Duration, Layout)> {
-    match fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
-        Ok(files_in_session_info_folder) => {
-            let files_that_are_folders = files_in_session_info_folder
-                .filter_map(|f| f.ok().map(|f| f.path()))
-                .filter(|f| f.is_dir());
-            files_that_are_folders
-                .filter_map(|folder_name| {
-                    let layout_file_name =
-                        session_layout_cache_file_name(&folder_name.display().to_string());
-                    let raw_layout = match std::fs::read_to_string(&layout_file_name) {
-                        Ok(raw_layout) => raw_layout,
-                        Err(_e) => {
-                            return None;
-                        },
-                    };
-                    let ctime = match std::fs::metadata(&layout_file_name)
-                        .and_then(|metadata| metadata.created())
-                    {
-                        Ok(created) => Some(created),
-                        Err(_e) => None,
-                    };
-                    let layout = match Layout::from_kdl(
-                        &raw_layout,
-                        Some(layout_file_name.display().to_string()),
-                        None,
-                        None,
-                    ) {
-                        Ok(layout) => layout,
-                        Err(e) => {
-                            log::error!("Failed to parse resurrection layout file: {}", e);
-                            return None;
-                        },
-                    };
-                    let elapsed_duration = ctime
-                        .map(|ctime| {
-                            std::time::Duration::from_secs(ctime.elapsed().ok().unwrap_or_default().as_secs())
-                        })
-                        .unwrap_or_default();
-                    let session_name = folder_name
-                        .file_name()
-                        .map(|f| std::path::PathBuf::from(f).display().to_string())?;
-                    Some((session_name, elapsed_duration, layout))
-                })
-                .collect()
-        },
-        Err(e) => {
-            log::error!(
-                "Failed to read session_info cache folder: \"{:?}\": {:?}",
-                &*ZELLIJ_SESSION_INFO_CACHE_DIR,
-                e
-            );
-            vec![]
-        },
-    }
 }
