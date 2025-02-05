@@ -38,11 +38,8 @@ use zellij_utils::{
     serde_json,
     termwiz::input::{InputEvent, InputParser},
     uuid::Uuid,
-    consts::{ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR, session_layout_cache_file_name},
-    interprocess::local_socket::LocalSocketStream,
-    ipc::{IpcReceiverWithContext, IpcSenderWithContext},
-    setup::{find_default_config_dir, get_layout_dir, Setup},
-    sessions::{session_exists, match_session_name, get_sessions, resurrection_layout, get_resurrectable_sessions}
+    setup::{find_default_config_dir, get_layout_dir},
+    sessions::{session_exists, resurrection_layout}
 };
 
 use futures::{prelude::stream::SplitSink, SinkExt, StreamExt};
@@ -348,13 +345,6 @@ fn zellij_server_listener(
                     let reconnect_info = reconnect_to_session.take();
                     let is_a_reconnect = reconnect_info.is_some();
                     let session_name = reconnect_info.as_ref().and_then(|r| r.name.to_owned()).unwrap_or_else(|| session_name.clone());
-//                     let zellij_ipc_pipe: PathBuf = {
-//                         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
-//                         fs::create_dir_all(&sock_dir).unwrap();
-//                         zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
-//                         sock_dir.push(session_name);
-//                         sock_dir
-//                     };
 
                     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
 
@@ -381,13 +371,8 @@ fn zellij_server_listener(
                         },
                     };
 
-                    // TODO:
-                    // if the session name exists, do the below, otherwise call the spawn server
-                    // function
                     let is_web_client = true;
                     let (first_message, zellij_ipc_pipe) = if !is_a_reconnect || session_exists(&session_name).unwrap_or(false) { // TODO: handle error
-                                                                                                               //
-                        log::info!("attaching to: {:?}", session_name);
                         let zellij_ipc_pipe: PathBuf = {
                             let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
                             fs::create_dir_all(&sock_dir).unwrap();
@@ -395,7 +380,6 @@ fn zellij_server_listener(
                             sock_dir.push(session_name);
                             sock_dir
                         };
-
                         let first_message = ClientToServerMsg::AttachClient(
                             client_attributes,
                             config.clone(),
@@ -416,10 +400,6 @@ fn zellij_server_listener(
                                 resurrection_layout
                             });
 
-
-
-
-
                         match resurrection_layout {
                             Some(resurrection_layout) => {
                                 spawn_new_session(
@@ -434,7 +414,6 @@ fn zellij_server_listener(
                             },
                             None => {
                                 let layout_dir = config.options.layout_dir.clone().or_else(|| {
-                                    // get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir))
                                     get_layout_dir(find_default_config_dir())
                                 });
                                 let new_session_layout = match reconnect_info.as_ref().and_then(|r| r.layout.clone()) {
@@ -442,20 +421,16 @@ fn zellij_server_listener(
                                         &PathBuf::from(layout_name),
                                         layout_dir.clone(),
                                         config.clone(),
-                                        // config_without_layout.clone(),
                                     ),
                                     Some(LayoutInfo::File(layout_name)) => Layout::from_path_or_default(
                                         Some(&PathBuf::from(layout_name)),
                                         layout_dir.clone(),
                                         config.clone(),
-                                        // config_without_layout.clone(),
                                     ),
                                     Some(LayoutInfo::Url(url)) => Layout::from_url(&url, config.clone()),
-                                    // Some(LayoutInfo::Url(url)) => Layout::from_url(&url, config_without_layout.clone()),
                                     Some(LayoutInfo::Stringified(stringified_layout)) => Layout::from_stringified_layout(
                                         &stringified_layout,
                                         config.clone(),
-                                        // config_without_layout.clone(),
                                     ),
                                     None => Ok(Default::default())
                                 };
@@ -472,12 +447,6 @@ fn zellij_server_listener(
 
                             }
                         }
-
-
-
-
-
-
                     };
 
                     os_input.connect_to_server(&zellij_ipc_pipe);
@@ -500,7 +469,6 @@ fn zellij_server_listener(
                                 match exit_reason {
                                     ExitReason::Error(e) => {
                                         eprintln!("{}", e);
-                                        // process::exit(2);
                                     },
                                     _ => {},
                                 }
@@ -512,7 +480,7 @@ fn zellij_server_listener(
                             },
                             Some((ServerToClientMsg::SwitchSession(connect_to_session), _)) => {
                                 reconnect_to_session = Some(connect_to_session);
-                                continue;
+                                continue 'reconnect_loop;
                             }
                             _ => {},
                         }
@@ -649,6 +617,7 @@ fn spawn_new_session(
 
     spawn_server(&*zellij_ipc_pipe, debug).unwrap();
 
+    // TODO: make this happen
 //     let successfully_written_config =
 //         Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &config_opts);
     // if we successfully wrote the config to disk, it means two things:
