@@ -41,7 +41,7 @@ use route::route_thread_main;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
-    consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
+    consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE},
     data::{ConnectToSession, Event, InputMode, KeyWithModifier, PluginCapabilities},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
@@ -704,9 +704,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         // intrusive
                         let setup_wizard = setup_wizard_floating_pane();
                         floating_panes.push(setup_wizard);
-                    } else {
-                        // TODO: only if cache is writable and we haven't already shown it in this
-                        // version
+                    } else if should_show_release_notes() {
                         let about = about_floating_pane();
                         floating_panes.push(about);
                     }
@@ -1504,6 +1502,18 @@ fn about_floating_pane() -> FloatingPaneLayout {
         None,
     ))));
     about_pane
+}
+
+fn should_show_release_notes() -> bool {
+    if ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE.exists() {
+        return false;
+    } else {
+        if let Err(e) = std::fs::write(&*ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE, &[]) {
+            log::error!("Failed to write seen release notes indication to disk: {}", e);
+            return false;
+        }
+        return true
+    }
 }
 
 #[cfg(not(feature = "singlepass"))]
