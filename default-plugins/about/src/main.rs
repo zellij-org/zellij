@@ -24,8 +24,10 @@ pub static POSSIBLE_MODIFIERS: [KeyModifier; 4] = [
 pub struct MainScreen {
     version: String,
     link_coordinates: Vec<LinkCoordinates>,
+    item_coordinates: Vec<ItemCoordinates>,
     hover_coordinates: Option<(isize, usize)>, // line/col
     pub selected_item_index: Option<usize>,
+    pub selected_hover_index: Option<usize>,
 }
 
 impl Default for MainScreen {
@@ -33,8 +35,10 @@ impl Default for MainScreen {
         MainScreen {
             version: "0.42.0".to_owned(),
             link_coordinates: vec![],
+            item_coordinates: vec![],
             hover_coordinates: None,
-            selected_item_index: None
+            selected_item_index: None,
+            selected_hover_index: None,
         }
     }
 }
@@ -42,6 +46,7 @@ impl Default for MainScreen {
 impl MainScreen {
     pub fn render(&mut self, rows: usize, cols: usize) {
         self.link_coordinates.clear();
+        self.item_coordinates.clear();
         let ui_width = 74; // length of please support line
         let ui_height = 12;
         let base_x = cols.saturating_sub(ui_width) / 2;
@@ -57,42 +62,53 @@ impl MainScreen {
 
         let stacked_resize_text = format!("1. Stacked resize");
         let mut stacked_resize = Text::new(stacked_resize_text).color_range(0, 3..);
-        if self.selected_item_index == Some(0) {
+        if self.selected_item_index() == Some(0) {
             stacked_resize = stacked_resize.selected();
         }
+        self.item_coordinates.push(ItemCoordinates::new(base_x, base_y + 3, ui_width, 0));
         print_text_with_coordinates(stacked_resize, base_x, base_y + 3, Some(ui_width), None);
 
         let pinned_floating_panes_text = format!("2. Pinned floating panes");
         let mut pinned_floating_panes = Text::new(pinned_floating_panes_text).color_range(0, 3..);
-        if self.selected_item_index == Some(1) {
+        if self.selected_item_index() == Some(1) {
             pinned_floating_panes = pinned_floating_panes.selected();
         }
+        self.item_coordinates.push(ItemCoordinates::new(base_x, base_y + 4, ui_width, 1));
         print_text_with_coordinates(pinned_floating_panes, base_x, base_y + 4, Some(ui_width), None);
 
         let new_theme_def_text = format!("3. New theme definition spec");
         let mut new_theme_def = Text::new(new_theme_def_text).color_range(0, 3..);
-        if self.selected_item_index == Some(2) {
+        if self.selected_item_index() == Some(2) {
             new_theme_def = new_theme_def.selected();
         }
+        self.item_coordinates.push(ItemCoordinates::new(base_x, base_y + 5, ui_width, 2));
         print_text_with_coordinates(new_theme_def, base_x, base_y + 5, Some(ui_width), None);
 
         let new_plugin_apis_text = format!("4. New plugin APIs");
         let mut new_plugin_apis = Text::new(new_plugin_apis_text).color_range(0, 3..);
-        if self.selected_item_index == Some(3) {
+        if self.selected_item_index() == Some(3) {
             new_plugin_apis = new_plugin_apis.selected();
         }
+        self.item_coordinates.push(ItemCoordinates::new(base_x, base_y + 6, ui_width, 3));
         print_text_with_coordinates(new_plugin_apis, base_x, base_y + 6, Some(ui_width), None);
 
         let mouse_anyevent_text = format!("5. Mouse AnyEvent Handling");
         let mut mouse_anyevent = Text::new(mouse_anyevent_text).color_range(0, 3..);
-        if self.selected_item_index == Some(4) {
+        if self.selected_item_index() == Some(4) {
             mouse_anyevent = mouse_anyevent.selected();
         }
+        self.item_coordinates.push(ItemCoordinates::new(base_x, base_y + 7, ui_width, 4));
         print_text_with_coordinates(mouse_anyevent, base_x, base_y + 7, Some(ui_width), None);
 
         self.render_changelog_link(base_x, base_y + 9);
         self.render_sponsor_link(base_x, base_y + 11);
         self.render_help(rows);
+    }
+    pub fn hover_item(&self) -> Option<usize> {
+        self.selected_hover_index
+    }
+    fn selected_item_index(&self) -> Option<usize> {
+        self.selected_hover_index.or(self.selected_item_index)
     }
     fn render_sponsor_link(&mut self, x: usize, y: usize) {
         let link_coordinates = LinkCoordinates::new(x + 40, y, 34, "https://github.com/sponsors/imsnif");
@@ -177,21 +193,34 @@ impl MainScreen {
                 }
             }
             Mouse::Hover(line, col) => {
-                let mut contained_in_link = false;
+                let mut contained = false;
                 for link_coordinates in &self.link_coordinates {
                     if link_coordinates.contains(line, col) {
                         self.hover_coordinates = Some((line, col));
                         should_render = true;
-                        contained_in_link = true;
+                        contained = true;
                         break;
                     }
                 }
-                if !contained_in_link {
-                    if self.hover_coordinates.is_some() {
+                for item_coordinates in &self.item_coordinates {
+                    if item_coordinates.contains(line, col) {
+                        let prev_index = self.selected_hover_index;
+                        // self.hover_coordinates = Some((line, col));
+                        self.selected_hover_index = Some(item_coordinates.index);
+                        self.selected_item_index = None;
+                        contained = true;
+                        if self.selected_hover_index != prev_index {
+                            should_render = true;
+                        }
+                    }
+                }
+                if !contained {
+                    if self.hover_coordinates.is_some() || self.selected_hover_index.is_some() {
                         // so that we clear the hover indication
                         should_render = true;
                     }
                     self.hover_coordinates = None;
+                    self.selected_hover_index = None;
                 }
             }
             _ => {}
@@ -350,24 +379,73 @@ impl StackedResizeScreen {
 
 #[derive(Debug, Default)]
 struct PinnedFloatingPanesScreen {
-
+    link_coordinates: Vec<LinkCoordinates>,
+    hover_coordinates: Option<(isize, usize)>, // line/col
 }
 
 impl PinnedFloatingPanesScreen {
-    pub fn render(&mut self, rows: usize, cols: usize) {
-        // TODO: CONTINUE HERE - implement this
-        // Pinned Floating Panes
-        //
-        // This version adds the ability to "pin" a floating pane so that it
-        // will always be visible even if floating panes are hidden.
-        //
-        // Floating panes can be toggled as "pinned" either: 
-        // 1. With a mouse click on their top right corner
-        // 2. With Ctrl g + p + i
-        //
-        // A great use case for these is to tail log files or to show
-        // real-time compiler output while working in other panes
-        println!("PinnedFloatingPanesScreen");
+    pub fn render(&mut self, rows: usize, cols: usize, base_mode: InputMode) {
+        let ui_width = 67; // length of first explanation line
+        let ui_height = 11;
+        let base_x = cols.saturating_sub(ui_width) / 2;
+        let base_y = rows.saturating_sub(ui_height) / 2;
+
+        let title_text = format!("Pinned Floating Panes");
+        let title = Text::new(title_text).color_range(0, ..);
+        print_text_with_coordinates(title, base_x, base_y, None, None);
+
+        let explanation_1_text = format!("This version adds the ability to \"pin\" a floating pane so that it");
+        let explanation_1 = Text::new(explanation_1_text);
+        print_text_with_coordinates(explanation_1, base_x, base_y + 2, None, None);
+
+        let explanation_2_text = format!("will always be visible even if floating panes are hidden.");
+        let explanation_2 = Text::new(explanation_2_text);
+        print_text_with_coordinates(explanation_2, base_x, base_y + 3, None, None);
+
+        let try_it_out_text = format!("Floating panes can be \"pinned\": ");
+        let try_it_out = Text::new(try_it_out_text).color_range(2 , ..);
+        print_text_with_coordinates(try_it_out, base_x, base_y + 5, None, None);
+
+        let bulletin_1_text = format!("1. With a mouse click on their top right corner");
+        let bulletin_1 = Text::new(bulletin_1_text).color_range(3, 10..=20);
+        print_text_with_coordinates(bulletin_1, base_x, base_y + 6, Some(ui_width), None);
+
+        match base_mode {
+            InputMode::Locked => {
+                let bulletin_2_text = format!("2. With Ctrl g + p + i");
+                let bulletin_2 = Text::new(bulletin_2_text).color_range(3, 8..=13).color_range(3, 17..18).color_range(3, 21..22);
+                print_text_with_coordinates(bulletin_2, base_x, base_y + 7, Some(ui_width), None);
+            },
+            _ => {
+                let bulletin_2_text = format!("2. With Ctrl p + i");
+                let bulletin_2 = Text::new(bulletin_2_text).color_range(3, 8..=13).color_range(3, 17..18);
+                print_text_with_coordinates(bulletin_2, base_x, base_y + 7, Some(ui_width), None);
+            }
+        }
+
+        let use_case_1_text = format!("A great use case for these is to tail log files or to show");
+        let use_case_1 = Text::new(use_case_1_text);
+        print_text_with_coordinates(use_case_1, base_x, base_y + 9, Some(ui_width), None);
+
+        let use_case_2_text = format!("real-time compiler output while working in other panes.");
+        let use_case_2 = Text::new(use_case_2_text);
+        print_text_with_coordinates(use_case_2, base_x, base_y + 10, Some(ui_width), None);
+
+        self.render_help(rows);
+    }
+    fn render_help(&self, rows: usize) {
+        if self.hover_coordinates.is_some() {
+            let help_text = format!("Help: Click or Shift-Click to open in browser");
+            let help = Text::new(help_text)
+                .color_range(3, 6..=10)
+                .color_range(3, 15..=25);
+            print_text_with_coordinates(help, 0, rows, None, None);
+        } else {
+            let help_text = format!("Help: <ESC> - go back to main screen");
+            let help = Text::new(help_text)
+                .color_range(1, 6..=10);
+            print_text_with_coordinates(help, 0, rows, None, None);
+        }
     }
 }
 
@@ -378,29 +456,121 @@ struct NewThemeDefinitionSpecScreen {
 
 impl NewThemeDefinitionSpecScreen {
     pub fn render(&mut self, rows: usize, cols: usize) {
-        println!("NewThemeDefinitionSpec");
+        println!("NewThemeDefinitionSpec (TBD)");
     }
 }
 
 #[derive(Debug, Default)]
 struct NewPluginApisScreen{
-
+    hover_coordinates: Option<(isize, usize)>, // line/col
 }
 
 impl NewPluginApisScreen {
     pub fn render(&mut self, rows: usize, cols: usize) {
-        println!("NewPluginApisScreen");
+        let ui_width = 53; // length of first explanation line
+        let ui_height = 10;
+        let base_x = cols.saturating_sub(ui_width) / 2;
+        let base_y = rows.saturating_sub(ui_height) / 2;
+
+        let title_text = format!("New Plugin APIs");
+        let title = Text::new(title_text).color_range(0, ..);
+        print_text_with_coordinates(title, base_x, base_y, None, None);
+
+        let explanation_1_text = format!("New APIs were added in this version affording plugins");
+        let explanation_1 = Text::new(explanation_1_text);
+        print_text_with_coordinates(explanation_1, base_x, base_y + 2, None, None);
+
+        let explanation_2_text = format!("finer control over the workspace.");
+        let explanation_2 = Text::new(explanation_2_text);
+        print_text_with_coordinates(explanation_2, base_x, base_y + 3, None, None);
+        
+        let try_it_out_text = format!("Some examples:");
+        let try_it_out = Text::new(try_it_out_text).color_range(2 , ..);
+        print_text_with_coordinates(try_it_out, base_x, base_y + 5, None, None);
+
+        let bulletin_1_text = format!("1. Change floating panes' coordinates and size");
+        let bulletin_1 = Text::new(bulletin_1_text).color_range(3, 26..=36).color_range(3, 42..=45);
+        print_text_with_coordinates(bulletin_1, base_x, base_y + 6, Some(ui_width), None);
+
+        let bulletin_2_text = format!("2. Stack arbitrary panes");
+        let bulletin_2 = Text::new(bulletin_2_text).color_range(3, 3..=7);
+        print_text_with_coordinates(bulletin_2, base_x, base_y + 7, Some(ui_width), None);
+
+        let bulletin_3_text = format!("3. Change /host folder");
+        let bulletin_3 = Text::new(bulletin_3_text).color_range(3, 10..=14);
+        print_text_with_coordinates(bulletin_3, base_x, base_y + 8, Some(ui_width), None);
+
+        let bulletin_4_text = format!("4. Discover the user's $SHELL and $EDITOR");
+        let bulletin_4 = Text::new(bulletin_4_text).color_range(3, 23..=28).color_range(3, 34..=40);
+        print_text_with_coordinates(bulletin_4, base_x, base_y + 9, Some(ui_width), None);
+        self.render_help(rows);
+    }
+    fn render_help(&self, rows: usize) {
+        if self.hover_coordinates.is_some() {
+            let help_text = format!("Help: Click or Shift-Click to open in browser");
+            let help = Text::new(help_text)
+                .color_range(3, 6..=10)
+                .color_range(3, 15..=25);
+            print_text_with_coordinates(help, 0, rows, None, None);
+        } else {
+            let help_text = format!("Help: <ESC> - go back to main screen");
+            let help = Text::new(help_text)
+                .color_range(1, 6..=10);
+            print_text_with_coordinates(help, 0, rows, None, None);
+        }
     }
 }
 
 #[derive(Debug, Default)]
 struct MouseAnyEventHandlingScreen {
-
+    hover_coordinates: Option<(isize, usize)>, // line/col
 }
 
 impl MouseAnyEventHandlingScreen {
     pub fn render(&mut self, rows: usize, cols: usize) {
-        println!("MouseAnyEventHandlingScreen");
+        // Mouse Any-Event Tracking
+        //
+        // This version adds the capability to track mouse motions more accurately
+        // both in Zellij, in terminal panes and in plugin panes.
+        //
+        // Future versions will also build on this capability to improve the Zellij
+        // UI.
+        let ui_width = 75; // length of first explanation line
+        let ui_height = 6;
+        let base_x = cols.saturating_sub(ui_width) / 2;
+        let base_y = rows.saturating_sub(ui_height) / 2;
+
+        let title_text = format!("Mouse Any-Event Tracking");
+        let title = Text::new(title_text).color_range(0, ..);
+        print_text_with_coordinates(title, base_x, base_y, None, None);
+
+        let explanation_1_text = format!("This version adds the capability to track mouse motions more accurately");
+        let explanation_1 = Text::new(explanation_1_text);
+        print_text_with_coordinates(explanation_1, base_x, base_y + 2, None, None);
+
+        let explanation_2_text = format!("both in Zellij, in terminal panes and in plugin panes.");
+        let explanation_2 = Text::new(explanation_2_text);
+        print_text_with_coordinates(explanation_2, base_x, base_y + 3, None, None);
+        
+        let explanation_3_text = format!("Future versions will also build on this capability to improve the Zellij UI");
+        let explanation_3 = Text::new(explanation_3_text);
+        print_text_with_coordinates(explanation_3, base_x, base_y + 5, None, None);
+
+        self.render_help(rows);
+    }
+    fn render_help(&self, rows: usize) {
+        if self.hover_coordinates.is_some() {
+            let help_text = format!("Help: Click or Shift-Click to open in browser");
+            let help = Text::new(help_text)
+                .color_range(3, 6..=10)
+                .color_range(3, 15..=25);
+            print_text_with_coordinates(help, 0, rows, None, None);
+        } else {
+            let help_text = format!("Help: <ESC> - go back to main screen");
+            let help = Text::new(help_text)
+                .color_range(1, 6..=10);
+            print_text_with_coordinates(help, 0, rows, None, None);
+        }
     }
 }
 
@@ -419,7 +589,7 @@ enum Screen {
 impl Screen {
     pub fn main_menu_item_index(&self) -> Option<usize> {
         match self {
-            Screen::Main(main_screen) => main_screen.selected_item_index,
+            Screen::Main(main_screen) => main_screen.selected_item_index(),
             _ => None
         }
     }
@@ -438,7 +608,7 @@ impl Screen {
     pub fn go_to_mouse_anyevent_handling(&mut self) {
         *self = Screen::MouseAnyEventHandling(Default::default());
     }
-    pub fn render(&mut self, rows: usize, cols: usize) {
+    pub fn render(&mut self, rows: usize, cols: usize, base_mode: InputMode) {
         match self {
             Screen::Main(ref mut screen) => {
                 screen.render(rows, cols);
@@ -447,7 +617,7 @@ impl Screen {
                 screen.render(rows, cols);
             }
             Screen::PinnedFloatingPanes(ref mut screen) => {
-                screen.render(rows, cols);
+                screen.render(rows, cols, base_mode);
             }
             Screen::NewThemeDefinitionSpec(ref mut screen) => {
                 screen.render(rows, cols);
@@ -474,7 +644,37 @@ impl Screen {
         let mut should_render = false;
         match self {
             Screen::Main(ref mut main_screen) => {
-                should_render = main_screen.handle_mouse_event(mouse_event);
+                match mouse_event {
+                    Mouse::Hover(..) => {
+                        should_render = main_screen.handle_mouse_event(mouse_event);
+                    },
+                    Mouse::LeftClick(..) => {
+                        match main_screen.hover_item() {
+                            Some(0) => {
+                                self.go_to_stacked_resize();
+                                should_render = true;
+                            }
+                            Some(1) => {
+                                self.go_to_pinned_floating_panes();
+                                should_render = true;
+                            }
+                            Some(2) => {
+                                self.go_to_new_theme_definition_spec();
+                                should_render = true;
+                            }
+                            Some(3) => {
+                                self.go_to_new_plugin_apis();
+                                should_render = true;
+                            }
+                            Some(4) => {
+                                self.go_to_mouse_anyevent_handling();
+                                should_render = true;
+                            },
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
             }
             Screen::StackedResize(ref mut stacked_resize_screen) => {
                 should_render = stacked_resize_screen.handle_mouse_event(mouse_event);
@@ -544,6 +744,28 @@ impl LinkCoordinates {
     }
 }
 
+#[derive(Debug)]
+struct ItemCoordinates {
+    x: usize,
+    y: usize,
+    width: usize,
+    index: usize,
+}
+
+impl ItemCoordinates {
+    pub fn new(x: usize, y: usize, width: usize, index: usize) -> Self {
+        ItemCoordinates {
+            x,
+            y,
+            width,
+            index,
+        }
+    }
+    pub fn contains(&self, line: isize, col: usize) -> bool {
+        line == self.y as isize && col >= self.x && col < self.x + self.width
+    }
+}
+
 struct State {
     version: String,
     link_coordinates: Vec<LinkCoordinates>,
@@ -556,6 +778,7 @@ struct State {
     current_screen: Screen,
     latest_mode_info: Option<ModeInfo>,
     colors: Palette,
+    base_mode: InputMode,
 }
 
 impl Default for State {
@@ -572,6 +795,7 @@ impl Default for State {
             current_screen: Screen::default(),
             latest_mode_info: None,
             colors: Palette::default(),
+            base_mode: InputMode::default(),
         }
     }
 }
@@ -604,14 +828,22 @@ impl ZellijPlugin for State {
                 should_render = self.current_screen.handle_mouse_event(mouse_event);
             }
             Event::ModeUpdate(mode_info) => {
-                self.colors = mode_info.style.colors;
-                if self.latest_mode_info.as_ref().and_then(|l| l.base_mode) != mode_info.base_mode {
-                    // reset ui state
-                    self.current_screen.reset_state(self.is_setup_wizard);
+                // self.colors = mode_info.style.colors;
+                let prev_base_mode = self.base_mode;
+                if let Some(base_mode) = mode_info.base_mode {
+                    self.base_mode = base_mode;
+                    if prev_base_mode != self.base_mode {
+                        should_render = true;
+                    }
                 }
-                self.latest_mode_info = Some(mode_info.clone());
-                self.current_screen.update_mode_info(mode_info.clone());
-                should_render = true;
+                // self.base_mode = mode_info.base_mode;
+//                 if self.latest_mode_info.as_ref().and_then(|l| l.base_mode) != mode_info.base_mode {
+//                     // reset ui state
+//                     self.current_screen.reset_state(self.is_setup_wizard);
+//                 }
+//                 self.latest_mode_info = Some(mode_info.clone());
+//                 self.current_screen.update_mode_info(mode_info.clone());
+                // should_render = true;
             },
             Event::Key(key) => {
                 if self.notification.is_some() {
@@ -683,94 +915,7 @@ impl ZellijPlugin for State {
         should_render
     }
     fn render(&mut self, rows: usize, cols: usize) {
-        self.current_screen.render(rows, cols);
-//         match self.current_screen {
-//             Screen::Main(mut main_screen) => {
-//                 main_screen.render(rows, cols);
-//             }
-//         }
-//         // TODO: CONTINUE HERE - move this to the render function of a MainScreen, then implement
-//         // the other screens
-//         self.link_coordinates.clear();
-//         let ui_width = 74; // length of please support line
-//         let ui_height = 12;
-//         let base_x = cols.saturating_sub(ui_width) / 2;
-//         let base_y = rows.saturating_sub(ui_height) / 2;
-// 
-//         let title_text = format!("Hi there, welcome to Zellij {}!", self.version);
-//         let title = Text::new(title_text).color_range(2, 21..=27 + self.version.chars().count());
-//         print_text_with_coordinates(title, base_x, base_y, None, None);
-// 
-//         let whats_new_text = format!("What's new?");
-//         let whats_new = Text::new(whats_new_text);
-//         print_text_with_coordinates(whats_new, base_x, base_y + 2, None, None);
-// 
-//         let stacked_resize_text = format!("1. Stacked resize");
-//         let mut stacked_resize = Text::new(stacked_resize_text).color_range(0, 3..);
-//         if self.selected_item_index == Some(0) {
-//             stacked_resize = stacked_resize.selected();
-//         }
-//         print_text_with_coordinates(stacked_resize, base_x, base_y + 3, Some(ui_width), None);
-// 
-//         let pinned_floating_panes_text = format!("2. Pinned floating panes");
-//         let mut pinned_floating_panes = Text::new(pinned_floating_panes_text).color_range(0, 3..);
-//         if self.selected_item_index == Some(1) {
-//             pinned_floating_panes = pinned_floating_panes.selected();
-//         }
-//         print_text_with_coordinates(pinned_floating_panes, base_x, base_y + 4, Some(ui_width), None);
-// 
-//         let new_theme_def_text = format!("3. New theme definition spec");
-//         let mut new_theme_def = Text::new(new_theme_def_text).color_range(0, 3..);
-//         if self.selected_item_index == Some(2) {
-//             new_theme_def = new_theme_def.selected();
-//         }
-//         print_text_with_coordinates(new_theme_def, base_x, base_y + 5, Some(ui_width), None);
-// 
-//         let new_plugin_apis_text = format!("4. New plugin APIs");
-//         let mut new_plugin_apis = Text::new(new_plugin_apis_text).color_range(0, 3..);
-//         if self.selected_item_index == Some(3) {
-//             new_plugin_apis = new_plugin_apis.selected();
-//         }
-//         print_text_with_coordinates(new_plugin_apis, base_x, base_y + 6, Some(ui_width), None);
-// 
-//         let mouse_anyevent_text = format!("5. Mouse AnyEvent Handling");
-//         let mut mouse_anyevent = Text::new(mouse_anyevent_text).color_range(0, 3..);
-//         if self.selected_item_index == Some(4) {
-//             mouse_anyevent = mouse_anyevent.selected();
-//         }
-//         print_text_with_coordinates(mouse_anyevent, base_x, base_y + 7, Some(ui_width), None);
-// 
-//         self.render_changelog_link(base_x, base_y + 9);
-//         self.render_sponsor_link(base_x, base_y + 11);
-//         self.render_help(rows);
-
-
-//         let notification = self.notification.clone();
-//         if self.is_in_main_screen() {
-//             top_tab_menu(cols, &self.current_screen, &self.colors);
-//         }
-//         match &mut self.current_screen {
-//             Screen::RebindLeaders(rebind_leaders_screen) => {
-//                 rebind_leaders_screen.render(rows, cols, self.ui_size, &notification);
-//             },
-//             Screen::Presets(presets_screen) => {
-//                 if self.is_setup_wizard {
-//                     presets_screen.render_setup_wizard_screen(
-//                         rows,
-//                         cols,
-//                         self.ui_size,
-//                         &notification,
-//                     )
-//                 } else {
-//                     presets_screen.render_reset_keybindings_screen(
-//                         rows,
-//                         cols,
-//                         self.ui_size,
-//                         &notification,
-//                     )
-//                 }
-//             },
-//         };
+        self.current_screen.render(rows, cols, self.base_mode);
     }
 }
 
