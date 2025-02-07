@@ -83,9 +83,14 @@ impl ListItem {
             let mut remaining_cols = max_cols;
             for span in session_name {
                 span.render(
-                    indices
-                        .clone()
-                        .map(|i| (SpanStyle::ForegroundBold(self.colors.palette.magenta), i)),
+                    indices.clone().map(|i| {
+                        (
+                            SpanStyle::ForegroundBold(
+                                self.colors.palette.text_unselected.emphasis_3,
+                            ),
+                            i,
+                        )
+                    }),
                     &mut line_to_render,
                     &mut remaining_cols,
                 );
@@ -102,9 +107,14 @@ impl ListItem {
             let mut remaining_cols = max_cols;
             for span in tab_name {
                 span.render(
-                    indices
-                        .clone()
-                        .map(|i| (SpanStyle::ForegroundBold(self.colors.palette.magenta), i)),
+                    indices.clone().map(|i| {
+                        (
+                            SpanStyle::ForegroundBold(
+                                self.colors.palette.text_unselected.emphasis_3,
+                            ),
+                            i,
+                        )
+                    }),
                     &mut line_to_render,
                     &mut remaining_cols,
                 );
@@ -116,9 +126,14 @@ impl ListItem {
             let mut remaining_cols = max_cols;
             for span in pane_name {
                 span.render(
-                    indices
-                        .clone()
-                        .map(|i| (SpanStyle::ForegroundBold(self.colors.palette.magenta), i)),
+                    indices.clone().map(|i| {
+                        (
+                            SpanStyle::ForegroundBold(
+                                self.colors.palette.text_unselected.emphasis_3,
+                            ),
+                            i,
+                        )
+                    }),
                     &mut line_to_render,
                     &mut remaining_cols,
                 );
@@ -297,11 +312,11 @@ impl LineToRender {
     pub fn make_selected_as_search(&mut self, add_arrows: bool) {
         self.is_selected = true;
         let arrows = if add_arrows {
-            self.colors.magenta(" <↓↑> ")
+            self.colors.shortcuts(" <↓↑> ")
         } else {
             "      ".to_owned()
         };
-        match self.colors.palette.bg {
+        match self.colors.palette.list_selected.background {
             PaletteColor::EightBit(byte) => {
                 self.line = format!(
                     "\u{1b}[48;5;{byte}m\u{1b}[K\u{1b}[48;5;{byte}m{arrows}{}",
@@ -319,11 +334,11 @@ impl LineToRender {
     pub fn make_selected(&mut self, add_arrows: bool) {
         self.is_selected = true;
         let arrows = if add_arrows {
-            self.colors.magenta("<←↓↑→>")
+            self.colors.shortcuts("<←↓↑→>")
         } else {
             "      ".to_owned()
         };
-        match self.colors.palette.bg {
+        match self.colors.palette.list_selected.background {
             PaletteColor::EightBit(byte) => {
                 self.line = format!(
                     "\u{1b}[48;5;{byte}m\u{1b}[K\u{1b}[48;5;{byte}m{arrows}{}",
@@ -343,7 +358,7 @@ impl LineToRender {
 
         let more = if self.truncated_result_count > 0 {
             self.colors
-                .red(&format!(" [+{}]", self.truncated_result_count))
+                .exit_code_error(&format!(" [+{}]", self.truncated_result_count))
         } else {
             String::new()
         };
@@ -368,12 +383,12 @@ pub fn build_session_ui_line(session_ui_info: &SessionUiInfo, colors: Colors) ->
         .iter()
         .fold(0, |acc, tab| acc + tab.panes.len());
     let tab_count = format!("{}", tab_count_text);
-    let tab_count_styled = colors.cyan(&tab_count);
+    let tab_count_styled = colors.tab_count(&tab_count);
     let total_pane_count = format!("{}", total_pane_count_text);
-    let total_pane_count_styled = colors.green(&total_pane_count);
+    let total_pane_count_styled = colors.pane_count(&total_pane_count);
     let session_name = &session_ui_info.name;
     let connected_users = format!("{}", session_ui_info.connected_users);
-    let connected_users_styled = colors.orange(&connected_users);
+    let connected_users_styled = colors.connected_users(&connected_users);
     let session_bullet_span =
         UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![StringAndLength::new(
             format!(" > "),
@@ -381,7 +396,7 @@ pub fn build_session_ui_line(session_ui_info: &SessionUiInfo, colors: Colors) ->
         )]));
     let session_name_span = UiSpan::TruncatableUiSpan(TruncatableUiSpan::new(
         session_name.clone(),
-        SpanStyle::ForegroundBold(colors.palette.orange),
+        SpanStyle::ForegroundBold(colors.palette.text_unselected.emphasis_0),
     ));
     let tab_and_pane_count = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
         StringAndLength::new(
@@ -409,9 +424,12 @@ pub fn build_session_ui_line(session_ui_info: &SessionUiInfo, colors: Colors) ->
     ui_spans.push(connected_users_count);
     if session_ui_info.is_current_session {
         let current_session_indication = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
-            StringAndLength::new(colors.orange(&format!(" <CURRENT SESSION>")), 18),
-            StringAndLength::new(colors.orange(&format!(" <CURRENT>")), 10),
-            StringAndLength::new(colors.orange(&format!(" <C>")), 4),
+            StringAndLength::new(
+                colors.current_session_marker(&format!(" <CURRENT SESSION>")),
+                18,
+            ),
+            StringAndLength::new(colors.current_session_marker(&format!(" <CURRENT>")), 10),
+            StringAndLength::new(colors.current_session_marker(&format!(" <C>")), 4),
         ]));
         ui_spans.push(current_session_indication);
     }
@@ -423,7 +441,7 @@ pub fn build_tab_ui_line(tab_ui_info: &TabUiInfo, colors: Colors) -> Vec<UiSpan>
     let tab_name = &tab_ui_info.name;
     let pane_count_text = tab_ui_info.panes.len();
     let pane_count = format!("{}", pane_count_text);
-    let pane_count_styled = colors.green(&pane_count);
+    let pane_count_styled = colors.pane_count(&pane_count);
     let tab_bullet_span =
         UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![StringAndLength::new(
             format!("  - "),
@@ -431,7 +449,7 @@ pub fn build_tab_ui_line(tab_ui_info: &TabUiInfo, colors: Colors) -> Vec<UiSpan>
         )]));
     let tab_name_span = UiSpan::TruncatableUiSpan(TruncatableUiSpan::new(
         tab_name.clone(),
-        SpanStyle::ForegroundBold(colors.palette.cyan),
+        SpanStyle::ForegroundBold(colors.palette.text_unselected.emphasis_1),
     ));
     let connected_users_count_span = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
         StringAndLength::new(
@@ -455,9 +473,9 @@ pub fn build_pane_ui_line(pane_ui_info: &PaneUiInfo, colors: Colors) -> Vec<UiSp
     let exit_code = pane_ui_info.exit_code.map(|exit_code_number| {
         let exit_code = format!("{}", exit_code_number);
         let exit_code = if exit_code_number == 0 {
-            colors.green(&exit_code)
+            colors.session_and_folder_entry(&exit_code)
         } else {
-            colors.red(&exit_code)
+            colors.exit_code_error(&exit_code)
         };
         exit_code
     });
@@ -505,7 +523,7 @@ pub fn minimize_lines(
 }
 
 pub fn render_prompt(search_term: &str, colors: Colors, x: usize, y: usize) {
-    let prompt = colors.green(&format!("Search:"));
+    let prompt = colors.session_and_folder_entry(&format!("Search:"));
     let search_term = colors.bold(&format!("{}_", search_term));
     println!(
         "\u{1b}[{};{}H\u{1b}[0m{} {}\n",
@@ -581,10 +599,10 @@ fn render_new_session_folder_prompt(
             let new_session_path = new_session_folder.clone();
             let new_session_folder = new_session_folder.display().to_string();
             let change_folder_shortcut_text = "<Ctrl f>";
-            let change_folder_shortcut = colors.magenta(&change_folder_shortcut_text);
+            let change_folder_shortcut = colors.shortcuts(&change_folder_shortcut_text);
             let to_change = "to change";
             let reset_folder_shortcut_text = "<Ctrl c>";
-            let reset_folder_shortcut = colors.magenta(reset_folder_shortcut_text);
+            let reset_folder_shortcut = colors.shortcuts(reset_folder_shortcut_text);
             let to_reset = "to reset";
             if max_cols
                 >= folder_prompt.width()
@@ -598,8 +616,8 @@ fn render_new_session_folder_prompt(
                 print!(
                     "\u{1b}[m{}{} {} ({} {}, {} {})",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
-                    colors.green(folder_prompt),
-                    colors.orange(&new_session_folder),
+                    colors.session_name_prompt(folder_prompt),
+                    colors.session_and_folder_entry(&new_session_folder),
                     change_folder_shortcut,
                     to_change,
                     reset_folder_shortcut,
@@ -617,8 +635,8 @@ fn render_new_session_folder_prompt(
                 print!(
                     "\u{1b}[m{}{} {} ({} {}, {} {})",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
-                    colors.green(short_folder_prompt),
-                    colors.orange(&new_session_folder),
+                    colors.session_name_prompt(short_folder_prompt),
+                    colors.session_and_folder_entry(&new_session_folder),
                     change_folder_shortcut,
                     to_change,
                     reset_folder_shortcut,
@@ -634,8 +652,8 @@ fn render_new_session_folder_prompt(
                 print!(
                     "\u{1b}[m{}{} {} ({}/{})",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
-                    colors.green(short_folder_prompt),
-                    colors.orange(&new_session_folder),
+                    colors.session_name_prompt(short_folder_prompt),
+                    colors.session_and_folder_entry(&new_session_folder),
                     change_folder_shortcut,
                     reset_folder_shortcut,
                 );
@@ -652,8 +670,8 @@ fn render_new_session_folder_prompt(
                 print!(
                     "\u{1b}[m{}{} {} ({}/{})",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
-                    colors.green(short_folder_prompt),
-                    colors.orange(&truncated_path),
+                    colors.session_name_prompt(short_folder_prompt),
+                    colors.session_and_folder_entry(&truncated_path),
                     change_folder_shortcut,
                     reset_folder_shortcut,
                 );
@@ -663,7 +681,7 @@ fn render_new_session_folder_prompt(
             let folder_prompt = "New session folder:";
             let short_folder_prompt = "Folder:";
             let change_folder_shortcut_text = "<Ctrl f>";
-            let change_folder_shortcut = colors.magenta(change_folder_shortcut_text);
+            let change_folder_shortcut = colors.shortcuts(change_folder_shortcut_text);
             let to_set = "to set";
 
             if max_cols
@@ -672,7 +690,7 @@ fn render_new_session_folder_prompt(
                 print!(
                     "\u{1b}[m{}{} ({} {})",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
-                    colors.green(folder_prompt),
+                    colors.session_name_prompt(folder_prompt),
                     change_folder_shortcut,
                     to_set,
                 );
@@ -685,7 +703,7 @@ fn render_new_session_folder_prompt(
                 print!(
                     "\u{1b}[m{}{} ({} {})",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
-                    colors.green(short_folder_prompt),
+                    colors.session_name_prompt(short_folder_prompt),
                     change_folder_shortcut,
                     to_set,
                 );
@@ -693,7 +711,7 @@ fn render_new_session_folder_prompt(
                 print!(
                     "\u{1b}[m{}{} {}",
                     format!("\u{1b}[{};{}H", y + 1, x + 1),
-                    colors.green(short_folder_prompt),
+                    colors.session_name_prompt(short_folder_prompt),
                     change_folder_shortcut,
                 );
             }
@@ -709,7 +727,7 @@ pub fn render_new_session_block(
     x: usize,
     y: usize,
 ) {
-    let enter = colors.magenta("<ENTER>");
+    let enter = colors.shortcuts("<ENTER>");
     if new_session_info.entering_new_session_name() {
         let prompt = "New session name:";
         let long_instruction = "when done, blank for random";
@@ -720,8 +738,8 @@ pub fn render_new_session_block(
             println!(
                 "\u{1b}[m{}{} {}_ ({} {})",
                 format!("\u{1b}[{};{}H", y + 1, x + 1),
-                colors.green(prompt),
-                colors.orange(&new_session_name),
+                colors.session_name_prompt(prompt),
+                colors.session_and_folder_entry(&new_session_name),
                 enter,
                 long_instruction,
             );
@@ -746,8 +764,8 @@ pub fn render_new_session_block(
             println!(
                 "\u{1b}[m{}{} {}_ {}",
                 format!("\u{1b}[{};{}H", y + 1, x + 1),
-                colors.green(prompt),
-                colors.orange(&new_session_name),
+                colors.session_name_prompt(prompt),
+                colors.session_and_folder_entry(&new_session_name),
                 enter,
             );
         }
@@ -759,23 +777,23 @@ pub fn render_new_session_block(
         };
         let prompt = "New session name:";
         let long_instruction = "to correct";
-        let esc = colors.magenta("<ESC>");
+        let esc = colors.shortcuts("<ESC>");
         if max_cols_of_new_session_block
             > prompt.width() + long_instruction.width() + new_session_name.width() + 15
         {
             println!(
                 "\u{1b}[m{}{}: {} ({} to correct)",
                 format!("\u{1b}[{};{}H", y + 1, x + 1),
-                colors.green("New session name"),
-                colors.orange(new_session_name),
+                colors.session_name_prompt(prompt),
+                colors.session_and_folder_entry(new_session_name),
                 esc,
             );
         } else {
             println!(
                 "\u{1b}[m{}{}: {} {}",
                 format!("\u{1b}[{};{}H", y + 1, x + 1),
-                colors.green("New session name"),
-                colors.orange(new_session_name),
+                colors.session_name_prompt("New session name"),
+                colors.session_and_folder_entry(new_session_name),
                 esc,
             );
         }
@@ -919,13 +937,13 @@ pub fn render_controls_line(
             }
         },
         ActiveScreen::AttachToSession => {
-            let rename = colors.magenta("<Ctrl r>");
+            let rename = colors.shortcuts("<Ctrl r>");
             let rename_text = colors.bold("Rename");
-            let disconnect = colors.magenta("<Ctrl x>");
+            let disconnect = colors.shortcuts("<Ctrl x>");
             let disconnect_text = colors.bold("Disconnect others");
-            let kill = colors.magenta("<Del>");
+            let kill = colors.shortcuts("<Del>");
             let kill_text = colors.bold("Kill");
-            let kill_all = colors.magenta("<Ctrl d>");
+            let kill_all = colors.shortcuts("<Ctrl d>");
             let kill_all_text = colors.bold("Kill all");
 
             if max_cols > 90 {
@@ -937,13 +955,13 @@ pub fn render_controls_line(
             }
         },
         ActiveScreen::ResurrectSession => {
-            let arrows = colors.magenta("<↓↑>");
+            let arrows = colors.shortcuts("<↓↑>");
             let navigate = colors.bold("Navigate");
-            let enter = colors.magenta("<ENTER>");
+            let enter = colors.shortcuts("<ENTER>");
             let select = colors.bold("Resurrect");
-            let del = colors.magenta("<DEL>");
+            let del = colors.shortcuts("<DEL>");
             let del_text = colors.bold("Delete");
-            let del_all = colors.magenta("<Ctrl d>");
+            let del_all = colors.shortcuts("<Ctrl d>");
             let del_all_text = colors.bold("Delete all");
 
             if max_cols > 83 {
@@ -957,12 +975,18 @@ pub fn render_controls_line(
     }
 }
 
+// Maps the various prompts and UI elements to the colors to present them with
+//
+// Since this plugin predates the UI components, this is a developer
+// convenience to keep the coloration of dialogs organized by descriptive names
+//
+// It will be obviated once everything is migrated to UI components from zellij-tile
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Colors {
-    pub palette: Palette,
+    pub palette: Styling,
 }
 impl Colors {
-    pub fn new(palette: Palette) -> Self {
+    pub fn new(palette: Styling) -> Self {
         Colors { palette }
     }
     pub fn bold(&self, text: &str) -> String {
@@ -979,24 +1003,37 @@ impl Colors {
             },
         }
     }
-    pub fn orange(&self, text: &str) -> String {
-        self.color(&self.palette.orange, text)
+
+    pub fn session_name_prompt(&self, text: &str) -> String {
+        self.color(&self.palette.exit_code_success.base, text)
     }
 
-    pub fn green(&self, text: &str) -> String {
-        self.color(&self.palette.green, text)
+    pub fn connected_users(&self, text: &str) -> String {
+        self.color(&self.palette.text_unselected.emphasis_2, text)
     }
 
-    pub fn red(&self, text: &str) -> String {
-        self.color(&self.palette.red, text)
+    pub fn session_and_folder_entry(&self, text: &str) -> String {
+        self.color(&self.palette.text_unselected.emphasis_0, text)
     }
 
-    pub fn cyan(&self, text: &str) -> String {
-        self.color(&self.palette.cyan, text)
+    pub fn current_session_marker(&self, text: &str) -> String {
+        self.color(&self.palette.text_unselected.emphasis_0, text)
     }
 
-    pub fn magenta(&self, text: &str) -> String {
-        self.color(&self.palette.magenta, text)
+    pub fn pane_count(&self, text: &str) -> String {
+        self.color(&self.palette.text_unselected.emphasis_2, text)
+    }
+
+    pub fn exit_code_error(&self, text: &str) -> String {
+        self.color(&self.palette.exit_code_error.base, text)
+    }
+
+    pub fn tab_count(&self, text: &str) -> String {
+        self.color(&self.palette.text_unselected.emphasis_1, text)
+    }
+
+    pub fn shortcuts(&self, text: &str) -> String {
+        self.color(&self.palette.text_unselected.emphasis_3, text)
     }
 }
 

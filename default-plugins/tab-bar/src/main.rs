@@ -125,10 +125,7 @@ impl ZellijPlugin for State {
             all_tabs.push(tab);
         }
 
-        let background = match self.mode_info.style.colors.theme_hue {
-            ThemeHue::Dark => self.mode_info.style.colors.black,
-            ThemeHue::Light => self.mode_info.style.colors.white,
-        };
+        let background = self.mode_info.style.colors.text_unselected.background;
 
         self.tab_line = tab_line(
             self.mode_info.session_name.as_deref(),

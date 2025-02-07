@@ -34,7 +34,7 @@ pub struct NewPluginScreen {
     selected_config_index: Option<usize>,
     request_ids: Vec<String>,
     load_in_background: bool,
-    colors: Palette,
+    colors: Styling,
 }
 
 impl Default for NewPluginScreen {
@@ -50,13 +50,13 @@ impl Default for NewPluginScreen {
             selected_config_index: None,
             request_ids: vec![],
             load_in_background: false,
-            colors: Palette::default(),
+            colors: Palette::default().into(),
         }
     }
 }
 
 impl NewPluginScreen {
-    pub fn new(colors: Palette) -> Self {
+    pub fn new(colors: Styling) -> Self {
         Self {
             colors,
             ..Default::default()
@@ -261,10 +261,7 @@ impl NewPluginScreen {
             None,
             None,
         );
-        let background = match self.colors.theme_hue {
-            ThemeHue::Dark => self.colors.black,
-            ThemeHue::Light => self.colors.white,
-        };
+        let background = self.colors.text_unselected.background;
         let bg_color = match background {
             PaletteColor::Rgb((r, g, b)) => format!("\u{1b}[48;2;{};{};{}m\u{1b}[0K", r, g, b),
             PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),
@@ -496,7 +493,7 @@ struct State {
     plugin_id_to_tab_position: HashMap<u32, usize>,
     search_term: String,
     new_plugin_screen: Option<NewPluginScreen>,
-    colors: Palette,
+    colors: Styling,
 }
 
 register_plugin!(State);
