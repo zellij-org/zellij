@@ -25,7 +25,7 @@ use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
 use zellij_utils::{
     channels::SenderWithContext,
-    data::{Event, InputMode, Mouse, Palette, PaletteColor, Style},
+    data::{Event, InputMode, Mouse, Palette, PaletteColor, Style, Styling},
     errors::prelude::*,
     input::layout::Run,
     pane_size::PaneGeom,
@@ -645,7 +645,7 @@ impl Pane for PluginPane {
             .unwrap();
     }
     fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) {
-        self.pane_frame_color_override = Some((self.style.colors.red, error_text));
+        self.pane_frame_color_override = Some((self.style.colors.exit_code_error.base, error_text));
     }
     fn clear_pane_frame_color_override(&mut self) {
         self.pane_frame_color_override = None;
@@ -703,7 +703,7 @@ impl Pane for PluginPane {
         self.pane_name = String::from_utf8_lossy(&buf).to_string();
         self.set_should_render(true);
     }
-    fn update_theme(&mut self, theme: Palette) {
+    fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme.clone();
         for grid in self.grids.values_mut() {
             grid.update_theme(theme.clone());
@@ -768,10 +768,10 @@ impl PluginPane {
         }
     }
     fn display_request_permission_message(&self, plugin_permission: &PluginPermission) -> String {
-        let bold_white = style!(self.style.colors.white).bold();
-        let cyan = style!(self.style.colors.cyan).bold();
-        let orange = style!(self.style.colors.orange).bold();
-        let green = style!(self.style.colors.green).bold();
+        let bold_white = style!(self.style.colors.text_unselected.base).bold();
+        let cyan = style!(self.style.colors.text_unselected.emphasis_1).bold();
+        let orange = style!(self.style.colors.text_unselected.emphasis_0).bold();
+        let green = style!(self.style.colors.text_unselected.emphasis_2).bold();
 
         let mut messages = String::new();
         let permissions: BTreeSet<PermissionType> =

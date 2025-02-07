@@ -16,7 +16,7 @@ use std::{
 
 use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
-    data::{Palette, PaletteColor},
+    data::{Palette, PaletteColor, Styling},
     input::mouse::{MouseEvent, MouseEventType},
     pane_size::SizeInPixels,
     position::Position,
@@ -1095,14 +1095,19 @@ impl Grid {
                 .selection
                 .contains_row(character_chunk.y.saturating_sub(content_y))
             {
-                let background_color = match style.colors.bg {
+                let background_color = match style.colors.text_selected.background {
                     PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
                     PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
                 };
+                let foreground_color = match style.colors.text_selected.base {
+                    PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+                    PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                };
+
                 character_chunk.add_selection_and_colors(
                     self.selection,
                     background_color,
-                    None,
+                    Some(foreground_color),
                     content_x,
                     content_y,
                 );
@@ -1111,9 +1116,15 @@ impl Grid {
                     if res.contains_row(character_chunk.y.saturating_sub(content_y)) {
                         let (select_background_palette, select_foreground_palette) =
                             if Some(res) == self.search_results.active.as_ref() {
-                                (style.colors.orange, style.colors.black)
+                                (
+                                    style.colors.text_unselected.emphasis_0,
+                                    style.colors.text_unselected.background,
+                                )
                             } else {
-                                (style.colors.green, style.colors.black)
+                                (
+                                    style.colors.text_unselected.emphasis_2,
+                                    style.colors.text_unselected.background,
+                                )
                             };
                         let background_color = match select_background_palette {
                             PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
@@ -2270,7 +2281,7 @@ impl Grid {
     pub fn unlock_renders(&mut self) {
         self.lock_renders = false;
     }
-    pub fn update_theme(&mut self, theme: Palette) {
+    pub fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme.clone();
     }
     pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {

@@ -18,7 +18,7 @@ use crate::{
 };
 use stacked_panes::StackedPanes;
 use zellij_utils::{
-    data::{Direction, ModeInfo, Palette, PaneInfo, Resize, ResizeStrategy, Style},
+    data::{Direction, ModeInfo, PaneInfo, Resize, ResizeStrategy, Style, Styling},
     errors::prelude::*,
     input::{
         command::RunCommand,
@@ -2383,10 +2383,12 @@ impl TiledPanes {
         }
         pane_infos
     }
+
     pub fn pane_id_is_focused(&self, pane_id: &PaneId) -> bool {
         self.active_panes.pane_id_is_focused(pane_id)
     }
-    pub fn update_pane_themes(&mut self, theme: Palette) {
+
+    pub fn update_pane_themes(&mut self, theme: Styling) {
         self.style.colors = theme;
         for pane in self.panes.values_mut() {
             pane.update_theme(theme);
