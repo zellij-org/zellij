@@ -5,14 +5,14 @@ use std::{
     env, fs,
     path::PathBuf,
     sync::{Arc, Mutex},
+    thread,
 };
 
 use crate::keyboard_parser::KittyKeyboardParser;
 use crate::{
-    report_changes_in_config_file,
     input_handler::from_termwiz,
     os_input_output::{get_client_os_input, ClientOsApi},
-    spawn_server,
+    report_changes_in_config_file, spawn_server,
 };
 use axum::{
     extract::{
@@ -94,6 +94,24 @@ struct StdinMessage {
 }
 
 pub fn start_web_client(ipc_path: &str, config: Config, config_options: Options) {
+    std::panic::set_hook({
+        Box::new(move |info| {
+            let thread = thread::current();
+            let thread = thread.name().unwrap_or("unnamed");
+            let msg = match info.payload().downcast_ref::<&'static str>() {
+                Some(s) => Some(*s),
+                None => info.payload().downcast_ref::<String>().map(|s| &**s),
+            }
+            .unwrap_or("An unexpected error occurred!");
+            log::error!(
+                "Thread {} panicked: {}, location {:?}",
+                thread,
+                msg,
+                info.location()
+            );
+        })
+    });
+
     log::info!(
         "WebSocket server started and listening on port 8082, with ipc_path {}",
         ipc_path
@@ -557,6 +575,8 @@ fn render_to_client(
                         log::error!("Failed to serialize rendered bytes: {:?}", e);
                     },
                 }
+            } else {
+                break;
             }
         }
     });
