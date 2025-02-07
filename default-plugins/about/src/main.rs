@@ -1,24 +1,6 @@
-// mod presets;
-// mod presets_screen;
-// mod rebind_leaders_screen;
-// mod ui_components;
-
 use zellij_tile::prelude::*;
 
-// use presets_screen::PresetsScreen;
-// use rebind_leaders_screen::RebindLeadersScreen;
-// use ui_components::top_tab_menu;
-
 use std::collections::BTreeMap;
-
-pub static UI_SIZE: usize = 15;
-pub static WIDTH_BREAKPOINTS: (usize, usize) = (62, 35);
-pub static POSSIBLE_MODIFIERS: [KeyModifier; 4] = [
-    KeyModifier::Ctrl,
-    KeyModifier::Alt,
-    KeyModifier::Super,
-    KeyModifier::Shift,
-];
 
 #[derive(Debug)]
 pub struct MainScreen {
@@ -177,17 +159,20 @@ impl MainScreen {
         }
         should_render
     }
-    pub fn handle_mouse_event(&mut self, mouse_event: Mouse) -> bool {
+    pub fn handle_mouse_event(&mut self, mouse_event: Mouse, open_command: Option<&str>) -> bool {
         let mut should_render = false;
         match mouse_event {
             Mouse::LeftClick(line, col) => {
                 for link_coordinates in &self.link_coordinates {
                     if link_coordinates.contains(line, col) {
-                        run_command(
-                            &["xdg-open", &link_coordinates.destination_url], // TODO: use open on
-                                                                              // macos
-                             Default::default()
-                        );
+                        if let Some(open_command) = open_command {
+                            run_command(
+                                &[open_command, &link_coordinates.destination_url],
+                                 Default::default()
+                            );
+                        } else {
+                            eprintln!("Did not find xdg-open or open, cannot open link");
+                        }
                         break;
                     }
                 }
@@ -205,7 +190,6 @@ impl MainScreen {
                 for item_coordinates in &self.item_coordinates {
                     if item_coordinates.contains(line, col) {
                         let prev_index = self.selected_hover_index;
-                        // self.hover_coordinates = Some((line, col));
                         self.selected_hover_index = Some(item_coordinates.index);
                         self.selected_item_index = None;
                         contained = true;
@@ -338,17 +322,20 @@ impl StackedResizeScreen {
             print_text_with_coordinates(help, 0, rows, None, None);
         }
     }
-    pub fn handle_mouse_event(&mut self, mouse_event: Mouse) -> bool {
+    pub fn handle_mouse_event(&mut self, mouse_event: Mouse, open_command: Option<&str>) -> bool {
         let mut should_render = false;
         match mouse_event {
             Mouse::LeftClick(line, col) => {
                 for link_coordinates in &self.link_coordinates {
                     if link_coordinates.contains(line, col) {
-                        run_command(
-                            &["xdg-open", &link_coordinates.destination_url], // TODO: use open on
-                                                                              // macos
-                             Default::default()
-                        );
+                        if let Some(open_command) = open_command {
+                            run_command(
+                                &[open_command, &link_coordinates.destination_url],
+                                 Default::default()
+                            );
+                        } else {
+                            eprintln!("Did not find xdg-open or open, cannot open link");
+                        }
                         break;
                     }
                 }
@@ -379,8 +366,7 @@ impl StackedResizeScreen {
 
 #[derive(Debug, Default)]
 struct PinnedFloatingPanesScreen {
-    link_coordinates: Vec<LinkCoordinates>,
-    hover_coordinates: Option<(isize, usize)>, // line/col
+
 }
 
 impl PinnedFloatingPanesScreen {
@@ -434,6 +420,50 @@ impl PinnedFloatingPanesScreen {
         self.render_help(rows);
     }
     fn render_help(&self, rows: usize) {
+        let help_text = format!("Help: <ESC> - go back to main screen");
+        let help = Text::new(help_text)
+            .color_range(1, 6..=10);
+        print_text_with_coordinates(help, 0, rows, None, None);
+    }
+}
+
+#[derive(Debug, Default)]
+struct NewThemeDefinitionSpecScreen {
+    link_coordinates: Vec<LinkCoordinates>,
+    hover_coordinates: Option<(isize, usize)>, // line/col
+}
+
+impl NewThemeDefinitionSpecScreen {
+    pub fn render(&mut self, rows: usize, cols: usize) {
+        let ui_width = 79; // length of third explanation line
+        let ui_height = 9;
+        let base_x = cols.saturating_sub(ui_width) / 2;
+        let base_y = rows.saturating_sub(ui_height) / 2;
+
+        let title_text = format!("New Theme Definition Spec");
+        let title = Text::new(title_text).color_range(0, ..);
+        print_text_with_coordinates(title, base_x, base_y, None, None);
+
+        let explanation_1_text = format!("Starting this version, themes can be defined by UI components");
+        let explanation_1 = Text::new(explanation_1_text).color_range(3, 37..=60);
+        print_text_with_coordinates(explanation_1, base_x, base_y + 2, None, None);
+
+        let explanation_2_text = format!("instead of the previously obscure color-to-color definitions.");
+        let explanation_2 = Text::new(explanation_2_text);
+        print_text_with_coordinates(explanation_2, base_x, base_y + 3, None, None);
+
+        let explanation_3_text = format!("This both improves the convenience of theme creation and allows greater freedom");
+        let explanation_3 = Text::new(explanation_3_text);
+        print_text_with_coordinates(explanation_3, base_x, base_y + 5, None, None);
+
+        let explanation_4_text = format!("for theme authors.");
+        let explanation_4 = Text::new(explanation_4_text);
+        print_text_with_coordinates(explanation_4, base_x, base_y + 6, None, None);
+
+        self.render_docs_link(base_x, base_y + 8);
+        self.render_help(rows);
+    }
+    fn render_help(&self, rows: usize) {
         if self.hover_coordinates.is_some() {
             let help_text = format!("Help: Click or Shift-Click to open in browser");
             let help = Text::new(help_text)
@@ -447,16 +477,62 @@ impl PinnedFloatingPanesScreen {
             print_text_with_coordinates(help, 0, rows, None, None);
         }
     }
-}
-
-#[derive(Debug, Default)]
-struct NewThemeDefinitionSpecScreen {
-
-}
-
-impl NewThemeDefinitionSpecScreen {
-    pub fn render(&mut self, rows: usize, cols: usize) {
-        println!("NewThemeDefinitionSpec (TBD)");
+    fn render_docs_link(&mut self, x: usize, y: usize) {
+        let link_coordinates = LinkCoordinates::new(x + 22, y, 39, &format!("https://zellij.dev/documentation/themes"));
+        if let Some((line, col)) = self.hover_coordinates.as_ref() {
+            if link_coordinates.contains(*line, *col) {
+                self.link_coordinates.push(link_coordinates);
+                let theme_link_text = format!("For more information:");
+                let theme_link = Text::new(theme_link_text).color_range(2, ..);
+                print_text_with_coordinates(theme_link, x, y, None, None);
+                print!("\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4mhttps://zellij.dev/documentation/themes", y + 1, x + 23);
+                return;
+            }
+        }
+        self.link_coordinates.push(link_coordinates);
+        let theme_link_text = format!("For more information: https://zellij.dev/documentation/themes");
+        let theme_link = Text::new(theme_link_text).color_range(2, ..=20);
+        print_text_with_coordinates(theme_link, x, y, None, None);
+    }
+    pub fn handle_mouse_event(&mut self, mouse_event: Mouse, open_command: Option<&str>) -> bool {
+        let mut should_render = false;
+        match mouse_event {
+            Mouse::LeftClick(line, col) => {
+                for link_coordinates in &self.link_coordinates {
+                    if link_coordinates.contains(line, col) {
+                        if let Some(open_command) = open_command {
+                            run_command(
+                                &[open_command, &link_coordinates.destination_url],
+                                 Default::default()
+                            );
+                        } else {
+                            eprintln!("Did not find xdg-open or open, cannot open link");
+                        }
+                        break;
+                    }
+                }
+            }
+            Mouse::Hover(line, col) => {
+                let mut contained_in_link = false;
+                for link_coordinates in &self.link_coordinates {
+                    if link_coordinates.contains(line, col) {
+                        self.hover_coordinates = Some((line, col));
+                        should_render = true;
+                        contained_in_link = true;
+                        break;
+                    }
+                }
+                if !contained_in_link {
+                    if self.hover_coordinates.is_some() {
+                        // so that we clear the hover indication
+                        should_render = true;
+                    }
+                    self.hover_coordinates = None;
+                }
+            }
+            _ => {}
+        }
+        should_render
     }
 }
 
@@ -528,13 +604,6 @@ struct MouseAnyEventHandlingScreen {
 
 impl MouseAnyEventHandlingScreen {
     pub fn render(&mut self, rows: usize, cols: usize) {
-        // Mouse Any-Event Tracking
-        //
-        // This version adds the capability to track mouse motions more accurately
-        // both in Zellij, in terminal panes and in plugin panes.
-        //
-        // Future versions will also build on this capability to improve the Zellij
-        // UI.
         let ui_width = 75; // length of first explanation line
         let ui_height = 6;
         let base_x = cols.saturating_sub(ui_width) / 2;
@@ -582,8 +651,6 @@ enum Screen {
     NewThemeDefinitionSpec(NewThemeDefinitionSpecScreen),
     NewPluginApis(NewPluginApisScreen),
     MouseAnyEventHandling(MouseAnyEventHandlingScreen),
-//     RebindLeaders(RebindLeadersScreen),
-//     Presets(PresetsScreen),
 }
 
 impl Screen {
@@ -640,13 +707,13 @@ impl Screen {
         }
         should_render
     }
-    pub fn handle_mouse_event(&mut self, mouse_event: Mouse) -> bool {
+    pub fn handle_mouse_event(&mut self, mouse_event: Mouse, open_command: Option<&str>) -> bool {
         let mut should_render = false;
         match self {
             Screen::Main(ref mut main_screen) => {
                 match mouse_event {
                     Mouse::Hover(..) => {
-                        should_render = main_screen.handle_mouse_event(mouse_event);
+                        should_render = main_screen.handle_mouse_event(mouse_event, open_command);
                     },
                     Mouse::LeftClick(..) => {
                         match main_screen.hover_item() {
@@ -670,55 +737,29 @@ impl Screen {
                                 self.go_to_mouse_anyevent_handling();
                                 should_render = true;
                             },
-                            _ => {}
+                            _ => {
+                                should_render = main_screen.handle_mouse_event(mouse_event, open_command);
+                            }
                         }
                     }
                     _ => {}
                 }
             }
             Screen::StackedResize(ref mut stacked_resize_screen) => {
-                should_render = stacked_resize_screen.handle_mouse_event(mouse_event);
+                should_render = stacked_resize_screen.handle_mouse_event(mouse_event, open_command);
+            }
+            Screen::NewThemeDefinitionSpec(ref mut new_theme_screen) => {
+                should_render = new_theme_screen.handle_mouse_event(mouse_event, open_command);
             }
             _ => {}
         }
         should_render
-    }
-    pub fn reset_state(&mut self, is_setup_wizard: bool) {
-//         if is_setup_wizard {
-//             Screen::new_reset_keybindings_screen(Some(0));
-//         } else {
-//             match self {
-//                 Screen::RebindLeaders(r) => {
-//                     let notification = r.drain_notification();
-//                     *r = Default::default();
-//                     r.set_notification(notification);
-//                 },
-//                 Screen::Presets(r) => {
-//                     let notification = r.drain_notification();
-//                     *r = Default::default();
-//                     r.set_notification(notification);
-//                 },
-//             }
-//         }
-    }
-    pub fn update_mode_info(&mut self, latest_mode_info: ModeInfo) {
-//         match self {
-//             Screen::RebindLeaders(r) => r.update_mode_info(latest_mode_info),
-//             Screen::Presets(r) => r.update_mode_info(latest_mode_info),
-//         }
     }
 }
 
 impl Default for Screen {
     fn default() -> Self {
         Screen::Main(Default::default())
-    }
-}
-
-impl Screen {
-    pub fn new_reset_keybindings_screen(selected_index: Option<usize>) -> Self {
-        unimplemented!()
-        // Screen::Presets(PresetsScreen::new(selected_index))
     }
 }
 
@@ -768,34 +809,26 @@ impl ItemCoordinates {
 
 struct State {
     version: String,
-    link_coordinates: Vec<LinkCoordinates>,
-    hover_coordinates: Option<(isize, usize)>, // line/col
-    selected_item_index: Option<usize>,
     notification: Option<String>,
     is_setup_wizard: bool,
     is_release_notes: bool,
-    ui_size: usize,
     current_screen: Screen,
-    latest_mode_info: Option<ModeInfo>,
-    colors: Palette,
     base_mode: InputMode,
+    found_xdg_open_cli: bool,
+    found_open_cli: bool,
 }
 
 impl Default for State {
     fn default() -> Self {
         State {
             version: String::from("0.42.0"), // TODO: from Zellij
-            link_coordinates: vec![],
-            hover_coordinates: None,
-            selected_item_index: None,
             notification: None,
             is_setup_wizard: false,
             is_release_notes: false,
-            ui_size: UI_SIZE,
             current_screen: Screen::default(),
-            latest_mode_info: None,
-            colors: Palette::default(),
             base_mode: InputMode::default(),
+            found_xdg_open_cli: false,
+            found_open_cli: false,
         }
     }
 }
@@ -813,6 +846,7 @@ impl ZellijPlugin for State {
             EventType::Mouse,
             EventType::FailedToWriteConfigToDisk,
             EventType::ModeUpdate,
+            EventType::RunCommandResult,
         ]);
         let own_plugin_id = get_plugin_ids().plugin_id;
         if self.is_release_notes {
@@ -820,15 +854,33 @@ impl ZellijPlugin for State {
         } else {
             rename_plugin_pane(own_plugin_id, "About Zellij");
         }
+        let mut xdg_open_context = BTreeMap::new();
+        xdg_open_context.insert("xdg_open_cli".to_owned(), String::new());
+        run_command(
+            &["xdg-open", "--help"],
+            xdg_open_context,
+        );
+        let mut open_context = BTreeMap::new();
+        open_context.insert("open_cli".to_owned(), String::new());
+        run_command(
+            &["open", "--help"],
+            open_context,
+        );
     }
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
             Event::Mouse(mouse_event) => {
-                should_render = self.current_screen.handle_mouse_event(mouse_event);
+                let open_command = if self.found_xdg_open_cli {
+                    Some("xdg-open")
+                } else if self.found_open_cli {
+                    Some("open")
+                } else {
+                    None
+                };
+                should_render = self.current_screen.handle_mouse_event(mouse_event, open_command);
             }
             Event::ModeUpdate(mode_info) => {
-                // self.colors = mode_info.style.colors;
                 let prev_base_mode = self.base_mode;
                 if let Some(base_mode) = mode_info.base_mode {
                     self.base_mode = base_mode;
@@ -836,15 +888,20 @@ impl ZellijPlugin for State {
                         should_render = true;
                     }
                 }
-                // self.base_mode = mode_info.base_mode;
-//                 if self.latest_mode_info.as_ref().and_then(|l| l.base_mode) != mode_info.base_mode {
-//                     // reset ui state
-//                     self.current_screen.reset_state(self.is_setup_wizard);
-//                 }
-//                 self.latest_mode_info = Some(mode_info.clone());
-//                 self.current_screen.update_mode_info(mode_info.clone());
-                // should_render = true;
             },
+            Event::RunCommandResult(exit_code, _stdout, _stderr, context) => {
+                let is_xdg_open = context.get("xdg_open_cli").is_some();
+                let is_open = context.get("open_cli").is_some();
+                if is_xdg_open {
+                    if exit_code == Some(0) {
+                        self.found_xdg_open_cli = true;
+                    }
+                } else if is_open {
+                    if exit_code == Some(0) {
+                        self.found_open_cli = true;
+                    }
+                }
+            }
             Event::Key(key) => {
                 if self.notification.is_some() {
                     self.notification = None;
@@ -917,112 +974,4 @@ impl ZellijPlugin for State {
     fn render(&mut self, rows: usize, cols: usize) {
         self.current_screen.render(rows, cols, self.base_mode);
     }
-}
-
-impl State {
-    fn render_sponsor_link(&mut self, x: usize, y: usize) {
-        let link_coordinates = LinkCoordinates::new(x + 40, y, 34, "https://github.com/sponsors/imsnif");
-        if let Some((line, col)) = self.hover_coordinates.as_ref() {
-            if link_coordinates.contains(*line, *col) {
-                let support_text = format!("Please support the Zellij developer <3:");
-                self.link_coordinates.push(link_coordinates);
-                let support = Text::new(support_text).color_range(3, 0..=38);
-                print_text_with_coordinates(support, x, y, None, None);
-                print!("\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4mhttps://github.com/sponsors/imsnif", y + 1, x + 41);
-                return;
-            }
-        }
-        let support_text = format!("Please support the Zellij developer <3: https://github.com/sponsors/imsnif");
-        self.link_coordinates.push(link_coordinates);
-        let support = Text::new(support_text).color_range(3, 0..=38);
-        print_text_with_coordinates(support, x, y, None, None);
-    }
-    fn render_changelog_link(&mut self, x: usize, y: usize) {
-        let link_coordinates = LinkCoordinates::new(x + 16, y, 51 + self.version.chars().count(), &format!("https://github.com/zellij-org/zellij/releases/tag/v{}", self.version));
-        if let Some((line, col)) = self.hover_coordinates.as_ref() {
-            if link_coordinates.contains(*line, *col) {
-                self.link_coordinates.push(link_coordinates);
-                let full_changelog_text = format!("Full Changelog:");
-                let full_changelog = Text::new(full_changelog_text);
-                print_text_with_coordinates(full_changelog, x, y, None, None);
-                print!("\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4mhttps://github.com/zellij-org/zellij/releases/tag/v{}", y + 1, x + 17, self.version);
-                return;
-            }
-        }
-        self.link_coordinates.push(link_coordinates);
-        let full_changelog_text = format!("Full Changelog: https://github.com/zellij-org/zellij/releases/tag/v{}", self.version);
-        let full_changelog = Text::new(full_changelog_text);
-        print_text_with_coordinates(full_changelog, x, y, None, None);
-    }
-    fn render_help(&self, rows: usize) {
-        if self.hover_coordinates.is_some() {
-            let help_text = format!("Help: Click or Shift-Click to open in browser");
-            let help = Text::new(help_text)
-                .color_range(3, 6..=10)
-                .color_range(3, 15..=25);
-            print_text_with_coordinates(help, 0, rows, None, None);
-        } else if self.selected_item_index.is_some() {
-            let help_text = format!("Help: <↓↑> - Navigate, <ENTER> - Learn More, <ESC> - Dismiss");
-            let help = Text::new(help_text)
-                .color_range(1, 6..=9)
-                .color_range(1, 23..=29)
-                .color_range(1, 45..=49);
-            print_text_with_coordinates(help, 0, rows, None, None);
-        } else {
-            let help_text = format!("Help: <↓↑> - Navigate, <ESC> - Dismiss");
-            let help = Text::new(help_text)
-                .color_range(1, 6..=9)
-                .color_range(1, 23..=27);
-            print_text_with_coordinates(help, 0, rows, None, None);
-        }
-    }
-    fn move_selection_down(&mut self) {
-        if self.selected_item_index.is_none() {
-            self.selected_item_index = Some(0);
-        } else if let Some(selected_item_index) = self.selected_item_index.take() {
-            if selected_item_index == 4 {
-                self.selected_item_index = None;
-            } else {
-                self.selected_item_index = Some(selected_item_index + 1);
-            }
-        }
-    }
-    fn move_selection_up(&mut self) {
-        if self.selected_item_index.is_none() {
-            self.selected_item_index = Some(4);
-        } else if let Some(selected_item_index) = self.selected_item_index.take() {
-            if selected_item_index == 0 {
-                self.selected_item_index = None;
-            } else {
-                self.selected_item_index = Some(selected_item_index.saturating_sub(1));
-            }
-        }
-    }
-//     fn is_in_main_screen(&self) -> bool {
-//         match &self.current_screen {
-//             Screen::RebindLeaders(_) => true,
-//             Screen::Presets(presets_screen) => {
-//                 if self.is_setup_wizard || presets_screen.rebinding_leaders() {
-//                     false
-//                 } else {
-//                     true
-//                 }
-//             },
-//         }
-//     }
-//     fn switch_screen(&mut self) {
-//         match &self.current_screen {
-//             Screen::RebindLeaders(_) => {
-//                 self.current_screen = Screen::Presets(Default::default());
-//             },
-//             Screen::Presets(_) => {
-//                 self.current_screen = Screen::RebindLeaders(
-//                     RebindLeadersScreen::default().with_mode_info(self.latest_mode_info.clone()),
-//                 );
-//             },
-//         }
-//         if let Some(mode_info) = &self.latest_mode_info {
-//             self.current_screen.update_mode_info(mode_info.clone());
-//         }
-//     }
 }
