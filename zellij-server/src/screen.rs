@@ -862,6 +862,7 @@ impl Screen {
                 "failed to move clients from tab {source_tab_index} to tab {destination_tab_index}"
             )
         };
+        log::info!("clients_to_move: {:?}", clients_to_move);
 
         // None ==> move all clients
         let drained_clients = self
@@ -1396,15 +1397,11 @@ impl Screen {
         let swap_tiled_layouts = active_layout.swap_tiled_layouts;
         let swap_floating_layouts = active_layout.swap_floating_layouts;
 
-        let mut is_first = true;
-
-        // enumerate makes this look though but it is useful for consistent tab names
+        // enumerate makes this look tough but it is useful for consistent tab names
         for (index, (name, tiled_pane_layout, floating_panes_layout)) in
             active_layout.tabs.drain(..).enumerate()
         {
-            // using usize::MAX should be fine
-            let should_focus =
-                index == active_layout.focused_tab_index.unwrap_or(usize::MAX) || is_first;
+            let should_focus = active_layout.focused_tab_index.unwrap_or(0) == index;
 
             let instruction = ScreenInstruction::NewTab(
                 None,
@@ -1417,12 +1414,15 @@ impl Screen {
                 client_id,
             );
             instructions_to_open.push(instruction);
-
-            is_first = false;
         }
 
+        instructions_to_open.push(ScreenInstruction::GoToTab(
+            active_layout.focused_tab_index.unwrap_or(0) as u32,
+            Some(client_id),
+        ));
+
         for &tab_index in tabs_to_delete.iter() {
-            instructions_to_open.push(ScreenInstruction::CloseTab(tab_index));
+            instructions_to_open.push(ScreenInstruction::CloseTabWithIndex(tab_index.into()));
         }
 
         for instruction in instructions_to_open {
