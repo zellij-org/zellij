@@ -559,24 +559,20 @@ fn render_to_client(
     mut client_channel_tx: SplitSink<WebSocket, Message>,
 ) {
     tokio::spawn(async move {
-        loop {
-            if let Some(rendered_bytes) = stdout_channel_rx.recv().await {
-                match serde_json::to_string(&RenderedBytes::new(rendered_bytes, &web_client_id)) {
-                    Ok(rendered_bytes) => {
-                        if client_channel_tx
-                            .send(Message::Text(rendered_bytes.into()))
-                            .await
-                            .is_err()
-                        {
-                            break;
-                        }
-                    },
-                    Err(e) => {
-                        log::error!("Failed to serialize rendered bytes: {:?}", e);
-                    },
-                }
-            } else {
-                break;
+        while let Some(rendered_bytes) = stdout_channel_rx.recv().await {
+            match serde_json::to_string(&RenderedBytes::new(rendered_bytes, &web_client_id)) {
+                Ok(rendered_bytes) => {
+                    if client_channel_tx
+                        .send(Message::Text(rendered_bytes.into()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                },
+                Err(e) => {
+                    log::error!("Failed to serialize rendered bytes: {:?}", e);
+                },
             }
         }
     });
