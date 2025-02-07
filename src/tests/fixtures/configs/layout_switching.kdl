@@ -1,0 +1,17 @@
+keybinds clear-defaults=true {
+    normal {
+        bind "Alt j" { PreviousLayout; }
+        bind "Alt k" { NextLayout; }
+    }
+    tab {
+        bind "n" { NewTab; SwitchToMode "locked"; }
+    }
+    shared_except "tab" "locked" {
+        bind "Ctrl t" { SwitchToMode "Tab"; }
+    }
+}
+
+plugins {
+    tab-bar location="zellij:tab-bar"
+    status-bar location="zellij:status-bar"
+}

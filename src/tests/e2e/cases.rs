@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use ::insta::assert_snapshot;
+use insta::assert_snapshot;
 use zellij_utils::{pane_size::Size, position::Position};
 
 use rand::Rng;
@@ -75,6 +75,9 @@ pub const SLEEP: [u8; 0] = [];
 
 pub const SECOND_TAB_CONTENT: [u8; 14] =
     [84, 97, 98, 32, 35, 50, 32, 99, 111, 110, 116, 101, 110, 116]; // Tab #2 content
+
+pub const PREVIOUS_LAYOUT: [u8; 2] = [27, 106]; // Alt + j
+pub const NEXT_LAYOUT: [u8; 2] = [27, 107]; // Alt + k
 
 pub fn sgr_mouse_report(position: Position, button: u8) -> Vec<u8> {
     // button: (release is with lower case m, not supported here yet)
@@ -2510,6 +2513,165 @@ pub fn pin_floating_panes() {
                 step_is_complete
             },
         });
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn switch_to_previous_layout() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let mut test_attempts = 1;
+    let config_file_name = "layout_switching.kdl";
+    let layout_file_name = "layout_for_switching.kdl";
+
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new_session_with_layout_and_config(
+            fake_win_size,
+            config_file_name,
+            layout_file_name,
+        )
+        .add_step(Step {
+            name: "Switch to previous layout",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.tab_bar_appears() {
+                    remote_terminal.send_key(&PREVIOUS_LAYOUT);
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        runner.run_all_steps();
+
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for app to load",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.status_bar_appears() {
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn switch_to_next_layout() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let mut test_attempts = 1;
+    let config_file_name = "layout_switching.kdl";
+    let layout_file_name = "layout_for_switching.kdl";
+
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new_session_with_layout_and_config(
+            fake_win_size,
+            config_file_name,
+            layout_file_name,
+        )
+        .add_step(Step {
+            name: "Switch to next layout",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.tab_bar_appears() {
+                    remote_terminal.send_key(&NEXT_LAYOUT);
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        runner.run_all_steps();
+
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for app to load",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.status_bar_appears() {
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn switch_layout_focus() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let mut test_attempts = 1;
+    let config_file_name = "layout_switching.kdl";
+    let layout_file_name = "layout_for_focus.kdl";
+
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new_session_with_layout_and_config(
+            fake_win_size,
+            config_file_name,
+            layout_file_name,
+        )
+        .add_step(Step {
+            name: "Switch to next layout",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.tab_bar_appears() {
+                    remote_terminal.send_key(&NEXT_LAYOUT);
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        runner.run_all_steps();
+
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for app to load",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.status_bar_appears() {
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+
         if runner.test_timed_out && test_attempts > 0 {
             test_attempts -= 1;
             continue;

@@ -1,0 +1,29 @@
+---
+source: src/tests/e2e/cases.rs
+assertion_line: 2577
+expression: last_snapshot
+---
+ Zellij (e2e-test)  Secondary Layout Tab One  Secondary Layout Tab two                                      BASE 
+┌ Pane #1 ─────────────────────────────┐┌ Pane #2 ─────────────────────────────┐┌ Pane #3 ─────────────────────────────┐
+│$ █                                   ││$                                     ││$                                     │
+│                                      ││                                      ││                                      │
+│                                      ││                                      ││                                      │
+│                                      ││                                      ││                                      │
+│                                      ││                                      ││                                      │
+│                                      ││                                      ││                                      │
+│                                      ││                                      ││                                      │
+│                                      ││                                      ││                                      │
+│                                      ││                                      ││                                      │
+│                                      ││                                      ││                                      │
+│                                      ││                                      ││                                      │
+│                                      ││                                      ││                                      │
+│                                      ││                                      ││                                      │
+│                                      ││                                      ││                                      │
+│                                      ││                                      ││                                      │
+│                                      ││                                      ││                                      │
+│                                      ││                                      ││                                      │
+│                                      ││                                      ││                                      │
+│                                      ││                                      ││                                      │
+└──────────────────────────────────────┘└──────────────────────────────────────┘└──────────────────────────────────────┘
+ Ctrl + <t> TAB                                                                                              BASE 
+ Tip: UNBOUND => open new pane. UNBOUND => navigate between panes. UNBOUND => increase/decrease pane size.

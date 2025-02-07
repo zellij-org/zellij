@@ -1,0 +1,51 @@
+layout {
+    tab {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        pane
+    }
+}
+
+layout {
+    tab name="First Tab" {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        pane
+    }
+
+    tab name="Cool Name" split_direction="horizontal" focus=true {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        pane
+        pane
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+}
+
+layout {
+    tab name="Secondary Layout Tab One" {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        pane split_direction="vertical" {
+            pane
+            pane
+            pane
+        }
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+
+    tab name="Secondary Layout Tab two" {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        pane
+    }
+}

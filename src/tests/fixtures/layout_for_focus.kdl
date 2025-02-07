@@ -1,0 +1,55 @@
+layout {
+    tab {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        pane
+    }
+}
+
+layout {
+    tab {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        pane
+    }
+
+    tab {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        pane
+    }
+
+    tab {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        pane
+    }
+    tab {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        pane
+    }
+    tab {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        pane
+    }
+    tab focus=true {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        pane
+        pane
+        pane
+        pane
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+}
