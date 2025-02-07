@@ -1320,6 +1320,30 @@ fn no_error_on_multiple_layout_nodes_in_file() {
 }
 
 #[test]
+fn multiple_layouts_get_parsed_correctly() {
+    let kdl_layout = format!(
+        "
+        layout {{
+            pane
+            pane
+        }}
+        layout {{
+            tab {{
+                pane
+                pane
+            }}
+            tab {{
+                pane
+            }}
+        }}
+    "
+    );
+    let layout_config =
+        LayoutConfig::from_kdl(&kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+    assert_snapshot!(format!("{:?}", layout_config));
+}
+
+#[test]
 fn error_on_unknown_layout_node() {
     let kdl_layout = format!(
         "
