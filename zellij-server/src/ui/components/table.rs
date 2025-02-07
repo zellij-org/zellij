@@ -1,5 +1,8 @@
 use super::{is_too_high, is_too_wide, stringify_text, Coordinates, Text};
-use crate::panes::{terminal_character::{AnsiCode, RESET_STYLES}, CharacterStyles};
+use crate::panes::{
+    terminal_character::{AnsiCode, RESET_STYLES},
+    CharacterStyles,
+};
 use std::collections::BTreeMap;
 use zellij_utils::{data::Style, shared::ansi_len};
 
@@ -44,10 +47,7 @@ pub fn table(
                 &declaration,
                 text_style.bold(Some(AnsiCode::On)),
             );
-            stringified.push_str(&format!(
-                "{}{} {}",
-                text_style, text, RESET_STYLES
-            ));
+            stringified.push_str(&format!("{}{} {}", text_style, text, RESET_STYLES));
         }
         let next_row_instruction = coordinates
             .as_ref()
