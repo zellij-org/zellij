@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(plugins): APIs to open panes near plugin (https://github.com/zellij-org/zellij/pull/3966)
 * feat(plugins): send information about $SHELL and $EDITOR (https://github.com/zellij-org/zellij/pull/3971)
 * feat(config): new theme definition spec (https://github.com/zellij-org/zellij/pull/3242)
+* feat(ui): about plugin and release notes (https://github.com/zellij-org/zellij/pull/3979)
 
 ## [0.41.2] - 2024-11-19
 * fix(input): keypresses not being identified properly with kitty keyboard protocol in some terminals (https://github.com/zellij-org/zellij/pull/3725)
