@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 5551
+assertion_line: 5626
 expression: fake_config_stringified
 ---
 keybinds clear-defaults=true {
@@ -232,6 +232,7 @@ keybinds clear-defaults=true {
     }
 }
 plugins {
+    about location="zellij:about"
     compact-bar location="zellij:compact-bar"
     configuration location="zellij:configuration"
     filepicker location="zellij:strider" {
