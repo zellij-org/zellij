@@ -24,8 +24,7 @@ impl Page {
         Page::new()
             .main_screen()
             .with_title(main_screen_title(zellij_version.clone()))
-            .with_bulletin_list(
-                BulletinList::new(whats_new_title()).with_items(vec![
+            .with_bulletin_list(BulletinList::new(whats_new_title()).with_items(vec![
                     ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
                         "Stacked Resize",
                     )))
@@ -73,8 +72,7 @@ impl Page {
                     .with_left_click_action(ClickAction::new_change_page({
                         move || Page::new_mouse_any_event()
                     })),
-                ]),
-            )
+                ]))
             .with_paragraph(vec![ComponentLine::new(vec![
                 ActiveComponent::new(TextOrCustomRender::Text(Text::new("Full Changelog: "))),
                 ActiveComponent::new(TextOrCustomRender::Text(changelog_link_unselected(
