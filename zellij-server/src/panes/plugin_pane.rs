@@ -28,6 +28,7 @@ use zellij_utils::{
     data::{Event, InputMode, Mouse, Palette, PaletteColor, Style, Styling},
     errors::prelude::*,
     input::layout::Run,
+    input::mouse::{MouseEvent, MouseEventType},
     pane_size::PaneGeom,
     shared::make_terminal_title,
     vte,
@@ -746,6 +747,27 @@ impl Pane for PluginPane {
     }
     fn reset_logical_position(&mut self) {
         self.geom.logical_position = None;
+    }
+    fn mouse_event(&self, event: &MouseEvent, client_id: ClientId) -> Option<String> {
+        match event.event_type {
+            MouseEventType::Motion
+                if !event.left
+                    && !event.right
+                    && !event.middle
+                    && !event.wheel_up
+                    && !event.wheel_down =>
+            {
+                let _ = self
+                    .send_plugin_instructions
+                    .send(PluginInstruction::Update(vec![(
+                        Some(self.pid),
+                        Some(client_id),
+                        Event::Mouse(Mouse::Hover(event.position.line(), event.position.column())),
+                    )]));
+            },
+            _ => {},
+        }
+        None
     }
 }
 

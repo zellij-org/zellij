@@ -425,7 +425,7 @@ pub trait Pane {
 
     // TODO: this should probably be merged with the mouse_right_click
     fn handle_right_click(&mut self, _to: &Position, _client_id: ClientId) {}
-    fn mouse_event(&self, _event: &MouseEvent) -> Option<String> {
+    fn mouse_event(&self, _event: &MouseEvent, _client_id: ClientId) -> Option<String> {
         None
     }
     fn mouse_left_click(&self, _position: &Position, _is_held: bool) -> Option<String> {
@@ -3386,7 +3386,7 @@ impl Tab {
             let relative_position = active_pane.relative_position(&event.position);
             let mut pass_event = *event;
             pass_event.position = relative_position;
-            if let Some(mouse_event) = active_pane.mouse_event(&pass_event) {
+            if let Some(mouse_event) = active_pane.mouse_event(&pass_event, client_id) {
                 if !active_pane.position_is_on_frame(&event.position) {
                     self.write_to_active_terminal(
                         &None,
@@ -3624,7 +3624,7 @@ impl Tab {
                 let relative_position = pane.relative_position(&absolute_position);
                 let mut event_for_pane = event.clone();
                 event_for_pane.position = relative_position;
-                if let Some(mouse_event) = pane.mouse_event(&event_for_pane) {
+                if let Some(mouse_event) = pane.mouse_event(&event_for_pane, client_id) {
                     if !pane.position_is_on_frame(&absolute_position) {
                         self.write_to_active_terminal(
                             &None,
@@ -3658,7 +3658,7 @@ impl Tab {
                 let relative_position = pane.relative_position(&absolute_position);
                 let mut event_for_pane = event.clone();
                 event_for_pane.position = relative_position;
-                if let Some(mouse_event) = pane.mouse_event(&event_for_pane) {
+                if let Some(mouse_event) = pane.mouse_event(&event_for_pane, client_id) {
                     if !pane.position_is_on_frame(&absolute_position) {
                         self.write_to_active_terminal(
                             &None,
@@ -3690,7 +3690,7 @@ impl Tab {
                 let relative_position = pane.relative_position(&absolute_position);
                 let mut event_for_pane = event.clone();
                 event_for_pane.position = relative_position;
-                if let Some(mouse_event) = pane.mouse_event(&event_for_pane) {
+                if let Some(mouse_event) = pane.mouse_event(&event_for_pane, client_id) {
                     if !pane.position_is_on_frame(&absolute_position) {
                         self.write_to_active_terminal(
                             &None,

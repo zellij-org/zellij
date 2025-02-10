@@ -745,6 +745,7 @@ impl FloatingPanes {
             pane_geom.adjust_coordinates(new_coordinates, viewport);
             pane.set_geom(pane_geom);
             pane.set_should_render(true);
+            self.desired_pane_positions.insert(pane_id, pane_geom);
         }
         let _ = self.set_pane_frames();
         Ok(())

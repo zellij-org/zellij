@@ -7397,6 +7397,18 @@ Config {
     },
     plugins: PluginAliases {
         aliases: {
+            "about": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "about",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
             "compact-bar": RunPlugin {
                 _allow_exec_host_cmd: false,
                 location: Zellij(

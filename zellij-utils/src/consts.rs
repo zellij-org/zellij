@@ -72,6 +72,8 @@ lazy_static! {
     pub static ref ZELLIJ_STDIN_CACHE_FILE: PathBuf =
         ZELLIJ_CACHE_DIR.join(VERSION).join("stdin_cache");
     pub static ref ZELLIJ_PLUGIN_ARTIFACT_DIR: PathBuf = ZELLIJ_CACHE_DIR.join(VERSION);
+    pub static ref ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE: PathBuf =
+        ZELLIJ_CACHE_DIR.join(VERSION).join("seen_release_notes");
 }
 
 pub const FEATURES: &[&str] = &[
@@ -129,6 +131,7 @@ mod not_wasm {
             add_plugin!(assets, "session-manager.wasm");
             add_plugin!(assets, "configuration.wasm");
             add_plugin!(assets, "plugin-manager.wasm");
+            add_plugin!(assets, "about.wasm");
             assets
         };
     }

@@ -41,7 +41,9 @@ use route::route_thread_main;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
-    consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
+    consts::{
+        DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
+    },
     data::{ConnectToSession, Event, InputMode, KeyWithModifier, PluginCapabilities},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
@@ -704,6 +706,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         // intrusive
                         let setup_wizard = setup_wizard_floating_pane();
                         floating_panes.push(setup_wizard);
+                    } else if should_show_release_notes() {
+                        let about = about_floating_pane();
+                        floating_panes.push(about);
                     }
                     spawn_tabs(
                         None,
@@ -1488,6 +1493,32 @@ fn setup_wizard_floating_pane() -> FloatingPaneLayout {
         None,
     ))));
     setup_wizard_pane
+}
+
+fn about_floating_pane() -> FloatingPaneLayout {
+    let mut about_pane = FloatingPaneLayout::new();
+    let configuration = BTreeMap::from_iter([("is_release_notes".to_owned(), "true".to_owned())]);
+    about_pane.run = Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias::new(
+        "about",
+        &Some(configuration),
+        None,
+    ))));
+    about_pane
+}
+
+fn should_show_release_notes() -> bool {
+    if ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE.exists() {
+        return false;
+    } else {
+        if let Err(e) = std::fs::write(&*ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE, &[]) {
+            log::error!(
+                "Failed to write seen release notes indication to disk: {}",
+                e
+            );
+            return false;
+        }
+        return true;
+    }
 }
 
 #[cfg(not(feature = "singlepass"))]

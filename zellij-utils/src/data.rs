@@ -830,6 +830,21 @@ pub enum Mouse {
     RightClick(isize, usize), // line and column
     Hold(isize, usize),       // line and column
     Release(isize, usize),    // line and column
+    Hover(isize, usize),      // line and column
+}
+
+impl Mouse {
+    pub fn position(&self) -> Option<(usize, usize)> {
+        // (line, column)
+        match self {
+            Mouse::LeftClick(line, column) => Some((*line as usize, *column as usize)),
+            Mouse::RightClick(line, column) => Some((*line as usize, *column as usize)),
+            Mouse::Hold(line, column) => Some((*line as usize, *column as usize)),
+            Mouse::Release(line, column) => Some((*line as usize, *column as usize)),
+            Mouse::Hover(line, column) => Some((*line as usize, *column as usize)),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
