@@ -750,19 +750,23 @@ impl Pane for PluginPane {
     }
     fn mouse_event(&self, event: &MouseEvent, client_id: ClientId) -> Option<String> {
         match event.event_type {
-            MouseEventType::Motion if !event.left && !event.right && !event.middle && !event.wheel_up && !event.wheel_down => {
-                let _ = self.send_plugin_instructions
+            MouseEventType::Motion
+                if !event.left
+                    && !event.right
+                    && !event.middle
+                    && !event.wheel_up
+                    && !event.wheel_down =>
+            {
+                let _ = self
+                    .send_plugin_instructions
                     .send(PluginInstruction::Update(vec![(
                         Some(self.pid),
                         Some(client_id),
                         Event::Mouse(Mouse::Hover(event.position.line(), event.position.column())),
                     )]));
-
-            }
-            _ => {}
+            },
+            _ => {},
         }
-        // TODO: send new motion event to plugin
-        // log::info!("can has mouse event in plugin: {:?}", event);
         None
     }
 }

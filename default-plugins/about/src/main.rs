@@ -2,10 +2,10 @@ mod active_component;
 mod pages;
 use zellij_tile::prelude::*;
 
-use std::collections::BTreeMap;
-use std::cell::RefCell;
-use std::rc::Rc;
 use pages::Page;
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+use std::rc::Rc;
 
 const UI_ROWS: usize = 20;
 const UI_COLUMNS: usize = 90;
@@ -28,7 +28,11 @@ impl Default for App {
         let zellij_version = Rc::new(RefCell::new("".to_owned()));
         let base_mode = Rc::new(RefCell::new(Default::default()));
         App {
-            active_page: Page::new_main_screen(link_executable.clone(), "".to_owned(), base_mode.clone()),
+            active_page: Page::new_main_screen(
+                link_executable.clone(),
+                "".to_owned(),
+                base_mode.clone(),
+            ),
             link_executable,
             zellij_version,
             base_mode,
@@ -63,7 +67,7 @@ impl ZellijPlugin for App {
         self.active_page = Page::new_main_screen(
             self.link_executable.clone(),
             self.zellij_version.borrow().clone(),
-            self.base_mode.clone()
+            self.base_mode.clone(),
         );
     }
     fn update(&mut self, event: Event) -> bool {
@@ -71,10 +75,10 @@ impl ZellijPlugin for App {
         match event {
             Event::TabUpdate(tab_info) => {
                 self.center_own_pane(tab_info);
-            }
+            },
             Event::Mouse(mouse_event) => {
                 should_render = self.handle_mouse_event(mouse_event);
-            }
+            },
             Event::ModeUpdate(mode_info) => {
                 if let Some(base_mode) = mode_info.base_mode {
                     should_render = self.update_base_mode(base_mode);
@@ -92,11 +96,11 @@ impl ZellijPlugin for App {
                         self.update_link_executable("open".to_owned());
                     }
                 }
-            }
-            Event::Key(key) => {
-                 should_render = self.handle_key(key);
             },
-            _ => {}
+            Event::Key(key) => {
+                should_render = self.handle_key(key);
+            },
+            _ => {},
         }
         should_render
     }
@@ -109,7 +113,10 @@ impl App {
     pub fn change_own_title(&mut self) {
         if let Some(own_plugin_id) = self.own_plugin_id {
             if self.is_release_notes {
-                rename_plugin_pane(own_plugin_id, format!("Release Notes {}", self.zellij_version.borrow()));
+                rename_plugin_pane(
+                    own_plugin_id,
+                    format!("Release Notes {}", self.zellij_version.borrow()),
+                );
             } else {
                 rename_plugin_pane(own_plugin_id, "About Zellij");
             }
@@ -118,16 +125,10 @@ impl App {
     pub fn query_link_executable(&self) {
         let mut xdg_open_context = BTreeMap::new();
         xdg_open_context.insert("xdg_open_cli".to_owned(), String::new());
-        run_command(
-            &["xdg-open", "--help"],
-            xdg_open_context,
-        );
+        run_command(&["xdg-open", "--help"], xdg_open_context);
         let mut open_context = BTreeMap::new();
         open_context.insert("open_cli".to_owned(), String::new());
-        run_command(
-            &["open", "--help"],
-            open_context,
-        );
+        run_command(&["open", "--help"], open_context);
     }
     pub fn update_link_executable(&mut self, new_link_executable: String) {
         *self.link_executable.borrow_mut() = new_link_executable;
@@ -144,15 +145,18 @@ impl App {
         let mut should_render = false;
         match mouse_event {
             Mouse::LeftClick(line, column) => {
-                if let Some(new_page) = self.active_page.handle_mouse_left_click(column, line as usize) {
+                if let Some(new_page) = self
+                    .active_page
+                    .handle_mouse_left_click(column, line as usize)
+                {
                     self.active_page = new_page;
                     should_render = true;
                 }
-            }
+            },
             Mouse::Hover(line, column) => {
                 should_render = self.active_page.handle_mouse_hover(column, line as usize);
-            }
-            _ => {}
+            },
+            _ => {},
         }
         should_render
     }
@@ -167,14 +171,17 @@ impl App {
             if self.active_page.is_main_screen {
                 close_self();
             } else {
-                self.active_page = Page::new_main_screen(self.link_executable.clone(), self.zellij_version.borrow().clone(), self.base_mode.clone());
+                self.active_page = Page::new_main_screen(
+                    self.link_executable.clone(),
+                    self.zellij_version.borrow().clone(),
+                    self.base_mode.clone(),
+                );
                 should_render = true;
             }
         } else {
             should_render = self.active_page.handle_key(key);
         }
         should_render
-
     }
     fn center_own_pane(&mut self, tab_info: Vec<TabInfo>) {
         // we only take the size of the first tab because at the time of writing this is
@@ -187,13 +194,17 @@ impl App {
             if self.tab_columns != prev_tab_columns || self.tab_rows != prev_tab_rows {
                 let desired_x_coords = self.tab_columns.saturating_sub(UI_COLUMNS) / 2;
                 let desired_y_coords = self.tab_rows.saturating_sub(UI_ROWS) / 2;
-                change_floating_panes_coordinates(vec![(PaneId::Plugin(self.own_plugin_id.unwrap()), FloatingPaneCoordinates::new(
-                    Some(desired_x_coords.to_string()),
-                    Some(desired_y_coords.to_string()),
-                    Some(UI_COLUMNS.to_string()),
-                    Some(UI_ROWS.to_string()),
-                    None
-                ).unwrap())]);
+                change_floating_panes_coordinates(vec![(
+                    PaneId::Plugin(self.own_plugin_id.unwrap()),
+                    FloatingPaneCoordinates::new(
+                        Some(desired_x_coords.to_string()),
+                        Some(desired_y_coords.to_string()),
+                        Some(UI_COLUMNS.to_string()),
+                        Some(UI_ROWS.to_string()),
+                        None,
+                    )
+                    .unwrap(),
+                )]);
             }
         }
     }

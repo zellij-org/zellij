@@ -1,6 +1,6 @@
-use zellij_tile::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
+use zellij_tile::prelude::*;
 
 use crate::pages::{Page, TextOrCustomRender};
 
@@ -31,7 +31,7 @@ impl ActiveComponent {
         self.left_click_action = Some(left_click_action);
         self
     }
-    pub fn render(&mut self, x: usize, y: usize, rows: usize, columns: usize) -> usize{
+    pub fn render(&mut self, x: usize, y: usize, rows: usize, columns: usize) -> usize {
         let mut component_width = 0;
         match self.text_hover.as_mut() {
             Some(text) if self.is_active => {
@@ -41,7 +41,7 @@ impl ActiveComponent {
             _ => {
                 let text_len = self.text_no_hover.render(x, y, rows, columns);
                 component_width += text_len;
-            }
+            },
         }
         self.last_rendered_coordinates = Some(ComponentCoordinates::new(x, y, 1, columns));
         component_width
@@ -50,14 +50,12 @@ impl ActiveComponent {
         match self.left_click_action.take() {
             Some(ClickAction::ChangePage(go_to_page)) => Some(go_to_page()),
             Some(ClickAction::OpenLink(link, executable)) => {
-                self.left_click_action = Some(ClickAction::OpenLink(link.clone(), executable.clone()));
-                run_command(
-                    &[&executable.borrow(), &link],
-                     Default::default()
-                );
+                self.left_click_action =
+                    Some(ClickAction::OpenLink(link.clone(), executable.clone()));
+                run_command(&[&executable.borrow(), &link], Default::default());
                 None
-            }
-            None => None
+            },
+            None => None,
         }
     }
     pub fn handle_left_click_at_position(&mut self, x: usize, y: usize) -> Option<Page> {
@@ -90,12 +88,8 @@ impl ActiveComponent {
     }
     pub fn column_count(&self) -> usize {
         match self.text_hover.as_ref() {
-            Some(text) if self.is_active => {
-                text.len()
-            },
-            _ => {
-                self.text_no_hover.len()
-            }
+            Some(text) if self.is_active => text.len(),
+            _ => self.text_no_hover.len(),
         }
     }
     pub fn clear_hover(&mut self) {
@@ -108,13 +102,12 @@ struct ComponentCoordinates {
     x: usize,
     y: usize,
     rows: usize,
-    columns: usize
+    columns: usize,
 }
 
 impl ComponentCoordinates {
     pub fn contains(&self, x: usize, y: usize) -> bool {
-        x >= self.x && x < self.x + self.columns &&
-            y >= self.y && y < self.y + self.rows
+        x >= self.x && x < self.x + self.columns && y >= self.y && y < self.y + self.rows
     }
 }
 
@@ -138,14 +131,17 @@ impl std::fmt::Debug for ClickAction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ClickAction::ChangePage(_) => write!(f, "ChangePage"),
-            ClickAction::OpenLink(destination, executable) => write!(f, "OpenLink: {}, {:?}", destination, executable),
+            ClickAction::OpenLink(destination, executable) => {
+                write!(f, "OpenLink: {}, {:?}", destination, executable)
+            },
         }
     }
 }
 
 impl ClickAction {
     pub fn new_change_page<F>(go_to_page: F) -> Self
-    where F: FnOnce() -> Page + 'static
+    where
+        F: FnOnce() -> Page + 'static,
     {
         ClickAction::ChangePage(Box::new(go_to_page))
     }

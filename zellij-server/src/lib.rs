@@ -41,7 +41,9 @@ use route::route_thread_main;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
-    consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE},
+    consts::{
+        DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
+    },
     data::{ConnectToSession, Event, InputMode, KeyWithModifier, PluginCapabilities},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
@@ -1509,10 +1511,13 @@ fn should_show_release_notes() -> bool {
         return false;
     } else {
         if let Err(e) = std::fs::write(&*ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE, &[]) {
-            log::error!("Failed to write seen release notes indication to disk: {}", e);
+            log::error!(
+                "Failed to write seen release notes indication to disk: {}",
+                e
+            );
             return false;
         }
-        return true
+        return true;
     }
 }
 

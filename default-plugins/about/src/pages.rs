@@ -16,57 +16,97 @@ pub struct Page {
 }
 
 impl Page {
-    pub fn new_main_screen(link_executable: Rc<RefCell<String>>, zellij_version: String, base_mode: Rc<RefCell<InputMode>>) -> Self {
+    pub fn new_main_screen(
+        link_executable: Rc<RefCell<String>>,
+        zellij_version: String,
+        base_mode: Rc<RefCell<InputMode>>,
+    ) -> Self {
         Page::new()
             .main_screen()
             .with_title(main_screen_title(zellij_version.clone()))
-            .with_bulletin_list(BulletinList::new(whats_new_title())
-                .with_items(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item("Stacked Resize")))
-                        .with_hover(TextOrCustomRender::Text(main_menu_item("Stacked Resize").selected()))
-                        .with_left_click_action(ClickAction::new_change_page({
-                            let link_executable = link_executable.clone();
-                            move || Page::new_stacked_resize(link_executable.clone())
-                        })),
-                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item("Pinned Floating Panes")))
-                        .with_hover(TextOrCustomRender::Text(main_menu_item("Pinned Floating Panes").selected()))
-                        .with_left_click_action(ClickAction::new_change_page(move || Page::new_pinned_panes(base_mode.clone()))),
-                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item("New Theme Definition Spec")))
-                        .with_hover(TextOrCustomRender::Text(main_menu_item("New Theme Definition Spec").selected()))
-                        .with_left_click_action(ClickAction::new_change_page({
-                            let link_executable = link_executable.clone();
-                            move || Page::new_theme_definition_spec(link_executable.clone())
-                        })),
-                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item("New Plugin APIs")))
-                        .with_hover(TextOrCustomRender::Text(main_menu_item("New Plugin APIs").selected()))
-                        .with_left_click_action(ClickAction::new_change_page(move || Page::new_plugin_apis())),
-                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item("Mouse Any-Event Handling")))
-                        .with_hover(TextOrCustomRender::Text(main_menu_item("Mouse Any-Event Handling").selected()))
-                        .with_left_click_action(ClickAction::new_change_page({
-                            move || Page::new_mouse_any_event()
-                        }))
-                ])
+            .with_bulletin_list(
+                BulletinList::new(whats_new_title()).with_items(vec![
+                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
+                        "Stacked Resize",
+                    )))
+                    .with_hover(TextOrCustomRender::Text(
+                        main_menu_item("Stacked Resize").selected(),
+                    ))
+                    .with_left_click_action(ClickAction::new_change_page({
+                        let link_executable = link_executable.clone();
+                        move || Page::new_stacked_resize(link_executable.clone())
+                    })),
+                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
+                        "Pinned Floating Panes",
+                    )))
+                    .with_hover(TextOrCustomRender::Text(
+                        main_menu_item("Pinned Floating Panes").selected(),
+                    ))
+                    .with_left_click_action(ClickAction::new_change_page(move || {
+                        Page::new_pinned_panes(base_mode.clone())
+                    })),
+                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
+                        "New Theme Definition Spec",
+                    )))
+                    .with_hover(TextOrCustomRender::Text(
+                        main_menu_item("New Theme Definition Spec").selected(),
+                    ))
+                    .with_left_click_action(ClickAction::new_change_page({
+                        let link_executable = link_executable.clone();
+                        move || Page::new_theme_definition_spec(link_executable.clone())
+                    })),
+                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
+                        "New Plugin APIs",
+                    )))
+                    .with_hover(TextOrCustomRender::Text(
+                        main_menu_item("New Plugin APIs").selected(),
+                    ))
+                    .with_left_click_action(ClickAction::new_change_page(move || {
+                        Page::new_plugin_apis()
+                    })),
+                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
+                        "Mouse Any-Event Handling",
+                    )))
+                    .with_hover(TextOrCustomRender::Text(
+                        main_menu_item("Mouse Any-Event Handling").selected(),
+                    ))
+                    .with_left_click_action(ClickAction::new_change_page({
+                        move || Page::new_mouse_any_event()
+                    })),
+                ]),
             )
-            .with_paragraph(vec![
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(Text::new("Full Changelog: "))),
-                    ActiveComponent::new(TextOrCustomRender::Text(changelog_link_unselected(zellij_version.clone())))
-                        .with_hover(TextOrCustomRender::CustomRender(Box::new(changelog_link_selected(zellij_version.clone())), Box:: new(changelog_link_selected_len(zellij_version.clone()))))
-                        .with_left_click_action(ClickAction::new_open_link(
-                            format!("https://github.com/zellij-org/zellij/releases/tag/v{}", zellij_version.clone()),
-                            link_executable.clone())
-                        )
-                ])
-            ])
-            .with_paragraph(vec![
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(support_the_developer_text())),
-                    ActiveComponent::new(TextOrCustomRender::Text(sponsors_link_text_unselected()))
-                        .with_hover(TextOrCustomRender::CustomRender(Box::new(sponsors_link_text_selected), Box::new(sponsors_link_text_selected_len)))
-                        .with_left_click_action(ClickAction::new_open_link("https://github.com/sponsors/imsnif".to_owned(), link_executable.clone()))
-                ])
-            ])
-            .with_help(Box::new(|hovering_over_link, menu_item_is_selected| main_screen_help_text(hovering_over_link, menu_item_is_selected)))
+            .with_paragraph(vec![ComponentLine::new(vec![
+                ActiveComponent::new(TextOrCustomRender::Text(Text::new("Full Changelog: "))),
+                ActiveComponent::new(TextOrCustomRender::Text(changelog_link_unselected(
+                    zellij_version.clone(),
+                )))
+                .with_hover(TextOrCustomRender::CustomRender(
+                    Box::new(changelog_link_selected(zellij_version.clone())),
+                    Box::new(changelog_link_selected_len(zellij_version.clone())),
+                ))
+                .with_left_click_action(ClickAction::new_open_link(
+                    format!(
+                        "https://github.com/zellij-org/zellij/releases/tag/v{}",
+                        zellij_version.clone()
+                    ),
+                    link_executable.clone(),
+                )),
+            ])])
+            .with_paragraph(vec![ComponentLine::new(vec![
+                ActiveComponent::new(TextOrCustomRender::Text(support_the_developer_text())),
+                ActiveComponent::new(TextOrCustomRender::Text(sponsors_link_text_unselected()))
+                    .with_hover(TextOrCustomRender::CustomRender(
+                        Box::new(sponsors_link_text_selected),
+                        Box::new(sponsors_link_text_selected_len),
+                    ))
+                    .with_left_click_action(ClickAction::new_open_link(
+                        "https://github.com/sponsors/imsnif".to_owned(),
+                        link_executable.clone(),
+                    )),
+            ])])
+            .with_help(Box::new(|hovering_over_link, menu_item_is_selected| {
+                main_screen_help_text(hovering_over_link, menu_item_is_selected)
+            }))
     }
     pub fn new_stacked_resize(link_executable: Rc<RefCell<String>>) -> Page {
         Page::new()
@@ -127,51 +167,51 @@ impl Page {
             .with_help(Box::new(|hovering_over_link, menu_item_is_selected| esc_go_back_plus_link_hover(hovering_over_link, menu_item_is_selected)))
     }
     fn new_pinned_panes(base_mode: Rc<RefCell<InputMode>>) -> Page {
-        Page::new().with_title(Text::new("Pinned Floating Panes").color_range(0, ..))
+        Page::new()
+            .with_title(Text::new("Pinned Floating Panes").color_range(0, ..))
             .with_paragraph(vec![
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(Text::new("This version adds the ability to \"pin\" a floating pane so that it")))
-                ]),
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(Text::new("will always be visible even if floating panes are hidden.")))
-                ]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new(
+                        "This version adds the ability to \"pin\" a floating pane so that it",
+                    ),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("will always be visible even if floating panes are hidden."),
+                ))]),
             ])
-            .with_bulletin_list(BulletinList::new(Text::new(format!("Floating panes can be \"pinned\": ")).color_range(2, ..))
+            .with_bulletin_list(
+                BulletinList::new(
+                    Text::new(format!("Floating panes can be \"pinned\": ")).color_range(2, ..),
+                )
                 .with_items(vec![
                     ActiveComponent::new(TextOrCustomRender::Text(
-                            Text::new(format!("With a mouse click on their top right corner"))
-                                .color_range(3, 7..=17)
+                        Text::new(format!("With a mouse click on their top right corner"))
+                            .color_range(3, 7..=17),
                     )),
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        match *base_mode.borrow() {
-                            InputMode::Locked => {
-                                Text::new(format!("With Ctrl g + p + i"))
-                                    .color_range(3, 5..=10)
-                                    .color_range(3, 14..15)
-                                    .color_range(3, 18..19)
-                            },
-                            _ => {
-                                Text::new("With Ctrl p + i")
-                                    .color_range(3, 5..=10)
-                                    .color_range(3, 14..15)
-                            }
-                        }
-                    ))
-                ])
+                    ActiveComponent::new(TextOrCustomRender::Text(match *base_mode.borrow() {
+                        InputMode::Locked => Text::new(format!("With Ctrl g + p + i"))
+                            .color_range(3, 5..=10)
+                            .color_range(3, 14..15)
+                            .color_range(3, 18..19),
+                        _ => Text::new("With Ctrl p + i")
+                            .color_range(3, 5..=10)
+                            .color_range(3, 14..15),
+                    })),
+                ]),
             )
             .with_paragraph(vec![
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                            Text::new("A great use case for these is to tail log files or to show")
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("A great use case for these is to tail log files or to show"),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new(format!(
+                        "real-time compiler output while working in other panes."
                     )),
-                ]),
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                            Text::new(format!("real-time compiler output while working in other panes."))
-                    )),
-                ])
+                ))]),
             ])
-            .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| esc_to_go_back_help()))
+            .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
+                esc_to_go_back_help()
+            }))
     }
     fn new_theme_definition_spec(link_executable: Rc<RefCell<String>>) -> Page {
         Page::new()
@@ -218,64 +258,58 @@ impl Page {
         Page::new()
             .with_title(Text::new("New Plugin APIs").color_range(0, ..))
             .with_paragraph(vec![
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("New APIs were added in this version affording plugins")
-                    ))
-                ]),
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("finer control over the workspace.")
-                    ))
-                ]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("New APIs were added in this version affording plugins"),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("finer control over the workspace."),
+                ))]),
             ])
-            .with_bulletin_list(BulletinList::new(Text::new("Some examples:").color_range(2, ..))
-                .with_items(vec![
+            .with_bulletin_list(
+                BulletinList::new(Text::new("Some examples:").color_range(2, ..)).with_items(vec![
                     ActiveComponent::new(TextOrCustomRender::Text(
                         Text::new("Change floating panes' coordinates and size")
                             .color_range(3, 23..=33)
-                            .color_range(3, 39..=42)
+                            .color_range(3, 39..=42),
                     )),
                     ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("Stack arbitrary panes")
-                            .color_range(3, ..=4)
+                        Text::new("Stack arbitrary panes").color_range(3, ..=4),
                     )),
                     ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("Change /host folder")
-                            .color_range(3, 7..=11)
+                        Text::new("Change /host folder").color_range(3, 7..=11),
                     )),
                     ActiveComponent::new(TextOrCustomRender::Text(
                         Text::new("Discover the user's $SHELL and $EDITOR")
                             .color_range(3, 20..=25)
-                            .color_range(3, 31..=37)
-                    ))
-                ])
+                            .color_range(3, 31..=37),
+                    )),
+                ]),
             )
-            .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| esc_to_go_back_help()))
+            .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
+                esc_to_go_back_help()
+            }))
     }
     fn new_mouse_any_event() -> Page {
         Page::new()
             .with_title(Text::new("Mosue Any-Event Tracking").color_range(0, ..))
             .with_paragraph(vec![
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("This version adds the capability to track mouse motions more accurately")
-                    ))
-                ]),
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("both in Zellij, in terminal panes and in plugin panes.")
-                    ))
-                ]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new(
+                        "This version adds the capability to track mouse motions more accurately",
+                    ),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("both in Zellij, in terminal panes and in plugin panes."),
+                ))]),
             ])
-            .with_paragraph(vec![
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("Future versions will also build on this capability to improve the Zellij UI")
-                    ))
-                ]),
-            ])
-            .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| esc_to_go_back_help()))
+            .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
+                TextOrCustomRender::Text(Text::new(
+                    "Future versions will also build on this capability to improve the Zellij UI",
+                )),
+            )])])
+            .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
+                esc_to_go_back_help()
+            }))
     }
 }
 
@@ -299,15 +333,18 @@ impl Page {
         self
     }
     pub fn with_bulletin_list(mut self, bulletin_list: BulletinList) -> Self {
-        self.components_to_render.push(RenderedComponent::BulletinList(bulletin_list));
+        self.components_to_render
+            .push(RenderedComponent::BulletinList(bulletin_list));
         self
     }
     pub fn with_paragraph(mut self, paragraph: Vec<ComponentLine>) -> Self {
-        self.components_to_render.push(RenderedComponent::Paragraph(paragraph));
+        self.components_to_render
+            .push(RenderedComponent::Paragraph(paragraph));
         self
     }
     pub fn with_help(mut self, help_text_fn: Box<dyn Fn(bool, bool) -> Text>) -> Self {
-        self.components_to_render.push(RenderedComponent::HelpText(help_text_fn));
+        self.components_to_render
+            .push(RenderedComponent::HelpText(help_text_fn));
         self
     }
     pub fn handle_key(&mut self, key: KeyWithModifier) -> bool {
@@ -329,7 +366,7 @@ impl Page {
                     if page_to_render.is_some() {
                         return page_to_render;
                     }
-                }
+                },
                 RenderedComponent::Paragraph(paragraph) => {
                     for component_line in paragraph {
                         let page_to_render = component_line.handle_left_click_at_position(x, y);
@@ -338,7 +375,7 @@ impl Page {
                         }
                     }
                 },
-                _ => {}
+                _ => {},
             }
         }
         None
@@ -352,7 +389,7 @@ impl Page {
                         return page_to_render;
                     }
                 },
-                _ => {}
+                _ => {},
             }
         }
         None
@@ -369,7 +406,7 @@ impl Page {
                         self.menu_item_is_selected = true;
                         return should_render;
                     }
-                }
+                },
                 RenderedComponent::Paragraph(paragraph) => {
                     for component_line in paragraph {
                         let should_render = component_line.handle_hover_at_position(x, y);
@@ -380,7 +417,7 @@ impl Page {
                         }
                     }
                 },
-                _ => {}
+                _ => {},
             }
         }
         hover_cleared
@@ -397,9 +434,8 @@ impl Page {
             _ => {
                 self.clear_active_bulletins();
                 self.set_last_active_bulletin();
-            }
+            },
         }
-
     }
     fn move_selection_down(&mut self) {
         match self.position_of_active_bulletin() {
@@ -409,36 +445,44 @@ impl Page {
             },
             None => {
                 self.set_active_bulletin(0);
-            }
+            },
         }
     }
     fn position_of_active_bulletin(&self) -> Option<usize> {
         self.components_to_render.iter().find_map(|c| match c {
-            RenderedComponent::BulletinList(bulletin_list) => bulletin_list.active_component_position(),
-            _ => None
+            RenderedComponent::BulletinList(bulletin_list) => {
+                bulletin_list.active_component_position()
+            },
+            _ => None,
         })
     }
     fn clear_active_bulletins(&mut self) {
         self.components_to_render.iter_mut().for_each(|c| {
             match c {
-                RenderedComponent::BulletinList(bulletin_list) => Some(bulletin_list.clear_active_bulletins()),
-                _ => None
+                RenderedComponent::BulletinList(bulletin_list) => {
+                    Some(bulletin_list.clear_active_bulletins())
+                },
+                _ => None,
             };
         });
     }
     fn set_active_bulletin(&mut self, active_bulletin_position: usize) {
         self.components_to_render.iter_mut().for_each(|c| {
             match c {
-                RenderedComponent::BulletinList(bulletin_list) => bulletin_list.set_active_bulletin(active_bulletin_position),
-                _ => {}
+                RenderedComponent::BulletinList(bulletin_list) => {
+                    bulletin_list.set_active_bulletin(active_bulletin_position)
+                },
+                _ => {},
             };
         });
     }
     fn set_last_active_bulletin(&mut self) {
         self.components_to_render.iter_mut().for_each(|c| {
             match c {
-                RenderedComponent::BulletinList(bulletin_list) => bulletin_list.set_last_active_bulletin(),
-                _ => {}
+                RenderedComponent::BulletinList(bulletin_list) => {
+                    bulletin_list.set_last_active_bulletin()
+                },
+                _ => {},
             };
         });
     }
@@ -450,13 +494,13 @@ impl Page {
             match rendered_component {
                 RenderedComponent::BulletinList(bulletin_list) => {
                     bulletin_list.clear_hover();
-                }
+                },
                 RenderedComponent::Paragraph(paragraph) => {
                     for active_component in paragraph {
                         active_component.clear_hover();
                     }
                 },
-                _ => {}
+                _ => {},
             }
         }
         self.has_hover = false;
@@ -468,15 +512,15 @@ impl Page {
             match rendered_component {
                 RenderedComponent::BulletinList(bulletin_list) => {
                     column_count = std::cmp::max(column_count, bulletin_list.column_count());
-                }
+                },
                 RenderedComponent::Paragraph(paragraph) => {
                     for active_component in paragraph {
                         column_count = std::cmp::max(column_count, active_component.column_count());
                     }
-                }
-                RenderedComponent::HelpText(_text) => {} // we ignore help text in column
-                                                         // calculation because it's always left
-                                                         // justified
+                },
+                RenderedComponent::HelpText(_text) => {}, // we ignore help text in column
+                                                          // calculation because it's always left
+                                                          // justified
             }
         }
         column_count
@@ -490,12 +534,12 @@ impl Page {
             match rendered_component {
                 RenderedComponent::BulletinList(bulletin_list) => {
                     row_count += bulletin_list.len();
-                }
+                },
                 RenderedComponent::Paragraph(paragraph) => {
                     row_count += paragraph.len();
-                }
-                RenderedComponent::HelpText(_text) => {} // we ignore help text as it is outside
-                                                         // the UI container
+                },
+                RenderedComponent::HelpText(_text) => {}, // we ignore help text as it is outside
+                                                          // the UI container
             }
         }
         row_count += self.components_to_render.len();
@@ -506,7 +550,13 @@ impl Page {
         let base_y = rows.saturating_sub(self.ui_row_count()) / 2;
         let mut current_y = base_y;
         if let Some(title) = &self.title {
-            print_text_with_coordinates(title.clone(), base_x, current_y, Some(columns), Some(rows));
+            print_text_with_coordinates(
+                title.clone(),
+                base_x,
+                current_y,
+                Some(columns),
+                Some(rows),
+            );
             current_y += 2;
         }
         for rendered_component in &mut self.components_to_render {
@@ -514,33 +564,42 @@ impl Page {
                 RenderedComponent::HelpText(_) => true,
                 _ => false,
             };
-            let y = if is_help {
-                rows
-            } else {
-                current_y
-            };
-            let rendered_rows = rendered_component.render(base_x, y, rows, columns.saturating_sub(base_x * 2), self.hovering_over_link, self.menu_item_is_selected);
+            let y = if is_help { rows } else { current_y };
+            let rendered_rows = rendered_component.render(
+                base_x,
+                y,
+                rows,
+                columns.saturating_sub(base_x * 2),
+                self.hovering_over_link,
+                self.menu_item_is_selected,
+            );
             current_y += rendered_rows + 1; // 1 for the line space between components
         }
     }
 }
 
 fn changelog_link_unselected(version: String) -> Text {
-    let full_changelog_text = format!("https://github.com/zellij-org/zellij/releases/tag/v{}", version);
+    let full_changelog_text = format!(
+        "https://github.com/zellij-org/zellij/releases/tag/v{}",
+        version
+    );
     Text::new(full_changelog_text)
 }
 
-fn changelog_link_selected(version: String) -> Box<dyn Fn(usize, usize)-> usize>  {
-    Box::new(move |x, y|{
-        print!("\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4mhttps://github.com/zellij-org/zellij/releases/tag/v{}", y + 1, x + 1, version);
+fn changelog_link_selected(version: String) -> Box<dyn Fn(usize, usize) -> usize> {
+    Box::new(move |x, y| {
+        print!(
+            "\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4mhttps://github.com/zellij-org/zellij/releases/tag/v{}",
+            y + 1,
+            x + 1,
+            version
+        );
         51 + version.chars().count()
     })
 }
 
-fn changelog_link_selected_len(version: String) -> Box<dyn Fn() -> usize>  {
-    Box::new(move ||{
-        51 + version.chars().count()
-    })
+fn changelog_link_selected_len(version: String) -> Box<dyn Fn() -> usize> {
+    Box::new(move || 51 + version.chars().count())
 }
 
 fn sponsors_link_text_unselected() -> Text {
@@ -548,7 +607,11 @@ fn sponsors_link_text_unselected() -> Text {
 }
 
 fn sponsors_link_text_selected(x: usize, y: usize) -> usize {
-    print!("\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4mhttps://github.com/sponsors/imsnif", y + 1, x + 1);
+    print!(
+        "\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4mhttps://github.com/sponsors/imsnif",
+        y + 1,
+        x + 1
+    );
     34
 }
 
@@ -557,7 +620,11 @@ fn sponsors_link_text_selected_len() -> usize {
 }
 
 fn stacked_resize_screencast_link_selected(x: usize, y: usize) -> usize {
-    print!("\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4mhttps://zellij.dev/screencasts/stacked-resize", y + 1, x + 1);
+    print!(
+        "\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4mhttps://zellij.dev/screencasts/stacked-resize",
+        y + 1,
+        x + 1
+    );
     45
 }
 
@@ -566,7 +633,11 @@ fn stacked_resize_screencast_link_selected_len() -> usize {
 }
 
 fn theme_link_selected(x: usize, y: usize) -> usize {
-    print!("\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4mhttps://zellij.dev/documentation/themes", y + 1, x + 1);
+    print!(
+        "\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4mhttps://zellij.dev/documentation/themes",
+        y + 1,
+        x + 1
+    );
     39
 }
 fn theme_link_selected_len() -> usize {
@@ -611,16 +682,13 @@ fn esc_go_back_plus_link_hover(hovering_over_link: bool, _menu_item_is_selected:
             .color_range(3, 15..=25)
     } else {
         let help_text = format!("Help: <ESC> - Go back");
-        Text::new(help_text)
-            .color_range(1, 6..=10)
+        Text::new(help_text).color_range(1, 6..=10)
     }
 }
 
-
 fn esc_to_go_back_help() -> Text {
     let help_text = format!("Help: <ESC> - Go back");
-    Text::new(help_text)
-        .color_range(1, 6..=10)
+    Text::new(help_text).color_range(1, 6..=10)
 }
 
 fn main_menu_item(item_name: &str) -> Text {
@@ -636,7 +704,7 @@ pub enum TextOrCustomRender {
     Text(Text),
     CustomRender(
         Box<dyn Fn(usize, usize) -> usize>, // (rows, columns) -> text_len (render function)
-        Box<dyn Fn() -> usize>, // length of rendered component
+        Box<dyn Fn() -> usize>,             // length of rendered component
     ),
 }
 
@@ -653,9 +721,7 @@ impl TextOrCustomRender {
                 print_text_with_coordinates(text.clone(), x, y, Some(columns), Some(rows));
                 text.len()
             },
-            TextOrCustomRender::CustomRender(render_fn, _len_fn) => {
-                render_fn(x, y)
-            }
+            TextOrCustomRender::CustomRender(render_fn, _len_fn) => render_fn(x, y),
         }
     }
 }
@@ -686,25 +752,44 @@ impl std::fmt::Debug for RenderedComponent {
 }
 
 impl RenderedComponent {
-    pub fn render(&mut self, x: usize, y: usize, rows: usize, columns: usize, hovering_over_link: bool, menu_item_is_selected: bool) -> usize {
+    pub fn render(
+        &mut self,
+        x: usize,
+        y: usize,
+        rows: usize,
+        columns: usize,
+        hovering_over_link: bool,
+        menu_item_is_selected: bool,
+    ) -> usize {
         let mut rendered_rows = 0;
         match self {
             RenderedComponent::HelpText(text) => {
                 rendered_rows += 1;
-                print_text_with_coordinates(text(hovering_over_link, menu_item_is_selected), 0, y, Some(columns), Some(rows));
-            }
+                print_text_with_coordinates(
+                    text(hovering_over_link, menu_item_is_selected),
+                    0,
+                    y,
+                    Some(columns),
+                    Some(rows),
+                );
+            },
             RenderedComponent::BulletinList(bulletin_list) => {
                 rendered_rows += bulletin_list.len();
                 bulletin_list.render(x, y, rows, columns);
-            }
+            },
             RenderedComponent::Paragraph(paragraph) => {
                 let mut paragraph_rendered_rows = 0;
                 for component_line in paragraph {
-                    component_line.render(x, y + paragraph_rendered_rows, rows.saturating_sub(paragraph_rendered_rows), columns);
+                    component_line.render(
+                        x,
+                        y + paragraph_rendered_rows,
+                        rows.saturating_sub(paragraph_rendered_rows),
+                        columns,
+                    );
                     rendered_rows += 1;
                     paragraph_rendered_rows += 1;
                 }
-            }
+            },
         }
         rendered_rows
     }
@@ -714,14 +799,13 @@ impl RenderedComponent {
 pub struct BulletinList {
     title: Text,
     items: Vec<ActiveComponent>,
-
 }
 
 impl BulletinList {
     pub fn new(title: Text) -> Self {
         BulletinList {
             title,
-            items: vec![]
+            items: vec![],
         }
     }
     pub fn with_items(mut self, items: Vec<ActiveComponent>) -> Self {
@@ -742,7 +826,7 @@ impl BulletinList {
         for component in &mut self.items {
             let page_to_render = component.handle_left_click_at_position(x, y);
             if page_to_render.is_some() {
-                return page_to_render
+                return page_to_render;
             }
         }
         None
@@ -751,7 +835,7 @@ impl BulletinList {
         for component in &mut self.items {
             let page_to_render = component.handle_selection();
             if page_to_render.is_some() {
-                return page_to_render
+                return page_to_render;
             }
         }
         None
@@ -798,8 +882,19 @@ impl BulletinList {
                 item_bulletin_text = item_bulletin_text.selected();
             }
             let item_bulletin_text_len = item_bulletin_text.len();
-            print_text_with_coordinates(item_bulletin_text, x, running_y, Some(item_bulletin_text_len), Some(rows));
-            item.render(x + item_bulletin_text_len, running_y, rows, columns.saturating_sub(item_bulletin_text_len));
+            print_text_with_coordinates(
+                item_bulletin_text,
+                x,
+                running_y,
+                Some(item_bulletin_text_len),
+                Some(rows),
+            );
+            item.render(
+                x + item_bulletin_text_len,
+                running_y,
+                rows,
+                columns.saturating_sub(item_bulletin_text_len),
+            );
             running_y += 1;
             item_bulletin += 1;
         }
@@ -808,7 +903,7 @@ impl BulletinList {
 
 #[derive(Debug)]
 pub struct ComponentLine {
-    components: Vec<ActiveComponent>
+    components: Vec<ActiveComponent>,
 }
 
 impl ComponentLine {
@@ -855,8 +950,6 @@ impl ComponentLine {
 
 impl ComponentLine {
     pub fn new(components: Vec<ActiveComponent>) -> Self {
-        ComponentLine {
-            components
-        }
+        ComponentLine { components }
     }
 }

@@ -285,7 +285,6 @@ impl PaneGeom {
             let new_rows = (viewport.y + viewport.rows).saturating_sub(self.y);
             self.rows.set_inner(new_rows);
         }
-        log::info!("self.columns after: {:?}", self.cols);
     }
     pub fn combine_vertically_with(&self, geom_below: &PaneGeom) -> Option<Self> {
         match (self.rows.constraint, geom_below.rows.constraint) {
