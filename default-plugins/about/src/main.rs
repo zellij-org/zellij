@@ -20,6 +20,8 @@ struct App {
     tab_columns: usize,
     own_plugin_id: Option<u32>,
     is_release_notes: bool,
+    is_startup_tip: bool,
+    tip_index: usize,
 }
 
 impl Default for App {
@@ -40,6 +42,8 @@ impl Default for App {
             tab_columns: 0,
             own_plugin_id: None,
             is_release_notes: false,
+            is_startup_tip: false,
+            tip_index: 0,
         }
     }
 }
@@ -50,6 +54,10 @@ impl ZellijPlugin for App {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
         self.is_release_notes = configuration
             .get("is_release_notes")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        self.is_startup_tip = configuration
+            .get("is_startup_tip")
             .map(|v| v == "true")
             .unwrap_or(false);
         subscribe(&[
@@ -64,11 +72,20 @@ impl ZellijPlugin for App {
         *self.zellij_version.borrow_mut() = get_zellij_version();
         self.change_own_title();
         self.query_link_executable();
-        self.active_page = Page::new_main_screen(
-            self.link_executable.clone(),
-            self.zellij_version.borrow().clone(),
-            self.base_mode.clone(),
-        );
+        self.active_page = if self.is_startup_tip {
+            Page::new_tip_screen(
+                self.link_executable.clone(),
+                self.zellij_version.borrow().clone(),
+                self.base_mode.clone(),
+                self.tip_index,
+            )
+        } else {
+            Page::new_main_screen(
+                self.link_executable.clone(),
+                self.zellij_version.borrow().clone(),
+                self.base_mode.clone(),
+            )
+        };
     }
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
@@ -162,7 +179,13 @@ impl App {
     }
     pub fn handle_key(&mut self, key: KeyWithModifier) -> bool {
         let mut should_render = false;
-        if key.bare_key == BareKey::Enter && key.has_no_modifiers() {
+        if key.bare_key == BareKey::Up && key.has_no_modifiers() && self.is_startup_tip{
+            self.previous_tip();
+            should_render = true;
+        } else if key.bare_key == BareKey::Down && key.has_no_modifiers() && self.is_startup_tip{
+            self.next_tip();
+            should_render = true;
+        } else if key.bare_key == BareKey::Enter && key.has_no_modifiers() {
             if let Some(new_page) = self.active_page.handle_selection() {
                 self.active_page = new_page;
                 should_render = true;
@@ -207,5 +230,24 @@ impl App {
                 )]);
             }
         }
+    }
+    fn previous_tip(&mut self) {
+        self.tip_index = self.tip_index.saturating_sub(1);
+        self.active_page = Page::new_tip_screen(
+            self.link_executable.clone(),
+            self.zellij_version.borrow().clone(),
+            self.base_mode.clone(),
+            self.tip_index,
+        );
+    }
+    fn next_tip(&mut self) {
+        // TODO: max tip index
+        self.tip_index += 1;
+        self.active_page = Page::new_tip_screen(
+            self.link_executable.clone(),
+            self.zellij_version.borrow().clone(),
+            self.base_mode.clone(),
+            self.tip_index,
+        );
     }
 }

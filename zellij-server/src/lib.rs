@@ -709,6 +709,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     } else if should_show_release_notes() {
                         let about = about_floating_pane();
                         floating_panes.push(about);
+                    } else if should_show_startup_tip() {
+                        let tip = tip_floating_pane();
+                        floating_panes.push(tip);
                     }
                     spawn_tabs(
                         None,
@@ -1506,6 +1509,17 @@ fn about_floating_pane() -> FloatingPaneLayout {
     about_pane
 }
 
+fn tip_floating_pane() -> FloatingPaneLayout {
+    let mut about_pane = FloatingPaneLayout::new();
+    let configuration = BTreeMap::from_iter([("is_startup_tip".to_owned(), "true".to_owned())]);
+    about_pane.run = Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias::new(
+        "about",
+        &Some(configuration),
+        None,
+    ))));
+    about_pane
+}
+
 fn should_show_release_notes() -> bool {
     if ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE.exists() {
         return false;
@@ -1519,6 +1533,11 @@ fn should_show_release_notes() -> bool {
         }
         return true;
     }
+}
+
+fn should_show_startup_tip() -> bool {
+    // TODO: from config and changeable through the startup tip itself
+    true
 }
 
 #[cfg(not(feature = "singlepass"))]
