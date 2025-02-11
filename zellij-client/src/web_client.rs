@@ -270,6 +270,10 @@ async fn handle_ws_control(mut socket: WebSocket, state: AppState) {
                     },
                 }
             },
+            Message::Close(_) => {
+                log::info!("Control WebSocket connection closed, exiting");
+                return;
+            },
             _ => {
                 log::error!("Unsupported messagetype : {:?}", msg);
             },
@@ -350,6 +354,10 @@ async fn handle_ws_terminal(
                         log::error!("Failed to deserialize stdin: {}", e);
                     },
                 }
+            },
+            Message::Close(_) => {
+                log::info!("Client WebSocket connection closed, exiting");
+                break;
             },
             _ => {
                 log::error!("Unsupported websocket msg type");
