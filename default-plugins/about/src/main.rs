@@ -1,8 +1,10 @@
 mod active_component;
 mod pages;
+mod tips;
 use zellij_tile::prelude::*;
 
 use pages::Page;
+use tips::MAX_TIP_INDEX;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -75,7 +77,6 @@ impl ZellijPlugin for App {
         self.active_page = if self.is_startup_tip {
             Page::new_tip_screen(
                 self.link_executable.clone(),
-                self.zellij_version.borrow().clone(),
                 self.base_mode.clone(),
                 self.tip_index,
             )
@@ -232,20 +233,25 @@ impl App {
         }
     }
     fn previous_tip(&mut self) {
-        self.tip_index = self.tip_index.saturating_sub(1);
+        if self.tip_index == 0 {
+            self.tip_index = MAX_TIP_INDEX;
+        } else {
+            self.tip_index = self.tip_index.saturating_sub(1);
+        }
         self.active_page = Page::new_tip_screen(
             self.link_executable.clone(),
-            self.zellij_version.borrow().clone(),
             self.base_mode.clone(),
             self.tip_index,
         );
     }
     fn next_tip(&mut self) {
-        // TODO: max tip index
-        self.tip_index += 1;
+        if self.tip_index == MAX_TIP_INDEX {
+            self.tip_index = 0;
+        } else {
+            self.tip_index += 1;
+        }
         self.active_page = Page::new_tip_screen(
             self.link_executable.clone(),
-            self.zellij_version.borrow().clone(),
             self.base_mode.clone(),
             self.tip_index,
         );
