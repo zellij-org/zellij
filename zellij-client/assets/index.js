@@ -109,12 +109,15 @@ document.addEventListener("DOMContentLoaded", (event) => {
         // here we use some internal functions in a hopefully non-destructive way to calculate the
         // columns/rows to send from the x/y coordinates - it's safe to always send these because Zellij
         // always requests mouse AnyEvent handling
-        let {col, row} = term._core._mouseService.getMouseReportCoords(event, terminal_element);
-        if (prev_col != col || prev_row != row) {
-          send_ansi_key(`\x1b[<35;${col + 1};${row + 1}M`);
+        if (event.buttons == 0) {
+          // this means no mouse buttons are pressed and this is just a mouse movement
+          let {col, row} = term._core._mouseService.getMouseReportCoords(event, terminal_element);
+          if (prev_col != col || prev_row != row) {
+            send_ansi_key(`\x1b[<35;${col + 1};${row + 1}M`);
+          }
+          prev_col = col;
+          prev_row = row;
         }
-        prev_col = col;
-        prev_row = row;
     });
 
     term.onData((data) => {
@@ -221,7 +224,9 @@ document.addEventListener("DOMContentLoaded", (event) => {
 function initTerminal() {
     const term = new Terminal({ fontFamily: "Monospace" });
     const fitAddon = new FitAddon.FitAddon();
+    const clipboardAddon = new ClipboardAddon.ClipboardAddon();
     term.loadAddon(fitAddon);
+    term.loadAddon(clipboardAddon);
     term.open(document.getElementById("terminal"));
     fitAddon.fit();
     console.log(`Initialized terminal, rows: ${term.rows}, cols: ${term.cols}`);
