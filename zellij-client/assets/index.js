@@ -98,6 +98,25 @@ document.addEventListener("DOMContentLoaded", (event) => {
         return true;
     });
 
+    // TODO: test performance here
+    let prev_col = 0;
+    let prev_row = 0;
+    let terminal_element = document.getElementById("terminal");
+    terminal_element.addEventListener('mousemove', function(event) {
+        // this is a hack around: https://github.com/xtermjs/xterm.js/issues/1062
+        // in short, xterm.js doesn't listen to mousemove at all and so even though
+        // we send it a request for AnyEvent mouse handling, we don't get motion events in return
+        // here we use some internal functions in a hopefully non-destructive way to calculate the
+        // columns/rows to send from the x/y coordinates - it's safe to always send these because Zellij
+        // always requests mouse AnyEvent handling
+        let {col, row} = term._core._mouseService.getMouseReportCoords(event, terminal_element);
+        if (prev_col != col || prev_row != row) {
+          send_ansi_key(`\x1b[<35;${col + 1};${row + 1}M`);
+        }
+        prev_col = col;
+        prev_row = row;
+    });
+
     term.onData((data) => {
         if (!own_web_client_id == "") {
             ws_terminal.send(

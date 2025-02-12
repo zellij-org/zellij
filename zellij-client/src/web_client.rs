@@ -502,9 +502,9 @@ fn zellij_server_listener(
                     let _config_file_watcher = report_changes_in_config_file(&CliArgs::default(), &os_input);
                     loop {
                         match os_input.recv_from_server() {
-                            //             Some((ServerToClientMsg::UnblockInputThread, _)) => {
-                            //                 break;
-                            //             },
+                            Some((ServerToClientMsg::UnblockInputThread, _)) => {
+                                // no-op - no longer relevant
+                            },
                             //             Some((ServerToClientMsg::Log(log_lines), _)) => {
                             //                 log_lines.iter().for_each(|line| println!("{line}"));
                             //                 break;
