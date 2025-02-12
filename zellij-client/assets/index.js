@@ -203,10 +203,10 @@ document.addEventListener("DOMContentLoaded", (event) => {
 
     ws_terminal.onmessage = function (event) {
         let msg = JSON.parse(event.data);
-        console.log(
-            "Received message from WebSocket terminal server",
-            event.data
-        );
+//         console.log(
+//             "Received message from WebSocket terminal server",
+//             event.data
+//         );
         if (own_web_client_id == "") {
             own_web_client_id = msg.web_client_id;
             const ws_control_url = `ws://127.0.0.1:8082/ws/control`;
@@ -214,7 +214,7 @@ document.addEventListener("DOMContentLoaded", (event) => {
             start_ws_control();
         }
         term.write(msg.bytes);
-    };
+   };
 
     ws_terminal.onclose = function () {
         console.log("Disconnected from WebSocket terminal server");
@@ -222,11 +222,19 @@ document.addEventListener("DOMContentLoaded", (event) => {
 });
 
 function initTerminal() {
-    const term = new Terminal({ fontFamily: "Monospace" });
+    const term = new Terminal({ fontFamily: "Monospace", allowProposedApi: true });
     const fitAddon = new FitAddon.FitAddon();
     const clipboardAddon = new ClipboardAddon.ClipboardAddon();
+    const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+    const webglAddon= new WebglAddon.WebglAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(clipboardAddon);
+    term.loadAddon(webLinksAddon);
+    webglAddon.onContextLoss(e => {
+      // TODO: reload, or?
+      webglAddon.dispose();
+    });
+    term.loadAddon(webglAddon);
     term.open(document.getElementById("terminal"));
     fitAddon.fit();
     console.log(`Initialized terminal, rows: ${term.rows}, cols: ${term.cols}`);
