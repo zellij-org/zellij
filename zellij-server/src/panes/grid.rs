@@ -2637,6 +2637,9 @@ impl Perform for Grid {
                     }
                 } else if clear_type == 3 {
                     self.clear_lines_above();
+                    if let Some(images_to_reap) = self.sixel_grid.clear() {
+                        self.sixel_grid.reap_images(images_to_reap);
+                    }
                 }
             };
         } else if c == 'H' || c == 'f' {
