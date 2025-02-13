@@ -877,11 +877,7 @@ pub(crate) fn plugin_thread_main(
                 // TODO: notify plugins that this happened so that they can eg. rebind temporary keys that
                 // were lost
                 if was_written_to_disk {
-                    let updates = vec![(
-                        None,
-                        None,
-                        Event::ConfigWasWrittenToDisk,
-                    )];
+                    let updates = vec![(None, None, Event::ConfigWasWrittenToDisk)];
                     wasm_bridge
                         .update_plugins(updates, shutdown_send.clone())
                         .non_fatal();

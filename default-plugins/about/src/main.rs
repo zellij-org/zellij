@@ -4,12 +4,12 @@ mod tips;
 use zellij_tile::prelude::*;
 
 use pages::Page;
-use tips::MAX_TIP_INDEX;
+use rand::prelude::*;
+use rand::rng;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
-use rand::prelude::*;
-use rand::rng;
+use tips::MAX_TIP_INDEX;
 
 const UI_ROWS: usize = 20;
 const UI_COLUMNS: usize = 90;
@@ -109,18 +109,18 @@ impl ZellijPlugin for App {
                         Some(file_path) => {
                             format!("Failed to write config to disk at: {}", file_path)
                         },
-                        None => format!("Failed to write config to disk.")
+                        None => format!("Failed to write config to disk."),
                     };
                     eprintln!("{}", error);
                     self.error = Some(error);
                     should_render = true;
                 }
-            }
+            },
             Event::ConfigWasWrittenToDisk => {
                 if self.waiting_for_config_to_be_written {
                     close_self();
                 }
-            }
+            },
             Event::TabUpdate(tab_info) => {
                 self.center_own_pane(tab_info);
             },
@@ -215,10 +215,10 @@ impl App {
     }
     pub fn handle_key(&mut self, key: KeyWithModifier) -> bool {
         let mut should_render = false;
-        if key.bare_key == BareKey::Up && key.has_no_modifiers() && self.is_startup_tip{
+        if key.bare_key == BareKey::Up && key.has_no_modifiers() && self.is_startup_tip {
             self.previous_tip();
             should_render = true;
-        } else if key.bare_key == BareKey::Down && key.has_no_modifiers() && self.is_startup_tip{
+        } else if key.bare_key == BareKey::Down && key.has_no_modifiers() && self.is_startup_tip {
             self.next_tip();
             should_render = true;
         } else if key.bare_key == BareKey::Enter && key.has_no_modifiers() {
@@ -226,7 +226,10 @@ impl App {
                 self.active_page = new_page;
                 should_render = true;
             }
-        } else if key.bare_key == BareKey::Char('c') && key.has_modifiers(&[KeyModifier::Ctrl]) && self.is_startup_tip {
+        } else if key.bare_key == BareKey::Char('c')
+            && key.has_modifiers(&[KeyModifier::Ctrl])
+            && self.is_startup_tip
+        {
             self.waiting_for_config_to_be_written = true;
             let save_configuration = true;
             reconfigure("show_startup_tips false".to_owned(), save_configuration);
@@ -242,7 +245,10 @@ impl App {
                 );
                 should_render = true;
             }
-        } else if key.bare_key == BareKey::Char('?') && !self.is_release_notes && !self.is_startup_tip {
+        } else if key.bare_key == BareKey::Char('?')
+            && !self.is_release_notes
+            && !self.is_startup_tip
+        {
             self.is_startup_tip = true;
             self.active_page = Page::new_tip_screen(
                 self.link_executable.clone(),

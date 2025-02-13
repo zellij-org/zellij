@@ -576,7 +576,11 @@ impl Page {
                 }
             }
             let y = if is_help { rows } else { current_y };
-            let columns = if is_help { columns } else { columns.saturating_sub(base_x * 2) };
+            let columns = if is_help {
+                columns
+            } else {
+                columns.saturating_sub(base_x * 2)
+            };
             let rendered_rows = rendered_component.render(
                 base_x,
                 y,
@@ -596,7 +600,7 @@ fn render_error(error: &str, y: usize) {
         0,
         y,
         None,
-        None
+        None,
     );
 }
 

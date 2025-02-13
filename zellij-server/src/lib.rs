@@ -336,7 +336,11 @@ impl SessionMetaData {
             self.current_input_modes.insert(client_id, input_mode);
         }
     }
-    pub fn propagate_configuration_changes(&mut self, config_changes: Vec<(ClientId, Config)>, config_was_written_to_disk: bool) {
+    pub fn propagate_configuration_changes(
+        &mut self,
+        config_changes: Vec<(ClientId, Config)>,
+        config_was_written_to_disk: bool,
+    ) {
         for (client_id, new_config) in config_changes {
             self.default_shell = new_config.options.default_shell.as_ref().map(|shell| {
                 TerminalAction::RunCommand(RunCommand {
@@ -1176,7 +1180,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .unwrap()
                             .as_mut()
                             .unwrap()
-                            .propagate_configuration_changes(vec![(client_id, new_config)], config_was_written_to_disk);
+                            .propagate_configuration_changes(
+                                vec![(client_id, new_config)],
+                                config_was_written_to_disk,
+                            );
                     }
                 }
             },
@@ -1239,7 +1246,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .unwrap()
                             .as_mut()
                             .unwrap()
-                            .propagate_configuration_changes(vec![(client_id, new_config)], config_was_written_to_disk);
+                            .propagate_configuration_changes(
+                                vec![(client_id, new_config)],
+                                config_was_written_to_disk,
+                            );
                     }
                 }
             },

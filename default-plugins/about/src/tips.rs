@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::active_component::{ActiveComponent, ClickAction};
-use crate::pages::{Page, ComponentLine, BulletinList, TextOrCustomRender};
+use crate::pages::{BulletinList, ComponentLine, Page, TextOrCustomRender};
 
 pub const MAX_TIP_INDEX: usize = 11;
 
@@ -42,9 +42,7 @@ impl Page {
             Page::tip_1(link_executable)
         }
     }
-    pub fn tip_1(
-        link_executable: Rc<RefCell<String>>,
-    ) -> Self {
+    pub fn tip_1(link_executable: Rc<RefCell<String>>) -> Self {
         Page::new()
             .main_screen()
             .with_title(Text::new("Zellij Tip #1").color_range(0, ..))
@@ -88,10 +86,7 @@ impl Page {
                 tips_help_text(hovering_over_link)
             }))
     }
-    pub fn tip_2(
-        link_executable: Rc<RefCell<String>>,
-        base_mode: Rc<RefCell<InputMode>>,
-    ) -> Self {
+    pub fn tip_2(link_executable: Rc<RefCell<String>>, base_mode: Rc<RefCell<InputMode>>) -> Self {
         Page::new()
             .main_screen()
             .with_title(Text::new("Zellij Tip #2").color_range(0, ..))
@@ -142,25 +137,21 @@ impl Page {
                 tips_help_text(hovering_over_link)
             }))
     }
-    pub fn tip_3(
-        link_executable: Rc<RefCell<String>>,
-    ) -> Self {
+    pub fn tip_3(link_executable: Rc<RefCell<String>>) -> Self {
         Page::new()
             .main_screen()
             .with_title(Text::new("Zellij Tip #3").color_range(0, ..))
             .with_paragraph(vec![
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("Want to make your floating pane bigger?")
-                    ))
-                ]),
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("You can switch to the ENLARGED layout with Alt ] while focused on it.")
-                            .color_range(2, 22..=29)
-                            .color_range(0, 43..=47)
-                    ))
-                ])
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("Want to make your floating pane bigger?"),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new(
+                        "You can switch to the ENLARGED layout with Alt ] while focused on it.",
+                    )
+                    .color_range(2, 22..=29)
+                    .color_range(0, 43..=47),
+                ))]),
             ])
             .with_paragraph(vec![ComponentLine::new(vec![
                 ActiveComponent::new(TextOrCustomRender::Text(support_the_developer_text())),
@@ -184,9 +175,7 @@ impl Page {
             .with_title(Text::new("Zellij tip #4").color_range(0, ..))
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new(
-                        "It's possible to \"pin\" a floating pane so that it will always",
-                    ),
+                    Text::new("It's possible to \"pin\" a floating pane so that it will always"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
                     Text::new("be visible even if floating panes are hidden."),
@@ -375,30 +364,44 @@ impl Page {
         Page::new()
             .main_screen()
             .with_title(Text::new("Zellij Tip #7").color_range(0, ..))
-            .with_paragraph(vec![
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(Text::new("Want to customize the appearance and colors of Zellij?")))
-                ]),
-            ])
+            .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
+                TextOrCustomRender::Text(Text::new(
+                    "Want to customize the appearance and colors of Zellij?",
+                )),
+            )])])
             .with_paragraph(vec![
                 ComponentLine::new(vec![
                     ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("Check out the built-in themes: ")
-                            .color_range(2, ..)
+                        Text::new("Check out the built-in themes: ").color_range(2, ..),
                     )),
-                    ActiveComponent::new(TextOrCustomRender::Text(Text::new("https://zellij.dev/documentation/theme-list")))
-                        .with_hover(TextOrCustomRender::CustomRender(Box::new(theme_list_selected), Box::new(theme_list_selected_len)))
-                        .with_left_click_action(ClickAction::new_open_link("https://zellij.dev/documentation/theme-list".to_owned(), link_executable.clone()))
+                    ActiveComponent::new(TextOrCustomRender::Text(Text::new(
+                        "https://zellij.dev/documentation/theme-list",
+                    )))
+                    .with_hover(TextOrCustomRender::CustomRender(
+                        Box::new(theme_list_selected),
+                        Box::new(theme_list_selected_len),
+                    ))
+                    .with_left_click_action(ClickAction::new_open_link(
+                        "https://zellij.dev/documentation/theme-list".to_owned(),
+                        link_executable.clone(),
+                    )),
                 ]),
                 ComponentLine::new(vec![
                     ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("Or create your own theme: ")
-                            .color_range(2, ..)
+                        Text::new("Or create your own theme: ").color_range(2, ..),
                     )),
-                    ActiveComponent::new(TextOrCustomRender::Text(Text::new("https://zellij.dev/documentation/themes")))
-                        .with_hover(TextOrCustomRender::CustomRender(Box::new(theme_link_selected), Box::new(theme_link_selected_len)))
-                        .with_left_click_action(ClickAction::new_open_link("https://zellij.dev/documentation/themes".to_owned(), link_executable.clone()))
-                ])
+                    ActiveComponent::new(TextOrCustomRender::Text(Text::new(
+                        "https://zellij.dev/documentation/themes",
+                    )))
+                    .with_hover(TextOrCustomRender::CustomRender(
+                        Box::new(theme_link_selected),
+                        Box::new(theme_link_selected_len),
+                    ))
+                    .with_left_click_action(ClickAction::new_open_link(
+                        "https://zellij.dev/documentation/themes".to_owned(),
+                        link_executable.clone(),
+                    )),
+                ]),
             ])
             .with_paragraph(vec![ComponentLine::new(vec![
                 ActiveComponent::new(TextOrCustomRender::Text(support_the_developer_text())),
@@ -528,54 +531,44 @@ impl Page {
         Page::new()
             .main_screen()
             .with_title(Text::new("Zellij Tip #10").color_range(0, ..))
-            .with_bulletin_list(BulletinList::new(
-                Text::new("The Zellij session-manager can:")
-                    .color_range(2, 11..=25)
+            .with_bulletin_list(
+                BulletinList::new(
+                    Text::new("The Zellij session-manager can:").color_range(2, 11..=25),
                 )
                 .with_items(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("Create new sessions")
-                    )),
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("Switch between existing sessions")
-                    )),
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("Resurrect exited sessions")
-                    )),
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("Change the session name")
-                    )),
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("Disconnect other users from the current session")
-                    )),
-                ])
+                    ActiveComponent::new(TextOrCustomRender::Text(Text::new(
+                        "Create new sessions",
+                    ))),
+                    ActiveComponent::new(TextOrCustomRender::Text(Text::new(
+                        "Switch between existing sessions",
+                    ))),
+                    ActiveComponent::new(TextOrCustomRender::Text(Text::new(
+                        "Resurrect exited sessions",
+                    ))),
+                    ActiveComponent::new(TextOrCustomRender::Text(Text::new(
+                        "Change the session name",
+                    ))),
+                    ActiveComponent::new(TextOrCustomRender::Text(Text::new(
+                        "Disconnect other users from the current session",
+                    ))),
+                ]),
             )
-            .with_paragraph(vec![
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                            match *base_mode.borrow() {
-                                InputMode::Locked => {
-                                    Text::new("Check it out with with: Ctrl g + o + w")
-                                        .color_range(3, 24..=29)
-                                        .color_indices(3, vec![33, 37])
-                                },
-                                _ => {
-                                    Text::new("Check it out with with: Ctrl o + w")
-                                        .color_range(3, 24..=29)
-                                        .color_indices(3, vec![33])
-                                }
-                            }
-                    )),
-                ])
-            ])
-            .with_paragraph(vec![
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                            Text::new("You can also use it as a welcome screen with: zellij -l welcome")
-                                .color_range(0, 46..=62)
-                    )),
-                ])
-            ])
+            .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
+                TextOrCustomRender::Text(match *base_mode.borrow() {
+                    InputMode::Locked => Text::new("Check it out with with: Ctrl g + o + w")
+                        .color_range(3, 24..=29)
+                        .color_indices(3, vec![33, 37]),
+                    _ => Text::new("Check it out with with: Ctrl o + w")
+                        .color_range(3, 24..=29)
+                        .color_indices(3, vec![33]),
+                }),
+            )])])
+            .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
+                TextOrCustomRender::Text(
+                    Text::new("You can also use it as a welcome screen with: zellij -l welcome")
+                        .color_range(0, 46..=62),
+                ),
+            )])])
             .with_paragraph(vec![ComponentLine::new(vec![
                 ActiveComponent::new(TextOrCustomRender::Text(support_the_developer_text())),
                 ActiveComponent::new(TextOrCustomRender::Text(sponsors_link_text_unselected()))
@@ -771,7 +764,6 @@ fn matrix_link_text_selected_len() -> usize {
     46
 }
 
-
 fn stacked_resize_screencast_link_selected(x: usize, y: usize) -> usize {
     print!(
         "\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4mhttps://zellij.dev/screencasts/stacked-resize",
@@ -849,11 +841,12 @@ fn tips_help_text(hovering_over_link: bool) -> Text {
             .color_range(3, 6..=10)
             .color_range(3, 15..=25)
     } else {
-        let help_text = format!("Help: <ESC> - Dismiss, <↓↑> - Browse tips, <Ctrl c> - Don't show tips on startup");
+        let help_text = format!(
+            "Help: <ESC> - Dismiss, <↓↑> - Browse tips, <Ctrl c> - Don't show tips on startup"
+        );
         Text::new(help_text)
             .color_range(1, 6..=10)
             .color_range(1, 23..=26)
             .color_range(1, 43..=50)
     }
 }
-

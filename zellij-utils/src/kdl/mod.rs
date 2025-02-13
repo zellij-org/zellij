@@ -2294,9 +2294,11 @@ impl Options {
         let stacked_resize =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "stacked_resize").map(|(v, _)| v);
         let show_startup_tips =
-            kdl_property_first_arg_as_bool_or_error!(kdl_options, "show_startup_tips").map(|(v, _)| v);
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "show_startup_tips")
+                .map(|(v, _)| v);
         let show_release_notes =
-            kdl_property_first_arg_as_bool_or_error!(kdl_options, "show_release_notes").map(|(v, _)| v);
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "show_release_notes")
+                .map(|(v, _)| v);
         Ok(Options {
             simplified_ui,
             theme,
@@ -3158,10 +3160,7 @@ impl Options {
     fn show_startup_tips_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
-            " ",
-            "// Whether to show tips on startup",
-            "// Default: true",
-            "// ",
+            " ", "// Whether to show tips on startup", "// Default: true", "// ",
         );
 
         let create_node = |node_value: bool| -> KdlNode {
@@ -3186,10 +3185,7 @@ impl Options {
     fn show_release_notes_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
-            " ",
-            "// Whether to show release notes on first version run",
-            "// Default: true",
-            "// ",
+            " ", "// Whether to show release notes on first version run", "// Default: true", "// ",
         );
 
         let create_node = |node_value: bool| -> KdlNode {
