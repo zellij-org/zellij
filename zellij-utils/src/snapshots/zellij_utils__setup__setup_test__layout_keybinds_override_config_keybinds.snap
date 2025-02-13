@@ -119,6 +119,8 @@ Config {
         disable_session_metadata: None,
         support_kitty_keyboard_protocol: None,
         stacked_resize: None,
+        show_startup_tips: None,
+        show_release_notes: None,
     },
     themes: {},
     plugins: PluginAliases {

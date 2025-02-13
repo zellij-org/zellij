@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 5638
+assertion_line: 5934
 expression: fake_config_stringified
 ---
 keybinds clear-defaults=true {
@@ -100,6 +100,13 @@ keybinds clear-defaults=true {
         bind "w" { SearchToggleOption "Wrap"; }
     }
     session {
+        bind "a" {
+            LaunchOrFocusPlugin "zellij:about" {
+                floating true
+                move_to_focused_tab true
+            }
+            SwitchToMode "normal"
+        }
         bind "c" {
             LaunchOrFocusPlugin "configuration" {
                 floating true
@@ -438,4 +445,14 @@ load_plugins {
 // Default: true
 // 
 // stacked_resize false
+ 
+// Whether to show tips on startup
+// Default: true
+// 
+// show_startup_tips false
+ 
+// Whether to show release notes on first version run
+// Default: true
+// 
+// show_release_notes false
 
