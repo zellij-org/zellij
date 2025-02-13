@@ -932,6 +932,7 @@ pub enum Event {
     HostFolderChanged(PathBuf),               // PathBuf -> new host folder
     FailedToChangeHostFolder(Option<String>), // String -> the error we got when changing
     PastedText(String),
+    ConfigWasWrittenToDisk,
 }
 
 #[derive(

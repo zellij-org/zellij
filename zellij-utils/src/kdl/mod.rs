@@ -2293,6 +2293,12 @@ impl Options {
         .map(|(v, _)| v);
         let stacked_resize =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "stacked_resize").map(|(v, _)| v);
+        let show_startup_tips =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "show_startup_tips")
+                .map(|(v, _)| v);
+        let show_release_notes =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "show_release_notes")
+                .map(|(v, _)| v);
         Ok(Options {
             simplified_ui,
             theme,
@@ -2322,6 +2328,8 @@ impl Options {
             disable_session_metadata,
             support_kitty_keyboard_protocol,
             stacked_resize,
+            show_startup_tips,
+            show_release_notes,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -3149,6 +3157,56 @@ impl Options {
             None
         }
     }
+    fn show_startup_tips_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ", "// Whether to show tips on startup", "// Default: true", "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("show_startup_tips");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(show_startup_tips) = self.show_startup_tips {
+            let mut node = create_node(show_startup_tips);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn show_release_notes_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ", "// Whether to show release notes on first version run", "// Default: true", "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("show_release_notes");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(show_release_notes) = self.show_release_notes {
+            let mut node = create_node(show_release_notes);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
@@ -3238,6 +3296,12 @@ impl Options {
         }
         if let Some(stacked_resize) = self.stacked_resize_to_kdl(add_comments) {
             nodes.push(stacked_resize);
+        }
+        if let Some(show_startup_tips) = self.show_startup_tips_to_kdl(add_comments) {
+            nodes.push(show_startup_tips);
+        }
+        if let Some(show_release_notes) = self.show_release_notes_to_kdl(add_comments) {
+            nodes.push(show_release_notes);
         }
         nodes
     }

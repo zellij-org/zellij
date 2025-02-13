@@ -3958,6 +3958,36 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'a',
+                ),
+                key_modifiers: {},
+            }: [
+                LaunchOrFocusPlugin(
+                    RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "about",
+                                ),
+                            ),
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'b',
                 ),
                 key_modifiers: {
@@ -5611,6 +5641,8 @@ Config {
         disable_session_metadata: None,
         support_kitty_keyboard_protocol: None,
         stacked_resize: None,
+        show_startup_tips: None,
+        show_release_notes: None,
     },
     themes: {},
     plugins: PluginAliases {

@@ -6,6 +6,5 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
-ansi_term = "0.12.1"
 zellij-tile = { path = "../../zellij-tile" }
-chrono = "0.4.0"
+rand = "0.9.0"

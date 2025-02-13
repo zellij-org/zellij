@@ -336,7 +336,11 @@ impl SessionMetaData {
             self.current_input_modes.insert(client_id, input_mode);
         }
     }
-    pub fn propagate_configuration_changes(&mut self, config_changes: Vec<(ClientId, Config)>) {
+    pub fn propagate_configuration_changes(
+        &mut self,
+        config_changes: Vec<(ClientId, Config)>,
+        config_was_written_to_disk: bool,
+    ) {
         for (client_id, new_config) in config_changes {
             self.default_shell = new_config.options.default_shell.as_ref().map(|shell| {
                 TerminalAction::RunCommand(RunCommand {
@@ -375,6 +379,7 @@ impl SessionMetaData {
                     keybinds: Some(new_config.keybinds),
                     default_mode: new_config.options.default_mode,
                     default_shell: self.default_shell.clone(),
+                    was_written_to_disk: config_was_written_to_disk,
                 })
                 .unwrap();
             self.senders
@@ -706,9 +711,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         // intrusive
                         let setup_wizard = setup_wizard_floating_pane();
                         floating_panes.push(setup_wizard);
-                    } else if should_show_release_notes() {
+                    } else if should_show_release_notes(runtime_config_options.show_release_notes) {
                         let about = about_floating_pane();
                         floating_panes.push(about);
+                    } else if should_show_startup_tip(runtime_config_options.show_startup_tips) {
+                        let tip = tip_floating_pane();
+                        floating_panes.push(tip);
                     }
                     spawn_tabs(
                         None,
@@ -1166,12 +1174,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     }
 
                     if runtime_config_changed {
+                        let config_was_written_to_disk = false;
                         session_data
                             .write()
                             .unwrap()
                             .as_mut()
                             .unwrap()
-                            .propagate_configuration_changes(vec![(client_id, new_config)]);
+                            .propagate_configuration_changes(
+                                vec![(client_id, new_config)],
+                                config_was_written_to_disk,
+                            );
                     }
                 }
             },
@@ -1183,12 +1195,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .session_configuration
                     .new_saved_config(client_id, new_config);
+                let config_was_written_to_disk = true;
                 session_data
                     .write()
                     .unwrap()
                     .as_mut()
                     .unwrap()
-                    .propagate_configuration_changes(changes);
+                    .propagate_configuration_changes(changes, config_was_written_to_disk);
             },
             ServerInstruction::FailedToWriteConfigToDisk(_client_id, file_path) => {
                 session_data
@@ -1227,12 +1240,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     }
 
                     if runtime_config_changed {
+                        let config_was_written_to_disk = false;
                         session_data
                             .write()
                             .unwrap()
                             .as_mut()
                             .unwrap()
-                            .propagate_configuration_changes(vec![(client_id, new_config)]);
+                            .propagate_configuration_changes(
+                                vec![(client_id, new_config)],
+                                config_was_written_to_disk,
+                            );
                     }
                 }
             },
@@ -1506,7 +1523,26 @@ fn about_floating_pane() -> FloatingPaneLayout {
     about_pane
 }
 
-fn should_show_release_notes() -> bool {
+fn tip_floating_pane() -> FloatingPaneLayout {
+    let mut about_pane = FloatingPaneLayout::new();
+    let configuration = BTreeMap::from_iter([("is_startup_tip".to_owned(), "true".to_owned())]);
+    about_pane.run = Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias::new(
+        "about",
+        &Some(configuration),
+        None,
+    ))));
+    about_pane
+}
+
+fn should_show_release_notes(should_show_release_notes_config: Option<bool>) -> bool {
+    if let Some(should_show_release_notes_config) = should_show_release_notes_config {
+        if !should_show_release_notes_config {
+            // if we were explicitly told not to show release notes, we don't show them,
+            // otherwise we make sure we only show them if they were not seen AND we know
+            // we are able to write to the cache
+            return false;
+        }
+    }
     if ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE.exists() {
         return false;
     } else {
@@ -1519,6 +1555,10 @@ fn should_show_release_notes() -> bool {
         }
         return true;
     }
+}
+
+fn should_show_startup_tip(should_show_startup_tip_config: Option<bool>) -> bool {
+    should_show_startup_tip_config.unwrap_or(true)
 }
 
 #[cfg(not(feature = "singlepass"))]
