@@ -8,6 +8,8 @@ use tips::MAX_TIP_INDEX;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
+use rand::prelude::*;
+use rand::rng;
 
 const UI_ROWS: usize = 20;
 const UI_COLUMNS: usize = 90;
@@ -81,6 +83,8 @@ impl ZellijPlugin for App {
         self.change_own_title();
         self.query_link_executable();
         self.active_page = if self.is_startup_tip {
+            let mut rng = rng();
+            self.tip_index = rng.random_range(0..=MAX_TIP_INDEX);
             Page::new_tip_screen(
                 self.link_executable.clone(),
                 self.base_mode.clone(),
