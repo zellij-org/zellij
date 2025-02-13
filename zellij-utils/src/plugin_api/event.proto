@@ -53,6 +53,7 @@ enum EventType {
     HostFolderChanged = 27;
     FailedToChangeHostFolder = 28;
     PastedText = 29;
+    ConfigWasWrittenToDisk = 30;
 }
 
 message EventNameList {

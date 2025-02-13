@@ -414,3 +414,13 @@ load_plugins {
 // Default: true
 //
 // stacked_resize false
+
+// Whether to show release notes on first version run
+// Default: true
+//
+// show_release_notes false
+
+// Whether to show startup tips on session start
+// Default: true
+//
+// show_startup_tips false

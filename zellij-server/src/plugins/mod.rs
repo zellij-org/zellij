@@ -152,6 +152,7 @@ pub enum PluginInstruction {
         keybinds: Option<Keybinds>,
         default_mode: Option<InputMode>,
         default_shell: Option<TerminalAction>,
+        was_written_to_disk: bool,
     },
     FailedToWriteConfigToDisk {
         file_path: Option<PathBuf>,
@@ -868,11 +869,20 @@ pub(crate) fn plugin_thread_main(
                 keybinds,
                 default_mode,
                 default_shell,
+                was_written_to_disk,
             } => {
-                // TODO: notify plugins that this happened so that they can eg. rebind temporary keys that
-                // were lost
                 wasm_bridge
                     .reconfigure(client_id, keybinds, default_mode, default_shell)
+                    .non_fatal();
+                // TODO: notify plugins that this happened so that they can eg. rebind temporary keys that
+                // were lost
+                let updates = vec![(
+                    None,
+                    None,
+                    Event::ConfigWasWrittenToDisk,
+                )];
+                wasm_bridge
+                    .update_plugins(updates, shutdown_send.clone())
                     .non_fatal();
             },
             PluginInstruction::FailedToWriteConfigToDisk { file_path } => {

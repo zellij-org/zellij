@@ -355,6 +355,10 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the PastedText Event"),
             },
+            Some(ProtobufEventType::ConfigWasWrittenToDisk) => match protobuf_event.payload {
+                None => Ok(Event::ConfigWasWrittenToDisk),
+                _ => Err("Malformed payload for the ConfigWasWrittenToDisk Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -724,6 +728,10 @@ impl TryFrom<Event> for ProtobufEvent {
                 payload: Some(event::Payload::PastedTextPayload(PastedTextPayload {
                     pasted_text,
                 })),
+            }),
+            Event::ConfigWasWrittenToDisk => Ok(ProtobufEvent {
+                name: ProtobufEventType::ConfigWasWrittenToDisk as i32,
+                payload: None,
             }),
         }
     }
@@ -1306,6 +1314,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::HostFolderChanged => EventType::HostFolderChanged,
             ProtobufEventType::FailedToChangeHostFolder => EventType::FailedToChangeHostFolder,
             ProtobufEventType::PastedText => EventType::PastedText,
+            ProtobufEventType::ConfigWasWrittenToDisk => EventType::ConfigWasWrittenToDisk,
         })
     }
 }
@@ -1344,6 +1353,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::HostFolderChanged => ProtobufEventType::HostFolderChanged,
             EventType::FailedToChangeHostFolder => ProtobufEventType::FailedToChangeHostFolder,
             EventType::PastedText => ProtobufEventType::PastedText,
+            EventType::ConfigWasWrittenToDisk => ProtobufEventType::ConfigWasWrittenToDisk,
         })
     }
 }
