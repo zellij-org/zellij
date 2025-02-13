@@ -40,6 +40,7 @@ impl Default for App {
                 link_executable.clone(),
                 "".to_owned(),
                 base_mode.clone(),
+                false,
             ),
             link_executable,
             zellij_version,
@@ -95,6 +96,7 @@ impl ZellijPlugin for App {
                 self.link_executable.clone(),
                 self.zellij_version.borrow().clone(),
                 self.base_mode.clone(),
+                self.is_release_notes,
             )
         };
     }
@@ -224,7 +226,7 @@ impl App {
                 self.active_page = new_page;
                 should_render = true;
             }
-        } else if key.bare_key == BareKey::Char('c') && key.has_modifiers(&[KeyModifier::Ctrl]) {
+        } else if key.bare_key == BareKey::Char('c') && key.has_modifiers(&[KeyModifier::Ctrl]) && self.is_startup_tip {
             self.waiting_for_config_to_be_written = true;
             let save_configuration = true;
             reconfigure("show_startup_tips false".to_owned(), save_configuration);
@@ -236,9 +238,18 @@ impl App {
                     self.link_executable.clone(),
                     self.zellij_version.borrow().clone(),
                     self.base_mode.clone(),
+                    self.is_release_notes,
                 );
                 should_render = true;
             }
+        } else if key.bare_key == BareKey::Char('?') && !self.is_release_notes && !self.is_startup_tip {
+            self.is_startup_tip = true;
+            self.active_page = Page::new_tip_screen(
+                self.link_executable.clone(),
+                self.base_mode.clone(),
+                self.tip_index,
+            );
+            should_render = true;
         } else {
             should_render = self.active_page.handle_key(key);
         }

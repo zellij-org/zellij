@@ -20,10 +20,11 @@ impl Page {
         link_executable: Rc<RefCell<String>>,
         zellij_version: String,
         base_mode: Rc<RefCell<InputMode>>,
+        is_release_notes: bool,
     ) -> Self {
         Page::new()
             .main_screen()
-            .with_title(main_screen_title(zellij_version.clone()))
+            .with_title(main_screen_title(zellij_version.clone(), is_release_notes))
             .with_bulletin_list(BulletinList::new(whats_new_title()).with_items(vec![
                     ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
                         "Stacked Resize",
@@ -102,9 +103,15 @@ impl Page {
                         link_executable.clone(),
                     )),
             ])])
-            .with_help(Box::new(|hovering_over_link, menu_item_is_selected| {
-                main_screen_help_text(hovering_over_link, menu_item_is_selected)
-            }))
+            .with_help(if is_release_notes {
+                Box::new(|hovering_over_link, menu_item_is_selected| {
+                    release_notes_main_help(hovering_over_link, menu_item_is_selected)
+                })
+            } else {
+                Box::new(|hovering_over_link, menu_item_is_selected| {
+                    main_screen_help_text(hovering_over_link, menu_item_is_selected)
+                })
+            })
     }
     pub fn new_stacked_resize(link_executable: Rc<RefCell<String>>) -> Page {
         Page::new()
@@ -664,12 +671,38 @@ fn whats_new_title() -> Text {
     Text::new("What's new?")
 }
 
-fn main_screen_title(version: String) -> Text {
-    let title_text = format!("Hi there, welcome to Zellij {}!", &version);
-    Text::new(title_text).color_range(2, 21..=27 + version.chars().count())
+fn main_screen_title(version: String, is_release_notes: bool) -> Text {
+    if is_release_notes {
+        let title_text = format!("Hi there, welcome to Zellij {}!", &version);
+        Text::new(title_text).color_range(2, 21..=27 + version.chars().count())
+    } else {
+        let title_text = format!("Zellij {}", &version);
+        Text::new(title_text).color_range(2, ..)
+    }
 }
 
 fn main_screen_help_text(hovering_over_link: bool, menu_item_is_selected: bool) -> Text {
+    if hovering_over_link {
+        let help_text = format!("Help: Click or Shift-Click to open in browser");
+        Text::new(help_text)
+            .color_range(3, 6..=10)
+            .color_range(3, 15..=25)
+    } else if menu_item_is_selected {
+        let help_text = format!("Help: <↓↑> - Navigate, <ENTER> - Learn More, <ESC> - Dismiss");
+        Text::new(help_text)
+            .color_range(1, 6..=9)
+            .color_range(1, 23..=29)
+            .color_range(1, 45..=49)
+    } else {
+        let help_text = format!("Help: <↓↑> - Navigate, <ESC> - Dismiss, <?> - Usage Tips");
+        Text::new(help_text)
+            .color_range(1, 6..=9)
+            .color_range(1, 23..=27)
+            .color_range(1, 40..=42)
+    }
+}
+
+fn release_notes_main_help(hovering_over_link: bool, menu_item_is_selected: bool) -> Text {
     if hovering_over_link {
         let help_text = format!("Help: Click or Shift-Click to open in browser");
         Text::new(help_text)

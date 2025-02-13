@@ -1276,6 +1276,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Session Manager"), s("Manager"), session_manager_key(&km)),
         (s("Configure"), s("Config"), configuration_key(&km)),
         (s("Plugin Manager"), s("Plugins"), plugin_manager_key(&km)),
+        (s("About"), s("About"), about_key(&km)),
         (s("Select pane"), s("Select"), to_basemode_key),
     ]} else if mi.mode == IM::Tmux { vec![
         (s("Move focus"), s("Move"), action_key_group(&km, &[
@@ -1371,6 +1372,25 @@ fn plugin_manager_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithM
         let has_match = acvec
             .iter()
             .find(|a| a.launches_plugin("plugin-manager"))
+            .is_some();
+        if has_match {
+            Some(key.clone())
+        } else {
+            None
+        }
+    });
+    if let Some(matching) = matching.take() {
+        vec![matching]
+    } else {
+        vec![]
+    }
+}
+
+fn about_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithModifier> {
+    let mut matching = keymap.iter().find_map(|(key, acvec)| {
+        let has_match = acvec
+            .iter()
+            .find(|a| a.launches_plugin("zellij:about"))
             .is_some();
         if has_match {
             Some(key.clone())
