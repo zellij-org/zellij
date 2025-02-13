@@ -543,7 +543,7 @@ impl Page {
         row_count += self.components_to_render.len();
         row_count
     }
-    pub fn render(&mut self, rows: usize, columns: usize) {
+    pub fn render(&mut self, rows: usize, columns: usize, error: &Option<String>) {
         let base_x = columns.saturating_sub(self.ui_column_count()) / 2;
         let base_y = rows.saturating_sub(self.ui_row_count()) / 2;
         let mut current_y = base_y;
@@ -562,6 +562,12 @@ impl Page {
                 RenderedComponent::HelpText(_) => true,
                 _ => false,
             };
+            if is_help {
+                if let Some(error) = error {
+                    render_error(error, rows);
+                    continue;
+                }
+            }
             let y = if is_help { rows } else { current_y };
             let columns = if is_help { columns } else { columns.saturating_sub(base_x * 2) };
             let rendered_rows = rendered_component.render(
@@ -575,6 +581,16 @@ impl Page {
             current_y += rendered_rows + 1; // 1 for the line space between components
         }
     }
+}
+
+fn render_error(error: &str, y: usize) {
+    print_text_with_coordinates(
+        Text::new(format!("ERROR: {}", error)).color_range(3, ..),
+        0,
+        y,
+        None,
+        None
+    );
 }
 
 fn changelog_link_unselected(version: String) -> Text {

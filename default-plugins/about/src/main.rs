@@ -24,6 +24,8 @@ struct App {
     is_release_notes: bool,
     is_startup_tip: bool,
     tip_index: usize,
+    waiting_for_config_to_be_written: bool,
+    error: Option<String>,
 }
 
 impl Default for App {
@@ -46,6 +48,8 @@ impl Default for App {
             is_release_notes: false,
             is_startup_tip: false,
             tip_index: 0,
+            waiting_for_config_to_be_written: false,
+            error: None,
         }
     }
 }
@@ -68,6 +72,8 @@ impl ZellijPlugin for App {
             EventType::ModeUpdate,
             EventType::RunCommandResult,
             EventType::TabUpdate,
+            EventType::FailedToWriteConfigToDisk,
+            EventType::ConfigWasWrittenToDisk,
         ]);
         let own_plugin_id = get_plugin_ids().plugin_id;
         self.own_plugin_id = Some(own_plugin_id);
@@ -91,6 +97,24 @@ impl ZellijPlugin for App {
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
+            Event::FailedToWriteConfigToDisk(file_path) => {
+                if self.waiting_for_config_to_be_written {
+                    let error = match file_path {
+                        Some(file_path) => {
+                            format!("Failed to write config to disk at: {}", file_path)
+                        },
+                        None => format!("Failed to write config to disk.")
+                    };
+                    eprintln!("{}", error);
+                    self.error = Some(error);
+                    should_render = true;
+                }
+            }
+            Event::ConfigWasWrittenToDisk => {
+                if self.waiting_for_config_to_be_written {
+                    close_self();
+                }
+            }
             Event::TabUpdate(tab_info) => {
                 self.center_own_pane(tab_info);
             },
@@ -116,14 +140,19 @@ impl ZellijPlugin for App {
                 }
             },
             Event::Key(key) => {
-                should_render = self.handle_key(key);
+                if let Some(_error) = self.error.take() {
+                    // dismiss error on any key
+                    should_render = true;
+                } else {
+                    should_render = self.handle_key(key);
+                }
             },
             _ => {},
         }
         should_render
     }
     fn render(&mut self, rows: usize, cols: usize) {
-        self.active_page.render(rows, cols);
+        self.active_page.render(rows, cols, &self.error);
     }
 }
 
@@ -191,6 +220,10 @@ impl App {
                 self.active_page = new_page;
                 should_render = true;
             }
+        } else if key.bare_key == BareKey::Char('c') && key.has_modifiers(&[KeyModifier::Ctrl]) {
+            self.waiting_for_config_to_be_written = true;
+            let save_configuration = true;
+            reconfigure("show_startup_tips false".to_owned(), save_configuration);
         } else if key.bare_key == BareKey::Esc && key.has_no_modifiers() {
             if self.active_page.is_main_screen {
                 close_self();
