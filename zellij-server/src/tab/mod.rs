@@ -3587,7 +3587,6 @@ impl Tab {
                 if let PaneId::Terminal(_) = pane_with_selection.pid() {
                     if copy_on_release {
                         let selected_text = pane_with_selection.get_selected_text();
-                        pane_with_selection.reset_selection();
 
                         if let Some(selected_text) = selected_text {
                             self.write_selection_to_clipboard(&selected_text)

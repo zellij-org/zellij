@@ -220,6 +220,7 @@ impl Pane for TerminalPane {
         // here we match against those cases - if need be, we adjust the input and if not
         // we send back the original input
 
+        self.reset_selection();
         if !self.grid.bracketed_paste_mode {
             // Zellij itself operates in bracketed paste mode, so the terminal sends these
             // instructions (bracketed paste start and bracketed paste end respectively)
