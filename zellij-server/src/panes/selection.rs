@@ -37,6 +37,11 @@ impl Selection {
         self.end = end;
     }
 
+    pub fn set_start_and_end_positions(&mut self, start: Position, end: Position) {
+        self.start = start;
+        self.end = end;
+    }
+
     pub fn contains(&self, row: usize, col: usize) -> bool {
         let row = row as isize;
         let (start, end) = if self.start <= self.end {

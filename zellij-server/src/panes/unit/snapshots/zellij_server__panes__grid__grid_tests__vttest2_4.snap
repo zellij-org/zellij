@@ -1,10 +1,10 @@
 ---
 source: zellij-server/src/panes/./unit/grid_tests.rs
+assertion_line: 365
 expression: "format!(\"{:?}\", grid)"
-
 ---
 00 (C): 12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
-01 (C): 123456789012345678901                                                                                         
+01 (W): 123456789012345678901                                                                                         
 02 (C):   This is 132 column mode, dark background.                                                                   
 03 (C):    This is 132 column mode, dark background.                                                                  
 04 (C):     This is 132 column mode, dark background.                                                                 

@@ -365,7 +365,47 @@ pub struct Grid {
     styled_underlines: bool,
     pub supports_kitty_keyboard_protocol: bool, // has the app requested kitty keyboard support?
     explicitly_disable_kitty_keyboard_protocol: bool, // has kitty keyboard support been explicitly
-                                                // disabled by user config?
+    // disabled by user config?
+    click: Click,
+}
+
+const CLICK_TIME_THRESHOLD: u128 = 400; // Doherty Threshold
+
+#[derive(Clone, Debug, Default)]
+struct Click {
+    position_and_time: Option<(Position, std::time::Instant)>,
+    count: usize,
+}
+
+impl Click {
+    pub fn record_click(&mut self, position: Position) {
+        let click_is_same_position_as_last_click = self
+            .position_and_time
+            .map(|(p, _t)| p == position)
+            .unwrap_or(false);
+        let click_is_within_time_threshold = self
+            .position_and_time
+            .map(|(_p, t)| t.elapsed().as_millis() <= CLICK_TIME_THRESHOLD)
+            .unwrap_or(false);
+        if click_is_same_position_as_last_click && click_is_within_time_threshold {
+            self.count += 1;
+        } else {
+            self.count = 1;
+        }
+        self.position_and_time = Some((position, std::time::Instant::now()));
+        if self.count == 4 {
+            self.reset();
+        }
+    }
+    pub fn is_double_click(&self) -> bool {
+        self.count == 2
+    }
+    pub fn is_triple_click(&self) -> bool {
+        self.count == 3
+    }
+    pub fn reset(&mut self) {
+        self.count = 0;
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -513,6 +553,7 @@ impl Grid {
             lock_renders: false,
             supports_kitty_keyboard_protocol: false,
             explicitly_disable_kitty_keyboard_protocol,
+            click: Click::default(),
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -1478,6 +1519,8 @@ impl Grid {
                 let line_wrapped_row = Row::new();
                 self.viewport.push(line_wrapped_row);
                 self.output_buffer.update_line(self.cursor.y);
+            } else if let Some(current_line) = self.viewport.get_mut(self.cursor.y) {
+                current_line.is_canonical = false;
             }
         }
     }
@@ -1750,6 +1793,39 @@ impl Grid {
     }
     pub fn start_selection(&mut self, start: &Position) {
         let old_selection = self.selection;
+        self.click.record_click(*start);
+
+        if self.click.is_double_click() {
+            let Some((start_position, end_position)) = self.word_around_position(&start) else {
+                // no-op
+                return;
+            };
+            self.selection
+                .set_start_and_end_positions(start_position, end_position);
+            for i in std::cmp::min(start_position.line.0, end_position.line.0)
+                ..=std::cmp::max(start_position.line.0, end_position.line.0)
+            {
+                self.output_buffer.update_line(i as usize);
+            }
+            self.mark_for_rerender();
+            return;
+        } else if self.click.is_triple_click() {
+            let Some((start_position, end_position)) = self.canonical_line_around_position(&start)
+            else {
+                // no-op
+                return;
+            };
+            self.selection
+                .set_start_and_end_positions(start_position, end_position);
+            for i in std::cmp::min(start_position.line.0, end_position.line.0)
+                ..=std::cmp::max(start_position.line.0, end_position.line.0)
+            {
+                self.output_buffer.update_line(i as usize);
+            }
+            self.mark_for_rerender();
+            return;
+        }
+
         self.selection.start(*start);
         self.update_selected_lines(&old_selection, &self.selection.clone());
         self.mark_for_rerender();
@@ -1764,9 +1840,11 @@ impl Grid {
     }
 
     pub fn end_selection(&mut self, end: &Position) {
-        let old_selection = self.selection;
-        self.selection.end(*end);
-        self.update_selected_lines(&old_selection, &self.selection.clone());
+        if !self.click.is_double_click() && !self.click.is_triple_click() {
+            let old_selection = self.selection;
+            self.selection.end(*end);
+            self.update_selected_lines(&old_selection, &self.selection.clone());
+        }
         self.mark_for_rerender();
     }
 
@@ -1859,6 +1937,87 @@ impl Grid {
     }
     pub fn absolute_position_in_scrollback(&self) -> usize {
         self.lines_above.len() + self.cursor.y
+    }
+    pub fn word_around_position(&self, position: &Position) -> Option<(Position, Position)> {
+        let position_row = self.viewport.get(position.line.0 as usize)?;
+        let (index_start, index_end) =
+            position_row.word_indices_around_character_index(position.column.0)?;
+
+        let mut position_start = Position::new(position.line.0 as i32, index_start as u16);
+        let mut position_end = Position::new(position.line.0 as i32, index_end as u16);
+        let mut position_row_is_canonical = position_row.is_canonical;
+
+        while !position_row_is_canonical && position_start.column.0 == 0 {
+            if let Some(position_row_above) = self
+                .viewport
+                .get(position_start.line.0.saturating_sub(1) as usize)
+            {
+                let new_start_index = position_row_above.word_start_index_of_last_character();
+                position_start = Position::new(
+                    position_start.line.0.saturating_sub(1) as i32,
+                    new_start_index as u16,
+                );
+                position_row_is_canonical = position_row_above.is_canonical;
+            } else {
+                break;
+            }
+        }
+
+        let mut column_count_in_row = position_row.columns.len();
+        while position_end.column.0 == column_count_in_row {
+            if let Some(position_row_below) = self.viewport.get(position_end.line.0 as usize + 1) {
+                if position_row_below.is_canonical {
+                    break;
+                }
+                let new_end_index = position_row_below.word_end_index_of_first_character();
+                position_end = Position::new(position_end.line.0 as i32 + 1, new_end_index as u16);
+                column_count_in_row = position_row_below.columns.len();
+            } else {
+                break;
+            }
+        }
+
+        Some((position_start, position_end))
+    }
+    pub fn canonical_line_around_position(
+        &self,
+        position: &Position,
+    ) -> Option<(Position, Position)> {
+        let position_row = self.viewport.get(position.line.0 as usize)?;
+
+        let mut position_start = Position::new(position.line.0 as i32, 0);
+        let mut position_end =
+            Position::new(position.line.0 as i32, position_row.columns.len() as u16);
+
+        let mut found_canonical_row_start = position_row.is_canonical;
+        while !found_canonical_row_start {
+            if let Some(row_above) = self
+                .viewport
+                .get(position_start.line.0.saturating_sub(1) as usize)
+            {
+                position_start.line.0 = position_start.line.0.saturating_sub(1);
+                found_canonical_row_start = row_above.is_canonical;
+            } else {
+                break;
+            }
+        }
+
+        let mut found_canonical_row_end = false;
+        while !found_canonical_row_end {
+            if let Some(row_below) = self.viewport.get(position_end.line.0 as usize + 1) {
+                if row_below.is_canonical {
+                    found_canonical_row_end = true;
+                } else {
+                    position_end = Position::new(
+                        position_end.line.0 as i32 + 1,
+                        row_below.columns.len() as u16,
+                    );
+                }
+            } else {
+                break;
+            }
+        }
+        Some((position_start, position_end))
     }
 
     fn update_selected_lines(&mut self, old_selection: &Selection, new_selection: &Selection) {
@@ -3644,6 +3803,83 @@ impl Row {
         self.width = None;
         parts
     }
+    pub fn word_indices_around_character_index(&self, index: usize) -> Option<(usize, usize)> {
+        let character_at_index = self.columns.get(index)?;
+        if is_selection_boundary_character(character_at_index.character) {
+            return Some((index, index + 1));
+        }
+        let mut end_position = self
+            .columns
+            .iter()
+            .enumerate()
+            .skip(index)
+            .find_map(|(i, t_c)| {
+                if is_selection_boundary_character(t_c.character) {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| self.columns.len());
+        let start_position = self
+            .columns
+            .iter()
+            .enumerate()
+            .take(index)
+            .rev()
+            .find_map(|(i, t_c)| {
+                if is_selection_boundary_character(t_c.character) {
+                    Some(i + 1)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        if start_position == end_position {
+            // so that if this is only one character, it'll still be marked
+            end_position += 1;
+        }
+        Some((start_position, end_position))
+    }
+    pub fn word_start_index_of_last_character(&self) -> usize {
+        self.columns
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(i, t_c)| {
+                if is_selection_boundary_character(t_c.character) {
+                    Some(i + 1)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0)
+    }
+    pub fn word_end_index_of_first_character(&self) -> usize {
+        self.columns
+            .iter()
+            .enumerate()
+            .find_map(|(i, t_c)| {
+                if is_selection_boundary_character(t_c.character) {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| self.columns.len())
+    }
+}
+
+fn is_selection_boundary_character(character: char) -> bool {
+    character.is_ascii_whitespace()
+        || character == '['
+        || character == ']'
+        || character == '{'
+        || character == '}'
+        || character == '<'
+        || character == '>'
+        || character == '('
+        || character == ')'
 }
 
 #[cfg(test)]

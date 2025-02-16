@@ -1,28 +1,28 @@
 ---
 source: zellij-server/src/panes/./unit/grid_tests.rs
+assertion_line: 148
 expression: "format!(\"{:?}\", grid)"
-
 ---
 00 (C): Test of autowrap, mixing control and print characters.                                                        
 01 (C): The left/right margins should have letters in order:                                                          
 02 (C): I                                                                                                            i
-03 (C): J                                                                                                            j
+03 (W): J                                                                                                            j
 04 (C): K                                                                                                            k
 05 (C): L                                                                                                            l
 06 (C): M                                                                                                            m
-07 (C): N                                                                                                            n
+07 (W): N                                                                                                            n
 08 (C): O                                                                                                            o
 09 (C): P                                                                                                            p
 10 (C): Q                                                                                                            q
-11 (C): R                                                                                                            r
+11 (W): R                                                                                                            r
 12 (C): S                                                                                                            s
 13 (C): T                                                                                                            t
 14 (C): U                                                                                                            u
-15 (C): V                                                                                                            v
+15 (W): V                                                                                                            v
 16 (C): W                                                                                                            w
 17 (C): X                                                                                                            x
 18 (C): Y                                                                                                            y
-19 (C): Z                                                                                                            z
+19 (W): Z                                                                                                            z
 20 (C):                                                                                                               
 21 (C): Push <RETURN>                                                                                                 
 22 (C):                                                                                                               
