@@ -1,18 +1,120 @@
-// Lucario Theme:
-// https://github.com/raphamorim/lucario
-
 themes {
     lucario {
-        fg 248 248 242
-        bg 43 62 90
-        red 233 75 53
-        green 25 156 75
-        yellow 240 204 4
-        blue 92 152 205
-        magenta 202 148 255
-        orange 233 75 53
-        cyan 139 244 253
-        black 25 36 47
-        white 248 248 242
+        text_unselected {
+            base 248 248 242
+            background 25 36 47
+            emphasis_0 233 75 53
+            emphasis_1 139 244 253
+            emphasis_2 25 156 75
+            emphasis_3 202 148 255
+        }
+        text_selected {
+            base 248 248 242
+            background 43 62 90
+            emphasis_0 233 75 53
+            emphasis_1 139 244 253
+            emphasis_2 25 156 75
+            emphasis_3 202 148 255
+        }
+        ribbon_selected {
+            base 25 36 47
+            background 25 156 75
+            emphasis_0 233 75 53
+            emphasis_1 233 75 53
+            emphasis_2 202 148 255
+            emphasis_3 92 152 205
+        }
+        ribbon_unselected {
+            base 25 36 47
+            background 248 248 242
+            emphasis_0 233 75 53
+            emphasis_1 248 248 242
+            emphasis_2 92 152 205
+            emphasis_3 202 148 255
+        }
+        table_title {
+            base 25 156 75
+            background 0
+            emphasis_0 233 75 53
+            emphasis_1 139 244 253
+            emphasis_2 25 156 75
+            emphasis_3 202 148 255
+        }
+        table_cell_selected {
+            base 248 248 242
+            background 43 62 90
+            emphasis_0 233 75 53
+            emphasis_1 139 244 253
+            emphasis_2 25 156 75
+            emphasis_3 202 148 255
+        }
+        table_cell_unselected {
+            base 248 248 242
+            background 25 36 47
+            emphasis_0 233 75 53
+            emphasis_1 139 244 253
+            emphasis_2 25 156 75
+            emphasis_3 202 148 255
+        }
+        list_selected {
+            base 248 248 242
+            background 43 62 90
+            emphasis_0 233 75 53
+            emphasis_1 139 244 253
+            emphasis_2 25 156 75
+            emphasis_3 202 148 255
+        }
+        list_unselected {
+            base 248 248 242
+            background 25 36 47
+            emphasis_0 233 75 53
+            emphasis_1 139 244 253
+            emphasis_2 25 156 75
+            emphasis_3 202 148 255
+        }
+        frame_selected {
+            base 25 156 75
+            background 0
+            emphasis_0 233 75 53
+            emphasis_1 139 244 253
+            emphasis_2 202 148 255
+            emphasis_3 0
+        }
+        frame_highlight {
+            base 233 75 53
+            background 0
+            emphasis_0 233 75 53
+            emphasis_1 233 75 53
+            emphasis_2 233 75 53
+            emphasis_3 233 75 53
+        }
+        exit_code_success {
+            base 25 156 75
+            background 0
+            emphasis_0 139 244 253
+            emphasis_1 25 36 47
+            emphasis_2 202 148 255
+            emphasis_3 92 152 205
+        }
+        exit_code_error {
+            base 233 75 53
+            background 0
+            emphasis_0 240 204 4
+            emphasis_1 0
+            emphasis_2 0
+            emphasis_3 0
+        }
+        multiplayer_user_colors {
+            player_1 202 148 255
+            player_2 92 152 205
+            player_3 0
+            player_4 240 204 4
+            player_5 139 244 253
+            player_6 0
+            player_7 233 75 53
+            player_8 0
+            player_9 0
+            player_10 0
+        }
     }
 }

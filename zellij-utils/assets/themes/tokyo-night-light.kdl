@@ -1,16 +1,120 @@
 themes {
     tokyo-night-light {
-        fg 52 59 88
-        bg 213 214 219
-        black 15 15 20
-        red 186 75 96
-        green 72 94 48
-        yellow 143 94 21
-        blue 52 84 138
-        magenta 90 74 120
-        cyan 15 75 110
-        white 130 137 172
-        orange 150 80 39
+        text_unselected {
+            base 130 137 172
+            background 15 15 20
+            emphasis_0 150 80 39
+            emphasis_1 15 75 110
+            emphasis_2 72 94 48
+            emphasis_3 90 74 120
+        }
+        text_selected {
+            base 130 137 172
+            background 213 214 219
+            emphasis_0 150 80 39
+            emphasis_1 15 75 110
+            emphasis_2 72 94 48
+            emphasis_3 90 74 120
+        }
+        ribbon_selected {
+            base 15 15 20
+            background 72 94 48
+            emphasis_0 186 75 96
+            emphasis_1 150 80 39
+            emphasis_2 90 74 120
+            emphasis_3 52 84 138
+        }
+        ribbon_unselected {
+            base 15 15 20
+            background 52 59 88
+            emphasis_0 186 75 96
+            emphasis_1 130 137 172
+            emphasis_2 52 84 138
+            emphasis_3 90 74 120
+        }
+        table_title {
+            base 72 94 48
+            background 0
+            emphasis_0 150 80 39
+            emphasis_1 15 75 110
+            emphasis_2 72 94 48
+            emphasis_3 90 74 120
+        }
+        table_cell_selected {
+            base 130 137 172
+            background 213 214 219
+            emphasis_0 150 80 39
+            emphasis_1 15 75 110
+            emphasis_2 72 94 48
+            emphasis_3 90 74 120
+        }
+        table_cell_unselected {
+            base 130 137 172
+            background 15 15 20
+            emphasis_0 150 80 39
+            emphasis_1 15 75 110
+            emphasis_2 72 94 48
+            emphasis_3 90 74 120
+        }
+        list_selected {
+            base 130 137 172
+            background 213 214 219
+            emphasis_0 150 80 39
+            emphasis_1 15 75 110
+            emphasis_2 72 94 48
+            emphasis_3 90 74 120
+        }
+        list_unselected {
+            base 130 137 172
+            background 15 15 20
+            emphasis_0 150 80 39
+            emphasis_1 15 75 110
+            emphasis_2 72 94 48
+            emphasis_3 90 74 120
+        }
+        frame_selected {
+            base 72 94 48
+            background 0
+            emphasis_0 150 80 39
+            emphasis_1 15 75 110
+            emphasis_2 90 74 120
+            emphasis_3 0
+        }
+        frame_highlight {
+            base 150 80 39
+            background 0
+            emphasis_0 150 80 39
+            emphasis_1 150 80 39
+            emphasis_2 150 80 39
+            emphasis_3 150 80 39
+        }
+        exit_code_success {
+            base 72 94 48
+            background 0
+            emphasis_0 15 75 110
+            emphasis_1 15 15 20
+            emphasis_2 90 74 120
+            emphasis_3 52 84 138
+        }
+        exit_code_error {
+            base 186 75 96
+            background 0
+            emphasis_0 143 94 21
+            emphasis_1 0
+            emphasis_2 0
+            emphasis_3 0
+        }
+        multiplayer_user_colors {
+            player_1 90 74 120
+            player_2 52 84 138
+            player_3 0
+            player_4 143 94 21
+            player_5 15 75 110
+            player_6 0
+            player_7 186 75 96
+            player_8 0
+            player_9 0
+            player_10 0
+        }
     }
 }
-
