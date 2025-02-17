@@ -1,17 +1,120 @@
-// From https://github.com/dracula/zellij
-
 themes {
-   dracula {
-        fg 248 248 242
-        bg 40 42 54
-        black 0 0 0
-        red 255 85 85
-        green 80 250 123
-        yellow 241 250 140
-        blue 98 114 164
-        magenta 255 121 198
-        cyan 139 233 253
-        white 255 255 255
-        orange 255 184 108
+    dracula {
+        text_unselected {
+            base 255 255 255
+            background 0 0 0
+            emphasis_0 255 184 108
+            emphasis_1 139 233 253
+            emphasis_2 80 250 123
+            emphasis_3 255 121 198
+        }
+        text_selected {
+            base 255 255 255
+            background 40 42 54
+            emphasis_0 255 184 108
+            emphasis_1 139 233 253
+            emphasis_2 80 250 123
+            emphasis_3 255 121 198
+        }
+        ribbon_selected {
+            base 0 0 0
+            background 80 250 123
+            emphasis_0 255 85 85
+            emphasis_1 255 184 108
+            emphasis_2 255 121 198
+            emphasis_3 98 114 164
+        }
+        ribbon_unselected {
+            base 0 0 0
+            background 248 248 242
+            emphasis_0 255 85 85
+            emphasis_1 255 255 255
+            emphasis_2 98 114 164
+            emphasis_3 255 121 198
+        }
+        table_title {
+            base 80 250 123
+            background 0
+            emphasis_0 255 184 108
+            emphasis_1 139 233 253
+            emphasis_2 80 250 123
+            emphasis_3 255 121 198
+        }
+        table_cell_selected {
+            base 255 255 255
+            background 40 42 54
+            emphasis_0 255 184 108
+            emphasis_1 139 233 253
+            emphasis_2 80 250 123
+            emphasis_3 255 121 198
+        }
+        table_cell_unselected {
+            base 255 255 255
+            background 0 0 0
+            emphasis_0 255 184 108
+            emphasis_1 139 233 253
+            emphasis_2 80 250 123
+            emphasis_3 255 121 198
+        }
+        list_selected {
+            base 255 255 255
+            background 40 42 54
+            emphasis_0 255 184 108
+            emphasis_1 139 233 253
+            emphasis_2 80 250 123
+            emphasis_3 255 121 198
+        }
+        list_unselected {
+            base 255 255 255
+            background 0 0 0
+            emphasis_0 255 184 108
+            emphasis_1 139 233 253
+            emphasis_2 80 250 123
+            emphasis_3 255 121 198
+        }
+        frame_selected {
+            base 80 250 123
+            background 0
+            emphasis_0 255 184 108
+            emphasis_1 139 233 253
+            emphasis_2 255 121 198
+            emphasis_3 0
+        }
+        frame_highlight {
+            base 255 184 108
+            background 0
+            emphasis_0 255 184 108
+            emphasis_1 255 184 108
+            emphasis_2 255 184 108
+            emphasis_3 255 184 108
+        }
+        exit_code_success {
+            base 80 250 123
+            background 0
+            emphasis_0 139 233 253
+            emphasis_1 0 0 0
+            emphasis_2 255 121 198
+            emphasis_3 98 114 164
+        }
+        exit_code_error {
+            base 255 85 85
+            background 0
+            emphasis_0 241 250 140
+            emphasis_1 0
+            emphasis_2 0
+            emphasis_3 0
+        }
+        multiplayer_user_colors {
+            player_1 255 121 198
+            player_2 98 114 164
+            player_3 0
+            player_4 241 250 140
+            player_5 139 233 253
+            player_6 0
+            player_7 255 85 85
+            player_8 0
+            player_9 0
+            player_10 0
+        }
     }
 }

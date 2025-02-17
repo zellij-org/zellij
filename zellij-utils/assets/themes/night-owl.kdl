@@ -1,17 +1,120 @@
-// Night Owl Theme:
-
 themes {
-  night-owl {
-    bg "#051525" // Surface2
-    fg "#d7dde9"
-    red "#dd5e56"
-    green "#67d679"
-    blue "#8aa8f8"
-    yellow "#b6d976"
-    magenta "#be94e4" // Pink
-    orange "#fab387" // Peach
-    cyan "#5ec4a9" // Sky
-    black "#051525" // Mantle
-    white "#feffff"
-     }
+    night-owl {
+        text_unselected {
+            base 254 255 255
+            background 5 21 37
+            emphasis_0 250 179 135
+            emphasis_1 94 196 169
+            emphasis_2 103 214 121
+            emphasis_3 190 148 228
+        }
+        text_selected {
+            base 5 21 37
+            background 103 214 121
+            emphasis_0 250 179 135
+            emphasis_1 94 196 169
+            emphasis_2 103 214 121
+            emphasis_3 190 148 228
+        }
+        ribbon_selected {
+            base 5 21 37
+            background 103 214 121
+            emphasis_0 221 94 86
+            emphasis_1 250 179 135
+            emphasis_2 190 148 228
+            emphasis_3 138 168 248
+        }
+        ribbon_unselected {
+            base 5 21 37
+            background 215 221 233
+            emphasis_0 221 94 86
+            emphasis_1 254 255 255
+            emphasis_2 138 168 248
+            emphasis_3 190 148 228
+        }
+        table_title {
+            base 103 214 121
+            background 0
+            emphasis_0 250 179 135
+            emphasis_1 94 196 169
+            emphasis_2 103 214 121
+            emphasis_3 190 148 228
+        }
+        table_cell_selected {
+            base 254 255 255
+            background 5 21 37
+            emphasis_0 250 179 135
+            emphasis_1 94 196 169
+            emphasis_2 103 214 121
+            emphasis_3 190 148 228
+        }
+        table_cell_unselected {
+            base 254 255 255
+            background 5 21 37
+            emphasis_0 250 179 135
+            emphasis_1 94 196 169
+            emphasis_2 103 214 121
+            emphasis_3 190 148 228
+        }
+        list_selected {
+            base 254 255 255
+            background 5 21 37
+            emphasis_0 250 179 135
+            emphasis_1 94 196 169
+            emphasis_2 103 214 121
+            emphasis_3 190 148 228
+        }
+        list_unselected {
+            base 254 255 255
+            background 5 21 37
+            emphasis_0 250 179 135
+            emphasis_1 94 196 169
+            emphasis_2 103 214 121
+            emphasis_3 190 148 228
+        }
+        frame_selected {
+            base 103 214 121
+            background 0
+            emphasis_0 250 179 135
+            emphasis_1 94 196 169
+            emphasis_2 190 148 228
+            emphasis_3 0
+        }
+        frame_highlight {
+            base 250 179 135
+            background 0
+            emphasis_0 250 179 135
+            emphasis_1 250 179 135
+            emphasis_2 250 179 135
+            emphasis_3 250 179 135
+        }
+        exit_code_success {
+            base 103 214 121
+            background 0
+            emphasis_0 94 196 169
+            emphasis_1 5 21 37
+            emphasis_2 190 148 228
+            emphasis_3 138 168 248
+        }
+        exit_code_error {
+            base 221 94 86
+            background 0
+            emphasis_0 182 217 118
+            emphasis_1 0
+            emphasis_2 0
+            emphasis_3 0
+        }
+        multiplayer_user_colors {
+            player_1 190 148 228
+            player_2 138 168 248
+            player_3 0
+            player_4 182 217 118
+            player_5 94 196 169
+            player_6 0
+            player_7 221 94 86
+            player_8 0
+            player_9 0
+            player_10 0
+        }
+    }
 }

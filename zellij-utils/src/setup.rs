@@ -81,7 +81,6 @@ fn get_default_themes() -> Themes {
             }
         }
     }
-
     themes
 }
 
