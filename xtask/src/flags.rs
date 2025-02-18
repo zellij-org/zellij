@@ -9,7 +9,7 @@ xflags::xflags! {
     cmd xtask {
         /// Deprecation warning. Compatibility to transition from `cargo make`.
         cmd deprecated {
-            repeated args: OsString
+            repeated _args: OsString
         }
 
         /// Tasks for the CI
@@ -128,7 +128,7 @@ pub enum XtaskCmd {
 
 #[derive(Debug)]
 pub struct Deprecated {
-    pub args: Vec<OsString>,
+    pub _args: Vec<OsString>,
 }
 
 #[derive(Debug)]
