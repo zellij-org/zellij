@@ -1663,6 +1663,10 @@ pub struct TabInfo {
     /// Column count in the display area (including all panes, will typically be larger than the
     /// viewport)
     pub display_area_columns: usize,
+    /// The number of selectable (eg. not the UI bars) tiled panes currently in this tab
+    pub selectable_tiled_panes_count: usize,
+    /// The number of selectable (eg. not the UI bars) floating panes currently in this tab
+    pub selectable_floating_panes_count: usize,
 }
 
 /// The `PaneManifest` contains a dictionary of panes, indexed by the tab position (0 indexed).

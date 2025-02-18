@@ -1540,6 +1540,8 @@ impl Screen {
             let (active_swap_layout_name, is_swap_layout_dirty) = tab.swap_layout_info();
             let tab_viewport = tab.get_viewport();
             let tab_display_area = tab.get_display_area();
+            let selectable_tiled_panes_count = tab.get_selectable_tiled_panes_count();
+            let selectable_floating_panes_count = tab.get_selectable_floating_panes_count();
             let tab_info_for_screen = TabInfo {
                 position: tab.position,
                 name: tab.name.clone(),
@@ -1555,6 +1557,8 @@ impl Screen {
                 viewport_columns: tab_viewport.cols,
                 display_area_rows: tab_display_area.rows,
                 display_area_columns: tab_display_area.cols,
+                selectable_tiled_panes_count,
+                selectable_floating_panes_count,
             };
             tab_infos_for_screen_state.insert(tab.position, tab_info_for_screen);
         }
@@ -1576,6 +1580,8 @@ impl Screen {
                 let (active_swap_layout_name, is_swap_layout_dirty) = tab.swap_layout_info();
                 let tab_viewport = tab.get_viewport();
                 let tab_display_area = tab.get_display_area();
+                let selectable_tiled_panes_count = tab.get_selectable_tiled_panes_count();
+                let selectable_floating_panes_count = tab.get_selectable_floating_panes_count();
                 let tab_info_for_plugins = TabInfo {
                     position: tab.position,
                     name: tab.name.clone(),
@@ -1591,6 +1597,8 @@ impl Screen {
                     viewport_columns: tab_viewport.cols,
                     display_area_rows: tab_display_area.rows,
                     display_area_columns: tab_display_area.cols,
+                    selectable_tiled_panes_count,
+                    selectable_floating_panes_count,
                 };
                 plugin_tab_updates.push(tab_info_for_plugins);
             }

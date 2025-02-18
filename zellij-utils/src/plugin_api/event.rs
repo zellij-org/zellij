@@ -1109,6 +1109,9 @@ impl TryFrom<ProtobufTabInfo> for TabInfo {
             viewport_columns: protobuf_tab_info.viewport_columns as usize,
             display_area_rows: protobuf_tab_info.display_area_rows as usize,
             display_area_columns: protobuf_tab_info.display_area_columns as usize,
+            selectable_tiled_panes_count: protobuf_tab_info.selectable_tiled_panes_count as usize,
+            selectable_floating_panes_count: protobuf_tab_info.selectable_floating_panes_count
+                as usize,
         })
     }
 }
@@ -1135,6 +1138,8 @@ impl TryFrom<TabInfo> for ProtobufTabInfo {
             viewport_columns: tab_info.viewport_columns as u32,
             display_area_rows: tab_info.display_area_rows as u32,
             display_area_columns: tab_info.display_area_columns as u32,
+            selectable_tiled_panes_count: tab_info.selectable_tiled_panes_count as u32,
+            selectable_floating_panes_count: tab_info.selectable_floating_panes_count as u32,
         })
     }
 }
@@ -1540,6 +1545,8 @@ fn serialize_tab_update_event_with_non_default_values() {
             viewport_columns: 10,
             display_area_rows: 10,
             display_area_columns: 10,
+            selectable_tiled_panes_count: 10,
+            selectable_floating_panes_count: 10,
         },
         TabInfo {
             position: 1,
@@ -1556,6 +1563,8 @@ fn serialize_tab_update_event_with_non_default_values() {
             viewport_columns: 10,
             display_area_rows: 10,
             display_area_columns: 10,
+            selectable_tiled_panes_count: 10,
+            selectable_floating_panes_count: 10,
         },
         TabInfo::default(),
     ]);
@@ -1827,6 +1836,8 @@ fn serialize_session_update_event_with_non_default_values() {
             viewport_columns: 10,
             display_area_rows: 10,
             display_area_columns: 10,
+            selectable_tiled_panes_count: 10,
+            selectable_floating_panes_count: 10,
         },
         TabInfo {
             position: 1,
@@ -1843,6 +1854,8 @@ fn serialize_session_update_event_with_non_default_values() {
             viewport_columns: 10,
             display_area_rows: 10,
             display_area_columns: 10,
+            selectable_tiled_panes_count: 10,
+            selectable_floating_panes_count: 10,
         },
         TabInfo::default(),
     ];

@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2926
+assertion_line: 2929
 expression: "format!(\"{:#?}\", plugin_rename_tab_instruction)"
 ---
 Some(
@@ -30,6 +30,8 @@ Some(
                             viewport_columns: 80,
                             display_area_rows: 10,
                             display_area_columns: 80,
+                            selectable_tiled_panes_count: 2,
+                            selectable_floating_panes_count: 0,
                         },
                     ],
                 ),
