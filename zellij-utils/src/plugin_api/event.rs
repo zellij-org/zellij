@@ -1110,7 +1110,8 @@ impl TryFrom<ProtobufTabInfo> for TabInfo {
             display_area_rows: protobuf_tab_info.display_area_rows as usize,
             display_area_columns: protobuf_tab_info.display_area_columns as usize,
             selectable_tiled_panes_count: protobuf_tab_info.selectable_tiled_panes_count as usize,
-            selectable_floating_panes_count: protobuf_tab_info.selectable_floating_panes_count as usize,
+            selectable_floating_panes_count: protobuf_tab_info.selectable_floating_panes_count
+                as usize,
         })
     }
 }

@@ -4594,8 +4594,10 @@ impl TabInfo {
         let display_area_rows = optional_int_node!("display_area_rows", usize).unwrap_or(0);
         let display_area_columns = optional_int_node!("display_area_columns", usize).unwrap_or(0);
         let is_swap_layout_dirty = bool_node!("is_swap_layout_dirty");
-        let selectable_tiled_panes_count = optional_int_node!("selectable_tiled_panes_count", usize).unwrap_or(0);
-        let selectable_floating_panes_count = optional_int_node!("selectable_floating_panes_count", usize).unwrap_or(0);
+        let selectable_tiled_panes_count =
+            optional_int_node!("selectable_tiled_panes_count", usize).unwrap_or(0);
+        let selectable_floating_panes_count =
+            optional_int_node!("selectable_floating_panes_count", usize).unwrap_or(0);
         Ok(TabInfo {
             position,
             name,
@@ -4686,7 +4688,9 @@ impl TabInfo {
 
         let mut selectable_floating_panes_count = KdlNode::new("selectable_floating_panes_count");
         selectable_floating_panes_count.push(self.selectable_floating_panes_count as i64);
-        kdl_doucment.nodes_mut().push(selectable_floating_panes_count);
+        kdl_doucment
+            .nodes_mut()
+            .push(selectable_floating_panes_count);
 
         kdl_doucment
     }
