@@ -447,7 +447,7 @@ fn zellij_server_listener(
                         match resurrection_layout {
                             Some(resurrection_layout) => {
                                 spawn_new_session(
-                                    &path,
+                                    &session_name,
                                     is_web_client,
                                     os_input.clone(),
                                     config.clone(),
@@ -480,7 +480,7 @@ fn zellij_server_listener(
                                 };
 
                                 spawn_new_session(
-                                    &path,
+                                    &session_name,
                                     is_web_client,
                                     os_input.clone(),
                                     config.clone(),
