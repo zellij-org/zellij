@@ -422,6 +422,10 @@ pub struct TabInfo {
     pub display_area_rows: u32,
     #[prost(uint32, tag = "14")]
     pub display_area_columns: u32,
+    #[prost(uint32, tag = "15")]
+    pub selectable_tiled_panes_count: u32,
+    #[prost(uint32, tag = "16")]
+    pub selectable_floating_panes_count: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

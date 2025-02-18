@@ -4594,6 +4594,8 @@ impl TabInfo {
         let display_area_rows = optional_int_node!("display_area_rows", usize).unwrap_or(0);
         let display_area_columns = optional_int_node!("display_area_columns", usize).unwrap_or(0);
         let is_swap_layout_dirty = bool_node!("is_swap_layout_dirty");
+        let selectable_tiled_panes_count = optional_int_node!("selectable_tiled_panes_count", usize).unwrap_or(0);
+        let selectable_floating_panes_count = optional_int_node!("selectable_floating_panes_count", usize).unwrap_or(0);
         Ok(TabInfo {
             position,
             name,
@@ -4609,6 +4611,8 @@ impl TabInfo {
             viewport_columns,
             display_area_rows,
             display_area_columns,
+            selectable_tiled_panes_count,
+            selectable_floating_panes_count,
         })
     }
     pub fn encode_to_kdl(&self) -> KdlDocument {
@@ -5020,6 +5024,8 @@ fn serialize_and_deserialize_session_info_with_data() {
                 viewport_columns: 10,
                 display_area_rows: 10,
                 display_area_columns: 10,
+                selectable_tiled_panes_count: 10,
+                selectable_floating_panes_count: 10,
             },
             TabInfo {
                 position: 1,
@@ -5036,6 +5042,8 @@ fn serialize_and_deserialize_session_info_with_data() {
                 viewport_columns: 10,
                 display_area_rows: 10,
                 display_area_columns: 10,
+                selectable_tiled_panes_count: 10,
+                selectable_floating_panes_count: 10,
             },
         ],
         panes: PaneManifest { panes },

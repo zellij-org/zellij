@@ -2271,6 +2271,9 @@ impl Tab {
     pub fn get_selectable_tiled_panes_count(&self) -> usize {
         self.get_selectable_tiled_panes().count()
     }
+    pub fn get_selectable_floating_panes_count(&self) -> usize {
+        self.get_selectable_floating_panes().count()
+    }
     pub fn get_visible_selectable_floating_panes_count(&self) -> usize {
         if self.are_floating_panes_visible() {
             self.get_selectable_floating_panes().count()
