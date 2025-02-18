@@ -1,6 +1,6 @@
 ---
 source: src/tests/e2e/cases.rs
-assertion_line: 2426
+assertion_line: 2424
 expression: last_snapshot
 ---
  Zellij (e2e-test)  Tab #1 
@@ -26,4 +26,4 @@ expression: last_snapshot
 │                                                                                                                      │
 │                                                                                                                      │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- Ctrl g  UNLOCK                                         Alt +  <n> New Pane  <←↓↑→> Change Focus  <f> Floating  
+ Ctrl g  UNLOCK                                                                Alt +  <n> New Pane  <f> Floating  

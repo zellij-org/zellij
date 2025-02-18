@@ -978,7 +978,16 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 are_floating_panes_visible,
             ));
         }
-        short_line
+        if short_line.len <= max_len {
+            short_line
+        } else {
+            let part = serialize_text(&Text::new(format!("{:>width$}", "...", width = max_len.saturating_sub(3))).color_range(0, ..).opaque());
+            let len = max_len.saturating_sub(3);
+            LinePart {
+                part,
+                len,
+            }
+        }
     }
 }
 
