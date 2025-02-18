@@ -19,6 +19,7 @@ use anyhow::Context;
 use std::{
     env,
     path::{Path, PathBuf},
+    sync::OnceLock,
     time::Instant,
 };
 use xshell::Shell;
@@ -28,8 +29,9 @@ pub struct WorkspaceMember {
     build: bool,
 }
 
-lazy_static::lazy_static! {
-    pub static ref WORKSPACE_MEMBERS: Vec<WorkspaceMember> = vec![
+fn workspace_members() -> &'static Vec<WorkspaceMember> {
+    static WORKSPACE_MEMBERS: OnceLock<Vec<WorkspaceMember>> = OnceLock::new();
+    WORKSPACE_MEMBERS.get_or_init(|| vec![
         WorkspaceMember{crate_name: "default-plugins/compact-bar", build: true},
         WorkspaceMember{crate_name: "default-plugins/status-bar", build: true},
         WorkspaceMember{crate_name: "default-plugins/strider", build: true},
@@ -45,7 +47,7 @@ lazy_static::lazy_static! {
         WorkspaceMember{crate_name: "zellij-client", build: false},
         WorkspaceMember{crate_name: "zellij-server", build: false},
         WorkspaceMember{crate_name: ".", build: true},
-    ];
+    ])
 }
 
 fn main() -> anyhow::Result<()> {

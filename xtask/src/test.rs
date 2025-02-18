@@ -20,9 +20,9 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
     )
     .context(err_context)?;
 
-    for WorkspaceMember { crate_name, .. } in crate::WORKSPACE_MEMBERS.iter() {
+    for WorkspaceMember { crate_name, .. } in crate::workspace_members().iter() {
         // the workspace root only contains e2e tests, skip it
-        if *crate_name == "." {
+        if crate_name == &"." {
             continue;
         }
 
