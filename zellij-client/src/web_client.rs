@@ -476,7 +476,11 @@ fn zellij_server_listener(
                                         &stringified_layout,
                                         config.clone(),
                                     ),
-                                    None => Ok(Default::default())
+                                    None => Layout::from_default_assets(
+                                        &PathBuf::from("default"),
+                                        layout_dir.clone(),
+                                        config.clone(),
+                                    )
                                 };
 
                                 spawn_new_session(
