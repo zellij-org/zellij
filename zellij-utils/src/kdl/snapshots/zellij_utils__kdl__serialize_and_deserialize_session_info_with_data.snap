@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 4728
+assertion_line: 5070
 expression: serialized
 ---
 name "my session name"
@@ -20,6 +20,8 @@ tabs {
         display_area_columns 10
         display_area_rows 10
         is_swap_layout_dirty true
+        selectable_tiled_panes_count 10
+        selectable_floating_panes_count 10
     }
     tab {
         position 1
@@ -35,6 +37,8 @@ tabs {
         display_area_columns 10
         display_area_rows 10
         is_swap_layout_dirty false
+        selectable_tiled_panes_count 10
+        selectable_floating_panes_count 10
     }
 }
 panes {

@@ -4680,6 +4680,14 @@ impl TabInfo {
         is_swap_layout_dirty.push(self.is_swap_layout_dirty);
         kdl_doucment.nodes_mut().push(is_swap_layout_dirty);
 
+        let mut selectable_tiled_panes_count = KdlNode::new("selectable_tiled_panes_count");
+        selectable_tiled_panes_count.push(self.selectable_tiled_panes_count as i64);
+        kdl_doucment.nodes_mut().push(selectable_tiled_panes_count);
+
+        let mut selectable_floating_panes_count = KdlNode::new("selectable_floating_panes_count");
+        selectable_floating_panes_count.push(self.selectable_floating_panes_count as i64);
+        kdl_doucment.nodes_mut().push(selectable_floating_panes_count);
+
         kdl_doucment
     }
 }
