@@ -349,6 +349,7 @@ pub enum ScreenInstruction {
         HoldForCommand,
         Option<InitialTitle>,
         Option<Run>,
+        bool, // close replaced pane
         ClientTabIndexOrPaneId,
     ),
     DumpLayoutToHd,
@@ -2389,10 +2390,11 @@ impl Screen {
         hold_for_command: HoldForCommand,
         run: Option<Run>,
         pane_title: Option<InitialTitle>,
+        close_replaced_pane: bool,
         client_id_tab_index_or_pane_id: ClientTabIndexOrPaneId,
     ) -> Result<()> {
         let suppress_pane = |tab: &mut Tab, pane_id: PaneId, new_pane_id: PaneId| {
-            let _ = tab.suppress_pane_and_replace_with_pid(pane_id, new_pane_id, run);
+            let _ = tab.suppress_pane_and_replace_with_pid(pane_id, new_pane_id, close_replaced_pane, run);
             if let Some(pane_title) = pane_title {
                 let _ = tab.rename_pane(pane_title.as_bytes().to_vec(), new_pane_id);
             }
@@ -4176,6 +4178,7 @@ pub(crate) fn screen_thread_main(
                 });
                 let run_plugin = Run::Plugin(run_plugin_or_alias);
 
+                let close_replaced_pane = false;
                 if should_be_in_place {
                     if let Some(pane_id_to_replace) = pane_id_to_replace {
                         let client_tab_index_or_pane_id =
@@ -4185,6 +4188,7 @@ pub(crate) fn screen_thread_main(
                             None,
                             Some(run_plugin),
                             Some(pane_title),
+                            close_replaced_pane,
                             client_tab_index_or_pane_id,
                         )?;
                     } else if let Some(client_id) = client_id {
@@ -4195,6 +4199,7 @@ pub(crate) fn screen_thread_main(
                             None,
                             Some(run_plugin),
                             Some(pane_title),
+                            close_replaced_pane,
                             client_tab_index_or_pane_id,
                         )?;
                     } else {
@@ -4500,13 +4505,16 @@ pub(crate) fn screen_thread_main(
                 hold_for_command,
                 pane_title,
                 invoked_with,
+                close_replaced_pane,
                 client_id_tab_index_or_pane_id,
             ) => {
+                log::info!("ScreenInstruction::ReplacePane");
                 screen.replace_pane(
                     new_pane_id,
                     hold_for_command,
                     invoked_with,
                     pane_title,
+                    close_replaced_pane,
                     client_id_tab_index_or_pane_id,
                 )?;
 

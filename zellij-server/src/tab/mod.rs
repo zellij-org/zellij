@@ -1320,6 +1320,7 @@ impl Tab {
         &mut self,
         old_pane_id: PaneId,
         new_pane_id: PaneId,
+        close_replaced_pane: bool,
         run: Option<Run>,
     ) -> Result<()> {
         // this method creates a new pane from pid and replaces it with the active pane
@@ -1356,27 +1357,31 @@ impl Tab {
                     self.tiled_panes
                         .replace_pane(old_pane_id, Box::new(new_pane))
                 };
-                match replaced_pane {
-                    Some(replaced_pane) => {
-                        let _ = resize_pty!(
-                            replaced_pane,
-                            self.os_api,
-                            self.senders,
-                            self.character_cell_size
-                        );
-                        let is_scrollback_editor = false;
-                        self.suppressed_panes.insert(
-                            PaneId::Terminal(new_pane_id),
-                            (is_scrollback_editor, replaced_pane),
-                        );
-                    },
-                    None => {
-                        Err::<(), _>(anyhow!(
-                            "Could not find editor pane to replace - is no pane focused?"
-                        ))
-                        .with_context(err_context)
-                        .non_fatal();
-                    },
+                if close_replaced_pane {
+                    drop(replaced_pane);
+                } else {
+                    match replaced_pane {
+                        Some(replaced_pane) => {
+                            let _ = resize_pty!(
+                                replaced_pane,
+                                self.os_api,
+                                self.senders,
+                                self.character_cell_size
+                            );
+                            let is_scrollback_editor = false;
+                            self.suppressed_panes.insert(
+                                PaneId::Terminal(new_pane_id),
+                                (is_scrollback_editor, replaced_pane),
+                            );
+                        },
+                        None => {
+                            Err::<(), _>(anyhow!(
+                                "Could not find editor pane to replace - is no pane focused?"
+                            ))
+                            .with_context(err_context)
+                            .non_fatal();
+                        },
+                    }
                 }
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1410,27 +1415,31 @@ impl Tab {
                     self.tiled_panes
                         .replace_pane(old_pane_id, Box::new(new_pane))
                 };
-                match replaced_pane {
-                    Some(replaced_pane) => {
-                        let _ = resize_pty!(
-                            replaced_pane,
-                            self.os_api,
-                            self.senders,
-                            self.character_cell_size
-                        );
-                        let is_scrollback_editor = false;
-                        self.suppressed_panes.insert(
-                            PaneId::Plugin(plugin_pid),
-                            (is_scrollback_editor, replaced_pane),
-                        );
-                    },
-                    None => {
-                        Err::<(), _>(anyhow!(
-                            "Could not find editor pane to replace - is no pane focused?"
-                        ))
-                        .with_context(err_context)
-                        .non_fatal();
-                    },
+                if close_replaced_pane {
+                    drop(replaced_pane);
+                } else {
+                    match replaced_pane {
+                        Some(replaced_pane) => {
+                            let _ = resize_pty!(
+                                replaced_pane,
+                                self.os_api,
+                                self.senders,
+                                self.character_cell_size
+                            );
+                            let is_scrollback_editor = false;
+                            self.suppressed_panes.insert(
+                                PaneId::Plugin(plugin_pid),
+                                (is_scrollback_editor, replaced_pane),
+                            );
+                        },
+                        None => {
+                            Err::<(), _>(anyhow!(
+                                "Could not find editor pane to replace - is no pane focused?"
+                            ))
+                            .with_context(err_context)
+                            .non_fatal();
+                        },
+                    }
                 }
             },
         }

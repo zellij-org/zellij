@@ -256,14 +256,14 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::OpenTerminalInPlace(cwd) => {
                         open_terminal_in_place(env, cwd.path.try_into()?)
                     },
-                    PluginCommand::OpenTerminalInPlaceOfPlugin(cwd) => {
-                        open_terminal_in_place_of_plugin(env, cwd.path.try_into()?)
+                    PluginCommand::OpenTerminalInPlaceOfPlugin(cwd, close_plugin_after_replace) => {
+                        open_terminal_in_place_of_plugin(env, cwd.path.try_into()?, close_plugin_after_replace)
                     },
                     PluginCommand::OpenCommandPaneInPlace(command_to_run, context) => {
                         open_command_pane_in_place(env, command_to_run, context)
                     },
-                    PluginCommand::OpenCommandPaneInPlaceOfPlugin(command_to_run, context) => {
-                        open_command_pane_in_place_of_plugin(env, command_to_run, context)
+                    PluginCommand::OpenCommandPaneInPlaceOfPlugin(command_to_run, close_plugin_after_replace, context) => {
+                        open_command_pane_in_place_of_plugin(env, command_to_run, close_plugin_after_replace, context)
                     },
                     PluginCommand::RenameSession(new_session_name) => {
                         rename_session(env, new_session_name)
@@ -413,8 +413,8 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         floating_pane_coordinates,
                         context,
                     ),
-                    PluginCommand::OpenFileInPlaceOfPlugin(file_to_open, context) => {
-                        open_file_in_place_of_plugin(env, file_to_open, context)
+                    PluginCommand::OpenFileInPlaceOfPlugin(file_to_open, close_plugin_after_replace, context) => {
+                        open_file_in_place_of_plugin(env, file_to_open, close_plugin_after_replace, context)
                     },
                 },
                 (PermissionStatus::Denied, permission) => {
@@ -703,6 +703,7 @@ fn open_file_floating_near_plugin(
 fn open_file_in_place_of_plugin(
     env: &PluginEnv,
     file_to_open: FileToOpen,
+    close_plugin_after_replace: bool,
     context: BTreeMap<String, String>,
 ) {
     let cwd = file_to_open
@@ -719,6 +720,7 @@ fn open_file_in_place_of_plugin(
     let pty_instr = PtyInstruction::SpawnInPlaceTerminal(
         Some(open_file),
         Some(title),
+        close_plugin_after_replace,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
     );
     let _ = env.senders.send_to_pty(pty_instr);
@@ -828,7 +830,7 @@ fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
     apply_action!(action, error_msg, env);
 }
 
-fn open_terminal_in_place_of_plugin(env: &PluginEnv, cwd: PathBuf) {
+fn open_terminal_in_place_of_plugin(env: &PluginEnv, cwd: PathBuf, close_plugin_after_replace: bool) {
     let cwd = env.plugin_cwd.join(cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
@@ -843,6 +845,7 @@ fn open_terminal_in_place_of_plugin(env: &PluginEnv, cwd: PathBuf) {
         .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
             Some(default_shell),
             name,
+            close_plugin_after_replace,
             ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         ));
 }
@@ -850,6 +853,7 @@ fn open_terminal_in_place_of_plugin(env: &PluginEnv, cwd: PathBuf) {
 fn open_command_pane_in_place_of_plugin(
     env: &PluginEnv,
     command_to_run: CommandToRun,
+    close_plugin_after_replace: bool,
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
@@ -878,6 +882,7 @@ fn open_command_pane_in_place_of_plugin(
         .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
             Some(run_cmd),
             name,
+            close_plugin_after_replace,
             ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         ));
 }

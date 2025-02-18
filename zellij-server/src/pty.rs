@@ -78,6 +78,7 @@ pub enum PtyInstruction {
     SpawnInPlaceTerminal(
         Option<TerminalAction>,
         Option<String>,
+        bool, // close replaced pane
         ClientTabIndexOrPaneId,
     ), // String is an optional pane name
     DumpLayout(SessionLayoutMetadata, ClientId),
@@ -278,6 +279,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::SpawnInPlaceTerminal(
                 terminal_action,
                 name,
+                close_replaced_pane,
                 client_id_tab_index_or_pane_id,
             ) => {
                 let err_context = || {
@@ -318,6 +320,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 hold_for_command,
                                 pane_title,
                                 invoked_with,
+                                close_replaced_pane,
                                 client_id_tab_index_or_pane_id,
                             ))
                             .with_context(err_context)?;
@@ -333,6 +336,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         hold_for_command,
                                         pane_title,
                                         invoked_with,
+                                        close_replaced_pane,
                                         client_id_tab_index_or_pane_id,
                                     ))
                                     .with_context(err_context)?;

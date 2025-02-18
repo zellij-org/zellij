@@ -146,20 +146,48 @@ impl State {
             .update_files(paths, self.hide_hidden_files);
     }
     pub fn open_selected_path(&mut self) {
+//         if self.file_list_view.path_is_dir {
+//             open_terminal(&self.file_list_view.path);
+//         } else {
+//             if let Some(parent_folder) = self.file_list_view.path.parent() {
+//                 open_file(
+//                     FileToOpen::new(&self.file_list_view.path).with_cwd(parent_folder.into()),
+//                     BTreeMap::new(),
+//                 );
+//             } else {
+//                 open_file(FileToOpen::new(&self.file_list_view.path), BTreeMap::new());
+//             }
+//         }
+//         if self.close_on_selection {
+//             close_self();
+//         }
         if self.file_list_view.path_is_dir {
-            open_terminal(&self.file_list_view.path);
+            if self.close_on_selection {
+                open_terminal_in_place_of_plugin(&self.file_list_view.path, true);
+            } else {
+                open_terminal(&self.file_list_view.path);
+            }
         } else {
             if let Some(parent_folder) = self.file_list_view.path.parent() {
-                open_file(
-                    FileToOpen::new(&self.file_list_view.path).with_cwd(parent_folder.into()),
-                    BTreeMap::new(),
-                );
+                if self.close_on_selection {
+                    open_file_in_place_of_plugin(
+                        FileToOpen::new(&self.file_list_view.path).with_cwd(parent_folder.into()),
+                        true,
+                        BTreeMap::new(),
+                    );
+                } else {
+                    open_file(
+                        FileToOpen::new(&self.file_list_view.path).with_cwd(parent_folder.into()),
+                        BTreeMap::new(),
+                    );
+                }
             } else {
-                open_file(FileToOpen::new(&self.file_list_view.path), BTreeMap::new());
+                if self.close_on_selection {
+                    open_file_in_place_of_plugin(FileToOpen::new(&self.file_list_view.path), true, BTreeMap::new());
+                } else {
+                    open_file(FileToOpen::new(&self.file_list_view.path), BTreeMap::new());
+                }
             }
-        }
-        if self.close_on_selection {
-            close_self();
         }
     }
     pub fn send_filepick_response(&mut self) {
