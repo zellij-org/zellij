@@ -196,6 +196,7 @@ pub(crate) struct Tab {
     arrow_fonts: bool,
     styled_underlines: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
+    session_is_shared: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -591,6 +592,7 @@ impl Tab {
         styled_underlines: bool,
         explicitly_disable_kitty_keyboard_protocol: bool,
         default_editor: Option<PathBuf>,
+        session_is_shared: bool,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -687,6 +689,7 @@ impl Tab {
             styled_underlines,
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
+            session_is_shared,
         }
     }
 
@@ -897,6 +900,7 @@ impl Tab {
                 .clone();
             mode_info.shell = Some(self.default_shell.clone());
             mode_info.editor = self.default_editor.clone();
+            mode_info.session_is_shared = Some(self.session_is_shared);
             plugin_updates.push((None, Some(*client_id), Event::ModeUpdate(mode_info)));
         }
         self.senders

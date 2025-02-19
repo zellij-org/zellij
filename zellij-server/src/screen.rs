@@ -696,6 +696,7 @@ pub(crate) struct Screen {
     default_layout_name: Option<String>,
     explicitly_disable_kitty_keyboard_protocol: bool,
     default_editor: Option<PathBuf>,
+    session_is_shared: bool,
 }
 
 impl Screen {
@@ -722,6 +723,7 @@ impl Screen {
         explicitly_disable_kitty_keyboard_protocol: bool,
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
+        session_is_shared: bool,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -765,6 +767,7 @@ impl Screen {
             layout_dir,
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
+            session_is_shared,
         }
     }
 
@@ -1365,6 +1368,7 @@ impl Screen {
             self.styled_underlines,
             self.explicitly_disable_kitty_keyboard_protocol,
             self.default_editor.clone(),
+            self.session_is_shared,
         );
         for (client_id, mode_info) in &self.mode_info {
             tab.change_mode_info(mode_info.clone(), *client_id);
@@ -2831,6 +2835,7 @@ pub(crate) fn screen_thread_main(
         .unwrap_or(false); // by default, we try to support this if the terminal supports it and
                            // the program running inside a pane requests it
     let stacked_resize = config_options.stacked_resize.unwrap_or(true);
+    let session_is_shared = config_options.enable_web_server.unwrap_or(false);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -2864,6 +2869,7 @@ pub(crate) fn screen_thread_main(
         explicitly_disable_kitty_keyboard_protocol,
         stacked_resize,
         default_editor,
+        session_is_shared,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();

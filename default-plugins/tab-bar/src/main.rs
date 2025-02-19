@@ -129,6 +129,7 @@ impl ZellijPlugin for State {
 
         self.tab_line = tab_line(
             self.mode_info.session_name.as_deref(),
+            self.mode_info.session_is_shared.unwrap_or(false),
             all_tabs,
             active_tab_index,
             cols.saturating_sub(1),

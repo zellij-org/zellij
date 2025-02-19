@@ -175,6 +175,7 @@ fn right_more_message(
 
 fn tab_line_prefix(
     session_name: Option<&str>,
+    session_is_shared: bool,
     mode: InputMode,
     palette: Styling,
     cols: usize,
@@ -203,6 +204,18 @@ fn tab_line_prefix(
                 part: name_part_styled_text.to_string(),
                 len: name_part_len,
                 tab_index: None,
+            })
+        }
+    }
+    if session_is_shared {
+        let sharing_text = " [SHARING]";
+        let sharing_part = style!(palette.text_unselected.emphasis_3, bg_color).bold().paint(sharing_text);
+        let sharing_part_len = sharing_text.chars().count();
+        if cols.saturating_sub(prefix_text_len) >= sharing_part_len {
+            parts.push(LinePart {
+                part: sharing_part.to_string(),
+                len: sharing_part_len,
+                tab_index: None
             })
         }
     }
@@ -242,6 +255,7 @@ pub fn tab_separator(capabilities: PluginCapabilities) -> &'static str {
 
 pub fn tab_line(
     session_name: Option<&str>,
+    session_is_shared: bool,
     mut all_tabs: Vec<LinePart>,
     active_tab_index: usize,
     cols: usize,
@@ -260,8 +274,8 @@ pub fn tab_line(
         tabs_before_active.pop().unwrap()
     };
     let mut prefix = match hide_session_name {
-        true => tab_line_prefix(None, mode, palette, cols),
-        false => tab_line_prefix(session_name, mode, palette, cols),
+        true => tab_line_prefix(None, session_is_shared, mode, palette, cols),
+        false => tab_line_prefix(session_name, session_is_shared, mode, palette, cols),
     };
     let prefix_len = get_current_title_len(&prefix);
 

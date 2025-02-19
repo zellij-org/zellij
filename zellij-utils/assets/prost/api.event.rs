@@ -446,6 +446,8 @@ pub struct ModeUpdatePayload {
     pub editor: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag = "8")]
     pub shell: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag = "9")]
+    pub session_is_shared: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

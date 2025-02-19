@@ -1189,6 +1189,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             .editor
             .map(|e| PathBuf::from(e));
         let shell = protobuf_mode_update_payload.shell.map(|s| PathBuf::from(s));
+        let session_is_shared = protobuf_mode_update_payload.session_is_shared;
         let capabilities = PluginCapabilities {
             arrow_fonts: protobuf_mode_update_payload.arrow_fonts_support,
         };
@@ -1201,6 +1202,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             base_mode,
             editor,
             shell,
+            session_is_shared,
         };
         Ok(mode_info)
     }
@@ -1218,6 +1220,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
         let session_name = mode_info.session_name;
         let editor = mode_info.editor.map(|e| e.display().to_string());
         let shell = mode_info.shell.map(|s| s.display().to_string());
+        let session_is_shared = mode_info.session_is_shared;
         let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
         for (input_mode, input_mode_keybinds) in mode_info.keybinds {
             let mode: ProtobufInputMode = input_mode.try_into()?;
@@ -1251,6 +1254,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             base_mode: base_mode.map(|b_m| b_m as i32),
             editor,
             shell,
+            session_is_shared,
         })
     }
 }
@@ -1499,6 +1503,7 @@ fn serialize_mode_update_event_with_non_default_values() {
         base_mode: Some(InputMode::Locked),
         editor: Some(PathBuf::from("my_awesome_editor")),
         shell: Some(PathBuf::from("my_awesome_shell")),
+        session_is_shared: Some(true),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();

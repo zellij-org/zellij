@@ -1508,6 +1508,7 @@ pub struct ModeInfo {
     pub session_name: Option<String>,
     pub editor: Option<PathBuf>,
     pub shell: Option<PathBuf>,
+    pub session_is_shared: Option<bool>,
 }
 
 impl ModeInfo {

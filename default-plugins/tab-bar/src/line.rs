@@ -176,16 +176,17 @@ fn right_more_message(
     }
 }
 
-fn tab_line_prefix(session_name: Option<&str>, palette: Styling, cols: usize) -> Vec<LinePart> {
+fn tab_line_prefix(session_name: Option<&str>, session_is_shared: bool, palette: Styling, cols: usize) -> Vec<LinePart> {
     let prefix_text = " Zellij ".to_string();
 
-    let prefix_text_len = prefix_text.chars().count();
+    // let prefix_text_len = prefix_text.chars().count();
+    let mut running_text_len = prefix_text.chars().count();
     let text_color = palette.text_unselected.base;
     let bg_color = palette.text_unselected.background;
     let prefix_styled_text = style!(text_color, bg_color).bold().paint(prefix_text);
     let mut parts = vec![LinePart {
         part: prefix_styled_text.to_string(),
-        len: prefix_text_len,
+        len: running_text_len,
         tab_index: None,
     }];
     if let Some(name) = session_name {
@@ -193,11 +194,24 @@ fn tab_line_prefix(session_name: Option<&str>, palette: Styling, cols: usize) ->
         let name_part_len = name_part.width();
         let text_color = palette.text_unselected.base;
         let name_part_styled_text = style!(text_color, bg_color).bold().paint(name_part);
-        if cols.saturating_sub(prefix_text_len) >= name_part_len {
+        if cols.saturating_sub(running_text_len) >= name_part_len {
+            running_text_len += name_part_len;
             parts.push(LinePart {
                 part: name_part_styled_text.to_string(),
                 len: name_part_len,
                 tab_index: None,
+            })
+        }
+    }
+    if session_is_shared {
+        let sharing_text = "[SHARING] ";
+        let sharing_part = style!(palette.text_unselected.emphasis_3, bg_color).bold().paint(sharing_text);
+        let sharing_part_len = sharing_text.chars().count();
+        if cols.saturating_sub(running_text_len) >= sharing_part_len {
+            parts.push(LinePart {
+                part: sharing_part.to_string(),
+                len: sharing_part_len,
+                tab_index: None
             })
         }
     }
@@ -214,6 +228,7 @@ pub fn tab_separator(capabilities: PluginCapabilities) -> &'static str {
 
 pub fn tab_line(
     session_name: Option<&str>,
+    session_is_shared: bool,
     mut all_tabs: Vec<LinePart>,
     active_tab_index: usize,
     cols: usize,
@@ -233,8 +248,8 @@ pub fn tab_line(
         tabs_before_active.pop().unwrap()
     };
     let mut prefix = match hide_session_name {
-        true => tab_line_prefix(None, palette, cols),
-        false => tab_line_prefix(session_name, palette, cols),
+        true => tab_line_prefix(None, session_is_shared, palette, cols),
+        false => tab_line_prefix(session_name, session_is_shared, palette, cols),
     };
 
     let mut swap_layout_indicator = if hide_swap_layout_indicator {
