@@ -58,7 +58,11 @@ pub fn stringify_text(
             break;
         }
         text_width += character_width;
-        if !text.indices.is_empty() {
+
+        // TODO: does this break stuff?
+        stringified.push_str(&format!("{}", base_text_style));
+
+        if !text.indices.is_empty() || text.selected {
             let character_with_styling =
                 color_index_character(character, i, &text, style, base_text_style);
             stringified.push_str(&character_with_styling);

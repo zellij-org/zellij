@@ -50,6 +50,12 @@ impl State {
                 .update_search_results(&self.search_term, &self.file_list_view.files);
         }
     }
+    pub fn clear_search_term(&mut self) {
+        self.search_term.clear();
+        self.search_view
+            .update_search_results(&self.search_term, &self.file_list_view.files);
+        self.is_searching = false;
+    }
     pub fn clear_search_term_or_descend(&mut self) {
         if self.search_term.is_empty() {
             self.descend_to_previous_path();
@@ -85,7 +91,7 @@ impl State {
                 );
                 let prev_selected = self.search_view.selected_search_result;
                 self.search_view.selected_search_result =
-                    (line as usize).saturating_sub(2) + start_index;
+                    (line as usize).saturating_sub(4) + start_index;
                 if prev_selected == self.search_view.selected_search_result {
                     self.traverse_dir();
                 }
@@ -97,10 +103,33 @@ impl State {
                 );
                 let prev_selected = self.file_list_view.selected();
                 *self.file_list_view.selected_mut() =
-                    (line as usize).saturating_sub(2) + start_index;
+                    (line as usize).saturating_sub(4) + start_index;
                 if prev_selected == self.file_list_view.selected() {
                     self.traverse_dir();
                 }
+            }
+        }
+    }
+    // TODO: check performance?
+    pub fn handle_mouse_hover(&mut self, line: isize) {
+        if let Some(current_rows) = self.current_rows {
+            let rows_for_list = current_rows.saturating_sub(5);
+            if self.is_searching {
+                let (start_index, _selected_index_in_range, _end_index) = calculate_list_bounds(
+                    self.search_view.search_result_count(),
+                    rows_for_list,
+                    Some(self.search_view.selected_search_result),
+                );
+                self.search_view.selected_search_result =
+                    (line as usize).saturating_sub(4) + start_index;
+            } else {
+                let (start_index, _selected_index_in_range, _end_index) = calculate_list_bounds(
+                    self.file_list_view.files.len(),
+                    rows_for_list,
+                    self.file_list_view.selected(),
+                );
+                *self.file_list_view.selected_mut() =
+                    (line as usize).saturating_sub(4) + start_index;
             }
         }
     }
@@ -118,7 +147,16 @@ impl State {
     pub fn toggle_hidden_files(&mut self) {
         self.hide_hidden_files = !self.hide_hidden_files;
     }
+    pub fn has_no_selected_entry(&self) -> bool {
+        if self.is_searching {
+            self.search_view.get_selected_entry().is_none()
+        } else {
+            self.file_list_view.get_selected_entry().is_none()
+        }
+    }
     pub fn traverse_dir(&mut self) {
+        // TODO: CONTINUE HERE (18/02) - handle filepicker response, then if we're satisfied with
+        // the UX, adjust the UI as needed
         let entry = if self.is_searching {
             self.search_view.get_selected_entry()
         } else {
@@ -134,6 +172,9 @@ impl State {
                 FsEntry::File(_p, _) => {
                     self.file_list_view.enter_dir(&entry);
                     self.search_view.clear_and_reset_selection();
+                    // TODO: if this is a handling_filepick_request_from, we need to do that
+                    // instead of this
+                    self.open_selected_path();
                 },
             }
         }
@@ -146,21 +187,6 @@ impl State {
             .update_files(paths, self.hide_hidden_files);
     }
     pub fn open_selected_path(&mut self) {
-//         if self.file_list_view.path_is_dir {
-//             open_terminal(&self.file_list_view.path);
-//         } else {
-//             if let Some(parent_folder) = self.file_list_view.path.parent() {
-//                 open_file(
-//                     FileToOpen::new(&self.file_list_view.path).with_cwd(parent_folder.into()),
-//                     BTreeMap::new(),
-//                 );
-//             } else {
-//                 open_file(FileToOpen::new(&self.file_list_view.path), BTreeMap::new());
-//             }
-//         }
-//         if self.close_on_selection {
-//             close_self();
-//         }
         if self.file_list_view.path_is_dir {
             if self.close_on_selection {
                 open_terminal_in_place_of_plugin(&self.file_list_view.path, true);

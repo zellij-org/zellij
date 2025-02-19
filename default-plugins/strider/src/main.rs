@@ -73,7 +73,12 @@ impl ZellijPlugin for State {
                     should_render = true;
                 },
                 BareKey::Esc if key.has_no_modifiers() => {
-                    self.clear_search_term_or_descend();
+                    if self.is_searching {
+                        // self.clear_search_term_or_descend();
+                        self.clear_search_term();
+                    } else {
+                        self.file_list_view.clear_selected();
+                    }
                     should_render = true;
                 },
                 BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
@@ -87,15 +92,20 @@ impl ZellijPlugin for State {
                     self.move_selection_down();
                     should_render = true;
                 },
-                BareKey::Enter
-                    if key.has_no_modifiers() && self.handling_filepick_request_from.is_some() =>
-                {
-                    self.send_filepick_response();
-                },
-                BareKey::Enter if key.has_no_modifiers() => {
+                //                 TODO: handle send_filepick_response case
+//                 BareKey::Enter
+//                     if key.has_no_modifiers() && self.handling_filepick_request_from.is_some() =>
+//                 {
+//                     self.send_filepick_response();
+//                 },
+//                 BareKey::Enter if key.has_no_modifiers() => {
+//                     self.open_selected_path();
+//                 },
+                BareKey::Enter if key.has_no_modifiers() && self.has_no_selected_entry() => {
                     self.open_selected_path();
+                    should_render = true;
                 },
-                BareKey::Right | BareKey::Tab if key.has_no_modifiers() => {
+                BareKey::Right | BareKey::Tab | BareKey::Enter if key.has_no_modifiers() => {
                     self.traverse_dir();
                     should_render = true;
                 },
@@ -122,6 +132,12 @@ impl ZellijPlugin for State {
                 Mouse::LeftClick(line, _) => {
                     self.handle_left_click(line);
                     should_render = true;
+                },
+                Mouse::Hover(line, _) => {
+                    if line >= 0 {
+                        self.handle_mouse_hover(line);
+                        should_render = true;
+                    }
                 },
                 _ => {},
             },

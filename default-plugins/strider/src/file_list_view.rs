@@ -46,7 +46,11 @@ impl FileListView {
         self.path = path;
         self.path_is_dir = is_dir;
         self.files.clear();
-        self.reset_selected();
+        self.clear_selected(); // TODO: better naming between clear and reset
+        // self.reset_selected();
+    }
+    pub fn clear_selected(&mut self) {
+        self.cursor_hist.remove(&self.path);
     }
     pub fn reset_selected(&mut self) {
         *self.selected_mut() = self.selected().unwrap_or(0);
