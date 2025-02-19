@@ -375,6 +375,7 @@ pub enum ScreenContext {
     SetFloatingPanePinned,
     StackPanes,
     ChangeFloatingPanesCoordinates,
+    WebServerStarted,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -438,6 +439,7 @@ pub enum PluginContext {
     FailedToWriteConfigToDisk,
     ListClientsToPlugin,
     ChangePluginHostDir,
+    WebServerStarted,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
@@ -462,6 +464,7 @@ pub enum ClientContext {
     CliPipeOutput,
     QueryTerminalSize,
     WriteConfigToDisk,
+    StartWebServer,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -491,6 +494,8 @@ pub enum ServerContext {
     ConfigWrittenToDisk,
     FailedToWriteConfigToDisk,
     RebindKeys,
+    StartWebServer,
+    WebServerStarted,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

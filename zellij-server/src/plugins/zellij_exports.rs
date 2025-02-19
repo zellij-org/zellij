@@ -416,6 +416,9 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::OpenFileInPlaceOfPlugin(file_to_open, context) => {
                         open_file_in_place_of_plugin(env, file_to_open, context)
                     },
+                    PluginCommand::StartWebServer => {
+                        start_web_server(env)
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -2123,6 +2126,13 @@ fn load_new_plugin(
     }
 }
 
+fn start_web_server(
+    env: &PluginEnv,
+) {
+    let _ = env.senders.send_to_server(ServerInstruction::StartWebServer(env.client_id));
+}
+
+
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -2296,6 +2306,7 @@ fn check_command_permission(
             PermissionType::Reconfigure
         },
         PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,
+        PluginCommand::StartWebServer => PermissionType::StartWebServer,
         _ => return (PermissionStatus::Granted, None),
     };
 

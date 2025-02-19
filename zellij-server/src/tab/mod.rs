@@ -4443,6 +4443,10 @@ impl Tab {
             self.default_shell = default_shell;
         }
     }
+    pub fn set_session_is_shared(&mut self, session_is_shared: bool) {
+        self.session_is_shared = true;
+        self.update_input_modes();
+    }
     pub fn update_default_editor(&mut self, mut default_editor: Option<PathBuf>) {
         if let Some(default_editor) = default_editor.take() {
             self.default_editor = Some(default_editor);

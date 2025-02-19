@@ -116,6 +116,13 @@ pub fn start_web_client(ipc_path: &str, config: Config, config_options: Options)
         "WebSocket server started and listening on port 8082, with ipc_path {}",
         ipc_path
     );
+    {
+        if let Ok(os_input) = get_client_os_input() {
+            // best effort attempt to let an existing session know the web server is listening
+            os_input.connect_to_server(&PathBuf::from(ipc_path));
+            os_input.send_to_server(ClientToServerMsg::WebServerStarted);
+        }
+    }
 
     let connection_table: ConnectionTable = Arc::new(Mutex::new(HashMap::new()));
 

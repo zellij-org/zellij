@@ -160,6 +160,7 @@ pub enum PluginInstruction {
     WatchFilesystem,
     ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
     ChangePluginHostDir(PathBuf, PluginId, ClientId),
+    WebServerStarted,
     Exit,
 }
 
@@ -207,6 +208,7 @@ impl From<&PluginInstruction> for PluginContext {
             },
             PluginInstruction::ListClientsToPlugin(..) => PluginContext::ListClientsToPlugin,
             PluginInstruction::ChangePluginHostDir(..) => PluginContext::ChangePluginHostDir,
+            PluginInstruction::WebServerStarted => PluginContext::WebServerStarted,
         }
     }
 }
@@ -901,6 +903,16 @@ pub(crate) fn plugin_thread_main(
                     .change_plugin_host_dir(new_host_folder, plugin_id, client_id)
                     .non_fatal();
             },
+            PluginInstruction::WebServerStarted => {
+                let updates = vec![(
+                    None,
+                    None,
+                    Event::WebServerStarted,
+                )];
+                wasm_bridge
+                    .update_plugins(updates, shutdown_send.clone())
+                    .non_fatal();
+            }
             PluginInstruction::Exit => {
                 break;
             },

@@ -39,6 +39,7 @@ lazy_static::lazy_static! {
         WorkspaceMember{crate_name: "default-plugins/configuration", build: true},
         WorkspaceMember{crate_name: "default-plugins/plugin-manager", build: true},
         WorkspaceMember{crate_name: "default-plugins/about", build: true},
+        WorkspaceMember{crate_name: "default-plugins/share", build: true},
         WorkspaceMember{crate_name: "zellij-utils", build: false},
         WorkspaceMember{crate_name: "zellij-tile-utils", build: false},
         WorkspaceMember{crate_name: "zellij-tile", build: false},

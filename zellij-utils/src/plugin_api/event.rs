@@ -359,6 +359,10 @@ impl TryFrom<ProtobufEvent> for Event {
                 None => Ok(Event::ConfigWasWrittenToDisk),
                 _ => Err("Malformed payload for the ConfigWasWrittenToDisk Event"),
             },
+            Some(ProtobufEventType::WebServerStarted) => match protobuf_event.payload {
+                None => Ok(Event::WebServerStarted),
+                _ => Err("Malformed payload for the WebServerStarted Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -731,6 +735,10 @@ impl TryFrom<Event> for ProtobufEvent {
             }),
             Event::ConfigWasWrittenToDisk => Ok(ProtobufEvent {
                 name: ProtobufEventType::ConfigWasWrittenToDisk as i32,
+                payload: None,
+            }),
+            Event::WebServerStarted => Ok(ProtobufEvent {
+                name: ProtobufEventType::WebServerStarted as i32,
                 payload: None,
             }),
         }
@@ -1324,6 +1332,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::FailedToChangeHostFolder => EventType::FailedToChangeHostFolder,
             ProtobufEventType::PastedText => EventType::PastedText,
             ProtobufEventType::ConfigWasWrittenToDisk => EventType::ConfigWasWrittenToDisk,
+            ProtobufEventType::WebServerStarted => EventType::WebServerStarted,
         })
     }
 }
@@ -1363,6 +1372,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::FailedToChangeHostFolder => ProtobufEventType::FailedToChangeHostFolder,
             EventType::PastedText => ProtobufEventType::PastedText,
             EventType::ConfigWasWrittenToDisk => ProtobufEventType::ConfigWasWrittenToDisk,
+            EventType::WebServerStarted => ProtobufEventType::WebServerStarted,
         })
     }
 }

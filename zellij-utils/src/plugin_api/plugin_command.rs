@@ -1536,6 +1536,13 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for OpenFileInPlaceOfPlugin"),
             },
+            Some(CommandName::StartWebServer) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    Err("StartWebServer should not have a payload")
+                } else {
+                    Ok(PluginCommand::StartWebServer)
+                }
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2536,6 +2543,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
+            PluginCommand::StartWebServer => Ok(ProtobufPluginCommand {
+                name: CommandName::StartWebServer as i32,
+                payload: None,
+            }),
         }
     }
 }

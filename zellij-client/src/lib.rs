@@ -59,6 +59,7 @@ pub(crate) enum ClientInstruction {
     CliPipeOutput(String, String), // String -> pipe name, String -> output
     QueryTerminalSize,
     WriteConfigToDisk { config: String },
+    StartWebServer,
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -84,6 +85,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::WriteConfigToDisk { config } => {
                 ClientInstruction::WriteConfigToDisk { config }
             },
+            ServerToClientMsg::StartWebServer => ClientInstruction::StartWebServer,
         }
     }
 }
@@ -107,6 +109,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::CliPipeOutput(..) => ClientContext::CliPipeOutput,
             ClientInstruction::QueryTerminalSize => ClientContext::QueryTerminalSize,
             ClientInstruction::WriteConfigToDisk { .. } => ClientContext::WriteConfigToDisk,
+            ClientInstruction::StartWebServer => ClientContext::StartWebServer,
         }
     }
 }
@@ -116,13 +119,6 @@ impl ErrorInstruction for ClientInstruction {
         ClientInstruction::Error(err)
     }
 }
-
-// TODO:
-// 1. create a spawn_web_server method that would mirror the below spawn_server method
-// 2. Take the daemonize stuff from zellij-server/src/lib.rs and place them in start_web_client in
-//    zellij/src/commands.rs (might want to rename it to start_web_server)
-// 3. Gracefully exit if the port is taken and show an appropriate error in the logs
-// 4. Place this whole thing behind a support_web_connections (or some such) config
 
 #[cfg(feature = "web_server_capability")]
 fn spawn_web_server(socket_path: &Path) -> io::Result<()> {
@@ -607,6 +603,9 @@ pub fn start_client(
                     },
                 }
             },
+            ClientInstruction::StartWebServer => {
+                let _ = spawn_web_server(&*ipc_pipe);
+            }
             _ => {},
         }
     }

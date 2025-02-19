@@ -38,6 +38,7 @@ members = [
     "default-plugins/configuration",
     "default-plugins/plugin-manager",
     "default-plugins/about",
+    "default-plugins/share",
     "zellij-client",
     "zellij-server",
     "zellij-utils",

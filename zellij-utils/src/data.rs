@@ -933,6 +933,7 @@ pub enum Event {
     FailedToChangeHostFolder(Option<String>), // String -> the error we got when changing
     PastedText(String),
     ConfigWasWrittenToDisk,
+    WebServerStarted,
 }
 
 #[derive(
@@ -964,6 +965,7 @@ pub enum Permission {
     MessageAndLaunchOtherPlugins,
     Reconfigure,
     FullHdAccess,
+    StartWebServer,
 }
 
 impl PermissionType {
@@ -986,6 +988,7 @@ impl PermissionType {
             },
             PermissionType::Reconfigure => "Change Zellij runtime configuration".to_owned(),
             PermissionType::FullHdAccess => "Full access to the hard-drive".to_owned(),
+            PermissionType::StartWebServer => "Start a local web server to serve Zellij sessions".to_owned(),
         }
     }
 }
@@ -2306,4 +2309,5 @@ pub enum PluginCommand {
     OpenFileNearPlugin(FileToOpen, Context),
     OpenFileFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>, Context),
     OpenFileInPlaceOfPlugin(FileToOpen, Context),
+    StartWebServer,
 }

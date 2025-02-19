@@ -405,6 +405,7 @@ pub enum ScreenInstruction {
     SetFloatingPanePinned(PaneId, bool),
     StackPanes(Vec<PaneId>),
     ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
+    WebServerStarted,
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -615,6 +616,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ChangeFloatingPanesCoordinates(..) => {
                 ScreenContext::ChangeFloatingPanesCoordinates
             },
+            ScreenInstruction::WebServerStarted => ScreenContext::WebServerStarted,
         }
     }
 }
@@ -4874,6 +4876,12 @@ pub(crate) fn screen_thread_main(
                 screen.change_floating_panes_coordinates(pane_ids_and_coordinates);
                 let _ = screen.unblock_input();
                 let _ = screen.render(None);
+            },
+            ScreenInstruction::WebServerStarted => {
+                screen.session_is_shared = true;
+                for tab in screen.tabs.values_mut() {
+                    tab.set_session_is_shared(true);
+                }
             },
         }
     }

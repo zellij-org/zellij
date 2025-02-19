@@ -1213,6 +1213,9 @@ pub(crate) fn route_thread_main(
                                 failed_path,
                             ));
                         },
+                        ClientToServerMsg::WebServerStarted => {
+                            let _ = to_server.send(ServerInstruction::WebServerStarted);
+                        }
                     }
                     Ok(should_break)
                 };

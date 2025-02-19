@@ -96,6 +96,7 @@ pub enum ClientToServerMsg {
     ListClients,
     ConfigWrittenToDisk(Config),
     FailedToWriteConfigToDisk(Option<PathBuf>),
+    WebServerStarted,
 }
 
 // Types of messages sent from the server to the client
@@ -113,6 +114,7 @@ pub enum ServerToClientMsg {
     CliPipeOutput(String, String), // String -> pipe name, String -> Output
     QueryTerminalSize,
     WriteConfigToDisk { config: String },
+    StartWebServer,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
