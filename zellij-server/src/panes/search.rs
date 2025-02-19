@@ -123,7 +123,7 @@ impl SearchResult {
                     };
                     (skip, take)
                 } else if ridx as isize == s.end.line() {
-                    // We wrapped a line and the end is in this row, so take from the begging to the end
+                    // We wrapped a line and the end is in this row, so take from the beginning to the end
                     (0, s.end.column())
                 } else {
                     // We are in the middle (start is above and end is below), so mark all

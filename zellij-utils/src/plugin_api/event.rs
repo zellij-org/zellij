@@ -349,6 +349,16 @@ impl TryFrom<ProtobufEvent> for Event {
                 )),
                 _ => Err("Malformed payload for the FailedToChangeHostFolder Event"),
             },
+            Some(ProtobufEventType::PastedText) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PastedTextPayload(pasted_text_payload)) => {
+                    Ok(Event::PastedText(pasted_text_payload.pasted_text))
+                },
+                _ => Err("Malformed payload for the PastedText Event"),
+            },
+            Some(ProtobufEventType::ConfigWasWrittenToDisk) => match protobuf_event.payload {
+                None => Ok(Event::ConfigWasWrittenToDisk),
+                _ => Err("Malformed payload for the ConfigWasWrittenToDisk Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -713,6 +723,16 @@ impl TryFrom<Event> for ProtobufEvent {
                     FailedToChangeHostFolderPayload { error_message },
                 )),
             }),
+            Event::PastedText(pasted_text) => Ok(ProtobufEvent {
+                name: ProtobufEventType::PastedText as i32,
+                payload: Some(event::Payload::PastedTextPayload(PastedTextPayload {
+                    pasted_text,
+                })),
+            }),
+            Event::ConfigWasWrittenToDisk => Ok(ProtobufEvent {
+                name: ProtobufEventType::ConfigWasWrittenToDisk as i32,
+                payload: None,
+            }),
         }
     }
 }
@@ -924,6 +944,12 @@ impl TryFrom<MouseEventPayload> for Mouse {
                 ),
                 _ => Err("Malformed payload for mouse release"),
             },
+            Some(MouseEventName::MouseHover) => match mouse_event_payload.mouse_event_payload {
+                Some(mouse_event_payload::MouseEventPayload::Position(position)) => Ok(
+                    Mouse::Hover(position.line as isize, position.column as usize),
+                ),
+                _ => Err("Malformed payload for mouse hover"),
+            },
             None => Err("Malformed payload for MouseEventName"),
         }
     }
@@ -974,6 +1000,15 @@ impl TryFrom<Mouse> for MouseEventPayload {
             }),
             Mouse::Release(line, column) => Ok(MouseEventPayload {
                 mouse_event_name: MouseEventName::MouseRelease as i32,
+                mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::Position(
+                    ProtobufPosition {
+                        line: line as i64,
+                        column: column as i64,
+                    },
+                )),
+            }),
+            Mouse::Hover(line, column) => Ok(MouseEventPayload {
+                mouse_event_name: MouseEventName::MouseHover as i32,
                 mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::Position(
                     ProtobufPosition {
                         line: line as i64,
@@ -1070,6 +1105,13 @@ impl TryFrom<ProtobufTabInfo> for TabInfo {
                 .collect(),
             active_swap_layout_name: protobuf_tab_info.active_swap_layout_name,
             is_swap_layout_dirty: protobuf_tab_info.is_swap_layout_dirty,
+            viewport_rows: protobuf_tab_info.viewport_rows as usize,
+            viewport_columns: protobuf_tab_info.viewport_columns as usize,
+            display_area_rows: protobuf_tab_info.display_area_rows as usize,
+            display_area_columns: protobuf_tab_info.display_area_columns as usize,
+            selectable_tiled_panes_count: protobuf_tab_info.selectable_tiled_panes_count as usize,
+            selectable_floating_panes_count: protobuf_tab_info.selectable_floating_panes_count
+                as usize,
         })
     }
 }
@@ -1092,6 +1134,12 @@ impl TryFrom<TabInfo> for ProtobufTabInfo {
                 .collect(),
             active_swap_layout_name: tab_info.active_swap_layout_name,
             is_swap_layout_dirty: tab_info.is_swap_layout_dirty,
+            viewport_rows: tab_info.viewport_rows as u32,
+            viewport_columns: tab_info.viewport_columns as u32,
+            display_area_rows: tab_info.display_area_rows as u32,
+            display_area_columns: tab_info.display_area_columns as u32,
+            selectable_tiled_panes_count: tab_info.selectable_tiled_panes_count as u32,
+            selectable_floating_panes_count: tab_info.selectable_floating_panes_count as u32,
         })
     }
 }
@@ -1137,6 +1185,10 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             .and_then(|m| m.try_into().ok())
             .ok_or("malformed payload for mode_info")?;
         let session_name = protobuf_mode_update_payload.session_name;
+        let editor = protobuf_mode_update_payload
+            .editor
+            .map(|e| PathBuf::from(e));
+        let shell = protobuf_mode_update_payload.shell.map(|s| PathBuf::from(s));
         let capabilities = PluginCapabilities {
             arrow_fonts: protobuf_mode_update_payload.arrow_fonts_support,
         };
@@ -1147,6 +1199,8 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             capabilities,
             session_name,
             base_mode,
+            editor,
+            shell,
         };
         Ok(mode_info)
     }
@@ -1162,6 +1216,8 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
         let style: ProtobufStyle = mode_info.style.try_into()?;
         let arrow_fonts_support: bool = mode_info.capabilities.arrow_fonts;
         let session_name = mode_info.session_name;
+        let editor = mode_info.editor.map(|e| e.display().to_string());
+        let shell = mode_info.shell.map(|s| s.display().to_string());
         let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
         for (input_mode, input_mode_keybinds) in mode_info.keybinds {
             let mode: ProtobufInputMode = input_mode.try_into()?;
@@ -1193,6 +1249,8 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             arrow_fonts_support,
             session_name,
             base_mode: base_mode.map(|b_m| b_m as i32),
+            editor,
+            shell,
         })
     }
 }
@@ -1260,6 +1318,8 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::ListClients => EventType::ListClients,
             ProtobufEventType::HostFolderChanged => EventType::HostFolderChanged,
             ProtobufEventType::FailedToChangeHostFolder => EventType::FailedToChangeHostFolder,
+            ProtobufEventType::PastedText => EventType::PastedText,
+            ProtobufEventType::ConfigWasWrittenToDisk => EventType::ConfigWasWrittenToDisk,
         })
     }
 }
@@ -1297,6 +1357,8 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::ListClients => ProtobufEventType::ListClients,
             EventType::HostFolderChanged => ProtobufEventType::HostFolderChanged,
             EventType::FailedToChangeHostFolder => ProtobufEventType::FailedToChangeHostFolder,
+            EventType::PastedText => ProtobufEventType::PastedText,
+            EventType::ConfigWasWrittenToDisk => ProtobufEventType::ConfigWasWrittenToDisk,
         })
     }
 }
@@ -1426,13 +1488,17 @@ fn serialize_mode_update_event_with_non_default_values() {
                 silver: PaletteColor::EightBit(2),
                 pink: PaletteColor::EightBit(2),
                 brown: PaletteColor::Rgb((222, 221, 220)),
-            },
+            }
+            .into(),
+            // TODO: replace default
             rounded_corners: true,
             hide_session_name: false,
         },
         capabilities: PluginCapabilities { arrow_fonts: false },
         session_name: Some("my awesome test session".to_owned()),
         base_mode: Some(InputMode::Locked),
+        editor: Some(PathBuf::from("my_awesome_editor")),
+        shell: Some(PathBuf::from("my_awesome_shell")),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
@@ -1475,6 +1541,12 @@ fn serialize_tab_update_event_with_non_default_values() {
             other_focused_clients: vec![2, 3, 4],
             active_swap_layout_name: Some("my cool swap layout".to_owned()),
             is_swap_layout_dirty: false,
+            viewport_rows: 10,
+            viewport_columns: 10,
+            display_area_rows: 10,
+            display_area_columns: 10,
+            selectable_tiled_panes_count: 10,
+            selectable_floating_panes_count: 10,
         },
         TabInfo {
             position: 1,
@@ -1487,6 +1559,12 @@ fn serialize_tab_update_event_with_non_default_values() {
             other_focused_clients: vec![1, 5, 111],
             active_swap_layout_name: None,
             is_swap_layout_dirty: true,
+            viewport_rows: 10,
+            viewport_columns: 10,
+            display_area_rows: 10,
+            display_area_columns: 10,
+            selectable_tiled_panes_count: 10,
+            selectable_floating_panes_count: 10,
         },
         TabInfo::default(),
     ]);
@@ -1754,6 +1832,12 @@ fn serialize_session_update_event_with_non_default_values() {
             other_focused_clients: vec![2, 3, 4],
             active_swap_layout_name: Some("my cool swap layout".to_owned()),
             is_swap_layout_dirty: false,
+            viewport_rows: 10,
+            viewport_columns: 10,
+            display_area_rows: 10,
+            display_area_columns: 10,
+            selectable_tiled_panes_count: 10,
+            selectable_floating_panes_count: 10,
         },
         TabInfo {
             position: 1,
@@ -1766,6 +1850,12 @@ fn serialize_session_update_event_with_non_default_values() {
             other_focused_clients: vec![1, 5, 111],
             active_swap_layout_name: None,
             is_swap_layout_dirty: true,
+            viewport_rows: 10,
+            viewport_columns: 10,
+            display_area_rows: 10,
+            display_area_columns: 10,
+            selectable_tiled_panes_count: 10,
+            selectable_floating_panes_count: 10,
         },
         TabInfo::default(),
     ];

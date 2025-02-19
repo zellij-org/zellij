@@ -2,6 +2,7 @@ use crate::input::actions::Action;
 use crate::input::config::ConversionError;
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{RunPlugin, SplitSize};
+use crate::shared::colors as default_colors;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -22,20 +23,21 @@ pub type ClientId = u16; // TODO: merge with crate type?
 
 pub fn client_id_to_colors(
     client_id: ClientId,
-    colors: Palette,
+    colors: MultiplayerColors,
 ) -> Option<(PaletteColor, PaletteColor)> {
     // (primary color, secondary color)
+    let black = PaletteColor::EightBit(default_colors::BLACK);
     match client_id {
-        1 => Some((colors.magenta, colors.black)),
-        2 => Some((colors.blue, colors.black)),
-        3 => Some((colors.purple, colors.black)),
-        4 => Some((colors.yellow, colors.black)),
-        5 => Some((colors.cyan, colors.black)),
-        6 => Some((colors.gold, colors.black)),
-        7 => Some((colors.red, colors.black)),
-        8 => Some((colors.silver, colors.black)),
-        9 => Some((colors.pink, colors.black)),
-        10 => Some((colors.brown, colors.black)),
+        1 => Some((colors.player_1, black)),
+        2 => Some((colors.player_2, black)),
+        3 => Some((colors.player_3, black)),
+        4 => Some((colors.player_4, black)),
+        5 => Some((colors.player_5, black)),
+        6 => Some((colors.player_6, black)),
+        7 => Some((colors.player_7, black)),
+        8 => Some((colors.player_8, black)),
+        9 => Some((colors.player_9, black)),
+        10 => Some((colors.player_10, black)),
         _ => None,
     }
 }
@@ -225,8 +227,8 @@ impl FromStr for BareKey {
             "tab" => Ok(BareKey::Tab),
             "esc" => Ok(BareKey::Esc),
             "enter" => Ok(BareKey::Enter),
-            "capsLock" => Ok(BareKey::CapsLock),
-            "scrollLock" => Ok(BareKey::ScrollLock),
+            "capslock" => Ok(BareKey::CapsLock),
+            "scrolllock" => Ok(BareKey::ScrollLock),
             "numlock" => Ok(BareKey::NumLock),
             "printscreen" => Ok(BareKey::PrintScreen),
             "pause" => Ok(BareKey::Pause),
@@ -828,6 +830,21 @@ pub enum Mouse {
     RightClick(isize, usize), // line and column
     Hold(isize, usize),       // line and column
     Release(isize, usize),    // line and column
+    Hover(isize, usize),      // line and column
+}
+
+impl Mouse {
+    pub fn position(&self) -> Option<(usize, usize)> {
+        // (line, column)
+        match self {
+            Mouse::LeftClick(line, column) => Some((*line as usize, *column as usize)),
+            Mouse::RightClick(line, column) => Some((*line as usize, *column as usize)),
+            Mouse::Hold(line, column) => Some((*line as usize, *column as usize)),
+            Mouse::Release(line, column) => Some((*line as usize, *column as usize)),
+            Mouse::Hover(line, column) => Some((*line as usize, *column as usize)),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -914,6 +931,8 @@ pub enum Event {
     ListClients(Vec<ClientInfo>),
     HostFolderChanged(PathBuf),               // PathBuf -> new host folder
     FailedToChangeHostFolder(Option<String>), // String -> the error we got when changing
+    PastedText(String),
+    ConfigWasWrittenToDisk,
 }
 
 #[derive(
@@ -1132,9 +1151,347 @@ pub struct Palette {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct Style {
-    pub colors: Palette,
+    pub colors: Styling,
     pub rounded_corners: bool,
     pub hide_session_name: bool,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum Coloration {
+    NoStyling,
+    Styled(StyleDeclaration),
+}
+
+impl Coloration {
+    pub fn with_fallback(&self, fallback: StyleDeclaration) -> StyleDeclaration {
+        match &self {
+            Coloration::NoStyling => fallback,
+            Coloration::Styled(style) => *style,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct Styling {
+    pub text_unselected: StyleDeclaration,
+    pub text_selected: StyleDeclaration,
+    pub ribbon_unselected: StyleDeclaration,
+    pub ribbon_selected: StyleDeclaration,
+    pub table_title: StyleDeclaration,
+    pub table_cell_unselected: StyleDeclaration,
+    pub table_cell_selected: StyleDeclaration,
+    pub list_unselected: StyleDeclaration,
+    pub list_selected: StyleDeclaration,
+    pub frame_unselected: Option<StyleDeclaration>,
+    pub frame_selected: StyleDeclaration,
+    pub frame_highlight: StyleDeclaration,
+    pub exit_code_success: StyleDeclaration,
+    pub exit_code_error: StyleDeclaration,
+    pub multiplayer_user_colors: MultiplayerColors,
+}
+
+#[derive(Debug, Copy, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct StyleDeclaration {
+    pub base: PaletteColor,
+    pub background: PaletteColor,
+    pub emphasis_0: PaletteColor,
+    pub emphasis_1: PaletteColor,
+    pub emphasis_2: PaletteColor,
+    pub emphasis_3: PaletteColor,
+}
+
+#[derive(Debug, Copy, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct MultiplayerColors {
+    pub player_1: PaletteColor,
+    pub player_2: PaletteColor,
+    pub player_3: PaletteColor,
+    pub player_4: PaletteColor,
+    pub player_5: PaletteColor,
+    pub player_6: PaletteColor,
+    pub player_7: PaletteColor,
+    pub player_8: PaletteColor,
+    pub player_9: PaletteColor,
+    pub player_10: PaletteColor,
+}
+
+pub const DEFAULT_STYLES: Styling = Styling {
+    text_unselected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::BRIGHT_GRAY),
+        emphasis_0: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_1: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_2: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_3: PaletteColor::EightBit(default_colors::MAGENTA),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    text_selected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::BRIGHT_GRAY),
+        emphasis_0: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_1: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_2: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_3: PaletteColor::EightBit(default_colors::MAGENTA),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    ribbon_unselected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::BLACK),
+        emphasis_0: PaletteColor::EightBit(default_colors::RED),
+        emphasis_1: PaletteColor::EightBit(default_colors::WHITE),
+        emphasis_2: PaletteColor::EightBit(default_colors::BLUE),
+        emphasis_3: PaletteColor::EightBit(default_colors::MAGENTA),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    ribbon_selected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::BLACK),
+        emphasis_0: PaletteColor::EightBit(default_colors::RED),
+        emphasis_1: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_2: PaletteColor::EightBit(default_colors::MAGENTA),
+        emphasis_3: PaletteColor::EightBit(default_colors::BLUE),
+        background: PaletteColor::EightBit(default_colors::GREEN),
+    },
+    exit_code_success: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_0: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_1: PaletteColor::EightBit(default_colors::BLACK),
+        emphasis_2: PaletteColor::EightBit(default_colors::MAGENTA),
+        emphasis_3: PaletteColor::EightBit(default_colors::BLUE),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    exit_code_error: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::RED),
+        emphasis_0: PaletteColor::EightBit(default_colors::YELLOW),
+        emphasis_1: PaletteColor::EightBit(default_colors::GOLD),
+        emphasis_2: PaletteColor::EightBit(default_colors::SILVER),
+        emphasis_3: PaletteColor::EightBit(default_colors::PURPLE),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    frame_unselected: None,
+    frame_selected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_0: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_1: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_2: PaletteColor::EightBit(default_colors::MAGENTA),
+        emphasis_3: PaletteColor::EightBit(default_colors::BROWN),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    frame_highlight: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_0: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_1: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_2: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_3: PaletteColor::EightBit(default_colors::GREEN),
+        background: PaletteColor::EightBit(default_colors::GREEN),
+    },
+    table_title: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_0: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_1: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_2: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_3: PaletteColor::EightBit(default_colors::MAGENTA),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    table_cell_unselected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::BRIGHT_GRAY),
+        emphasis_0: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_1: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_2: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_3: PaletteColor::EightBit(default_colors::MAGENTA),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    table_cell_selected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_0: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_1: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_2: PaletteColor::EightBit(default_colors::RED),
+        emphasis_3: PaletteColor::EightBit(default_colors::MAGENTA),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    list_unselected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::BRIGHT_GRAY),
+        emphasis_0: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_1: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_2: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_3: PaletteColor::EightBit(default_colors::MAGENTA),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    list_selected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_0: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_1: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_2: PaletteColor::EightBit(default_colors::RED),
+        emphasis_3: PaletteColor::EightBit(default_colors::MAGENTA),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    multiplayer_user_colors: MultiplayerColors {
+        player_1: PaletteColor::EightBit(default_colors::MAGENTA),
+        player_2: PaletteColor::EightBit(default_colors::BLUE),
+        player_3: PaletteColor::EightBit(default_colors::PURPLE),
+        player_4: PaletteColor::EightBit(default_colors::YELLOW),
+        player_5: PaletteColor::EightBit(default_colors::CYAN),
+        player_6: PaletteColor::EightBit(default_colors::GOLD),
+        player_7: PaletteColor::EightBit(default_colors::RED),
+        player_8: PaletteColor::EightBit(default_colors::SILVER),
+        player_9: PaletteColor::EightBit(default_colors::PINK),
+        player_10: PaletteColor::EightBit(default_colors::BROWN),
+    },
+};
+
+impl Default for Styling {
+    fn default() -> Self {
+        DEFAULT_STYLES
+    }
+}
+
+impl From<Styling> for Palette {
+    fn from(styling: Styling) -> Self {
+        Palette {
+            theme_hue: ThemeHue::Dark,
+            source: PaletteSource::Default,
+            fg: styling.ribbon_unselected.background,
+            bg: styling.text_unselected.background,
+            red: styling.exit_code_error.base,
+            green: styling.text_unselected.emphasis_2,
+            yellow: styling.exit_code_error.emphasis_0,
+            blue: styling.ribbon_unselected.emphasis_2,
+            magenta: styling.text_unselected.emphasis_3,
+            orange: styling.text_unselected.emphasis_0,
+            cyan: styling.text_unselected.emphasis_1,
+            black: styling.ribbon_unselected.base,
+            white: styling.ribbon_unselected.emphasis_1,
+            gray: styling.list_unselected.background,
+            purple: styling.multiplayer_user_colors.player_3,
+            gold: styling.multiplayer_user_colors.player_6,
+            silver: styling.multiplayer_user_colors.player_8,
+            pink: styling.multiplayer_user_colors.player_9,
+            brown: styling.multiplayer_user_colors.player_10,
+        }
+    }
+}
+
+impl From<Palette> for Styling {
+    fn from(palette: Palette) -> Self {
+        let (fg, bg) = match palette.theme_hue {
+            ThemeHue::Light => (palette.black, palette.white),
+            ThemeHue::Dark => (palette.white, palette.black),
+        };
+        Styling {
+            text_unselected: StyleDeclaration {
+                base: fg,
+                emphasis_0: palette.orange,
+                emphasis_1: palette.cyan,
+                emphasis_2: palette.green,
+                emphasis_3: palette.magenta,
+                background: bg,
+            },
+            text_selected: StyleDeclaration {
+                base: fg,
+                emphasis_0: palette.orange,
+                emphasis_1: palette.cyan,
+                emphasis_2: palette.green,
+                emphasis_3: palette.magenta,
+                background: palette.bg,
+            },
+            ribbon_unselected: StyleDeclaration {
+                base: palette.black,
+                emphasis_0: palette.red,
+                emphasis_1: palette.white,
+                emphasis_2: palette.blue,
+                emphasis_3: palette.magenta,
+                background: palette.fg,
+            },
+            ribbon_selected: StyleDeclaration {
+                base: palette.black,
+                emphasis_0: palette.red,
+                emphasis_1: palette.orange,
+                emphasis_2: palette.magenta,
+                emphasis_3: palette.blue,
+                background: palette.green,
+            },
+            exit_code_success: StyleDeclaration {
+                base: palette.green,
+                emphasis_0: palette.cyan,
+                emphasis_1: palette.black,
+                emphasis_2: palette.magenta,
+                emphasis_3: palette.blue,
+                background: Default::default(),
+            },
+            exit_code_error: StyleDeclaration {
+                base: palette.red,
+                emphasis_0: palette.yellow,
+                emphasis_1: palette.gold,
+                emphasis_2: palette.silver,
+                emphasis_3: palette.purple,
+                background: Default::default(),
+            },
+            frame_unselected: None,
+            frame_selected: StyleDeclaration {
+                base: palette.green,
+                emphasis_0: palette.orange,
+                emphasis_1: palette.cyan,
+                emphasis_2: palette.magenta,
+                emphasis_3: palette.brown,
+                background: Default::default(),
+            },
+            frame_highlight: StyleDeclaration {
+                base: palette.orange,
+                emphasis_0: palette.orange,
+                emphasis_1: palette.orange,
+                emphasis_2: palette.orange,
+                emphasis_3: palette.orange,
+                background: Default::default(),
+            },
+            table_title: StyleDeclaration {
+                base: palette.green,
+                emphasis_0: palette.orange,
+                emphasis_1: palette.cyan,
+                emphasis_2: palette.green,
+                emphasis_3: palette.magenta,
+                background: palette.gray,
+            },
+            table_cell_unselected: StyleDeclaration {
+                base: fg,
+                emphasis_0: palette.orange,
+                emphasis_1: palette.cyan,
+                emphasis_2: palette.green,
+                emphasis_3: palette.magenta,
+                background: palette.black,
+            },
+            table_cell_selected: StyleDeclaration {
+                base: fg,
+                emphasis_0: palette.orange,
+                emphasis_1: palette.cyan,
+                emphasis_2: palette.green,
+                emphasis_3: palette.magenta,
+                background: palette.bg,
+            },
+            list_unselected: StyleDeclaration {
+                base: palette.white,
+                emphasis_0: palette.orange,
+                emphasis_1: palette.cyan,
+                emphasis_2: palette.green,
+                emphasis_3: palette.magenta,
+                background: palette.black,
+            },
+            list_selected: StyleDeclaration {
+                base: palette.white,
+                emphasis_0: palette.orange,
+                emphasis_1: palette.cyan,
+                emphasis_2: palette.green,
+                emphasis_3: palette.magenta,
+                background: palette.bg,
+            },
+            multiplayer_user_colors: MultiplayerColors {
+                player_1: palette.magenta,
+                player_2: palette.blue,
+                player_3: palette.purple,
+                player_4: palette.yellow,
+                player_5: palette.cyan,
+                player_6: palette.gold,
+                player_7: palette.red,
+                player_8: palette.silver,
+                player_9: palette.pink,
+                player_10: palette.brown,
+            },
+        }
+    }
 }
 
 // FIXME: Poor devs hashtable since HashTable can't derive `Default`...
@@ -1149,6 +1506,8 @@ pub struct ModeInfo {
     pub style: Style,
     pub capabilities: PluginCapabilities,
     pub session_name: Option<String>,
+    pub editor: Option<PathBuf>,
+    pub shell: Option<PathBuf>,
 }
 
 impl ModeInfo {
@@ -1170,8 +1529,8 @@ impl ModeInfo {
     pub fn update_default_mode(&mut self, new_default_mode: InputMode) {
         self.base_mode = Some(new_default_mode);
     }
-    pub fn update_theme(&mut self, theme: Palette) {
-        self.style.colors = theme;
+    pub fn update_theme(&mut self, theme: Styling) {
+        self.style.colors = theme.into();
     }
     pub fn update_rounded_corners(&mut self, rounded_corners: bool) {
         self.style.rounded_corners = rounded_corners;
@@ -1294,6 +1653,20 @@ pub struct TabInfo {
     pub active_swap_layout_name: Option<String>,
     /// Whether the user manually changed the layout, moving out of the swap layout scheme
     pub is_swap_layout_dirty: bool,
+    /// Row count in the viewport (including all non-ui panes, eg. will excluse the status bar)
+    pub viewport_rows: usize,
+    /// Column count in the viewport (including all non-ui panes, eg. will excluse the status bar)
+    pub viewport_columns: usize,
+    /// Row count in the display area (including all panes, will typically be larger than the
+    /// viewport)
+    pub display_area_rows: usize,
+    /// Column count in the display area (including all panes, will typically be larger than the
+    /// viewport)
+    pub display_area_columns: usize,
+    /// The number of selectable (eg. not the UI bars) tiled panes currently in this tab
+    pub selectable_tiled_panes_count: usize,
+    /// The number of selectable (eg. not the UI bars) floating panes currently in this tab
+    pub selectable_floating_panes_count: usize,
 }
 
 /// The `PaneManifest` contains a dictionary of panes, indexed by the tab position (0 indexed).
@@ -1511,6 +1884,25 @@ pub struct NewPluginArgs {
 pub enum PaneId {
     Terminal(u32),
     Plugin(u32),
+}
+
+impl FromStr for PaneId {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(stringified_pane_id: &str) -> Result<Self, Self::Err> {
+        if let Some(terminal_stringified_pane_id) = stringified_pane_id.strip_prefix("terminal_") {
+            u32::from_str_radix(terminal_stringified_pane_id, 10)
+                .map(|id| PaneId::Terminal(id))
+                .map_err(|e| e.into())
+        } else if let Some(plugin_pane_id) = stringified_pane_id.strip_prefix("plugin_") {
+            u32::from_str_radix(plugin_pane_id, 10)
+                .map(|id| PaneId::Plugin(id))
+                .map_err(|e| e.into())
+        } else {
+            u32::from_str_radix(&stringified_pane_id, 10)
+                .map(|id| PaneId::Terminal(id))
+                .map_err(|e| e.into())
+        }
+    }
 }
 
 impl MessageToPlugin {
@@ -1903,4 +2295,14 @@ pub enum PluginCommand {
     ChangeHostFolder(PathBuf),
     SetFloatingPanePinned(PaneId, bool), // bool -> should be pinned
     StackPanes(Vec<PaneId>),
+    ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
+    OpenCommandPaneNearPlugin(CommandToRun, Context),
+    OpenTerminalNearPlugin(FileToOpen),
+    OpenTerminalFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>),
+    OpenTerminalInPlaceOfPlugin(FileToOpen),
+    OpenCommandPaneFloatingNearPlugin(CommandToRun, Option<FloatingPaneCoordinates>, Context),
+    OpenCommandPaneInPlaceOfPlugin(CommandToRun, Context),
+    OpenFileNearPlugin(FileToOpen, Context),
+    OpenFileFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>, Context),
+    OpenFileInPlaceOfPlugin(FileToOpen, Context),
 }

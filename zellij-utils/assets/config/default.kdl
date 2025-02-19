@@ -135,6 +135,13 @@ keybinds {
             };
             SwitchToMode "Normal"
         }
+        bind "a" {
+            LaunchOrFocusPlugin "zellij:about" {
+                floating true
+                move_to_focused_tab true
+            };
+            SwitchToMode "Normal"
+        }
     }
     tmux {
         bind "[" { SwitchToMode "Scroll"; }
@@ -217,6 +224,7 @@ plugins {
     }
     configuration location="zellij:configuration"
     plugin-manager location="zellij:plugin-manager"
+    about location="zellij:about"
 }
 
 // Plugins to load in the background when a new session starts
@@ -414,3 +422,18 @@ load_plugins {
 // Default: false
 //
 // enable_web_server true
+
+// Whether to stack panes when resizing beyond a certain size
+// Default: true
+//
+// stacked_resize false
+
+// Whether to show release notes on first version run
+// Default: true
+//
+// show_release_notes false
+
+// Whether to show startup tips on session start
+// Default: true
+//
+// show_startup_tips false

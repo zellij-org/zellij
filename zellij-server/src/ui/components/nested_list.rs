@@ -2,7 +2,7 @@ use super::{
     is_too_high, parse_indices, parse_opaque, parse_selected, parse_text, stringify_text,
     Coordinates, Text,
 };
-use crate::panes::terminal_character::{AnsiCode, RESET_STYLES};
+use crate::panes::terminal_character::{AnsiCode, CharacterStyles, RESET_STYLES};
 use zellij_utils::data::Style;
 
 use unicode_width::UnicodeWidthChar;
@@ -27,37 +27,29 @@ pub fn nested_list(
         if is_too_high(line_index + 1, &coordinates) {
             break;
         }
-        let mut reset_styles_for_item = RESET_STYLES;
-        reset_styles_for_item.background = None;
-        reset_styles_for_item.foreground = None;
+        let style_declaration = if line_item.text.selected {
+            style.colors.list_selected
+        } else {
+            style.colors.list_unselected
+        };
         let padding = line_item.indentation_level * 2 + 1;
         let bulletin = if line_item.indentation_level % 2 == 0 {
             "> "
         } else {
             "- "
         };
-        let text_style = if line_item.text.selected {
-            reset_styles_for_item
-                .bold(Some(AnsiCode::On))
-                .foreground(Some(style.colors.white.into()))
-                .background(Some(style.colors.bg.into()))
-        } else if line_item.text.opaque {
-            reset_styles_for_item
-                .bold(Some(AnsiCode::On))
-                .foreground(Some(style.colors.white.into()))
-                .background(Some(style.colors.black.into()))
+        let text_style = if line_item.text.opaque || line_item.text.selected {
+            CharacterStyles::from(style_declaration)
+                .background(Some(style_declaration.background.into()))
         } else {
-            reset_styles_for_item
-                .bold(Some(AnsiCode::On))
-                .foreground(Some(style.colors.white.into()))
+            CharacterStyles::from(style_declaration)
         };
         let (mut text, text_width) = stringify_text(
             &line_item.text,
             Some(padding + bulletin.len()),
             &coordinates,
-            style,
-            text_style,
-            line_item.text.selected,
+            &style_declaration,
+            text_style.bold(Some(AnsiCode::On)),
         );
         text = pad_line(text, max_width, padding, text_width);
         let go_to_row_instruction = coordinates
@@ -70,20 +62,13 @@ pub fn nested_list(
                     "".to_owned()
                 }
             });
-        let line_style = if line_item.text.selected {
-            RESET_STYLES
-                .foreground(Some(style.colors.white.into()))
-                .background(Some(style.colors.bg.into()))
-        } else if line_item.text.opaque {
-            RESET_STYLES
-                .foreground(Some(style.colors.white.into()))
-                .background(Some(style.colors.black.into()))
-        } else {
-            RESET_STYLES.foreground(Some(style.colors.white.into()))
-        };
         stringified.push_str(&format!(
-            "{}{}{}{:padding$}{bulletin}{}{text}{}",
-            go_to_row_instruction, line_style, reset_styles_for_item, " ", text_style, RESET_STYLES
+            "{}{}{:padding$}{bulletin}{}{text}{}",
+            go_to_row_instruction,
+            text_style,
+            " ",
+            text_style.bold(Some(AnsiCode::On)),
+            RESET_STYLES
         ));
     }
     stringified.as_bytes().to_vec()

@@ -9,7 +9,8 @@ use std::time::Duration;
 
 use log::{debug, warn};
 use zellij_utils::data::{
-    Direction, KeyWithModifier, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo,
+    Direction, KeyWithModifier, PaneManifest, PluginPermission, Resize, ResizeStrategy,
+    SessionInfo, Styling,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -40,7 +41,7 @@ use crate::{
     panes::sixel::SixelImageStore,
     panes::PaneId,
     plugins::{PluginId, PluginInstruction, PluginRenderAsset},
-    pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
+    pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     tab::{SuppressedPanes, Tab},
     thread_bus::Bus,
     ui::{
@@ -357,7 +358,7 @@ pub enum ScreenInstruction {
         client_id: ClientId,
         keybinds: Keybinds,
         default_mode: InputMode,
-        theme: Palette,
+        theme: Styling,
         simplified_ui: bool,
         default_shell: Option<PathBuf>,
         pane_frames: bool,
@@ -367,6 +368,8 @@ pub enum ScreenInstruction {
         auto_layout: bool,
         rounded_corners: bool,
         hide_session_name: bool,
+        stacked_resize: bool,
+        default_editor: Option<PathBuf>,
     },
     RerunCommandPane(u32), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
@@ -401,6 +404,7 @@ pub enum ScreenInstruction {
     TogglePanePinned(ClientId),
     SetFloatingPanePinned(PaneId, bool),
     StackPanes(Vec<PaneId>),
+    ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -608,6 +612,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TogglePanePinned(..) => ScreenContext::TogglePanePinned,
             ScreenInstruction::SetFloatingPanePinned(..) => ScreenContext::SetFloatingPanePinned,
             ScreenInstruction::StackPanes(..) => ScreenContext::StackPanes,
+            ScreenInstruction::ChangeFloatingPanesCoordinates(..) => {
+                ScreenContext::ChangeFloatingPanesCoordinates
+            },
         }
     }
 }
@@ -655,6 +662,7 @@ pub(crate) struct Screen {
     size: Size,
     pixel_dimensions: PixelDimensions,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+    stacked_resize: Rc<RefCell<bool>>,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     /// The overlay that is drawn on top of [`Pane`]'s', [`Tab`]'s and the [`Screen`]
     overlay: OverlayWindow,
@@ -681,12 +689,13 @@ pub(crate) struct Screen {
     resurrectable_sessions: BTreeMap<String, Duration>, // String is the session name, duration is
     // its creation time
     default_layout: Box<Layout>,
-    default_shell: Option<PathBuf>,
+    default_shell: PathBuf,
     styled_underlines: bool,
     arrow_fonts: bool,
     layout_dir: Option<PathBuf>,
     default_layout_name: Option<String>,
     explicitly_disable_kitty_keyboard_protocol: bool,
+    default_editor: Option<PathBuf>,
 }
 
 impl Screen {
@@ -703,7 +712,7 @@ impl Screen {
         debug: bool,
         default_layout: Box<Layout>,
         default_layout_name: Option<String>,
-        default_shell: Option<PathBuf>,
+        default_shell: PathBuf,
         session_serialization: bool,
         serialize_pane_viewport: bool,
         scrollback_lines_to_serialize: Option<usize>,
@@ -711,6 +720,8 @@ impl Screen {
         arrow_fonts: bool,
         layout_dir: Option<PathBuf>,
         explicitly_disable_kitty_keyboard_protocol: bool,
+        stacked_resize: bool,
+        default_editor: Option<PathBuf>,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -723,6 +734,7 @@ impl Screen {
             size: client_attributes.size,
             pixel_dimensions: Default::default(),
             character_cell_size: Rc::new(RefCell::new(None)),
+            stacked_resize: Rc::new(RefCell::new(stacked_resize)),
             sixel_image_store: Rc::new(RefCell::new(SixelImageStore::default())),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashSet::new())),
@@ -752,6 +764,7 @@ impl Screen {
             resurrectable_sessions,
             layout_dir,
             explicitly_disable_kitty_keyboard_protocol,
+            default_editor,
         }
     }
 
@@ -1326,6 +1339,7 @@ impl Screen {
             tab_name,
             self.size,
             self.character_cell_size.clone(),
+            self.stacked_resize.clone(),
             self.sixel_image_store.clone(),
             self.bus
                 .os_input
@@ -1350,6 +1364,7 @@ impl Screen {
             self.arrow_fonts,
             self.styled_underlines,
             self.explicitly_disable_kitty_keyboard_protocol,
+            self.default_editor.clone(),
         );
         for (client_id, mode_info) in &self.mode_info {
             tab.change_mode_info(mode_info.clone(), *client_id);
@@ -1523,6 +1538,10 @@ impl Screen {
                 .copied()
                 .collect();
             let (active_swap_layout_name, is_swap_layout_dirty) = tab.swap_layout_info();
+            let tab_viewport = tab.get_viewport();
+            let tab_display_area = tab.get_display_area();
+            let selectable_tiled_panes_count = tab.get_selectable_tiled_panes_count();
+            let selectable_floating_panes_count = tab.get_selectable_floating_panes_count();
             let tab_info_for_screen = TabInfo {
                 position: tab.position,
                 name: tab.name.clone(),
@@ -1534,6 +1553,12 @@ impl Screen {
                 other_focused_clients: all_focused_clients,
                 active_swap_layout_name,
                 is_swap_layout_dirty,
+                viewport_rows: tab_viewport.rows,
+                viewport_columns: tab_viewport.cols,
+                display_area_rows: tab_display_area.rows,
+                display_area_columns: tab_display_area.cols,
+                selectable_tiled_panes_count,
+                selectable_floating_panes_count,
             };
             tab_infos_for_screen_state.insert(tab.position, tab_info_for_screen);
         }
@@ -1553,6 +1578,10 @@ impl Screen {
                         .collect()
                 };
                 let (active_swap_layout_name, is_swap_layout_dirty) = tab.swap_layout_info();
+                let tab_viewport = tab.get_viewport();
+                let tab_display_area = tab.get_display_area();
+                let selectable_tiled_panes_count = tab.get_selectable_tiled_panes_count();
+                let selectable_floating_panes_count = tab.get_selectable_floating_panes_count();
                 let tab_info_for_plugins = TabInfo {
                     position: tab.position,
                     name: tab.name.clone(),
@@ -1564,6 +1593,12 @@ impl Screen {
                     other_focused_clients,
                     active_swap_layout_name,
                     is_swap_layout_dirty,
+                    viewport_rows: tab_viewport.rows,
+                    viewport_columns: tab_viewport.cols,
+                    display_area_rows: tab_display_area.rows,
+                    display_area_columns: tab_display_area.cols,
+                    selectable_tiled_panes_count,
+                    selectable_floating_panes_count,
                 };
                 plugin_tab_updates.push(tab_info_for_plugins);
             }
@@ -1629,7 +1664,7 @@ impl Screen {
     }
     fn dump_layout_to_hd(&mut self) -> Result<()> {
         let err_context = || format!("Failed to log and report session state");
-        let session_layout_metadata = self.get_layout_metadata(self.default_shell.clone());
+        let session_layout_metadata = self.get_layout_metadata(Some(self.default_shell.clone()));
         self.bus
             .senders
             .send_to_plugin(PluginInstruction::LogLayoutToHd(session_layout_metadata))
@@ -2041,6 +2076,7 @@ impl Screen {
                     plugin_pane_to_move_to_active_tab,
                     pane_id,
                     None,
+                    true,
                 )?;
             } else {
                 new_active_tab.hide_floating_panes();
@@ -2154,7 +2190,7 @@ impl Screen {
             let (mut tiled_panes_layout, mut floating_panes_layout) = default_layout.new_tab();
             if pane_to_break_is_floating {
                 tab.show_floating_panes();
-                tab.add_floating_pane(active_pane, active_pane_id, None)?;
+                tab.add_floating_pane(active_pane, active_pane_id, None, true)?;
                 if let Some(already_running_layout) = floating_panes_layout
                     .iter_mut()
                     .find(|i| i.run == active_pane_run_instruction)
@@ -2278,7 +2314,7 @@ impl Screen {
 
             if pane_to_break_is_floating {
                 new_active_tab.show_floating_panes();
-                new_active_tab.add_floating_pane(active_pane, active_pane_id, None)?;
+                new_active_tab.add_floating_pane(active_pane, active_pane_id, None, true)?;
             } else {
                 new_active_tab.hide_floating_panes();
                 new_active_tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
@@ -2418,7 +2454,7 @@ impl Screen {
         &mut self,
         new_keybinds: Keybinds,
         new_default_mode: InputMode,
-        theme: Palette,
+        theme: Styling,
         simplified_ui: bool,
         default_shell: Option<PathBuf>,
         pane_frames: bool,
@@ -2428,6 +2464,8 @@ impl Screen {
         auto_layout: bool,
         rounded_corners: bool,
         hide_session_name: bool,
+        stacked_resize: bool,
+        default_editor: Option<PathBuf>,
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
@@ -2436,7 +2474,8 @@ impl Screen {
         self.default_mode_info.update_theme(theme);
         self.default_mode_info
             .update_rounded_corners(rounded_corners);
-        self.default_shell = default_shell.clone();
+        self.default_shell = default_shell.clone().unwrap_or_else(|| get_default_shell());
+        self.default_editor = default_editor.clone().or_else(|| get_default_editor());
         self.auto_layout = auto_layout;
         self.copy_options.command = copy_command.clone();
         self.copy_options.copy_on_select = copy_on_select;
@@ -2445,6 +2484,9 @@ impl Screen {
             .update_arrow_fonts(should_support_arrow_fonts);
         self.default_mode_info
             .update_hide_session_name(hide_session_name);
+        {
+            *self.stacked_resize.borrow_mut() = stacked_resize;
+        }
         if let Some(copy_to_clipboard) = copy_to_clipboard {
             self.copy_options.clipboard = copy_to_clipboard;
         }
@@ -2452,6 +2494,7 @@ impl Screen {
             tab.update_theme(theme);
             tab.update_rounded_corners(rounded_corners);
             tab.update_default_shell(default_shell.clone());
+            tab.update_default_editor(self.default_editor.clone());
             tab.update_auto_layout(auto_layout);
             tab.update_copy_options(&self.copy_options);
             tab.set_pane_frames(pane_frames);
@@ -2563,6 +2606,20 @@ impl Screen {
         self.tabs
             .get_mut(&root_tab_id)
             .map(|t| t.stack_panes(root_pane_id, panes_to_stack));
+    }
+    pub fn change_floating_panes_coordinates(
+        &mut self,
+        pane_ids_and_coordinates: Vec<(PaneId, FloatingPaneCoordinates)>,
+    ) {
+        for (pane_id, coordinates) in pane_ids_and_coordinates {
+            for (_tab_id, tab) in self.tabs.iter_mut() {
+                if tab.has_pane_with_pid(&pane_id) {
+                    tab.change_floating_pane_coordinates(&pane_id, coordinates)
+                        .non_fatal();
+                    break;
+                }
+            }
+        }
     }
     fn unblock_input(&self) -> Result<()> {
         self.bus
@@ -2710,6 +2767,19 @@ impl Screen {
     }
 }
 
+#[cfg(not(test))]
+fn get_default_editor() -> Option<PathBuf> {
+    std::env::var("EDITOR")
+        .or_else(|_| std::env::var("VISUAL"))
+        .map(|e| PathBuf::from(e))
+        .ok()
+}
+
+#[cfg(test)]
+fn get_default_editor() -> Option<PathBuf> {
+    None
+}
+
 // The box is here in order to make the
 // NewClient enum smaller
 #[allow(clippy::boxed_local)]
@@ -2730,7 +2800,20 @@ pub(crate) fn screen_thread_main(
     let scrollback_lines_to_serialize = config_options.scrollback_lines_to_serialize;
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
     let layout_dir = config_options.layout_dir;
-    let default_shell = config_options.default_shell;
+    #[cfg(test)]
+    let default_shell = config_options
+        .default_shell
+        .clone()
+        .unwrap_or(PathBuf::from("/bin/sh"));
+    #[cfg(not(test))]
+    let default_shell = config_options
+        .default_shell
+        .clone()
+        .unwrap_or_else(|| get_default_shell());
+    let default_editor = config_options
+        .scrollback_editor
+        .clone()
+        .or_else(|| get_default_editor());
     let default_layout_name = config_options
         .default_layout
         .map(|l| format!("{}", l.display()));
@@ -2747,6 +2830,7 @@ pub(crate) fn screen_thread_main(
         // explicitly_disable_kitty_keyboard_protocol is false and vice versa
         .unwrap_or(false); // by default, we try to support this if the terminal supports it and
                            // the program running inside a pane requests it
+    let stacked_resize = config_options.stacked_resize.unwrap_or(true);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -2778,6 +2862,8 @@ pub(crate) fn screen_thread_main(
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
+        stacked_resize,
+        default_editor,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
@@ -2882,8 +2968,34 @@ pub(crate) fn screen_thread_main(
                             log::error!("Tab index not found: {:?}", tab_index);
                         }
                     },
-                    ClientTabIndexOrPaneId::PaneId(_pane_id) => {
-                        log::error!("cannot open a pane with a pane id??");
+                    ClientTabIndexOrPaneId::PaneId(pane_id) => {
+                        let mut found = false;
+                        let all_tabs = screen.get_tabs_mut();
+                        for tab in all_tabs.values_mut() {
+                            if tab.has_pane_with_pid(&pane_id) {
+                                tab.new_pane(
+                                    pid,
+                                    initial_pane_title,
+                                    should_float,
+                                    invoked_with,
+                                    floating_pane_coordinates,
+                                    start_suppressed,
+                                    None,
+                                )?;
+                                if let Some(hold_for_command) = hold_for_command {
+                                    let is_first_run = true;
+                                    tab.hold_pane(pid, None, is_first_run, hold_for_command);
+                                }
+                                found = true;
+                                break;
+                            }
+                        }
+                        if !found {
+                            log::error!(
+                                "Failed to find tab containing pane with id: {:?}",
+                                pane_id
+                            );
+                        }
                     },
                 };
                 screen.unblock_input()?;
@@ -3173,7 +3285,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::DumpLayoutToPlugin(plugin_id) => {
                 let err_context = || format!("Failed to dump layout");
                 let session_layout_metadata =
-                    screen.get_layout_metadata(screen.default_shell.clone());
+                    screen.get_layout_metadata(Some(screen.default_shell.clone()));
                 screen
                     .bus
                     .senders
@@ -3187,7 +3299,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ListClientsToPlugin(plugin_id, client_id) => {
                 let err_context = || format!("Failed to dump layout");
                 let session_layout_metadata =
-                    screen.get_layout_metadata(screen.default_shell.clone());
+                    screen.get_layout_metadata(Some(screen.default_shell.clone()));
                 screen
                     .bus
                     .senders
@@ -4498,6 +4610,8 @@ pub(crate) fn screen_thread_main(
                 auto_layout,
                 rounded_corners,
                 hide_session_name,
+                stacked_resize,
+                default_editor,
             } => {
                 screen
                     .reconfigure(
@@ -4513,6 +4627,8 @@ pub(crate) fn screen_thread_main(
                         auto_layout,
                         rounded_corners,
                         hide_session_name,
+                        stacked_resize,
+                        default_editor,
                         client_id,
                     )
                     .non_fatal();
@@ -4745,6 +4861,11 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::StackPanes(pane_ids_to_stack) => {
                 screen.stack_panes(pane_ids_to_stack);
+                let _ = screen.unblock_input();
+                let _ = screen.render(None);
+            },
+            ScreenInstruction::ChangeFloatingPanesCoordinates(pane_ids_and_coordinates) => {
+                screen.change_floating_panes_coordinates(pane_ids_and_coordinates);
                 let _ = screen.unblock_input();
                 let _ = screen.render(None);
             },

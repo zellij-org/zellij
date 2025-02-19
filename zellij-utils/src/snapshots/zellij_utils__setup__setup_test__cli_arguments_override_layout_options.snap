@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 768
+assertion_line: 798
 expression: "format!(\"{:#?}\", options)"
 ---
 Options {
@@ -33,4 +33,7 @@ Options {
     serialization_interval: None,
     disable_session_metadata: None,
     support_kitty_keyboard_protocol: None,
+    stacked_resize: None,
+    show_startup_tips: None,
+    show_release_notes: None,
 }

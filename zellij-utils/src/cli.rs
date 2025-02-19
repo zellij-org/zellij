@@ -775,4 +775,25 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(last(true), required(true))]
         pane_ids: Vec<String>,
     },
+    ChangeFloatingPaneCoordinates {
+        /// The pane_id of the floating pane, eg.  terminal_1, plugin_2 or 3 (equivalent to
+        /// terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: String,
+        /// The x coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(short, long)]
+        x: Option<String>,
+        /// The y coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(short, long)]
+        y: Option<String>,
+        /// The width if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long)]
+        width: Option<String>,
+        /// The height if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long)]
+        height: Option<String>,
+        /// Whether to pin a floating pane so that it is always on top
+        #[clap(long)]
+        pinned: Option<bool>,
+    },
 }

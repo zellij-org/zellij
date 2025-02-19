@@ -1,7 +1,8 @@
 mod kdl_layout_parser;
 use crate::data::{
-    BareKey, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo, Palette,
-    PaletteColor, PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo, TabInfo,
+    BareKey, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo,
+    MultiplayerColors, Palette, PaletteColor, PaneInfo, PaneManifest, PermissionType, Resize,
+    SessionInfo, StyleDeclaration, Styling, TabInfo, DEFAULT_STYLES,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -1241,6 +1242,41 @@ impl PaletteColor {
     }
 }
 
+impl StyleDeclaration {
+    pub fn to_kdl(&self, declaration_name: &str) -> KdlNode {
+        let mut node = KdlNode::new(declaration_name);
+        let mut doc = KdlDocument::new();
+
+        doc.nodes_mut().push(self.base.to_kdl("base"));
+        doc.nodes_mut().push(self.background.to_kdl("background"));
+        doc.nodes_mut().push(self.emphasis_0.to_kdl("emphasis_0"));
+        doc.nodes_mut().push(self.emphasis_1.to_kdl("emphasis_1"));
+        doc.nodes_mut().push(self.emphasis_2.to_kdl("emphasis_2"));
+        doc.nodes_mut().push(self.emphasis_3.to_kdl("emphasis_3"));
+        node.set_children(doc);
+        node
+    }
+}
+
+impl MultiplayerColors {
+    pub fn to_kdl(&self) -> KdlNode {
+        let mut node = KdlNode::new("multiplayer_user_colors");
+        let mut doc = KdlDocument::new();
+        doc.nodes_mut().push(self.player_1.to_kdl("player_1"));
+        doc.nodes_mut().push(self.player_2.to_kdl("player_2"));
+        doc.nodes_mut().push(self.player_3.to_kdl("player_3"));
+        doc.nodes_mut().push(self.player_4.to_kdl("player_4"));
+        doc.nodes_mut().push(self.player_5.to_kdl("player_5"));
+        doc.nodes_mut().push(self.player_6.to_kdl("player_6"));
+        doc.nodes_mut().push(self.player_7.to_kdl("player_7"));
+        doc.nodes_mut().push(self.player_8.to_kdl("player_8"));
+        doc.nodes_mut().push(self.player_9.to_kdl("player_9"));
+        doc.nodes_mut().push(self.player_10.to_kdl("player_10"));
+        node.set_children(doc);
+        node
+    }
+}
+
 impl TryFrom<(&KdlNode, &Options)> for Action {
     type Error = ConfigError;
     fn try_from((kdl_action, config_options): (&KdlNode, &Options)) -> Result<Self, Self::Error> {
@@ -2052,6 +2088,20 @@ macro_rules! kdl_child_with_name {
 }
 
 #[macro_export]
+macro_rules! kdl_child_with_name_or_error {
+    ( $kdl_node:expr, $name:expr) => {{
+        $kdl_node
+            .children()
+            .and_then(|children| children.nodes().iter().find(|c| c.name().value() == $name))
+            .ok_or(ConfigError::new_kdl_error(
+                format!("Missing node {}", $name).into(),
+                $kdl_node.span().offset(),
+                $kdl_node.span().len(),
+            ))
+    }};
+}
+
+#[macro_export]
 macro_rules! kdl_get_string_property_or_child_value_with_error {
     ( $kdl_node:expr, $name:expr ) => {
         match $kdl_node.get($name) {
@@ -2247,7 +2297,14 @@ impl Options {
         let web_client_font =
             kdl_property_first_arg_as_string_or_error!(kdl_options, "web_client_font")
                 .map(|(web_client_font, _entry)| web_client_font.to_string());
-
+        let stacked_resize =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "stacked_resize").map(|(v, _)| v);
+        let show_startup_tips =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "show_startup_tips")
+                .map(|(v, _)| v);
+        let show_release_notes =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "show_release_notes")
+                .map(|(v, _)| v);
         Ok(Options {
             simplified_ui,
             theme,
@@ -2278,6 +2335,9 @@ impl Options {
             support_kitty_keyboard_protocol,
             enable_web_server,
             web_client_font,
+            stacked_resize,
+            show_startup_tips,
+            show_release_notes,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -3135,6 +3195,84 @@ impl Options {
             None
         }
     }
+    fn stacked_resize_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// Whether to stack panes when resizing beyond a certain size",
+            "// Default: true",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("stacked_resize");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(stacked_resize) = self.stacked_resize {
+            let mut node = create_node(stacked_resize);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn show_startup_tips_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ", "// Whether to show tips on startup", "// Default: true", "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("show_startup_tips");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(show_startup_tips) = self.show_startup_tips {
+            let mut node = create_node(show_startup_tips);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn show_release_notes_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ", "// Whether to show release notes on first version run", "// Default: true", "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("show_release_notes");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(show_release_notes) = self.show_release_notes {
+            let mut node = create_node(show_release_notes);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
@@ -3227,6 +3365,15 @@ impl Options {
         }
         if let Some(web_client_font) = self.web_client_font_to_kdl(add_comments) {
             nodes.push(web_client_font);
+        }
+        if let Some(stacked_resize) = self.stacked_resize_to_kdl(add_comments) {
+            nodes.push(stacked_resize);
+        }
+        if let Some(show_startup_tips) = self.show_startup_tips_to_kdl(add_comments) {
+            nodes.push(show_startup_tips);
+        }
+        if let Some(show_release_notes) = self.show_release_notes_to_kdl(add_comments) {
+            nodes.push(show_release_notes);
         }
         nodes
     }
@@ -3969,6 +4116,66 @@ impl UiConfig {
 }
 
 impl Themes {
+    fn style_declaration_from_node(
+        style_node: &KdlNode,
+        style_descriptor: &str,
+    ) -> Result<Option<StyleDeclaration>, ConfigError> {
+        let descriptor_node = kdl_child_with_name!(style_node, style_descriptor);
+
+        match descriptor_node {
+            Some(descriptor) => {
+                let colors = kdl_children_or_error!(
+                    descriptor,
+                    format!("Missing colors for {}", style_descriptor)
+                );
+                Ok(Some(StyleDeclaration {
+                    base: PaletteColor::try_from(("base", colors))?,
+                    background: PaletteColor::try_from(("background", colors)).unwrap_or_default(),
+                    emphasis_0: PaletteColor::try_from(("emphasis_0", colors))?,
+                    emphasis_1: PaletteColor::try_from(("emphasis_1", colors))?,
+                    emphasis_2: PaletteColor::try_from(("emphasis_2", colors))?,
+                    emphasis_3: PaletteColor::try_from(("emphasis_3", colors))?,
+                }))
+            },
+            None => Ok(None),
+        }
+    }
+
+    fn multiplayer_colors(style_node: &KdlNode) -> Result<MultiplayerColors, ConfigError> {
+        let descriptor_node = kdl_child_with_name!(style_node, "multiplayer_user_colors");
+        match descriptor_node {
+            Some(descriptor) => {
+                let colors = kdl_children_or_error!(
+                    descriptor,
+                    format!("Missing colors for {}", "multiplayer_user_colors")
+                );
+                Ok(MultiplayerColors {
+                    player_1: PaletteColor::try_from(("player_1", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_1),
+                    player_2: PaletteColor::try_from(("player_2", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_2),
+                    player_3: PaletteColor::try_from(("player_3", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_3),
+                    player_4: PaletteColor::try_from(("player_4", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_4),
+                    player_5: PaletteColor::try_from(("player_5", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_5),
+                    player_6: PaletteColor::try_from(("player_6", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_6),
+                    player_7: PaletteColor::try_from(("player_7", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_7),
+                    player_8: PaletteColor::try_from(("player_8", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_8),
+                    player_9: PaletteColor::try_from(("player_9", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_9),
+                    player_10: PaletteColor::try_from(("player_10", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_10),
+                })
+            },
+            None => Ok(DEFAULT_STYLES.multiplayer_user_colors),
+        }
+    }
+
     pub fn from_kdl(
         themes_from_kdl: &KdlNode,
         sourced_from_external_file: bool,
@@ -3977,8 +4184,17 @@ impl Themes {
         for theme_config in kdl_children_nodes_or_error!(themes_from_kdl, "no themes found") {
             let theme_name = kdl_name!(theme_config);
             let theme_colors = kdl_children_or_error!(theme_config, "empty theme");
-            let theme = Theme {
-                palette: Palette {
+            let palette_color_names = HashSet::from([
+                "fg", "bg", "red", "green", "blue", "yellow", "magenta", "orange", "cyan", "black",
+                "white",
+            ]);
+            let theme = if theme_colors
+                .nodes()
+                .iter()
+                .all(|n| palette_color_names.contains(n.name().value()))
+            {
+                // Older palette based theme definition
+                let palette = Palette {
                     fg: PaletteColor::try_from(("fg", theme_colors))?,
                     bg: PaletteColor::try_from(("bg", theme_colors))?,
                     red: PaletteColor::try_from(("red", theme_colors))?,
@@ -3991,8 +4207,92 @@ impl Themes {
                     black: PaletteColor::try_from(("black", theme_colors))?,
                     white: PaletteColor::try_from(("white", theme_colors))?,
                     ..Default::default()
-                },
-                sourced_from_external_file,
+                };
+                Theme {
+                    palette: palette.into(),
+                    sourced_from_external_file,
+                }
+            } else {
+                // Newer theme definition with named styles
+                let s = Styling {
+                    text_unselected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "text_unselected",
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.text_unselected))?,
+                    text_selected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "text_selected",
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.text_selected))?,
+                    ribbon_unselected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "ribbon_unselected",
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.ribbon_unselected))?,
+                    ribbon_selected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "ribbon_selected",
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.ribbon_selected))?,
+                    table_title: Themes::style_declaration_from_node(theme_config, "table_title")
+                        .map(|maybe_style| {
+                        maybe_style.unwrap_or(DEFAULT_STYLES.table_title)
+                    })?,
+                    table_cell_unselected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "table_cell_unselected",
+                    )
+                    .map(|maybe_style| {
+                        maybe_style.unwrap_or(DEFAULT_STYLES.table_cell_unselected)
+                    })?,
+                    table_cell_selected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "table_cell_selected",
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.table_cell_selected))?,
+                    list_unselected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "list_unselected",
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.list_unselected))?,
+                    list_selected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "list_selected",
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.list_selected))?,
+                    frame_unselected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "frame_unselected",
+                    )?,
+                    frame_selected: Themes::style_declaration_from_node(
+                        theme_config,
+                        "frame_selected",
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.frame_selected))?,
+                    frame_highlight: Themes::style_declaration_from_node(
+                        theme_config,
+                        "frame_highlight",
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.frame_highlight))?,
+                    exit_code_success: Themes::style_declaration_from_node(
+                        theme_config,
+                        "exit_code_success",
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.exit_code_success))?,
+                    exit_code_error: Themes::style_declaration_from_node(
+                        theme_config,
+                        "exit_code_error",
+                    )
+                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.exit_code_error))?,
+                    multiplayer_user_colors: Themes::multiplayer_colors(theme_config)
+                        .unwrap_or_default(),
+                };
+
+                Theme {
+                    palette: s,
+                    sourced_from_external_file,
+                }
             };
             themes.insert(theme_name.into(), theme);
         }
@@ -4056,39 +4356,64 @@ impl Themes {
             has_themes = true;
             let mut current_theme_node = KdlNode::new(theme_name.clone());
             let mut current_theme_node_children = KdlDocument::new();
+
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.fg.to_kdl("fg"));
+                .push(theme.palette.text_unselected.to_kdl("text_unselected"));
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.bg.to_kdl("bg"));
+                .push(theme.palette.text_selected.to_kdl("text_selected"));
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.red.to_kdl("red"));
+                .push(theme.palette.ribbon_selected.to_kdl("ribbon_selected"));
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.green.to_kdl("green"));
+                .push(theme.palette.ribbon_unselected.to_kdl("ribbon_unselected"));
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.yellow.to_kdl("yellow"));
+                .push(theme.palette.table_title.to_kdl("table_title"));
+            current_theme_node_children.nodes_mut().push(
+                theme
+                    .palette
+                    .table_cell_selected
+                    .to_kdl("table_cell_selected"),
+            );
+            current_theme_node_children.nodes_mut().push(
+                theme
+                    .palette
+                    .table_cell_unselected
+                    .to_kdl("table_cell_unselected"),
+            );
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.blue.to_kdl("blue"));
+                .push(theme.palette.list_selected.to_kdl("list_selected"));
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.magenta.to_kdl("magenta"));
+                .push(theme.palette.list_unselected.to_kdl("list_unselected"));
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.orange.to_kdl("orange"));
+                .push(theme.palette.frame_selected.to_kdl("frame_selected"));
+
+            match theme.palette.frame_unselected {
+                None => {},
+                Some(frame_unselected_style) => {
+                    current_theme_node_children
+                        .nodes_mut()
+                        .push(frame_unselected_style.to_kdl("frame_unselected"));
+                },
+            }
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.cyan.to_kdl("cyan"));
+                .push(theme.palette.frame_highlight.to_kdl("frame_highlight"));
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.black.to_kdl("black"));
+                .push(theme.palette.exit_code_success.to_kdl("exit_code_success"));
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.white.to_kdl("white"));
+                .push(theme.palette.exit_code_error.to_kdl("exit_code_error"));
+            current_theme_node_children
+                .nodes_mut()
+                .push(theme.palette.multiplayer_user_colors.to_kdl());
             current_theme_node.set_children(current_theme_node_children);
             themes.nodes_mut().push(current_theme_node);
         }
@@ -4298,6 +4623,15 @@ impl TabInfo {
                     .map(|s| s.to_owned())
             }};
         }
+        macro_rules! optional_int_node {
+            ($name:expr, $type:ident) => {{
+                kdl_document
+                    .get($name)
+                    .and_then(|n| n.entries().iter().next())
+                    .and_then(|e| e.value().as_i64())
+                    .map(|e| e as $type)
+            }};
+        }
         macro_rules! bool_node {
             ($name:expr) => {{
                 kdl_document
@@ -4327,7 +4661,15 @@ impl TabInfo {
             }
         }
         let active_swap_layout_name = optional_string_node!("active_swap_layout_name");
+        let viewport_rows = optional_int_node!("viewport_rows", usize).unwrap_or(0);
+        let viewport_columns = optional_int_node!("viewport_columns", usize).unwrap_or(0);
+        let display_area_rows = optional_int_node!("display_area_rows", usize).unwrap_or(0);
+        let display_area_columns = optional_int_node!("display_area_columns", usize).unwrap_or(0);
         let is_swap_layout_dirty = bool_node!("is_swap_layout_dirty");
+        let selectable_tiled_panes_count =
+            optional_int_node!("selectable_tiled_panes_count", usize).unwrap_or(0);
+        let selectable_floating_panes_count =
+            optional_int_node!("selectable_floating_panes_count", usize).unwrap_or(0);
         Ok(TabInfo {
             position,
             name,
@@ -4339,6 +4681,12 @@ impl TabInfo {
             other_focused_clients,
             active_swap_layout_name,
             is_swap_layout_dirty,
+            viewport_rows,
+            viewport_columns,
+            display_area_rows,
+            display_area_columns,
+            selectable_tiled_panes_count,
+            selectable_floating_panes_count,
         })
     }
     pub fn encode_to_kdl(&self) -> KdlDocument {
@@ -4386,9 +4734,35 @@ impl TabInfo {
             kdl_doucment.nodes_mut().push(active_swap_layout);
         }
 
+        let mut viewport_rows = KdlNode::new("viewport_rows");
+        viewport_rows.push(self.viewport_rows as i64);
+        kdl_doucment.nodes_mut().push(viewport_rows);
+
+        let mut viewport_columns = KdlNode::new("viewport_columns");
+        viewport_columns.push(self.viewport_columns as i64);
+        kdl_doucment.nodes_mut().push(viewport_columns);
+
+        let mut display_area_columns = KdlNode::new("display_area_columns");
+        display_area_columns.push(self.display_area_columns as i64);
+        kdl_doucment.nodes_mut().push(display_area_columns);
+
+        let mut display_area_rows = KdlNode::new("display_area_rows");
+        display_area_rows.push(self.display_area_rows as i64);
+        kdl_doucment.nodes_mut().push(display_area_rows);
+
         let mut is_swap_layout_dirty = KdlNode::new("is_swap_layout_dirty");
         is_swap_layout_dirty.push(self.is_swap_layout_dirty);
         kdl_doucment.nodes_mut().push(is_swap_layout_dirty);
+
+        let mut selectable_tiled_panes_count = KdlNode::new("selectable_tiled_panes_count");
+        selectable_tiled_panes_count.push(self.selectable_tiled_panes_count as i64);
+        kdl_doucment.nodes_mut().push(selectable_tiled_panes_count);
+
+        let mut selectable_floating_panes_count = KdlNode::new("selectable_floating_panes_count");
+        selectable_floating_panes_count.push(self.selectable_floating_panes_count as i64);
+        kdl_doucment
+            .nodes_mut()
+            .push(selectable_floating_panes_count);
 
         kdl_doucment
     }
@@ -4730,6 +5104,12 @@ fn serialize_and_deserialize_session_info_with_data() {
                 other_focused_clients: vec![2, 3],
                 active_swap_layout_name: Some("BASE".to_owned()),
                 is_swap_layout_dirty: true,
+                viewport_rows: 10,
+                viewport_columns: 10,
+                display_area_rows: 10,
+                display_area_columns: 10,
+                selectable_tiled_panes_count: 10,
+                selectable_floating_panes_count: 10,
             },
             TabInfo {
                 position: 1,
@@ -4742,6 +5122,12 @@ fn serialize_and_deserialize_session_info_with_data() {
                 other_focused_clients: vec![2, 3],
                 active_swap_layout_name: None,
                 is_swap_layout_dirty: false,
+                viewport_rows: 10,
+                viewport_columns: 10,
+                display_area_rows: 10,
+                display_area_columns: 10,
+                selectable_tiled_panes_count: 10,
+                selectable_floating_panes_count: 10,
             },
         ],
         panes: PaneManifest { panes },
@@ -5166,7 +5552,7 @@ fn themes_to_string() {
     .unwrap();
     assert_eq!(
         deserialized, deserialized_from_serialized,
-        "Deserialized serialized config equals original config"
+        "Deserialized serialized config equals original config",
     );
     insta::assert_snapshot!(serialized.to_string());
 }

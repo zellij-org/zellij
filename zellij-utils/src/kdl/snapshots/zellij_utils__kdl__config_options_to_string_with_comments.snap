@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 5380
+assertion_line: 5873
 expression: fake_document.to_string()
 ---
  
@@ -180,4 +180,19 @@ disable_session_metadata true
 // Default: true (if the host terminal supports it)
 // 
 support_kitty_keyboard_protocol false
+ 
+// Whether to stack panes when resizing beyond a certain size
+// Default: true
+// 
+// stacked_resize false
+ 
+// Whether to show tips on startup
+// Default: true
+// 
+// show_startup_tips false
+ 
+// Whether to show release notes on first version run
+// Default: true
+// 
+// show_release_notes false
 

@@ -25,9 +25,10 @@ use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
 use zellij_utils::{
     channels::SenderWithContext,
-    data::{Event, InputMode, Mouse, Palette, PaletteColor, Style},
+    data::{Event, InputMode, Mouse, Palette, PaletteColor, Style, Styling},
     errors::prelude::*,
     input::layout::Run,
+    input::mouse::{MouseEvent, MouseEventType},
     pane_size::PaneGeom,
     shared::make_terminal_title,
     vte,
@@ -100,6 +101,7 @@ pub(crate) struct PluginPane {
     arrow_fonts: bool,
     styled_underlines: bool,
     should_be_suppressed: bool,
+    text_being_pasted: Option<Vec<u8>>,
 }
 
 impl PluginPane {
@@ -154,6 +156,7 @@ impl PluginPane {
             arrow_fonts,
             styled_underlines,
             should_be_suppressed: false,
+            text_being_pasted: None,
         };
         for client_id in currently_connected_clients {
             plugin.handle_plugin_bytes(client_id, initial_loading_message.as_bytes().to_vec());
@@ -248,8 +251,9 @@ impl Pane for PluginPane {
     fn adjust_input_to_terminal(
         &mut self,
         key_with_modifier: &Option<KeyWithModifier>,
-        raw_input_bytes: Vec<u8>,
+        mut raw_input_bytes: Vec<u8>,
         _raw_input_bytes_are_kitty: bool,
+        client_id: Option<ClientId>,
     ) -> Option<AdjustedInput> {
         if let Some(requesting_permissions) = &self.requesting_permissions {
             let permissions = requesting_permissions.permissions.clone();
@@ -286,10 +290,29 @@ impl Pane for PluginPane {
             }
         } else if let Some(key_with_modifier) = key_with_modifier {
             Some(AdjustedInput::WriteKeyToPlugin(key_with_modifier.clone()))
-        } else if raw_input_bytes.as_slice() == BRACKETED_PASTE_BEGIN
-            || raw_input_bytes.as_slice() == BRACKETED_PASTE_END
-        {
-            // plugins do not need bracketed paste
+        } else if raw_input_bytes.as_slice() == BRACKETED_PASTE_BEGIN {
+            self.text_being_pasted = Some(vec![]);
+            None
+        } else if raw_input_bytes.as_slice() == BRACKETED_PASTE_END {
+            if let Some(text_being_pasted) = self.text_being_pasted.take() {
+                match String::from_utf8(text_being_pasted) {
+                    Ok(pasted_text) => {
+                        let _ = self
+                            .send_plugin_instructions
+                            .send(PluginInstruction::Update(vec![(
+                                Some(self.pid),
+                                client_id,
+                                Event::PastedText(pasted_text),
+                            )]));
+                    },
+                    Err(e) => {
+                        log::error!("Failed to convert pasted bytes as utf8 {:?}", e);
+                    },
+                }
+            }
+            None
+        } else if let Some(pasted_text) = self.text_being_pasted.as_mut() {
+            pasted_text.append(&mut raw_input_bytes);
             None
         } else {
             Some(AdjustedInput::WriteBytesToTerminal(raw_input_bytes))
@@ -623,7 +646,7 @@ impl Pane for PluginPane {
             .unwrap();
     }
     fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) {
-        self.pane_frame_color_override = Some((self.style.colors.red, error_text));
+        self.pane_frame_color_override = Some((self.style.colors.exit_code_error.base, error_text));
     }
     fn clear_pane_frame_color_override(&mut self) {
         self.pane_frame_color_override = None;
@@ -681,7 +704,7 @@ impl Pane for PluginPane {
         self.pane_name = String::from_utf8_lossy(&buf).to_string();
         self.set_should_render(true);
     }
-    fn update_theme(&mut self, theme: Palette) {
+    fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme.clone();
         for grid in self.grids.values_mut() {
             grid.update_theme(theme.clone());
@@ -725,6 +748,27 @@ impl Pane for PluginPane {
     fn reset_logical_position(&mut self) {
         self.geom.logical_position = None;
     }
+    fn mouse_event(&self, event: &MouseEvent, client_id: ClientId) -> Option<String> {
+        match event.event_type {
+            MouseEventType::Motion
+                if !event.left
+                    && !event.right
+                    && !event.middle
+                    && !event.wheel_up
+                    && !event.wheel_down =>
+            {
+                let _ = self
+                    .send_plugin_instructions
+                    .send(PluginInstruction::Update(vec![(
+                        Some(self.pid),
+                        Some(client_id),
+                        Event::Mouse(Mouse::Hover(event.position.line(), event.position.column())),
+                    )]));
+            },
+            _ => {},
+        }
+        None
+    }
 }
 
 impl PluginPane {
@@ -746,10 +790,10 @@ impl PluginPane {
         }
     }
     fn display_request_permission_message(&self, plugin_permission: &PluginPermission) -> String {
-        let bold_white = style!(self.style.colors.white).bold();
-        let cyan = style!(self.style.colors.cyan).bold();
-        let orange = style!(self.style.colors.orange).bold();
-        let green = style!(self.style.colors.green).bold();
+        let bold_white = style!(self.style.colors.text_unselected.base).bold();
+        let cyan = style!(self.style.colors.text_unselected.emphasis_1).bold();
+        let orange = style!(self.style.colors.text_unselected.emphasis_0).bold();
+        let green = style!(self.style.colors.text_unselected.emphasis_2).bold();
 
         let mut messages = String::new();
         let permissions: BTreeSet<PermissionType> =

@@ -403,7 +403,7 @@ fn zellij_server_listener(
 
                     let palette = config
                         .theme_config(config_options.theme.as_ref())
-                        .unwrap_or_else(|| os_input.load_palette());
+                        .unwrap_or_else(|| os_input.load_palette().into());
                     let client_attributes = ClientAttributes {
                         size: full_screen_ws,
                         style: Style {

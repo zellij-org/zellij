@@ -43,7 +43,9 @@ use route::route_thread_main;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
-    consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
+    consts::{
+        DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
+    },
     data::{ConnectToSession, Event, InputMode, KeyWithModifier, PluginCapabilities},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
@@ -338,7 +340,11 @@ impl SessionMetaData {
             self.current_input_modes.insert(client_id, input_mode);
         }
     }
-    pub fn propagate_configuration_changes(&mut self, config_changes: Vec<(ClientId, Config)>) {
+    pub fn propagate_configuration_changes(
+        &mut self,
+        config_changes: Vec<(ClientId, Config)>,
+        config_was_written_to_disk: bool,
+    ) {
         for (client_id, new_config) in config_changes {
             self.default_shell = new_config.options.default_shell.as_ref().map(|shell| {
                 TerminalAction::RunCommand(RunCommand {
@@ -357,7 +363,7 @@ impl SessionMetaData {
                         .unwrap_or_else(Default::default),
                     theme: new_config
                         .theme_config(new_config.options.theme.as_ref())
-                        .unwrap_or_else(|| default_palette()),
+                        .unwrap_or_else(|| default_palette().into()),
                     simplified_ui: new_config.options.simplified_ui.unwrap_or(false),
                     default_shell: new_config.options.default_shell,
                     pane_frames: new_config.options.pane_frames.unwrap_or(true),
@@ -367,6 +373,8 @@ impl SessionMetaData {
                     auto_layout: new_config.options.auto_layout.unwrap_or(true),
                     rounded_corners: new_config.ui.pane_frames.rounded_corners,
                     hide_session_name: new_config.ui.pane_frames.hide_session_name,
+                    stacked_resize: new_config.options.stacked_resize.unwrap_or(true),
+                    default_editor: new_config.options.scrollback_editor.clone(),
                 })
                 .unwrap();
             self.senders
@@ -375,6 +383,7 @@ impl SessionMetaData {
                     keybinds: Some(new_config.keybinds),
                     default_mode: new_config.options.default_mode,
                     default_shell: self.default_shell.clone(),
+                    was_written_to_disk: config_was_written_to_disk,
                 })
                 .unwrap();
             self.senders
@@ -706,6 +715,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         // intrusive
                         let setup_wizard = setup_wizard_floating_pane();
                         floating_panes.push(setup_wizard);
+                    } else if should_show_release_notes(runtime_config_options.show_release_notes) {
+                        let about = about_floating_pane();
+                        floating_panes.push(about);
+                    } else if should_show_startup_tip(runtime_config_options.show_startup_tips) {
+                        let tip = tip_floating_pane();
+                        floating_panes.push(tip);
                     }
                     spawn_tabs(
                         None,
@@ -1163,12 +1178,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     }
 
                     if runtime_config_changed {
+                        let config_was_written_to_disk = false;
                         session_data
                             .write()
                             .unwrap()
                             .as_mut()
                             .unwrap()
-                            .propagate_configuration_changes(vec![(client_id, new_config)]);
+                            .propagate_configuration_changes(
+                                vec![(client_id, new_config)],
+                                config_was_written_to_disk,
+                            );
                     }
                 }
             },
@@ -1180,12 +1199,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .session_configuration
                     .new_saved_config(client_id, new_config);
+                let config_was_written_to_disk = true;
                 session_data
                     .write()
                     .unwrap()
                     .as_mut()
                     .unwrap()
-                    .propagate_configuration_changes(changes);
+                    .propagate_configuration_changes(changes, config_was_written_to_disk);
             },
             ServerInstruction::FailedToWriteConfigToDisk(_client_id, file_path) => {
                 session_data
@@ -1224,12 +1244,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     }
 
                     if runtime_config_changed {
+                        let config_was_written_to_disk = false;
                         session_data
                             .write()
                             .unwrap()
                             .as_mut()
                             .unwrap()
-                            .propagate_configuration_changes(vec![(client_id, new_config)]);
+                            .propagate_configuration_changes(
+                                vec![(client_id, new_config)],
+                                config_was_written_to_disk,
+                            );
                     }
                 }
             },
@@ -1494,6 +1518,55 @@ fn setup_wizard_floating_pane() -> FloatingPaneLayout {
         None,
     ))));
     setup_wizard_pane
+}
+
+fn about_floating_pane() -> FloatingPaneLayout {
+    let mut about_pane = FloatingPaneLayout::new();
+    let configuration = BTreeMap::from_iter([("is_release_notes".to_owned(), "true".to_owned())]);
+    about_pane.run = Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias::new(
+        "about",
+        &Some(configuration),
+        None,
+    ))));
+    about_pane
+}
+
+fn tip_floating_pane() -> FloatingPaneLayout {
+    let mut about_pane = FloatingPaneLayout::new();
+    let configuration = BTreeMap::from_iter([("is_startup_tip".to_owned(), "true".to_owned())]);
+    about_pane.run = Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias::new(
+        "about",
+        &Some(configuration),
+        None,
+    ))));
+    about_pane
+}
+
+fn should_show_release_notes(should_show_release_notes_config: Option<bool>) -> bool {
+    if let Some(should_show_release_notes_config) = should_show_release_notes_config {
+        if !should_show_release_notes_config {
+            // if we were explicitly told not to show release notes, we don't show them,
+            // otherwise we make sure we only show them if they were not seen AND we know
+            // we are able to write to the cache
+            return false;
+        }
+    }
+    if ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE.exists() {
+        return false;
+    } else {
+        if let Err(e) = std::fs::write(&*ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE, &[]) {
+            log::error!(
+                "Failed to write seen release notes indication to disk: {}",
+                e
+            );
+            return false;
+        }
+        return true;
+    }
+}
+
+fn should_show_startup_tip(should_show_startup_tip_config: Option<bool>) -> bool {
+    should_show_startup_tip_config.unwrap_or(true)
 }
 
 #[cfg(not(feature = "singlepass"))]

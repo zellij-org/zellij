@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 2552
+assertion_line: 5070
 expression: serialized
 ---
 name "my session name"
@@ -15,7 +15,13 @@ tabs {
         are_floating_panes_visible true
         other_focused_clients 2 3
         active_swap_layout_name "BASE"
+        viewport_rows 10
+        viewport_columns 10
+        display_area_columns 10
+        display_area_rows 10
         is_swap_layout_dirty true
+        selectable_tiled_panes_count 10
+        selectable_floating_panes_count 10
     }
     tab {
         position 1
@@ -26,7 +32,13 @@ tabs {
         is_sync_panes_active true
         are_floating_panes_visible true
         other_focused_clients 2 3
+        viewport_rows 10
+        viewport_columns 10
+        display_area_columns 10
+        display_area_rows 10
         is_swap_layout_dirty false
+        selectable_tiled_panes_count 10
+        selectable_floating_panes_count 10
     }
 }
 panes {

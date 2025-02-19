@@ -1,16 +1,120 @@
 themes {
     tokyo-night {
-        fg 169 177 214
-        bg 26 27 38
-        black 56 62 90
-        red 249 51 87
-        green 158 206 106
-        yellow 224 175 104
-        blue 122 162 247
-        magenta 187 154 247
-        cyan 42 195 222
-        white 192 202 245
-        orange 255 158 100
+        text_unselected {
+            base 192 202 245
+            background 56 62 90
+            emphasis_0 255 158 100
+            emphasis_1 42 195 222
+            emphasis_2 158 206 106
+            emphasis_3 187 154 247
+        }
+        text_selected {
+            base 192 202 245
+            background 56 62 90
+            emphasis_0 255 158 100
+            emphasis_1 42 195 222
+            emphasis_2 158 206 106
+            emphasis_3 187 154 247
+        }
+        ribbon_selected {
+            base 56 62 90
+            background 158 206 106
+            emphasis_0 249 51 87
+            emphasis_1 255 158 100
+            emphasis_2 187 154 247
+            emphasis_3 122 162 247
+        }
+        ribbon_unselected {
+            base 56 62 90
+            background 169 177 214
+            emphasis_0 249 51 87
+            emphasis_1 192 202 245
+            emphasis_2 122 162 247
+            emphasis_3 187 154 247
+        }
+        table_title {
+            base 158 206 106
+            background 0
+            emphasis_0 255 158 100
+            emphasis_1 42 195 222
+            emphasis_2 158 206 106
+            emphasis_3 187 154 247
+        }
+        table_cell_selected {
+            base 192 202 245
+            background 56 62 90
+            emphasis_0 255 158 100
+            emphasis_1 42 195 222
+            emphasis_2 158 206 106
+            emphasis_3 187 154 247
+        }
+        table_cell_unselected {
+            base 192 202 245
+            background 56 62 90
+            emphasis_0 255 158 100
+            emphasis_1 42 195 222
+            emphasis_2 158 206 106
+            emphasis_3 187 154 247
+        }
+        list_selected {
+            base 192 202 245
+            background 56 62 90
+            emphasis_0 255 158 100
+            emphasis_1 42 195 222
+            emphasis_2 158 206 106
+            emphasis_3 187 154 247
+        }
+        list_unselected {
+            base 192 202 245
+            background 56 62 90
+            emphasis_0 255 158 100
+            emphasis_1 42 195 222
+            emphasis_2 158 206 106
+            emphasis_3 187 154 247
+        }
+        frame_selected {
+            base 158 206 106
+            background 0
+            emphasis_0 255 158 100
+            emphasis_1 42 195 222
+            emphasis_2 187 154 247
+            emphasis_3 0
+        }
+        frame_highlight {
+            base 255 158 100
+            background 0
+            emphasis_0 255 158 100
+            emphasis_1 255 158 100
+            emphasis_2 255 158 100
+            emphasis_3 255 158 100
+        }
+        exit_code_success {
+            base 158 206 106
+            background 0
+            emphasis_0 42 195 222
+            emphasis_1 56 62 90
+            emphasis_2 187 154 247
+            emphasis_3 122 162 247
+        }
+        exit_code_error {
+            base 249 51 87
+            background 0
+            emphasis_0 224 175 104
+            emphasis_1 0
+            emphasis_2 0
+            emphasis_3 0
+        }
+        multiplayer_user_colors {
+            player_1 187 154 247
+            player_2 122 162 247
+            player_3 0
+            player_4 224 175 104
+            player_5 42 195 222
+            player_6 0
+            player_7 249 51 87
+            player_8 0
+            player_9 0
+            player_10 0
+        }
     }
 }
-

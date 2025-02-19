@@ -1,6 +1,6 @@
 pub mod floating_pane_grid;
 use zellij_utils::{
-    data::{Direction, PaneInfo, ResizeStrategy},
+    data::{Direction, FloatingPaneCoordinates, PaneInfo, ResizeStrategy},
     position::Position,
 };
 
@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Instant;
 use zellij_utils::{
-    data::{ModeInfo, Palette, Style},
+    data::{ModeInfo, Style, Styling},
     errors::prelude::*,
     input::command::RunCommand,
     input::layout::{FloatingPaneLayout, Run, RunPluginOrAlias},
@@ -88,12 +88,16 @@ impl FloatingPanes {
     }
     pub fn stack(&self) -> Option<FloatingPanesStack> {
         if self.panes_are_visible() {
-            let layers = self
+            let layers: Vec<PaneGeom> = self
                 .z_indices
                 .iter()
-                .map(|pane_id| self.panes.get(pane_id).unwrap().position_and_size())
+                .filter_map(|pane_id| self.panes.get(pane_id).map(|p| p.position_and_size()))
                 .collect();
-            Some(FloatingPanesStack { layers })
+            if layers.is_empty() {
+                None
+            } else {
+                Some(FloatingPanesStack { layers })
+            }
         } else if self.has_pinned_panes() {
             let layers = self
                 .z_indices
@@ -257,7 +261,8 @@ impl FloatingPanes {
     pub fn position_floating_pane_layout(
         &mut self,
         floating_pane_layout: &FloatingPaneLayout,
-    ) -> PaneGeom {
+    ) -> Result<PaneGeom> {
+        let err_context = || format!("failed to find position for floating pane");
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
         let floating_pane_grid = FloatingPaneGrid::new(
@@ -266,7 +271,9 @@ impl FloatingPanes {
             display_area,
             viewport,
         );
-        let mut position = floating_pane_grid.find_room_for_new_pane().unwrap(); // TODO: no unwrap
+        let mut position = floating_pane_grid
+            .find_room_for_new_pane()
+            .with_context(err_context)?;
         if let Some(x) = &floating_pane_layout.x {
             position.x = x.to_position(viewport.cols);
         }
@@ -301,7 +308,7 @@ impl FloatingPanes {
                 .y
                 .saturating_sub((position.y + position.rows.as_usize()) - viewport.rows);
         }
-        position
+        Ok(position)
     }
     pub fn first_floating_pane_id(&self) -> Option<PaneId> {
         self.panes.keys().next().copied()
@@ -432,7 +439,7 @@ impl FloatingPanes {
             display_area,
             viewport,
         );
-        floating_pane_grid.resize(new_screen_size).unwrap();
+        floating_pane_grid.resize(new_screen_size).non_fatal();
         self.set_force_render();
     }
 
@@ -530,17 +537,20 @@ impl FloatingPanes {
                 Some(p) => {
                     // render previously active pane so that its frame does not remain actively
                     // colored
-                    let previously_active_pane = self
-                        .panes
-                        .get_mut(self.active_panes.get(&client_id).unwrap())
-                        .unwrap();
+                    let Some(previously_active_pane) = self.get_active_pane_mut(client_id) else {
+                        log::error!("Failed to get active pane");
+                        return Ok(false);
+                    };
 
                     previously_active_pane.set_should_render(true);
                     // we render the full viewport to remove any ui elements that might have been
                     // there before (eg. another user's cursor)
                     previously_active_pane.render_full_viewport();
 
-                    let next_active_pane = self.panes.get_mut(&p).unwrap();
+                    let Some(next_active_pane) = self.get_pane_mut(p) else {
+                        log::error!("Failed to get next active pane");
+                        return Ok(false);
+                    };
                     next_active_pane.set_should_render(true);
                     // we render the full viewport to remove any ui elements that might have been
                     // there before (eg. another user's cursor)
@@ -588,9 +598,10 @@ impl FloatingPanes {
             display_area,
             viewport,
         );
-        let pane_id = floating_pane_grid.pane_id_on_edge(direction).unwrap();
-        self.focus_pane(pane_id, client_id);
-        self.set_force_render();
+        if let Some(pane_id) = floating_pane_grid.pane_id_on_edge(direction) {
+            self.focus_pane(pane_id, client_id);
+            self.set_force_render();
+        }
     }
 
     pub fn move_active_pane_down(&mut self, client_id: ClientId) {
@@ -641,7 +652,7 @@ impl FloatingPanes {
             display_area,
             viewport,
         );
-        floating_pane_grid.move_pane_left(&pane_id).unwrap();
+        floating_pane_grid.move_pane_left(&pane_id).non_fatal();
         self.set_force_render();
     }
     pub fn move_active_pane_right(&mut self, client_id: ClientId) {
@@ -658,7 +669,7 @@ impl FloatingPanes {
             display_area,
             viewport,
         );
-        floating_pane_grid.move_pane_right(&pane_id).unwrap();
+        floating_pane_grid.move_pane_right(&pane_id).non_fatal();
         self.set_force_render();
     }
     pub fn move_active_pane(
@@ -667,8 +678,9 @@ impl FloatingPanes {
         _os_api: &mut Box<dyn ServerOsApi>,
         client_id: ClientId,
     ) {
-        let active_pane_id = self.get_active_pane_id(client_id).unwrap();
-        self.move_pane(search_backwards, active_pane_id)
+        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
+            self.move_pane(search_backwards, active_pane_id)
+        }
     }
     pub fn move_pane(&mut self, search_backwards: bool, pane_id: PaneId) {
         let new_position_id = {
@@ -685,11 +697,17 @@ impl FloatingPanes {
             }
         };
         if let Some(new_position_id) = new_position_id {
-            let current_position = self.panes.get(&pane_id).unwrap();
+            let Some(current_position) = self.panes.get(&pane_id) else {
+                log::error!("Failed to find current position");
+                return;
+            };
             let prev_geom = current_position.position_and_size();
             let prev_geom_override = current_position.geom_override();
 
-            let new_position = self.panes.get_mut(&new_position_id).unwrap();
+            let Some(new_position) = self.panes.get_mut(&new_position_id) else {
+                log::error!("Failed to find new position");
+                return;
+            };
             let next_geom = new_position.position_and_size();
             let next_geom_override = new_position.geom_override();
             new_position.set_geom(prev_geom);
@@ -698,7 +716,10 @@ impl FloatingPanes {
             }
             new_position.set_should_render(true);
 
-            let current_position = self.panes.get_mut(&pane_id).unwrap();
+            let Some(current_position) = self.panes.get_mut(&pane_id) else {
+                log::error!("Failed to find current position");
+                return;
+            };
             current_position.set_geom(next_geom);
             if let Some(geom) = next_geom_override {
                 current_position.set_geom_override(geom);
@@ -706,6 +727,28 @@ impl FloatingPanes {
             current_position.set_should_render(true);
             let _ = self.set_pane_frames();
         }
+    }
+    pub fn change_pane_coordinates(
+        &mut self,
+        pane_id: PaneId,
+        new_coordinates: FloatingPaneCoordinates,
+    ) -> Result<()> {
+        let err_context = || format!("Failed to change_pane_coordinates");
+
+        {
+            let viewport = { self.viewport.borrow().clone() };
+            let pane = self.get_pane_mut(pane_id).with_context(err_context)?;
+            let mut pane_geom = pane.position_and_size();
+            if let Some(pinned) = new_coordinates.pinned.as_ref() {
+                pane.set_pinned(*pinned);
+            }
+            pane_geom.adjust_coordinates(new_coordinates, viewport);
+            pane.set_geom(pane_geom);
+            pane.set_should_render(true);
+            self.desired_pane_positions.insert(pane_id, pane_geom);
+        }
+        let _ = self.set_pane_frames();
+        Ok(())
     }
     pub fn move_clients_out_of_pane(&mut self, pane_id: PaneId) {
         let active_panes: Vec<(ClientId, PaneId)> = self
@@ -774,6 +817,16 @@ impl FloatingPanes {
             None => self.focus_pane(pane_id, client_id),
         }
     }
+    pub fn focus_first_pane_if_client_not_focused(&mut self, client_id: ClientId) {
+        match self.active_panes.get(&client_id) {
+            Some(already_focused_pane_id) => self.focus_pane(*already_focused_pane_id, client_id),
+            None => {
+                if let Some(first_pane_id) = self.panes.iter().next().map(|(p_id, _)| *p_id) {
+                    self.focus_pane(first_pane_id, client_id);
+                }
+            },
+        }
+    }
     pub fn defocus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
         self.z_indices.retain(|p_id| *p_id != pane_id);
         self.active_panes.remove(&client_id, &mut self.panes);
@@ -801,8 +854,16 @@ impl FloatingPanes {
         panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
             // TODO: continue
             Ord::cmp(
-                &self.z_indices.iter().position(|id| id == *b_id).unwrap(),
-                &self.z_indices.iter().position(|id| id == *a_id).unwrap(),
+                &self
+                    .z_indices
+                    .iter()
+                    .position(|id| id == *b_id)
+                    .unwrap_or(0),
+                &self
+                    .z_indices
+                    .iter()
+                    .position(|id| id == *a_id)
+                    .unwrap_or(0),
             )
         });
         Ok(panes
@@ -832,8 +893,16 @@ impl FloatingPanes {
         panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
             // TODO: continue
             Ord::cmp(
-                &self.z_indices.iter().position(|id| id == *b_id).unwrap(),
-                &self.z_indices.iter().position(|id| id == *a_id).unwrap(),
+                &self
+                    .z_indices
+                    .iter()
+                    .position(|id| id == *b_id)
+                    .unwrap_or(0),
+                &self
+                    .z_indices
+                    .iter()
+                    .position(|id| id == *a_id)
+                    .unwrap_or(0),
             )
         });
         Ok(panes
@@ -850,8 +919,16 @@ impl FloatingPanes {
 
         panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
             Ord::cmp(
-                &self.z_indices.iter().position(|id| id == *b_id).unwrap(),
-                &self.z_indices.iter().position(|id| id == *a_id).unwrap(),
+                &self
+                    .z_indices
+                    .iter()
+                    .position(|id| id == *b_id)
+                    .unwrap_or(0),
+                &self
+                    .z_indices
+                    .iter()
+                    .position(|id| id == *a_id)
+                    .unwrap_or(0),
             )
         });
         panes.iter().find(|(_, p)| p.contains(point)).is_some()
@@ -862,7 +939,7 @@ impl FloatingPanes {
         search_selectable: bool,
     ) -> Option<&mut Box<dyn Pane>> {
         self.get_pane_id_at(position, search_selectable)
-            .unwrap()
+            .ok()?
             .and_then(|pane_id| self.panes.get_mut(&pane_id))
     }
     pub fn set_pane_being_moved_with_mouse(&mut self, pane_id: PaneId, position: Position) {
@@ -875,7 +952,10 @@ impl FloatingPanes {
         // true => changed position
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
-        let (pane_id, previous_position) = self.pane_being_moved_with_mouse.unwrap();
+        let Some((pane_id, previous_position)) = self.pane_being_moved_with_mouse else {
+            log::error!("Pane is not being moved with mousd");
+            return false;
+        };
         if click_position == &previous_position {
             return false;
         }
@@ -889,7 +969,7 @@ impl FloatingPanes {
         );
         floating_pane_grid
             .move_pane_by(pane_id, move_x_by, move_y_by)
-            .unwrap();
+            .non_fatal();
         self.set_pane_being_moved_with_mouse(pane_id, *click_position);
         self.set_force_render();
         true
@@ -962,21 +1042,30 @@ impl FloatingPanes {
     }
     pub fn switch_active_pane_with(&mut self, _os_api: &mut Box<dyn ServerOsApi>, pane_id: PaneId) {
         if let Some(active_pane_id) = self.first_active_floating_pane_id() {
-            let current_position = self.panes.get(&active_pane_id).unwrap();
+            let Some(current_position) = self.panes.get(&active_pane_id) else {
+                log::error!("Can't find current position");
+                return;
+            };
             let prev_geom = current_position.position_and_size();
             let prev_geom_override = current_position.geom_override();
 
-            let new_position = self.panes.get_mut(&pane_id).unwrap();
+            let Some(new_position) = self.panes.get_mut(&pane_id) else {
+                log::error!("Can't find position");
+                return;
+            };
             let next_geom = new_position.position_and_size();
             let next_geom_override = new_position.geom_override();
             new_position.set_geom(prev_geom);
             if let Some(geom) = prev_geom_override {
                 new_position.set_geom_override(geom);
             }
-            resize_pty!(new_position, os_api, self.senders, self.character_cell_size).unwrap();
+            resize_pty!(new_position, os_api, self.senders, self.character_cell_size).non_fatal();
             new_position.set_should_render(true);
 
-            let current_position = self.panes.get_mut(&active_pane_id).unwrap();
+            let Some(current_position) = self.panes.get_mut(&active_pane_id) else {
+                log::error!("Can't find current position");
+                return;
+            };
             current_position.set_geom(next_geom);
             if let Some(geom) = next_geom_override {
                 current_position.set_geom_override(geom);
@@ -987,7 +1076,7 @@ impl FloatingPanes {
                 self.senders,
                 self.character_cell_size
             )
-            .unwrap();
+            .non_fatal();
             current_position.set_should_render(true);
             self.focus_pane_for_all_clients(active_pane_id);
         }
@@ -1033,7 +1122,7 @@ impl FloatingPanes {
             },
         }
     }
-    pub fn update_pane_themes(&mut self, theme: Palette) {
+    pub fn update_pane_themes(&mut self, theme: Styling) {
         self.style.colors = theme;
         for pane in self.panes.values_mut() {
             pane.update_theme(theme);

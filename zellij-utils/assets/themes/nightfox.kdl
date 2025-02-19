@@ -1,44 +1,120 @@
-// Nightfox Theme:
-// https://github.com/edeneast/nightfox.nvim
-
 themes {
-  dayfox {
-    bg "#f6f2ee"
-    fg "#3d2b5a"
-    red "#a5222f"
-    green "#396847"
-    blue "#2848a9"
-    yellow "#ac5402"
-    magenta "#6e33ce"
-    orange "#955f61"
-    cyan "#287980"
-    black "#d3c7bb"
-    white "#643f61"
-  }
-  nightfox {
-    bg "#192330"
-    fg "#cdcecf"
-    red "#c94f6d"
-    green "#81b29a"
-    blue "#719cd6"
-    yellow "#dbc074"
-    magenta "#9d79d6"
-    orange "#f4a261"
-    cyan "#63cdcf"
-    black "#29394f"
-    white "#aeafb0"
-  }
-  terafox {
-    bg "#152528"
-    fg "#e6eaea"
-    red "#e85c51"
-    green "#7aa4a1"
-    blue "#5a93aa"
-    yellow "#fda47f"
-    magenta "#ad5c7c"
-    orange "#ff8349"
-    cyan "#a1cdd8"
-    black "#254147"
-    white "#cbd9d8"
-  }
+    nightfox {
+        text_unselected {
+            base 174 175 176
+            background 41 57 79
+            emphasis_0 244 162 97
+            emphasis_1 99 205 207
+            emphasis_2 129 178 154
+            emphasis_3 157 121 214
+        }
+        text_selected {
+            base 174 175 176
+            background 41 57 79
+            emphasis_0 244 162 97
+            emphasis_1 99 205 207
+            emphasis_2 129 178 154
+            emphasis_3 157 121 214
+        }
+        ribbon_selected {
+            base 41 57 79
+            background 129 178 154
+            emphasis_0 201 79 109
+            emphasis_1 244 162 97
+            emphasis_2 157 121 214
+            emphasis_3 113 156 214
+        }
+        ribbon_unselected {
+            base 41 57 79
+            background 205 206 207
+            emphasis_0 201 79 109
+            emphasis_1 174 175 176
+            emphasis_2 113 156 214
+            emphasis_3 157 121 214
+        }
+        table_title {
+            base 129 178 154
+            background 0
+            emphasis_0 244 162 97
+            emphasis_1 99 205 207
+            emphasis_2 129 178 154
+            emphasis_3 157 121 214
+        }
+        table_cell_selected {
+            base 174 175 176
+            background 25 35 48
+            emphasis_0 244 162 97
+            emphasis_1 99 205 207
+            emphasis_2 129 178 154
+            emphasis_3 157 121 214
+        }
+        table_cell_unselected {
+            base 174 175 176
+            background 41 57 79
+            emphasis_0 244 162 97
+            emphasis_1 99 205 207
+            emphasis_2 129 178 154
+            emphasis_3 157 121 214
+        }
+        list_selected {
+            base 174 175 176
+            background 25 35 48
+            emphasis_0 244 162 97
+            emphasis_1 99 205 207
+            emphasis_2 129 178 154
+            emphasis_3 157 121 214
+        }
+        list_unselected {
+            base 174 175 176
+            background 41 57 79
+            emphasis_0 244 162 97
+            emphasis_1 99 205 207
+            emphasis_2 129 178 154
+            emphasis_3 157 121 214
+        }
+        frame_selected {
+            base 129 178 154
+            background 0
+            emphasis_0 244 162 97
+            emphasis_1 99 205 207
+            emphasis_2 157 121 214
+            emphasis_3 0
+        }
+        frame_highlight {
+            base 244 162 97
+            background 0
+            emphasis_0 244 162 97
+            emphasis_1 244 162 97
+            emphasis_2 244 162 97
+            emphasis_3 244 162 97
+        }
+        exit_code_success {
+            base 129 178 154
+            background 0
+            emphasis_0 99 205 207
+            emphasis_1 41 57 79
+            emphasis_2 157 121 214
+            emphasis_3 113 156 214
+        }
+        exit_code_error {
+            base 201 79 109
+            background 0
+            emphasis_0 219 192 116
+            emphasis_1 0
+            emphasis_2 0
+            emphasis_3 0
+        }
+        multiplayer_user_colors {
+            player_1 157 121 214
+            player_2 113 156 214
+            player_3 0
+            player_4 219 192 116
+            player_5 99 205 207
+            player_6 0
+            player_7 201 79 109
+            player_8 0
+            player_9 0
+            player_10 0
+        }
+    }
 }

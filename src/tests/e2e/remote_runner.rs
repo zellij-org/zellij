@@ -81,7 +81,7 @@ fn start_zellij(channel: &mut ssh2::Channel) {
     channel
         .write_all(
             format!(
-                "{} {} --session {} --data-dir {}\n",
+                "{} {} --session {} --data-dir {} options --show-release-notes false --show-startup-tips false\n",
                 SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
             )
             .as_bytes(),
@@ -96,7 +96,7 @@ fn start_zellij_mirrored_session(channel: &mut ssh2::Channel) {
     channel
         .write_all(
             format!(
-                "{} {} --session {} --data-dir {} options --mirror-session true --serialization-interval 1\n",
+                "{} {} --session {} --data-dir {} options --show-release-notes false --show-startup-tips false --mirror-session true --serialization-interval 1\n",
                 SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
             )
             .as_bytes(),
@@ -111,7 +111,7 @@ fn start_zellij_mirrored_session_with_layout(channel: &mut ssh2::Channel, layout
     channel
         .write_all(
             format!(
-                "{} {} --session {} --data-dir {} --new-session-with-layout {} options --mirror-session true --serialization-interval 1\n",
+                "{} {} --session {} --data-dir {} --new-session-with-layout {} options --show-release-notes false --show-startup-tips false --mirror-session true --serialization-interval 1\n",
                 SET_ENV_VARIABLES,
                 ZELLIJ_EXECUTABLE_LOCATION,
                 SESSION_NAME,
@@ -133,7 +133,7 @@ fn start_zellij_mirrored_session_with_layout_and_viewport_serialization(
     channel
         .write_all(
             format!(
-                "{} {} --session {} --data-dir {} --new-session-with-layout {} options --mirror-session true --serialize-pane-viewport true --serialization-interval 1\n",
+                "{} {} --session {} --data-dir {} --new-session-with-layout {} options --show-release-notes false --show-startup-tips false --mirror-session true --serialize-pane-viewport true --serialization-interval 1\n",
                 SET_ENV_VARIABLES,
                 ZELLIJ_EXECUTABLE_LOCATION,
                 SESSION_NAME,
@@ -152,7 +152,7 @@ fn start_zellij_in_session(channel: &mut ssh2::Channel, session_name: &str, mirr
     channel
         .write_all(
             format!(
-                "{} {} --session {} --data-dir {} options --mirror-session {}\n",
+                "{} {} --session {} --data-dir {} options --show-release-notes false --show-startup-tips false --mirror-session {}\n",
                 SET_ENV_VARIABLES,
                 ZELLIJ_EXECUTABLE_LOCATION,
                 session_name,
@@ -185,7 +185,7 @@ fn start_zellij_without_frames(channel: &mut ssh2::Channel) {
     channel
         .write_all(
             format!(
-                "{} {} --session {} --data-dir {} options --no-pane-frames\n",
+                "{} {} --session {} --data-dir {} options --show-release-notes false --show-startup-tips false --no-pane-frames\n",
                 SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
             )
             .as_bytes(),
@@ -200,7 +200,7 @@ fn start_zellij_with_config(channel: &mut ssh2::Channel, config_path: &str) {
     channel
         .write_all(
             format!(
-                "{} {} --config {} --session {} --data-dir {}\n",
+                "{} {} --config {} --session {} --data-dir {} options --show-release-notes false --show-startup-tips false\n",
                 SET_ENV_VARIABLES,
                 ZELLIJ_EXECUTABLE_LOCATION,
                 config_path,
@@ -455,7 +455,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
-            is_stacked: false,
+            stacked: None,
             is_pinned: false,
             logical_position: None,
         };
@@ -493,7 +493,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
-            is_stacked: false,
+            stacked: None,
             is_pinned: false,
             logical_position: None,
         };
@@ -531,7 +531,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
-            is_stacked: false,
+            stacked: None,
             is_pinned: false,
             logical_position: None,
         };
@@ -572,7 +572,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
-            is_stacked: false,
+            stacked: None,
             is_pinned: false,
             logical_position: None,
         };
@@ -620,7 +620,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
-            is_stacked: false,
+            stacked: None,
             is_pinned: false,
             logical_position: None,
         };
@@ -658,7 +658,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
-            is_stacked: false,
+            stacked: None,
             is_pinned: false,
             logical_position: None,
         };
@@ -696,7 +696,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
-            is_stacked: false,
+            stacked: None,
             is_pinned: false,
             logical_position: None,
         };
@@ -735,7 +735,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
-            is_stacked: false,
+            stacked: None,
             is_pinned: false,
             logical_position: None,
         };

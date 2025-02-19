@@ -682,9 +682,22 @@ fn render_secondary_info(
     }
 }
 
+fn should_show_focus_and_resize_shortcuts(tab_info: Option<&TabInfo>) -> bool {
+    let Some(tab_info) = tab_info else {
+        return false;
+    };
+    let are_floating_panes_visible = tab_info.are_floating_panes_visible;
+    if are_floating_panes_visible {
+        tab_info.selectable_floating_panes_count > 1
+    } else {
+        tab_info.selectable_tiled_panes_count > 1
+    }
+}
+
 fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usize) -> LinePart {
     let mut secondary_info = LinePart::default();
     let binds = &help.get_mode_keybinds();
+    let should_show_focus_and_resize_shortcuts = should_show_focus_and_resize_shortcuts(tab_info);
     // New Pane
     let new_pane_action_key = action_key(binds, &[Action::NewPane(None, None, false)]);
     let mut new_pane_key_to_display = new_pane_action_key
@@ -697,6 +710,25 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
         } else {
             vec![]
         };
+
+    // Resize
+    let resize_increase_action_key = action_key(binds, &[Action::Resize(Resize::Increase, None)]);
+    let resize_increase_key = resize_increase_action_key
+        .iter()
+        .find(|k| k.bare_key == BareKey::Char('+'))
+        .or_else(|| resize_increase_action_key.iter().next());
+    let resize_decrease_action_key = action_key(binds, &[Action::Resize(Resize::Decrease, None)]);
+    let resize_decrease_key = resize_decrease_action_key
+        .iter()
+        .find(|k| k.bare_key == BareKey::Char('-'))
+        .or_else(|| resize_increase_action_key.iter().next());
+    let mut resize_shortcuts = vec![];
+    if let Some(resize_increase_key) = resize_increase_key {
+        resize_shortcuts.push(resize_increase_key.clone());
+    }
+    if let Some(resize_decrease_key) = resize_decrease_key {
+        resize_shortcuts.push(resize_decrease_key.clone());
+    }
 
     // Move focus
     let mut move_focus_shortcuts: Vec<KeyWithModifier> = vec![];
@@ -757,6 +789,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
         [
             new_pane_key_to_display.clone(),
             move_focus_shortcuts.clone(),
+            resize_shortcuts.clone(),
             toggle_floating_key_to_display.clone(),
         ]
         .iter()
@@ -773,13 +806,22 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             false,
             Some(0),
         ));
-        secondary_info.append(&add_shortcut(
-            help,
-            "Change Focus",
-            &move_focus_shortcuts,
-            false,
-            Some(0),
-        ));
+        if should_show_focus_and_resize_shortcuts {
+            secondary_info.append(&add_shortcut(
+                help,
+                "Change Focus",
+                &move_focus_shortcuts,
+                false,
+                Some(0),
+            ));
+            secondary_info.append(&add_shortcut(
+                help,
+                "Resize",
+                &resize_shortcuts,
+                false,
+                Some(0),
+            ));
+        }
         secondary_info.append(&add_shortcut(
             help,
             "Floating",
@@ -808,6 +850,10 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             .iter()
             .map(|k| k.strip_common_modifiers(&common_modifiers))
             .collect();
+        let resize_shortcuts: Vec<KeyWithModifier> = resize_shortcuts
+            .iter()
+            .map(|k| k.strip_common_modifiers(&common_modifiers))
+            .collect();
         let toggle_floating_key_to_display: Vec<KeyWithModifier> = toggle_floating_key_to_display
             .iter()
             .map(|k| k.strip_common_modifiers(&common_modifiers))
@@ -818,12 +864,20 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             new_pane_key_to_display,
             false,
         ));
-        secondary_info.append(&add_shortcut_with_inline_key(
-            help,
-            "Change Focus",
-            move_focus_shortcuts,
-            false,
-        ));
+        if should_show_focus_and_resize_shortcuts {
+            secondary_info.append(&add_shortcut_with_inline_key(
+                help,
+                "Change Focus",
+                move_focus_shortcuts,
+                false,
+            ));
+            secondary_info.append(&add_shortcut_with_inline_key(
+                help,
+                "Resize",
+                resize_shortcuts,
+                false,
+            ));
+        }
         secondary_info.append(&add_shortcut_with_inline_key(
             help,
             "Floating",
@@ -844,13 +898,22 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 false,
                 Some(0),
             ));
-            short_line.append(&add_shortcut(
-                help,
-                "Focus",
-                &move_focus_shortcuts,
-                false,
-                Some(0),
-            ));
+            if should_show_focus_and_resize_shortcuts {
+                short_line.append(&add_shortcut(
+                    help,
+                    "Focus",
+                    &move_focus_shortcuts,
+                    false,
+                    Some(0),
+                ));
+                short_line.append(&add_shortcut(
+                    help,
+                    "Resize",
+                    &resize_shortcuts,
+                    false,
+                    Some(0),
+                ));
+            }
             short_line.append(&add_shortcut(
                 help,
                 "Floating",
@@ -879,6 +942,10 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 .iter()
                 .map(|k| k.strip_common_modifiers(&common_modifiers))
                 .collect();
+            let resize_shortcuts: Vec<KeyWithModifier> = resize_shortcuts
+                .iter()
+                .map(|k| k.strip_common_modifiers(&common_modifiers))
+                .collect();
             let toggle_floating_key_to_display: Vec<KeyWithModifier> =
                 toggle_floating_key_to_display
                     .iter()
@@ -890,12 +957,20 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 new_pane_key_to_display,
                 false,
             ));
-            short_line.append(&add_shortcut_with_inline_key(
-                help,
-                "Focus",
-                move_focus_shortcuts,
-                false,
-            ));
+            if should_show_focus_and_resize_shortcuts {
+                short_line.append(&add_shortcut_with_inline_key(
+                    help,
+                    "Focus",
+                    move_focus_shortcuts,
+                    false,
+                ));
+                short_line.append(&add_shortcut_with_inline_key(
+                    help,
+                    "Resize",
+                    resize_shortcuts,
+                    false,
+                ));
+            }
             short_line.append(&add_shortcut_with_inline_key(
                 help,
                 "Floating",
@@ -903,7 +978,21 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 are_floating_panes_visible,
             ));
         }
-        short_line
+        if short_line.len <= max_len {
+            short_line
+        } else {
+            let part = serialize_text(
+                &Text::new(format!(
+                    "{:>width$}",
+                    "...",
+                    width = max_len.saturating_sub(3)
+                ))
+                .color_range(0, ..)
+                .opaque(),
+            );
+            let len = max_len.saturating_sub(3);
+            LinePart { part, len }
+        }
     }
 }
 
@@ -982,6 +1071,7 @@ fn add_shortcut_with_inline_key(
         "←→" => "",
         "↓↑" => "",
         "[]" => "",
+        "+-" => "",
         _ => "|",
     };
 
@@ -1064,8 +1154,8 @@ fn add_keygroup_separator(help: &ModeInfo, max_len: usize) -> Option<LinePart> {
 
     let mut ret = LinePart::default();
 
-    let separator_color = palette_match!(palette.orange);
-    let bg_color = palette_match!(palette.black);
+    let separator_color = palette_match!(palette.text_unselected.emphasis_0);
+    let bg_color = palette_match!(palette.ribbon_selected.base);
     let mut bits: Vec<ANSIString> = vec![];
     let mode_help_text = match help.mode {
         InputMode::RenamePane => Some("RENAMING PANE"),
@@ -1276,6 +1366,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Session Manager"), s("Manager"), session_manager_key(&km)),
         (s("Configure"), s("Config"), configuration_key(&km)),
         (s("Plugin Manager"), s("Plugins"), plugin_manager_key(&km)),
+        (s("About"), s("About"), about_key(&km)),
         (s("Select pane"), s("Select"), to_basemode_key),
     ]} else if mi.mode == IM::Tmux { vec![
         (s("Move focus"), s("Move"), action_key_group(&km, &[
@@ -1371,6 +1462,25 @@ fn plugin_manager_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithM
         let has_match = acvec
             .iter()
             .find(|a| a.launches_plugin("plugin-manager"))
+            .is_some();
+        if has_match {
+            Some(key.clone())
+        } else {
+            None
+        }
+    });
+    if let Some(matching) = matching.take() {
+        vec![matching]
+    } else {
+        vec![]
+    }
+}
+
+fn about_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithModifier> {
+    let mut matching = keymap.iter().find_map(|(key, acvec)| {
+        let has_match = acvec
+            .iter()
+            .find(|a| a.launches_plugin("zellij:about"))
             .is_some();
         if has_match {
             Some(key.clone())

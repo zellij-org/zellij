@@ -41,7 +41,7 @@ Reproduction steps, noticeable behavior, related issues, etc
 
 If you have a complex setup that causes an issue, try to troubleshoot and narrow the problem down to as minimal a reproduction as possible. Remove as many parts of the equation as you can. 
 
-If you are unsure what to do, you are welcome to ask for help either in the issue itself or in one of our community chats (Discord / Matrix). We will be happy to try and assist or suggest directions, but please note that the responsibility to troubleshoot the issue and find the problem is ultimately on your shoulders. 
+If you are unsure what to do, you are welcome to ask for help either in the issue itself or in one of our community chats (Discord / Matrix). We will be happy to try and assist or suggest directions, but please note that the responsibility to troubleshoot the issue and find the problem is ultimately on your shoulders. For the removal of doubt: a Zellij stack-trace is enough of a reproduction (although further details will always be appreciated).
 
 You're the expert on your system and we believe you are in the best position to troubleshoot it. Thank you for understanding.
 

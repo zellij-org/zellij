@@ -54,12 +54,17 @@ impl<'a> TiledPaneGrid<'a> {
         let mut pane_resizer = PaneResizer::new(self.panes.clone());
         pane_resizer.layout(direction, space)
     }
-    fn get_pane_geom(&self, pane_id: &PaneId) -> Option<PaneGeom> {
+    pub fn get_pane_geom(&self, pane_id: &PaneId) -> Option<PaneGeom> {
         let panes = self.panes.borrow();
         let pane_to_check = panes.get(pane_id)?;
         let pane_geom = pane_to_check.current_geom();
-        if pane_geom.is_stacked {
-            StackedPanes::new(self.panes.clone()).position_and_size_of_stack(&pane_id)
+        if pane_geom.is_stacked() {
+            let mut stack_geom =
+                StackedPanes::new(self.panes.clone()).position_and_size_of_stack(&pane_id);
+            if let Some(stack_geom) = stack_geom.as_mut() {
+                stack_geom.stacked = pane_geom.stacked; // to get the stack id
+            }
+            stack_geom
         } else {
             Some(pane_geom)
         }
@@ -540,7 +545,7 @@ impl<'a> TiledPaneGrid<'a> {
             .get_pane_geom(pane_id)
             .with_context(|| no_pane_id(pane_id))
             .with_context(err_context)?;
-        let min_terminal_height = if pane.is_stacked {
+        let min_terminal_height = if pane.is_stacked() {
             StackedPanes::new(self.panes.clone()).min_stack_height(pane_id)?
         } else {
             MIN_TERMINAL_HEIGHT
@@ -564,7 +569,7 @@ impl<'a> TiledPaneGrid<'a> {
                 .get(id)
                 .unwrap()
                 .current_geom()
-                .is_stacked;
+                .is_stacked();
             if current_pane_is_stacked {
                 let _ = StackedPanes::new(self.panes.clone()).reduce_stack_height(&id, percent);
             } else {
@@ -581,7 +586,7 @@ impl<'a> TiledPaneGrid<'a> {
             .get(id)
             .unwrap()
             .current_geom()
-            .is_stacked;
+            .is_stacked();
         if current_pane_is_stacked {
             let _ = StackedPanes::new(self.panes.clone()).increase_stack_height(&id, percent);
         } else {
@@ -597,7 +602,7 @@ impl<'a> TiledPaneGrid<'a> {
             .get(id)
             .unwrap()
             .current_geom()
-            .is_stacked;
+            .is_stacked();
         if current_pane_is_stacked {
             let _ = StackedPanes::new(self.panes.clone()).increase_stack_width(&id, percent);
         } else {
@@ -614,7 +619,7 @@ impl<'a> TiledPaneGrid<'a> {
                 .get(id)
                 .unwrap()
                 .current_geom()
-                .is_stacked;
+                .is_stacked();
             if current_pane_is_stacked {
                 let _ = StackedPanes::new(self.panes.clone()).reduce_stack_width(&id, percent);
             } else {
@@ -928,7 +933,7 @@ impl<'a> TiledPaneGrid<'a> {
             .max_by_key(|(_, (_, c))| c.active_at())
             .map(|(_, (_, pane))| pane);
         let next_pane_is_stacked = next_pane
-            .map(|p| p.current_geom().is_stacked)
+            .map(|p| p.current_geom().is_stacked())
             .unwrap_or(false);
         if next_pane_is_stacked {
             if let Some(next_pane_id) = next_pane.map(|p| p.pid()) {
@@ -953,7 +958,7 @@ impl<'a> TiledPaneGrid<'a> {
                 .filter(|(_, (_, c))| {
                     c.is_directly_above(Box::as_ref(source_pane))
                         && c.vertically_overlaps_with(Box::as_ref(source_pane))
-                        && c.current_geom().is_stacked
+                        && c.current_geom().is_stacked()
                 })
                 .max_by_key(|(_, (_, c))| c.active_at())
                 .map(|(_, (pid, _))| pid)
@@ -986,7 +991,7 @@ impl<'a> TiledPaneGrid<'a> {
                 .filter(|(_, (_, c))| {
                     c.is_directly_below(Box::as_ref(source_pane))
                         && c.vertically_overlaps_with(Box::as_ref(source_pane))
-                        && c.current_geom().is_stacked
+                        && c.current_geom().is_stacked()
                 })
                 .max_by_key(|(_, (_, c))| c.active_at())
                 .map(|(_, (pid, _))| pid)
@@ -1018,7 +1023,7 @@ impl<'a> TiledPaneGrid<'a> {
             .filter(|(_, (_, c))| {
                 c.is_directly_below(Box::as_ref(current_pane))
                     && c.vertically_overlaps_with(Box::as_ref(current_pane))
-                    && !c.current_geom().is_stacked
+                    && !c.current_geom().is_stacked()
             })
             .max_by_key(|(_, (_, c))| c.active_at())
             .map(|(_, (pid, _))| pid)
@@ -1083,7 +1088,7 @@ impl<'a> TiledPaneGrid<'a> {
             .filter(|(_, (_, c))| {
                 c.is_directly_above(Box::as_ref(current_pane))
                     && c.vertically_overlaps_with(Box::as_ref(current_pane))
-                    && !c.current_geom().is_stacked
+                    && !c.current_geom().is_stacked()
             })
             .max_by_key(|(_, (_, c))| c.active_at())
             .map(|(_, (pid, _))| pid)
@@ -1109,7 +1114,7 @@ impl<'a> TiledPaneGrid<'a> {
             .map(|(_, (_pid, pane))| pane)
             .copied();
         let next_pane_is_stacked = next_pane
-            .map(|p| p.current_geom().is_stacked)
+            .map(|p| p.current_geom().is_stacked())
             .unwrap_or(false);
         if next_pane_is_stacked {
             if let Some(next_pane_id) = next_pane.map(|p| p.pid()) {
@@ -1123,7 +1128,7 @@ impl<'a> TiledPaneGrid<'a> {
         pane_ids.iter().fold(HashSet::new(), |mut borders, p| {
             let panes = self.panes.borrow();
             let pane = panes.get(p).unwrap();
-            if pane.current_geom().is_stacked {
+            if pane.current_geom().is_stacked() {
                 let pane_geom = StackedPanes::new(self.panes.clone())
                     .position_and_size_of_stack(&pane.pid())
                     .unwrap();
@@ -1298,7 +1303,7 @@ impl<'a> TiledPaneGrid<'a> {
             let freed_space = pane_to_close.position_and_size();
             let freed_width = freed_space.cols.as_percent();
             let freed_height = freed_space.rows.as_percent();
-            let pane_to_close_is_stacked = pane_to_close.current_geom().is_stacked;
+            let pane_to_close_is_stacked = pane_to_close.current_geom().is_stacked();
             (freed_width, freed_height, pane_to_close_is_stacked)
         };
         if pane_to_close_is_stacked {
@@ -1331,7 +1336,7 @@ impl<'a> TiledPaneGrid<'a> {
         let panes = self.panes.borrow();
         let pane_sequence: Vec<(&PaneId, &&mut Box<dyn Pane>)> = panes
             .iter()
-            .filter(|(_, p)| p.selectable() && !p.current_geom().is_stacked)
+            .filter(|(_, p)| p.selectable() && !p.current_geom().is_stacked())
             .collect();
         let (_largest_pane_size, pane_id_to_split) = pane_sequence.iter().fold(
             (0, None),
@@ -1370,12 +1375,38 @@ impl<'a> TiledPaneGrid<'a> {
             direction.map(|direction| (*t_id_to_split, direction))
         })
     }
+    pub fn split_pane(
+        &self,
+        active_pane_id: &PaneId,
+        cursor_height_width_ratio: Option<usize>,
+    ) -> Option<(PaneId, SplitDirection)> {
+        // right now the minimum here is hard-coded to a sane "I don't want my terminal smaller"
+        // number, but we might want to change this to be a percentage of the current screen if it
+        // feels better
+        let panes = self.panes.borrow();
+        let Some(pane_to_split) = panes.get(active_pane_id) else {
+            return None;
+        };
+        let direction = if pane_to_split.rows()
+            * cursor_height_width_ratio.unwrap_or(DEFAULT_CURSOR_HEIGHT_WIDTH_RATIO)
+            > pane_to_split.cols()
+            && pane_to_split.rows() > 10 * 2
+        {
+            Some(SplitDirection::Horizontal)
+        } else if pane_to_split.cols() > 30 * 2 {
+            Some(SplitDirection::Vertical)
+        } else {
+            None
+        };
+
+        direction.map(|direction| (*active_pane_id, direction))
+    }
     pub fn has_room_for_new_stacked_pane(&self) -> bool {
         let panes = self.panes.borrow();
         let flexible_pane_in_stack: Vec<(&PaneId, &&mut Box<dyn Pane>)> = panes
             .iter()
             .filter(|(_, p)| {
-                p.selectable() && p.current_geom().is_stacked && !p.current_geom().rows.is_fixed()
+                p.selectable() && p.current_geom().is_stacked() && !p.current_geom().rows.is_fixed()
             })
             .collect();
         flexible_pane_in_stack
@@ -1384,6 +1415,940 @@ impl<'a> TiledPaneGrid<'a> {
     }
     pub fn make_room_in_stack_for_pane(&mut self) -> Result<PaneGeom> {
         StackedPanes::new(self.panes.clone()).make_room_for_new_pane()
+    }
+    pub fn make_room_in_stack_of_pane_id_for_pane(&mut self, pane_id: &PaneId) -> Result<PaneGeom> {
+        StackedPanes::new(self.panes.clone()).make_room_for_new_pane_in_stack(pane_id)
+    }
+    fn pane_ids_have_the_same_y(&self, pane_ids: &[PaneId]) -> bool {
+        let panes = self.panes.borrow();
+        let mut pane_y = None;
+        let mut panes_all_have_the_same_y = true;
+        for p_id in pane_ids {
+            if let Some(pane) = panes.get(p_id) {
+                match pane_y {
+                    Some(pane_y) => {
+                        if pane_y != pane.position_and_size().y {
+                            panes_all_have_the_same_y = false;
+                        }
+                    },
+                    None => {
+                        pane_y = Some(pane.position_and_size().y);
+                    },
+                }
+            }
+        }
+        panes_all_have_the_same_y
+    }
+    fn group_panes_by_highest_y(&self, pane_ids: &[PaneId]) -> (Vec<PaneId>, Vec<PaneId>) {
+        // returns (left to right)
+        // 1. panes with the highest y (geometrically closer to the bottom)
+        // 2. if there are panes left, returns them as the second group
+        let panes = self.panes.borrow();
+        let mut highest_pane_y = 0;
+        let mut first_group = vec![];
+        let mut second_group = vec![];
+        for p_id in pane_ids {
+            if let Some(pane) = panes.get(p_id) {
+                let pane_geom = pane.position_and_size();
+                let previous_highest_y = highest_pane_y;
+                highest_pane_y = std::cmp::max(pane_geom.y, highest_pane_y);
+                if previous_highest_y != highest_pane_y {
+                    second_group.append(&mut first_group);
+                }
+                if pane_geom.y == highest_pane_y {
+                    first_group.push(*p_id);
+                } else {
+                    second_group.push(*p_id);
+                }
+            }
+        }
+        (first_group, second_group)
+    }
+    fn group_panes_by_highest_x(&self, pane_ids: &[PaneId]) -> (Vec<PaneId>, Vec<PaneId>) {
+        // returns (left to right)
+        // 1. panes with the highest x (geometrically closer to the left)
+        // 2. if there are panes remaining, returns them as the second group
+        let panes = self.panes.borrow();
+        let mut highest_pane_x = 0;
+        let mut first_group = vec![];
+        let mut second_group = vec![];
+        for p_id in pane_ids {
+            if let Some(pane) = panes.get(p_id) {
+                let pane_geom = pane.position_and_size();
+                let previous_highest_x = highest_pane_x;
+                highest_pane_x = std::cmp::max(pane_geom.x, highest_pane_x);
+                if previous_highest_x != highest_pane_x {
+                    second_group.append(&mut first_group);
+                }
+                if pane_geom.x == highest_pane_x {
+                    first_group.push(*p_id);
+                } else {
+                    second_group.push(*p_id);
+                }
+            }
+        }
+        (first_group, second_group)
+    }
+    fn group_panes_by_lowest_rows(&self, pane_ids: &[PaneId]) -> (Vec<PaneId>, Vec<PaneId>) {
+        // returns (left to right)
+        // 1. panes with the lowest rows
+        // 2. if there are panes left, returns them as the second group
+        // we expect all given panes here to have the same y
+        let panes = self.panes.borrow();
+        let mut lowest_row_count = None;
+        let mut first_group = vec![];
+        let mut second_group = vec![];
+        for p_id in pane_ids {
+            if let Some(pane) = panes.get(p_id) {
+                let pane_geom = pane.position_and_size();
+                let previous_lowest_row_count =
+                    lowest_row_count.unwrap_or_else(|| pane_geom.rows.as_usize());
+                lowest_row_count = Some(std::cmp::min(
+                    pane_geom.rows.as_usize(),
+                    lowest_row_count.unwrap_or_else(|| pane_geom.rows.as_usize()),
+                ));
+                if Some(previous_lowest_row_count) != lowest_row_count {
+                    second_group.append(&mut first_group);
+                }
+                if Some(pane_geom.rows.as_usize()) == lowest_row_count {
+                    first_group.push(*p_id);
+                } else {
+                    second_group.push(*p_id);
+                }
+            }
+        }
+        (first_group, second_group)
+    }
+    fn group_panes_by_lowest_cols(&self, pane_ids: &[PaneId]) -> (Vec<PaneId>, Vec<PaneId>) {
+        // returns (left to right)
+        // 1. panes with the lowest cols
+        // 2. if there are panes left, returns them as the second group
+        // we expect all given panes here to have the same x
+        let panes = self.panes.borrow();
+        let mut lowest_col_count = None;
+        let mut first_group = vec![];
+        let mut second_group = vec![];
+        for p_id in pane_ids {
+            if let Some(pane) = panes.get(p_id) {
+                let pane_geom = pane.position_and_size();
+                let previous_lowest_col_count =
+                    lowest_col_count.unwrap_or_else(|| pane_geom.cols.as_usize());
+                lowest_col_count = Some(std::cmp::min(
+                    pane_geom.cols.as_usize(),
+                    lowest_col_count.unwrap_or_else(|| pane_geom.cols.as_usize()),
+                ));
+                if Some(previous_lowest_col_count) != lowest_col_count {
+                    second_group.append(&mut first_group);
+                }
+                if Some(pane_geom.cols.as_usize()) == lowest_col_count {
+                    first_group.push(*p_id);
+                } else {
+                    second_group.push(*p_id);
+                }
+            }
+        }
+        (first_group, second_group)
+    }
+    fn pane_ids_have_the_same_x(&self, pane_ids: &[PaneId]) -> bool {
+        let panes = self.panes.borrow();
+        let mut pane_x = None;
+        let mut panes_all_have_the_same_x = true;
+        for p_id in pane_ids {
+            if let Some(pane) = panes.get(p_id) {
+                match pane_x {
+                    Some(pane_x) => {
+                        if pane_x != pane.position_and_size().x {
+                            panes_all_have_the_same_x = false;
+                        }
+                    },
+                    None => {
+                        pane_x = Some(pane.position_and_size().x);
+                    },
+                }
+            }
+        }
+        panes_all_have_the_same_x
+    }
+    fn pane_ids_have_the_same_height(&self, pane_ids: &[PaneId]) -> bool {
+        let panes = self.panes.borrow();
+        let mut pane_height = None;
+        let mut panes_all_have_the_same_height = true;
+        for p_id in pane_ids {
+            if let Some(pane) = panes.get(p_id) {
+                match pane_height {
+                    Some(pane_height) => {
+                        if pane_height != pane.position_and_size().rows.as_usize() {
+                            panes_all_have_the_same_height = false;
+                        }
+                    },
+                    None => {
+                        pane_height = Some(pane.position_and_size().rows.as_usize());
+                    },
+                }
+            }
+        }
+        panes_all_have_the_same_height
+    }
+    fn pane_ids_have_the_same_width(&self, pane_ids: &[PaneId]) -> bool {
+        let panes = self.panes.borrow();
+        let mut pane_width = None;
+        let mut panes_all_have_the_same_width = true;
+        for p_id in pane_ids {
+            if let Some(pane) = panes.get(p_id) {
+                match pane_width {
+                    Some(pane_width) => {
+                        if pane_width != pane.position_and_size().cols.as_usize() {
+                            panes_all_have_the_same_width = false;
+                        }
+                    },
+                    None => {
+                        pane_width = Some(pane.position_and_size().cols.as_usize());
+                    },
+                }
+            }
+        }
+        panes_all_have_the_same_width
+    }
+    pub fn direct_neighboring_pane_ids_above(&self, root_pane_id: &PaneId) -> Vec<PaneId> {
+        // here we look for panes that are directly above the provided root pane but that do not
+        // exceed its vertical borders (x and x + cols)
+        let Some(root_pane_geom) = self.get_pane_geom(root_pane_id) else {
+            log::error!("Could nto find root pane geom");
+            return vec![];
+        };
+        let Some(neighbor_pane_ids) = self.neighbor_pane_ids(root_pane_id, Direction::Up).ok()
+        else {
+            log::error!("Could not find neighbor pane ids above");
+            return vec![];
+        };
+        let neighbor_pane_ids = neighbor_pane_ids
+            .iter()
+            .filter(|pane_id| {
+                self.pane_is_between_vertical_borders(
+                    pane_id,
+                    root_pane_geom.x,
+                    root_pane_geom.x + root_pane_geom.cols.as_usize(),
+                )
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        // we only want to return these if they cover the entire vertical surface of the root pane id
+        // (as in - one of the panes contains its x and one of the panes contains its x + cols)
+        let mut boundaries_of_pane_ids = vec![];
+        for p_id in &neighbor_pane_ids {
+            let mut vertical_boundaries_of_pane = self.get_vertical_boundaries_of_pane(p_id);
+            boundaries_of_pane_ids.append(&mut vertical_boundaries_of_pane);
+        }
+        if boundaries_of_pane_ids.contains(&root_pane_geom.x)
+            && boundaries_of_pane_ids.contains(&(root_pane_geom.x + root_pane_geom.cols.as_usize()))
+        {
+            neighbor_pane_ids
+        } else {
+            vec![]
+        }
+    }
+    fn get_vertical_boundaries_of_pane(&self, pane_id: &PaneId) -> Vec<usize> {
+        let Some(geom_of_pane) = self.get_pane_geom(pane_id) else {
+            log::error!("Could not find geom of pawne");
+            return vec![];
+        };
+        vec![
+            geom_of_pane.x,
+            geom_of_pane.x + geom_of_pane.cols.as_usize(),
+        ]
+    }
+    fn get_horizontal_boundaries_of_pane(&self, pane_id: &PaneId) -> Vec<usize> {
+        let Some(geom_of_pane) = self.get_pane_geom(pane_id) else {
+            log::error!("Could not find geom of pawne");
+            return vec![];
+        };
+        vec![
+            geom_of_pane.y,
+            geom_of_pane.y + geom_of_pane.rows.as_usize(),
+        ]
+    }
+    fn fill_geom_holes_horizontally_upwards(
+        &mut self,
+        pane_ids_to_expand: &[PaneId],
+        holes: &[PaneId],
+    ) -> Result<()> {
+        // here we fill in the pane_ids_to_expand over the holes horizontally and then shorten the
+        // height of the holes by the pane_ids_to_expand (squeeze them upwards)
+        // we expect the pane_ids_to_expand to all have the same y and height and for the holes to
+        // all be higher
+        let err_context = || format!("Failed to fill_geom_holes_horizontally_upwards");
+        let mut panes_to_expand = vec![];
+        let mut hole_panes = vec![];
+        for p_id in pane_ids_to_expand {
+            let panes = self.panes.borrow();
+            let pane = panes.get(&p_id).with_context(err_context)?;
+            panes_to_expand.push((p_id, pane.position_and_size()));
+        }
+        for p_id in holes {
+            let panes = self.panes.borrow();
+            let pane = panes.get(&p_id).with_context(err_context)?;
+            hole_panes.push((p_id, pane.position_and_size()));
+        }
+        panes_to_expand.sort_by(|(_a_id, a_geom), (_b_id, b_geom)| a_geom.x.cmp(&b_geom.x));
+        hole_panes.sort_by(|(_a_id, a_geom), (_b_id, b_geom)| a_geom.x.cmp(&b_geom.x));
+        let mut uncovered_hole = None;
+        for (hole_id, mut hole_geom) in hole_panes {
+            let hole_x = hole_geom.x;
+            let Some((pane_id_with_closest_x, mut pane_geom_with_closest_x)) = panes_to_expand
+                .iter()
+                .find(|(_p_id, p_geom)| p_geom.x >= hole_x)
+            else {
+                // can happen if the last geom was a hole
+                uncovered_hole = Some((hole_id, hole_geom));
+                continue;
+            };
+            pane_geom_with_closest_x
+                .cols
+                .increase_inner(hole_geom.cols.as_usize());
+            pane_geom_with_closest_x.x = hole_x;
+            hole_geom.rows.reduce_by(
+                pane_geom_with_closest_x
+                    .rows
+                    .as_percent()
+                    .with_context(err_context)?,
+                pane_geom_with_closest_x.rows.as_usize(),
+            );
+            self.panes
+                .borrow_mut()
+                .get_mut(&pane_id_with_closest_x)
+                .with_context(err_context)?
+                .set_geom(pane_geom_with_closest_x);
+            self.panes
+                .borrow_mut()
+                .get_mut(&hole_id)
+                .with_context(err_context)?
+                .set_geom(hole_geom);
+        }
+        if let Some((hole_id, mut hole_geom)) = uncovered_hole {
+            let (pane_id_with_closest_x, mut pane_geom_with_closest_x) =
+                panes_to_expand.last().with_context(err_context)?;
+            pane_geom_with_closest_x
+                .cols
+                .increase_inner(hole_geom.cols.as_usize());
+            hole_geom.rows.reduce_by(
+                pane_geom_with_closest_x
+                    .rows
+                    .as_percent()
+                    .with_context(err_context)?,
+                pane_geom_with_closest_x.rows.as_usize(),
+            );
+            self.panes
+                .borrow_mut()
+                .get_mut(&pane_id_with_closest_x)
+                .with_context(err_context)?
+                .set_geom(pane_geom_with_closest_x);
+            self.panes
+                .borrow_mut()
+                .get_mut(&hole_id)
+                .with_context(err_context)?
+                .set_geom(hole_geom);
+        }
+        Ok(())
+    }
+    fn fill_geom_holes_horizontally_downwards(
+        &mut self,
+        pane_ids_to_expand: &[PaneId],
+        holes: &[PaneId],
+    ) -> Result<()> {
+        // here we fill in the pane_ids_to_expand over the holes horizontally and then shorten the
+        // height of the holes by the pane_ids_to_expand, as well as increase their y by the same
+        // count (squeeze them downwards)
+        // we expect the pane_ids_to_expand to all have the same y and height and for the holes to
+        // all be higher and have the same y
+        let err_context = || format!("Failed to fill_geom_holes_horizontally_downwards");
+        let mut panes_to_expand = vec![];
+        let mut hole_panes = vec![];
+        for p_id in pane_ids_to_expand {
+            let panes = self.panes.borrow();
+            let pane = panes.get(&p_id).with_context(err_context)?;
+            panes_to_expand.push((p_id, pane.position_and_size()));
+        }
+        for p_id in holes {
+            let panes = self.panes.borrow();
+            let pane = panes.get(&p_id).with_context(err_context)?;
+            hole_panes.push((p_id, pane.position_and_size()));
+        }
+        panes_to_expand.sort_by(|(_a_id, a_geom), (_b_id, b_geom)| a_geom.x.cmp(&b_geom.x));
+        hole_panes.sort_by(|(_a_id, a_geom), (_b_id, b_geom)| a_geom.x.cmp(&b_geom.x));
+        let mut uncovered_hole = None;
+        for (hole_id, mut hole_geom) in hole_panes {
+            let hole_x = hole_geom.x;
+            let Some((pane_id_with_closest_x, mut pane_geom_with_closest_x)) = panes_to_expand
+                .iter()
+                .find(|(_p_id, p_geom)| p_geom.x >= hole_x)
+            else {
+                // can happen if the last geom was a hole
+                uncovered_hole = Some((hole_id, hole_geom));
+                continue;
+            };
+            pane_geom_with_closest_x
+                .cols
+                .increase_inner(hole_geom.cols.as_usize());
+            pane_geom_with_closest_x.x = hole_x;
+            hole_geom.rows.reduce_by(
+                pane_geom_with_closest_x
+                    .rows
+                    .as_percent()
+                    .with_context(err_context)?,
+                pane_geom_with_closest_x.rows.as_usize(),
+            );
+            hole_geom.y += pane_geom_with_closest_x.rows.as_usize();
+            self.panes
+                .borrow_mut()
+                .get_mut(&pane_id_with_closest_x)
+                .with_context(err_context)?
+                .set_geom(pane_geom_with_closest_x);
+            self.panes
+                .borrow_mut()
+                .get_mut(&hole_id)
+                .with_context(err_context)?
+                .set_geom(hole_geom);
+        }
+        if let Some((hole_id, mut hole_geom)) = uncovered_hole {
+            let (pane_id_with_closest_x, mut pane_geom_with_closest_x) =
+                panes_to_expand.last().with_context(err_context)?;
+            pane_geom_with_closest_x
+                .cols
+                .increase_inner(hole_geom.cols.as_usize());
+            hole_geom.rows.reduce_by(
+                pane_geom_with_closest_x
+                    .rows
+                    .as_percent()
+                    .with_context(err_context)?,
+                pane_geom_with_closest_x.rows.as_usize(),
+            );
+            hole_geom.y += pane_geom_with_closest_x.rows.as_usize();
+            self.panes
+                .borrow_mut()
+                .get_mut(&pane_id_with_closest_x)
+                .with_context(err_context)?
+                .set_geom(pane_geom_with_closest_x);
+            self.panes
+                .borrow_mut()
+                .get_mut(&hole_id)
+                .with_context(err_context)?
+                .set_geom(hole_geom);
+        }
+        Ok(())
+    }
+    fn fill_geom_holes_vertically_to_the_right(
+        &mut self,
+        pane_ids_to_expand: &[PaneId],
+        holes: &[PaneId],
+    ) -> Result<()> {
+        // here we fill in the pane_ids_to_expand over the holes vertically and then shorten the
+        // width of the holes by the pane_ids_to_expand, as well as increase their x by the same
+        // count (squeeze them to the right)
+        // we expect the pane_ids_to_expand to all have the same x and width and for the holes to
+        // all be wider and have the same x
+        let err_context = || format!("Failed to fill_geom_holes_vertically_to_the_right");
+        let mut panes_to_expand = vec![];
+        let mut hole_panes = vec![];
+        for p_id in pane_ids_to_expand {
+            let panes = self.panes.borrow();
+            let pane = panes.get(&p_id).with_context(err_context)?;
+            panes_to_expand.push((p_id, pane.position_and_size()));
+        }
+        for p_id in holes {
+            let panes = self.panes.borrow();
+            let pane = panes.get(&p_id).with_context(err_context)?;
+            hole_panes.push((p_id, pane.position_and_size()));
+        }
+        panes_to_expand.sort_by(|(_a_id, a_geom), (_b_id, b_geom)| a_geom.y.cmp(&b_geom.y));
+        hole_panes.sort_by(|(_a_id, a_geom), (_b_id, b_geom)| a_geom.y.cmp(&b_geom.y));
+        let mut uncovered_hole = None;
+        for (hole_id, mut hole_geom) in hole_panes {
+            let hole_y = hole_geom.y;
+            let Some((pane_id_with_closest_y, mut pane_geom_with_closest_y)) = panes_to_expand
+                .iter()
+                .find(|(_p_id, p_geom)| p_geom.y >= hole_y)
+            else {
+                // can happen if the last geom was a hole
+                uncovered_hole = Some((hole_id, hole_geom));
+                continue;
+            };
+            pane_geom_with_closest_y
+                .rows
+                .increase_inner(hole_geom.rows.as_usize());
+            pane_geom_with_closest_y.y = hole_y;
+            hole_geom.cols.reduce_by(
+                pane_geom_with_closest_y
+                    .cols
+                    .as_percent()
+                    .with_context(err_context)?,
+                pane_geom_with_closest_y.cols.as_usize(),
+            );
+            hole_geom.x += pane_geom_with_closest_y.cols.as_usize();
+            self.panes
+                .borrow_mut()
+                .get_mut(&pane_id_with_closest_y)
+                .with_context(err_context)?
+                .set_geom(pane_geom_with_closest_y);
+            self.panes
+                .borrow_mut()
+                .get_mut(&hole_id)
+                .with_context(err_context)?
+                .set_geom(hole_geom);
+        }
+        if let Some((hole_id, mut hole_geom)) = uncovered_hole {
+            let (pane_id_with_closest_y, mut pane_geom_with_closest_y) =
+                panes_to_expand.last().with_context(err_context)?;
+            pane_geom_with_closest_y
+                .rows
+                .increase_inner(hole_geom.rows.as_usize());
+            hole_geom.cols.reduce_by(
+                pane_geom_with_closest_y
+                    .cols
+                    .as_percent()
+                    .with_context(err_context)?,
+                pane_geom_with_closest_y.cols.as_usize(),
+            );
+            hole_geom.x += pane_geom_with_closest_y.cols.as_usize();
+            self.panes
+                .borrow_mut()
+                .get_mut(&pane_id_with_closest_y)
+                .with_context(err_context)?
+                .set_geom(pane_geom_with_closest_y);
+            self.panes
+                .borrow_mut()
+                .get_mut(&hole_id)
+                .with_context(err_context)?
+                .set_geom(hole_geom);
+        }
+        Ok(())
+    }
+    fn fill_geom_holes_vertically_to_the_left(
+        &mut self,
+        pane_ids_to_expand: &[PaneId],
+        holes: &[PaneId],
+    ) -> Result<()> {
+        // here we fill in the pane_ids_to_expand over the holes vertically and then shorten the
+        // width of the holes by the pane_ids_to_expand's width (squeeze them to the right)
+        // we expect the pane_ids_to_expand to all have the same x and width and for the holes to
+        // all be wider
+        let err_context = || format!("Failed to fill_geom_holes_vertically_to_the_left");
+        let mut panes_to_expand = vec![];
+        let mut hole_panes = vec![];
+        for p_id in pane_ids_to_expand {
+            let panes = self.panes.borrow();
+            let pane = panes.get(&p_id).with_context(err_context)?;
+            panes_to_expand.push((p_id, pane.position_and_size()));
+        }
+        for p_id in holes {
+            let panes = self.panes.borrow();
+            let pane = panes.get(&p_id).with_context(err_context)?;
+            hole_panes.push((p_id, pane.position_and_size()));
+        }
+        panes_to_expand.sort_by(|(_a_id, a_geom), (_b_id, b_geom)| a_geom.y.cmp(&b_geom.y));
+        hole_panes.sort_by(|(_a_id, a_geom), (_b_id, b_geom)| a_geom.y.cmp(&b_geom.y));
+        let mut uncovered_hole = None;
+        for (hole_id, mut hole_geom) in hole_panes {
+            let hole_y = hole_geom.y;
+            let Some((pane_id_with_closest_y, mut pane_geom_with_closest_y)) = panes_to_expand
+                .iter()
+                .find(|(_p_id, p_geom)| p_geom.y >= hole_y)
+            else {
+                // can happen if the last geom was a hole
+                uncovered_hole = Some((hole_id, hole_geom));
+                continue;
+            };
+            pane_geom_with_closest_y
+                .rows
+                .increase_inner(hole_geom.rows.as_usize());
+            pane_geom_with_closest_y.y = hole_y;
+            hole_geom.cols.reduce_by(
+                pane_geom_with_closest_y
+                    .cols
+                    .as_percent()
+                    .with_context(err_context)?,
+                pane_geom_with_closest_y.cols.as_usize(),
+            );
+            self.panes
+                .borrow_mut()
+                .get_mut(&pane_id_with_closest_y)
+                .with_context(err_context)?
+                .set_geom(pane_geom_with_closest_y);
+            self.panes
+                .borrow_mut()
+                .get_mut(&hole_id)
+                .with_context(err_context)?
+                .set_geom(hole_geom);
+        }
+        if let Some((hole_id, mut hole_geom)) = uncovered_hole {
+            let (pane_id_with_closest_y, mut pane_geom_with_closest_y) =
+                panes_to_expand.last().with_context(err_context)?;
+            pane_geom_with_closest_y
+                .rows
+                .increase_inner(hole_geom.rows.as_usize());
+            hole_geom.cols.reduce_by(
+                pane_geom_with_closest_y
+                    .cols
+                    .as_percent()
+                    .with_context(err_context)?,
+                pane_geom_with_closest_y.cols.as_usize(),
+            );
+            self.panes
+                .borrow_mut()
+                .get_mut(&pane_id_with_closest_y)
+                .with_context(err_context)?
+                .set_geom(pane_geom_with_closest_y);
+            self.panes
+                .borrow_mut()
+                .get_mut(&hole_id)
+                .with_context(err_context)?
+                .set_geom(hole_geom);
+        }
+        Ok(())
+    }
+    pub fn stack_pane_up(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
+        let mut neighboring_pane_ids_above = self.direct_neighboring_pane_ids_above(pane_id);
+        if !self.pane_ids_have_the_same_y(&neighboring_pane_ids_above) {
+            let (panes_with_highest_y, leftover_panes) =
+                self.group_panes_by_highest_y(&neighboring_pane_ids_above);
+            if let Err(e) =
+                self.fill_geom_holes_horizontally_upwards(&panes_with_highest_y, &leftover_panes)
+            {
+                log::error!("Failed to fill_geom_holes_horizontally upwards: {}", e);
+                return None;
+            }
+            neighboring_pane_ids_above = panes_with_highest_y;
+        }
+        let pane_is_selectable = |pane_id| {
+            self.panes
+                .borrow()
+                .get(pane_id)
+                .map(|pane| pane.selectable())
+                .unwrap_or(false)
+        };
+        if neighboring_pane_ids_above.is_empty()
+            || neighboring_pane_ids_above
+                .iter()
+                .any(|p| !pane_is_selectable(p))
+        {
+            return None;
+        }
+        StackedPanes::new(self.panes.clone())
+            .combine_vertically_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_above);
+        StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
+        Some(vec![*pane_id])
+    }
+    pub fn unstack_pane_up(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
+        let pane_is_stacked = self
+            .get_pane_geom(pane_id)
+            .map(|pane_geom| pane_geom.is_stacked())
+            .unwrap_or(false);
+        if pane_is_stacked {
+            StackedPanes::new(self.panes.clone()).break_pane_out_of_stack(&pane_id)
+        } else {
+            None
+        }
+    }
+    pub fn direct_neighboring_pane_ids_below(&self, root_pane_id: &PaneId) -> Vec<PaneId> {
+        // here we look for panes that are directly below the provided root pane but that do not
+        // exceed its vertical borders (x and x + cols)
+        let Some(root_pane_geom) = self.get_pane_geom(root_pane_id) else {
+            log::error!("Could nto find root pane geom");
+            return vec![];
+        };
+        let Some(neighbor_pane_ids) = self.neighbor_pane_ids(root_pane_id, Direction::Down).ok()
+        else {
+            log::error!("Could not find neighbor pane ids above");
+            return vec![];
+        };
+        let neighbor_pane_ids = neighbor_pane_ids
+            .iter()
+            .filter(|pane_id| {
+                self.pane_is_between_vertical_borders(
+                    pane_id,
+                    root_pane_geom.x,
+                    root_pane_geom.x + root_pane_geom.cols.as_usize(),
+                )
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        // we only want to return these if they cover the entire vertical surface of the root pane id
+        // (as in - one of the panes contains its x and one of the panes contains its x + cols)
+        let mut boundaries_of_pane_ids = vec![];
+        for p_id in &neighbor_pane_ids {
+            let mut vertical_boundaries_of_pane = self.get_vertical_boundaries_of_pane(p_id);
+            boundaries_of_pane_ids.append(&mut vertical_boundaries_of_pane);
+        }
+        if boundaries_of_pane_ids.contains(&root_pane_geom.x)
+            && boundaries_of_pane_ids.contains(&(root_pane_geom.x + root_pane_geom.cols.as_usize()))
+        {
+            neighbor_pane_ids
+        } else {
+            vec![]
+        }
+    }
+    pub fn stack_pane_down(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
+        let mut neighboring_pane_ids_below = self.direct_neighboring_pane_ids_below(pane_id);
+        if !self.pane_ids_have_the_same_height(&neighboring_pane_ids_below) {
+            let (panes_with_lowest_rows, leftover_panes) =
+                self.group_panes_by_lowest_rows(&neighboring_pane_ids_below);
+            if let Err(e) = self
+                .fill_geom_holes_horizontally_downwards(&panes_with_lowest_rows, &leftover_panes)
+            {
+                log::error!("Failed to fill_geom_holes_horizontally downwards: {}", e);
+                return None;
+            }
+            neighboring_pane_ids_below = panes_with_lowest_rows;
+        }
+        let pane_is_selectable = |pane_id| {
+            self.panes
+                .borrow()
+                .get(pane_id)
+                .map(|pane| pane.selectable())
+                .unwrap_or(false)
+        };
+        if neighboring_pane_ids_below.is_empty()
+            || neighboring_pane_ids_below
+                .iter()
+                .any(|p| !pane_is_selectable(p))
+        {
+            return None;
+        }
+        StackedPanes::new(self.panes.clone())
+            .combine_vertically_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_below);
+        StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
+        Some(vec![*pane_id])
+    }
+    pub fn direct_neighboring_pane_ids_to_the_left(&self, root_pane_id: &PaneId) -> Vec<PaneId> {
+        // here we look for panes that are directly to the left the provided root pane but that do not
+        // exceed its horizontal borders (y and y + rows)
+        let Some(root_pane_geom) = self.get_pane_geom(root_pane_id) else {
+            log::error!("Could nto find root pane geom");
+            return vec![];
+        };
+        let Some(neighbor_pane_ids) = self.neighbor_pane_ids(root_pane_id, Direction::Left).ok()
+        else {
+            log::error!("Could not find neighbor pane ids to the left");
+            return vec![];
+        };
+        let neighbor_pane_ids = neighbor_pane_ids
+            .iter()
+            .filter(|pane_id| {
+                self.pane_is_between_horizontal_borders(
+                    pane_id,
+                    root_pane_geom.y,
+                    root_pane_geom.y + root_pane_geom.rows.as_usize(),
+                )
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        // we only want to return these if they cover the entire horizontal surface of the root pane id
+        // (as in - one of the panes contains its y and one of the panes contains its y + rows)
+        let mut boundaries_of_pane_ids = vec![];
+        for p_id in &neighbor_pane_ids {
+            let mut horizontal_boundaries_of_pane = self.get_horizontal_boundaries_of_pane(p_id);
+            boundaries_of_pane_ids.append(&mut horizontal_boundaries_of_pane);
+        }
+        if boundaries_of_pane_ids.contains(&root_pane_geom.y)
+            && boundaries_of_pane_ids.contains(&(root_pane_geom.y + root_pane_geom.rows.as_usize()))
+        {
+            neighbor_pane_ids
+        } else {
+            vec![]
+        }
+    }
+    pub fn stack_pane_left(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
+        let mut neighboring_pane_ids_to_the_left =
+            self.direct_neighboring_pane_ids_to_the_left(pane_id);
+        if !self.pane_ids_have_the_same_x(&neighboring_pane_ids_to_the_left) {
+            let (panes_with_highest_x, leftover_panes) =
+                self.group_panes_by_highest_x(&neighboring_pane_ids_to_the_left);
+            if let Err(e) =
+                self.fill_geom_holes_vertically_to_the_left(&panes_with_highest_x, &leftover_panes)
+            {
+                log::error!("Failed to fill_geom_holes_vertically_to_the_left: {}", e);
+                return None;
+            }
+            neighboring_pane_ids_to_the_left = panes_with_highest_x;
+        }
+        let pane_is_selectable = |pane_id| {
+            self.panes
+                .borrow()
+                .get(pane_id)
+                .map(|pane| pane.selectable())
+                .unwrap_or(false)
+        };
+        if neighboring_pane_ids_to_the_left.is_empty()
+            || neighboring_pane_ids_to_the_left
+                .iter()
+                .any(|p| !pane_is_selectable(p))
+        {
+            return None;
+        }
+        StackedPanes::new(self.panes.clone()).combine_horizontally_aligned_panes_to_stack(
+            &pane_id,
+            neighboring_pane_ids_to_the_left,
+        );
+        StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
+        Some(vec![*pane_id])
+    }
+    pub fn direct_neighboring_pane_ids_to_the_right(&self, root_pane_id: &PaneId) -> Vec<PaneId> {
+        // here we look for panes that are directly to the right the provided root pane but that do not
+        // exceed its horizontal borders (y and y + rows)
+        let Some(root_pane_geom) = self.get_pane_geom(root_pane_id) else {
+            log::error!("Could nto find root pane geom");
+            return vec![];
+        };
+        let Some(neighbor_pane_ids) = self.neighbor_pane_ids(root_pane_id, Direction::Right).ok()
+        else {
+            log::error!("Could not find neighbor pane ids to the right");
+            return vec![];
+        };
+        let neighbor_pane_ids = neighbor_pane_ids
+            .iter()
+            .filter(|pane_id| {
+                self.pane_is_between_horizontal_borders(
+                    pane_id,
+                    root_pane_geom.y,
+                    root_pane_geom.y + root_pane_geom.rows.as_usize(),
+                )
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        // we only want to return these if they cover the entire horizontal surface of the root pane id
+        // (as in - one of the panes contains its y and one of the panes contains its y + rows)
+        let mut boundaries_of_pane_ids = vec![];
+        for p_id in &neighbor_pane_ids {
+            let mut horizontal_boundaries_of_pane = self.get_horizontal_boundaries_of_pane(p_id);
+            boundaries_of_pane_ids.append(&mut horizontal_boundaries_of_pane);
+        }
+        if boundaries_of_pane_ids.contains(&root_pane_geom.y)
+            && boundaries_of_pane_ids.contains(&(root_pane_geom.y + root_pane_geom.rows.as_usize()))
+        {
+            neighbor_pane_ids
+        } else {
+            vec![]
+        }
+    }
+    pub fn stack_pane_right(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
+        let mut neighboring_pane_ids_to_the_right =
+            self.direct_neighboring_pane_ids_to_the_right(pane_id);
+        if !self.pane_ids_have_the_same_width(&neighboring_pane_ids_to_the_right) {
+            let (panes_with_lowest_cols, leftover_panes) =
+                self.group_panes_by_lowest_cols(&neighboring_pane_ids_to_the_right);
+            if let Err(e) = self
+                .fill_geom_holes_vertically_to_the_right(&panes_with_lowest_cols, &leftover_panes)
+            {
+                log::error!("Failed to fill_geom_holes_vertically_to_the_right: {}", e);
+                return None;
+            }
+            neighboring_pane_ids_to_the_right = panes_with_lowest_cols;
+        }
+        let pane_is_selectable = |pane_id| {
+            self.panes
+                .borrow()
+                .get(pane_id)
+                .map(|pane| pane.selectable())
+                .unwrap_or(false)
+        };
+        if neighboring_pane_ids_to_the_right.is_empty()
+            || neighboring_pane_ids_to_the_right
+                .iter()
+                .any(|p| !pane_is_selectable(p))
+        {
+            return None;
+        }
+        if neighboring_pane_ids_to_the_right.is_empty() {
+            return None;
+        }
+        StackedPanes::new(self.panes.clone()).combine_horizontally_aligned_panes_to_stack(
+            &pane_id,
+            neighboring_pane_ids_to_the_right,
+        );
+        StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
+        Some(vec![*pane_id])
+    }
+    pub fn next_stack_id(&self) -> usize {
+        StackedPanes::new(self.panes.clone()).next_stack_id()
+    }
+    pub fn make_pane_stacked(&mut self, pane_id: &PaneId) -> Result<()> {
+        let mut geom_of_active_pane = self
+            .get_pane_geom(pane_id)
+            .ok_or_else(|| anyhow!("Failed to get pane geom"))?;
+        geom_of_active_pane.stacked = Some(self.next_stack_id());
+        self.panes
+            .borrow_mut()
+            .get_mut(pane_id)
+            .ok_or_else(|| anyhow!("Failed to get pane geom"))?
+            .set_geom(geom_of_active_pane);
+        Ok(())
+    }
+    fn get_vertically_aligned_pane_id_above(&self, pane_id: &PaneId) -> Option<PaneId> {
+        let Some(pane_geom) = self.get_pane_geom(pane_id) else {
+            return None;
+        };
+        let panes = self.panes.borrow();
+        let stacked_panes = StackedPanes::new(self.panes.clone());
+        let pane_geom = if pane_geom.is_stacked() {
+            stacked_panes
+                .position_and_size_of_stack(pane_id)
+                .unwrap_or(pane_geom)
+        } else {
+            pane_geom
+        };
+        panes.iter().find_map(|(candidate_pane_id, p)| {
+            if !p.selectable() {
+                return None;
+            }
+            let candidate_geom = p.current_geom();
+            let candidate_geom = if candidate_geom.is_stacked() {
+                stacked_panes
+                    .position_and_size_of_stack(candidate_pane_id)
+                    .unwrap_or(candidate_geom)
+            } else {
+                candidate_geom
+            };
+            if candidate_geom.y + candidate_geom.rows.as_usize() == pane_geom.y
+                && candidate_geom.x == pane_geom.x
+                && candidate_geom.cols.as_usize() == pane_geom.cols.as_usize()
+            {
+                return Some(p.pid());
+            }
+            return None;
+        })
+    }
+    fn get_vertically_aligned_pane_id_below(&self, pane_id: &PaneId) -> Option<PaneId> {
+        let Some(pane_geom) = self.get_pane_geom(pane_id) else {
+            return None;
+        };
+        let panes = self.panes.borrow();
+        let stacked_panes = StackedPanes::new(self.panes.clone());
+        let pane_geom = if pane_geom.is_stacked() {
+            stacked_panes
+                .position_and_size_of_stack(pane_id)
+                .unwrap_or(pane_geom)
+        } else {
+            pane_geom
+        };
+        panes.iter().find_map(|(candidate_pane_id, p)| {
+            if !p.selectable() {
+                return None;
+            }
+            let candidate_geom = p.current_geom();
+            let candidate_geom = if candidate_geom.is_stacked() {
+                stacked_panes
+                    .position_and_size_of_stack(candidate_pane_id)
+                    .unwrap_or(candidate_geom)
+            } else {
+                candidate_geom
+            };
+            if candidate_geom.y == pane_geom.y + pane_geom.rows.as_usize()
+                && candidate_geom.x == pane_geom.x
+                && candidate_geom.cols.as_usize() == pane_geom.cols.as_usize()
+            {
+                return Some(p.pid());
+            }
+            return None;
+        })
     }
 }
 

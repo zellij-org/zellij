@@ -2,16 +2,121 @@
 
 themes {
     atelier-sulphurpool {
-        bg "#293256"
-        fg "#979db4"
-        red "#c94922"
-        green "#ac9739"
-        yellow "#c08b30"
-        blue "#3d8fd1"
-        magenta "#9c637a"
-        orange "#c76b29"
-        cyan "#22a2c9"
-        black "#202746"
-        white "#f5f7ff"
+        text_unselected {
+            base 245 247 255
+            background 32 39 70
+            emphasis_0 199 107 41
+            emphasis_1 34 162 201
+            emphasis_2 172 151 57
+            emphasis_3 156 99 122
+        }
+        text_selected {
+            base 245 247 255
+            background 151 157 180
+            emphasis_0 199 107 41
+            emphasis_1 34 162 201
+            emphasis_2 172 151 57
+            emphasis_3 156 99 122
+        }
+        ribbon_selected {
+            base 32 39 70
+            background 172 151 57
+            emphasis_0 201 73 34
+            emphasis_1 199 107 41
+            emphasis_2 156 99 122
+            emphasis_3 61 143 209
+        }
+        ribbon_unselected {
+            base 32 39 70
+            background 151 157 180
+            emphasis_0 201 73 34
+            emphasis_1 245 247 255
+            emphasis_2 61 143 209
+            emphasis_3 156 99 122
+        }
+        table_title {
+            base 172 151 57
+            background 0
+            emphasis_0 199 107 41
+            emphasis_1 34 162 201
+            emphasis_2 172 151 57
+            emphasis_3 156 99 122
+        }
+        table_cell_selected {
+            base 245 247 255
+            background 41 50 86
+            emphasis_0 199 107 41
+            emphasis_1 34 162 201
+            emphasis_2 172 151 57
+            emphasis_3 156 99 122
+        }
+        table_cell_unselected {
+            base 245 247 255
+            background 32 39 70
+            emphasis_0 199 107 41
+            emphasis_1 34 162 201
+            emphasis_2 172 151 57
+            emphasis_3 156 99 122
+        }
+        list_selected {
+            base 245 247 255
+            background 41 50 86
+            emphasis_0 199 107 41
+            emphasis_1 34 162 201
+            emphasis_2 172 151 57
+            emphasis_3 156 99 122
+        }
+        list_unselected {
+            base 245 247 255
+            background 32 39 70
+            emphasis_0 199 107 41
+            emphasis_1 34 162 201
+            emphasis_2 172 151 57
+            emphasis_3 156 99 122
+        }
+        frame_selected {
+            base 172 151 57
+            background 0
+            emphasis_0 199 107 41
+            emphasis_1 34 162 201
+            emphasis_2 156 99 122
+            emphasis_3 0
+        }
+        frame_highlight {
+            base 199 107 41
+            background 0
+            emphasis_0 199 107 41
+            emphasis_1 199 107 41
+            emphasis_2 199 107 41
+            emphasis_3 199 107 41
+        }
+        exit_code_success {
+            base 172 151 57
+            background 0
+            emphasis_0 34 162 201
+            emphasis_1 32 39 70
+            emphasis_2 156 99 122
+            emphasis_3 61 143 209
+        }
+        exit_code_error {
+            base 201 73 34
+            background 0
+            emphasis_0 192 139 48
+            emphasis_1 0
+            emphasis_2 0
+            emphasis_3 0
+        }
+        multiplayer_user_colors {
+            player_1 156 99 122
+            player_2 61 143 209
+            player_3 0
+            player_4 192 139 48
+            player_5 34 162 201
+            player_6 0
+            player_7 201 73 34
+            player_8 0
+            player_9 0
+            player_10 0
+        }
     }
 }

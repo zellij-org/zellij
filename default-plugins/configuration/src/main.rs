@@ -71,7 +71,7 @@ struct State {
     ui_size: usize,
     current_screen: Screen,
     latest_mode_info: Option<ModeInfo>,
-    colors: Palette,
+    colors: Styling,
 }
 
 impl Default for State {
@@ -82,7 +82,7 @@ impl Default for State {
             ui_size: UI_SIZE,
             current_screen: Screen::default(),
             latest_mode_info: None,
-            colors: Palette::default(),
+            colors: Palette::default().into(),
         }
     }
 }

@@ -72,6 +72,8 @@ lazy_static! {
     pub static ref ZELLIJ_STDIN_CACHE_FILE: PathBuf =
         ZELLIJ_CACHE_DIR.join(VERSION).join("stdin_cache");
     pub static ref ZELLIJ_PLUGIN_ARTIFACT_DIR: PathBuf = ZELLIJ_CACHE_DIR.join(VERSION);
+    pub static ref ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE: PathBuf =
+        ZELLIJ_CACHE_DIR.join(VERSION).join("seen_release_notes");
 }
 
 pub const FEATURES: &[&str] = &[
@@ -94,7 +96,7 @@ mod not_wasm {
     //
     // - `zellij-utils/assets/plugins`: When building in release mode OR when the
     //   `plugins_from_target` feature IS NOT set
-    // - `zellij-utils/../target/wasm32-wasi/debug`: When building in debug mode AND the
+    // - `zellij-utils/../target/wasm32-wasip1/debug`: When building in debug mode AND the
     //   `plugins_from_target` feature IS set
     macro_rules! add_plugin {
         ($assets:expr, $plugin:literal) => {
@@ -110,7 +112,7 @@ mod not_wasm {
                 #[cfg(all(feature = "plugins_from_target", debug_assertions))]
                 include_bytes!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
-                    "/../target/wasm32-wasi/debug/",
+                    "/../target/wasm32-wasip1/debug/",
                     $plugin
                 ))
                 .to_vec(),
@@ -129,6 +131,7 @@ mod not_wasm {
             add_plugin!(assets, "session-manager.wasm");
             add_plugin!(assets, "configuration.wasm");
             add_plugin!(assets, "plugin-manager.wasm");
+            add_plugin!(assets, "about.wasm");
             assets
         };
     }

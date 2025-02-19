@@ -104,10 +104,49 @@ pub fn open_file_in_place(file_to_open: FileToOpen, context: BTreeMap<String, St
     unsafe { host_run_plugin_command() };
 }
 
+/// Open a file in the user's default `$EDITOR` in a new pane near th eplugin
+pub fn open_file_near_plugin(file_to_open: FileToOpen, context: BTreeMap<String, String>) {
+    let plugin_command = PluginCommand::OpenFileNearPlugin(file_to_open, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Open a file in the user's default `$EDITOR` in a new floating pane near the plugin
+pub fn open_file_floating_near_plugin(
+    file_to_open: FileToOpen,
+    coordinates: Option<FloatingPaneCoordinates>,
+    context: BTreeMap<String, String>,
+) {
+    let plugin_command =
+        PluginCommand::OpenFileFloatingNearPlugin(file_to_open, coordinates, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Open a file in the user's default `$EDITOR`, replacing the plugin pane
+pub fn open_file_in_place_of_plugin(file_to_open: FileToOpen, context: BTreeMap<String, String>) {
+    let plugin_command = PluginCommand::OpenFileInPlaceOfPlugin(file_to_open, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
 /// Open a new terminal pane to the specified location on the host filesystem
 pub fn open_terminal<P: AsRef<Path>>(path: P) {
     let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
     let plugin_command = PluginCommand::OpenTerminal(file_to_open);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Open a new terminal pane to the specified location on the host filesystem
+/// This variant is identical to open_terminal, excpet it opens it near the plugin regardless of
+/// whether the user was focused on it or not
+pub fn open_terminal_near_plugin<P: AsRef<Path>>(path: P) {
+    let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
+    let plugin_command = PluginCommand::OpenTerminalNearPlugin(file_to_open);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -125,6 +164,20 @@ pub fn open_terminal_floating<P: AsRef<Path>>(
     unsafe { host_run_plugin_command() };
 }
 
+/// Open a new floating terminal pane to the specified location on the host filesystem
+/// This variant is identical to open_terminal_floating, excpet it opens it near the plugin regardless of
+/// whether the user was focused on it or not
+pub fn open_terminal_floating_near_plugin<P: AsRef<Path>>(
+    path: P,
+    coordinates: Option<FloatingPaneCoordinates>,
+) {
+    let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
+    let plugin_command = PluginCommand::OpenTerminalFloatingNearPlugin(file_to_open, coordinates);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Open a new terminal pane to the specified location on the host filesystem, temporarily
 /// replacing the focused pane
 pub fn open_terminal_in_place<P: AsRef<Path>>(path: P) {
@@ -135,9 +188,32 @@ pub fn open_terminal_in_place<P: AsRef<Path>>(path: P) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Open a new terminal pane to the specified location on the host filesystem, temporarily
+/// replacing the plugin pane
+pub fn open_terminal_in_place_of_plugin<P: AsRef<Path>>(path: P) {
+    let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
+    let plugin_command = PluginCommand::OpenTerminalInPlaceOfPlugin(file_to_open);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Open a new command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
 pub fn open_command_pane(command_to_run: CommandToRun, context: BTreeMap<String, String>) {
     let plugin_command = PluginCommand::OpenCommandPane(command_to_run, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Open a new command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
+/// This variant is the same as `open_command_pane` except it opens the pane in the same tab as the
+/// plugin regardless of whether the user is focused on it
+pub fn open_command_pane_near_plugin(
+    command_to_run: CommandToRun,
+    context: BTreeMap<String, String>,
+) {
+    let plugin_command = PluginCommand::OpenCommandPaneNearPlugin(command_to_run, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -156,9 +232,37 @@ pub fn open_command_pane_floating(
     unsafe { host_run_plugin_command() };
 }
 
+/// Open a new floating command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
+/// This variant is the same as `open_command_pane_floating` except it opens the pane in the same tab as the
+/// plugin regardless of whether the user is focused on it
+pub fn open_command_pane_floating_near_plugin(
+    command_to_run: CommandToRun,
+    coordinates: Option<FloatingPaneCoordinates>,
+    context: BTreeMap<String, String>,
+) {
+    let plugin_command =
+        PluginCommand::OpenCommandPaneFloatingNearPlugin(command_to_run, coordinates, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Open a new in place command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
 pub fn open_command_pane_in_place(command_to_run: CommandToRun, context: BTreeMap<String, String>) {
     let plugin_command = PluginCommand::OpenCommandPaneInPlace(command_to_run, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Open a new in place command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
+/// This variant is the same as open_command_pane_in_place, except that it always replaces the
+/// plugin pane rather than whichever pane the user is focused on
+pub fn open_command_pane_in_place_of_plugin(
+    command_to_run: CommandToRun,
+    context: BTreeMap<String, String>,
+) {
+    let plugin_command = PluginCommand::OpenCommandPaneInPlaceOfPlugin(command_to_run, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -339,7 +443,7 @@ pub fn go_to_previous_tab() {
     unsafe { host_run_plugin_command() };
 }
 
-pub fn report_panic(info: &std::panic::PanicInfo) {
+pub fn report_panic(info: &std::panic::PanicHookInfo) {
     let panic_payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
         format!("{}", s)
     } else {
@@ -1144,6 +1248,15 @@ pub fn set_floating_pane_pinned(pane_id: PaneId, should_be_pinned: bool) {
 
 pub fn stack_panes(pane_ids: Vec<PaneId>) {
     let plugin_command = PluginCommand::StackPanes(pane_ids);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn change_floating_panes_coordinates(
+    pane_ids_and_coordinates: Vec<(PaneId, FloatingPaneCoordinates)>,
+) {
+    let plugin_command = PluginCommand::ChangeFloatingPanesCoordinates(pane_ids_and_coordinates);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

@@ -171,6 +171,24 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub web_client_font: Option<String>,
+
+    /// Whether to stack panes when resizing beyond a certain size
+    /// default is true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub stacked_resize: Option<bool>,
+
+    /// Whether to show startup tips when starting a new session
+    /// default is true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub show_startup_tips: Option<bool>,
+
+    /// Whether to show release notes on first run of a new version
+    /// default is true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub show_release_notes: Option<bool>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -253,6 +271,9 @@ impl Options {
         let web_client_font = other
             .web_client_font
             .or_else(|| self.web_client_font.clone());
+        let stacked_resize = other.stacked_resize.or(self.stacked_resize);
+        let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
+        let show_release_notes = other.show_release_notes.or(self.show_release_notes);
 
         Options {
             simplified_ui,
@@ -284,6 +305,9 @@ impl Options {
             support_kitty_keyboard_protocol,
             enable_web_server,
             web_client_font,
+            stacked_resize,
+            show_startup_tips,
+            show_release_notes,
         }
     }
 
@@ -346,6 +370,9 @@ impl Options {
         let web_client_font = other
             .web_client_font
             .or_else(|| self.web_client_font.clone());
+        let stacked_resize = other.stacked_resize.or(self.stacked_resize);
+        let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
+        let show_release_notes = other.show_release_notes.or(self.show_release_notes);
 
         Options {
             simplified_ui,
@@ -377,6 +404,9 @@ impl Options {
             support_kitty_keyboard_protocol,
             enable_web_server,
             web_client_font,
+            stacked_resize,
+            show_startup_tips,
+            show_release_notes,
         }
     }
 
@@ -444,6 +474,9 @@ impl From<CliOptions> for Options {
             support_kitty_keyboard_protocol: opts.support_kitty_keyboard_protocol,
             enable_web_server: opts.enable_web_server,
             web_client_font: opts.web_client_font,
+            stacked_resize: opts.stacked_resize,
+            show_release_notes: opts.show_release_notes,
+            show_startup_tips: opts.show_startup_tips,
             ..Default::default()
         }
     }

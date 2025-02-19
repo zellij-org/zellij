@@ -19,7 +19,7 @@ use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     data::{
         BareKey, InputMode, KeyWithModifier, Palette, PaletteColor, PaneId as ZellijUtilsPaneId,
-        Style,
+        Style, Styling,
     },
     errors::prelude::*,
     input::layout::Run,
@@ -213,12 +213,14 @@ impl Pane for TerminalPane {
         key_with_modifier: &Option<KeyWithModifier>,
         raw_input_bytes: Vec<u8>,
         raw_input_bytes_are_kitty: bool,
+        _client_id: Option<ClientId>,
     ) -> Option<AdjustedInput> {
         // there are some cases in which the terminal state means that input sent to it
         // needs to be adjusted.
         // here we match against those cases - if need be, we adjust the input and if not
         // we send back the original input
 
+        self.reset_selection();
         if !self.grid.bracketed_paste_mode {
             // Zellij itself operates in bracketed paste mode, so the terminal sends these
             // instructions (bracketed paste start and bracketed paste end respectively)
@@ -636,7 +638,7 @@ impl Pane for TerminalPane {
         self.exclude_from_sync
     }
 
-    fn mouse_event(&self, event: &MouseEvent) -> Option<String> {
+    fn mouse_event(&self, event: &MouseEvent, _client_id: ClientId) -> Option<String> {
         self.grid.mouse_event_signal(event)
     }
 
@@ -734,7 +736,7 @@ impl Pane for TerminalPane {
         self.set_should_render(true);
     }
     fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) {
-        self.pane_frame_color_override = Some((self.style.colors.red, error_text));
+        self.pane_frame_color_override = Some((self.style.colors.exit_code_error.base, error_text));
     }
     fn clear_pane_frame_color_override(&mut self) {
         self.pane_frame_color_override = None;
@@ -801,7 +803,7 @@ impl Pane for TerminalPane {
             run_command.clone()
         })
     }
-    fn update_theme(&mut self, theme: Palette) {
+    fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme.clone();
         self.grid.update_theme(theme);
         if self.banner.is_some() {

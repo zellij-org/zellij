@@ -1,0 +1,120 @@
+---
+source: zellij-server/src/panes/tiled_panes/./unit/stacked_panes_tests.rs
+assertion_line: 193
+expression: "format!(\"{:#?}\", pane_geoms_after)"
+---
+[
+    PaneGeom {
+        x: 0,
+        y: 0,
+        rows: Dimension {
+            constraint: Percent(
+                33.3,
+            ),
+            inner: 33,
+        },
+        cols: Dimension {
+            constraint: Percent(
+                100.0,
+            ),
+            inner: 1,
+        },
+        stacked: None,
+        is_pinned: false,
+        logical_position: Some(
+            1,
+        ),
+    },
+    PaneGeom {
+        x: 0,
+        y: 33,
+        rows: Dimension {
+            constraint: Percent(
+                66.6,
+            ),
+            inner: 64,
+        },
+        cols: Dimension {
+            constraint: Percent(
+                100.0,
+            ),
+            inner: 1,
+        },
+        stacked: Some(
+            1,
+        ),
+        is_pinned: false,
+        logical_position: Some(
+            2,
+        ),
+    },
+    PaneGeom {
+        x: 0,
+        y: 97,
+        rows: Dimension {
+            constraint: Fixed(
+                1,
+            ),
+            inner: 1,
+        },
+        cols: Dimension {
+            constraint: Percent(
+                100.0,
+            ),
+            inner: 1,
+        },
+        stacked: Some(
+            1,
+        ),
+        is_pinned: false,
+        logical_position: Some(
+            3,
+        ),
+    },
+    PaneGeom {
+        x: 0,
+        y: 98,
+        rows: Dimension {
+            constraint: Fixed(
+                1,
+            ),
+            inner: 1,
+        },
+        cols: Dimension {
+            constraint: Percent(
+                100.0,
+            ),
+            inner: 1,
+        },
+        stacked: Some(
+            1,
+        ),
+        is_pinned: false,
+        logical_position: Some(
+            4,
+        ),
+    },
+    PaneGeom {
+        x: 0,
+        y: 99,
+        rows: Dimension {
+            constraint: Fixed(
+                1,
+            ),
+            inner: 1,
+        },
+        cols: Dimension {
+            constraint: Percent(
+                100.0,
+            ),
+            inner: 1,
+        },
+        stacked: Some(
+            1,
+        ),
+        is_pinned: false,
+        logical_position: Some(
+            5,
+        ),
+    },
+]

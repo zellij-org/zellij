@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 854
+assertion_line: 855
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -118,10 +118,25 @@ Config {
         serialization_interval: None,
         disable_session_metadata: None,
         support_kitty_keyboard_protocol: None,
+        stacked_resize: None,
+        show_startup_tips: None,
+        show_release_notes: None,
     },
     themes: {},
     plugins: PluginAliases {
         aliases: {
+            "about": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "about",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
             "compact-bar": RunPlugin {
                 _allow_exec_host_cmd: false,
                 location: Zellij(

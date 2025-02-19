@@ -445,7 +445,7 @@ impl Boundaries {
         }
     }
     pub fn add_rect(&mut self, rect: &dyn Pane, color: Option<PaletteColor>) {
-        let pane_is_stacked = rect.current_geom().is_stacked;
+        let pane_is_stacked = rect.current_geom().is_stacked();
         if !self.is_fully_inside_screen(rect) {
             return;
         }
@@ -576,7 +576,7 @@ impl Boundaries {
         rect.y() + rect.rows() < self.viewport.y + self.viewport.rows
     }
     fn rect_right_boundary_row_start(&self, rect: &dyn Pane) -> usize {
-        let pane_is_stacked = rect.current_geom().is_stacked;
+        let pane_is_stacked = rect.current_geom().is_stacked();
         let horizontal_frame_offset = if pane_is_stacked { 0 } else { 1 };
         if rect.y() > self.viewport.y {
             rect.y() - horizontal_frame_offset

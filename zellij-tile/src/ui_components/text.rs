@@ -94,6 +94,9 @@ impl Text {
 
         format!("{}{}{}", prefix, indices, text)
     }
+    pub fn len(&self) -> usize {
+        self.text.chars().count()
+    }
 }
 
 pub fn print_text(text: Text) {
