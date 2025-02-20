@@ -4513,7 +4513,6 @@ pub(crate) fn screen_thread_main(
                 close_replaced_pane,
                 client_id_tab_index_or_pane_id,
             ) => {
-                log::info!("ScreenInstruction::ReplacePane");
                 screen.replace_pane(
                     new_pane_id,
                     hold_for_command,

@@ -126,8 +126,13 @@ pub fn open_file_floating_near_plugin(
 }
 
 /// Open a file in the user's default `$EDITOR`, replacing the plugin pane
-pub fn open_file_in_place_of_plugin(file_to_open: FileToOpen, close_plugin_after_replace: bool, context: BTreeMap<String, String>) {
-    let plugin_command = PluginCommand::OpenFileInPlaceOfPlugin(file_to_open, close_plugin_after_replace, context);
+pub fn open_file_in_place_of_plugin(
+    file_to_open: FileToOpen,
+    close_plugin_after_replace: bool,
+    context: BTreeMap<String, String>,
+) {
+    let plugin_command =
+        PluginCommand::OpenFileInPlaceOfPlugin(file_to_open, close_plugin_after_replace, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -192,7 +197,8 @@ pub fn open_terminal_in_place<P: AsRef<Path>>(path: P) {
 /// replacing the plugin pane
 pub fn open_terminal_in_place_of_plugin<P: AsRef<Path>>(path: P, close_plugin_after_replace: bool) {
     let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
-    let plugin_command = PluginCommand::OpenTerminalInPlaceOfPlugin(file_to_open, close_plugin_after_replace);
+    let plugin_command =
+        PluginCommand::OpenTerminalInPlaceOfPlugin(file_to_open, close_plugin_after_replace);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -263,7 +269,11 @@ pub fn open_command_pane_in_place_of_plugin(
     close_plugin_after_replace: bool,
     context: BTreeMap<String, String>,
 ) {
-    let plugin_command = PluginCommand::OpenCommandPaneInPlaceOfPlugin(command_to_run, close_plugin_after_replace, context);
+    let plugin_command = PluginCommand::OpenCommandPaneInPlaceOfPlugin(
+        command_to_run,
+        close_plugin_after_replace,
+        context,
+    );
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

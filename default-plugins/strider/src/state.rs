@@ -202,7 +202,11 @@ impl State {
                 }
             } else {
                 if self.close_on_selection {
-                    open_file_in_place_of_plugin(FileToOpen::new(&self.file_list_view.path), true, BTreeMap::new());
+                    open_file_in_place_of_plugin(
+                        FileToOpen::new(&self.file_list_view.path),
+                        true,
+                        BTreeMap::new(),
+                    );
                 } else {
                     open_file(FileToOpen::new(&self.file_list_view.path), BTreeMap::new());
                 }

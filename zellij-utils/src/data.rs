@@ -2298,7 +2298,7 @@ pub enum PluginCommand {
     OpenTerminalInPlaceOfPlugin(FileToOpen, bool), // bool -> close_plugin_after_replace
     OpenCommandPaneFloatingNearPlugin(CommandToRun, Option<FloatingPaneCoordinates>, Context),
     OpenCommandPaneInPlaceOfPlugin(CommandToRun, bool, Context), // bool ->
-                                                                 // close_plugin_after_replace
+    // close_plugin_after_replace
     OpenFileNearPlugin(FileToOpen, Context),
     OpenFileFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>, Context),
     OpenFileInPlaceOfPlugin(FileToOpen, bool, Context), // bool -> close_plugin_after_replace

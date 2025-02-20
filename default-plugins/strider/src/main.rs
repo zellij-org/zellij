@@ -74,7 +74,6 @@ impl ZellijPlugin for State {
                 },
                 BareKey::Esc if key.has_no_modifiers() => {
                     if self.is_searching {
-                        // self.clear_search_term_or_descend();
                         self.clear_search_term();
                     } else {
                         self.file_list_view.clear_selected();
@@ -99,7 +98,7 @@ impl ZellijPlugin for State {
                 BareKey::Right if key.has_no_modifiers() => {
                     self.traverse_dir();
                     should_render = true;
-                }
+                },
                 BareKey::Left if key.has_no_modifiers() => {
                     self.descend_to_previous_path();
                     should_render = true;
