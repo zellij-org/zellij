@@ -24,7 +24,7 @@ pub fn one_line_ui(
     clipboard_failure: bool,
 ) -> LinePart {
     if let Some(text_copied_to_clipboard_destination) = text_copied_to_clipboard_destination {
-        return text_copied_hint(&help.style.colors, text_copied_to_clipboard_destination);
+        return text_copied_hint(text_copied_to_clipboard_destination);
     }
     if clipboard_failure {
         return system_clipboard_error(&help.style.colors);

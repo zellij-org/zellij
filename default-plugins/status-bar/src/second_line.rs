@@ -348,8 +348,7 @@ pub fn keybinds(help: &ModeInfo, tip_name: &str, max_width: usize) -> LinePart {
     best_effort_shortcut_list(help, tip_body.short, max_width)
 }
 
-pub fn text_copied_hint(palette: &Styling, copy_destination: CopyDestination) -> LinePart {
-    let green_color = palette_match!(palette.text_unselected.emphasis_2);
+pub fn text_copied_hint(copy_destination: CopyDestination) -> LinePart {
     let hint = match copy_destination {
         CopyDestination::Command => "Text piped to external command",
         #[cfg(not(target_os = "macos"))]
@@ -359,7 +358,7 @@ pub fn text_copied_hint(palette: &Styling, copy_destination: CopyDestination) ->
         CopyDestination::System => "Text copied to system clipboard",
     };
     LinePart {
-        part: Style::new().fg(green_color).bold().paint(hint).to_string(),
+        part: serialize_text(&Text::new(&hint).color_range(2, ..).opaque()),
         len: hint.len(),
     }
 }
