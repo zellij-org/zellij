@@ -2394,7 +2394,12 @@ impl Screen {
         client_id_tab_index_or_pane_id: ClientTabIndexOrPaneId,
     ) -> Result<()> {
         let suppress_pane = |tab: &mut Tab, pane_id: PaneId, new_pane_id: PaneId| {
-            let _ = tab.suppress_pane_and_replace_with_pid(pane_id, new_pane_id, close_replaced_pane, run);
+            let _ = tab.suppress_pane_and_replace_with_pid(
+                pane_id,
+                new_pane_id,
+                close_replaced_pane,
+                run,
+            );
             if let Some(pane_title) = pane_title {
                 let _ = tab.rename_pane(pane_title.as_bytes().to_vec(), new_pane_id);
             }
