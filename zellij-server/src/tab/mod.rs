@@ -1358,6 +1358,11 @@ impl Tab {
                         .replace_pane(old_pane_id, Box::new(new_pane))
                 };
                 if close_replaced_pane {
+                    if let Some(pid) = replaced_pane.as_ref().map(|p| p.pid()) {
+                        self.senders
+                            .send_to_pty(PtyInstruction::ClosePane(pid))
+                            .with_context(err_context)?;
+                    }
                     drop(replaced_pane);
                 } else {
                     match replaced_pane {

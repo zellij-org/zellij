@@ -32,7 +32,7 @@ impl ZellijPlugin for State {
             EventType::Timer,
             EventType::FileSystemUpdate,
         ]);
-        self.file_list_view.reset_selected();
+        self.file_list_view.clear_selected();
         // the caller_cwd might be different from the initial_cwd if this plugin was defined as an
         // alias, with access to a certain part of the file system (often broader) and was called
         // from an individual pane somewhere inside this broad scope - in this case, we want to
@@ -92,23 +92,14 @@ impl ZellijPlugin for State {
                     self.move_selection_down();
                     should_render = true;
                 },
-                //                 TODO: handle send_filepick_response case
-//                 BareKey::Enter
-//                     if key.has_no_modifiers() && self.handling_filepick_request_from.is_some() =>
-//                 {
-//                     self.send_filepick_response();
-//                 },
-//                 BareKey::Enter if key.has_no_modifiers() => {
-//                     self.open_selected_path();
-//                 },
-                BareKey::Enter if key.has_no_modifiers() && self.has_no_selected_entry() => {
-                    self.open_selected_path();
-                    should_render = true;
-                },
                 BareKey::Right | BareKey::Tab | BareKey::Enter if key.has_no_modifiers() => {
                     self.traverse_dir();
                     should_render = true;
                 },
+                BareKey::Right if key.has_no_modifiers() => {
+                    self.traverse_dir();
+                    should_render = true;
+                }
                 BareKey::Left if key.has_no_modifiers() => {
                     self.descend_to_previous_path();
                     should_render = true;

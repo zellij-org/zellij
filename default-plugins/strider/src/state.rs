@@ -14,9 +14,6 @@ pub struct State {
     pub file_list_view: FileListView,
     pub search_view: SearchView,
     pub hide_hidden_files: bool,
-    pub loading: bool,
-    pub loading_animation_offset: u8,
-    pub should_open_floating: bool,
     pub current_rows: Option<usize>,
     pub handling_filepick_request_from: Option<(PipeSource, BTreeMap<String, String>)>,
     pub initial_cwd: PathBuf, // TODO: get this from zellij
@@ -110,7 +107,6 @@ impl State {
             }
         }
     }
-    // TODO: check performance?
     pub fn handle_mouse_hover(&mut self, line: isize) {
         if let Some(current_rows) = self.current_rows {
             let rows_for_list = current_rows.saturating_sub(5);
@@ -147,16 +143,7 @@ impl State {
     pub fn toggle_hidden_files(&mut self) {
         self.hide_hidden_files = !self.hide_hidden_files;
     }
-    pub fn has_no_selected_entry(&self) -> bool {
-        if self.is_searching {
-            self.search_view.get_selected_entry().is_none()
-        } else {
-            self.file_list_view.get_selected_entry().is_none()
-        }
-    }
     pub fn traverse_dir(&mut self) {
-        // TODO: CONTINUE HERE (18/02) - handle filepicker response, then if we're satisfied with
-        // the UX, adjust the UI as needed
         let entry = if self.is_searching {
             self.search_view.get_selected_entry()
         } else {
@@ -172,11 +159,17 @@ impl State {
                 FsEntry::File(_p, _) => {
                     self.file_list_view.enter_dir(&entry);
                     self.search_view.clear_and_reset_selection();
-                    // TODO: if this is a handling_filepick_request_from, we need to do that
-                    // instead of this
-                    self.open_selected_path();
+                    if self.handling_filepick_request_from.is_some() {
+                        self.send_filepick_response();
+                    } else {
+                        self.open_selected_path();
+                    }
                 },
             }
+        } else if self.handling_filepick_request_from.is_some() {
+            self.send_filepick_response();
+        } else {
+            self.open_selected_path();
         }
         self.is_searching = false;
         self.search_term.clear();
