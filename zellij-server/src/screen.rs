@@ -3851,11 +3851,19 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::MouseEvent(event, client_id) => {
-                let state_changed = screen
+                let mouse_effect = screen
                     .get_active_tab_mut(client_id)
                     .and_then(|tab| tab.handle_mouse_event(&event, client_id))?;
-                if state_changed {
+                if mouse_effect.state_changed {
                     screen.log_and_report_session_state()?;
+                }
+                if !mouse_effect.leave_clipboard_message {
+                    let _ = screen.bus.senders
+                        .send_to_plugin(PluginInstruction::Update(vec![(
+                            None,
+                            Some(client_id),
+                            Event::InputReceived,
+                        )]));
                 }
                 screen.render(None)?;
             },

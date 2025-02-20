@@ -47,7 +47,9 @@ pub(crate) fn route_action(
     let mut should_break = false;
     let err_context = || format!("failed to route action for client {client_id}");
 
-    if !action.is_mouse_motion() {
+    if !action.is_mouse_action() {
+        // mouse actions should only send InputReceived to plugins
+        // if they do not result in text being marked, this is handled in Tab
         senders
             .send_to_plugin(PluginInstruction::Update(vec![(
                 None,
