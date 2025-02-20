@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(mouse): double-click to mark word boundaries, triple-click to mark entire paragraph (https://github.com/zellij-org/zellij/pull/3996)
 * feat(ux): improve filepicker UX (https://github.com/zellij-org/zellij/pull/4007)
 * fix(clipboard): various clipboard message fixes (https://github.com/zellij-org/zellij/pull/4009)
+* fix(logging): fix segfault in chrono crate (https://github.com/zellij-org/zellij/pull/4010)
 
 ## [0.41.2] - 2024-11-19
 * fix(input): keypresses not being identified properly with kitty keyboard protocol in some terminals (https://github.com/zellij-org/zellij/pull/3725)
