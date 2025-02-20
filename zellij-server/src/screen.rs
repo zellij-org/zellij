@@ -3858,7 +3858,9 @@ pub(crate) fn screen_thread_main(
                     screen.log_and_report_session_state()?;
                 }
                 if !mouse_effect.leave_clipboard_message {
-                    let _ = screen.bus.senders
+                    let _ = screen
+                        .bus
+                        .senders
                         .send_to_plugin(PluginInstruction::Update(vec![(
                             None,
                             Some(client_id),

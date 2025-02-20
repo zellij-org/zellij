@@ -3366,7 +3366,11 @@ impl Tab {
 
     // returns true if the mouse event caused some sort of tab/pane state change that needs to be
     // reported to plugins
-    pub fn handle_mouse_event(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<MouseEffect> {
+    pub fn handle_mouse_event(
+        &mut self,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
         let err_context =
             || format!("failed to handle mouse event {event:?} for client {client_id}");
 
@@ -3655,7 +3659,11 @@ impl Tab {
         }
     }
 
-    pub fn handle_right_click(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<MouseEffect> {
+    pub fn handle_right_click(
+        &mut self,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
         let err_context = || format!("failed to handle mouse right click for client {client_id}");
 
         let absolute_position = event.position;
@@ -3689,7 +3697,11 @@ impl Tab {
         Ok(MouseEffect::default())
     }
 
-    fn handle_middle_click(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<MouseEffect> {
+    fn handle_middle_click(
+        &mut self,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
         let err_context = || format!("failed to handle mouse middle click for client {client_id}");
         let absolute_position = event.position;
 
@@ -3721,7 +3733,11 @@ impl Tab {
         Ok(MouseEffect::default())
     }
 
-    fn handle_mouse_no_click(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<MouseEffect> {
+    fn handle_mouse_no_click(
+        &mut self,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
         let err_context = || format!("failed to handle mouse no click for client {client_id}");
         let absolute_position = event.position;
 
