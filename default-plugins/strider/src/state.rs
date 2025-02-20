@@ -14,9 +14,6 @@ pub struct State {
     pub file_list_view: FileListView,
     pub search_view: SearchView,
     pub hide_hidden_files: bool,
-    pub loading: bool,
-    pub loading_animation_offset: u8,
-    pub should_open_floating: bool,
     pub current_rows: Option<usize>,
     pub handling_filepick_request_from: Option<(PipeSource, BTreeMap<String, String>)>,
     pub initial_cwd: PathBuf, // TODO: get this from zellij
@@ -49,6 +46,12 @@ impl State {
             self.search_view
                 .update_search_results(&self.search_term, &self.file_list_view.files);
         }
+    }
+    pub fn clear_search_term(&mut self) {
+        self.search_term.clear();
+        self.search_view
+            .update_search_results(&self.search_term, &self.file_list_view.files);
+        self.is_searching = false;
     }
     pub fn clear_search_term_or_descend(&mut self) {
         if self.search_term.is_empty() {
@@ -85,7 +88,7 @@ impl State {
                 );
                 let prev_selected = self.search_view.selected_search_result;
                 self.search_view.selected_search_result =
-                    (line as usize).saturating_sub(2) + start_index;
+                    (line as usize).saturating_sub(4) + start_index;
                 if prev_selected == self.search_view.selected_search_result {
                     self.traverse_dir();
                 }
@@ -97,10 +100,32 @@ impl State {
                 );
                 let prev_selected = self.file_list_view.selected();
                 *self.file_list_view.selected_mut() =
-                    (line as usize).saturating_sub(2) + start_index;
+                    (line as usize).saturating_sub(4) + start_index;
                 if prev_selected == self.file_list_view.selected() {
                     self.traverse_dir();
                 }
+            }
+        }
+    }
+    pub fn handle_mouse_hover(&mut self, line: isize) {
+        if let Some(current_rows) = self.current_rows {
+            let rows_for_list = current_rows.saturating_sub(5);
+            if self.is_searching {
+                let (start_index, _selected_index_in_range, _end_index) = calculate_list_bounds(
+                    self.search_view.search_result_count(),
+                    rows_for_list,
+                    Some(self.search_view.selected_search_result),
+                );
+                self.search_view.selected_search_result =
+                    (line as usize).saturating_sub(4) + start_index;
+            } else {
+                let (start_index, _selected_index_in_range, _end_index) = calculate_list_bounds(
+                    self.file_list_view.files.len(),
+                    rows_for_list,
+                    self.file_list_view.selected(),
+                );
+                *self.file_list_view.selected_mut() =
+                    (line as usize).saturating_sub(4) + start_index;
             }
         }
     }
@@ -134,8 +159,17 @@ impl State {
                 FsEntry::File(_p, _) => {
                     self.file_list_view.enter_dir(&entry);
                     self.search_view.clear_and_reset_selection();
+                    if self.handling_filepick_request_from.is_some() {
+                        self.send_filepick_response();
+                    } else {
+                        self.open_selected_path();
+                    }
                 },
             }
+        } else if self.handling_filepick_request_from.is_some() {
+            self.send_filepick_response();
+        } else {
+            self.open_selected_path();
         }
         self.is_searching = false;
         self.search_term.clear();
@@ -147,19 +181,36 @@ impl State {
     }
     pub fn open_selected_path(&mut self) {
         if self.file_list_view.path_is_dir {
-            open_terminal(&self.file_list_view.path);
+            if self.close_on_selection {
+                open_terminal_in_place_of_plugin(&self.file_list_view.path, true);
+            } else {
+                open_terminal(&self.file_list_view.path);
+            }
         } else {
             if let Some(parent_folder) = self.file_list_view.path.parent() {
-                open_file(
-                    FileToOpen::new(&self.file_list_view.path).with_cwd(parent_folder.into()),
-                    BTreeMap::new(),
-                );
+                if self.close_on_selection {
+                    open_file_in_place_of_plugin(
+                        FileToOpen::new(&self.file_list_view.path).with_cwd(parent_folder.into()),
+                        true,
+                        BTreeMap::new(),
+                    );
+                } else {
+                    open_file(
+                        FileToOpen::new(&self.file_list_view.path).with_cwd(parent_folder.into()),
+                        BTreeMap::new(),
+                    );
+                }
             } else {
-                open_file(FileToOpen::new(&self.file_list_view.path), BTreeMap::new());
+                if self.close_on_selection {
+                    open_file_in_place_of_plugin(
+                        FileToOpen::new(&self.file_list_view.path),
+                        true,
+                        BTreeMap::new(),
+                    );
+                } else {
+                    open_file(FileToOpen::new(&self.file_list_view.path), BTreeMap::new());
+                }
             }
-        }
-        if self.close_on_selection {
-            close_self();
         }
     }
     pub fn send_filepick_response(&mut self) {

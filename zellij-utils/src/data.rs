@@ -2299,10 +2299,11 @@ pub enum PluginCommand {
     OpenCommandPaneNearPlugin(CommandToRun, Context),
     OpenTerminalNearPlugin(FileToOpen),
     OpenTerminalFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>),
-    OpenTerminalInPlaceOfPlugin(FileToOpen),
+    OpenTerminalInPlaceOfPlugin(FileToOpen, bool), // bool -> close_plugin_after_replace
     OpenCommandPaneFloatingNearPlugin(CommandToRun, Option<FloatingPaneCoordinates>, Context),
-    OpenCommandPaneInPlaceOfPlugin(CommandToRun, Context),
+    OpenCommandPaneInPlaceOfPlugin(CommandToRun, bool, Context), // bool ->
+    // close_plugin_after_replace
     OpenFileNearPlugin(FileToOpen, Context),
     OpenFileFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>, Context),
-    OpenFileInPlaceOfPlugin(FileToOpen, Context),
+    OpenFileInPlaceOfPlugin(FileToOpen, bool, Context), // bool -> close_plugin_after_replace
 }

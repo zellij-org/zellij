@@ -312,11 +312,13 @@ pub(crate) fn route_action(
                     Some(pane_id) => PtyInstruction::SpawnInPlaceTerminal(
                         Some(open_file),
                         Some(title),
+                        false,
                         ClientTabIndexOrPaneId::PaneId(pane_id),
                     ),
                     None => PtyInstruction::SpawnInPlaceTerminal(
                         Some(open_file),
                         Some(title),
+                        false,
                         ClientTabIndexOrPaneId::ClientId(client_id),
                     ),
                 },
@@ -389,6 +391,7 @@ pub(crate) fn route_action(
                         .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
                             run_cmd,
                             name,
+                            false,
                             ClientTabIndexOrPaneId::PaneId(pane_id),
                         ))
                         .with_context(err_context)?;
@@ -398,6 +401,7 @@ pub(crate) fn route_action(
                         .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
                             run_cmd,
                             name,
+                            false,
                             ClientTabIndexOrPaneId::ClientId(client_id),
                         ))
                         .with_context(err_context)?;

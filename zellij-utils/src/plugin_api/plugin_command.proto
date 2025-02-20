@@ -243,6 +243,7 @@ message OpenFileInPlaceOfPluginPayload {
   file.File file_to_open = 1;
   optional FloatingPaneCoordinates floating_pane_coordinates = 2;
   repeated ContextItem context = 3;
+  bool close_plugin_after_replace = 4;
 }
 
 message OpenFileFloatingNearPluginPayload {
@@ -260,6 +261,7 @@ message OpenFileNearPluginPayload {
 message OpenCommandPaneInPlaceOfPluginPayload {
   command.Command command_to_run = 1;
   repeated ContextItem context = 3;
+  bool close_plugin_after_replace = 4;
 }
 
 message OpenCommandPaneFloatingNearPluginPayload {
@@ -271,6 +273,7 @@ message OpenCommandPaneFloatingNearPluginPayload {
 message OpenTerminalInPlaceOfPluginPayload {
   file.File file_to_open = 1;
   repeated ContextItem context = 3;
+  bool close_plugin_after_replace = 4;
 }
 
 message OpenTerminalFloatingNearPluginPayload {

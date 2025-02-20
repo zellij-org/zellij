@@ -219,6 +219,8 @@ pub struct OpenFileInPlaceOfPluginPayload {
     pub floating_pane_coordinates: ::core::option::Option<FloatingPaneCoordinates>,
     #[prost(message, repeated, tag = "3")]
     pub context: ::prost::alloc::vec::Vec<ContextItem>,
+    #[prost(bool, tag = "4")]
+    pub close_plugin_after_replace: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -247,6 +249,8 @@ pub struct OpenCommandPaneInPlaceOfPluginPayload {
     pub command_to_run: ::core::option::Option<super::command::Command>,
     #[prost(message, repeated, tag = "3")]
     pub context: ::prost::alloc::vec::Vec<ContextItem>,
+    #[prost(bool, tag = "4")]
+    pub close_plugin_after_replace: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -265,6 +269,8 @@ pub struct OpenTerminalInPlaceOfPluginPayload {
     pub file_to_open: ::core::option::Option<super::file::File>,
     #[prost(message, repeated, tag = "3")]
     pub context: ::prost::alloc::vec::Vec<ContextItem>,
+    #[prost(bool, tag = "4")]
+    pub close_plugin_after_replace: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

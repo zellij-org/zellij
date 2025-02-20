@@ -1422,6 +1422,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 )) => match open_terminal_in_place_of_plugin_payload.file_to_open {
                     Some(file_to_open) => Ok(PluginCommand::OpenTerminalInPlaceOfPlugin(
                         file_to_open.try_into()?,
+                        open_terminal_in_place_of_plugin_payload.close_plugin_after_replace,
                     )),
                     None => Err("Malformed open terminal in place of plugin payload"),
                 },
@@ -1467,6 +1468,8 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                     .collect();
                             Ok(PluginCommand::OpenCommandPaneInPlaceOfPlugin(
                                 command_to_run.try_into()?,
+                                open_command_pane_in_place_of_plugin_payload
+                                    .close_plugin_after_replace,
                                 context,
                             ))
                         },
@@ -1528,6 +1531,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                 .collect();
                             Ok(PluginCommand::OpenFileInPlaceOfPlugin(
                                 file_to_open.try_into()?,
+                                file_to_open_payload.close_plugin_after_replace,
                                 context,
                             ))
                         },
@@ -2467,16 +2471,23 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
-            PluginCommand::OpenTerminalInPlaceOfPlugin(cwd) => Ok(ProtobufPluginCommand {
-                name: CommandName::OpenTerminalInPlaceOfPlugin as i32,
-                payload: Some(Payload::OpenTerminalInPlaceOfPluginPayload(
-                    OpenTerminalInPlaceOfPluginPayload {
-                        file_to_open: Some(cwd.try_into()?),
-                        context: vec![], // will be added in the future
-                    },
-                )),
-            }),
-            PluginCommand::OpenCommandPaneInPlaceOfPlugin(command_to_run, context) => {
+            PluginCommand::OpenTerminalInPlaceOfPlugin(cwd, close_plugin_after_replace) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenTerminalInPlaceOfPlugin as i32,
+                    payload: Some(Payload::OpenTerminalInPlaceOfPluginPayload(
+                        OpenTerminalInPlaceOfPluginPayload {
+                            file_to_open: Some(cwd.try_into()?),
+                            close_plugin_after_replace,
+                            context: vec![], // will be added in the future
+                        },
+                    )),
+                })
+            },
+            PluginCommand::OpenCommandPaneInPlaceOfPlugin(
+                command_to_run,
+                close_plugin_after_replace,
+                context,
+            ) => {
                 let context: Vec<_> = context
                     .into_iter()
                     .map(|(name, value)| ContextItem { name, value })
@@ -2486,6 +2497,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     payload: Some(Payload::OpenCommandPaneInPlaceOfPluginPayload(
                         OpenCommandPaneInPlaceOfPluginPayload {
                             command_to_run: Some(command_to_run.try_into()?),
+                            close_plugin_after_replace,
                             context,
                         },
                     )),
@@ -2521,21 +2533,24 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
-            PluginCommand::OpenFileInPlaceOfPlugin(file_to_open, context) => {
-                Ok(ProtobufPluginCommand {
-                    name: CommandName::OpenFileInPlaceOfPlugin as i32,
-                    payload: Some(Payload::OpenFileInPlaceOfPluginPayload(
-                        OpenFileInPlaceOfPluginPayload {
-                            file_to_open: Some(file_to_open.try_into()?),
-                            floating_pane_coordinates: None,
-                            context: context
-                                .into_iter()
-                                .map(|(name, value)| ContextItem { name, value })
-                                .collect(),
-                        },
-                    )),
-                })
-            },
+            PluginCommand::OpenFileInPlaceOfPlugin(
+                file_to_open,
+                close_plugin_after_replace,
+                context,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::OpenFileInPlaceOfPlugin as i32,
+                payload: Some(Payload::OpenFileInPlaceOfPluginPayload(
+                    OpenFileInPlaceOfPluginPayload {
+                        file_to_open: Some(file_to_open.try_into()?),
+                        floating_pane_coordinates: None,
+                        close_plugin_after_replace,
+                        context: context
+                            .into_iter()
+                            .map(|(name, value)| ContextItem { name, value })
+                            .collect(),
+                    },
+                )),
+            }),
         }
     }
 }
