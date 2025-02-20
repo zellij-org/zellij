@@ -147,6 +147,33 @@ enum BufferedTabInstruction {
     HoldPane(PaneId, Option<i32>, bool, RunCommand), // Option<i32> is the exit status, bool is is_first_run
 }
 
+#[derive(Debug, Default, Copy, Clone)]
+pub struct MouseEffect {
+    pub state_changed: bool,
+    pub leave_clipboard_message: bool,
+}
+
+impl MouseEffect {
+    pub fn state_changed() -> Self {
+        MouseEffect {
+            state_changed: true,
+            leave_clipboard_message: false,
+        }
+    }
+    pub fn leave_clipboard_message() -> Self {
+        MouseEffect {
+            state_changed: false,
+            leave_clipboard_message: true,
+        }
+    }
+    pub fn state_changed_and_leave_clipboard_message() -> Self {
+        MouseEffect {
+            state_changed: true,
+            leave_clipboard_message: true,
+        }
+    }
+}
+
 pub(crate) struct Tab {
     pub index: usize,
     pub position: usize,
@@ -3225,7 +3252,7 @@ impl Tab {
         point: &Position,
         lines: usize,
         client_id: ClientId,
-    ) -> Result<bool> {
+    ) -> Result<MouseEffect> {
         let err_context = || {
             format!("failed to handle scrollwheel up at position {point:?} for client {client_id}")
         };
@@ -3246,7 +3273,7 @@ impl Tab {
                 pane.scroll_up(lines, client_id);
             }
         }
-        Ok(false)
+        Ok(MouseEffect::default())
     }
 
     pub fn handle_scrollwheel_down(
@@ -3254,7 +3281,7 @@ impl Tab {
         point: &Position,
         lines: usize,
         client_id: ClientId,
-    ) -> Result<bool> {
+    ) -> Result<MouseEffect> {
         let err_context = || {
             format!(
                 "failed to handle scrollwheel down at position {point:?} for client {client_id}"
@@ -3283,7 +3310,7 @@ impl Tab {
                 }
             }
         }
-        Ok(false)
+        Ok(MouseEffect::default())
     }
 
     fn get_pane_at(
@@ -3353,7 +3380,11 @@ impl Tab {
 
     // returns true if the mouse event caused some sort of tab/pane state change that needs to be
     // reported to plugins
-    pub fn handle_mouse_event(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<bool> {
+    pub fn handle_mouse_event(
+        &mut self,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
         let err_context =
             || format!("failed to handle mouse event {event:?} for client {client_id}");
 
@@ -3423,7 +3454,7 @@ impl Tab {
         &mut self,
         event: &MouseEvent,
         client_id: ClientId,
-    ) -> Result<bool> {
+    ) -> Result<MouseEffect> {
         let err_context =
             || format!("failed to handle mouse event {event:?} for client {client_id}");
         let floating_panes_are_visible = self.floating_panes.panes_are_visible();
@@ -3436,7 +3467,7 @@ impl Tab {
             let intercepted = pane_at_position.intercept_mouse_event_on_frame(&event, client_id);
             if intercepted {
                 self.set_force_render();
-                return Ok(true);
+                return Ok(MouseEffect::state_changed());
             } else if floating_panes_are_visible {
                 // start moving if floating pane
                 let search_selectable = false;
@@ -3446,7 +3477,7 @@ impl Tab {
                 {
                     self.swap_layouts.set_is_floating_damaged();
                     self.set_force_render();
-                    return Ok(true);
+                    return Ok(MouseEffect::state_changed());
                 }
             }
         } else {
@@ -3466,19 +3497,26 @@ impl Tab {
                 }
             } else {
                 // start selection for copy/paste
+                let mut leave_clipboard_message = false;
                 pane_at_position.start_selection(&relative_position, client_id);
+                if pane_at_position.get_selected_text().is_some() {
+                    leave_clipboard_message = true;
+                }
                 if let PaneId::Terminal(_) = pane_at_position.pid() {
                     self.selecting_with_mouse_in_pane = Some(pane_at_position.pid());
                 }
+                if leave_clipboard_message {
+                    return Ok(MouseEffect::leave_clipboard_message());
+                }
             }
         }
-        Ok(false)
+        Ok(MouseEffect::default())
     }
     fn handle_inactive_pane_left_mouse_press(
         &mut self,
         event: &MouseEvent,
         client_id: ClientId,
-    ) -> Result<bool> {
+    ) -> Result<MouseEffect> {
         let err_context =
             || format!("failed to handle mouse event {event:?} for client {client_id}");
         if !self.floating_panes.panes_are_visible() {
@@ -3492,7 +3530,7 @@ impl Tab {
                 // focus it
                 self.show_floating_panes();
                 self.floating_panes.focus_pane(pane_id, client_id);
-                return Ok(true);
+                return Ok(MouseEffect::state_changed());
             }
         }
         let active_pane_id_before_click = self
@@ -3514,25 +3552,30 @@ impl Tab {
             // we do this because this might be the beginning of the user dragging a pane
             // that was not focused
             // TODO: rename move_pane_with_mouse to "start_moving_pane_with_mouse"?
-            return Ok(self
+            let moved_pane_with_mouse = self
                 .floating_panes
-                .move_pane_with_mouse(event.position, search_selectable));
+                .move_pane_with_mouse(event.position, search_selectable);
+            if moved_pane_with_mouse {
+                return Ok(MouseEffect::state_changed());
+            } else {
+                return Ok(MouseEffect::default());
+            }
         }
         let active_pane_id_after_click = self
             .get_active_pane_id(client_id)
             .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
         if active_pane_id_before_click != active_pane_id_after_click {
             // focus changed, need to report it
-            Ok(true)
+            Ok(MouseEffect::state_changed())
         } else {
-            Ok(false)
+            Ok(MouseEffect::default())
         }
     }
     fn handle_left_mouse_motion(
         &mut self,
         event: &MouseEvent,
         client_id: ClientId,
-    ) -> Result<bool> {
+    ) -> Result<MouseEffect> {
         let err_context =
             || format!("failed to handle mouse event {event:?} for client {client_id}");
         let pane_is_being_moved_with_mouse = self.floating_panes.pane_is_being_moved_with_mouse();
@@ -3547,7 +3590,7 @@ impl Tab {
             {
                 self.swap_layouts.set_is_floating_damaged();
                 self.set_force_render();
-                return Ok(true);
+                return Ok(MouseEffect::state_changed());
             }
         } else if let Some(pane_id_with_selection) = self.selecting_with_mouse_in_pane {
             if let Some(pane_with_selection) = self.get_pane_with_id_mut(pane_id_with_selection) {
@@ -3563,15 +3606,16 @@ impl Tab {
                 self.write_mouse_event_to_active_pane(event, client_id)?;
             }
         }
-        Ok(false)
+        Ok(MouseEffect::default())
     }
     fn handle_left_mouse_release(
         &mut self,
         event: &MouseEvent,
         client_id: ClientId,
-    ) -> Result<bool> {
+    ) -> Result<MouseEffect> {
         let err_context =
             || format!("failed to handle mouse event {event:?} for client {client_id}");
+        let mut leave_clipboard_message = false;
         let floating_panes_are_visible = self.floating_panes.panes_are_visible();
         let copy_on_release = self.copy_on_select;
 
@@ -3606,6 +3650,7 @@ impl Tab {
                         let selected_text = pane_with_selection.get_selected_text();
 
                         if let Some(selected_text) = selected_text {
+                            leave_clipboard_message = true;
                             self.write_selection_to_clipboard(&selected_text)
                                 .with_context(err_context)?;
                         }
@@ -3621,10 +3666,18 @@ impl Tab {
         } else {
             self.write_mouse_event_to_active_pane(event, client_id)?;
         }
-        Ok(false)
+        if leave_clipboard_message {
+            Ok(MouseEffect::leave_clipboard_message())
+        } else {
+            Ok(MouseEffect::default())
+        }
     }
 
-    pub fn handle_right_click(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<bool> {
+    pub fn handle_right_click(
+        &mut self,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
         let err_context = || format!("failed to handle mouse right click for client {client_id}");
 
         let absolute_position = event.position;
@@ -3655,10 +3708,14 @@ impl Tab {
                 }
             }
         };
-        Ok(false)
+        Ok(MouseEffect::default())
     }
 
-    fn handle_middle_click(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<bool> {
+    fn handle_middle_click(
+        &mut self,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
         let err_context = || format!("failed to handle mouse middle click for client {client_id}");
         let absolute_position = event.position;
 
@@ -3687,10 +3744,14 @@ impl Tab {
                 }
             }
         };
-        Ok(false)
+        Ok(MouseEffect::default())
     }
 
-    fn handle_mouse_no_click(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<bool> {
+    fn handle_mouse_no_click(
+        &mut self,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
         let err_context = || format!("failed to handle mouse no click for client {client_id}");
         let absolute_position = event.position;
 
@@ -3719,7 +3780,7 @@ impl Tab {
                 }
             }
         };
-        Ok(false)
+        Ok(MouseEffect::leave_clipboard_message())
     }
 
     fn unselectable_pane_at_position(&mut self, point: &Position) -> Option<&mut Box<dyn Pane>> {

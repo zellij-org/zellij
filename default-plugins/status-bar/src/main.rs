@@ -329,7 +329,7 @@ impl State {
         let active_tab = self.tabs.iter().find(|t| t.active);
 
         if let Some(copy_destination) = self.text_copy_destination {
-            text_copied_hint(&self.mode_info.style.colors, copy_destination)
+            text_copied_hint(copy_destination)
         } else if self.display_system_clipboard_failure {
             system_clipboard_error(&self.mode_info.style.colors)
         } else if let Some(active_tab) = active_tab {
