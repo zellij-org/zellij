@@ -61,6 +61,12 @@ impl SwapLayouts {
     pub fn set_is_tiled_damaged(&mut self) {
         self.is_tiled_damaged = true;
     }
+    pub fn reset_floating_damage(&mut self) {
+        self.is_floating_damaged = false;
+    }
+    pub fn reset_tiled_damage(&mut self) {
+        self.is_tiled_damaged = false;
+    }
     pub fn is_floating_damaged(&self) -> bool {
         self.is_floating_damaged
     }
