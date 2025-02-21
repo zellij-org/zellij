@@ -4462,6 +4462,29 @@ impl SessionInfo {
             })
             .ok_or("Failed to parse available_layouts")?;
         let is_current_session = name == current_session_name;
+        let mut tab_history = BTreeMap::new();
+        if let Some(kdl_tab_history) = kdl_document.get("tab_history").and_then(|p| p.children()) {
+            for client_node in kdl_tab_history.nodes() {
+                if let Some(client_id) = client_node.children().and_then(|c| {
+                    c.get("id")
+                        .and_then(|c| c.entries().iter().next().and_then(|e| e.value().as_i64()))
+                }) {
+                    let mut history = vec![];
+                    if let Some(history_entries) = client_node
+                        .children()
+                        .and_then(|c| c.get("history"))
+                        .map(|h| h.entries())
+                    {
+                        for entry in history_entries {
+                            if let Some(entry) = entry.value().as_i64() {
+                                history.push(entry as usize);
+                            }
+                        }
+                    }
+                    tab_history.insert(client_id as u16, history);
+                }
+            }
+        }
         Ok(SessionInfo {
             name,
             tabs,
@@ -4470,6 +4493,7 @@ impl SessionInfo {
             is_current_session,
             available_layouts,
             plugins: Default::default(), // we do not serialize plugin information
+            tab_history,
         })
     }
     pub fn to_string(&self) -> String {
@@ -4510,11 +4534,30 @@ impl SessionInfo {
         }
         available_layouts.set_children(available_layouts_children);
 
+        let mut tab_history = KdlNode::new("tab_history");
+        let mut tab_history_children = KdlDocument::new();
+        for (client_id, client_tab_history) in &self.tab_history {
+            let mut client_document = KdlDocument::new();
+            let mut client_node = KdlNode::new("client");
+            let mut id = KdlNode::new("id");
+            id.push(*client_id as i64);
+            client_document.nodes_mut().push(id);
+            let mut history = KdlNode::new("history");
+            for entry in client_tab_history {
+                history.push(*entry as i64);
+            }
+            client_document.nodes_mut().push(history);
+            client_node.set_children(client_document);
+            tab_history_children.nodes_mut().push(client_node);
+        }
+        tab_history.set_children(tab_history_children);
+
         kdl_document.nodes_mut().push(name);
         kdl_document.nodes_mut().push(tabs);
         kdl_document.nodes_mut().push(panes);
         kdl_document.nodes_mut().push(connected_clients);
         kdl_document.nodes_mut().push(available_layouts);
+        kdl_document.nodes_mut().push(tab_history);
         kdl_document.fmt();
         kdl_document.to_string()
     }
@@ -5067,6 +5110,7 @@ fn serialize_and_deserialize_session_info_with_data() {
             LayoutInfo::File("layout3".to_owned()),
         ],
         plugins: Default::default(),
+        tab_history: Default::default(),
     };
     let serialized = session_info.to_string();
     let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();

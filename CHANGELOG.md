@@ -34,6 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(clipboard): various clipboard message fixes (https://github.com/zellij-org/zellij/pull/4009)
 * fix(logging): fix segfault in chrono crate (https://github.com/zellij-org/zellij/pull/4010)
 * fix(floating-panes): reset damage in swap layouts when closing the last pane (https://github.com/zellij-org/zellij/pull/4012)
+* feat(plugins): add tab_history to the session metadata (https://github.com/zellij-org/zellij/pull/4014)
 
 ## [0.41.2] - 2024-11-19
 * fix(input): keypresses not being identified properly with kitty keyboard protocol in some terminals (https://github.com/zellij-org/zellij/pull/3725)

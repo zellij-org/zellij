@@ -2,14 +2,14 @@ pub use super::generated_api::api::{
     action::{Action as ProtobufAction, Position as ProtobufPosition},
     event::{
         event::Payload as ProtobufEventPayload, ClientInfo as ProtobufClientInfo,
-        CopyDestination as ProtobufCopyDestination, Event as ProtobufEvent,
-        EventNameList as ProtobufEventNameList, EventType as ProtobufEventType,
-        FileMetadata as ProtobufFileMetadata, InputModeKeybinds as ProtobufInputModeKeybinds,
-        KeyBind as ProtobufKeyBind, LayoutInfo as ProtobufLayoutInfo,
-        ModeUpdatePayload as ProtobufModeUpdatePayload, PaneId as ProtobufPaneId,
-        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
-        PaneType as ProtobufPaneType, PluginInfo as ProtobufPluginInfo,
-        ResurrectableSession as ProtobufResurrectableSession,
+        ClientTabHistory as ProtobufClientTabHistory, CopyDestination as ProtobufCopyDestination,
+        Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
+        EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
+        InputModeKeybinds as ProtobufInputModeKeybinds, KeyBind as ProtobufKeyBind,
+        LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
+        PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
+        PaneManifest as ProtobufPaneManifest, PaneType as ProtobufPaneType,
+        PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
     },
     input_mode::InputMode as ProtobufInputMode,
@@ -771,10 +771,23 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
                 .into_iter()
                 .map(|p| ProtobufPluginInfo::from(p))
                 .collect(),
+            tab_history: session_info
+                .tab_history
+                .into_iter()
+                .map(|t| ProtobufClientTabHistory::from(t))
+                .collect(),
         })
     }
 }
 
+impl From<(u16, Vec<usize>)> for ProtobufClientTabHistory {
+    fn from((client_id, tab_history): (u16, Vec<usize>)) -> ProtobufClientTabHistory {
+        ProtobufClientTabHistory {
+            client_id: client_id as u32,
+            tab_history: tab_history.into_iter().map(|t| t as u32).collect(),
+        }
+    }
+}
 impl From<(u32, PluginInfo)> for ProtobufPluginInfo {
     fn from((plugin_id, plugin_info): (u32, PluginInfo)) -> ProtobufPluginInfo {
         ProtobufPluginInfo {
@@ -821,6 +834,16 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
                 },
             );
         }
+        let mut tab_history = BTreeMap::new();
+        for client_tab_history in protobuf_session_manifest.tab_history.into_iter() {
+            let client_id = client_tab_history.client_id;
+            let tab_history_for_client = client_tab_history
+                .tab_history
+                .iter()
+                .map(|t| *t as usize)
+                .collect();
+            tab_history.insert(client_id as u16, tab_history_for_client);
+        }
         Ok(SessionInfo {
             name: protobuf_session_manifest.name,
             tabs: protobuf_session_manifest
@@ -837,6 +860,7 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
                 .filter_map(|l| LayoutInfo::try_from(l).ok())
                 .collect(),
             plugins,
+            tab_history,
         })
     }
 }
@@ -1921,6 +1945,9 @@ fn serialize_session_update_event_with_non_default_values() {
             configuration: plugin_configuration,
         },
     );
+    let mut tab_history = BTreeMap::new();
+    tab_history.insert(1, vec![1, 2, 3]);
+    tab_history.insert(2, vec![1, 2, 3]);
     let session_info_1 = SessionInfo {
         name: "session 1".to_owned(),
         tabs: tab_infos,
@@ -1933,6 +1960,7 @@ fn serialize_session_update_event_with_non_default_values() {
             LayoutInfo::File("layout3".to_owned()),
         ],
         plugins,
+        tab_history,
     };
     let session_info_2 = SessionInfo {
         name: "session 2".to_owned(),
@@ -1948,6 +1976,7 @@ fn serialize_session_update_event_with_non_default_values() {
             LayoutInfo::File("layout3".to_owned()),
         ],
         plugins: Default::default(),
+        tab_history: Default::default(),
     };
     let session_infos = vec![session_info_1, session_info_2];
     let resurrectable_sessions = vec![];

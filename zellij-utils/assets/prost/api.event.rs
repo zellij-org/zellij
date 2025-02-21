@@ -316,6 +316,16 @@ pub struct SessionManifest {
     pub available_layouts: ::prost::alloc::vec::Vec<LayoutInfo>,
     #[prost(message, repeated, tag = "7")]
     pub plugins: ::prost::alloc::vec::Vec<PluginInfo>,
+    #[prost(message, repeated, tag = "8")]
+    pub tab_history: ::prost::alloc::vec::Vec<ClientTabHistory>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ClientTabHistory {
+    #[prost(uint32, tag = "1")]
+    pub client_id: u32,
+    #[prost(uint32, repeated, tag = "2")]
+    pub tab_history: ::prost::alloc::vec::Vec<u32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
