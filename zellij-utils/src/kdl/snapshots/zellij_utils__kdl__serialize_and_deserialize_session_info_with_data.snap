@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 5070
+assertion_line: 5111
 expression: serialized
 ---
 name "my session name"
@@ -94,5 +94,7 @@ available_layouts {
     layout1 source="file"
     layout2 source="built-in"
     layout3 source="file"
+}
+tab_history {
 }
 
