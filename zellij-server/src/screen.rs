@@ -1648,6 +1648,7 @@ impl Screen {
             is_current_session: true,
             available_layouts,
             plugins: Default::default(), // these are filled in by the wasm thread
+            tab_history: self.tab_history.clone(),
         };
         self.bus
             .senders

@@ -257,6 +257,12 @@ message SessionManifest {
   bool is_current_session = 5;
   repeated LayoutInfo available_layouts = 6;
   repeated PluginInfo plugins = 7;
+  repeated ClientTabHistory tab_history = 8;
+}
+
+message ClientTabHistory {
+  uint32 client_id = 1;
+  repeated uint32 tab_history = 2;
 }
 
 message PluginInfo {
