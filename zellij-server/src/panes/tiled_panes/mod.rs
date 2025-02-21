@@ -229,7 +229,7 @@ impl TiledPanes {
     fn add_pane(
         &mut self,
         pane_id: PaneId,
-        mut pane: Box<dyn Pane>,
+        pane: Box<dyn Pane>,
         should_relayout: bool,
         client_id: Option<ClientId>,
     ) {
@@ -245,6 +245,14 @@ impl TiledPanes {
                 return;
             }
         }
+        self.add_pane_without_stacked_resize(pane_id, pane, should_relayout)
+    }
+    fn add_pane_without_stacked_resize(
+        &mut self,
+        pane_id: PaneId,
+        mut pane: Box<dyn Pane>,
+        should_relayout: bool,
+    ) {
         let cursor_height_width_ratio = self.cursor_height_width_ratio();
         let mut pane_grid = TiledPaneGrid::new(
             &mut self.panes,
@@ -252,8 +260,6 @@ impl TiledPanes {
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
-        // TODO: make sure this is really the same as the pre-stacked-resizes function... and
-        // behaves the same and all
         let pane_id_and_split_direction =
             pane_grid.find_room_for_new_pane(cursor_height_width_ratio);
         match pane_id_and_split_direction {
@@ -317,8 +323,8 @@ impl TiledPanes {
                     self.set_force_render(); // TODO: why do we need this?
                     return;
                 },
-                Err(e) => {
-                    log::error!("Failed to add pane to stack: {:?}", e);
+                Err(_e) => {
+                    return self.add_pane_without_stacked_resize(pane_id, pane, should_relayout);
                 },
             }
         }
