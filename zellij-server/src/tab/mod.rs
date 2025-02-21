@@ -2786,6 +2786,7 @@ impl Tab {
             let _closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
             if !self.floating_panes.has_panes() {
+                self.swap_layouts.reset_floating_damage();
                 self.hide_floating_panes();
             }
             self.set_force_render();
@@ -2846,6 +2847,7 @@ impl Tab {
             let mut closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
             if !self.floating_panes.has_panes() {
+                self.swap_layouts.reset_floating_damage();
                 self.hide_floating_panes();
             }
             self.set_force_render();
