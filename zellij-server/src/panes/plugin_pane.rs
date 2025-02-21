@@ -745,6 +745,20 @@ impl Pane for PluginPane {
         }
         false
     }
+    fn intercept_mouse_event_on_frame(&mut self, event: &MouseEvent, client_id: ClientId) -> bool {
+        if self.position_is_on_frame(&event.position) {
+            let relative_position = self.relative_position(&event.position);
+            if let MouseEventType::Press = event.event_type {
+                if let Some(client_frame) = self.frame.get_mut(&client_id) {
+                    if client_frame.clicked_on_pinned(relative_position) {
+                        self.toggle_pinned();
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
     fn reset_logical_position(&mut self) {
         self.geom.logical_position = None;
     }
