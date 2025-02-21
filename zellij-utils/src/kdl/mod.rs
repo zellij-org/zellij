@@ -4465,9 +4465,16 @@ impl SessionInfo {
         let mut tab_history = BTreeMap::new();
         if let Some(kdl_tab_history) = kdl_document.get("tab_history").and_then(|p| p.children()) {
             for client_node in kdl_tab_history.nodes() {
-                if let Some(client_id) = client_node.children().and_then(|c| c.get("id").and_then(|c| c.entries().iter().next().and_then(|e| e.value().as_i64()))) {
+                if let Some(client_id) = client_node.children().and_then(|c| {
+                    c.get("id")
+                        .and_then(|c| c.entries().iter().next().and_then(|e| e.value().as_i64()))
+                }) {
                     let mut history = vec![];
-                    if let Some(history_entries) = client_node.children().and_then(|c| c.get("history")).map(|h| h.entries()) {
+                    if let Some(history_entries) = client_node
+                        .children()
+                        .and_then(|c| c.get("history"))
+                        .map(|h| h.entries())
+                    {
                         for entry in history_entries {
                             if let Some(entry) = entry.value().as_i64() {
                                 history.push(entry as usize);
