@@ -14,7 +14,7 @@ anyhow = { version = "1.0.70", features = ["backtrace"] }
 async-channel = "1.8.0"
 backtrace = "0.3.55"
 clap = { version = "3.2.2", features = ["derive", "env"] }
-clap_complete = "3.2.1"
+clap_complete = "4.3.0"
 colored = "2.0.0"
 colorsys = "0.6.5"
 crossbeam = "0.8.1"
