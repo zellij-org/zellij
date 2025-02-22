@@ -1,4 +1,7 @@
-use crate::{panes::PaneId, tab::Pane};
+use crate::{
+    panes::PaneId,
+    tab::{Pane, MIN_TERMINAL_HEIGHT},
+};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -419,7 +422,7 @@ impl<'a> StackedPanes<'a> {
         for stack in all_stacks {
             if let Some((id_of_flexible_pane_in_stack, _flexible_pane_in_stack)) = stack
                 .iter()
-                .find(|(_p_id, p)| !p.rows.is_fixed() && p.rows.as_usize() > 1)
+                .find(|(_p_id, p)| !p.rows.is_fixed() && p.rows.as_usize() > MIN_TERMINAL_HEIGHT)
             {
                 self.make_lowest_pane_in_stack_flexible(id_of_flexible_pane_in_stack)?;
                 let all_stacked_pane_positions =
@@ -452,7 +455,7 @@ impl<'a> StackedPanes<'a> {
         let stack = self.positions_in_stack(pane_id).with_context(err_context)?;
         if let Some((id_of_flexible_pane_in_stack, _flexible_pane_in_stack)) = stack
             .iter()
-            .find(|(_p_id, p)| !p.rows.is_fixed() && p.rows.as_usize() > 1)
+            .find(|(_p_id, p)| !p.rows.is_fixed() && p.rows.as_usize() > MIN_TERMINAL_HEIGHT)
         {
             self.make_lowest_pane_in_stack_flexible(id_of_flexible_pane_in_stack)?;
             let all_stacked_pane_positions =

@@ -1411,7 +1411,7 @@ impl<'a> TiledPaneGrid<'a> {
             .collect();
         flexible_pane_in_stack
             .iter()
-            .any(|(_p_id, p)| p.current_geom().rows.as_usize() > 1)
+            .any(|(_p_id, p)| p.current_geom().rows.as_usize() > MIN_TERMINAL_HEIGHT)
     }
     pub fn make_room_in_stack_for_pane(&mut self) -> Result<PaneGeom> {
         StackedPanes::new(self.panes.clone()).make_room_for_new_pane()
