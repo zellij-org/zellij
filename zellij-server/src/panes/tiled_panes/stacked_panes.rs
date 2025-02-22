@@ -1,4 +1,7 @@
-use crate::{panes::PaneId, tab::{Pane, MIN_TERMINAL_HEIGHT}};
+use crate::{
+    panes::PaneId,
+    tab::{Pane, MIN_TERMINAL_HEIGHT},
+};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;

@@ -356,7 +356,11 @@ impl TiledPanes {
                         return;
                     },
                     Err(_e) => {
-                        return self.add_pane_without_stacked_resize(pane_id, pane, should_relayout);
+                        return self.add_pane_without_stacked_resize(
+                            pane_id,
+                            pane,
+                            should_relayout,
+                        );
                     },
                 }
             },
