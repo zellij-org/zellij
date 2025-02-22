@@ -24,12 +24,18 @@ Run `zellij --help` to see available flags and subcommamds.
 CONFIGURATION
 =============
 
-Zellij looks for configuration file in the following order:
+Zellij looks for the configuration file, `config.kdl`, in the following order:
 
-1. the file provided with _--config_
-2. under the path provided in *ZELLIJ_CONFIG_FILE* environment variable
-3. the default location (see FILES section)
-4. the system location
+1. As specified by the _--config-dir_ flag
+2. At the path provided by the *ZELLIJ_CONFIG_DIR* environment variable
+3. At the default location (e.g. _$HOME/.config/zellij_)
+4. At the system location (_/etc/zellij_)
+
+See the FILES section below for more details.
+
+The name or path of the configuration file can be specified by the _--config_
+flag or by the *ZELLIJ_CONFIG_FILE* environment variable. Otherwise, it defaults
+to `config.kdl`.
 
 Run `zellij setup --check` in order to see possible issues with the
 configuration.
@@ -270,22 +276,22 @@ FILES
 =====
 
 Default user configuration directory location:
-* Linux: _$XDG_HOME/zellij /home/alice/.config/zellij_
+* Linux: _$XDG_CONFIG_HOME/zellij_ (e.g._/home/alice/.config/zellij_)
 * macOS: _/Users/Alice/Library/Application Support/com.Zellij-Contributors.zellij_
 
 Default user layout directory location:
 * Subdirectory called `layouts` inside of the configuration directory.
-* Linux: _$XDG_HOME/zellij/layouts /home/alice/.config/zellij/layouts
+* Linux: _$XDG_CONFIG_HOME/zellij/layouts_ (e.g. _/home/alice/.config/zellij/layouts_)
 * macOS: _/Users/Alice/Library/Application/layouts Support/com.Zellij-Contributors.zellij/layouts_
 
 Default plugin directory location:
-* Linux: _$XDG_DATA_HOME/zellij/plugins /home/alice/.local/share/plugins
+* Linux: _$XDG_DATA_HOME/zellij/plugins_ (e.g. _/home/alice/.local/share/zellij/plugins_)
 
 
 ENVIRONMENT
 ===========
 ZELLIJ_CONFIG_FILE
-  Path of Zellij config to load.
+  Name of the Zellij config file to load.
 ZELLIJ_CONFIG_DIR
   Path of the Zellij config directory.
 
