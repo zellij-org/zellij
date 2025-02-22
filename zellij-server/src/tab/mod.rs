@@ -825,7 +825,7 @@ impl Tab {
             .swap_layouts
             .swap_tiled_panes(&self.tiled_panes, search_backwards)
         {
-            LayoutApplier::new(
+            let application_res = LayoutApplier::new(
                 &self.viewport,
                 &self.senders,
                 &self.sixel_image_store,
@@ -846,8 +846,13 @@ impl Tab {
                 self.styled_underlines,
                 self.explicitly_disable_kitty_keyboard_protocol,
             )
-            .apply_tiled_panes_layout_to_existing_panes(&layout_candidate)
-            .non_fatal();
+            .apply_tiled_panes_layout_to_existing_panes(&layout_candidate);
+            if application_res.is_err() {
+                self.swap_layouts.set_is_tiled_damaged();
+                application_res.non_fatal();
+            }
+        } else {
+            self.swap_layouts.set_is_tiled_damaged();
         }
         self.tiled_panes.reapply_pane_frames();
         let display_area = *self.display_area.borrow();

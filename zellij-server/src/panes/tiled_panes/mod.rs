@@ -355,8 +355,8 @@ impl TiledPanes {
                         self.panes.insert(pane_id, pane); // TODO: is set_geom the right one?
                         return;
                     },
-                    Err(e) => {
-                        log::error!("Failed to add pane to stack: {:?}", e);
+                    Err(_e) => {
+                        return self.add_pane_without_stacked_resize(pane_id, pane, should_relayout);
                     },
                 }
             },
