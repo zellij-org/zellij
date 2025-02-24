@@ -189,7 +189,9 @@ impl<T: Serialize> IpcSenderWithContext<T> {
         } else {
             // TODO: unwrapping here can cause issues when the server disconnects which we don't mind
             // do we need to handle errors here in other cases?
-            let _ = self.sender.flush();
+            if let Err(e) = self.sender.flush() {
+                log::error!("Failed to flush ipc sender: {}", e);
+            }
             Ok(())
         }
     }

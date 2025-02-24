@@ -387,8 +387,6 @@ impl ClientSender {
             for msg in client_buffer_receiver.iter() {
                 sender.send(msg).with_context(err_context).non_fatal();
             }
-            // If we're here, the message buffer is broken for some reason
-            log::error!("Client buffer overflow!");
             let _ = sender.send(ServerToClientMsg::Exit(ExitReason::Disconnect));
         });
         ClientSender {
