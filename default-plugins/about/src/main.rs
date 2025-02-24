@@ -11,6 +11,9 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use tips::MAX_TIP_INDEX;
 
+use crate::active_component::ActiveComponent;
+use crate::pages::{ComponentLine, TextOrCustomRender};
+
 const UI_ROWS: usize = 20;
 const UI_COLUMNS: usize = 90;
 
@@ -158,7 +161,11 @@ impl ZellijPlugin for App {
         should_render
     }
     fn render(&mut self, rows: usize, cols: usize) {
-        self.active_page.render(rows, cols, &self.error);
+        if let Some(error) = &self.error {
+            self.render_error(rows, cols, error.to_owned())
+        } else {
+            self.active_page.render(rows, cols, &self.error);
+        }
     }
 }
 
@@ -260,6 +267,26 @@ impl App {
             should_render = self.active_page.handle_key(key);
         }
         should_render
+    }
+    fn render_error(&self, rows: usize, cols: usize, error: String) {
+        let mut error_page = Page::new()
+            .main_screen()
+            .with_title(Text::new(format!("{}", error)).color_range(3, ..))
+            .with_paragraph(vec![
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("Unable to permanently dismiss tips."),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("You can do so manually by adding the following to your config:"),
+                ))]),
+            ])
+            .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
+                TextOrCustomRender::Text(Text::new("show_startup_tips false").color_range(0, ..)),
+            )])])
+            .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
+                Text::new("<ESC> - dismiss").color_range(1, ..=4)
+            }));
+        error_page.render(rows, cols, &None)
     }
     fn center_own_pane(&mut self, tab_info: Vec<TabInfo>) {
         // we only take the size of the first tab because at the time of writing this is
