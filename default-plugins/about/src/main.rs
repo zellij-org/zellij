@@ -284,7 +284,7 @@ impl App {
                 TextOrCustomRender::Text(Text::new("show_startup_tips false").color_range(0, ..)),
             )])])
             .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
-                Text::new("<ESC> - dismiss").color_range(1, ..4)
+                Text::new("<ESC> - dismiss").color_range(1, ..=4)
             }));
         error_page.render(rows, cols, &None)
     }
