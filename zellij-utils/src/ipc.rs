@@ -187,8 +187,6 @@ impl<T: Serialize> IpcSenderWithContext<T> {
         if rmp_serde::encode::write(&mut self.sender, &(msg, err_ctx)).is_err() {
             Err(anyhow!("failed to send message to client"))
         } else {
-            // TODO: unwrapping here can cause issues when the server disconnects which we don't mind
-            // do we need to handle errors here in other cases?
             if let Err(e) = self.sender.flush() {
                 log::error!("Failed to flush ipc sender: {}", e);
             }
