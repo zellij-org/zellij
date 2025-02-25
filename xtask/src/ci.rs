@@ -119,15 +119,15 @@ fn e2e_test(sh: &Shell, args: Vec<OsString>) -> anyhow::Result<()> {
 
             // plugin system tests are run here because they're medium-slow
             let _pd = sh.push_dir(Path::new("zellij-server"));
-            println!("");
-            let msg = format!(">> Testing Plugin System");
+            println!();
+            let msg = ">> Testing Plugin System".to_string();
             crate::status(&msg);
             println!("{}", msg);
 
             cmd!(sh, "{cargo} test -- --ignored --nocapture --test-threads 1")
                 .args(args.clone())
                 .run()
-                .with_context(|| format!("Failed to run tests for the Plugin System"))?;
+                .with_context(|| "Failed to run tests for the Plugin System".to_string())?;
             Ok(())
         })
         .context(err_context)
