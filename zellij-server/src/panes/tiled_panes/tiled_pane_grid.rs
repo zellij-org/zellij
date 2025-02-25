@@ -2033,8 +2033,9 @@ impl<'a> TiledPaneGrid<'a> {
             return None;
         }
         StackedPanes::new(self.panes.clone())
-            .combine_vertically_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_above);
-        StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
+            .combine_vertically_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_above)
+            .non_fatal();
+        StackedPanes::new(self.panes.clone()).expand_pane(&pane_id).non_fatal();
         Some(vec![*pane_id])
     }
     pub fn unstack_pane_up(&mut self, pane_id: &PaneId) -> Option<Vec<PaneId>> {
@@ -2114,8 +2115,8 @@ impl<'a> TiledPaneGrid<'a> {
             return None;
         }
         StackedPanes::new(self.panes.clone())
-            .combine_vertically_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_below);
-        StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
+            .combine_vertically_aligned_panes_to_stack(&pane_id, neighboring_pane_ids_below).non_fatal();
+        StackedPanes::new(self.panes.clone()).expand_pane(&pane_id).non_fatal();
         Some(vec![*pane_id])
     }
     pub fn direct_neighboring_pane_ids_to_the_left(&self, root_pane_id: &PaneId) -> Vec<PaneId> {
@@ -2187,8 +2188,8 @@ impl<'a> TiledPaneGrid<'a> {
         StackedPanes::new(self.panes.clone()).combine_horizontally_aligned_panes_to_stack(
             &pane_id,
             neighboring_pane_ids_to_the_left,
-        );
-        StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
+        ).non_fatal();
+        StackedPanes::new(self.panes.clone()).expand_pane(&pane_id).non_fatal();
         Some(vec![*pane_id])
     }
     pub fn direct_neighboring_pane_ids_to_the_right(&self, root_pane_id: &PaneId) -> Vec<PaneId> {
@@ -2263,8 +2264,8 @@ impl<'a> TiledPaneGrid<'a> {
         StackedPanes::new(self.panes.clone()).combine_horizontally_aligned_panes_to_stack(
             &pane_id,
             neighboring_pane_ids_to_the_right,
-        );
-        StackedPanes::new(self.panes.clone()).expand_pane(&pane_id);
+        ).non_fatal();
+        StackedPanes::new(self.panes.clone()).expand_pane(&pane_id).non_fatal();
         Some(vec![*pane_id])
     }
     pub fn next_stack_id(&self) -> usize {
