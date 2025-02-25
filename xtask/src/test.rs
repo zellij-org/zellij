@@ -28,7 +28,7 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
 
         let _pd = sh.push_dir(Path::new(crate_name));
         // Tell the user where we are now
-        println!("");
+        println!();
         let msg = format!(">> Testing '{}'", crate_name);
         crate::status(&msg);
         println!("{}", msg);
