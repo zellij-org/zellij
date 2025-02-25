@@ -151,7 +151,7 @@ pub fn manpage(sh: &Shell) -> anyhow::Result<()> {
 
     let project_root = crate::project_root();
     let asset_dir = &project_root.join("assets").join("man");
-    sh.create_dir(&asset_dir).context(err_context)?;
+    sh.create_dir(asset_dir).context(err_context)?;
     let _pd = sh.push_dir(asset_dir);
 
     cmd!(sh, "{mandown} {project_root}/docs/MANPAGE.md 1")
