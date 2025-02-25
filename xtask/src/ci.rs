@@ -77,7 +77,7 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
 
     sh.remove_path(&data_dir)
         .and_then(|_| sh.create_dir(&data_dir))
-        .and_then(|_| sh.create_dir(&data_dir.join("plugins")))
+        .and_then(|_| sh.create_dir(data_dir.join("plugins")))
         .context(err_context)?;
 
     for plugin in plugins {
