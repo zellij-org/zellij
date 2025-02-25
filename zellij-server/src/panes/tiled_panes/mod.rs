@@ -444,6 +444,12 @@ impl TiledPanes {
         self.draw_pane_frames = draw_pane_frames;
         let viewport = *self.viewport.borrow();
         for pane in self.panes.values_mut() {
+            // TODO: gather unique stack ids and otherwise ignore them in this loop, then for each
+            // of them:
+            // 1. if we don't have pane frames, we need to push the stack up (unless it's on the
+            if let PaneId::Terminal(_) = pane.pid() {
+                log::info!("pane_geom: {:?}", pane.position_and_size());
+            }
             if !pane.borderless() {
                 pane.set_frame(draw_pane_frames);
             }
@@ -467,9 +473,15 @@ impl TiledPanes {
                 let position_and_size = pane.current_geom();
                 let (pane_columns_offset, pane_rows_offset) =
                     pane_content_offset(&position_and_size, &viewport);
-                if !draw_pane_frames && pane.current_geom().is_stacked() {
+                // if !draw_pane_frames && pane.current_geom().is_stacked() {
+                if !draw_pane_frames && pane.current_geom().is_stacked() && !pane.current_geom().rows.is_fixed() {
+                    log::info!("pane_rows_offset: {:?}, pane_columns_offset: {:?}", pane_rows_offset, pane_columns_offset);
                     // stacked panes should always leave 1 top row for a title
-                    pane.set_content_offset(Offset::shift_right_and_top(pane_columns_offset, 1));
+                    // pane.set_content_offset(Offset::shift_right_and_top(pane_columns_offset, 1));
+                    // TODO: CONTINUE HERE - we need to figure out the right way to offset the
+                    // flexible stacked pane back and forth for it to do the right thing without
+                    // pane frames (almost the below, just needs a bit adjustment)
+                    pane.set_content_offset(Offset::shift_right_top_and_bottom(pane_columns_offset, 1, pane_rows_offset));
                 } else {
                     pane.set_content_offset(Offset::shift(pane_rows_offset, pane_columns_offset));
                 }
