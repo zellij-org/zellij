@@ -60,9 +60,9 @@ pub fn host_target_triple(sh: &Shell) -> anyhow::Result<String> {
                 return None;
             }
             if let Some((_, triple)) = line.split_once(": ") {
-                return Some(triple.to_string());
+                Some(triple.to_string())
             } else {
-                return None;
+                None
             }
         })
         .collect::<Vec<String>>();
