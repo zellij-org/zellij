@@ -186,7 +186,6 @@ pub(crate) struct Tab {
     viewport: Rc<RefCell<Viewport>>, // includes all non-UI panes
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
-    stacked_resize: Rc<RefCell<bool>>,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     os_api: Box<dyn ServerOsApi>,
     pub senders: ThreadSenders,
@@ -206,7 +205,6 @@ pub(crate) struct Tab {
     // it seems that optimization is possible using `active_panes`
     focus_pane_id: Option<PaneId>,
     copy_on_select: bool,
-    last_mouse_hold_position: Option<Position>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     pids_waiting_resize: HashSet<u32>, // u32 is the terminal_id
@@ -691,7 +689,6 @@ impl Tab {
             viewport,
             display_area,
             character_cell_size,
-            stacked_resize,
             sixel_image_store,
             synchronize_is_active: false,
             os_api,
@@ -709,7 +706,6 @@ impl Tab {
             clipboard_provider,
             focus_pane_id: None,
             copy_on_select: copy_options.copy_on_select,
-            last_mouse_hold_position: None,
             terminal_emulator_colors,
             terminal_emulator_color_codes,
             pids_waiting_resize: HashSet::new(),
@@ -3898,71 +3894,6 @@ impl Tab {
         Ok(())
     }
 
-    pub fn handle_right_mouse_release(
-        &mut self,
-        position: &Position,
-        client_id: ClientId,
-    ) -> Result<()> {
-        let err_context = || {
-            format!("failed to handle right mouse release at position {position:?} for client {client_id}")
-        };
-
-        self.last_mouse_hold_position = None;
-        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
-        if let Some(active_pane) = active_pane {
-            let mut relative_position = active_pane.relative_position(position);
-            relative_position.change_column(
-                (relative_position.column())
-                    .max(0)
-                    .min(active_pane.get_content_columns()),
-            );
-
-            relative_position.change_line(
-                (relative_position.line())
-                    .max(0)
-                    .min(active_pane.get_content_rows() as isize),
-            );
-
-            if let Some(mouse_event) = active_pane.mouse_right_click_release(&relative_position) {
-                self.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
-                    .with_context(err_context)?;
-            }
-        }
-        Ok(())
-    }
-
-    fn handle_middle_mouse_release(
-        &mut self,
-        position: &Position,
-        client_id: ClientId,
-    ) -> Result<()> {
-        let err_context = || {
-            format!("failed to handle middle mouse release at position {position:?} for client {client_id}")
-        };
-
-        self.last_mouse_hold_position = None;
-        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
-        if let Some(active_pane) = active_pane {
-            let mut relative_position = active_pane.relative_position(position);
-            relative_position.change_column(
-                (relative_position.column())
-                    .max(0)
-                    .min(active_pane.get_content_columns()),
-            );
-
-            relative_position.change_line(
-                (relative_position.line())
-                    .max(0)
-                    .min(active_pane.get_content_rows() as isize),
-            );
-
-            if let Some(mouse_event) = active_pane.mouse_middle_click_release(&relative_position) {
-                self.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
-                    .with_context(err_context)?;
-            }
-        }
-        Ok(())
-    }
     pub fn copy_selection(&self, client_id: ClientId) -> Result<()> {
         let selected_text = self
             .get_active_pane(client_id)
