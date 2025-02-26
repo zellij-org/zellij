@@ -205,6 +205,7 @@ pub(crate) struct Tab {
     // it seems that optimization is possible using `active_panes`
     focus_pane_id: Option<PaneId>,
     copy_on_select: bool,
+    last_mouse_hold_position: Option<Position>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     pids_waiting_resize: HashSet<u32>, // u32 is the terminal_id
@@ -706,6 +707,7 @@ impl Tab {
             clipboard_provider,
             focus_pane_id: None,
             copy_on_select: copy_options.copy_on_select,
+            last_mouse_hold_position: None,
             terminal_emulator_colors,
             terminal_emulator_color_codes,
             pids_waiting_resize: HashSet::new(),
