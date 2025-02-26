@@ -70,11 +70,11 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::SwitchSession(connect_to_session) => {
                 ClientInstruction::SwitchSession(connect_to_session)
             },
-            ServerToClientMsg::UnblockCliPipeInput(pipe_name) => {
-                ClientInstruction::UnblockCliPipeInput(pipe_name)
+            ServerToClientMsg::UnblockCliPipeInput(_pipe_name) => {
+                ClientInstruction::UnblockCliPipeInput(())
             },
-            ServerToClientMsg::CliPipeOutput(pipe_name, output) => {
-                ClientInstruction::CliPipeOutput(pipe_name, output)
+            ServerToClientMsg::CliPipeOutput(_pipe_name, _output) => {
+                ClientInstruction::CliPipeOutput((), ())
             },
             ServerToClientMsg::QueryTerminalSize => ClientInstruction::QueryTerminalSize,
             ServerToClientMsg::WriteConfigToDisk { config } => {
