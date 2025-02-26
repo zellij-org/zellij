@@ -46,7 +46,6 @@ pub(crate) enum ClientInstruction {
     UnblockInputThread,
     Exit(ExitReason),
     Connected,
-    ActiveClients(Vec<ClientId>),
     StartedParsingStdinQuery,
     DoneParsingStdinQuery,
     Log(Vec<String>),
@@ -66,7 +65,6 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::Render(buffer) => ClientInstruction::Render(buffer),
             ServerToClientMsg::UnblockInputThread => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::Connected => ClientInstruction::Connected,
-            ServerToClientMsg::ActiveClients(clients) => ClientInstruction::ActiveClients(clients),
             ServerToClientMsg::Log(log_lines) => ClientInstruction::Log(log_lines),
             ServerToClientMsg::LogError(log_lines) => ClientInstruction::LogError(log_lines),
             ServerToClientMsg::SwitchSession(connect_to_session) => {
@@ -94,7 +92,6 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Render(_) => ClientContext::Render,
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
             ClientInstruction::Connected => ClientContext::Connected,
-            ClientInstruction::ActiveClients(_) => ClientContext::ActiveClients,
             ClientInstruction::Log(_) => ClientContext::Log,
             ClientInstruction::LogError(_) => ClientContext::LogError,
             ClientInstruction::StartedParsingStdinQuery => ClientContext::StartedParsingStdinQuery,

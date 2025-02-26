@@ -92,7 +92,6 @@ pub enum ServerInstruction {
         ClientId,
     ),
     ConnStatus(ClientId),
-    ActiveClients(ClientId),
     Log(Vec<String>, ClientId),
     LogError(Vec<String>, ClientId),
     SwitchSession(ConnectToSession, ClientId),
@@ -133,7 +132,6 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::DetachSession(..) => ServerContext::DetachSession,
             ServerInstruction::AttachClient(..) => ServerContext::AttachClient,
             ServerInstruction::ConnStatus(..) => ServerContext::ConnStatus,
-            ServerInstruction::ActiveClients(_) => ServerContext::ActiveClients,
             ServerInstruction::Log(..) => ServerContext::Log,
             ServerInstruction::LogError(..) => ServerContext::LogError,
             ServerInstruction::SwitchSession(..) => ServerContext::SwitchSession,
@@ -1044,15 +1042,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             ServerInstruction::ConnStatus(client_id) => {
                 let _ = os_input.send_to_client(client_id, ServerToClientMsg::Connected);
                 remove_client!(client_id, os_input, session_state);
-            },
-            ServerInstruction::ActiveClients(client_id) => {
-                let client_ids = session_state.read().unwrap().client_ids();
-                send_to_client!(
-                    client_id,
-                    os_input,
-                    ServerToClientMsg::ActiveClients(client_ids),
-                    session_state
-                );
             },
             ServerInstruction::Log(lines_to_log, client_id) => {
                 send_to_client!(
