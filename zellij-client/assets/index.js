@@ -102,7 +102,7 @@ document.addEventListener("DOMContentLoaded", (event) => {
     let prev_col = 0;
     let prev_row = 0;
     let terminal_element = document.getElementById("terminal");
-    terminal_element.addEventListener('mousemove', function(event) {
+    terminal_element.addEventListener("mousemove", function (event) {
         // this is a hack around: https://github.com/xtermjs/xterm.js/issues/1062
         // in short, xterm.js doesn't listen to mousemove at all and so even though
         // we send it a request for AnyEvent mouse handling, we don't get motion events in return
@@ -110,13 +110,16 @@ document.addEventListener("DOMContentLoaded", (event) => {
         // columns/rows to send from the x/y coordinates - it's safe to always send these because Zellij
         // always requests mouse AnyEvent handling
         if (event.buttons == 0) {
-          // this means no mouse buttons are pressed and this is just a mouse movement
-          let {col, row} = term._core._mouseService.getMouseReportCoords(event, terminal_element);
-          if (prev_col != col || prev_row != row) {
-            send_ansi_key(`\x1b[<35;${col + 1};${row + 1}M`);
-          }
-          prev_col = col;
-          prev_row = row;
+            // this means no mouse buttons are pressed and this is just a mouse movement
+            let { col, row } = term._core._mouseService.getMouseReportCoords(
+                event,
+                terminal_element
+            );
+            if (prev_col != col || prev_row != row) {
+                send_ansi_key(`\x1b[<35;${col + 1};${row + 1}M`);
+            }
+            prev_col = col;
+            prev_row = row;
         }
     });
 
@@ -152,57 +155,76 @@ document.addEventListener("DOMContentLoaded", (event) => {
     // let ws_control = new WebSocket('ws://127.0.0.1:8081');
     let ws_control;
 
-    let current_rows = 0;
-    let current_cols = 0;
-
     addEventListener("resize", (event) => {
-        if (!own_web_client_id == "") {
-            let fit_dimensions = fitAddon.proposeDimensions();
-            if (fit_dimensions) {
-                let rows = fit_dimensions.rows;
-                let cols = fit_dimensions.cols;
-                if (rows != current_rows || cols != current_cols) {
-                  current_rows = rows;
-                  current_cols = cols
-                  term.resize(cols, rows);
-
-                  ws_control.send(
-                      JSON.stringify({
-                          web_client_id: own_web_client_id,
-                          message: {
-                              TerminalResize: {
-                                  rows: rows,
-                                  cols: cols,
-                              },
-                          },
-                      })
-                  );
-                }
-            }
+        if (own_web_client_id === "") {
+            console.debug("skipping resize event before init");
+            return;
         }
+
+        let fit_dimensions = fitAddon.proposeDimensions();
+        if (fit_dimensions === undefined) {
+            console.warn("failed to get new fit dimensions");
+            return;
+        }
+
+        const { rows, cols } = fit_dimensions;
+        if (rows === term.rows && cols === term.cols) {
+            console.log("rows and cols unchanged, skipping resize");
+            return;
+        }
+        console.log("resize term after resize event", rows, cols);
+
+        term.resize(cols, rows);
+
+        ws_control.send(
+            JSON.stringify({
+                web_client_id: own_web_client_id,
+                payload: {
+                    type: "TerminalResize",
+                    rows,
+                    cols,
+                },
+            })
+        );
     });
 
     ws_terminal.onopen = function () {
         console.log("Connected to WebSocket terminal server");
     };
     function start_ws_control() {
-        ws_control.onopen = function () {
-            console.log("Connected to WebSocket control server");
-            if (!own_web_client_id == "") {
-                const { rows, cols } = term;
+        ws_control.onmessage = function (event) {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "SetConfig") {
+                const { font } = msg;
+                term.options.fontFamily = font;
+
+                const fit_dimensions = fitAddon.proposeDimensions();
+                if (fit_dimensions === undefined) {
+                    console.warn("failed to get new fit dimensions");
+                    return;
+                }
+
+                const { rows, cols } = fit_dimensions;
+                if (rows === term.rows && cols === term.cols) {
+                    console.log("rows and cols unchanged, skipping resize");
+                    return;
+                }
+                console.log("resize term after font change", rows, cols);
+                term.resize(cols, rows);
+
                 ws_control.send(
                     JSON.stringify({
                         web_client_id: own_web_client_id,
-                        message: {
-                            TerminalResize: {
-                                rows: rows,
-                                cols: cols,
-                            },
+                        payload: {
+                            type: "TerminalResize",
+                            rows,
+                            cols,
                         },
                     })
                 );
             }
         };
+
         ws_control.onclose = function () {
             console.log("Disconnected from WebSocket control server");
         };
@@ -210,10 +232,10 @@ document.addEventListener("DOMContentLoaded", (event) => {
 
     ws_terminal.onmessage = function (event) {
         let msg = JSON.parse(event.data);
-//         console.log(
-//             "Received message from WebSocket terminal server",
-//             event.data
-//         );
+        //         console.log(
+        //             "Received message from WebSocket terminal server",
+        //             event.data
+        //         );
         if (own_web_client_id == "") {
             own_web_client_id = msg.web_client_id;
             const ws_control_url = `ws://127.0.0.1:8082/ws/control`;
@@ -222,7 +244,7 @@ document.addEventListener("DOMContentLoaded", (event) => {
             start_ws_control();
         }
         term.write(msg.bytes);
-   };
+    };
 
     ws_terminal.onclose = function () {
         console.log("Disconnected from WebSocket terminal server");
@@ -230,17 +252,20 @@ document.addEventListener("DOMContentLoaded", (event) => {
 });
 
 function initTerminal() {
-    const term = new Terminal({ fontFamily: "Monospace", allowProposedApi: true });
+    const term = new Terminal({
+        fontFamily: "Monospace",
+        allowProposedApi: true,
+    });
     const fitAddon = new FitAddon.FitAddon();
     const clipboardAddon = new ClipboardAddon.ClipboardAddon();
     const webLinksAddon = new WebLinksAddon.WebLinksAddon();
-    const webglAddon= new WebglAddon.WebglAddon();
+    const webglAddon = new WebglAddon.WebglAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(clipboardAddon);
     term.loadAddon(webLinksAddon);
-    webglAddon.onContextLoss(e => {
-      // TODO: reload, or?
-      webglAddon.dispose();
+    webglAddon.onContextLoss((e) => {
+        // TODO: reload, or?
+        webglAddon.dispose();
     });
     term.loadAddon(webglAddon);
     term.open(document.getElementById("terminal"));

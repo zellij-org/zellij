@@ -1,5 +1,8 @@
 //! The `[cli_client]` is used to attach to a running server session
 //! and dispatch actions, that are specified through the command line.
+
+mod control_message;
+
 use std::{
     collections::HashMap,
     env, fs,
@@ -24,15 +27,19 @@ use axum::{
     routing::{any, get},
     Router,
 };
+use control_message::{
+    WebClientToWebServerControlMessage, WebClientToWebServerControlMessagePayload,
+    WebServerToWebClientControlMessage,
+};
 use zellij_utils::{
-    cli::CliArgs,
+    cli::{self, CliArgs},
     data::{ConnectToSession, LayoutInfo, Style},
     envs,
     errors::prelude::*,
     include_dir,
-    input::layout::Layout,
     input::{
-        actions::Action, cast_termwiz_key, config::Config, mouse::MouseEvent, options::Options,
+        actions::Action, cast_termwiz_key, config::Config, layout::Layout, mouse::MouseEvent,
+        options::Options,
     },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     serde::{Deserialize, Serialize},
@@ -82,12 +89,6 @@ impl RenderedBytes {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ControlMessage {
-    web_client_id: String,
-    message: ClientToServerMsg,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 struct StdinMessage {
     web_client_id: String,
     stdin: String,
@@ -113,6 +114,7 @@ pub fn start_web_client(config: Config, config_options: Options) {
     });
 
     log::info!("WebSocket server started and listening on port 8082");
+
     let connection_table: ConnectionTable = Arc::new(Mutex::new(HashMap::new()));
 
     let rt = Runtime::new().unwrap();
@@ -232,7 +234,22 @@ async fn ws_handler_terminal(
 async fn handle_ws_control(mut socket: WebSocket, state: AppState) {
     info!("New Control WebSocket connection established");
 
-    let send_message = |deserialized_msg: ControlMessage| {
+    let set_config_msg = WebServerToWebClientControlMessage::SetConfig {
+        font: state
+            .config
+            .options
+            .web_client_font
+            .unwrap_or("Monospace".to_string()),
+    };
+
+    socket
+        .send(Message::Text(
+            (serde_json::to_string(&set_config_msg).unwrap().into()),
+        ))
+        .await
+        .unwrap();
+
+    let send_message_to_server = |deserialized_msg: WebClientToWebServerControlMessage| {
         let Some(client_connection) = state
             .connection_table
             .lock()
@@ -240,23 +257,27 @@ async fn handle_ws_control(mut socket: WebSocket, state: AppState) {
             .get(&deserialized_msg.web_client_id)
             .cloned()
         else {
-            log::error!(
-                "Unknown web_client_id: {}",
-                deserialized_msg.web_client_id
-            );
+            log::error!("Unknown web_client_id: {}", deserialized_msg.web_client_id);
             return;
         };
-        let _ = client_connection.lock().unwrap().send_to_server(deserialized_msg.message.clone());
+        let client_msg = match deserialized_msg.payload {
+            WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
+                ClientToServerMsg::TerminalResize(size)
+            },
+        };
+
+        let _ = client_connection.lock().unwrap().send_to_server(client_msg);
     };
 
     // Handle incoming messages
     while let Some(Ok(msg)) = socket.next().await {
         match msg {
             Message::Text(msg) => {
-                let deserialized_msg: Result<ControlMessage, _> = serde_json::from_str(&msg);
+                let deserialized_msg: Result<WebClientToWebServerControlMessage, _> =
+                    serde_json::from_str(&msg);
                 match deserialized_msg {
                     Ok(deserialized_msg) => {
-                        send_message(deserialized_msg);
+                        send_message_to_server(deserialized_msg);
                     },
                     Err(e) => {
                         log::error!("Failed to deserialize client msg: {:?}", e);
@@ -342,7 +363,11 @@ async fn handle_ws_terminal(
             },
             Message::Close(_) => {
                 log::info!("Client WebSocket connection closed, exiting");
-                state.connection_table.lock().unwrap().remove(&web_client_id);
+                state
+                    .connection_table
+                    .lock()
+                    .unwrap()
+                    .remove(&web_client_id);
                 break;
             },
             _ => {
