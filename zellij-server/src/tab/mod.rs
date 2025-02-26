@@ -3838,6 +3838,71 @@ impl Tab {
         Ok(())
     }
 
+    pub fn handle_right_mouse_release(
+        &mut self,
+        position: &Position,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let err_context = || {
+            format!("failed to handle right mouse release at position {position:?} for client {client_id}")
+        };
+
+        self.last_mouse_hold_position = None;
+        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
+        if let Some(active_pane) = active_pane {
+            let mut relative_position = active_pane.relative_position(position);
+            relative_position.change_column(
+                (relative_position.column())
+                    .max(0)
+                    .min(active_pane.get_content_columns()),
+            );
+
+            relative_position.change_line(
+                (relative_position.line())
+                    .max(0)
+                    .min(active_pane.get_content_rows() as isize),
+            );
+
+            if let Some(mouse_event) = active_pane.mouse_right_click_release(&relative_position) {
+                self.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
+                    .with_context(err_context)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_middle_mouse_release(
+        &mut self,
+        position: &Position,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let err_context = || {
+            format!("failed to handle middle mouse release at position {position:?} for client {client_id}")
+        };
+
+        self.last_mouse_hold_position = None;
+        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
+        if let Some(active_pane) = active_pane {
+            let mut relative_position = active_pane.relative_position(position);
+            relative_position.change_column(
+                (relative_position.column())
+                    .max(0)
+                    .min(active_pane.get_content_columns()),
+            );
+
+            relative_position.change_line(
+                (relative_position.line())
+                    .max(0)
+                    .min(active_pane.get_content_rows() as isize),
+            );
+
+            if let Some(mouse_event) = active_pane.mouse_middle_click_release(&relative_position) {
+                self.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
+                    .with_context(err_context)?;
+            }
+        }
+        Ok(())
+    }
     pub fn copy_selection(&self, client_id: ClientId) -> Result<()> {
         let selected_text = self
             .get_active_pane(client_id)
