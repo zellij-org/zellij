@@ -217,14 +217,14 @@ impl ClientOsApi for ClientOsInputOutput {
     }
 
     fn send_to_server(&self, msg: ClientToServerMsg) {
-        // TODO: handle the error here, right now we silently ignore it
-        let _ = self
-            .send_instructions_to_server
-            .lock()
-            .unwrap()
-            .as_mut()
-            .unwrap()
-            .send(msg);
+        match self.send_instructions_to_server.lock().unwrap().as_mut() {
+            Some(sender) => {
+                let _ = sender.send(msg);
+            },
+            None => {
+                log::warn!("Server not ready, dropping message.");
+            }
+        }
     }
     fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
         self.receive_instructions_from_server

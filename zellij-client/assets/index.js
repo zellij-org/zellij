@@ -152,25 +152,32 @@ document.addEventListener("DOMContentLoaded", (event) => {
     // let ws_control = new WebSocket('ws://127.0.0.1:8081');
     let ws_control;
 
+    let current_rows = 0;
+    let current_cols = 0;
+
     addEventListener("resize", (event) => {
         if (!own_web_client_id == "") {
             let fit_dimensions = fitAddon.proposeDimensions();
             if (fit_dimensions) {
                 let rows = fit_dimensions.rows;
                 let cols = fit_dimensions.cols;
-                term.resize(cols, rows);
+                if (rows != current_rows || cols != current_cols) {
+                  current_rows = rows;
+                  current_cols = cols
+                  term.resize(cols, rows);
 
-                ws_control.send(
-                    JSON.stringify({
-                        web_client_id: own_web_client_id,
-                        message: {
-                            TerminalResize: {
-                                rows: rows,
-                                cols: cols,
-                            },
-                        },
-                    })
-                );
+                  ws_control.send(
+                      JSON.stringify({
+                          web_client_id: own_web_client_id,
+                          message: {
+                              TerminalResize: {
+                                  rows: rows,
+                                  cols: cols,
+                              },
+                          },
+                      })
+                  );
+                }
             }
         }
     });
@@ -210,6 +217,7 @@ document.addEventListener("DOMContentLoaded", (event) => {
         if (own_web_client_id == "") {
             own_web_client_id = msg.web_client_id;
             const ws_control_url = `ws://127.0.0.1:8082/ws/control`;
+
             ws_control = new WebSocket(ws_control_url);
             start_ws_control();
         }

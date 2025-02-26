@@ -117,11 +117,11 @@ pub fn start_web_client(ipc_path: &str, config: Config, config_options: Options)
         ipc_path
     );
     {
-        if let Ok(os_input) = get_client_os_input() {
-            // best effort attempt to let an existing session know the web server is listening
-            os_input.connect_to_server(&PathBuf::from(ipc_path));
-            os_input.send_to_server(ClientToServerMsg::WebServerStarted);
-        }
+       if let Ok(os_input) = get_client_os_input() {
+           // best effort attempt to let an existing session know the web server is listening
+           os_input.connect_to_server(&PathBuf::from(ipc_path));
+           os_input.send_to_server(ClientToServerMsg::WebServerStarted);
+       }
     }
 
     let connection_table: ConnectionTable = Arc::new(Mutex::new(HashMap::new()));
@@ -247,6 +247,23 @@ async fn ws_handler_terminal(
 async fn handle_ws_control(mut socket: WebSocket, state: AppState) {
     info!("New Control WebSocket connection established");
 
+    let send_message = |deserialized_msg: ControlMessage| {
+        let Some(client_connection) = state
+            .connection_table
+            .lock()
+            .unwrap()
+            .get(&deserialized_msg.web_client_id)
+            .cloned()
+        else {
+            log::error!(
+                "Unknown web_client_id: {}",
+                deserialized_msg.web_client_id
+            );
+            return;
+        };
+        let _ = client_connection.lock().unwrap().send_to_server(deserialized_msg.message.clone());
+    };
+
     // Handle incoming messages
     while let Some(Ok(msg)) = socket.next().await {
         match msg {
@@ -254,23 +271,7 @@ async fn handle_ws_control(mut socket: WebSocket, state: AppState) {
                 let deserialized_msg: Result<ControlMessage, _> = serde_json::from_str(&msg);
                 match deserialized_msg {
                     Ok(deserialized_msg) => {
-                        let Some(client_connection) = state
-                            .connection_table
-                            .lock()
-                            .unwrap()
-                            .get(&deserialized_msg.web_client_id)
-                            .cloned()
-                        else {
-                            log::error!(
-                                "Unknown web_client_id: {}",
-                                deserialized_msg.web_client_id
-                            );
-                            continue;
-                        };
-                        client_connection
-                            .lock()
-                            .unwrap()
-                            .send_to_server(deserialized_msg.message);
+                        send_message(deserialized_msg);
                     },
                     Err(e) => {
                         log::error!("Failed to deserialize client msg: {:?}", e);
@@ -320,7 +321,7 @@ async fn handle_ws_terminal(
         state.config.clone(),
         state.config_options.clone(),
     );
-    render_to_client(stdout_channel_rx, web_client_id, client_channel_tx);
+    render_to_client(stdout_channel_rx, web_client_id.clone(), client_channel_tx);
 
     // Handle incoming messages (STDIN)
 
@@ -364,6 +365,7 @@ async fn handle_ws_terminal(
             },
             Message::Close(_) => {
                 log::info!("Client WebSocket connection closed, exiting");
+                state.connection_table.lock().unwrap().remove(&web_client_id);
                 break;
             },
             _ => {
@@ -396,17 +398,19 @@ fn zellij_server_listener(
                     }).unwrap_or_else(|| path.clone());
 
                     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
-
-                    let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
-                    let enter_alternate_screen = "\u{1b}[?1049h";
-                    let bracketed_paste = "\u{1b}[?2004h";
-                    let enter_kitty_keyboard_mode = "\u{1b}[>1u";
-                    let enable_mouse_mode = "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1015h\u{1b}[?1006h";
-                    let _ = stdout_channel_tx.send(clear_client_terminal_attributes.to_owned());
-                    let _ = stdout_channel_tx.send(enter_alternate_screen.to_owned());
-                    let _ = stdout_channel_tx.send(bracketed_paste.to_owned());
-                    let _ = stdout_channel_tx.send(enable_mouse_mode.to_owned());
-                    let _ = stdout_channel_tx.send(enter_kitty_keyboard_mode.to_owned());
+                    let send_client_terminal_init_messages = |stdout_channel_tx: &tokio::sync::mpsc::UnboundedSender<String>| {
+                        let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
+                        let enter_alternate_screen = "\u{1b}[?1049h";
+                        let bracketed_paste = "\u{1b}[?2004h";
+                        let enter_kitty_keyboard_mode = "\u{1b}[>1u";
+                        let enable_mouse_mode = "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1015h\u{1b}[?1006h";
+                        let _ = stdout_channel_tx.send(clear_client_terminal_attributes.to_owned());
+                        let _ = stdout_channel_tx.send(enter_alternate_screen.to_owned());
+                        let _ = stdout_channel_tx.send(bracketed_paste.to_owned());
+                        let _ = stdout_channel_tx.send(enable_mouse_mode.to_owned());
+                        let _ = stdout_channel_tx.send(enter_kitty_keyboard_mode.to_owned());
+                    };
+                    let mut sent_init_messages = false;
 
                     let palette = config
                         .theme_config(config_options.theme.as_ref())
@@ -527,6 +531,13 @@ fn zellij_server_listener(
                                 break;
                             },
                             Some((ServerToClientMsg::Render(bytes), _)) => {
+                                if !sent_init_messages {
+                                    // we only send these once we've rendered the first byte to
+                                    // make sure the server is ready before the client receives any
+                                    // messages on the terminal channel
+                                    send_client_terminal_init_messages(&stdout_channel_tx);
+                                    sent_init_messages = true;
+                                }
                                 let _ = stdout_channel_tx.send(bytes);
                             },
                             Some((ServerToClientMsg::SwitchSession(connect_to_session), _)) => {
@@ -670,7 +681,7 @@ fn spawn_new_session(
     name: &str,
     is_web_client: bool,
     mut os_input: Box<dyn ClientOsApi>,
-    config: Config,
+    mut config: Config,
     config_opts: Options,
     layout: Option<Layout>,
     client_attributes: ClientAttributes,
@@ -702,6 +713,7 @@ fn spawn_new_session(
     let should_launch_setup_wizard = false;
     let cli_args = CliArgs::default(); // TODO: what do we do about this and the above setup
                                        // wizard?
+    config.options.enable_web_server = Some(true);
 
     (
         ClientToServerMsg::NewClient(
