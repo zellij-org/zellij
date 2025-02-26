@@ -37,7 +37,7 @@ use zellij_utils::{
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     serde::{Deserialize, Serialize},
     serde_json,
-    sessions::{resurrection_layout, session_exists},
+    sessions::{resurrection_layout, session_exists, get_sessions, get_resurrectable_session_names, get_name_generator},
     setup::{find_default_config_dir, get_layout_dir},
     termwiz::input::{InputEvent, InputParser},
     uuid::Uuid,
@@ -93,7 +93,7 @@ struct StdinMessage {
     stdin: String,
 }
 
-pub fn start_web_client(ipc_path: &str, config: Config, config_options: Options) {
+pub fn start_web_client(config: Config, config_options: Options) {
     std::panic::set_hook({
         Box::new(move |info| {
             let thread = thread::current();
@@ -112,23 +112,11 @@ pub fn start_web_client(ipc_path: &str, config: Config, config_options: Options)
         })
     });
 
-    log::info!(
-        "WebSocket server started and listening on port 8082, with ipc_path {}",
-        ipc_path
-    );
-    {
-       if let Ok(os_input) = get_client_os_input() {
-           // best effort attempt to let an existing session know the web server is listening
-           os_input.connect_to_server(&PathBuf::from(ipc_path));
-           os_input.send_to_server(ClientToServerMsg::WebServerStarted);
-       }
-    }
-
+    log::info!("WebSocket server started and listening on port 8082");
     let connection_table: ConnectionTable = Arc::new(Mutex::new(HashMap::new()));
 
     let rt = Runtime::new().unwrap();
     rt.block_on(serve_web_client(
-        ipc_path,
         config,
         config_options,
         connection_table,
@@ -146,13 +134,11 @@ const ASSETS_DIR: include_dir::Dir<'_> = include_dir::include_dir!("$CARGO_MANIF
 #[derive(Clone)]
 struct AppState {
     connection_table: ConnectionTable,
-    ipc_path: String,
     config: Config,
     config_options: Options,
 }
 
 async fn serve_web_client(
-    ipc_path: &str,
     config: Config,
     config_options: Options,
     connection_table: ConnectionTable,
@@ -161,7 +147,6 @@ async fn serve_web_client(
 
     let state = AppState {
         connection_table,
-        ipc_path: ipc_path.to_owned(),
         config,
         config_options,
     };
@@ -294,14 +279,6 @@ async fn handle_ws_terminal(
     session_name: Option<AxumPath<String>>,
     state: AppState,
 ) {
-    let ipc_path = session_name
-        .map(|p| {
-            let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
-            sock_dir.push(p.0);
-            sock_dir.to_str().unwrap().to_owned()
-        })
-        .unwrap_or(state.ipc_path.clone());
-
     let web_client_id = String::from(Uuid::new_v4());
     let os_input = get_client_os_input().unwrap(); // TODO: log error and quit
 
@@ -311,13 +288,13 @@ async fn handle_ws_terminal(
     );
 
     let (client_channel_tx, mut client_channel_rx) = socket.split();
-    info!("New Terminal WebSocket connection established {}", ipc_path);
+    info!("New Terminal WebSocket connection established {:?}", session_name);
     let (stdout_channel_tx, stdout_channel_rx) = tokio::sync::mpsc::unbounded_channel();
 
     zellij_server_listener(
         Box::new(os_input.clone()),
         stdout_channel_tx,
-        &ipc_path,
+        session_name.map(|p| p.0),
         state.config.clone(),
         state.config_options.clone(),
     );
@@ -379,23 +356,41 @@ async fn handle_ws_terminal(
 fn zellij_server_listener(
     os_input: Box<dyn ClientOsApi>,
     stdout_channel_tx: tokio::sync::mpsc::UnboundedSender<String>,
-    ipc_path: &str,
+    session_name: Option<String>,
     config: Config,
     config_options: Options,
 ) {
     let _server_listener_thread = std::thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
-            let path = ipc_path.to_owned();
             move || {
-                let mut reconnect_to_session: Option<ConnectToSession> = None;
+                let should_start_with_welcome_screen = session_name.is_none();
+                let mut reconnect_to_session: Option<ConnectToSession> = if should_start_with_welcome_screen {
+                    // if the client connects without a session path in the url, we always open the
+                    // welcome screen
+                    let Some(initial_session_name) = session_name.or_else(generate_unique_session_name) else {
+                        log::error!("Failed to generate unique session name, bailing.");
+                        return;
+                    };
+                    Some(ConnectToSession {
+                        name: Some(initial_session_name.clone()),
+                        layout: Some(LayoutInfo::BuiltIn("welcome".to_owned())),
+                        ..Default::default()
+                    })
+                } else {
+                    None
+                };
                 'reconnect_loop: loop {
                     let reconnect_info = reconnect_to_session.take();
-                    let path = reconnect_info.as_ref().and_then(|r| r.name.to_owned()).map(|name| {
+                    let path = {
+                        let Some(session_name) = reconnect_info.as_ref().and_then(|r| r.name.clone()).or_else(generate_unique_session_name) else {
+                            log::error!("Failed to generate unique session name, bailing.");
+                            return;
+                        };
                         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
-                        sock_dir.push(name);
+                        sock_dir.push(session_name.clone());
                         sock_dir.to_str().unwrap().to_owned()
-                    }).unwrap_or_else(|| path.clone());
+                    };
 
                     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
                     let send_client_terminal_init_messages = |stdout_channel_tx: &tokio::sync::mpsc::UnboundedSender<String>| {
@@ -728,4 +723,30 @@ fn spawn_new_session(
         ),
         zellij_ipc_pipe,
     )
+}
+
+// TODO: move to zellij_utils::sessions?
+fn generate_unique_session_name() -> Option<String> {
+    let sessions = get_sessions().map(|sessions| {
+        sessions
+            .iter()
+            .map(|s| s.0.clone())
+            .collect::<Vec<String>>()
+    });
+    let dead_sessions = get_resurrectable_session_names();
+    let Ok(sessions) = sessions else {
+        eprintln!("Failed to list existing sessions: {:?}", sessions);
+        return None;
+    };
+
+    let name = get_name_generator()
+        .take(1000)
+        .find(|name| !sessions.contains(name) && !dead_sessions.contains(name));
+
+    if let Some(name) = name {
+        return Some(name);
+    } else {
+        eprintln!("Failed to generate a unique session name, giving up");
+        return None;
+    }
 }

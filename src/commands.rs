@@ -184,7 +184,7 @@ pub(crate) fn start_web_client(path: String, debug: bool, opts: CliArgs) {
     // Set instance-wide debug mode
     zellij_utils::consts::DEBUG_MODE.set(debug).unwrap();
     // let os_input = get_os_input(get_client_os_input);
-    start_web_client_impl(&path, config, config_options);
+    start_web_client_impl(config, config_options);
 }
 
 #[cfg(not(feature = "web_server_capability"))]
