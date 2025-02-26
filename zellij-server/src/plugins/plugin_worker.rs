@@ -15,11 +15,7 @@ pub struct RunningWorker {
 }
 
 impl RunningWorker {
-    pub fn new(
-        store: Store<PluginEnv>,
-        instance: Instance,
-        name: &str,
-    ) -> Self {
+    pub fn new(store: Store<PluginEnv>, instance: Instance, name: &str) -> Self {
         RunningWorker {
             store,
             instance,

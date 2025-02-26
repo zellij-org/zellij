@@ -87,7 +87,7 @@ impl TerminalBytes {
                 // Some error occured
                 ReadResult::Err(err) => {
                     log::error!("{}", err);
-                    break
+                    break;
                 },
                 ReadResult::Timeout => {
                     let time_to_send_render = self
