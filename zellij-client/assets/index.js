@@ -192,6 +192,20 @@ document.addEventListener("DOMContentLoaded", (event) => {
         console.log("Connected to WebSocket terminal server");
     };
     function start_ws_control() {
+        ws_control.onopen = function (event) {
+          const fit_dimensions = fitAddon.proposeDimensions();
+          const { rows, cols } = fit_dimensions;
+          ws_control.send(
+              JSON.stringify({
+                  web_client_id: own_web_client_id,
+                  payload: {
+                      type: "TerminalResize",
+                      rows,
+                      cols,
+                  },
+              })
+          );
+        }
         ws_control.onmessage = function (event) {
             const msg = JSON.parse(event.data);
             if (msg.type === "SetConfig") {
