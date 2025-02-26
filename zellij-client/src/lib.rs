@@ -52,8 +52,8 @@ pub(crate) enum ClientInstruction {
     LogError(Vec<String>),
     SwitchSession(ConnectToSession),
     SetSynchronizedOutput(Option<SyncOutput>),
-    UnblockCliPipeInput(String),   // String -> pipe name
-    CliPipeOutput(String, String), // String -> pipe name, String -> output
+    UnblockCliPipeInput(()), // String -> pipe name
+    CliPipeOutput((), ()),   // String -> pipe name, String -> output
     QueryTerminalSize,
     WriteConfigToDisk { config: String },
 }
