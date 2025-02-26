@@ -1,4 +1,6 @@
 use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::fs;
+use std::process::Command;
 use std::sync::{Arc, RwLock};
 
 use crate::thread_bus::ThreadSenders;
@@ -86,6 +88,24 @@ pub(crate) fn route_action(
             senders
                 .send_to_screen(ScreenInstruction::WriteCharacter(
                     None, val, false, client_id,
+                ))
+                .with_context(err_context)?;
+        },
+        Action::WriteCommandOutput(filename) => {
+            senders
+                .send_to_screen(ScreenInstruction::ClearScroll(client_id))
+                .with_context(err_context)?;
+            let mut cmd_with_args = filename.split(' ').map(String::from);
+            let cmd: String = cmd_with_args.next()
+                .with_context(|| format!("need to specify a command with WriteCommandOutput"))?;
+            let args: Vec<String> = cmd_with_args.collect();
+            let output = Command::new(cmd.clone())
+                .args(args.clone())
+                .output()
+                .with_context(err_context)?;
+            senders
+                .send_to_screen(ScreenInstruction::WriteCharacter(
+                    None, output.stdout, false, client_id,
                 ))
                 .with_context(err_context)?;
         },
