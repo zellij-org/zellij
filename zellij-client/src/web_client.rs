@@ -393,13 +393,18 @@ fn zellij_server_listener(
                 let mut reconnect_to_session: Option<ConnectToSession> = if should_start_with_welcome_screen {
                     // if the client connects without a session path in the url, we always open the
                     // welcome screen
-                    let Some(initial_session_name) = session_name.or_else(generate_unique_session_name) else {
+                    let Some(initial_session_name) = session_name.clone().or_else(generate_unique_session_name) else {
                         log::error!("Failed to generate unique session name, bailing.");
                         return;
                     };
                     Some(ConnectToSession {
                         name: Some(initial_session_name.clone()),
                         layout: Some(LayoutInfo::BuiltIn("welcome".to_owned())),
+                        ..Default::default()
+                    })
+                } else if let Some(session_name) = session_name {
+                    Some(ConnectToSession {
+                        name: Some(session_name.clone()),
                         ..Default::default()
                     })
                 } else {
