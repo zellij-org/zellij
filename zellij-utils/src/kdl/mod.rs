@@ -440,6 +440,7 @@ impl Action {
     ) -> Result<Self, ConfigError> {
         match action_name {
             "WriteChars" => Ok(Action::WriteChars(string)),
+            "WriteCommandOutput" => Ok(Action::WriteCommandOutput(string)),
             "SwitchToMode" => match InputMode::from_str(string.as_str()) {
                 Ok(input_mode) => Ok(Action::SwitchToMode(input_mode)),
                 Err(_e) => {
@@ -584,6 +585,11 @@ impl Action {
             },
             Action::WriteChars(string) => {
                 let mut node = KdlNode::new("WriteChars");
+                node.push(string.clone());
+                Some(node)
+            },
+            Action::WriteCommandOutput(string) => {
+                let mut node = KdlNode::new("WriteCommandOutput");
                 node.push(string.clone());
                 Some(node)
             },
@@ -1354,6 +1360,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "Deny" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Write" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
             "WriteChars" => parse_kdl_action_char_or_string_arguments!(
+                action_name,
+                action_arguments,
+                kdl_action
+            ),
+            "WriteCommandOutput" => parse_kdl_action_char_or_string_arguments!(
                 action_name,
                 action_arguments,
                 kdl_action
@@ -5355,6 +5366,7 @@ fn keybinds_to_string_with_all_actions() {
                         config_key_2 "config_value_2";
                     };
                 }
+                bind "Ctrl Alt k" { WriteCommandOutput "cat /dev/null"; }
             }
         }"#;
     let document: KdlDocument = fake_config.parse().unwrap();

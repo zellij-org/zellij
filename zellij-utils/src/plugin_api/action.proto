@@ -53,6 +53,7 @@ message Action {
     CliPipePayload message_payload = 47;
     MoveTabDirection move_tab_payload = 48;
     MouseEventPayload mouse_event_payload = 49;
+    WriteCommandOutputPayload write_command_output_payload = 50;
   }
 }
 
@@ -151,6 +152,10 @@ message WriteCharsPayload {
   string chars = 1;
 }
 
+message WriteCommandOutputPayload {
+  string filename = 1;
+}
+
 message DumpScreenPayload {
   string file_path = 1;
   bool include_scrollback = 2;
@@ -241,6 +246,7 @@ enum ActionName {
     KeybindPipe = 84;
     TogglePanePinned = 85;
     MouseEvent = 86;
+    WriteCommandOutput = 87;
 }
 
 message Position {
