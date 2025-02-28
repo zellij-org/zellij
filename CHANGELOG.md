@@ -37,6 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(plugins): add tab_history to the session metadata (https://github.com/zellij-org/zellij/pull/4014)
 * chore(repo): update some dependencies (https://github.com/zellij-org/zellij/pull/4019)
 * fix(grid): reap sixel images on clear (https://github.com/zellij-org/zellij/pull/3982)
+* chore(repo): remove compile warnings (https://github.com/zellij-org/zellij/pull/4026)
 
 ## [0.41.2] - 2024-11-19
 * fix(input): keypresses not being identified properly with kitty keyboard protocol in some terminals (https://github.com/zellij-org/zellij/pull/3725)

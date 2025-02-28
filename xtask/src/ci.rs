@@ -77,7 +77,7 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
 
     sh.remove_path(&data_dir)
         .and_then(|_| sh.create_dir(&data_dir))
-        .and_then(|_| sh.create_dir(&data_dir.join("plugins")))
+        .and_then(|_| sh.create_dir(data_dir.join("plugins")))
         .context(err_context)?;
 
     for plugin in plugins {
@@ -119,15 +119,15 @@ fn e2e_test(sh: &Shell, args: Vec<OsString>) -> anyhow::Result<()> {
 
             // plugin system tests are run here because they're medium-slow
             let _pd = sh.push_dir(Path::new("zellij-server"));
-            println!("");
-            let msg = format!(">> Testing Plugin System");
+            println!();
+            let msg = ">> Testing Plugin System".to_string();
             crate::status(&msg);
             println!("{}", msg);
 
             cmd!(sh, "{cargo} test -- --ignored --nocapture --test-threads 1")
                 .args(args.clone())
                 .run()
-                .with_context(|| format!("Failed to run tests for the Plugin System"))?;
+                .with_context(|| "Failed to run tests for the Plugin System".to_string())?;
             Ok(())
         })
         .context(err_context)
