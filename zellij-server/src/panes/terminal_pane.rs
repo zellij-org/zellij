@@ -612,6 +612,10 @@ impl Pane for TerminalPane {
         self.reflow_lines();
     }
 
+    fn get_content_offset(&self) -> Offset {
+        self.content_offset
+    }
+
     fn store_pane_name(&mut self) {
         if self.pane_name != self.prev_pane_name {
             self.prev_pane_name = self.pane_name.clone()

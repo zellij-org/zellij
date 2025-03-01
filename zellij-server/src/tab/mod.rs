@@ -310,6 +310,7 @@ pub trait Pane {
     fn set_active_at(&mut self, instant: Instant);
     fn set_frame(&mut self, frame: bool);
     fn set_content_offset(&mut self, offset: Offset);
+    fn get_content_offset(&self) -> Offset { Offset::default() }
     fn cursor_shape_csi(&self) -> String {
         "\u{1b}[0 q".to_string() // default to non blinking block
     }
@@ -330,8 +331,14 @@ pub trait Pane {
     fn right_boundary_x_coords(&self) -> usize {
         self.x() + self.cols()
     }
+    fn right_boundary_x_content_coords(&self) -> usize {
+        self.get_content_x() + self.get_content_columns()
+    }
     fn bottom_boundary_y_coords(&self) -> usize {
         self.y() + self.rows()
+    }
+    fn bottom_boundary_y_content_coords(&self) -> usize {
+        self.get_content_y() + self.get_content_rows()
     }
     fn is_right_of(&self, other: &dyn Pane) -> bool {
         self.x() > other.x()
