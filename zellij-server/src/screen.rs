@@ -3859,23 +3859,29 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::MouseEvent(event, client_id) => {
-                let mouse_effect = screen
+                match screen
                     .get_active_tab_mut(client_id)
-                    .and_then(|tab| tab.handle_mouse_event(&event, client_id))?;
-                if mouse_effect.state_changed {
-                    screen.log_and_report_session_state()?;
-                }
-                if !mouse_effect.leave_clipboard_message {
-                    let _ = screen
-                        .bus
-                        .senders
-                        .send_to_plugin(PluginInstruction::Update(vec![(
-                            None,
-                            Some(client_id),
-                            Event::InputReceived,
-                        )]));
-                }
-                screen.render(None)?;
+                    .and_then(|tab| tab.handle_mouse_event(&event, client_id)) {
+                        Ok(mouse_effect) => {
+                            if mouse_effect.state_changed {
+                                screen.log_and_report_session_state()?;
+                            }
+                            if !mouse_effect.leave_clipboard_message {
+                                let _ = screen
+                                    .bus
+                                    .senders
+                                    .send_to_plugin(PluginInstruction::Update(vec![(
+                                        None,
+                                        Some(client_id),
+                                        Event::InputReceived,
+                                    )]));
+                            }
+                            screen.render(None).non_fatal();
+                        },
+                        Err(e) => {
+                            log::error!("Failed to process MouseEvent: {}", e);
+                        }
+                    }
             },
             ScreenInstruction::Copy(client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab

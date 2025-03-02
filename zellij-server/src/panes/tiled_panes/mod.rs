@@ -2456,6 +2456,12 @@ impl TiledPanes {
     fn is_connected(&self, client_id: &ClientId) -> bool {
         self.connected_clients.borrow().contains(&client_id)
     }
+    pub fn stacked_pane_ids_under_and_over_flexible_panes(
+        &mut self
+    ) -> Result<(HashSet<PaneId>, HashSet<PaneId>)> {
+        StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+            .stacked_pane_ids_under_and_over_flexible_panes()
+    }
 }
 
 #[allow(clippy::borrowed_box)]

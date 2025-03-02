@@ -3361,7 +3361,7 @@ impl Tab {
         }
     }
 
-    fn get_pane_id_at(&self, point: &Position, search_selectable: bool) -> Result<Option<PaneId>> {
+    fn get_pane_id_at(&mut self, point: &Position, search_selectable: bool) -> Result<Option<PaneId>> {
         let err_context = || format!("failed to get id of pane at position {point:?}");
 
         if self.tiled_panes.fullscreen_is_active()
@@ -3379,15 +3379,45 @@ impl Tab {
                 .with_context(err_context)?;
             return Ok(self.tiled_panes.get_active_pane_id(first_client_id));
         }
+
+        let (stacked_pane_ids_under_flexible_pane, _stacked_pane_ids_over_flexible_pane) = {
+            self.tiled_panes.stacked_pane_ids_under_and_over_flexible_panes()
+            .with_context(err_context)?
+        };
+        let pane_contains_point = |p: &Box<dyn Pane>, point: &Position, stacked_pane_ids_under_flexible_pane: &HashSet<PaneId>| -> bool {
+            let is_flexible_in_stack = p.current_geom().is_stacked() && !p.current_geom().rows.is_fixed();
+            let is_stacked_under = stacked_pane_ids_under_flexible_pane.contains(&p.pid());
+            let geom_to_compare_against = if is_stacked_under && !self.draw_pane_frames {
+                // these sort of panes are one-liner panes under a flexible pane in a stack when we
+                // don't draw pane frames - because the whole stack's content is offset to allow
+                // room for the boundary between panes, they are actually drawn 1 line above where
+                // they are
+                let mut geom = p.current_geom();
+                geom.y = geom.y.saturating_sub(p.get_content_offset().bottom);
+                geom
+            } else if is_flexible_in_stack && !self.draw_pane_frames {
+                // these sorts of panes are flexible panes inside a stack when we don't draw pane
+                // frames - because the whole stack's content is offset to give room for the
+                // boundary between panes, we need to take this offset into account when figuring
+                // out whether the position is inside them
+                let mut geom = p.current_geom();
+                geom.rows.decrease_inner(p.get_content_offset().bottom);
+                geom
+            } else {
+                p.current_geom()
+            };
+            geom_to_compare_against.contains(point)
+        };
+
         if search_selectable {
             Ok(self
                 .get_selectable_tiled_panes()
-                .find(|(_, p)| p.contains(point))
+                .find(|(_, p)| pane_contains_point(p, point, &stacked_pane_ids_under_flexible_pane))
                 .map(|(&id, _)| id))
         } else {
             Ok(self
                 .get_tiled_panes()
-                .find(|(_, p)| p.contains(point))
+                .find(|(_, p)| pane_contains_point(p, point, &stacked_pane_ids_under_flexible_pane))
                 .map(|(&id, _)| id))
         }
     }
