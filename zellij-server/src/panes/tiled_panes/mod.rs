@@ -445,7 +445,8 @@ impl TiledPanes {
         let viewport = *self.viewport.borrow();
         let position_and_sizes_of_stacks = {
             StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
-                .positions_and_sizes_of_all_stacks().unwrap_or_else(|| Default::default())
+                .positions_and_sizes_of_all_stacks()
+                .unwrap_or_else(|| Default::default())
         };
         for pane in self.panes.values_mut() {
             if !pane.borderless() {
@@ -484,7 +485,11 @@ impl TiledPanes {
                     pane_content_offset(&position_and_size, &viewport);
                 if is_stacked && is_flexible {
                     // 1 to save room for the pane title
-                    pane.set_content_offset(Offset::shift_right_top_and_bottom(pane_columns_offset, 1, pane_rows_offset));
+                    pane.set_content_offset(Offset::shift_right_top_and_bottom(
+                        pane_columns_offset,
+                        1,
+                        pane_rows_offset,
+                    ));
                 } else {
                     pane.set_content_offset(Offset::shift(pane_rows_offset, pane_columns_offset));
                 }
@@ -878,11 +883,14 @@ impl TiledPanes {
                     stacked_pane_ids_under_flexible_pane.contains(&pane.pid());
                 let pane_is_stacked_over =
                     stacked_pane_ids_over_flexible_pane.contains(&pane.pid());
-                let pane_is_on_top_of_stack = stacked_pane_ids_on_top_of_stacks.contains(&pane.pid());
-                let pane_is_on_bottom_of_stack = stacked_pane_ids_on_bottom_of_stacks.contains(&pane.pid());
+                let pane_is_on_top_of_stack =
+                    stacked_pane_ids_on_top_of_stacks.contains(&pane.pid());
+                let pane_is_on_bottom_of_stack =
+                    stacked_pane_ids_on_bottom_of_stacks.contains(&pane.pid());
                 let should_draw_pane_frames = self.draw_pane_frames;
                 let pane_is_stacked = pane.current_geom().is_stacked();
-                let pane_is_one_liner_in_stack = pane_is_stacked && pane.current_geom().rows.is_fixed();
+                let pane_is_one_liner_in_stack =
+                    pane_is_stacked && pane.current_geom().rows.is_fixed();
                 let mut pane_contents_and_ui = PaneContentsAndUi::new(
                     pane,
                     output,
@@ -970,7 +978,9 @@ impl TiledPanes {
                 if let PaneId::Terminal(..) = kind {
                     if !pane_is_one_liner_in_stack {
                         pane_contents_and_ui
-                            .render_pane_contents_to_multiple_clients(connected_clients.iter().copied())
+                            .render_pane_contents_to_multiple_clients(
+                                connected_clients.iter().copied(),
+                            )
                             .with_context(err_context)?;
                     }
                 }
@@ -2457,7 +2467,7 @@ impl TiledPanes {
         self.connected_clients.borrow().contains(&client_id)
     }
     pub fn stacked_pane_ids_under_and_over_flexible_panes(
-        &mut self
+        &mut self,
     ) -> Result<(HashSet<PaneId>, HashSet<PaneId>)> {
         StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
             .stacked_pane_ids_under_and_over_flexible_panes()

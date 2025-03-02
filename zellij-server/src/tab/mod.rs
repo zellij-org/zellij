@@ -308,7 +308,9 @@ pub trait Pane {
     fn set_active_at(&mut self, instant: Instant);
     fn set_frame(&mut self, frame: bool);
     fn set_content_offset(&mut self, offset: Offset);
-    fn get_content_offset(&self) -> Offset { Offset::default() }
+    fn get_content_offset(&self) -> Offset {
+        Offset::default()
+    }
     fn cursor_shape_csi(&self) -> String {
         "\u{1b}[0 q".to_string() // default to non blinking block
     }
@@ -3357,7 +3359,11 @@ impl Tab {
         }
     }
 
-    fn get_pane_id_at(&mut self, point: &Position, search_selectable: bool) -> Result<Option<PaneId>> {
+    fn get_pane_id_at(
+        &mut self,
+        point: &Position,
+        search_selectable: bool,
+    ) -> Result<Option<PaneId>> {
         let err_context = || format!("failed to get id of pane at position {point:?}");
 
         if self.tiled_panes.fullscreen_is_active()
@@ -3377,11 +3383,16 @@ impl Tab {
         }
 
         let (stacked_pane_ids_under_flexible_pane, _stacked_pane_ids_over_flexible_pane) = {
-            self.tiled_panes.stacked_pane_ids_under_and_over_flexible_panes()
-            .with_context(err_context)?
+            self.tiled_panes
+                .stacked_pane_ids_under_and_over_flexible_panes()
+                .with_context(err_context)?
         };
-        let pane_contains_point = |p: &Box<dyn Pane>, point: &Position, stacked_pane_ids_under_flexible_pane: &HashSet<PaneId>| -> bool {
-            let is_flexible_in_stack = p.current_geom().is_stacked() && !p.current_geom().rows.is_fixed();
+        let pane_contains_point = |p: &Box<dyn Pane>,
+                                   point: &Position,
+                                   stacked_pane_ids_under_flexible_pane: &HashSet<PaneId>|
+         -> bool {
+            let is_flexible_in_stack =
+                p.current_geom().is_stacked() && !p.current_geom().rows.is_fixed();
             let is_stacked_under = stacked_pane_ids_under_flexible_pane.contains(&p.pid());
             let geom_to_compare_against = if is_stacked_under && !self.draw_pane_frames {
                 // these sort of panes are one-liner panes under a flexible pane in a stack when we

@@ -1119,8 +1119,11 @@ fn render_stacks_without_pane_frames() {
         )
         .unwrap();
     }
-    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, Some(Direction::Right)))
-        .unwrap();
+    tab.resize(
+        client_id,
+        ResizeStrategy::new(Resize::Increase, Some(Direction::Right)),
+    )
+    .unwrap();
     let _ = tab.focus_pane_with_id(PaneId::Terminal(7), false, client_id);
     let _ = tab.focus_pane_with_id(PaneId::Terminal(5), false, client_id);
 

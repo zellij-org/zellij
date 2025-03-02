@@ -432,7 +432,7 @@ impl<'a> StackedPanes<'a> {
         }
         Ok((
             stacked_pane_ids_on_top_of_stacks,
-            stacked_pane_ids_on_bottom_of_stacks
+            stacked_pane_ids_on_bottom_of_stacks,
         ))
     }
     pub fn make_room_for_new_pane(&mut self) -> Result<PaneGeom> {
@@ -829,7 +829,8 @@ impl<'a> StackedPanes<'a> {
         for pane in panes.values() {
             if let Some(stack_id) = pane.current_geom().stacked {
                 if !positions_and_sizes_of_all_stacks.contains_key(&stack_id) {
-                    positions_and_sizes_of_all_stacks.insert(stack_id, self.position_and_size_of_stack(&pane.pid())?);
+                    positions_and_sizes_of_all_stacks
+                        .insert(stack_id, self.position_and_size_of_stack(&pane.pid())?);
                 }
             }
         }
