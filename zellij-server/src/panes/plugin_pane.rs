@@ -412,13 +412,7 @@ impl Pane for PluginPane {
                 self.pane_name.clone()
             };
 
-            let mut frame_geom = self.current_geom();
-            if !frame_params.should_draw_pane_frames {
-                // in this case the width of the frame needs not include the pane corners
-                frame_geom
-                    .cols
-                    .set_inner(frame_geom.cols.as_usize().saturating_sub(1));
-            }
+            let frame_geom = self.current_geom();
             let is_pinned = frame_geom.is_pinned;
             let mut frame = PaneFrame::new(
                 frame_geom.into(),
@@ -611,6 +605,10 @@ impl Pane for PluginPane {
     fn set_content_offset(&mut self, offset: Offset) {
         self.content_offset = offset;
         self.resize_grids();
+    }
+
+    fn get_content_offset(&self) -> Offset {
+        self.content_offset
     }
 
     fn store_pane_name(&mut self) {
