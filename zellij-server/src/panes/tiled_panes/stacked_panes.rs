@@ -836,6 +836,16 @@ impl<'a> StackedPanes<'a> {
         }
         Some(positions_and_sizes_of_all_stacks)
     }
+    pub fn pane_ids_in_stack(&self, stack_id: usize) -> Vec<PaneId> {
+        let panes = self.panes.borrow();
+        let mut pane_ids_in_stack = vec![];
+        for pane in panes.values() {
+            if pane.current_geom().stacked == Some(stack_id) {
+                pane_ids_in_stack.push(pane.pid());
+            }
+        }
+        pane_ids_in_stack
+    }
     fn reset_stack_size(
         &self,
         new_position_and_size_of_stack: &PaneGeom,
