@@ -658,21 +658,50 @@ impl TiledPanes {
         self.set_force_render();
         self.reapply_pane_frames();
     }
+    pub fn focus_pane_for_all_clients_in_stack(&mut self, pane_id: PaneId, stack_id: usize) {
+        let connected_clients: Vec<ClientId> =
+            self.connected_clients.borrow().iter().copied().collect();
+        let pane_ids_in_stack = {
+            StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+                .pane_ids_in_stack(stack_id)
+        };
+        if self
+            .panes
+            .get(&pane_id)
+            .map(|p| p.current_geom().is_stacked())
+            .unwrap_or(false)
+        {
+            let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+                .expand_pane(&pane_id);
+        }
+        for client_id in connected_clients {
+            if self
+                .active_panes
+                .get(&client_id)
+                .map(|p_id| pane_ids_in_stack.contains(p_id))
+                .unwrap_or(false)
+            {
+                self.active_panes
+                    .insert(client_id, pane_id, &mut self.panes);
+                self.set_pane_active_at(pane_id);
+            }
+        }
+        self.set_force_render();
+        self.reapply_pane_frames();
+    }
     pub fn reapply_pane_focus(&mut self) {
         let connected_clients: Vec<ClientId> =
             self.connected_clients.borrow().iter().copied().collect();
+        let mut stack_ids_to_pane_ids_to_expand = vec![];
         for client_id in connected_clients {
             match &self.active_panes.get(&client_id).copied() {
                 Some(pane_id) => {
-                    if self
+                    if let Some(stack_id) = self
                         .panes
                         .get(&pane_id)
-                        .map(|p| p.current_geom().is_stacked())
-                        .unwrap_or(false)
+                        .and_then(|p| p.current_geom().stacked)
                     {
-                        let _ =
-                            StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
-                                .expand_pane(&pane_id);
+                        stack_ids_to_pane_ids_to_expand.push((stack_id, *pane_id));
                     }
                     self.active_panes
                         .insert(client_id, *pane_id, &mut self.panes);
@@ -680,18 +709,13 @@ impl TiledPanes {
                 },
                 None => {
                     if let Some(first_pane_id) = self.first_selectable_pane_id() {
-                        let pane_id = first_pane_id; // TODO: combine with above
-                        if self
+                        let pane_id = first_pane_id;
+                        if let Some(stack_id) = self
                             .panes
                             .get(&pane_id)
-                            .map(|p| p.current_geom().is_stacked())
-                            .unwrap_or(false)
+                            .and_then(|p| p.current_geom().stacked)
                         {
-                            let _ = StackedPanes::new_from_btreemap(
-                                &mut self.panes,
-                                &self.panes_to_hide,
-                            )
-                            .expand_pane(&pane_id);
+                            stack_ids_to_pane_ids_to_expand.push((stack_id, pane_id));
                         }
                         self.active_panes
                             .insert(client_id, pane_id, &mut self.panes);
@@ -699,6 +723,11 @@ impl TiledPanes {
                     }
                 },
             }
+        }
+        for (stack_id, pane_id) in stack_ids_to_pane_ids_to_expand {
+            let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+                .expand_pane(&pane_id);
+            self.focus_pane_for_all_clients_in_stack(pane_id, stack_id);
         }
         self.set_force_render();
         self.reapply_pane_frames();
@@ -745,14 +774,14 @@ impl TiledPanes {
             // before changing focus
             self.unset_fullscreen();
         }
-        if self
+        if let Some(stack_id) = self
             .panes
             .get(&pane_id)
-            .map(|p| p.current_geom().is_stacked())
-            .unwrap_or(false)
+            .and_then(|p| p.current_geom().stacked)
         {
             let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
                 .expand_pane(&pane_id);
+            self.focus_pane_for_all_clients_in_stack(pane_id, stack_id);
             self.reapply_pane_frames();
         }
         self.active_panes
@@ -1698,16 +1727,13 @@ impl TiledPanes {
                             .get_mut(self.active_panes.get(&client_id).unwrap())
                             .unwrap();
 
-                        let previously_active_pane_is_stacked =
-                            previously_active_pane.current_geom().is_stacked();
                         previously_active_pane.set_should_render(true);
                         // we render the full viewport to remove any ui elements that might have been
                         // there before (eg. another user's cursor)
                         previously_active_pane.render_full_viewport();
 
                         let next_active_pane = self.panes.get_mut(&p).unwrap();
-                        let next_active_pane_is_stacked =
-                            next_active_pane.current_geom().is_stacked();
+                        let next_active_pane_stack_id = next_active_pane.current_geom().stacked;
                         next_active_pane.set_should_render(true);
                         // we render the full viewport to remove any ui elements that might have been
                         // there before (eg. another user's cursor)
@@ -1715,11 +1741,11 @@ impl TiledPanes {
 
                         self.focus_pane(p, client_id);
                         self.set_pane_active_at(p);
-                        if previously_active_pane_is_stacked || next_active_pane_is_stacked {
+                        if let Some(stack_id) = next_active_pane_stack_id {
                             // we do this because a stack pane focus change also changes its
                             // geometry and we need to let the pty know about this (like in a
                             // normal size change)
-                            self.focus_pane_for_all_clients(p); // TODO: for all client *in stack*
+                            self.focus_pane_for_all_clients_in_stack(p, stack_id);
                             self.reapply_pane_frames();
                         }
 
@@ -1752,16 +1778,13 @@ impl TiledPanes {
                             .get_mut(self.active_panes.get(&client_id).unwrap())
                             .unwrap();
 
-                        let previously_active_pane_is_stacked =
-                            previously_active_pane.current_geom().is_stacked();
                         previously_active_pane.set_should_render(true);
                         // we render the full viewport to remove any ui elements that might have been
                         // there before (eg. another user's cursor)
                         previously_active_pane.render_full_viewport();
 
                         let next_active_pane = self.panes.get_mut(&p).unwrap();
-                        let next_active_pane_is_stacked =
-                            next_active_pane.current_geom().is_stacked();
+                        let next_active_pane_stack_id = next_active_pane.current_geom().stacked;
                         next_active_pane.set_should_render(true);
                         // we render the full viewport to remove any ui elements that might have been
                         // there before (eg. another user's cursor)
@@ -1769,11 +1792,11 @@ impl TiledPanes {
 
                         self.focus_pane(p, client_id);
                         self.set_pane_active_at(p);
-                        if previously_active_pane_is_stacked || next_active_pane_is_stacked {
+                        if let Some(stack_id) = next_active_pane_stack_id {
                             // we do this because a stack pane focus change also changes its
                             // geometry and we need to let the pty know about this (like in a
                             // normal size change)
-                            self.focus_pane_for_all_clients(p); // TODO: for all client *in stack*
+                            self.focus_pane_for_all_clients_in_stack(p, stack_id);
                             self.reapply_pane_frames();
                         }
 
