@@ -20,15 +20,15 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
     )
     .context(err_context)?;
 
-    for WorkspaceMember { crate_name, .. } in crate::workspace_members().iter() {
+    for WorkspaceMember { crate_name, .. } in crate::WORKSPACE_MEMBERS.iter() {
         // the workspace root only contains e2e tests, skip it
-        if crate_name == &"." {
+        if *crate_name == "." {
             continue;
         }
 
         let _pd = sh.push_dir(Path::new(crate_name));
         // Tell the user where we are now
-        println!();
+        println!("");
         let msg = format!(">> Testing '{}'", crate_name);
         crate::status(&msg);
         println!("{}", msg);
@@ -60,9 +60,9 @@ pub fn host_target_triple(sh: &Shell) -> anyhow::Result<String> {
                 return None;
             }
             if let Some((_, triple)) = line.split_once(": ") {
-                Some(triple.to_string())
+                return Some(triple.to_string());
             } else {
-                None
+                return None;
             }
         })
         .collect::<Vec<String>>();

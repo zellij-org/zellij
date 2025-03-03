@@ -82,13 +82,7 @@ impl TerminalBytes {
         let mut buf = [0u8; 65536];
         loop {
             match self.deadline_read(&mut buf).await {
-                // EOF
-                ReadResult::Ok(0) => break,
-                // Some error occured
-                ReadResult::Err(err) => {
-                    log::error!("{}", err);
-                    break;
-                },
+                ReadResult::Ok(0) | ReadResult::Err(_) => break, // EOF or error
                 ReadResult::Timeout => {
                     let time_to_send_render = self
                         .async_send_to_screen(ScreenInstruction::Render)

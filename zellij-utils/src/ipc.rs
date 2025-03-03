@@ -92,6 +92,7 @@ pub enum ClientToServerMsg {
     ClientExited,
     KillSession,
     ConnStatus,
+    ListClients,
     ConfigWrittenToDisk(Config),
     FailedToWriteConfigToDisk(Option<PathBuf>),
 }
@@ -103,6 +104,7 @@ pub enum ServerToClientMsg {
     UnblockInputThread,
     Exit(ExitReason),
     Connected,
+    ActiveClients(Vec<ClientId>),
     Log(Vec<String>),
     LogError(Vec<String>),
     SwitchSession(ConnectToSession),

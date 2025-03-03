@@ -22,7 +22,7 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
         std::process::exit(1);
     }
 
-    for WorkspaceMember { crate_name, .. } in crate::workspace_members()
+    for WorkspaceMember { crate_name, .. } in crate::WORKSPACE_MEMBERS
         .iter()
         .filter(|member| member.build)
     {
@@ -32,8 +32,10 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
             if flags.no_plugins {
                 continue;
             }
-        } else if flags.plugins_only {
-            continue;
+        } else {
+            if flags.plugins_only {
+                continue;
+            }
         }
 
         // zellij-utils requires protobuf definition files to be present. Usually these are
@@ -151,7 +153,7 @@ pub fn manpage(sh: &Shell) -> anyhow::Result<()> {
 
     let project_root = crate::project_root();
     let asset_dir = &project_root.join("assets").join("man");
-    sh.create_dir(asset_dir).context(err_context)?;
+    sh.create_dir(&asset_dir).context(err_context)?;
     let _pd = sh.push_dir(asset_dir);
 
     cmd!(sh, "{mandown} {project_root}/docs/MANPAGE.md 1")

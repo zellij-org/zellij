@@ -317,7 +317,7 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
         }
 
         // Publish all the crates
-        for WorkspaceMember { crate_name, .. } in crate::workspace_members().iter() {
+        for WorkspaceMember { crate_name, .. } in crate::WORKSPACE_MEMBERS.iter() {
             if crate_name.contains("plugin") || crate_name.contains("xtask") {
                 continue;
             }
