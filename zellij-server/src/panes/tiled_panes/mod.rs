@@ -675,8 +675,12 @@ impl TiledPanes {
                 .expand_pane(&pane_id);
         }
         for client_id in connected_clients {
-            if self.active_panes.get(&client_id).map(|p_id| pane_ids_in_stack.contains(p_id)).unwrap_or(false) {
-
+            if self
+                .active_panes
+                .get(&client_id)
+                .map(|p_id| pane_ids_in_stack.contains(p_id))
+                .unwrap_or(false)
+            {
                 self.active_panes
                     .insert(client_id, pane_id, &mut self.panes);
                 self.set_pane_active_at(pane_id);
@@ -721,11 +725,8 @@ impl TiledPanes {
             }
         }
         for (stack_id, pane_id) in stack_ids_to_pane_ids_to_expand {
-            let _ = StackedPanes::new_from_btreemap(
-                &mut self.panes,
-                &self.panes_to_hide,
-            )
-            .expand_pane(&pane_id);
+            let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+                .expand_pane(&pane_id);
             self.focus_pane_for_all_clients_in_stack(pane_id, stack_id);
         }
         self.set_force_render();
@@ -1732,8 +1733,7 @@ impl TiledPanes {
                         previously_active_pane.render_full_viewport();
 
                         let next_active_pane = self.panes.get_mut(&p).unwrap();
-                        let next_active_pane_stack_id =
-                            next_active_pane.current_geom().stacked;
+                        let next_active_pane_stack_id = next_active_pane.current_geom().stacked;
                         next_active_pane.set_should_render(true);
                         // we render the full viewport to remove any ui elements that might have been
                         // there before (eg. another user's cursor)
@@ -1784,8 +1784,7 @@ impl TiledPanes {
                         previously_active_pane.render_full_viewport();
 
                         let next_active_pane = self.panes.get_mut(&p).unwrap();
-                        let next_active_pane_stack_id =
-                            next_active_pane.current_geom().stacked;
+                        let next_active_pane_stack_id = next_active_pane.current_geom().stacked;
                         next_active_pane.set_should_render(true);
                         // we render the full viewport to remove any ui elements that might have been
                         // there before (eg. another user's cursor)
