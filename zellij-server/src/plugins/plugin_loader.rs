@@ -638,6 +638,7 @@ impl<'a> PluginLoader<'a> {
             .filter_map(|export| export.clone().into_func().map(|_| export.name()))
         {
             if function_name.ends_with("_worker") {
+                let plugin_config = self.plugin.clone();
                 let (mut store, instance) =
                     self.create_plugin_instance_and_wasi_env_for_worker()?;
 
@@ -648,7 +649,7 @@ impl<'a> PluginLoader<'a> {
                     .call(&mut store, ())
                     .with_context(err_context)?;
 
-                let worker = RunningWorker::new(store, instance, &function_name);
+                let worker = RunningWorker::new(store, instance, &function_name, plugin_config);
                 let worker_sender = plugin_worker(worker);
                 workers.insert(function_name.into(), worker_sender);
             }

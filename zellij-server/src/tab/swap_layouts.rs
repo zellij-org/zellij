@@ -64,6 +64,9 @@ impl SwapLayouts {
     pub fn reset_floating_damage(&mut self) {
         self.is_floating_damaged = false;
     }
+    pub fn reset_tiled_damage(&mut self) {
+        self.is_tiled_damaged = false;
+    }
     pub fn is_floating_damaged(&self) -> bool {
         self.is_floating_damaged
     }
@@ -275,6 +278,33 @@ impl SwapLayouts {
                 break;
             }
         }
+        None
+    }
+    pub fn best_effort_tiled_layout(
+        &mut self,
+        tiled_panes: &TiledPanes,
+    ) -> Option<TiledPaneLayout> {
+        for swap_layout in self.swap_tiled_layouts.iter() {
+            for (_constraint, layout) in swap_layout.0.iter() {
+                let focus_layout_if_not_focused = true;
+                let display_area = self.display_area.borrow();
+                // TODO: reuse the assets from position_panes_in_space here?
+                let pane_count = tiled_panes.visible_panes_count();
+                let display_area = PaneGeom::from(&*display_area);
+                if layout
+                    .position_panes_in_space(
+                        &display_area,
+                        Some(pane_count),
+                        false,
+                        focus_layout_if_not_focused,
+                    )
+                    .is_ok()
+                {
+                    return Some(layout.clone());
+                }
+            }
+        }
+        log::error!("Could not find layout that would fit on screen!");
         None
     }
 }
