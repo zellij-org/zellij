@@ -120,11 +120,7 @@ impl TiledPanes {
         if self.draw_pane_frames {
             pane.set_content_offset(Offset::frame(1));
         }
-        let stack_id = pane.current_geom().stacked;
         self.panes.insert(pane_id, pane);
-        if let Some(stack_id) = stack_id {
-            self.focus_pane_for_all_clients_in_stack(pane_id, stack_id);
-        }
     }
     pub fn replace_active_pane(
         &mut self,
