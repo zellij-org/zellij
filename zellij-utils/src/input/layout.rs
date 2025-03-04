@@ -11,6 +11,7 @@
 #[cfg(not(target_family = "wasm"))]
 use crate::downloader::Downloader;
 use crate::{
+    consts::MIN_TERMINAL_HEIGHT,
     data::{Direction, LayoutInfo},
     home::{default_layout_dir, find_default_config_dir},
     input::{
@@ -1631,8 +1632,12 @@ fn split_space(
         } else if let Some(last_size) = sizes.last_mut() {
             *last_size = None;
         }
-        if sizes.len() > space_to_split.rows.as_usize().saturating_sub(4) {
-            // 4 is MIN_TERMINAL_HEIGHT
+        if sizes.len()
+            > space_to_split
+                .rows
+                .as_usize()
+                .saturating_sub(MIN_TERMINAL_HEIGHT)
+        {
             return Err("Not enough room for stacked panes in this layout");
         }
         sizes

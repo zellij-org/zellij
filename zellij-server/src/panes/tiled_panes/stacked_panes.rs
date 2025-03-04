@@ -1,11 +1,9 @@
-use crate::{
-    panes::PaneId,
-    tab::{Pane, MIN_TERMINAL_HEIGHT},
-};
+use crate::{panes::PaneId, tab::Pane};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use zellij_utils::{
+    consts::MIN_TERMINAL_HEIGHT,
     errors::prelude::*,
     pane_size::{Dimension, PaneGeom},
 };
