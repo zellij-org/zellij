@@ -416,6 +416,25 @@ impl<'a> StackedPanes<'a> {
             stacked_pane_ids_over_flexible_panes,
         ))
     }
+    pub fn stacked_pane_ids_on_top_and_bottom_of_stacks(
+        &self,
+    ) -> Result<(HashSet<PaneId>, HashSet<PaneId>)> {
+        let mut stacked_pane_ids_on_top_of_stacks = HashSet::new();
+        let mut stacked_pane_ids_on_bottom_of_stacks = HashSet::new();
+        let all_stacks = self.get_all_stacks()?;
+        for stack in all_stacks {
+            if let Some((first_pane_id, _pane)) = stack.iter().next() {
+                stacked_pane_ids_on_top_of_stacks.insert(*first_pane_id);
+            }
+            if let Some((last_pane_id, _pane)) = stack.iter().last() {
+                stacked_pane_ids_on_bottom_of_stacks.insert(*last_pane_id);
+            }
+        }
+        Ok((
+            stacked_pane_ids_on_top_of_stacks,
+            stacked_pane_ids_on_bottom_of_stacks,
+        ))
+    }
     pub fn make_room_for_new_pane(&mut self) -> Result<PaneGeom> {
         let err_context = || format!("Failed to add pane to stack");
         let all_stacks = self.get_all_stacks()?;
@@ -803,6 +822,29 @@ impl<'a> StackedPanes<'a> {
             }
         }
         highest_stack_id
+    }
+    pub fn positions_and_sizes_of_all_stacks(&self) -> Option<HashMap<usize, PaneGeom>> {
+        let panes = self.panes.borrow();
+        let mut positions_and_sizes_of_all_stacks = HashMap::new();
+        for pane in panes.values() {
+            if let Some(stack_id) = pane.current_geom().stacked {
+                if !positions_and_sizes_of_all_stacks.contains_key(&stack_id) {
+                    positions_and_sizes_of_all_stacks
+                        .insert(stack_id, self.position_and_size_of_stack(&pane.pid())?);
+                }
+            }
+        }
+        Some(positions_and_sizes_of_all_stacks)
+    }
+    pub fn pane_ids_in_stack(&self, stack_id: usize) -> Vec<PaneId> {
+        let panes = self.panes.borrow();
+        let mut pane_ids_in_stack = vec![];
+        for pane in panes.values() {
+            if pane.current_geom().stacked == Some(stack_id) {
+                pane_ids_in_stack.push(pane.pid());
+            }
+        }
+        pane_ids_in_stack
     }
     fn reset_stack_size(
         &self,

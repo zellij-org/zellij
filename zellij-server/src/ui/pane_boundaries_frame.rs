@@ -4,7 +4,7 @@ use crate::ui::boundaries::boundary_type;
 use crate::ClientId;
 use zellij_utils::data::{client_id_to_colors, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
-use zellij_utils::pane_size::Viewport;
+use zellij_utils::pane_size::{Offset, Viewport};
 use zellij_utils::position::Position;
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -62,6 +62,7 @@ pub struct FrameParams {
     pub pane_is_stacked_over: bool,
     pub should_draw_pane_frames: bool,
     pub pane_is_floating: bool,
+    pub content_offset: Offset,
 }
 
 #[derive(Default, PartialEq)]
@@ -82,6 +83,7 @@ pub struct PaneFrame {
     should_draw_pane_frames: bool,
     is_pinned: bool,
     is_floating: bool,
+    content_offset: Offset,
 }
 
 impl PaneFrame {
@@ -108,6 +110,7 @@ impl PaneFrame {
             should_draw_pane_frames: frame_params.should_draw_pane_frames,
             is_pinned: false,
             is_floating: frame_params.pane_is_floating,
+            content_offset: frame_params.content_offset,
         }
     }
     pub fn is_pinned(mut self, is_pinned: bool) -> Self {
@@ -776,11 +779,26 @@ impl PaneFrame {
             // if this is a stacked pane with pane frames off (and it doesn't necessarily have only
             // 1 row because it could also be a flexible stacked pane)
             // in this case we should always draw the pane title line, and only the title line
-            let one_line_title = self.render_one_line_title().with_context(err_context)?;
+            let mut one_line_title = self.render_one_line_title().with_context(err_context)?;
+
+            if self.content_offset.right != 0 && !self.should_draw_pane_frames {
+                // here what happens is that the title should be offset to the right
+                // in order to give room to the boundaries between the panes to be drawn
+                one_line_title.pop();
+            }
+            let y_coords_of_title = if self.pane_is_stacked_under && !self.should_draw_pane_frames {
+                // we only want to use the bottom offset in this case because panes that are
+                // stacked above the flexible pane should actually appear exactly where they are on
+                // screen, the content offset being "absorbed" by the flexible pane below them
+                self.geom.y.saturating_sub(self.content_offset.bottom)
+            } else {
+                self.geom.y
+            };
+
             character_chunks.push(CharacterChunk::new(
                 one_line_title,
                 self.geom.x,
-                self.geom.y,
+                y_coords_of_title,
             ));
         } else {
             for row in 0..self.geom.rows {
