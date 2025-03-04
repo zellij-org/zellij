@@ -10,15 +10,20 @@ use copy_command::CopyCommand;
 use std::env::temp_dir;
 use std::path::PathBuf;
 use uuid::Uuid;
-use zellij_utils::data::{
-    Direction, KeyWithModifier, PaneInfo, PermissionStatus, PermissionType, PluginPermission,
-    ResizeStrategy,
+use zellij_utils::{
+    consts::{MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH},
+    data::{
+        Direction, KeyWithModifier, PaneInfo, PermissionStatus, PermissionType, PluginPermission,
+        ResizeStrategy,
+    },
+    errors::prelude::*,
+    input::{
+        command::RunCommand,
+        mouse::{MouseEvent, MouseEventType},
+    },
+    position::{Column, Line, Position},
+    serde,
 };
-use zellij_utils::errors::prelude::*;
-use zellij_utils::input::command::RunCommand;
-use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
-use zellij_utils::position::{Column, Line};
-use zellij_utils::{position::Position, serde};
 
 use crate::background_jobs::BackgroundJob;
 use crate::pty_writer::PtyWriteInstruction;
@@ -131,10 +136,6 @@ macro_rules! resize_pty {
         }
     }};
 }
-
-// FIXME: This should be replaced by `RESIZE_PERCENT` at some point
-pub const MIN_TERMINAL_HEIGHT: usize = 5;
-pub const MIN_TERMINAL_WIDTH: usize = 5;
 
 const MAX_PENDING_VTE_EVENTS: usize = 7000;
 

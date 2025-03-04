@@ -13,6 +13,11 @@ pub const ZELLIJ_CONFIG_DIR_ENV: &str = "ZELLIJ_CONFIG_DIR";
 pub const ZELLIJ_LAYOUT_DIR_ENV: &str = "ZELLIJ_LAYOUT_DIR";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_SCROLL_BUFFER_SIZE: usize = 10_000;
+
+// FIXME: This should be replaced by `RESIZE_PERCENT` at some point
+pub const MIN_TERMINAL_HEIGHT: usize = 5;
+pub const MIN_TERMINAL_WIDTH: usize = 5;
+
 pub static SCROLL_BUFFER_SIZE: OnceCell<usize> = OnceCell::new();
 pub static DEBUG_MODE: OnceCell<bool> = OnceCell::new();
 
