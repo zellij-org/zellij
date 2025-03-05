@@ -1,4 +1,6 @@
-document.addEventListener("DOMContentLoaded", (event) => {
+document.addEventListener("DOMContentLoaded", async (event) => {
+    const web_client_id = await get_client_id();
+
     var own_web_client_id = "";
     const { term, fitAddon } = initTerminal();
     const session_name = location.pathname.split("/").pop();
@@ -6,12 +8,7 @@ document.addEventListener("DOMContentLoaded", (event) => {
 
     let send_ansi_key = (ansi_key) => {
         if (!own_web_client_id == "") {
-            ws_terminal.send(
-                JSON.stringify({
-                    web_client_id: own_web_client_id,
-                    stdin: ansi_key,
-                })
-            );
+            ws_terminal.send(ansi_key);
         }
     };
     let encode_kitty_key = (ev) => {
@@ -125,12 +122,7 @@ document.addEventListener("DOMContentLoaded", (event) => {
 
     term.onData((data) => {
         if (!own_web_client_id == "") {
-            ws_terminal.send(
-                JSON.stringify({
-                    web_client_id: own_web_client_id,
-                    stdin: data,
-                })
-            );
+            ws_terminal.send(data);
         }
     });
     term.onBinary((data) => {
@@ -138,18 +130,13 @@ document.addEventListener("DOMContentLoaded", (event) => {
         for (let i = 0; i < data.length; ++i) {
             buffer[i] = data.charCodeAt(i) & 255;
         }
-        ws_terminal.send(
-            JSON.stringify({
-                web_client_id: own_web_client_id,
-                stdin: buffer,
-            })
-        );
+        ws_terminal.send(buffer);
     });
 
     const ws_terminal_url =
         session_name === ""
-            ? `ws://127.0.0.1:8082/ws/terminal`
-            : `ws://127.0.0.1:8082/ws/terminal/${session_name}`;
+            ? `ws://127.0.0.1:8082/ws/terminal?web_client_id=${web_client_id}`
+            : `ws://127.0.0.1:8082/ws/terminal/${session_name}?web_client_id=${web_client_id}`;
 
     let ws_terminal = new WebSocket(ws_terminal_url);
     // let ws_control = new WebSocket('ws://127.0.0.1:8081');
@@ -193,19 +180,19 @@ document.addEventListener("DOMContentLoaded", (event) => {
     };
     function start_ws_control() {
         ws_control.onopen = function (event) {
-          const fit_dimensions = fitAddon.proposeDimensions();
-          const { rows, cols } = fit_dimensions;
-          ws_control.send(
-              JSON.stringify({
-                  web_client_id: own_web_client_id,
-                  payload: {
-                      type: "TerminalResize",
-                      rows,
-                      cols,
-                  },
-              })
-          );
-        }
+            const fit_dimensions = fitAddon.proposeDimensions();
+            const { rows, cols } = fit_dimensions;
+            ws_control.send(
+                JSON.stringify({
+                    web_client_id: own_web_client_id,
+                    payload: {
+                        type: "TerminalResize",
+                        rows,
+                        cols,
+                    },
+                })
+            );
+        };
         ws_control.onmessage = function (event) {
             const msg = JSON.parse(event.data);
             if (msg.type === "SetConfig") {
@@ -245,19 +232,18 @@ document.addEventListener("DOMContentLoaded", (event) => {
     }
 
     ws_terminal.onmessage = function (event) {
-        let msg = JSON.parse(event.data);
         //         console.log(
         //             "Received message from WebSocket terminal server",
         //             event.data
         //         );
         if (own_web_client_id == "") {
-            own_web_client_id = msg.web_client_id;
+            own_web_client_id = web_client_id;
             const ws_control_url = `ws://127.0.0.1:8082/ws/control`;
 
             ws_control = new WebSocket(ws_control_url);
             start_ws_control();
         }
-        term.write(msg.bytes);
+        term.write(event.data);
     };
 
     ws_terminal.onclose = function () {
@@ -286,4 +272,16 @@ function initTerminal() {
     fitAddon.fit();
     console.log(`Initialized terminal, rows: ${term.rows}, cols: ${term.cols}`);
     return { term, fitAddon };
+}
+
+function get_client_id() {
+    return fetch("http://localhost:8082/session", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+    })
+        .then((data) => data.json())
+        .then((data) => data.web_client_id);
 }
