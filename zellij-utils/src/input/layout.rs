@@ -1642,8 +1642,9 @@ fn split_space(
         } else if let Some(last_size) = sizes.last_mut() {
             *last_size = None;
         }
-        if sizes.len() > space_to_split.rows.as_usize().saturating_sub(4) {
-            // 4 is MIN_TERMINAL_HEIGHT
+        if sizes.len() > space_to_split.rows.as_usize().saturating_sub(3) {
+            // 4 is MIN_TERMINAL_HEIGHT, minus 1 because sizes also includes the expanded pane in
+            // the stack
             return Err("Not enough room for stacked panes in this layout");
         }
         sizes

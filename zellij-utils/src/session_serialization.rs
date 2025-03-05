@@ -1,5 +1,5 @@
 use kdl::{KdlDocument, KdlEntry, KdlNode, KdlValue};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 use crate::{
@@ -630,6 +630,8 @@ fn serialize_multiple_tabs(
         );
         if let Some(serialized) = serialized {
             serialized_tabs.push(serialized);
+        } else {
+            return Err("Failed to serialize session state");
         }
     }
     Ok(serialized_tabs)
@@ -663,6 +665,41 @@ fn serialize_floating_pane(
     serialize_plugin(plugin, plugin_config, &mut floating_pane_node_children);
     floating_pane_node.set_children(floating_pane_node_children);
     floating_pane_node
+}
+
+fn stack_layout_from_manifest(
+    geoms: &Vec<PaneLayoutManifest>,
+    split_size: Option<SplitSize>
+) -> Option<TiledPaneLayout> {
+    let mut children_stacks: HashMap<usize, Vec<PaneLayoutManifest>> = HashMap::new();
+    for p in geoms {
+        if let Some(stack_id) = p.geom.stacked {
+            children_stacks.entry(stack_id).or_insert_with(Default::default).push(p.clone());
+        }
+    }
+    let mut stack_nodes = vec![];
+    for (_stack_id, stacked_panes) in children_stacks.into_iter() {
+        stack_nodes.push(TiledPaneLayout {
+            split_size,
+            children: stacked_panes
+                .iter()
+                .map(|p| tiled_pane_layout_from_manifest(Some(p), None))
+                .collect(),
+            children_are_stacked: true,
+            ..Default::default()
+        })
+    }
+    if stack_nodes.len() == 1 {
+        // if there's only one stack, we return it without a wrapper
+        stack_nodes.iter().next().cloned()
+    } else {
+        // here there is more than one stack, so we wrap it in a logical container node
+        Some(TiledPaneLayout {
+            split_size,
+            children: stack_nodes,
+            ..Default::default()
+        })
+    }
 }
 
 fn tiled_pane_layout_from_manifest(
@@ -709,10 +746,16 @@ fn get_tiled_panes_layout_from_panegeoms(
     let (children_split_direction, splits) = match get_splits(&geoms) {
         Some(x) => x,
         None => {
-            return Some(tiled_pane_layout_from_manifest(
-                geoms.iter().next(),
-                split_size,
-            ))
+            if geoms.len() > 1 {
+                // this can only happen if all geoms belong to one or more stacks
+                // since stack splits are discounted in the get_splits method
+                return stack_layout_from_manifest(geoms, split_size);
+            } else {
+                return Some(tiled_pane_layout_from_manifest(
+                    geoms.iter().next(),
+                    split_size,
+                ))
+            }
         },
     };
     let mut children = Vec::new();
@@ -742,42 +785,39 @@ fn get_tiled_panes_layout_from_panegeoms(
             },
         }
     }
+
+    if let Some(SplitSize::Fixed(fixed_size)) = split_size {
+        if fixed_size == 1 && !new_geoms.is_empty() {
+            // invalid state, likely an off-by-one error somewhere, we do not serialize
+            log::error!("invalid state, not serializing");
+            return None;
+        }
+    }
+
     let new_split_sizes = get_split_sizes(&new_constraints);
 
-    let mut children_stacks = ChildrenStacks::default();
 
     for (subgeoms, subsplit_size) in new_geoms.iter().zip(new_split_sizes) {
         match get_tiled_panes_layout_from_panegeoms(&subgeoms, subsplit_size) {
             Some(child) => {
-                if let Some(stack_id) = children_stacks.child_is_stacked(&subgeoms) {
-                    children_stacks.track_stacked_child(stack_id, child);
-                } else {
-                    children.push(child);
-                    children_stacks.increment_running_index();
-                }
+                children.push(child);
             },
             None => {
                 return None;
             },
         }
     }
-    if let Some(mut stack_node) = children_stacks.only_one_stack_node_exists_in_children() {
-        // in this case, we will re-use the stack container itself in order not to create a
-        // redundant logical container around just one node
-        stack_node.split_size = split_size;
-        Some(stack_node)
-    } else {
-        for (index_in_children, stack) in children_stacks.all_stacks() {
-            children.insert(index_in_children, stack);
-        }
-        Some(TiledPaneLayout {
-            children_split_direction,
-            split_size,
-            children,
-            children_are_stacked: false,
-            ..Default::default()
-        })
-    }
+    let children_are_stacked = children_split_direction == SplitDirection::Horizontal
+        && new_geoms
+            .iter()
+            .all(|c| c.iter().all(|c| c.geom.is_stacked()));
+    Some(TiledPaneLayout {
+        children_split_direction,
+        split_size,
+        children,
+        children_are_stacked,
+        ..Default::default()
+    })
 }
 
 fn get_floating_panes_layout_from_panegeoms(
@@ -906,11 +946,34 @@ fn get_row_splits(
     let mut splits = Vec::new();
     let mut sorted_geoms = geoms.clone();
     sorted_geoms.sort_by_key(|g| g.geom.y);
-    for y in sorted_geoms.iter().map(|g| g.geom.y) {
+
+    //  here we make sure the various panes in all the stacks aren't counted as splits, since
+    //  stacked panes must always stay togethyer - we group them into one "geom" for the purposes
+    //  of figuring out their splits
+    let mut stack_geoms: HashMap<usize, Vec<PaneLayoutManifest>> = HashMap::new();
+    let mut all_geoms = vec![];
+    for pane_layout_manifest in sorted_geoms.drain(..) {
+        if let Some(stack_id) = pane_layout_manifest.geom.stacked {
+            stack_geoms.entry(stack_id).or_insert_with(Default::default).push(pane_layout_manifest)
+        }  else {
+            all_geoms.push(pane_layout_manifest);
+        }
+    }
+    for (_stack_id, mut geoms_in_stack) in stack_geoms.into_iter() {
+        let mut geom_of_whole_stack = geoms_in_stack.remove(0);
+        if let Some(last_geom) = geoms_in_stack.last() {
+            geom_of_whole_stack.geom.rows.set_inner(last_geom.geom.y + last_geom.geom.rows.as_usize())
+        }
+        all_geoms.push(geom_of_whole_stack);
+    }
+
+    all_geoms.sort_by_key(|g| g.geom.y);
+
+    for y in all_geoms.iter().map(|g| g.geom.y) {
         if splits.contains(&y) {
             continue;
         }
-        if sorted_geoms
+        if all_geoms
             .iter()
             .filter(|g| g.geom.y == y)
             .map(|g| g.geom.cols.as_usize())
@@ -1018,65 +1081,6 @@ fn get_split_sizes(constraints: &Vec<Constraint>) -> Vec<Option<SplitSize>> {
         split_sizes.push(split_size);
     }
     split_sizes
-}
-
-// this helps keep track of children stacks when parsing a layout, making sure each one of them
-// will appear in its proper position among the other children and be wrapped by a logical
-// container node
-#[derive(Default)]
-struct ChildrenStacks {
-    stack_ids_to_children: BTreeMap<usize, Vec<TiledPaneLayout>>,
-    stack_ids_to_index_in_children: BTreeMap<usize, usize>,
-    running_index: usize,
-}
-
-impl ChildrenStacks {
-    pub fn child_is_stacked(&self, subgeoms: &[PaneLayoutManifest]) -> Option<usize> {
-        if subgeoms.len() == 1 {
-            subgeoms.iter().next().and_then(|g| g.geom.stacked)
-        } else {
-            None
-        }
-    }
-    pub fn track_stacked_child(&mut self, stack_id: usize, child: TiledPaneLayout) {
-        self.stack_ids_to_children.entry(stack_id).or_insert_with(Default::default).push(child);
-        if self.stack_ids_to_index_in_children.get(&stack_id).is_none() {
-            self.stack_ids_to_index_in_children.insert(stack_id, self.running_index);
-            self.increment_running_index();
-        }
-    }
-    pub fn increment_running_index(&mut self) {
-        self.running_index += 1;
-    }
-    pub fn all_stacks(&mut self) -> Vec<(usize, TiledPaneLayout)> { // usize -> index in
-        let mut stacks = vec![];
-        for (stack_id, panes_in_stack) in &self.stack_ids_to_children {
-            let position_in_children = *self.stack_ids_to_index_in_children.get(&stack_id).unwrap_or(&0);
-            let stack_container = TiledPaneLayout {
-                children_split_direction: SplitDirection::Horizontal,
-                children: panes_in_stack.clone(),
-                children_are_stacked: true,
-                ..Default::default()
-            };
-            stacks.push((position_in_children, stack_container));
-       }
-       stacks.sort_by(|a, b| a.0.cmp(&b.0));
-       stacks
-    }
-    pub fn only_one_stack_node_exists_in_children(&mut self) -> Option<TiledPaneLayout> {
-        if self.stack_ids_to_children.keys().len() == 1 && self.running_index == 1 {
-            self.stack_ids_to_children.values().next().map(|nodes| {
-                TiledPaneLayout {
-                    children_split_direction: SplitDirection::Horizontal,
-                    children: nodes.clone(),
-                    children_are_stacked: true,
-                    ..Default::default()
-                }
-            })
-        } else {
-            None
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1796,6 +1800,188 @@ mod tests {
                         rows: Dimension::fixed(1),
                         cols: Dimension::fixed(10),
                         stacked: Some(1),
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let global_layout_manifest = GlobalLayoutManifest {
+            tabs: vec![("Tab with \"stacked panes\"".to_owned(), tab_layout_manifest)],
+            ..Default::default()
+        };
+        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        assert_snapshot!(kdl.0);
+    }
+    #[test]
+    fn can_serialize_tab_with_multiple_stacks_next_to_eachother() {
+        let tab_layout_manifest = TabLayoutManifest {
+            tiled_panes: vec![
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 0,
+                        y: 0,
+                        rows: Dimension::fixed(1),
+                        cols: Dimension::fixed(10),
+                        stacked: Some(0),
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    ..Default::default()
+                },
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 0,
+                        y: 1,
+                        rows: Dimension::fixed(10),
+                        cols: Dimension::fixed(10),
+                        stacked: Some(0),
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    ..Default::default()
+                },
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 0,
+                        y: 11,
+                        rows: Dimension::fixed(1),
+                        cols: Dimension::fixed(10),
+                        stacked: Some(0),
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    ..Default::default()
+                },
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 0,
+                        y: 12,
+                        rows: Dimension::fixed(10),
+                        cols: Dimension::fixed(10),
+                        stacked: None,
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    ..Default::default()
+                },
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 0,
+                        y: 22,
+                        rows: Dimension::fixed(1),
+                        cols: Dimension::fixed(10),
+                        stacked: Some(1),
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    ..Default::default()
+                },
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 0,
+                        y: 23,
+                        rows: Dimension::fixed(10),
+                        cols: Dimension::fixed(10),
+                        stacked: Some(1),
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    ..Default::default()
+                },
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 0,
+                        y: 33,
+                        rows: Dimension::fixed(1),
+                        cols: Dimension::fixed(10),
+                        stacked: Some(1),
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    ..Default::default()
+                },
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 10,
+                        y: 0,
+                        rows: Dimension::fixed(1),
+                        cols: Dimension::fixed(10),
+                        stacked: Some(2),
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    ..Default::default()
+                },
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 10,
+                        y: 1,
+                        rows: Dimension::fixed(10),
+                        cols: Dimension::fixed(10),
+                        stacked: Some(2),
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    ..Default::default()
+                },
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 10,
+                        y: 11,
+                        rows: Dimension::fixed(1),
+                        cols: Dimension::fixed(10),
+                        stacked: Some(2),
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    ..Default::default()
+                },
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 10,
+                        y: 12,
+                        rows: Dimension::fixed(10),
+                        cols: Dimension::fixed(10),
+                        stacked: None,
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    ..Default::default()
+                },
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 10,
+                        y: 22,
+                        rows: Dimension::fixed(1),
+                        cols: Dimension::fixed(10),
+                        stacked: Some(3),
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    ..Default::default()
+                },
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 10,
+                        y: 23,
+                        rows: Dimension::fixed(10),
+                        cols: Dimension::fixed(10),
+                        stacked: Some(3),
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    ..Default::default()
+                },
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 10,
+                        y: 33,
+                        rows: Dimension::fixed(1),
+                        cols: Dimension::fixed(10),
+                        stacked: Some(3),
                         is_pinned: false,
                         logical_position: None,
                     },
