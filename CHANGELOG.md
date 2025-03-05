@@ -39,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(grid): reap sixel images on clear (https://github.com/zellij-org/zellij/pull/3982)
 * fix(panes): properly render stacked panes when pane frames are disabled (https://github.com/zellij-org/zellij/pull/4035)
 * fix(panes): break ties by last focus time when focusing panes on screen edge (https://github.com/zellij-org/zellij/pull/4037)
+* fix(serialization): properly serialize and handle multiple stacks in layouts (https://github.com/zellij-org/zellij/pull/4041)
 
 ## [0.41.2] - 2024-11-19
 * fix(input): keypresses not being identified properly with kitty keyboard protocol in some terminals (https://github.com/zellij-org/zellij/pull/3725)
