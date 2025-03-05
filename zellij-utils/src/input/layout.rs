@@ -914,15 +914,19 @@ impl TiledPaneLayout {
                     layout_to_split.focus_deepest_pane();
                 }
 
+                let mut stack_id = 0;
                 split_space(
                     space,
                     &layout_to_split,
                     space,
                     ignore_percent_split_sizes,
-                    0,
+                    &mut stack_id,
                 )?
             },
-            None => split_space(space, self, space, ignore_percent_split_sizes, 0)?,
+            None => {
+                let mut stack_id = 0;
+                split_space(space, self, space, ignore_percent_split_sizes, &mut stack_id)?
+            }
         };
         for (_pane_layout, pane_geom) in layouts.iter() {
             if !pane_geom.is_at_least_minimum_size() {
@@ -938,10 +942,17 @@ impl TiledPaneLayout {
         if self.children.is_empty() {
             run_instructions.push(self.run.clone());
         }
+        let mut run_instructions_of_children = vec![];
         for child in &self.children {
             let mut child_run_instructions = child.extract_run_instructions();
-            run_instructions.append(&mut child_run_instructions);
+            // add the only first child to run_instructions only adding the others after all the
+            // childfree panes have been added so that the returned vec will be sorted breadth-first
+            if !child_run_instructions.is_empty() {
+                run_instructions.push(child_run_instructions.remove(0));
+            }
+            run_instructions_of_children.append(&mut child_run_instructions);
         }
+        run_instructions.append(&mut run_instructions_of_children);
         let mut successfully_ignored = 0;
         for instruction_to_ignore in &self.run_instructions_to_ignore {
             if let Some(position) = run_instructions
@@ -1617,7 +1628,7 @@ fn split_space(
     layout: &TiledPaneLayout,
     total_space_to_split: &PaneGeom,
     ignore_percent_split_sizes: bool,
-    mut next_stack_id: usize,
+    next_stack_id: &mut usize,
 ) -> Result<Vec<(TiledPaneLayout, PaneGeom)>, &'static str> {
     let sizes: Vec<Option<SplitSize>> = if layout.children_are_stacked {
         let index_of_expanded_pane = layout.children.iter().position(|p| p.is_expanded_in_stack);
@@ -1687,8 +1698,8 @@ fn split_space(
         }
     });
     let stacked = if layout.children_are_stacked {
-        let stack_id = next_stack_id;
-        next_stack_id += 1;
+        let stack_id = *next_stack_id;
+        *next_stack_id += 1;
         Some(stack_id)
     } else {
         None
