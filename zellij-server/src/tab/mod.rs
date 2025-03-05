@@ -737,7 +737,7 @@ impl Tab {
     ) -> Result<()> {
         self.swap_layouts
             .set_base_layout((layout.clone(), floating_panes_layout.clone()));
-        if let Ok(should_show_floating_panes) = LayoutApplier::new(
+        match LayoutApplier::new(
             &self.viewport,
             &self.senders,
             &self.sixel_image_store,
@@ -766,17 +766,25 @@ impl Tab {
             new_plugin_ids,
             client_id,
         ) {
-            #[allow(clippy::if_same_then_else)]
-            if should_show_floating_panes && !self.floating_panes.panes_are_visible() {
-                self.toggle_floating_panes(Some(client_id), None)
-                    .non_fatal();
-            } else if !should_show_floating_panes && self.floating_panes.panes_are_visible() {
-                self.toggle_floating_panes(Some(client_id), None)
-                    .non_fatal();
-            }
-            self.tiled_panes.reapply_pane_frames();
-            self.is_pending = false;
-            self.apply_buffered_instructions().non_fatal();
+            Ok(should_show_floating_panes) => {
+                if should_show_floating_panes && !self.floating_panes.panes_are_visible() {
+                    self.toggle_floating_panes(Some(client_id), None)
+                        .non_fatal();
+                } else if !should_show_floating_panes && self.floating_panes.panes_are_visible() {
+                    self.toggle_floating_panes(Some(client_id), None)
+                        .non_fatal();
+                }
+                self.tiled_panes.reapply_pane_frames();
+                self.is_pending = false;
+                self.apply_buffered_instructions().non_fatal();
+            },
+            Err(e) => {
+                // TODO: this should only happen due to an erroneous layout created by user
+                // configuration that was somehow not caught in our KDL layout parser
+                // we should still be able to properly recover from this with a useful error
+                // message though
+                log::error!("Failed to apply layout: {}", e);
+            },
         }
         Ok(())
     }
