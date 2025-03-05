@@ -669,12 +669,15 @@ fn serialize_floating_pane(
 
 fn stack_layout_from_manifest(
     geoms: &Vec<PaneLayoutManifest>,
-    split_size: Option<SplitSize>
+    split_size: Option<SplitSize>,
 ) -> Option<TiledPaneLayout> {
     let mut children_stacks: HashMap<usize, Vec<PaneLayoutManifest>> = HashMap::new();
     for p in geoms {
         if let Some(stack_id) = p.geom.stacked {
-            children_stacks.entry(stack_id).or_insert_with(Default::default).push(p.clone());
+            children_stacks
+                .entry(stack_id)
+                .or_insert_with(Default::default)
+                .push(p.clone());
         }
     }
     let mut stack_nodes = vec![];
@@ -754,7 +757,7 @@ fn get_tiled_panes_layout_from_panegeoms(
                 return Some(tiled_pane_layout_from_manifest(
                     geoms.iter().next(),
                     split_size,
-                ))
+                ));
             }
         },
     };
@@ -795,7 +798,6 @@ fn get_tiled_panes_layout_from_panegeoms(
     }
 
     let new_split_sizes = get_split_sizes(&new_constraints);
-
 
     for (subgeoms, subsplit_size) in new_geoms.iter().zip(new_split_sizes) {
         match get_tiled_panes_layout_from_panegeoms(&subgeoms, subsplit_size) {
@@ -954,15 +956,21 @@ fn get_row_splits(
     let mut all_geoms = vec![];
     for pane_layout_manifest in sorted_geoms.drain(..) {
         if let Some(stack_id) = pane_layout_manifest.geom.stacked {
-            stack_geoms.entry(stack_id).or_insert_with(Default::default).push(pane_layout_manifest)
-        }  else {
+            stack_geoms
+                .entry(stack_id)
+                .or_insert_with(Default::default)
+                .push(pane_layout_manifest)
+        } else {
             all_geoms.push(pane_layout_manifest);
         }
     }
     for (_stack_id, mut geoms_in_stack) in stack_geoms.into_iter() {
         let mut geom_of_whole_stack = geoms_in_stack.remove(0);
         if let Some(last_geom) = geoms_in_stack.last() {
-            geom_of_whole_stack.geom.rows.set_inner(last_geom.geom.y + last_geom.geom.rows.as_usize())
+            geom_of_whole_stack
+                .geom
+                .rows
+                .set_inner(last_geom.geom.y + last_geom.geom.rows.as_usize())
         }
         all_geoms.push(geom_of_whole_stack);
     }

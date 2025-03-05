@@ -925,8 +925,14 @@ impl TiledPaneLayout {
             },
             None => {
                 let mut stack_id = 0;
-                split_space(space, self, space, ignore_percent_split_sizes, &mut stack_id)?
-            }
+                split_space(
+                    space,
+                    self,
+                    space,
+                    ignore_percent_split_sizes,
+                    &mut stack_id,
+                )?
+            },
         };
         for (_pane_layout, pane_geom) in layouts.iter() {
             if !pane_geom.is_at_least_minimum_size() {
