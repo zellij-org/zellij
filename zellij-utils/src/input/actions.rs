@@ -106,6 +106,8 @@ pub enum Action {
     Write(Option<KeyWithModifier>, Vec<u8>, bool), // bool -> is_kitty_keyboard_protocol
     /// Write Characters to the terminal.
     WriteChars(String),
+    /// Write content of given file to the terminal.
+    WriteCommandOutput(String),
     /// Switch to the specified input mode.
     SwitchToMode(InputMode),
     /// Switch all connected clients to the specified input mode.
@@ -317,6 +319,9 @@ impl Action {
         match cli_action {
             CliAction::Write { bytes } => Ok(vec![Action::Write(None, bytes, false)]),
             CliAction::WriteChars { chars } => Ok(vec![Action::WriteChars(chars)]),
+            CliAction::WriteCommandOutput { filename } => {
+                Ok(vec![Action::WriteCommandOutput(filename)])
+            },
             CliAction::Resize { resize, direction } => Ok(vec![Action::Resize(resize, direction)]),
             CliAction::FocusNextPane => Ok(vec![Action::FocusNextPane]),
             CliAction::FocusPreviousPane => Ok(vec![Action::FocusPreviousPane]),
