@@ -41,6 +41,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(panes): break ties by last focus time when focusing panes on screen edge (https://github.com/zellij-org/zellij/pull/4037)
 * fix(serialization): properly serialize and handle multiple stacks in layouts (https://github.com/zellij-org/zellij/pull/4041)
 * fix(multiplayer): some issues in conjunction with stacked panes and multiple users (https://github.com/zellij-org/zellij/pull/4038)
+* fix(grid): out of bounds removal when app does not update its scroll region on resize (https://github.com/zellij-org/zellij/pull/4045)
+* fix(plugins): prevent paging plugins from cache at runtime (https://github.com/zellij-org/zellij/pull/4044)
+* fix(ui): add split right/down shortcut hints to the status-bar (https://github.com/zellij-org/zellij/pull/4046)
 
 ## [0.41.2] - 2024-11-19
 * fix(input): keypresses not being identified properly with kitty keyboard protocol in some terminals (https://github.com/zellij-org/zellij/pull/3725)
