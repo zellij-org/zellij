@@ -1283,7 +1283,9 @@ impl Grid {
             let mut pad_character = EMPTY_TERMINAL_CHARACTER;
             pad_character.styles = self.cursor.pending_styles.clone();
             for _ in 0..count {
-                self.viewport.remove(scroll_region_top);
+                if scroll_region_top < self.viewport.len() {
+                    self.viewport.remove(scroll_region_top);
+                }
                 let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
                 self.viewport
                     .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
