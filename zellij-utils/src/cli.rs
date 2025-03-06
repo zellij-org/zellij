@@ -401,6 +401,10 @@ pub enum CliAction {
     WriteChars {
         chars: String,
     },
+    /// Run the given command and paste its stdout to the terminal.
+    WriteCommandOutput {
+        filename: String,
+    },
     /// [increase|decrease] the focused panes area at the [left|down|up|right] border.
     Resize {
         resize: Resize,
