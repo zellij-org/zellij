@@ -529,7 +529,8 @@ impl<'a> PluginLoader<'a> {
         );
         let (_wasm_bytes, cached_path) = self.plugin_bytes_and_cache_path()?;
         let timer = std::time::Instant::now();
-        let module = unsafe { Module::deserialize_file(&self.engine, &cached_path)? };
+        let file_in_cache = std::fs::read(&cached_path)?;
+        let module = unsafe { Module::deserialize(&self.engine, file_in_cache)? };
         log::info!(
             "Loaded plugin '{}' from cache folder at '{}' in {:?}",
             self.plugin_path.display(),
