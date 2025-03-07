@@ -4886,6 +4886,9 @@ impl PaneInfo {
             terminal_command,
             plugin_url,
             is_selectable,
+            // These are runtime-dependent and will be filled out by Pty upon request
+            pid: None,
+            last_known_cwd: None,
         };
         Ok((tab_position, pane_info))
     }
@@ -5033,6 +5036,9 @@ fn serialize_and_deserialize_session_info_with_data() {
             terminal_command: Some("foo".to_owned()),
             plugin_url: None,
             is_selectable: true,
+            // These are runtime-dependent and will be filled out by Pty upon request
+            pid: None,
+            last_known_cwd: None,
         },
         PaneInfo {
             id: 1,
@@ -5057,6 +5063,9 @@ fn serialize_and_deserialize_session_info_with_data() {
             terminal_command: None,
             plugin_url: Some("i_am_a_fake_plugin".to_owned()),
             is_selectable: true,
+            // These are runtime-dependent and will be filled out by Pty upon request
+            pid: None,
+            last_known_cwd: None,
         },
     ];
     let mut panes = HashMap::new();
