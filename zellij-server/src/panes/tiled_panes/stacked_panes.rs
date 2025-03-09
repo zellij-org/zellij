@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use zellij_utils::{
     errors::prelude::*,
-    pane_size::{Dimension, PaneGeom, StackInfo},
+    pane_size::{Dimension, PaneGeom, SimpleGeom, StackInfo},
 };
 
 pub struct StackedPanes<'a> {
@@ -180,21 +180,34 @@ impl<'a> StackedPanes<'a> {
         let (_flexible_pane_id, flexible_pane) = all_stacked_pane_positions
             .iter()
             .nth(position_of_flexible_pane)?;
+        log::info!("Flexible pane geom: {flexible_pane:#?}");
         let (_, first_pane_in_stack) = all_stacked_pane_positions.first()?;
         let (_, last_pane_in_stack) = all_stacked_pane_positions.last()?;
         let mut rows = flexible_pane.rows;
         rows.set_inner(
             (last_pane_in_stack.y - first_pane_in_stack.y) + last_pane_in_stack.rows.as_usize(),
         );
-        Some(PaneGeom {
-            y: first_pane_in_stack.y,
-            x: first_pane_in_stack.x,
-            cols: first_pane_in_stack.cols,
-            rows,
-            stacked: None, // important because otherwise the minimum stack size will not be
-            // respected
-            ..Default::default()
-        })
+        if let Some(SimpleGeom { x, y, rows, cols }) = flexible_pane.stacked.unwrap().geom {
+            Some(PaneGeom {
+                x,
+                y,
+                cols,
+                rows,
+                stacked: None, // important because otherwise the minimum stack size will not be
+                // respected
+                ..Default::default()
+            })
+        } else {
+            Some(PaneGeom {
+                y: first_pane_in_stack.y,
+                x: first_pane_in_stack.x,
+                cols: first_pane_in_stack.cols,
+                rows,
+                stacked: None, // important because otherwise the minimum stack size will not be
+                // respected
+                ..Default::default()
+            })
+        }
     }
     pub fn increase_stack_width(&mut self, id: &PaneId, percent: f64) -> Result<()> {
         let err_context = || format!("Failed to resize panes in stack");
@@ -289,6 +302,16 @@ impl<'a> StackedPanes<'a> {
                 } else {
                     new_pane_geom.y = new_full_stack_geom.y + i + (new_flexible_pane_geom_rows - 1);
                 }
+                let simple_full_stack_geom = SimpleGeom {
+                    x: new_full_stack_geom.x,
+                    y: new_full_stack_geom.y,
+                    rows: new_full_stack_geom.rows,
+                    cols: new_full_stack_geom.cols,
+                };
+                new_pane_geom.stacked = pane_geom.stacked.map(|StackInfo { id, geom }| StackInfo {
+                    id,
+                    geom: Some(simple_full_stack_geom),
+                });
                 self.panes
                     .borrow_mut()
                     .get_mut(&pane_id)
