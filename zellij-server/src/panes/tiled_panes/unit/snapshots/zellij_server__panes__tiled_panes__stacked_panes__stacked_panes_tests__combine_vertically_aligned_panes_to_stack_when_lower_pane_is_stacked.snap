@@ -1,6 +1,5 @@
 ---
 source: zellij-server/src/panes/tiled_panes/./unit/stacked_panes_tests.rs
-assertion_line: 152
 expression: "format!(\"{:#?}\", pane_geoms_after)"
 ---
 [
@@ -41,7 +40,10 @@ expression: "format!(\"{:#?}\", pane_geoms_after)"
             inner: 1,
         },
         stacked: Some(
-            1,
+            StackInfo {
+                id: 1,
+                geom: None,
+            },
         ),
         is_pinned: false,
         logical_position: Some(
@@ -64,7 +66,10 @@ expression: "format!(\"{:#?}\", pane_geoms_after)"
             inner: 1,
         },
         stacked: Some(
-            1,
+            StackInfo {
+                id: 1,
+                geom: None,
+            },
         ),
         is_pinned: false,
         logical_position: Some(
@@ -87,7 +92,10 @@ expression: "format!(\"{:#?}\", pane_geoms_after)"
             inner: 1,
         },
         stacked: Some(
-            1,
+            StackInfo {
+                id: 1,
+                geom: None,
+            },
         ),
         is_pinned: false,
         logical_position: Some(

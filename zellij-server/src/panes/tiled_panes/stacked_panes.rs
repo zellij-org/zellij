@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use zellij_utils::{
     errors::prelude::*,
-    pane_size::{Dimension, PaneGeom},
+    pane_size::{Dimension, PaneGeom, StackInfo},
 };
 
 pub struct StackedPanes<'a> {
@@ -509,7 +509,7 @@ impl<'a> StackedPanes<'a> {
             return stacked_geoms;
         };
         let stack_id = self.next_stack_id();
-        running_stack_geom.stacked = Some(stack_id);
+        running_stack_geom.stacked = Some(stack_id.into());
         let mut pane_index_in_stack = 0;
         loop {
             if pane_index_in_stack == pane_count_in_stack {
@@ -646,7 +646,7 @@ impl<'a> StackedPanes<'a> {
         geom_of_flexible_pane
             .rows
             .decrease_inner(other_pane_ids_and_geoms.len());
-        geom_of_flexible_pane.stacked = Some(stack_id);
+        geom_of_flexible_pane.stacked = Some(stack_id.into());
         let mut all_stack_geoms = other_pane_ids_and_geoms;
         let original_geom_of_main_pane = panes
             .get(&root_pane_id)
@@ -667,7 +667,7 @@ impl<'a> StackedPanes<'a> {
                     pane_geom.cols = new_stack_geom.cols;
                     pane_geom.y = running_y;
                     pane_geom.rows = geom_of_flexible_pane.rows;
-                    pane_geom.stacked = Some(stack_id);
+                    pane_geom.stacked = Some(stack_id.into());
                     running_y += geom_of_flexible_pane.rows.as_usize();
                     pane_in_stack.set_geom(pane_geom);
                 } else {
@@ -675,7 +675,7 @@ impl<'a> StackedPanes<'a> {
                     pane_geom.cols = new_stack_geom.cols;
                     pane_geom.y = running_y;
                     pane_geom.rows = Dimension::fixed(1);
-                    pane_geom.stacked = Some(stack_id);
+                    pane_geom.stacked = Some(stack_id.into());
                     running_y += 1;
                     pane_in_stack.set_geom(pane_geom);
                 }
@@ -741,7 +741,7 @@ impl<'a> StackedPanes<'a> {
                     pane_geom.cols = new_stack_geom.cols;
                     pane_geom.y = running_y;
                     pane_geom.rows = geom_of_flexible_pane.rows;
-                    pane_geom.stacked = Some(stack_id);
+                    pane_geom.stacked = Some(stack_id.into());
                     pane_geom.logical_position = root_pane.position_and_size().logical_position;
                     root_pane.set_geom(pane_geom);
                     running_y += pane_geom.rows.as_usize();
@@ -752,7 +752,7 @@ impl<'a> StackedPanes<'a> {
                     pane_geom.cols = new_stack_geom.cols;
                     pane_geom.y = running_y;
                     pane_geom.rows = Dimension::fixed(1);
-                    pane_geom.stacked = Some(stack_id);
+                    pane_geom.stacked = Some(stack_id.into());
                     running_y += 1;
                     pane_in_stack.set_geom(pane_geom);
                 }
@@ -818,7 +818,7 @@ impl<'a> StackedPanes<'a> {
         let panes = self.panes.borrow();
         for pane in panes.values() {
             if let Some(stack_id) = pane.position_and_size().stacked {
-                highest_stack_id = std::cmp::max(highest_stack_id, stack_id + 1);
+                highest_stack_id = std::cmp::max(highest_stack_id, stack_id.id + 1);
             }
         }
         highest_stack_id
@@ -827,10 +827,10 @@ impl<'a> StackedPanes<'a> {
         let panes = self.panes.borrow();
         let mut positions_and_sizes_of_all_stacks = HashMap::new();
         for pane in panes.values() {
-            if let Some(stack_id) = pane.current_geom().stacked {
-                if !positions_and_sizes_of_all_stacks.contains_key(&stack_id) {
+            if let Some(StackInfo { id, .. }) = pane.current_geom().stacked {
+                if !positions_and_sizes_of_all_stacks.contains_key(&id) {
                     positions_and_sizes_of_all_stacks
-                        .insert(stack_id, self.position_and_size_of_stack(&pane.pid())?);
+                        .insert(id, self.position_and_size_of_stack(&pane.pid())?);
                 }
             }
         }
@@ -840,7 +840,7 @@ impl<'a> StackedPanes<'a> {
         let panes = self.panes.borrow();
         let mut pane_ids_in_stack = vec![];
         for pane in panes.values() {
-            if pane.current_geom().stacked == Some(stack_id) {
+            if pane.current_geom().stacked.map(|si| si.id) == Some(stack_id) {
                 pane_ids_in_stack.push(pane.pid());
             }
         }

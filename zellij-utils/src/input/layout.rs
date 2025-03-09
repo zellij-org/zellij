@@ -17,7 +17,7 @@ use crate::{
         command::RunCommand,
         config::{Config, ConfigError},
     },
-    pane_size::{Constraint, Dimension, PaneGeom},
+    pane_size::{Constraint, Dimension, PaneGeom, StackInfo},
     setup::{self},
 };
 #[cfg(not(target_family = "wasm"))]
@@ -1743,7 +1743,7 @@ fn split_space(
                 y: space_to_split.y,
                 cols: split_dimension,
                 rows: inherited_dimension,
-                stacked,
+                stacked: stacked.map(StackInfo::from),
                 is_pinned: false,
                 logical_position: None,
             },
@@ -1752,7 +1752,7 @@ fn split_space(
                 y: current_position,
                 cols: inherited_dimension,
                 rows: split_dimension,
-                stacked,
+                stacked: stacked.map(StackInfo::from),
                 is_pinned: false,
                 logical_position: None,
             },

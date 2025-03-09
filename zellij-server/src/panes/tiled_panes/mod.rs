@@ -474,7 +474,7 @@ impl TiledPanes {
                 let is_flexible = !position_and_size.rows.is_fixed();
                 if let Some(position_and_size_of_stack) = position_and_size
                     .stacked
-                    .and_then(|s_id| position_and_sizes_of_stacks.get(&s_id))
+                    .and_then(|s_id| position_and_sizes_of_stacks.get(&s_id.id))
                 {
                     // we want to check the offset against the position_and_size of the whole
                     // stack rather than the pane, because the stack needs to have a consistent
@@ -727,7 +727,7 @@ impl TiledPanes {
         for (stack_id, pane_id) in stack_ids_to_pane_ids_to_expand {
             let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
                 .expand_pane(&pane_id);
-            self.focus_pane_for_all_clients_in_stack(pane_id, stack_id);
+            self.focus_pane_for_all_clients_in_stack(pane_id, stack_id.id);
         }
         self.set_force_render();
         self.reapply_pane_frames();
@@ -781,7 +781,7 @@ impl TiledPanes {
         {
             let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
                 .expand_pane(&pane_id);
-            self.focus_pane_for_all_clients_in_stack(pane_id, stack_id);
+            self.focus_pane_for_all_clients_in_stack(pane_id, stack_id.id);
             self.reapply_pane_frames();
         }
         self.active_panes
@@ -1745,7 +1745,7 @@ impl TiledPanes {
                             // we do this because a stack pane focus change also changes its
                             // geometry and we need to let the pty know about this (like in a
                             // normal size change)
-                            self.focus_pane_for_all_clients_in_stack(p, stack_id);
+                            self.focus_pane_for_all_clients_in_stack(p, stack_id.id);
                             self.reapply_pane_frames();
                         }
 
@@ -1796,7 +1796,7 @@ impl TiledPanes {
                             // we do this because a stack pane focus change also changes its
                             // geometry and we need to let the pty know about this (like in a
                             // normal size change)
-                            self.focus_pane_for_all_clients_in_stack(p, stack_id);
+                            self.focus_pane_for_all_clients_in_stack(p, stack_id.id);
                             self.reapply_pane_frames();
                         }
 

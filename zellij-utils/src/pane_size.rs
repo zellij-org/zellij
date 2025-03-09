@@ -8,6 +8,29 @@ use crate::data::FloatingPaneCoordinates;
 use crate::input::layout::{SplitDirection, SplitSize};
 use crate::position::Position;
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug, Serialize, Deserialize)]
+pub struct SimpleGeom {
+    pub x: usize,
+    pub y: usize,
+    pub rows: Dimension,
+    pub cols: Dimension,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug, Serialize, Deserialize)]
+pub struct StackInfo {
+    pub id: usize,
+    pub geom: Option<SimpleGeom>,
+}
+
+impl From<usize> for StackInfo {
+    fn from(value: usize) -> Self {
+        Self {
+            id: value,
+            geom: None,
+        }
+    }
+}
+
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
 /// in character rows and columns.
 #[derive(Clone, Copy, Default, Debug, Serialize, Deserialize)]
@@ -16,7 +39,11 @@ pub struct PaneGeom {
     pub y: usize,
     pub rows: Dimension,
     pub cols: Dimension,
-    pub stacked: Option<usize>,          // usize - stack id
+    // HACK: Stacked panes should really be represented by some sort of nested structure — this information should not
+    // be spread across every single pane in a stack! It's incredibly wasteful! Pane stacks *must* keep track of their
+    // size (this cannot be computed from the number of panes), since it's possible some panes in a stack will need to
+    // be hidden: <N panes above / below>.
+    pub stacked: Option<StackInfo>,      // stack information
     pub is_pinned: bool,                 // only relevant to floating panes
     pub logical_position: Option<usize>, // relevant when placing this pane in a layout
 }

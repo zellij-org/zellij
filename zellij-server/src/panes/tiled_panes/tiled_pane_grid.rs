@@ -2274,7 +2274,7 @@ impl<'a> TiledPaneGrid<'a> {
         let mut geom_of_active_pane = self
             .get_pane_geom(pane_id)
             .ok_or_else(|| anyhow!("Failed to get pane geom"))?;
-        geom_of_active_pane.stacked = Some(self.next_stack_id());
+        geom_of_active_pane.stacked = Some(self.next_stack_id().into());
         self.panes
             .borrow_mut()
             .get_mut(pane_id)

@@ -60,7 +60,7 @@ macro_rules! mock_stacked_pane {
             rows: mock_pane_rows,
             cols: Dimension::percent(100.0),
             logical_position: $logical_position,
-            stacked: Some(0),
+            stacked: Some(0.into()),
             ..Default::default()
         }));
         $mock_panes.insert($pane_id, &mut mock_pane);
@@ -77,7 +77,7 @@ macro_rules! mock_stacked_pane_with_id {
             rows: mock_pane_rows,
             cols: Dimension::percent(100.0),
             logical_position: $logical_position,
-            stacked: Some($stack_id),
+            stacked: Some($stack_id.into()),
             ..Default::default()
         }));
         $mock_panes.insert($pane_id, &mut mock_pane);
@@ -96,7 +96,7 @@ macro_rules! mock_stacked_pane_with_cols_and_id {
             rows: mock_pane_rows,
             cols: mock_pane_cols,
             logical_position: $logical_position,
-            stacked: Some($stack_id),
+            stacked: Some($stack_id.into()),
             ..Default::default()
         }));
         $mock_panes.insert($pane_id, &mut mock_pane);
