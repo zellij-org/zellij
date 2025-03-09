@@ -1157,10 +1157,7 @@ impl Layout {
             .or_else(|| default_layout_dir())
             .and_then(|layout_dir| match std::fs::read_dir(layout_dir) {
                 Ok(layout_files) => Some(layout_files),
-                Err(e) => {
-                    log::error!("Failed to read layout dir: {:?}", e);
-                    None
-                },
+                Err(_) => None,
             })
             .map(|layout_files| {
                 let mut available_layouts = vec![];
