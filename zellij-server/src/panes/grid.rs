@@ -1834,11 +1834,6 @@ impl Grid {
     }
     pub fn update_selection(&mut self, to: &Position) {
         let old_selection = self.selection;
-        // TODO:
-        // 1. if self.click.is_double_click
-        //  * self.selection.add_word_to_selection(word_around_to)
-        // 2. if self.click.is_triple_click
-        //  * self.selection.add_line_to_selection(canonical_line_around_position)
         if &old_selection.end != to {
             if self.click.is_double_click() {
                 let Some((word_start_position, word_end_position)) = self.word_around_position(&to) else {
@@ -1851,7 +1846,14 @@ impl Grid {
                 self.update_selected_lines(&old_selection, &current_selection);
                 self.mark_for_rerender();
             } else if self.click.is_triple_click() {
-                log::info!("can has triple click drag");
+                let Some(last_index_in_line) = self.last_index_in_line(&to) else {
+                    return;
+                };
+                self.selection
+                    .add_line_to_position(to.line.0, last_index_in_line);
+                let current_selection = self.selection;
+                self.update_selected_lines(&old_selection, &current_selection);
+                self.mark_for_rerender();
             } else {
                 self.selection.to(*to);
                 self.update_selected_lines(&old_selection, &self.selection.clone());
@@ -1958,6 +1960,10 @@ impl Grid {
     }
     pub fn absolute_position_in_scrollback(&self) -> usize {
         self.lines_above.len() + self.cursor.y
+    }
+    pub fn last_index_in_line(&self, position: &Position) -> Option<usize> {
+        let position_row = self.viewport.get(position.line.0 as usize)?;
+        Some(position_row.last_index_in_line())
     }
     pub fn word_around_position(&self, position: &Position) -> Option<(Position, Position)> {
         let position_row = self.viewport.get(position.line.0 as usize)?;
@@ -3829,6 +3835,9 @@ impl Row {
         }
         self.width = None;
         parts
+    }
+    pub fn last_index_in_line(&self) -> usize {
+        self.columns.len()
     }
     pub fn word_indices_around_character_index(&self, index: usize) -> Option<(usize, usize)> {
         let character_at_index = self.columns.get(index)?;

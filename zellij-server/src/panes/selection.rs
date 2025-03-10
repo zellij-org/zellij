@@ -10,6 +10,7 @@ pub struct Selection {
     pub end: Position,
     active: bool, // used to handle moving the selection up and down
     last_added_word_position: Option<(Position, Position)>, // (start / end)
+    last_added_line_index: Option<isize>,
 }
 
 impl Default for Selection {
@@ -19,6 +20,7 @@ impl Default for Selection {
             end: Position::new(0, 0),
             active: false,
             last_added_word_position: None,
+            last_added_line_index: None,
         }
     }
 }
@@ -43,6 +45,7 @@ impl Selection {
         self.start = start;
         self.end = end;
         self.last_added_word_position = Some((start, end));
+        self.last_added_line_index = Some(start.line.0);
     }
     pub fn add_word_to_position(&mut self, word_start: Position, word_end: Position) {
         // here we assume word_start is smaller or equal to word_end
@@ -90,6 +93,33 @@ impl Selection {
             }
         }
         self.last_added_word_position = Some((word_start, word_end));
+    }
+    pub fn add_line_to_position(&mut self, line_index: isize, last_index_in_line: usize) {
+        let already_added = self.last_added_line_index.map(|last_added_line_index| {
+            last_added_line_index == line_index
+        }).unwrap_or(false);
+        if already_added {
+            return;
+        }
+        let line_index_is_smaller_than_last_added_line_index = self.last_added_line_index.map(|last| line_index < last).unwrap_or(false);
+        let line_index_is_larger_than_last_added_line_index = self.last_added_line_index.map(|last| line_index > last).unwrap_or(false);
+
+        if line_index_is_smaller_than_last_added_line_index && self.start.line.0 > line_index {
+            // extend selection one line upwards
+            self.start = Position::new(line_index as i32, 0);
+        } else if line_index_is_larger_than_last_added_line_index && self.end.line.0 < line_index {
+            // extend selection one line downwards
+            self.end = Position::new(line_index as i32, last_index_in_line as u16);
+        } else if line_index_is_smaller_than_last_added_line_index && self.end.line.0 > line_index {
+            // reduce selection one line from below
+            self.end = Position::new(line_index as i32, last_index_in_line as u16);
+        } else if line_index_is_larger_than_last_added_line_index && self.start.line.0 < line_index {
+            // reduce selection one line from above
+            self.start = Position::new(line_index as i32, 0);
+        }
+
+        self.last_added_line_index = Some(line_index);
+
     }
 
     pub fn contains(&self, row: usize, col: usize) -> bool {
@@ -142,6 +172,7 @@ impl Selection {
             end,
             active: self.active,
             last_added_word_position: self.last_added_word_position,
+            last_added_line_index: self.last_added_line_index,
         }
     }
 

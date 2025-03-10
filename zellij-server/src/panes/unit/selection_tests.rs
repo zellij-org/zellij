@@ -44,6 +44,7 @@ fn contains() {
         end: Position::new(40, 20),
         active: false,
         last_added_word_position: None,
+        last_added_line_index: None,
     };
 
     let test_cases = vec![
@@ -95,6 +96,7 @@ fn sorted() {
         end: Position::new(10, 2),
         active: false,
         last_added_word_position: None,
+        last_added_line_index: None,
     };
     let sorted_selection = selection.sorted();
     assert_eq!(selection.start, sorted_selection.start);
@@ -105,6 +107,7 @@ fn sorted() {
         end: Position::new(1, 1),
         active: false,
         last_added_word_position: None,
+        last_added_line_index: None,
     };
     let sorted_selection = selection.sorted();
     assert_eq!(selection.end, sorted_selection.start);
@@ -118,6 +121,7 @@ fn line_indices() {
         end: Position::new(10, 2),
         active: false,
         last_added_word_position: None,
+        last_added_line_index: None,
     };
 
     assert_eq!(selection.line_indices(), (1..=10))
@@ -132,6 +136,7 @@ fn move_up_inactive() {
         end,
         active: false,
         last_added_word_position: None,
+        last_added_line_index: None,
     };
 
     inactive_selection.move_up(2);
@@ -151,6 +156,7 @@ fn move_up_active() {
         end,
         active: true,
         last_added_word_position: None,
+        last_added_line_index: None,
     };
 
     inactive_selection.move_up(2);
@@ -167,6 +173,7 @@ fn move_down_inactive() {
         end,
         active: false,
         last_added_word_position: None,
+        last_added_line_index: None,
     };
 
     inactive_selection.move_down(2);
@@ -186,6 +193,7 @@ fn move_down_active() {
         end,
         active: true,
         last_added_word_position: None,
+        last_added_line_index: None,
     };
 
     inactive_selection.move_down(2);
@@ -204,6 +212,7 @@ fn add_word_to_position_extend_line_above() {
         end: selection_end,
         active: true,
         last_added_word_position: Some((last_word_start, last_word_end)),
+        last_added_line_index: None,
     };
     let word_start = Position::new(9, 5);
     let word_end = Position::new(9, 6);
@@ -224,6 +233,7 @@ fn add_word_to_position_extend_line_below() {
         end: selection_end,
         active: true,
         last_added_word_position: Some((last_word_start, last_word_end)),
+        last_added_line_index: None,
     };
     let word_start = Position::new(21, 5);
     let word_end = Position::new(21, 6);
@@ -244,6 +254,7 @@ fn add_word_to_position_reduce_from_above() {
         end: selection_end,
         active: true,
         last_added_word_position: Some((last_word_start, last_word_end)),
+        last_added_line_index: None,
     };
     let word_start = Position::new(11, 5);
     let word_end = Position::new(11, 6);
@@ -264,6 +275,7 @@ fn add_word_to_position_reduce_from_below() {
         end: selection_end,
         active: true,
         last_added_word_position: Some((last_word_start, last_word_end)),
+        last_added_line_index: None,
     };
     let word_start = Position::new(19, 5);
     let word_end = Position::new(19, 6);
@@ -284,6 +296,7 @@ fn add_word_to_position_extend_right() {
         end: selection_end,
         active: true,
         last_added_word_position: Some((last_word_start, last_word_end)),
+        last_added_line_index: None,
     };
     let word_start = Position::new(20, 21);
     let word_end = Position::new(20, 23);
@@ -304,6 +317,7 @@ fn add_word_to_position_extend_left() {
         end: selection_end,
         active: true,
         last_added_word_position: Some((last_word_start, last_word_end)),
+        last_added_line_index: None,
     };
     let word_start = Position::new(10, 5);
     let word_end = Position::new(10, 9);
@@ -324,6 +338,7 @@ fn add_word_to_position_reduce_from_left() {
         end: selection_end,
         active: true,
         last_added_word_position: Some((last_word_start, last_word_end)),
+        last_added_line_index: None,
     };
     let word_start = Position::new(10, 20);
     let word_end = Position::new(10, 30);
@@ -344,6 +359,7 @@ fn add_word_to_position_reduce_from_right() {
         end: selection_end,
         active: true,
         last_added_word_position: Some((last_word_start, last_word_end)),
+        last_added_line_index: None,
     };
     let word_start = Position::new(20, 5);
     let word_end = Position::new(20, 10);
@@ -351,4 +367,84 @@ fn add_word_to_position_reduce_from_right() {
 
     assert_eq!(selection.start, selection_start);
     assert_eq!(selection.end, word_end);
+}
+
+#[test]
+fn add_line_to_position_extend_upwards() {
+    let selection_start = Position::new(10, 10);
+    let selection_end = Position::new(20, 20);
+    let last_added_line_index = 10;
+    let mut selection = Selection {
+        start: selection_start,
+        end: selection_end,
+        active: true,
+        last_added_word_position: None,
+        last_added_line_index: Some(last_added_line_index),
+    };
+    let line_index_to_add = 9;
+    let last_index_in_line = 21;
+    selection.add_line_to_position(line_index_to_add, last_index_in_line);
+
+    assert_eq!(selection.start, Position::new(line_index_to_add as i32, 0));
+    assert_eq!(selection.end, selection_end);
+}
+
+#[test]
+fn add_line_to_position_extend_downwards() {
+    let selection_start = Position::new(10, 10);
+    let selection_end = Position::new(20, 20);
+    let last_added_line_index = 20;
+    let mut selection = Selection {
+        start: selection_start,
+        end: selection_end,
+        active: true,
+        last_added_word_position: None,
+        last_added_line_index: Some(last_added_line_index),
+    };
+    let line_index_to_add = 21;
+    let last_index_in_line = 21;
+    selection.add_line_to_position(line_index_to_add, last_index_in_line);
+
+    assert_eq!(selection.start, selection_start);
+    assert_eq!(selection.end, Position::new(line_index_to_add as i32, last_index_in_line as u16));
+}
+
+#[test]
+fn add_line_to_position_reduce_from_below() {
+    let selection_start = Position::new(10, 10);
+    let selection_end = Position::new(20, 20);
+    let last_added_line_index = 20;
+    let mut selection = Selection {
+        start: selection_start,
+        end: selection_end,
+        active: true,
+        last_added_word_position: None,
+        last_added_line_index: Some(last_added_line_index),
+    };
+    let line_index_to_add = 19;
+    let last_index_in_line = 21;
+    selection.add_line_to_position(line_index_to_add, last_index_in_line);
+
+    assert_eq!(selection.start, selection_start);
+    assert_eq!(selection.end, Position::new(line_index_to_add as i32, last_index_in_line as u16));
+}
+
+#[test]
+fn add_line_to_position_reduce_from_above() {
+    let selection_start = Position::new(10, 10);
+    let selection_end = Position::new(20, 20);
+    let last_added_line_index = 10;
+    let mut selection = Selection {
+        start: selection_start,
+        end: selection_end,
+        active: true,
+        last_added_word_position: None,
+        last_added_line_index: Some(last_added_line_index),
+    };
+    let line_index_to_add = 9;
+    let last_index_in_line = 21;
+    selection.add_line_to_position(line_index_to_add, last_index_in_line);
+
+    assert_eq!(selection.start, Position::new(line_index_to_add as i32, 0));
+    assert_eq!(selection.end, selection_end);
 }
