@@ -13,9 +13,9 @@ all contributors are expected to adhere to.
 ## Status of Code Contributions (PRs)
 At the moment, the Zellij maintainers are very much overloaded implementing our [Roadmap](https://zellij.dev/roadmap) - and so while we very much welcome and appreciate the community's willingness to contribute - we are only able to accept code contributions for larger projects as they appear in said Roadmap.
 
-For those willing to take up such large projects, aside from our enthusiasm - we can offer guidance through issues or our various chat platforms.
+For those willing to take up such large projects, please check with the maintainers first (eg. by asking on the general chat in one of our chat platforms) to make sure there is both willingness and availability on our sides.
 
-If you're still eager to contribute minor fixes, please note that we might take a long while to get to them until the current overload of the project subsides - hopefully in the coming months.
+If you're still eager to contribute minor fixes, please note that we might take a long while to get to them.
 
 ## Building
 
