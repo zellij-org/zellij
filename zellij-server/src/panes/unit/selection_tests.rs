@@ -406,7 +406,10 @@ fn add_line_to_position_extend_downwards() {
     selection.add_line_to_position(line_index_to_add, last_index_in_line);
 
     assert_eq!(selection.start, selection_start);
-    assert_eq!(selection.end, Position::new(line_index_to_add as i32, last_index_in_line as u16));
+    assert_eq!(
+        selection.end,
+        Position::new(line_index_to_add as i32, last_index_in_line as u16)
+    );
 }
 
 #[test]
@@ -426,7 +429,10 @@ fn add_line_to_position_reduce_from_below() {
     selection.add_line_to_position(line_index_to_add, last_index_in_line);
 
     assert_eq!(selection.start, selection_start);
-    assert_eq!(selection.end, Position::new(line_index_to_add as i32, last_index_in_line as u16));
+    assert_eq!(
+        selection.end,
+        Position::new(line_index_to_add as i32, last_index_in_line as u16)
+    );
 }
 
 #[test]

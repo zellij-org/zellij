@@ -1836,7 +1836,8 @@ impl Grid {
         let old_selection = self.selection;
         if &old_selection.end != to {
             if self.click.is_double_click() {
-                let Some((word_start_position, word_end_position)) = self.word_around_position(&to) else {
+                let Some((word_start_position, word_end_position)) = self.word_around_position(&to)
+                else {
                     // no-op
                     return;
                 };
