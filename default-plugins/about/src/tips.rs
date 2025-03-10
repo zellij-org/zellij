@@ -323,7 +323,7 @@ impl Page {
                             }
                     )),
                     ActiveComponent::new(TextOrCustomRender::Text(
-                            Text::new("Press TAB to go to Chagne Mode Behavior")
+                            Text::new("Press TAB to go to Change Mode Behavior")
                                 .color_range(3, 6..=9)
                     )),
                     ActiveComponent::new(TextOrCustomRender::Text(

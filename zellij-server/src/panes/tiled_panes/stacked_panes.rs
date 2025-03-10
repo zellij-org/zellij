@@ -309,7 +309,7 @@ impl<'a> StackedPanes<'a> {
         Ok(())
     }
     fn pane_is_one_liner(&self, id: &PaneId) -> Result<bool> {
-        let err_context = || format!("Cannot determin if pane is one liner or not");
+        let err_context = || format!("Cannot determine if pane is one liner or not");
         let panes = self.panes.borrow();
         let pane_to_close = panes.get(id).with_context(err_context)?;
         Ok(pane_to_close.position_and_size().rows.is_fixed())
