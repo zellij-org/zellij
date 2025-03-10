@@ -42,6 +42,7 @@ impl Selection {
     }
 
     pub fn set_start_and_end_positions(&mut self, start: Position, end: Position) {
+        self.active = true;
         self.start = start;
         self.end = end;
         self.last_added_word_position = Some((start, end));
