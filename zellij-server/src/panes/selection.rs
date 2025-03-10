@@ -9,6 +9,7 @@ pub struct Selection {
     pub start: Position,
     pub end: Position,
     active: bool, // used to handle moving the selection up and down
+    last_added_word_position: Option<(Position, Position)>, // (start / end)
 }
 
 impl Default for Selection {
@@ -17,6 +18,7 @@ impl Default for Selection {
             start: Position::new(0, 0),
             end: Position::new(0, 0),
             active: false,
+            last_added_word_position: None,
         }
     }
 }
@@ -40,6 +42,54 @@ impl Selection {
     pub fn set_start_and_end_positions(&mut self, start: Position, end: Position) {
         self.start = start;
         self.end = end;
+        self.last_added_word_position = Some((start, end));
+    }
+    pub fn add_word_to_position(&mut self, word_start: Position, word_end: Position) {
+        // here we assume word_start is smaller or equal to word_end
+        let already_added = self.last_added_word_position.map(|(last_word_start, last_word_end)| {
+            last_word_start == word_start && last_word_end == word_end
+        }).unwrap_or(false);
+        if already_added {
+            return;
+        }
+        let word_is_above_last_added_word = self.last_added_word_position.map(|(l_start, _l_end)| word_start.line < l_start.line).unwrap_or(false);
+        let word_is_below_last_added_word = self.last_added_word_position.map(|(_l_start, l_end)| word_end.line > l_end.line).unwrap_or(false);
+        if word_is_above_last_added_word && word_start.line < self.start.line {
+            // extend line above
+            self.start = word_start;
+        } else if word_is_below_last_added_word && word_end.line > self.end.line {
+            // extend line below
+            self.end = word_end;
+        } else if word_is_below_last_added_word && word_start.line > self.start.line {
+            // reduce from above
+            self.start = word_start;
+        } else if word_is_above_last_added_word && word_end.line < self.end.line {
+            // reduce from below
+            self.end = word_end;
+        } else {
+            let word_end_is_to_the_left_of_last_word_start = self.last_added_word_position.map(|(l_start, _l_end)| word_end.column <= l_start.column).unwrap_or(false);
+            let word_start_is_to_the_right_of_last_word_end = self.last_added_word_position.map(|(_l_start, l_end)| word_start.column >= l_end.column).unwrap_or(false);
+            let last_word_start_equals_word_end = self.last_added_word_position.map(|(l_start, _l_end)| l_start.column == word_end.column).unwrap_or(false);
+            let last_word_end_equals_word_start = self.last_added_word_position.map(|(_l_start, l_end)| l_end.column == word_start.column).unwrap_or(false);
+            let selection_start_column_is_to_the_right_of_word_start = self.start.column > word_start.column;
+            let selection_start_is_on_same_line_as_word_start = self.start.line == word_start.line;
+            let selection_end_is_to_the_left_of_word_end = self.end.column < word_end.column;
+            let selection_end_is_on_same_line_as_word_end = self.end.line == word_end.line;
+            if word_end_is_to_the_left_of_last_word_start && selection_start_column_is_to_the_right_of_word_start && selection_start_is_on_same_line_as_word_start {
+                // extend selection left
+                self.start.column = word_start.column;
+            } else if word_start_is_to_the_right_of_last_word_end && selection_end_is_to_the_left_of_word_end && selection_end_is_on_same_line_as_word_end {
+                // extend selection right
+                self.end.column = word_end.column;
+            } else if last_word_start_equals_word_end {
+                // reduce selection from the right
+                self.end.column = word_end.column;
+            } else if last_word_end_equals_word_start {
+                // reduce selection from the left
+                self.start.column = word_start.column;
+            }
+        }
+        self.last_added_word_position = Some((word_start, word_end));
     }
 
     pub fn contains(&self, row: usize, col: usize) -> bool {
@@ -91,6 +141,7 @@ impl Selection {
             start,
             end,
             active: self.active,
+            last_added_word_position: self.last_added_word_position,
         }
     }
 

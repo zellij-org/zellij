@@ -1834,10 +1834,29 @@ impl Grid {
     }
     pub fn update_selection(&mut self, to: &Position) {
         let old_selection = self.selection;
+        // TODO:
+        // 1. if self.click.is_double_click
+        //  * self.selection.add_word_to_selection(word_around_to)
+        // 2. if self.click.is_triple_click
+        //  * self.selection.add_line_to_selection(canonical_line_around_position)
         if &old_selection.end != to {
-            self.selection.to(*to);
-            self.update_selected_lines(&old_selection, &self.selection.clone());
-            self.mark_for_rerender();
+            if self.click.is_double_click() {
+                let Some((word_start_position, word_end_position)) = self.word_around_position(&to) else {
+                    // no-op
+                    return;
+                };
+                self.selection
+                    .add_word_to_position(word_start_position, word_end_position);
+                let current_selection = self.selection;
+                self.update_selected_lines(&old_selection, &current_selection);
+                self.mark_for_rerender();
+            } else if self.click.is_triple_click() {
+                log::info!("can has triple click drag");
+            } else {
+                self.selection.to(*to);
+                self.update_selected_lines(&old_selection, &self.selection.clone());
+                self.mark_for_rerender();
+            }
         }
     }
 
