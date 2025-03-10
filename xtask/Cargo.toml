@@ -6,9 +6,14 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
-lazy_static = "1.4"
+# TODO(hartan): Update this once we get a new release. See:
+#   <https://github.com/matklad/xshell/issues/63>
 xshell = "= 0.2.2"
-xflags = "0.3.1"
+xflags = "0.3.2"
 which = "4.2"
 toml = "0.5"
 prost-build = "0.11.9"
+
+[lints.rust]
+# Only required because we need to fix `xshell` to `=0.2.2`
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(trick_rust_analyzer_into_highlighting_interpolated_bits)'] }

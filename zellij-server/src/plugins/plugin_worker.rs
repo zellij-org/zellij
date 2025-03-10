@@ -5,29 +5,21 @@ use wasmtime::{Instance, Store};
 use zellij_utils::async_channel::{unbounded, Receiver, Sender};
 use zellij_utils::async_std::task;
 use zellij_utils::errors::prelude::*;
-use zellij_utils::input::plugins::PluginConfig;
 use zellij_utils::plugin_api::message::ProtobufMessage;
 use zellij_utils::prost::Message;
 
 pub struct RunningWorker {
     pub instance: Instance,
     pub name: String,
-    pub plugin_config: PluginConfig,
     pub store: Store<PluginEnv>,
 }
 
 impl RunningWorker {
-    pub fn new(
-        store: Store<PluginEnv>,
-        instance: Instance,
-        name: &str,
-        plugin_config: PluginConfig,
-    ) -> Self {
+    pub fn new(store: Store<PluginEnv>, instance: Instance, name: &str) -> Self {
         RunningWorker {
             store,
             instance,
             name: name.into(),
-            plugin_config,
         }
     }
     pub fn send_message(&mut self, message: String, payload: String) -> Result<()> {

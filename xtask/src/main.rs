@@ -19,6 +19,7 @@ use anyhow::Context;
 use std::{
     env,
     path::{Path, PathBuf},
+    sync::OnceLock,
     time::Instant,
 };
 use xshell::Shell;
@@ -28,24 +29,72 @@ pub struct WorkspaceMember {
     build: bool,
 }
 
-lazy_static::lazy_static! {
-    pub static ref WORKSPACE_MEMBERS: Vec<WorkspaceMember> = vec![
-        WorkspaceMember{crate_name: "default-plugins/compact-bar", build: true},
-        WorkspaceMember{crate_name: "default-plugins/status-bar", build: true},
-        WorkspaceMember{crate_name: "default-plugins/strider", build: true},
-        WorkspaceMember{crate_name: "default-plugins/tab-bar", build: true},
-        WorkspaceMember{crate_name: "default-plugins/fixture-plugin-for-tests", build: true},
-        WorkspaceMember{crate_name: "default-plugins/session-manager", build: true},
-        WorkspaceMember{crate_name: "default-plugins/configuration", build: true},
-        WorkspaceMember{crate_name: "default-plugins/plugin-manager", build: true},
-        WorkspaceMember{crate_name: "default-plugins/about", build: true},
-        WorkspaceMember{crate_name: "zellij-utils", build: false},
-        WorkspaceMember{crate_name: "zellij-tile-utils", build: false},
-        WorkspaceMember{crate_name: "zellij-tile", build: false},
-        WorkspaceMember{crate_name: "zellij-client", build: false},
-        WorkspaceMember{crate_name: "zellij-server", build: false},
-        WorkspaceMember{crate_name: ".", build: true},
-    ];
+fn workspace_members() -> &'static Vec<WorkspaceMember> {
+    static WORKSPACE_MEMBERS: OnceLock<Vec<WorkspaceMember>> = OnceLock::new();
+    WORKSPACE_MEMBERS.get_or_init(|| {
+        vec![
+            WorkspaceMember {
+                crate_name: "default-plugins/compact-bar",
+                build: true,
+            },
+            WorkspaceMember {
+                crate_name: "default-plugins/status-bar",
+                build: true,
+            },
+            WorkspaceMember {
+                crate_name: "default-plugins/strider",
+                build: true,
+            },
+            WorkspaceMember {
+                crate_name: "default-plugins/tab-bar",
+                build: true,
+            },
+            WorkspaceMember {
+                crate_name: "default-plugins/fixture-plugin-for-tests",
+                build: true,
+            },
+            WorkspaceMember {
+                crate_name: "default-plugins/session-manager",
+                build: true,
+            },
+            WorkspaceMember {
+                crate_name: "default-plugins/configuration",
+                build: true,
+            },
+            WorkspaceMember {
+                crate_name: "default-plugins/plugin-manager",
+                build: true,
+            },
+            WorkspaceMember {
+                crate_name: "default-plugins/about",
+                build: true,
+            },
+            WorkspaceMember {
+                crate_name: "zellij-utils",
+                build: false,
+            },
+            WorkspaceMember {
+                crate_name: "zellij-tile-utils",
+                build: false,
+            },
+            WorkspaceMember {
+                crate_name: "zellij-tile",
+                build: false,
+            },
+            WorkspaceMember {
+                crate_name: "zellij-client",
+                build: false,
+            },
+            WorkspaceMember {
+                crate_name: "zellij-server",
+                build: false,
+            },
+            WorkspaceMember {
+                crate_name: ".",
+                build: true,
+            },
+        ]
+    })
 }
 
 fn main() -> anyhow::Result<()> {

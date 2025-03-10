@@ -44,6 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(grid): out of bounds removal when app does not update its scroll region on resize (https://github.com/zellij-org/zellij/pull/4045)
 * fix(plugins): prevent paging plugins from cache at runtime (https://github.com/zellij-org/zellij/pull/4044)
 * fix(ui): add split right/down shortcut hints to the status-bar (https://github.com/zellij-org/zellij/pull/4046)
+* chore(repo): remove compile warnings (https://github.com/zellij-org/zellij/pull/4026)
 
 ## [0.41.2] - 2024-11-19
 * fix(input): keypresses not being identified properly with kitty keyboard protocol in some terminals (https://github.com/zellij-org/zellij/pull/3725)
