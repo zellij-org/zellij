@@ -343,7 +343,7 @@ impl State {
                     self.renaming_session_name = Some(String::new());
                     should_render = true;
                 },
-                BareKey::Delete if key.has_no_modifiers() => {
+                BareKey::Char('k') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     if let Some(selected_session_name) = self.sessions.get_selected_session_name() {
                         kill_sessions(&[selected_session_name]);
                         self.reset_selected_index();
@@ -431,7 +431,7 @@ impl State {
                 self.toggle_active_screen();
                 should_render = true;
             },
-            BareKey::Delete if key.has_no_modifiers() => {
+            BareKey::Char('k') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                 self.resurrectable_sessions.delete_selected_session();
                 should_render = true;
             },

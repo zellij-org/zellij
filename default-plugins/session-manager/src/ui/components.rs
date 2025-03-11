@@ -941,7 +941,7 @@ pub fn render_controls_line(
             let rename_text = colors.bold("Rename");
             let disconnect = colors.shortcuts("<Ctrl x>");
             let disconnect_text = colors.bold("Disconnect others");
-            let kill = colors.shortcuts("<Del>");
+            let kill = colors.shortcuts("<Ctrl k>");
             let kill_text = colors.bold("Kill");
             let kill_all = colors.shortcuts("<Ctrl d>");
             let kill_all_text = colors.bold("Kill all");
