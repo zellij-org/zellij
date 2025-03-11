@@ -175,6 +175,7 @@ fn main() {
     }
 
     if let Some(Command::Sessions(Sessions::ListSessions {
+        alive,
         no_formatting,
         short,
         reverse,
