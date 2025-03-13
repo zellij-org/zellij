@@ -87,7 +87,13 @@ impl NewSessionInfo {
             BareKey::Up if key.has_no_modifiers() => {
                 self.move_selection_up();
             },
+            BareKey::Char('p') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                self.move_selection_up();
+            },
             BareKey::Down if key.has_no_modifiers() => {
+                self.move_selection_down();
+            },
+            BareKey::Char('n') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                 self.move_selection_down();
             },
             _ => {},
