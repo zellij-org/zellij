@@ -11,6 +11,7 @@ use crate::{
 use async_std::task::{self, JoinHandle};
 use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
+use zellij_utils::data::PaneManifest;
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
@@ -103,6 +104,7 @@ pub enum PtyInstruction {
         default_editor: Option<PathBuf>,
     },
     ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
+    UpdatePaneInfo(PaneManifest),
     Exit,
 }
 
@@ -128,6 +130,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::ListClientsMetadata(..) => PtyContext::ListClientsMetadata,
             PtyInstruction::Reconfigure { .. } => PtyContext::Reconfigure,
             PtyInstruction::ListClientsToPlugin(..) => PtyContext::ListClientsToPlugin,
+            PtyInstruction::UpdatePaneInfo(..) => PtyContext::UpdatePaneInfo,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -790,6 +793,32 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 client_id: _,
             } => {
                 pty.reconfigure(default_editor);
+            },
+            PtyInstruction::UpdatePaneInfo(mut manifest) => {
+                for infos in manifest.panes.values_mut() {
+                    for pane_info in infos.as_mut_slice() {
+                        let pid = pty.get_child_pid(pane_info.id);
+                        pane_info.pid = Some(pid);
+                        pane_info.last_known_cwd = pty
+                            .bus
+                            .os_input
+                            .as_ref()
+                            .map(|os_input| {
+                                os_input
+                                    .get_cwd(Pid::from_raw(pid))
+                                    .map(|x| x.to_string_lossy().to_string())
+                            })
+                            .unwrap_or_default();
+                    }
+                }
+                pty.bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::Update(vec![(
+                        None,
+                        None,
+                        Event::PaneUpdate(manifest),
+                    )]))
+                    .context("failed to update tabs")?;
             },
             PtyInstruction::Exit => break,
         }
@@ -1566,6 +1595,10 @@ impl Pty {
     }
     pub fn reconfigure(&mut self, default_editor: Option<PathBuf>) {
         self.default_editor = default_editor;
+    }
+
+    pub fn get_child_pid(&self, terminal_id: u32) -> i32 {
+        *self.id_to_child_pid.get(&terminal_id).unwrap_or(&-1)
     }
 }
 

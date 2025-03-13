@@ -1072,6 +1072,8 @@ impl TryFrom<ProtobufPaneInfo> for PaneInfo {
             terminal_command: protobuf_pane_info.terminal_command,
             plugin_url: protobuf_pane_info.plugin_url,
             is_selectable: protobuf_pane_info.is_selectable,
+            pid: protobuf_pane_info.pid,
+            last_known_cwd: protobuf_pane_info.last_known_cwd,
         })
     }
 }
@@ -1107,6 +1109,8 @@ impl TryFrom<PaneInfo> for ProtobufPaneInfo {
             terminal_command: pane_info.terminal_command,
             plugin_url: pane_info.plugin_url,
             is_selectable: pane_info.is_selectable,
+            pid: pane_info.pid,
+            last_known_cwd: pane_info.last_known_cwd,
         })
     }
 }
@@ -1908,6 +1912,9 @@ fn serialize_session_update_event_with_non_default_values() {
             terminal_command: Some("foo".to_owned()),
             plugin_url: None,
             is_selectable: true,
+            // These are runtime-dependent and will be filled out by Pty upon request
+            pid: None,
+            last_known_cwd: None,
         },
         PaneInfo {
             id: 1,
@@ -1932,6 +1939,9 @@ fn serialize_session_update_event_with_non_default_values() {
             terminal_command: None,
             plugin_url: Some("i_am_a_fake_plugin".to_owned()),
             is_selectable: true,
+            // These are runtime-dependent and will be filled out by Pty upon request
+            pid: None,
+            last_known_cwd: None,
         },
     ];
     panes.insert(0, panes_list);
