@@ -9,7 +9,7 @@ pub use super::generated_api::api::{
         PluginConfiguration as ProtobufPluginConfiguration, Position as ProtobufPosition,
         RunCommandAction as ProtobufRunCommandAction, ScrollAtPayload,
         SearchDirection as ProtobufSearchDirection, SearchOption as ProtobufSearchOption,
-        SwitchToModePayload, WriteCharsPayload, WritePayload,
+        SwitchToModePayload, WriteCommandOutputPayload, WriteCharsPayload, WritePayload,
     },
     input_mode::InputMode as ProtobufInputMode,
     resize::{Resize as ProtobufResize, ResizeDirection as ProtobufResizeDirection},
@@ -48,6 +48,14 @@ impl TryFrom<ProtobufAction> for Action {
                     Ok(Action::WriteChars(write_chars_payload.chars))
                 },
                 _ => Err("Wrong payload for Action::WriteChars"),
+            },
+            Some(ProtobufActionName::WriteCommandOutput) => {
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::WriteCommandOutputPayload(paste_from_file_payload)) => {
+                        Ok(Action::WriteCommandOutput(paste_from_file_payload.filename))
+                    },
+                    _ => Err("Wrong payload for Action::WriteCommandOutput"),
+                }
             },
             Some(ProtobufActionName::SwitchToMode) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::SwitchToModePayload(switch_to_mode_payload)) => {
@@ -734,6 +742,12 @@ impl TryFrom<Action> for ProtobufAction {
                 optional_payload: Some(OptionalPayload::WriteCharsPayload(WriteCharsPayload {
                     chars: chars_to_write,
                 })),
+            }),
+            Action::WriteCommandOutput(filename) => Ok(ProtobufAction {
+                name: ProtobufActionName::WriteCommandOutput as i32,
+                optional_payload: Some(OptionalPayload::WriteCommandOutputPayload(
+                    WriteCommandOutputPayload { filename: filename },
+                )),
             }),
             Action::SwitchToMode(input_mode) => {
                 let input_mode: ProtobufInputMode = input_mode.try_into()?;

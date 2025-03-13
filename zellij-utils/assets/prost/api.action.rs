@@ -5,7 +5,7 @@ pub struct Action {
     pub name: i32,
     #[prost(
         oneof = "action::OptionalPayload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50"
     )]
     pub optional_payload: ::core::option::Option<action::OptionalPayload>,
 }
@@ -104,6 +104,8 @@ pub mod action {
         MoveTabPayload(i32),
         #[prost(message, tag = "49")]
         MouseEventPayload(super::MouseEventPayload),
+        #[prost(message, tag = "50")]
+        WriteCommandOutputPayload(super::WriteCommandOutputPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -233,6 +235,12 @@ pub struct WritePayload {
 pub struct WriteCharsPayload {
     #[prost(string, tag = "1")]
     pub chars: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WriteCommandOutputPayload {
+    #[prost(string, tag = "1")]
+    pub filename: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -476,6 +484,7 @@ pub enum ActionName {
     KeybindPipe = 84,
     TogglePanePinned = 85,
     MouseEvent = 86,
+    WriteCommandOutput = 87,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -568,6 +577,7 @@ impl ActionName {
             ActionName::KeybindPipe => "KeybindPipe",
             ActionName::TogglePanePinned => "TogglePanePinned",
             ActionName::MouseEvent => "MouseEvent",
+            ActionName::WriteCommandOutput => "WriteCommandOutput",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -657,6 +667,7 @@ impl ActionName {
             "KeybindPipe" => Some(Self::KeybindPipe),
             "TogglePanePinned" => Some(Self::TogglePanePinned),
             "MouseEvent" => Some(Self::MouseEvent),
+            "WriteCommandOutput" => Some(Self::WriteCommandOutput),
             _ => None,
         }
     }
