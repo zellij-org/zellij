@@ -144,9 +144,9 @@ impl Page {
                                 .color_range(3, 6..=10)
                     )),
                     ActiveComponent::new(TextOrCustomRender::Text(
-                            Text::new("5. You can always snap back to the built-in swap layouts with Alt <[]>")
-                                .color_range(3, 62..=64)
-                                .color_range(3, 67..=68)
+                            Text::new("You can always snap back to the built-in swap layouts with Alt <[]>")
+                                .color_range(3, 59..=61)
+                                .color_range(3, 64..=65)
                     )),
                 ])
             )

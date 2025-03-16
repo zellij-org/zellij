@@ -430,7 +430,7 @@ impl Page {
                             .color_range(0, 34..=36)
                             .color_range(2, 40..=45)
                             .color_range(0, 50..=52)
-                            .color_range(2, 56..=60)
+                            .color_range(2, 56..=61)
                     ))
                 ]),
                 ComponentLine::new(vec![
