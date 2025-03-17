@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.42.0] - 2025-03-17
 * fix(plugins): properly focus pane after tab was closed in the plugin API (https://github.com/zellij-org/zellij/pull/3797)
 * fix(plugins): properly pad UI components background to their declared width (https://github.com/zellij-org/zellij/pull/3806)
 * feat(plugins): allow plugins to change their own `/host` folder under a new FullHdAccess permission (https://github.com/zellij-org/zellij/pull/3827)

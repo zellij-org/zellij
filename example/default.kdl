@@ -224,6 +224,7 @@ plugins {
     }
     configuration location="zellij:configuration"
     plugin-manager location="zellij:plugin-manager"
+    about location="zellij:about"
 }
 
 // Plugins to load in the background when a new session starts
@@ -421,12 +422,12 @@ load_plugins {
 //
 // stacked_resize false
 
-// Whether to show tips on startup
-// Default: true
-//
-// show_tips_on_startup false
-
 // Whether to show release notes on first version run
 // Default: true
 //
 // show_release_notes false
+
+// Whether to show startup tips on session start
+// Default: true
+//
+// show_startup_tips false
