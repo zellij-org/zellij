@@ -5189,7 +5189,6 @@ dependencies = [
  "miette",
  "nix 0.23.1",
  "notify-debouncer-full",
- "once_cell",
  "openssl-sys",
  "percent-encoding",
  "prost",
