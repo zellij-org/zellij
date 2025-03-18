@@ -63,6 +63,9 @@ pub(crate) fn stdin_loop(
     loop {
         match os_input.read_from_stdin() {
             Ok(buf) => {
+                log::info!("*****");
+                log::info!("raw STDIN buffer: {:?}", buf);
+                log::info!("raw STDIN utf8: {:?}", String::from_utf8_lossy(&buf));
                 {
                     // here we check if we need to parse specialized ANSI instructions sent over STDIN
                     // this happens either on startup (see above) or on SIGWINCH
@@ -71,6 +74,7 @@ pub(crate) fn stdin_loop(
                     // receive on STDIN during that timeout is unceremoniously dropped
                     let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
                     if stdin_ansi_parser.should_parse() {
+                        log::info!("parsing terminal metadata");
                         let events = stdin_ansi_parser.parse(buf);
                         if !events.is_empty() {
                             ansi_stdin_events.append(&mut events.clone());
@@ -87,12 +91,16 @@ pub(crate) fn stdin_loop(
                         .write_cache(ansi_stdin_events.drain(..).collect());
                 }
                 current_buffer.append(&mut buf.to_vec());
+                log::info!("current_buffer bytes: {:?}", current_buffer);
+                log::info!("current_buffer utf8: {:?}", String::from_utf8_lossy(&current_buffer));
 
                 if !explicitly_disable_kitty_keyboard_protocol {
+                    log::info!("trying to parse as kitty");
                     // first we try to parse with the KittyKeyboardParser
                     // if we fail, we try to parse normally
                     match KittyKeyboardParser::new().parse(&buf) {
                         Some(key_with_modifier) => {
+                            log::info!("successfully parsed as kitty: {:?}", key_with_modifier);
                             send_input_instructions
                                 .send(InputInstruction::KeyWithModifierEvent(
                                     key_with_modifier,
@@ -107,6 +115,7 @@ pub(crate) fn stdin_loop(
 
                 let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely
                 let mut events = vec![];
+                log::info!("trying to parse with input_parser");
                 input_parser.parse(
                     &buf,
                     |input_event: InputEvent| {
@@ -124,6 +133,7 @@ pub(crate) fn stdin_loop(
                             if poller.ready() {
                                 break;
                             }
+                            log::info!("sending input_event when holding mouse and is_mouse_press_or_hold true: {:?}", input_event);
                             send_input_instructions
                                 .send(InputInstruction::KeyEvent(
                                     input_event.clone(),
@@ -135,6 +145,7 @@ pub(crate) fn stdin_loop(
 
                     holding_mouse = is_mouse_press_or_hold(&input_event);
 
+                    log::info!("sending key event: {:?}", input_event);
                     send_input_instructions
                         .send(InputInstruction::KeyEvent(
                             input_event,
