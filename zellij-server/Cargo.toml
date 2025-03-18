@@ -9,30 +9,29 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-highway = "0.6.4"
-ansi_term = "0.12.1"
+ansi_term = { workspace = true }
+arrayvec = "0.7.2"
 async-trait = "0.1.50"
 base64 = "0.13.0"
 byteorder = "1.4.3"
 bytes = "1.6.0"
-daemonize = "0.5"
-serde_json = "1.0"
-unicode-width = "0.1.8"
-url = "2.2.2"
-wasmtime-wasi = "29.0.1" # Keep in sync with wasmtime
 cassowary = "0.3.0"
-zellij-utils = { path = "../zellij-utils/", version = "0.43.0" }
-log = "0.4.17"
-typetag = "0.1.7"
 chrono = "0.4.19"
 close_fds = "0.3.2"
-sysinfo = "0.22.5"
-sixel-tokenizer = "0.1.0"
-sixel-image = "0.1.0"
-arrayvec = "0.7.2"
-uuid = { version = "1.4.1", features = ["serde", "v4"] }
+daemonize = "0.5"
+highway = "0.6.4"
+log = { workspace = true }
 semver = "0.11.0"
-
+serde_json = { workspace = true }
+sixel-image = "0.1.0"
+sixel-tokenizer = "0.1.0"
+sysinfo = "0.22.5"
+typetag = "0.1.7"
+unicode-width = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+wasmtime-wasi = "29.0.1" # Keep in sync with wasmtime
+zellij-utils = { workspace = true }
 [dependencies.wasmtime]
 version = "29.0.1" # Keep in sync with wasmtime-wasi
 default-features = false
