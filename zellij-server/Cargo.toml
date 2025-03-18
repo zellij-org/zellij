@@ -10,44 +10,41 @@ license = "MIT"
 
 [dependencies]
 ansi_term = { workspace = true }
-arrayvec = "0.7.2"
-async-trait = "0.1.50"
-base64 = "0.13.0"
-byteorder = "1.4.3"
-bytes = "1.6.0"
-cassowary = "0.3.0"
-chrono = "0.4.19"
-close_fds = "0.3.2"
-daemonize = "0.5"
-highway = "0.6.4"
+arrayvec = { version = "0.7.2", default-features = false, features = ["std"] }
+async-trait = { version = "0.1.50", default-features = false }
+base64 = { version = "0.13.0", default-features = false, features = ["std"] }
+byteorder = { version = "1.4.3", default-features = false, features = ["std"] }
+bytes = { version = "1.6.0", default-features = false, features = ["std"] }
+cassowary = { version = "0.3.0", default-features = false }
+chrono = { version = "0.4.19", default-features = false, features = ["std", "clock"] }
+close_fds = { version = "0.3.2", default-features = false }
+daemonize = { version = "0.5", default-features = false }
+highway = { version = "0.6.4", default-features = false, features = ["std"] }
 log = { workspace = true }
-semver = "0.11.0"
+semver = { version = "0.11.0", default-features = false }
 serde_json = { workspace = true }
-sixel-image = "0.1.0"
-sixel-tokenizer = "0.1.0"
-sysinfo = "0.22.5"
-typetag = "0.1.7"
+sixel-image = { version = "0.1.0", default-features = false }
+sixel-tokenizer = { version = "0.1.0", default-features = false }
+sysinfo = { version = "0.22.5", default-features = false }
+typetag = { version = "0.1.7", default-features = false }
 unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
-wasmtime-wasi = "29.0.1" # Keep in sync with wasmtime
+wasmtime-wasi = { version = "29.0.1", default-features = false, features = ["preview1"] } # Keep in sync with wasmtime
 zellij-utils = { workspace = true }
+
 [dependencies.wasmtime]
 version = "29.0.1" # Keep in sync with wasmtime-wasi
 default-features = false
 features = [
-  'async',
-  'cache',
-  'parallel-compilation',
+  'addr2line',
   'cranelift',
   'demangle',
-  'addr2line',
-  'debug-builtins',
-  'runtime',
-  'component-model',
-  'std',
   'gc',
   'gc-drc',
+  'parallel-compilation',
+  'runtime',
+  'std',
 ]
 
 [dev-dependencies]
