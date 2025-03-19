@@ -52,7 +52,7 @@ members = [
 [workspace.dependencies]
 ansi_term = { version = "0.12.1", default-features = false }
 anyhow = { version = "1.0.70", default-features = false, features = ["backtrace", "std"] }
-clap = { version = "3.2.2", features = ["env", "derive"] }
+clap = { version = "3.2.2", default-features = false, features = ["env", "derive", "color", "std", "suggestions"] }
 log = { version = "0.4.17", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
