@@ -4,7 +4,7 @@ use crate::stdin_ansi_parser::StdinAnsiParser;
 use crate::InputInstruction;
 use std::sync::{Arc, Mutex};
 use zellij_utils::channels::SenderWithContext;
-use zellij_utils::termwiz::input::{InputEvent, InputParser, MouseButtons};
+use termwiz::input::{InputEvent, InputParser, MouseButtons};
 
 fn send_done_parsing_after_query_timeout(
     send_input_instructions: SenderWithContext<InputInstruction>,

@@ -1,6 +1,9 @@
-use zellij_utils::anyhow::{Context, Result};
+use anyhow::{Context, Result};
 use zellij_utils::pane_size::Size;
-use zellij_utils::{interprocess, libc, nix, signal_hook};
+use libc;
+use interprocess;
+use nix;
+use signal_hook;
 
 use interprocess::local_socket::LocalSocketStream;
 use mio::{unix::SourceFd, Events, Interest, Poll, Token};

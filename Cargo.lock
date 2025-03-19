@@ -4994,13 +4994,23 @@ dependencies = [
 name = "zellij-client"
 version = "0.43.0"
 dependencies = [
+ "anyhow",
  "insta",
+ "interprocess",
+ "lazy_static",
+ "libc",
  "log",
  "mio 0.7.14",
+ "nix 0.23.1",
+ "notify-debouncer-full",
+ "regex",
  "serde",
  "serde_json",
  "serde_yaml",
+ "signal-hook",
+ "termwiz",
  "url",
+ "uuid",
  "zellij-utils",
 ]
 
@@ -5079,12 +5089,10 @@ dependencies = [
  "isahc",
  "kdl",
  "lazy_static",
- "libc",
  "log",
  "log4rs",
  "miette",
  "nix 0.23.1",
- "notify-debouncer-full",
  "openssl-sys",
  "percent-encoding",
  "prost",

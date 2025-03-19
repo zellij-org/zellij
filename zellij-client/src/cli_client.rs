@@ -10,8 +10,8 @@ use zellij_utils::{
     errors::prelude::*,
     input::actions::Action,
     ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
-    uuid::Uuid,
 };
+use uuid::Uuid;
 
 pub fn start_cli_client(
     mut os_input: Box<dyn ClientOsApi>,

@@ -16,8 +16,8 @@ use zellij_utils::{
     },
     ipc::{ClientToServerMsg, ExitReason},
     position::Position,
-    termwiz::input::{InputEvent, Modifiers, MouseButtons, MouseEvent as TermwizMouseEvent},
 };
+use termwiz::input::{InputEvent, Modifiers, MouseButtons, MouseEvent as TermwizMouseEvent};
 
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputMode`], and keep tracks of the current [`InputMode`].
