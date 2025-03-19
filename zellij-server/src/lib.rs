@@ -971,8 +971,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             },
             ServerInstruction::DetachSession(client_ids) => {
                 for client_id in client_ids {
-                    let _ = os_input
-                        .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                    let _ = os_input.send_to_client(
+                        client_id,
+                        ServerToClientMsg::Exit(ExitReason::NormalDetached),
+                    );
                     remove_client!(client_id, os_input, session_state);
                     if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
                     {
