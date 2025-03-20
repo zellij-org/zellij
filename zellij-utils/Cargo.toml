@@ -47,7 +47,7 @@ vte = { version = "0.11.0", default-features = false }
 
 #[cfg(not(target_family = "wasm"))]
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-termwiz = "0.22"
+termwiz = "0.23.2"
 log4rs = "1.2.0"
 signal-hook = "0.3"
 interprocess = "1.2.1"
