@@ -12,7 +12,7 @@ use zellij_utils::plugin_api::plugin_command::ProtobufPluginCommand;
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
 pub use super::ui_components::*;
-pub use zellij_utils::prost::{self, *};
+pub use prost::{self, *};
 
 // Subscription Handling
 
