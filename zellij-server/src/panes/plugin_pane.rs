@@ -31,8 +31,8 @@ use zellij_utils::{
     input::mouse::{MouseEvent, MouseEventType},
     pane_size::PaneGeom,
     shared::make_terminal_title,
-    vte,
 };
+use vte;
 
 macro_rules! style {
     ($fg:expr) => {

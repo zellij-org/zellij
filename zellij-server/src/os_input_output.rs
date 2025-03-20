@@ -13,22 +13,24 @@ use nix::{
 
 use signal_hook::consts::*;
 use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
+use async_std;
+use interprocess;
+use libc;
+use nix;
+use signal_hook;
 use zellij_utils::{
-    async_std, channels,
+    channels,
     channels::TrySendError,
     data::Palette,
     errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
-    interprocess,
     ipc::{
         ClientToServerMsg, ExitReason, IpcReceiverWithContext, IpcSenderWithContext,
         ServerToClientMsg,
     },
-    libc, nix,
     shared::default_palette,
-    signal_hook,
-    tempfile::tempfile,
 };
+use tempfile::tempfile;
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},

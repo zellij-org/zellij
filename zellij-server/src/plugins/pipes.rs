@@ -7,7 +7,7 @@ use zellij_utils::data::{PipeMessage, PipeSource};
 use zellij_utils::plugin_api::pipe_message::ProtobufPipeMessage;
 
 use zellij_utils::errors::prelude::*;
-use zellij_utils::prost::Message;
+use prost::Message;
 
 use crate::{thread_bus::ThreadSenders, ClientId};
 

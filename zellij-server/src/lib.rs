@@ -25,7 +25,7 @@ use std::{
     thread,
 };
 use zellij_utils::envs;
-use zellij_utils::nix::sys::stat::{umask, Mode};
+use nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;
 
 use wasmtime::{Config as WasmtimeConfig, Engine, Strategy};
@@ -555,9 +555,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
-            use zellij_utils::{
-                interprocess::local_socket::LocalSocketListener, shared::set_permissions,
-            };
+            use zellij_utils::shared::set_permissions;
+            use interprocess::local_socket::LocalSocketListener;
 
             let os_input = os_input.clone();
             let session_data = session_data.clone();

@@ -22,9 +22,9 @@ use std::rc::Rc;
 use zellij_utils::{
     data::{ModeInfo, Palette, Style},
     input::command::{RunCommand, TerminalAction},
-    interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };
+use interprocess::local_socket::LocalSocketStream;
 
 #[derive(Clone)]
 struct FakeInputOutput {}

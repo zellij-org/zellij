@@ -9,8 +9,8 @@ use zellij_utils::{
     data::{Palette, Style},
     pane_size::SizeInPixels,
     position::Position,
-    vte,
 };
+use vte;
 
 use std::fmt::Write;
 

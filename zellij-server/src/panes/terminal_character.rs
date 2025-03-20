@@ -7,10 +7,8 @@ use unicode_width::UnicodeWidthChar;
 use unicode_width::UnicodeWidthStr;
 use zellij_utils::data::StyleDeclaration;
 use zellij_utils::input::command::RunCommand;
-use zellij_utils::{
-    data::{PaletteColor, Style},
-    vte::ParamsIter,
-};
+use zellij_utils::data::{PaletteColor, Style};
+use vte::ParamsIter;
 
 use crate::panes::alacritty_functions::parse_sgr_color;
 

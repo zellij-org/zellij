@@ -58,8 +58,10 @@ members = [
 [workspace.dependencies]
 ansi_term = { version = "0.12.1", default-features = false }
 anyhow = { version = "1.0.70", default-features = false, features = ["backtrace", "std"] }
+async-std = { version = "1.3.0", default-features = false, features = ["attributes", "default", "std", "unstable"] }
 clap = { version = "3.2.2", default-features = false, features = ["env", "derive", "color", "std", "suggestions"] }
 interprocess = { version = "1.2.1", default-features = false }
+isahc = { version = "1.7.2", default-features = false, features = ["http2", "text-decoding"] }
 lazy_static = { version = "1.4.0", default-features = false }
 libc = { version = "0.2", default-features = false, features = ["std"] }
 log = { version = "0.4.17", default-features = false }
@@ -73,6 +75,7 @@ serde_json = { version = "1.0", default-features = false, features = ["std"] }
 signal-hook = { version = "0.3", default-features = false, features = ["iterator"] }
 strum = { version = "0.20.0", default-features = false }
 strum_macros = { version = "0.20.0", default-features = false }
+tempfile = { version = "3.2.0", default-features = false }
 termwiz = { version = "0.23.2", default-features = false }
 thiserror = { version = "1.0.40", default-features = false }
 unicode-width = { version = "0.1.8", default-features = false }

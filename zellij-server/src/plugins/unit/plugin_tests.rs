@@ -18,7 +18,7 @@ use zellij_utils::input::layout::{
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::input::plugins::PluginAliases;
 use zellij_utils::ipc::ClientAttributes;
-use zellij_utils::lazy_static::lazy_static;
+use lazy_static::lazy_static;
 use zellij_utils::pane_size::Size;
 
 use crate::background_jobs::BackgroundJob;

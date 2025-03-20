@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use zellij_utils::data::Style;
 use zellij_utils::errors::prelude::*;
-use zellij_utils::regex::Regex;
+use regex::Regex;
 
 use std::{
     cmp::Ordering,
@@ -20,8 +20,8 @@ use zellij_utils::{
     input::mouse::{MouseEvent, MouseEventType},
     pane_size::SizeInPixels,
     position::Position,
-    vte,
 };
+use vte;
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;

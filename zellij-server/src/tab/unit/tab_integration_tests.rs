@@ -40,9 +40,9 @@ use std::rc::Rc;
 use zellij_utils::{
     data::{InputMode, ModeInfo, Palette, Style},
     input::command::{RunCommand, TerminalAction},
-    interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };
+use interprocess::local_socket::LocalSocketStream;
 
 #[derive(Clone, Default)]
 struct FakeInputOutput {
@@ -746,7 +746,7 @@ fn read_fixture(fixture_name: &str) -> Vec<u8> {
 use crate::panes::grid::Grid;
 use crate::panes::link_handler::LinkHandler;
 use insta::assert_snapshot;
-use zellij_utils::vte;
+use vte;
 
 fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: Palette) -> String {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
@@ -5341,7 +5341,7 @@ fn close_main_stacked_pane_in_mid_stack() {
             swap_tiled_layout {
                 tab {
                     pane split_direction="vertical" {
-                        pane 
+                        pane
                         pane stacked=true { children; }
                     }
                 }

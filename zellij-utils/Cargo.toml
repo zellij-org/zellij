@@ -11,7 +11,6 @@ include = ["src/**/*", "assets/"]
 
 [dependencies]
 anyhow = { workspace = true }
-async-channel = { version = "1.8.0", default-features = false }
 backtrace = { version = "0.3.55", default-features = false, features = ["std"] }
 bitflags = { version = "2.5.0", default-features = false }
 clap = { workspace = true }
@@ -24,11 +23,10 @@ include_dir = { version = "0.7.3", default-features = false }
 kdl = { version = "4.5.0", default-features = false, features = ["span"] }
 lazy_static = { workspace = true }
 log = { workspace = true }
-miette = { version = "5.7.0", default-features = false, features = ["fancy"] }
+miette = { workspace = true }
 nix = { workspace = true }
 percent-encoding = { version = "2.1.0", default-features = false, features = ["std"] }
-prost = { version = "0.11.9", default-features = false, features = ["std", "prost-derive"] }
-regex = { workspace = true }
+prost = { workspace = true }
 rmp-serde = { version = "1.1.0", default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -36,22 +34,19 @@ shellexpand = { version = "3.0.0", default-features = false, features = ["base-0
 strip-ansi-escapes = { version = "0.1.0", default-features = false }
 strum = { workspace = true }
 strum_macros = { workspace = true }
-tempfile = { version = "3.2.0", default-features = false }
+tempfile = { workspace = true }
 thiserror = { workspace = true }
 unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
-vte = { version = "0.11.0", default-features = false }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
+async-std = { workspace = true }
 log4rs = { version = "1.2.0", default-features = false, features = ["pattern_encoder", "rolling_file_appender", "compound_policy", "fixed_window_roller", "size_trigger"] }
 termwiz = { workspace = true }
-async-std = { version = "1.3.0", default-features = false, features = ["attributes", "default", "std", "unstable"] }
-signal-hook = { workspace = true }
 interprocess = { workspace = true }
-humantime = { version = "2.1.0", default-features = false }
 openssl-sys = { version = "0.9.93", default-features = false, features = ["vendored"], optional = true }
-isahc = { version = "1.7.2", default-features = false, features = ["http2", "text-decoding"] }
+isahc = { workspace = true }
 curl-sys = { version = "0.4", default-features = false, features = ["force-system-lib-on-osx", "ssl"], optional = true }
 
 [dev-dependencies]

@@ -22,11 +22,9 @@ use zellij_utils::data::{
     MessageToPlugin, OriginatingPlugin, PermissionStatus, PermissionType, PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
-use zellij_utils::{
-    async_std::task,
-    interprocess::local_socket::LocalSocketStream,
-    ipc::{ClientToServerMsg, IpcSenderWithContext},
-};
+use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
+use async_std::task;
+use interprocess::local_socket::LocalSocketStream;
 
 use crate::{panes::PaneId, screen::ScreenInstruction};
 
@@ -46,9 +44,8 @@ use zellij_utils::{
         plugin_command::ProtobufPluginCommand,
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
-    prost::Message,
-    serde,
 };
+use prost::Message;
 
 macro_rules! apply_action {
     ($action:ident, $error_message:ident, $env: ident) => {

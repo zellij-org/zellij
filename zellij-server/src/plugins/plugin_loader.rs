@@ -16,7 +16,7 @@ use url::Url;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 use wasmtime_wasi::{preview1::WasiP1Ctx, DirPerms, FilePerms, WasiCtxBuilder};
 use zellij_utils::consts::ZELLIJ_PLUGIN_ARTIFACT_DIR;
-use zellij_utils::prost::Message;
+use prost::Message;
 
 use crate::{
     logging_pipe::LoggingPipe, screen::ScreenInstruction, thread_bus::ThreadSenders,

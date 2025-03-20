@@ -27,8 +27,8 @@ use zellij_utils::{
     pane_size::SizeInPixels,
     position::Position,
     shared::make_terminal_title,
-    vte,
 };
+use vte;
 
 use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
 

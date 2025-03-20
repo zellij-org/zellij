@@ -6,7 +6,10 @@ mod text;
 
 use crate::panes::grid::Grid;
 use zellij_utils::errors::prelude::*;
-use zellij_utils::{data::Style, lazy_static::lazy_static, regex::Regex, vte};
+use zellij_utils::data::Style;
+use lazy_static::lazy_static;
+use regex::Regex;
+use vte;
 
 use component_coordinates::{is_too_high, is_too_wide, Coordinates};
 use nested_list::{nested_list, parse_nested_list_items};

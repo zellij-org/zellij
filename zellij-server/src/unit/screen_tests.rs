@@ -38,9 +38,9 @@ use zellij_utils::ipc::PixelDimensions;
 use zellij_utils::{
     channels::{self, ChannelWithContext, Receiver},
     data::{Direction, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PluginCapabilities},
-    interprocess::local_socket::LocalSocketStream,
     ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
 };
+use interprocess::local_socket::LocalSocketStream;
 
 use crate::panes::grid::Grid;
 use crate::panes::link_handler::LinkHandler;
@@ -48,7 +48,6 @@ use crate::panes::sixel::SixelImageStore;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use zellij_utils::vte;
 
 fn take_snapshot_and_cursor_coordinates(
     ansi_instructions: &str,

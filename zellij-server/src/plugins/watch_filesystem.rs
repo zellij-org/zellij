@@ -5,7 +5,7 @@ use crate::thread_bus::ThreadSenders;
 use std::path::Path;
 use std::time::Duration;
 
-use zellij_utils::notify_debouncer_full::{
+use notify_debouncer_full::{
     new_debouncer,
     notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher},
     DebounceEventResult, Debouncer, FileIdMap,

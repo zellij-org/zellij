@@ -18,7 +18,8 @@ use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::position::{Column, Line};
-use zellij_utils::{position::Position, serde};
+use zellij_utils::position::Position;
+use serde;
 
 use crate::background_jobs::BackgroundJob;
 use crate::pty_writer::PtyWriteInstruction;
