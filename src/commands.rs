@@ -27,10 +27,10 @@ use zellij_utils::{
         layout::Layout,
         options::Options,
     },
-    miette::{Report, Result},
-    nix,
     setup::{find_default_config_dir, get_layout_dir, Setup},
 };
+use miette::{Report, Result};
+use nix;
 
 pub(crate) use crate::sessions::list_sessions;
 
