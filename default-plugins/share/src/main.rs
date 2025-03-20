@@ -44,6 +44,23 @@ impl ZellijPlugin for App {
         should_render
     }
     fn render(&mut self, rows: usize, cols: usize) {
+        // TODO:
+        // 1. show server status
+        // 2. show sessions shared on the web
+        // 3. show connected clients to each session (?) web and terminal
+        // 4. controls: start server, restart server
+        //
+        // Web Server Status: RUNNING/NOT-RUNNING <Ctrl c> > Stop, <Tab> > Start/Restart
+        // URL: https://localhost:8082
+        //
+        // Current session: SHARING/NOT-SHARING
+        // Session URL: https://localhost:8082/jumping-tomato
+        //
+        // All sessions:
+        // > session_name (1 web, 2 terminal users)
+        // > session_name (0 web, 1 terminal users)
+        //  - Open in browser
+        //  - Stop sharing
         let title = "Share this session to the browser";
         let toggle_text = "<ENTER>";
         let toggle_ribbon_text = "Sharing";
