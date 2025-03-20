@@ -24,12 +24,3 @@ pub mod downloader; // Requires async_std
 pub mod ipc; // Requires interprocess
 #[cfg(not(target_family = "wasm"))]
 pub mod logging; // Requires log4rs
-
-#[cfg(not(target_family = "wasm"))]
-pub use ::{
-    anyhow, async_channel, async_std, clap, humantime, interprocess, isahc, lazy_static,
-    miette, nix, regex, serde, signal_hook, tempfile, termwiz, url, uuid,
-    vte,
-};
-
-pub use ::prost;
