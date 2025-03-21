@@ -1537,8 +1537,7 @@ impl Grid {
     pub fn move_cursor_up(&mut self, count: usize) {
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
         if self.cursor.y >= scroll_region_top && self.cursor.y <= scroll_region_bottom {
-            self.cursor.y =
-                std::cmp::max(self.cursor.y.saturating_sub(count), scroll_region_top);
+            self.cursor.y = std::cmp::max(self.cursor.y.saturating_sub(count), scroll_region_top);
             return;
         }
         self.cursor.y = if self.cursor.y < count {
@@ -1615,8 +1614,7 @@ impl Grid {
     ) {
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
         let current_line_index = self.cursor.y;
-        if current_line_index >= scroll_region_top && current_line_index <= scroll_region_bottom
-        {
+        if current_line_index >= scroll_region_top && current_line_index <= scroll_region_bottom {
             // when deleting lines inside the scroll region, we must make sure it stays the
             // same size (and that other lines below it aren't shifted inside it)
             // so we delete the current line(s) and add an empty line at the end of the scroll
@@ -1641,8 +1639,7 @@ impl Grid {
     ) {
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
         let current_line_index = self.cursor.y;
-        if current_line_index >= scroll_region_top && current_line_index <= scroll_region_bottom
-        {
+        if current_line_index >= scroll_region_top && current_line_index <= scroll_region_bottom {
             // when adding empty lines inside the scroll region, we must make sure it stays the
             // same size and that lines don't "leak" outside of it
             // so we add an empty line where the cursor currently is, and delete the last line
