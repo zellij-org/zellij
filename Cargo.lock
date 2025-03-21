@@ -2514,7 +2514,7 @@ version = "1.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c0aeb26bf5e836cc1c341c8106051b573f1766dfa05aa87f0b98be5e51b02303"
 dependencies = [
- "nix 0.29.0",
+ "nix",
  "winapi",
 ]
 
@@ -2697,19 +2697,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7bddcd3bf5144b6392de80e04c347cd7fab2508f6df16a85fc496ecd5cec39bc"
 dependencies = [
  "rand 0.8.5",
-]
-
-[[package]]
-name = "nix"
-version = "0.23.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f866317acbd3a240710c63f065ffb1e4fd466259045ccb504130b7f668f35c6"
-dependencies = [
- "bitflags 1.3.2",
- "cc",
- "cfg-if",
- "libc",
- "memoffset 0.6.5",
 ]
 
 [[package]]
@@ -4245,7 +4232,7 @@ dependencies = [
  "libc",
  "log",
  "memmem",
- "nix 0.29.0",
+ "nix",
  "num-derive",
  "num-traits",
  "ordered-float",
@@ -5777,7 +5764,7 @@ dependencies = [
  "log",
  "miette",
  "names",
- "nix 0.23.1",
+ "nix",
  "rand 0.8.5",
  "regex",
  "ssh2",
@@ -5808,7 +5795,7 @@ dependencies = [
  "libc",
  "log",
  "mio 0.7.14",
- "nix 0.23.1",
+ "nix",
  "notify",
  "regex",
  "rmp-serde",
@@ -5853,7 +5840,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "log",
- "nix 0.23.1",
+ "nix",
  "notify-debouncer-full",
  "prost",
  "regex",
@@ -5922,7 +5909,7 @@ dependencies = [
  "log4rs",
  "miette",
  "names",
- "nix 0.23.1",
+ "nix",
  "notify",
  "openssl-sys",
  "percent-encoding",
