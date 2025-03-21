@@ -3244,9 +3244,6 @@ impl Perform for Grid {
 
                     // Note that this is relative to scrolling region.
                     let offset = self.scroll_region.0; // scroll_region_top
-//                         Some((scroll_region_top, _scroll_region_bottom)) => scroll_region_top,
-//                         _ => 0,
-//                     };
                     let position_report = format!(
                         "\u{1b}[{};{}R",
                         self.cursor.y + 1 - offset,
