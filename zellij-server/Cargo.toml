@@ -45,11 +45,11 @@ unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 vte = { workspace = true }
-wasmtime-wasi = { version = "29.0.1", default-features = false, features = ["preview1"] } # Keep in sync with wasmtime
+wasmtime-wasi = { version = "30.0.2", default-features = false, features = ["preview1"] } # Keep in sync with wasmtime
 zellij-utils = { workspace = true }
 
 [dependencies.wasmtime]
-version = "29.0.1" # Keep in sync with wasmtime-wasi
+version = "30.0.2" # Keep in sync with wasmtime-wasi
 default-features = false
 features = [
   'addr2line',
@@ -65,7 +65,7 @@ features = [
 [dev-dependencies]
 insta = "1.6.0"
 tempfile = "3.2.0"
-wasmtime = { version = "29.0.1", features = ["winch"] } # Keep in sync with the other wasmtime dep
+wasmtime = { version = "30.0.2", features = ["winch"] } # Keep in sync with the other wasmtime dep
 
 [features]
 singlepass = ["wasmtime/winch"]
