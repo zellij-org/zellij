@@ -14,7 +14,11 @@ use async_std::{
 };
 use nix::unistd::Pid;
 use std::sync::Arc;
-use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
+use std::{
+    collections::HashMap,
+    os::unix::io::{IntoRawFd, OwnedFd, RawFd},
+    path::PathBuf,
+};
 use zellij_utils::{
     data::{Event, FloatingPaneCoordinates, OriginatingPlugin},
     errors::prelude::*,
@@ -987,7 +991,7 @@ impl Pty {
                 }
             }
         });
-        let (terminal_id, pid_primary, child_fd): (u32, RawFd, RawFd) = self
+        let (terminal_id, pid_primary, child_fd): (u32, OwnedFd, RawFd) = self
             .bus
             .os_input
             .as_mut()
@@ -996,6 +1000,7 @@ impl Pty {
                 os_input.spawn_terminal(terminal_action, quit_cb, self.default_editor.clone())
             })
             .with_context(err_context)?;
+        let pid_primary = pid_primary.into_raw_fd();
         let terminal_bytes = task::spawn({
             let err_context =
                 |terminal_id: u32| format!("failed to run async task for terminal {terminal_id}");
@@ -1235,7 +1240,7 @@ impl Pty {
                                 terminal_id,
                                 starts_held,
                                 Some(command.clone()),
-                                Ok(pid_primary),
+                                Ok(pid_primary.into_raw_fd()),
                             )))
                         },
                         Err(err) => {
@@ -1263,7 +1268,12 @@ impl Pty {
                 {
                     Ok((terminal_id, pid_primary, child_fd)) => {
                         self.id_to_child_pid.insert(terminal_id, child_fd);
-                        Ok(Some((terminal_id, starts_held, None, Ok(pid_primary))))
+                        Ok(Some((
+                            terminal_id,
+                            starts_held,
+                            None,
+                            Ok(pid_primary.into_raw_fd()),
+                        )))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
@@ -1294,7 +1304,12 @@ impl Pty {
                 {
                     Ok((terminal_id, pid_primary, child_fd)) => {
                         self.id_to_child_pid.insert(terminal_id, child_fd);
-                        Ok(Some((terminal_id, starts_held, None, Ok(pid_primary))))
+                        Ok(Some((
+                            terminal_id,
+                            starts_held,
+                            None,
+                            Ok(pid_primary.into_raw_fd()),
+                        )))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
@@ -1317,7 +1332,12 @@ impl Pty {
                 {
                     Ok((terminal_id, pid_primary, child_fd)) => {
                         self.id_to_child_pid.insert(terminal_id, child_fd);
-                        Ok(Some((terminal_id, starts_held, None, Ok(pid_primary))))
+                        Ok(Some((
+                            terminal_id,
+                            starts_held,
+                            None,
+                            Ok(pid_primary.into_raw_fd()),
+                        )))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
@@ -1422,7 +1442,7 @@ impl Pty {
                         }
                     }
                 });
-                let (pid_primary, child_fd): (RawFd, RawFd) = self
+                let (pid_primary, child_fd): (OwnedFd, RawFd) = self
                     .bus
                     .os_input
                     .as_mut()
@@ -1431,6 +1451,7 @@ impl Pty {
                         os_input.re_run_command_in_terminal(id, run_command, quit_cb)
                     })
                     .with_context(err_context)?;
+                let pid_primary = pid_primary.into_raw_fd();
                 let terminal_bytes = task::spawn({
                     let err_context =
                         |pane_id| format!("failed to run async task for pane {pane_id:?}");
