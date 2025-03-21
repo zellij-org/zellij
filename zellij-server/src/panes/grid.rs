@@ -507,7 +507,7 @@ impl Grid {
             cursor: Cursor::new(0, 0, styled_underlines),
             cursor_is_hidden: false,
             saved_cursor_position: None,
-            scroll_region: (0, rows.saturating_sub(1)), // TODO: index or count?
+            scroll_region: (0, rows.saturating_sub(1)),
             preceding_char: None,
             width: columns,
             height: rows,
@@ -1533,12 +1533,6 @@ impl Grid {
         }
         self.pad_lines_until(self.cursor.y, pad_character.clone());
         self.pad_current_line_until(self.cursor.x, pad_character);
-//             None => {
-//                 self.cursor.x = std::cmp::min(self.width - 1, x);
-//                 self.cursor.y = std::cmp::min(self.height - 1, y);
-//                 self.pad_lines_until(self.cursor.y, pad_character.clone());
-//                 self.pad_current_line_until(self.cursor.x, pad_character);
-//             },
     }
     pub fn move_cursor_up(&mut self, count: usize) {
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
@@ -1611,9 +1605,6 @@ impl Grid {
         pad_character.styles = self.cursor.pending_styles.clone();
         self.move_cursor_to(0, 0, pad_character); // DECSTBM moves the cursor to column 1 line 1 of the page
     }
-//     pub fn clear_scroll_region(&mut self) {
-//         self.scroll_region = None;
-//     }
     pub fn set_scroll_region_to_viewport_size(&mut self) {
         self.scroll_region = (0, self.height.saturating_sub(1));
     }
@@ -3045,10 +3036,6 @@ impl Perform for Grid {
         } else if c == 'M' {
             // delete lines if currently inside scroll region, or otherwise
             // delete lines in the entire viewport
-            // TODO: is this the right thing?
-//             if self.scroll_region.is_none() {
-//                 self.set_scroll_region_to_viewport_size();
-//             }
             let line_count_to_delete = next_param_or(1);
             let mut pad_character = EMPTY_TERMINAL_CHARACTER;
             pad_character.styles = self.cursor.pending_styles.clone();
@@ -3056,10 +3043,6 @@ impl Perform for Grid {
         } else if c == 'L' {
             // insert blank lines if inside scroll region, or otherwise insert
             // blank lines in the entire viewport
-            //             TODO: is this the right thing?
-//             if self.scroll_region.is_none() {
-//                 self.set_scroll_region_to_viewport_size();
-//             }
             let line_count_to_add = next_param_or(1);
             let mut pad_character = EMPTY_TERMINAL_CHARACTER;
             pad_character.styles = self.cursor.pending_styles.clone();
