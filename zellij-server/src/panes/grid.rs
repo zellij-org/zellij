@@ -1293,7 +1293,6 @@ impl Grid {
         self.output_buffer.update_all_lines();
     }
     pub fn add_canonical_line(&mut self) {
-        println!("here, right in 'add_canonical_line' ?");
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
         if self.cursor.y == scroll_region_bottom {
             // end of scroll region
@@ -1313,21 +1312,15 @@ impl Grid {
                     self.viewport.remove(0);
                 }
 
-                let mut pad_character = EMPTY_TERMINAL_CHARACTER;
-                pad_character.styles = self.cursor.pending_styles.clone();
-                let columns = VecDeque::from(vec![pad_character; self.width]);
-                self.viewport.push(Row::from_columns(columns).canonical());
+                self.viewport.push(Row::new().canonical());
                 self.selection.move_up(1);
             } else {
                 self.viewport.remove(scroll_region_top);
-                let mut pad_character = EMPTY_TERMINAL_CHARACTER;
-                pad_character.styles = self.cursor.pending_styles.clone();
-                let columns = VecDeque::from(vec![pad_character; self.width]);
                 if self.viewport.len() >= scroll_region_bottom {
                     self.viewport
-                        .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
+                        .insert(scroll_region_bottom, Row::new().canonical());
                 } else {
-                    self.viewport.push(Row::from_columns(columns).canonical());
+                    self.viewport.push(Row::new().canonical());
                 }
             }
             self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
@@ -1341,17 +1334,6 @@ impl Grid {
             self.viewport.push(new_row);
         }
         if self.cursor.y == self.height.saturating_sub(1) {
-            //             TODO: what do?
-//             if self.scroll_region.is_none() {
-//                 if self.alternate_screen_state.is_none() {
-//                     self.transfer_rows_to_lines_above(1);
-//                 } else {
-//                     self.sixel_grid.offset_grid_top();
-//                     self.viewport.remove(0);
-//                 }
-// 
-//                 self.selection.move_up(1);
-//             }
             self.output_buffer.update_all_lines();
         } else {
             self.cursor.y += 1;
@@ -2457,7 +2439,6 @@ impl Grid {
 
 impl Perform for Grid {
     fn print(&mut self, c: char) {
-        println!("print: {:?}\n{:?}", c, self);
         let c = self.cursor.charsets[self.active_charset].map(c);
 
         let terminal_character =
@@ -3495,7 +3476,7 @@ pub struct Row {
 impl Debug for Row {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         for character in &self.columns {
-            write!(f, "{:?}|", character)?;
+            write!(f, "{:?}", character)?;
         }
         Ok(())
     }

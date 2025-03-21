@@ -1,29 +1,28 @@
 ---
 source: zellij-server/src/panes/./unit/grid_tests.rs
 expression: "format!(\"{:?}\", grid)"
-
 ---
 00 (C): Test of autowrap, mixing control and print characters.                                                        
 01 (C): The left/right margins should have letters in order:                                                          
-02 (C): I                                                                              iJ                             
-03 (C):                                                                                 j                             
-04 (C): K                                                                              K        k                     
-05 (C): L                                                                              l                              
-06 (C): M                                                                              mN                             
-07 (C):                                                                                 n                             
-08 (C): O                                                                              O        o                     
-09 (C): P                                                                              p                              
-10 (C): Q                                                                              qR                             
-11 (C):                                                                                 r                             
-12 (C): S                                                                              S        s                     
-13 (C): T                                                                              t                              
-14 (C): U                                                                              uV                             
-15 (C):                                                                                 v                             
-16 (C): W                                                                              W        w                     
-17 (C): X                                                                              x                              
-18 (C): Y                                                                              yZ                             
-19 (C):                                                                                 z                             
-20 (C):                                                                                                               
+02 (C): I                                                                              iJ
+03 (C):                                                                                 j
+04 (C): K                                                                              K        k
+05 (C): L                                                                              l
+06 (C): M                                                                              mN
+07 (C):                                                                                 n
+08 (C): O                                                                              O        o
+09 (C): P                                                                              p
+10 (C): Q                                                                              qR
+11 (C):                                                                                 r
+12 (C): S                                                                              S        s
+13 (C): T                                                                              t
+14 (C): U                                                                              uV
+15 (C):                                                                                 v
+16 (C): W                                                                              W        w
+17 (C): X                                                                              x
+18 (C): Y                                                                              yZ
+19 (C):                                                                                 z
+20 (C): 
 21 (C): Push <RETURN>                                                                                                 
 22 (C):                                                                                                               
 23 (C):                                                                                                               
@@ -43,5 +42,4 @@ expression: "format!(\"{:?}\", grid)"
 37 (C):                                                                                                               
 38 (C):                                                                                                               
 39 (C):                                                                                                               
-40 (C):                                                                                                               
-
+40 (C):

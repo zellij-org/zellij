@@ -1,6 +1,5 @@
 ---
 source: zellij-server/src/panes/./unit/grid_tests.rs
-assertion_line: 148
 expression: "format!(\"{:?}\", grid)"
 ---
 00 (C): Test of autowrap, mixing control and print characters.                                                        
@@ -23,7 +22,7 @@ expression: "format!(\"{:?}\", grid)"
 17 (C): X                                                                                                            x
 18 (C): Y                                                                                                            y
 19 (W): Z                                                                                                            z
-20 (C):                                                                                                               
+20 (C): 
 21 (C): Push <RETURN>                                                                                                 
 22 (C):                                                                                                               
 23 (C):                                                                                                               
@@ -43,5 +42,4 @@ expression: "format!(\"{:?}\", grid)"
 37 (C):                                                                                                               
 38 (C):                                                                                                               
 39 (C):                                                                                                               
-40 (C):                                                                                                               
-
+40 (C):
