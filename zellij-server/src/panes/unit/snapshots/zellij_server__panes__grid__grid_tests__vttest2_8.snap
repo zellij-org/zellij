@@ -1,6 +1,5 @@
 ---
 source: zellij-server/src/panes/./unit/grid_tests.rs
-assertion_line: 349
 expression: "format!(\"{:?}\", grid)"
 ---
 00 (C): Push <RETURN>
@@ -33,15 +32,14 @@ expression: "format!(\"{:?}\", grid)"
 27 (C): Jump scroll down region [12..13] size 2 Line 3                                                                
 28 (C): Jump scroll down region [12..13] size 2 Line 2                                                                
 29 (C): Jump scroll down region [12..13] size 2 Line 1                                                                
-30 (C): Jump scroll up region [12..13] size 2 Line 7                                                                  
-31 (C): Jump scroll up region [12..13] size 2 Line 8                                                                  
-32 (C): Jump scroll up region [12..13] size 2 Line 9                                                                  
-33 (C): Jump scroll up region [12..13] size 2 Line 10                                                                 
-34 (C): Jump scroll up region [12..13] size 2 Line 11                                                                 
-35 (C): Jump scroll up region [12..13] size 2 Line 12                                                                 
-36 (C): Jump scroll up region [12..13] size 2 Line 13                                                                 
-37 (C): Jump scroll up region [12..13] size 2 Line 14                                                                 
-38 (C): Jump scroll up region [12..13] size 2 Line 15                                                                 
-39 (C): Jump scroll up region [12..13] size 2 Line 16                                                                 
-40 (C): Jump scroll up region [12..13] size 2 Line 17                                                                 
-
+30 (C): Jump scroll up region [12..13] size 2 Line 7
+31 (C): Jump scroll up region [12..13] size 2 Line 8
+32 (C): Jump scroll up region [12..13] size 2 Line 9
+33 (C): Jump scroll up region [12..13] size 2 Line 10
+34 (C): Jump scroll up region [12..13] size 2 Line 11
+35 (C): Jump scroll up region [12..13] size 2 Line 12
+36 (C): Jump scroll up region [12..13] size 2 Line 13
+37 (C): Jump scroll up region [12..13] size 2 Line 14
+38 (C): Jump scroll up region [12..13] size 2 Line 15
+39 (C): Jump scroll up region [12..13] size 2 Line 16
+40 (C): Jump scroll up region [12..13] size 2 Line 17
