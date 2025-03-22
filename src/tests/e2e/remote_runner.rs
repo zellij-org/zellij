@@ -6,7 +6,7 @@ use zellij_server::panes::sixel::SixelImageStore;
 use zellij_server::panes::{LinkHandler, TerminalPane};
 use zellij_utils::data::{Palette, Style};
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size, SizeInPixels};
-use zellij_utils::vte;
+use vte;
 
 use ssh2::Session;
 use std::io::prelude::*;

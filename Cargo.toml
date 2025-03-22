@@ -34,6 +34,7 @@ insta = { version = "1.6.0", features = ["backtrace"] }
 ssh2 = "0.9.1"
 rand = "0.8.0"
 regex = "1.8.1"
+vte = { workspace = true }
 
 [workspace]
 members = [
