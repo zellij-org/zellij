@@ -10,10 +10,10 @@ license = "MIT"
 
 [dependencies]
 log = { workspace = true }
-mio = { version = "0.7.11", features = ['os-ext'] }
+mio = { version = "0.7.11", default-features = false, features = ['os-ext'] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_yaml = "0.8"
+serde_yaml = { version = "0.8", default-features = false }
 url = { workspace = true }
 zellij-utils = { workspace = true }
 

@@ -17,10 +17,10 @@ rust-version = "1.84"
 zellij-client = { path = "zellij-client/", version = "0.43.0" }
 zellij-server = { path = "zellij-server/", version = "0.43.0" }
 zellij-utils = { workspace = true }
-dialoguer = "0.10.4"
+dialoguer = { version = "0.10.4", default-features = false }
 log = { workspace = true }
 names = { version = "0.14.0", default-features = false }
-suggest = "0.4.0"
+suggest = { version = "0.4.0", default-features = false }
 thiserror = { workspace = true }
 
 [dev-dependencies]
@@ -50,18 +50,18 @@ members = [
 ]
 
 [workspace.dependencies]
-ansi_term = "0.12.1"
-anyhow = { version = "1.0.70", features = ["backtrace"] }
-clap = { version = "3.2.2", features = ["derive", "env"] }
-log = "0.4.17"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-strum = "0.20.0"
-strum_macros = "0.20.0"
-thiserror = "1.0.40"
-unicode-width = "0.1.8"
-url = { version = "2.2.2", features = ["serde"] }
-uuid = { version = "1.4.1", features = ["serde", "v4"] }
+ansi_term = { version = "0.12.1", default-features = false }
+anyhow = { version = "1.0.70", default-features = false, features = ["backtrace", "std"] }
+clap = { version = "3.2.2", default-features = false, features = ["env", "derive", "color", "std", "suggestions"] }
+log = { version = "0.4.17", default-features = false }
+serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
+serde_json = { version = "1.0", default-features = false, features = ["std"] }
+strum = { version = "0.20.0", default-features = false }
+strum_macros = { version = "0.20.0", default-features = false }
+thiserror = { version = "1.0.40", default-features = false }
+unicode-width = { version = "0.1.8", default-features = false }
+url = { version = "2.2.2", default-features = false, features = ["serde"] }
+uuid = { version = "1.4.1", default-features = false, features = ["serde", "v4", "std"] }
 zellij-utils = { path = "zellij-utils/", version = "0.43.0" }
 
 [profile.dev-opt]
