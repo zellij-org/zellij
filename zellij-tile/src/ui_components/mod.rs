@@ -3,8 +3,8 @@ mod ribbon;
 mod table;
 mod text;
 
-pub use zellij_utils::plugin_api;
 pub use prost::{self, *};
+pub use zellij_utils::plugin_api;
 
 pub use nested_list::*;
 pub use ribbon::*;
