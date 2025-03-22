@@ -4991,6 +4991,7 @@ dependencies = [
  "ssh2",
  "suggest",
  "thiserror 1.0.61",
+ "vte 0.11.0",
  "zellij-client",
  "zellij-server",
  "zellij-utils",

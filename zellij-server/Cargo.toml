@@ -44,7 +44,7 @@ typetag = { version = "0.1.7", default-features = false }
 unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
-vte = { version = "0.11.0", default-features = false }
+vte = { workspace = true }
 wasmtime-wasi = { version = "29.0.1", default-features = false, features = ["preview1"] } # Keep in sync with wasmtime
 zellij-utils = { workspace = true }
 
