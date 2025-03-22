@@ -8,10 +8,13 @@ use crate::{
     thread_bus::{Bus, ThreadSenders},
     ClientId, ServerInstruction,
 };
-use async_std::{self, task::{self, JoinHandle}};
+use async_std::{
+    self,
+    task::{self, JoinHandle},
+};
+use nix::unistd::Pid;
 use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
-use nix::unistd::Pid;
 use zellij_utils::{
     data::{Event, FloatingPaneCoordinates, OriginatingPlugin},
     errors::prelude::*,

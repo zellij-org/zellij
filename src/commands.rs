@@ -9,6 +9,8 @@ use crate::sessions::{
     print_sessions_with_index, resurrection_layout, session_exists, ActiveSession,
     SessionNameMatch,
 };
+use miette::{Report, Result};
+use nix;
 use zellij_client::{
     old_config_converter::{
         config_yaml_to_config_kdl, convert_old_yaml_files, layout_yaml_to_layout_kdl,
@@ -29,8 +31,6 @@ use zellij_utils::{
     },
     setup::{find_default_config_dir, get_layout_dir, Setup},
 };
-use miette::{Report, Result};
-use nix;
 
 pub(crate) use crate::sessions::list_sessions;
 

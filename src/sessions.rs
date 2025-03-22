@@ -1,3 +1,6 @@
+use anyhow;
+use humantime::format_duration;
+use interprocess::local_socket::LocalSocketStream;
 use std::collections::HashMap;
 use std::os::unix::fs::FileTypeExt;
 use std::time::{Duration, SystemTime};
@@ -12,9 +15,6 @@ use zellij_utils::{
     input::layout::Layout,
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
 };
-use anyhow;
-use humantime::format_duration;
-use interprocess::local_socket::LocalSocketStream;
 
 pub(crate) fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {

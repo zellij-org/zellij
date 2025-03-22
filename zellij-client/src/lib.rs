@@ -25,6 +25,7 @@ use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
 };
+use termwiz::input::InputEvent;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{set_permissions, ZELLIJ_SOCK_DIR},
@@ -36,7 +37,6 @@ use zellij_utils::{
     pane_size::Size,
 };
 use zellij_utils::{cli::CliArgs, input::layout::Layout};
-use termwiz::input::InputEvent;
 
 /// Instructions related to the client-side application
 #[derive(Debug, Clone)]

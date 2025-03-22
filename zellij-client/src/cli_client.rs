@@ -6,12 +6,12 @@ use std::process;
 use std::{fs, path::PathBuf};
 
 use crate::os_input_output::ClientOsApi;
+use uuid::Uuid;
 use zellij_utils::{
     errors::prelude::*,
     input::actions::Action,
     ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
 };
-use uuid::Uuid;
 
 pub fn start_cli_client(
     mut os_input: Box<dyn ClientOsApi>,

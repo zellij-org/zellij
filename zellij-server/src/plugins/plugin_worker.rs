@@ -4,9 +4,9 @@ use wasmtime::{Instance, Store};
 
 use async_channel::{unbounded, Receiver, Sender};
 use async_std::task;
+use prost::Message;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::plugin_api::message::ProtobufMessage;
-use prost::Message;
 
 pub struct RunningWorker {
     pub instance: Instance,

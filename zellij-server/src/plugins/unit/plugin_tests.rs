@@ -2,6 +2,7 @@ use super::plugin_thread_main;
 use crate::screen::ScreenInstruction;
 use crate::{channels::SenderWithContext, thread_bus::Bus, ServerInstruction};
 use insta::assert_snapshot;
+use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tempfile::tempdir;
@@ -18,7 +19,6 @@ use zellij_utils::input::layout::{
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::input::plugins::PluginAliases;
 use zellij_utils::ipc::ClientAttributes;
-use lazy_static::lazy_static;
 use zellij_utils::pane_size::Size;
 
 use crate::background_jobs::BackgroundJob;

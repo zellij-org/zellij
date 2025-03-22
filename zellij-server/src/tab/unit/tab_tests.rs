@@ -19,12 +19,12 @@ use std::collections::{HashMap, HashSet};
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 
+use interprocess::local_socket::LocalSocketStream;
 use zellij_utils::{
     data::{ModeInfo, Palette, Style},
     input::command::{RunCommand, TerminalAction},
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };
-use interprocess::local_socket::LocalSocketStream;
 
 #[derive(Clone)]
 struct FakeInputOutput {}

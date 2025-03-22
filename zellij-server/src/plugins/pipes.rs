@@ -6,8 +6,8 @@ use std::collections::{HashMap, HashSet};
 use zellij_utils::data::{PipeMessage, PipeSource};
 use zellij_utils::plugin_api::pipe_message::ProtobufPipeMessage;
 
-use zellij_utils::errors::prelude::*;
 use prost::Message;
+use zellij_utils::errors::prelude::*;
 
 use crate::{thread_bus::ThreadSenders, ClientId};
 

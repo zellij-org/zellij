@@ -1,5 +1,5 @@
-use zellij_utils::{data::CopyDestination, input::options::Clipboard};
 use anyhow::Result;
+use zellij_utils::{data::CopyDestination, input::options::Clipboard};
 
 use crate::ClientId;
 

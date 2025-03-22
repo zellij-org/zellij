@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::rc::Rc;
 use std::time::{self, Instant};
+use vte;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::pane_size::Offset;
@@ -28,7 +29,6 @@ use zellij_utils::{
     position::Position,
     shared::make_terminal_title,
 };
-use vte;
 
 use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
 

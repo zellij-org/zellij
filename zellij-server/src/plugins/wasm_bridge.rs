@@ -8,8 +8,11 @@ use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugi
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
+use async_channel::Sender;
+use async_std::task::{self, JoinHandle};
 use highway::{HighwayHash, PortableHash};
 use log::info;
+use notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     path::PathBuf,
@@ -17,14 +20,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 use wasmtime::{Engine, Module};
-use async_channel::Sender;
-use async_std::task::{self, JoinHandle};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{InputMode, PermissionStatus, PermissionType, PipeMessage, PipeSource};
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::permission::PermissionCache;
-use notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 use zellij_utils::plugin_api::event::ProtobufEvent;
 
 use prost::Message;

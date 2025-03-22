@@ -5,6 +5,8 @@ use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::route_action;
 use crate::ServerInstruction;
+use async_std::task;
+use interprocess::local_socket::LocalSocketStream;
 use log::warn;
 use serde::Serialize;
 use std::{
@@ -23,11 +25,10 @@ use zellij_utils::data::{
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
-use async_std::task;
-use interprocess::local_socket::LocalSocketStream;
 
 use crate::{panes::PaneId, screen::ScreenInstruction};
 
+use prost::Message;
 use zellij_utils::{
     consts::{VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR},
     data::{
@@ -45,7 +46,6 @@ use zellij_utils::{
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
 };
-use prost::Message;
 
 macro_rules! apply_action {
     ($action:ident, $error_message:ident, $env: ident) => {

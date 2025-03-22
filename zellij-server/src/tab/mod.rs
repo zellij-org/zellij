@@ -7,6 +7,7 @@ mod layout_applier;
 mod swap_layouts;
 
 use copy_command::CopyCommand;
+use serde;
 use std::env::temp_dir;
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -17,9 +18,8 @@ use zellij_utils::data::{
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
-use zellij_utils::position::{Column, Line};
 use zellij_utils::position::Position;
-use serde;
+use zellij_utils::position::{Column, Line};
 
 use crate::background_jobs::BackgroundJob;
 use crate::pty_writer::PtyWriteInstruction;

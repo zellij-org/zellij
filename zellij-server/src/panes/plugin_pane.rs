@@ -18,6 +18,7 @@ use crate::ui::{
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
+use vte;
 use zellij_utils::data::{
     BareKey, KeyWithModifier, PermissionStatus, PermissionType, PluginPermission,
 };
@@ -32,7 +33,6 @@ use zellij_utils::{
     pane_size::PaneGeom,
     shared::make_terminal_title,
 };
-use vte;
 
 macro_rules! style {
     ($fg:expr) => {

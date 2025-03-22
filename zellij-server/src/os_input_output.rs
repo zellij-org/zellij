@@ -11,13 +11,14 @@ use nix::{
     unistd,
 };
 
-use signal_hook::consts::*;
-use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
 use async_std;
 use interprocess;
 use libc;
 use nix;
 use signal_hook;
+use signal_hook::consts::*;
+use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
+use tempfile::tempfile;
 use zellij_utils::{
     channels,
     channels::TrySendError,
@@ -30,7 +31,6 @@ use zellij_utils::{
     },
     shared::default_palette,
 };
-use tempfile::tempfile;
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
