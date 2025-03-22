@@ -824,9 +824,7 @@ mod not_wasm {
                 Ok(val) => anyhow::Ok(val),
                 Err(e) => {
                     if *crate::consts::DEBUG_MODE.get().unwrap_or(&true) {
-                        Err(anyhow::anyhow!(
-                            "cannot acquire poisoned lock for {e:#?}"
-                        ))
+                        Err(anyhow::anyhow!("cannot acquire poisoned lock for {e:#?}"))
                     } else {
                         Err(anyhow::anyhow!("cannot acquire poisoned lock"))
                     }
