@@ -16,12 +16,12 @@ rust-version = "1.84"
 [dependencies]
 zellij-client = { path = "zellij-client/", version = "0.43.0" }
 zellij-server = { path = "zellij-server/", version = "0.43.0" }
-zellij-utils = { path = "zellij-utils/", version = "0.43.0" }
-thiserror = "1.0.40"
-names = { version = "0.14.0", default-features = false }
-log = "0.4.17"
+zellij-utils = { workspace = true }
 dialoguer = "0.10.4"
+log = { workspace = true }
+names = { version = "0.14.0", default-features = false }
 suggest = "0.4.0"
+thiserror = { workspace = true }
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
@@ -48,6 +48,21 @@ members = [
     "xtask",
     ".",
 ]
+
+[workspace.dependencies]
+ansi_term = "0.12.1"
+anyhow = { version = "1.0.70", features = ["backtrace"] }
+clap = { version = "3.2.2", features = ["derive", "env"] }
+log = "0.4.17"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+strum = "0.20.0"
+strum_macros = "0.20.0"
+thiserror = "1.0.40"
+unicode-width = "0.1.8"
+url = { version = "2.2.2", features = ["serde"] }
+uuid = { version = "1.4.1", features = ["serde", "v4"] }
+zellij-utils = { path = "zellij-utils/", version = "0.43.0" }
 
 [profile.dev-opt]
 inherits = "dev"

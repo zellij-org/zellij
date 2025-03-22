@@ -5,14 +5,14 @@ edition = "2021"
 
 
 [dependencies]
-anyhow = "1.0"
+anyhow = { workspace = true }
+prost-build = "0.11.9"
+toml = "0.5"
+which = "4.2"
+xflags = "0.3.2"
 # TODO(hartan): Update this once we get a new release. See:
 #   <https://github.com/matklad/xshell/issues/63>
 xshell = "= 0.2.2"
-xflags = "0.3.2"
-which = "4.2"
-toml = "0.5"
-prost-build = "0.11.9"
 
 [lints.rust]
 # Only required because we need to fix `xshell` to `=0.2.2`
