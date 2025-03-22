@@ -4,7 +4,7 @@ use crate::home::find_default_config_dir;
 use directories::ProjectDirs;
 use include_dir::{include_dir, Dir};
 use lazy_static::lazy_static;
-use std::{sync::OnceLock, path::PathBuf};
+use std::{path::PathBuf, sync::OnceLock};
 use uuid::Uuid;
 
 pub const ZELLIJ_CONFIG_FILE_ENV: &str = "ZELLIJ_CONFIG_FILE";
