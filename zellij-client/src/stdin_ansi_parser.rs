@@ -1,15 +1,16 @@
 use std::time::{Duration, Instant};
 
 const STARTUP_PARSE_DEADLINE_MS: u64 = 500;
+use lazy_static::lazy_static;
+use regex::Regex;
 use zellij_utils::{
-    consts::ZELLIJ_STDIN_CACHE_FILE, ipc::PixelDimensions, lazy_static::lazy_static,
-    pane_size::SizeInPixels, regex::Regex,
+    consts::ZELLIJ_STDIN_CACHE_FILE, ipc::PixelDimensions, pane_size::SizeInPixels,
 };
 
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
-use zellij_utils::anyhow::Result;
 
 /// Describe the terminal implementation of synchronised output
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

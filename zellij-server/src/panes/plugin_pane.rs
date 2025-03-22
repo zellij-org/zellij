@@ -18,6 +18,7 @@ use crate::ui::{
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
+use vte;
 use zellij_utils::data::{
     BareKey, KeyWithModifier, PermissionStatus, PermissionType, PluginPermission,
 };
@@ -31,7 +32,6 @@ use zellij_utils::{
     input::mouse::{MouseEvent, MouseEventType},
     pane_size::PaneGeom,
     shared::make_terminal_title,
-    vte,
 };
 
 macro_rules! style {

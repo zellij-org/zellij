@@ -10,7 +10,10 @@ license = "MIT"
 
 [dependencies]
 ansi_term = { workspace = true }
+anyhow = { workspace = true }
 arrayvec = { version = "0.7.2", default-features = false, features = ["std"] }
+async-channel = { version = "1.8.0", default-features = false }
+async-std = { workspace = true }
 async-trait = { version = "0.1.50", default-features = false }
 base64 = { version = "0.13.0", default-features = false, features = ["std"] }
 byteorder = { version = "1.4.3", default-features = false, features = ["std"] }
@@ -20,16 +23,28 @@ chrono = { version = "0.4.19", default-features = false, features = ["std", "clo
 close_fds = { version = "0.3.2", default-features = false }
 daemonize = { version = "0.5", default-features = false }
 highway = { version = "0.6.4", default-features = false, features = ["std"] }
+interprocess = { workspace = true }
+isahc = { workspace = true }
+lazy_static = { workspace = true }
+libc = { workspace = true }
 log = { workspace = true }
+nix = { workspace = true }
+notify-debouncer-full = { workspace = true }
+prost = { workspace = true }
+regex = { workspace = true }
 semver = { version = "0.11.0", default-features = false }
+serde = { workspace = true }
 serde_json = { workspace = true }
+signal-hook = { workspace = true }
 sixel-image = { version = "0.1.0", default-features = false }
 sixel-tokenizer = { version = "0.1.0", default-features = false }
 sysinfo = { version = "0.22.5", default-features = false }
+tempfile = { workspace = true }
 typetag = { version = "0.1.7", default-features = false }
 unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
+vte = { workspace = true }
 wasmtime-wasi = { version = "29.0.1", default-features = false, features = ["preview1"] } # Keep in sync with wasmtime
 zellij-utils = { workspace = true }
 

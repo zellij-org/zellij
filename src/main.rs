@@ -3,8 +3,8 @@ mod sessions;
 #[cfg(test)]
 mod tests;
 
+use clap::Parser;
 use zellij_utils::{
-    clap::Parser,
     cli::{CliAction, CliArgs, Command, Sessions},
     consts::create_config_and_cache_folders,
     envs,

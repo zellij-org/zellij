@@ -19,10 +19,10 @@ use std::collections::{HashMap, HashSet};
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 
+use interprocess::local_socket::LocalSocketStream;
 use zellij_utils::{
     data::{ModeInfo, Palette, Style},
     input::command::{RunCommand, TerminalAction},
-    interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };
 

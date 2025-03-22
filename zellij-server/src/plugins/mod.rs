@@ -22,8 +22,8 @@ use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 pub use wasm_bridge::PluginRenderAsset;
 use wasm_bridge::WasmBridge;
 
+use async_std::{channel, future::timeout, task};
 use zellij_utils::{
-    async_std::{channel, future::timeout, task},
     data::{
         ClientInfo, Event, EventType, InputMode, MessageToPlugin, PermissionStatus, PermissionType,
         PipeMessage, PipeSource, PluginCapabilities,

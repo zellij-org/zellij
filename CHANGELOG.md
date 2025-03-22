@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * refactor(terminal): track scroll_region as tuple rather than Option (https://github.com/zellij-org/zellij/pull/4082)
 * chore(deps): Use workspace dependencies (https://github.com/zellij-org/zellij/pull/4085)
 * build: Don't use default features (https://github.com/zellij-org/zellij/pull/4086)
+* build: Don't re-export foreign crates (https://github.com/zellij-org/zellij/pull/4087)
 
 ## [0.42.1] - 2025-03-21
 * fix(mouse): fix mouse handling in windows terminal (https://github.com/zellij-org/zellij/pull/4076)

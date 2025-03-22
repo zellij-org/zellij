@@ -1,11 +1,11 @@
 use super::sixel::{PixelRect, SixelGrid, SixelImageStore};
+use regex::Regex;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use zellij_utils::data::Style;
 use zellij_utils::errors::prelude::*;
-use zellij_utils::regex::Regex;
 
 use std::{
     cmp::Ordering,
@@ -14,13 +14,13 @@ use std::{
     str,
 };
 
+use vte;
 use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     data::{Palette, PaletteColor, Styling},
     input::mouse::{MouseEvent, MouseEventType},
     pane_size::SizeInPixels,
     position::Position,
-    vte,
 };
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
