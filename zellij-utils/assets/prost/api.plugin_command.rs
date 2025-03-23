@@ -312,13 +312,13 @@ pub struct ChangeFloatingPanesCoordinatesPayload {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StackPanesPayload {
     #[prost(message, repeated, tag = "1")]
-    pub pane_ids: ::prost::alloc::vec::Vec<PaneId>,
+    pub pane_ids: ::prost::alloc::vec::Vec<super::pane_id::PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SetFloatingPanePinnedPayload {
     #[prost(message, optional, tag = "1")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
     #[prost(bool, tag = "2")]
     pub should_be_pinned: bool,
 }
@@ -378,7 +378,7 @@ pub struct ReloadPluginPayload {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BreakPanesToTabWithIndexPayload {
     #[prost(message, repeated, tag = "1")]
-    pub pane_ids: ::prost::alloc::vec::Vec<PaneId>,
+    pub pane_ids: ::prost::alloc::vec::Vec<super::pane_id::PaneId>,
     #[prost(uint32, tag = "2")]
     pub tab_index: u32,
     #[prost(bool, tag = "3")]
@@ -388,7 +388,7 @@ pub struct BreakPanesToTabWithIndexPayload {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BreakPanesToNewTabPayload {
     #[prost(message, repeated, tag = "1")]
-    pub pane_ids: ::prost::alloc::vec::Vec<PaneId>,
+    pub pane_ids: ::prost::alloc::vec::Vec<super::pane_id::PaneId>,
     #[prost(bool, tag = "2")]
     pub should_change_focus_to_new_tab: bool,
     #[prost(string, optional, tag = "3")]
@@ -398,13 +398,13 @@ pub struct BreakPanesToNewTabPayload {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MovePaneWithPaneIdPayload {
     #[prost(message, optional, tag = "1")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MovePaneWithPaneIdInDirectionPayload {
     #[prost(message, optional, tag = "1")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
     #[prost(message, optional, tag = "2")]
     pub direction: ::core::option::Option<super::resize::MoveDirection>,
 }
@@ -412,55 +412,55 @@ pub struct MovePaneWithPaneIdInDirectionPayload {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClearScreenForPaneIdPayload {
     #[prost(message, optional, tag = "1")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ScrollUpInPaneIdPayload {
     #[prost(message, optional, tag = "1")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ScrollDownInPaneIdPayload {
     #[prost(message, optional, tag = "1")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ScrollToTopInPaneIdPayload {
     #[prost(message, optional, tag = "1")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ScrollToBottomInPaneIdPayload {
     #[prost(message, optional, tag = "1")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PageScrollUpInPaneIdPayload {
     #[prost(message, optional, tag = "1")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PageScrollDownInPaneIdPayload {
     #[prost(message, optional, tag = "1")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TogglePaneIdFullscreenPayload {
     #[prost(message, optional, tag = "1")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TogglePaneEmbedOrEjectForPaneIdPayload {
     #[prost(message, optional, tag = "1")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -474,7 +474,7 @@ pub struct WriteCharsToPaneIdPayload {
     #[prost(string, tag = "1")]
     pub chars_to_write: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "2")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -482,13 +482,13 @@ pub struct WriteToPaneIdPayload {
     #[prost(bytes = "vec", tag = "1")]
     pub bytes_to_write: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "2")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EditScrollbackForPaneWithIdPayload {
     #[prost(message, optional, tag = "1")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -496,7 +496,7 @@ pub struct ResizePaneIdWithDirectionPayload {
     #[prost(message, optional, tag = "1")]
     pub resize: ::core::option::Option<super::resize::Resize>,
     #[prost(message, optional, tag = "2")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -516,13 +516,13 @@ pub struct RerunCommandPanePayload {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct HidePaneWithIdPayload {
     #[prost(message, optional, tag = "1")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ShowPaneWithIdPayload {
     #[prost(message, optional, tag = "1")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
     #[prost(bool, tag = "2")]
     pub should_float_if_hidden: bool,
 }
@@ -570,21 +570,13 @@ pub struct NewPluginArgs {
     #[prost(bool, optional, tag = "1")]
     pub should_float: ::core::option::Option<bool>,
     #[prost(message, optional, tag = "2")]
-    pub pane_id_to_replace: ::core::option::Option<PaneId>,
+    pub pane_id_to_replace: ::core::option::Option<super::pane_id::PaneId>,
     #[prost(string, optional, tag = "3")]
     pub pane_title: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag = "4")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag = "5")]
     pub skip_cache: bool,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PaneId {
-    #[prost(enumeration = "PaneType", tag = "1")]
-    pub pane_type: i32,
-    #[prost(uint32, tag = "2")]
-    pub id: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -726,7 +718,7 @@ pub struct MovePayload {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PaneIdAndFloatingPaneCoordinates {
     #[prost(message, optional, tag = "1")]
-    pub pane_id: ::core::option::Option<PaneId>,
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
     #[prost(message, optional, tag = "2")]
     pub floating_pane_coordinates: ::core::option::Option<FloatingPaneCoordinates>,
 }
@@ -1178,32 +1170,6 @@ impl CommandName {
             "OpenFileNearPlugin" => Some(Self::OpenFileNearPlugin),
             "OpenFileFloatingNearPlugin" => Some(Self::OpenFileFloatingNearPlugin),
             "OpenFileInPlaceOfPlugin" => Some(Self::OpenFileInPlaceOfPlugin),
-            _ => None,
-        }
-    }
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum PaneType {
-    Terminal = 0,
-    Plugin = 1,
-}
-impl PaneType {
-    /// String value of the enum field names used in the ProtoBuf definition.
-    ///
-    /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            PaneType::Terminal => "Terminal",
-            PaneType::Plugin => "Plugin",
-        }
-    }
-    /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-        match value {
-            "Terminal" => Some(Self::Terminal),
-            "Plugin" => Some(Self::Plugin),
             _ => None,
         }
     }

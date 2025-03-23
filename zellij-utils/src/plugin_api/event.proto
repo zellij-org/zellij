@@ -4,6 +4,7 @@ import "input_mode.proto";
 import "key.proto";
 import "style.proto";
 import "action.proto";
+import "pane_id.proto";
 
 package api.event;
 
@@ -109,7 +110,7 @@ message ListClientsPayload {
 
 message ClientInfo {
   uint32 client_id = 1;
-  PaneId pane_id = 2;
+  api.pane_id.PaneId pane_id = 2;
   string running_command = 3;
   bool is_current_client = 4;
 }
@@ -124,19 +125,7 @@ message CommandPaneReRunPayload {
 }
 
 message PaneClosedPayload {
-  PaneId pane_id = 1;
-}
-
-// duplicate of plugin_command.PaneId because protobuffs don't like recursive imports
-message PaneId {
-  PaneType pane_type = 1;
-  uint32 id = 2;
-}
-
-// duplicate of plugin_command.PaneType because protobuffs don't like recursive imports
-enum PaneType {
-  Terminal = 0;
-  Plugin = 1;
+  api.pane_id.PaneId pane_id = 1;
 }
 
 message CommandPaneOpenedPayload {

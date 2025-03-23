@@ -7,8 +7,7 @@ pub use super::generated_api::api::{
         EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
         InputModeKeybinds as ProtobufInputModeKeybinds, KeyBind as ProtobufKeyBind,
         LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
-        PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
-        PaneManifest as ProtobufPaneManifest, PaneType as ProtobufPaneType,
+        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
     },
@@ -1991,37 +1990,4 @@ fn serialize_session_update_event_with_non_default_values() {
         session_update_event, deserialized_event,
         "Event properly serialized/deserialized without change"
     );
-}
-
-// note: ProtobufPaneId and ProtobufPaneType are not the same as the ones defined in plugin_command.rs
-// this is a duplicate type - we are forced to do this because protobuffs do not support recursive
-// imports
-impl TryFrom<ProtobufPaneId> for PaneId {
-    type Error = &'static str;
-    fn try_from(protobuf_pane_id: ProtobufPaneId) -> Result<Self, &'static str> {
-        match ProtobufPaneType::from_i32(protobuf_pane_id.pane_type) {
-            Some(ProtobufPaneType::Terminal) => Ok(PaneId::Terminal(protobuf_pane_id.id)),
-            Some(ProtobufPaneType::Plugin) => Ok(PaneId::Plugin(protobuf_pane_id.id)),
-            None => Err("Failed to convert PaneId"),
-        }
-    }
-}
-
-// note: ProtobufPaneId and ProtobufPaneType are not the same as the ones defined in plugin_command.rs
-// this is a duplicate type - we are forced to do this because protobuffs do not support recursive
-// imports
-impl TryFrom<PaneId> for ProtobufPaneId {
-    type Error = &'static str;
-    fn try_from(pane_id: PaneId) -> Result<Self, &'static str> {
-        match pane_id {
-            PaneId::Terminal(id) => Ok(ProtobufPaneId {
-                pane_type: ProtobufPaneType::Terminal as i32,
-                id,
-            }),
-            PaneId::Plugin(id) => Ok(ProtobufPaneId {
-                pane_type: ProtobufPaneType::Plugin as i32,
-                id,
-            }),
-        }
-    }
 }

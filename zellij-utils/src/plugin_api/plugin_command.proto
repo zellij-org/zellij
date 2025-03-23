@@ -9,6 +9,7 @@ import "resize.proto";
 import "plugin_permission.proto";
 import "input_mode.proto";
 import "key.proto";
+import "pane_id.proto";
 
 package api.plugin_command;
 
@@ -298,11 +299,11 @@ message ChangeFloatingPanesCoordinatesPayload {
 }
 
 message StackPanesPayload {
-  repeated PaneId pane_ids = 1;
+  repeated api.pane_id.PaneId pane_ids = 1;
 }
 
 message SetFloatingPanePinnedPayload {
-  PaneId pane_id = 1;
+  api.pane_id.PaneId pane_id = 1;
   bool should_be_pinned = 2;
 }
 
@@ -339,60 +340,60 @@ message ReloadPluginPayload {
 }
 
 message BreakPanesToTabWithIndexPayload {
-  repeated PaneId pane_ids = 1;
+  repeated api.pane_id.PaneId pane_ids = 1;
   uint32 tab_index = 2;
   bool should_change_focus_to_target_tab = 3;
 }
 
 message BreakPanesToNewTabPayload {
-  repeated PaneId pane_ids = 1;
+  repeated api.pane_id.PaneId pane_ids = 1;
   bool should_change_focus_to_new_tab = 2;
   optional string new_tab_name = 3;
 }
 
 message MovePaneWithPaneIdPayload {
-  PaneId pane_id = 1;
+  api.pane_id.PaneId pane_id = 1;
 }
 
 message MovePaneWithPaneIdInDirectionPayload {
-  PaneId pane_id = 1;
+  api.pane_id.PaneId pane_id = 1;
   resize.MoveDirection direction = 2;
 }
 
 message ClearScreenForPaneIdPayload {
-  PaneId pane_id = 1;
+  api.pane_id.PaneId pane_id = 1;
 }
 
 message ScrollUpInPaneIdPayload {
-  PaneId pane_id = 1;
+  api.pane_id.PaneId pane_id = 1;
 }
 
 message ScrollDownInPaneIdPayload {
-  PaneId pane_id = 1;
+  api.pane_id.PaneId pane_id = 1;
 }
 
 message ScrollToTopInPaneIdPayload {
-  PaneId pane_id = 1;
+  api.pane_id.PaneId pane_id = 1;
 }
 
 message ScrollToBottomInPaneIdPayload {
-  PaneId pane_id = 1;
+  api.pane_id.PaneId pane_id = 1;
 }
 
 message PageScrollUpInPaneIdPayload {
-  PaneId pane_id = 1;
+  api.pane_id.PaneId pane_id = 1;
 }
 
 message PageScrollDownInPaneIdPayload {
-  PaneId pane_id = 1;
+  api.pane_id.PaneId pane_id = 1;
 }
 
 message TogglePaneIdFullscreenPayload {
-  PaneId pane_id = 1;
+  api.pane_id.PaneId pane_id = 1;
 }
 
 message TogglePaneEmbedOrEjectForPaneIdPayload {
-  PaneId pane_id = 1;
+  api.pane_id.PaneId pane_id = 1;
 }
 
 message CloseTabWithIndexPayload {
@@ -401,21 +402,21 @@ message CloseTabWithIndexPayload {
 
 message WriteCharsToPaneIdPayload {
   string chars_to_write = 1;
-  PaneId pane_id = 2;
+  api.pane_id.PaneId pane_id = 2;
 }
 
 message WriteToPaneIdPayload {
   bytes bytes_to_write = 1;
-  PaneId pane_id = 2;
+  api.pane_id.PaneId pane_id = 2;
 }
 
 message EditScrollbackForPaneWithIdPayload {
-  PaneId pane_id = 1;
+  api.pane_id.PaneId pane_id = 1;
 }
 
 message ResizePaneIdWithDirectionPayload {
   resize.Resize resize = 1;
-  PaneId pane_id = 2;
+  api.pane_id.PaneId pane_id = 2;
 }
 
 message ReconfigurePayload {
@@ -428,11 +429,11 @@ message RerunCommandPanePayload {
 }
 
 message HidePaneWithIdPayload {
-  PaneId pane_id = 1;
+  api.pane_id.PaneId pane_id = 1;
 }
 
 message ShowPaneWithIdPayload {
-  PaneId pane_id = 1;
+  api.pane_id.PaneId pane_id = 1;
   bool should_float_if_hidden = 2;
 }
 
@@ -461,20 +462,10 @@ message MessageToPluginPayload {
 
 message NewPluginArgs {
     optional bool should_float = 1;
-    optional PaneId pane_id_to_replace = 2;
+    optional api.pane_id.PaneId pane_id_to_replace = 2;
     optional string pane_title = 3;
     optional string cwd = 4;
     bool skip_cache = 5;
-}
-
-message PaneId {
-  PaneType pane_type = 1;
-  uint32 id = 2;
-}
-
-enum PaneType {
-  Terminal = 0;
-  Plugin = 1;
 }
 
 message SwitchSessionPayload {
@@ -567,7 +558,7 @@ message MovePayload {
 }
 
 message PaneIdAndFloatingPaneCoordinates {
-  PaneId pane_id = 1;
+  api.pane_id.PaneId pane_id = 1;
   FloatingPaneCoordinates floating_pane_coordinates = 2;
 }
 

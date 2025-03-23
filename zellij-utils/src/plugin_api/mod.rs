@@ -5,6 +5,7 @@ pub mod file;
 pub mod input_mode;
 pub mod key;
 pub mod message;
+pub mod pane_id;
 pub mod pipe_message;
 pub mod plugin_command;
 pub mod plugin_ids;

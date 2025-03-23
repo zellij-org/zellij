@@ -20,6 +20,9 @@ pub mod api {
     pub mod message {
         include!("api.message.rs");
     }
+    pub mod pane_id {
+        include!("api.pane_id.rs");
+    }
     pub mod pipe_message {
         include!("api.pipe_message.rs");
     }

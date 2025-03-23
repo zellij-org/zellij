@@ -2,6 +2,7 @@ pub use super::generated_api::api::{
     action::{PaneIdAndShouldFloat, SwitchToModePayload},
     event::{EventNameList as ProtobufEventNameList, Header},
     input_mode::InputMode as ProtobufInputMode,
+    pane_id::{PaneId as ProtobufPaneId, PaneType as ProtobufPaneType},
     plugin_command::{
         plugin_command::Payload, BreakPanesToNewTabPayload, BreakPanesToTabWithIndexPayload,
         ChangeFloatingPanesCoordinatesPayload, ChangeHostFolderPayload,
@@ -18,12 +19,11 @@ pub use super::generated_api::api::{
         OpenCommandPanePayload, OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
         OpenFileNearPluginPayload, OpenFilePayload, OpenTerminalFloatingNearPluginPayload,
         OpenTerminalInPlaceOfPluginPayload, OpenTerminalNearPluginPayload,
-        PageScrollDownInPaneIdPayload, PageScrollUpInPaneIdPayload, PaneId as ProtobufPaneId,
-        PaneIdAndFloatingPaneCoordinates, PaneType as ProtobufPaneType,
-        PluginCommand as ProtobufPluginCommand, PluginMessagePayload, RebindKeysPayload,
-        ReconfigurePayload, ReloadPluginPayload, RequestPluginPermissionPayload,
-        RerunCommandPanePayload, ResizePaneIdWithDirectionPayload, ResizePayload,
-        RunCommandPayload, ScrollDownInPaneIdPayload, ScrollToBottomInPaneIdPayload,
+        PageScrollDownInPaneIdPayload, PageScrollUpInPaneIdPayload,
+        PaneIdAndFloatingPaneCoordinates, PluginCommand as ProtobufPluginCommand,
+        PluginMessagePayload, RebindKeysPayload, ReconfigurePayload, ReloadPluginPayload,
+        RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePaneIdWithDirectionPayload,
+        ResizePayload, RunCommandPayload, ScrollDownInPaneIdPayload, ScrollToBottomInPaneIdPayload,
         ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetFloatingPanePinnedPayload,
         SetTimeoutPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
         SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
@@ -163,33 +163,6 @@ impl Into<ProtobufHttpVerb> for HttpVerb {
             HttpVerb::Post => ProtobufHttpVerb::Post,
             HttpVerb::Put => ProtobufHttpVerb::Put,
             HttpVerb::Delete => ProtobufHttpVerb::Delete,
-        }
-    }
-}
-
-impl TryFrom<ProtobufPaneId> for PaneId {
-    type Error = &'static str;
-    fn try_from(protobuf_pane_id: ProtobufPaneId) -> Result<Self, &'static str> {
-        match ProtobufPaneType::from_i32(protobuf_pane_id.pane_type) {
-            Some(ProtobufPaneType::Terminal) => Ok(PaneId::Terminal(protobuf_pane_id.id)),
-            Some(ProtobufPaneType::Plugin) => Ok(PaneId::Plugin(protobuf_pane_id.id)),
-            None => Err("Failed to convert PaneId"),
-        }
-    }
-}
-
-impl TryFrom<PaneId> for ProtobufPaneId {
-    type Error = &'static str;
-    fn try_from(pane_id: PaneId) -> Result<Self, &'static str> {
-        match pane_id {
-            PaneId::Terminal(id) => Ok(ProtobufPaneId {
-                pane_type: ProtobufPaneType::Terminal as i32,
-                id,
-            }),
-            PaneId::Plugin(id) => Ok(ProtobufPaneId {
-                pane_type: ProtobufPaneType::Plugin as i32,
-                id,
-            }),
         }
     }
 }
