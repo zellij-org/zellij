@@ -149,6 +149,7 @@ pub enum PluginInstruction {
     MessageFromPlugin {
         source_plugin_id: u32,
         message: MessageToPlugin,
+        source_client_id: ClientId,
     },
     UnblockCliPipes(Vec<PluginRenderAsset>),
     Reconfigure {
@@ -699,6 +700,7 @@ pub(crate) fn plugin_thread_main(
                         // send to specific plugin(s)
                         pipe_to_specific_plugins(
                             PipeSource::Cli(pipe_id.clone()),
+                            cli_client_id,
                             &plugin_url,
                             &configuration,
                             &cwd,
@@ -719,9 +721,11 @@ pub(crate) fn plugin_thread_main(
                         );
                     },
                     None => {
+                        log::warn!("PIPE MESSAGE TO ALL PLUGINS");
                         // no specific destination, send to all plugins
                         pipe_to_all_plugins(
                             PipeSource::Cli(pipe_id.clone()),
+                            cli_client_id,
                             &name,
                             &payload,
                             &args,
@@ -754,7 +758,14 @@ pub(crate) fn plugin_thread_main(
                     pipe_messages.push((
                         Some(plugin_id),
                         Some(client_id),
-                        PipeMessage::new(PipeSource::Keybind, name, &payload, &args, is_private),
+                        PipeMessage::new(
+                            PipeSource::Keybind,
+                            client_id,
+                            name,
+                            &payload,
+                            &args,
+                            is_private,
+                        ),
                     ));
                 } else {
                     match plugin {
@@ -762,6 +773,7 @@ pub(crate) fn plugin_thread_main(
                             // send to specific plugin(s)
                             pipe_to_specific_plugins(
                                 PipeSource::Keybind,
+                                cli_client_id,
                                 &plugin_url,
                                 &configuration,
                                 &cwd,
@@ -785,6 +797,7 @@ pub(crate) fn plugin_thread_main(
                             // no specific destination, send to all plugins
                             pipe_to_all_plugins(
                                 PipeSource::Keybind,
+                                cli_client_id,
                                 &name,
                                 &payload,
                                 &args,
@@ -800,6 +813,7 @@ pub(crate) fn plugin_thread_main(
                 wasm_bridge.cache_plugin_events(plugin_id);
             },
             PluginInstruction::MessageFromPlugin {
+                source_client_id,
                 source_plugin_id,
                 message,
             } => {
@@ -828,6 +842,7 @@ pub(crate) fn plugin_thread_main(
                         // send to specific plugin(s)
                         pipe_to_specific_plugins(
                             PipeSource::Plugin(source_plugin_id),
+                            source_client_id,
                             &plugin_url,
                             &Some(message.plugin_config),
                             &None,
@@ -854,6 +869,7 @@ pub(crate) fn plugin_thread_main(
                             None,
                             PipeMessage::new(
                                 PipeSource::Plugin(source_plugin_id),
+                                source_client_id,
                                 message.message_name,
                                 &message.message_payload,
                                 &Some(message.message_args),
@@ -869,6 +885,7 @@ pub(crate) fn plugin_thread_main(
                             None,
                             PipeMessage::new(
                                 PipeSource::Plugin(source_plugin_id),
+                                source_client_id,
                                 message.message_name,
                                 &message.message_payload,
                                 &Some(message.message_args),
@@ -880,6 +897,7 @@ pub(crate) fn plugin_thread_main(
                         // send to all plugins
                         pipe_to_all_plugins(
                             PipeSource::Plugin(source_plugin_id),
+                            source_client_id,
                             &message.message_name,
                             &message.message_payload,
                             &Some(message.message_args),
@@ -1015,6 +1033,7 @@ fn populate_session_layout_metadata(
 
 fn pipe_to_all_plugins(
     pipe_source: PipeSource,
+    from_client_id: u16,
     name: &str,
     payload: &Option<String>,
     args: &Option<BTreeMap<String, String>>,
@@ -1027,13 +1046,21 @@ fn pipe_to_all_plugins(
         pipe_messages.push((
             Some(plugin_id),
             Some(client_id),
-            PipeMessage::new(pipe_source.clone(), name, payload, &args, is_private),
+            PipeMessage::new(
+                pipe_source.clone(),
+                from_client_id,
+                name,
+                payload,
+                &args,
+                is_private,
+            ),
         ));
     }
 }
 
 fn pipe_to_specific_plugins(
     pipe_source: PipeSource,
+    from_client_id: u16,
     plugin_url: &str,
     configuration: &Option<BTreeMap<String, String>>,
     cwd: &Option<PathBuf>,
@@ -1079,7 +1106,14 @@ fn pipe_to_specific_plugins(
                 pipe_messages.push((
                     Some(plugin_id),
                     client_id,
-                    PipeMessage::new(pipe_source.clone(), name, payload, args, is_private),
+                    PipeMessage::new(
+                        pipe_source.clone(),
+                        from_client_id,
+                        name,
+                        payload,
+                        args,
+                        is_private,
+                    ),
                 ));
             }
         },
