@@ -706,6 +706,7 @@ fn message_to_plugin(env: &PluginEnv, mut message_to_plugin: MessageToPlugin) ->
     }
     env.senders
         .send_to_plugin(PluginInstruction::MessageFromPlugin {
+            source_client_id: env.client_id,
             source_plugin_id: env.plugin_id,
             message: message_to_plugin,
         })

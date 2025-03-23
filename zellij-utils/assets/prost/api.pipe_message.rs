@@ -15,6 +15,8 @@ pub struct PipeMessage {
     pub args: ::prost::alloc::vec::Vec<Arg>,
     #[prost(bool, tag="7")]
     pub is_private: bool,
+    #[prost(uint32, tag = "8")]
+    pub client_id: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
