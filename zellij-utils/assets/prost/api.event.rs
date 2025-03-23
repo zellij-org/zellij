@@ -400,6 +400,10 @@ pub struct PaneInfo {
     pub plugin_url: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag = "22")]
     pub is_selectable: bool,
+    #[prost(int32, optional, tag = "23")]
+    pub pid: ::core::option::Option<i32>,
+    #[prost(string, optional, tag = "24")]
+    pub last_known_cwd: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

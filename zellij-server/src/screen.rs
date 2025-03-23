@@ -1616,13 +1616,13 @@ impl Screen {
         for tab in self.tabs.values() {
             pane_manifest.panes.insert(tab.position, tab.pane_infos());
         }
+        // Instead of sending the PaneManifest directly to the Plugin,
+        // we send it via Pty, who will fill out the runtime-dependent
+        // values (like process ID, TTY, etc.) for us and then forward
+        // it to the Plugin
         self.bus
             .senders
-            .send_to_plugin(PluginInstruction::Update(vec![(
-                None,
-                None,
-                Event::PaneUpdate(pane_manifest.clone()),
-            )]))
+            .send_to_pty(PtyInstruction::UpdatePaneInfo(pane_manifest.clone()))
             .context("failed to update tabs")?;
 
         Ok(pane_manifest)

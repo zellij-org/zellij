@@ -1733,7 +1733,12 @@ pub struct PaneInfo {
     /// Unselectable panes are often used for UI elements that do not have direct user interaction
     /// (eg. the default `status-bar` or `tab-bar`).
     pub is_selectable: bool,
+    /// The PID of the process running in this pane
+    pub pid: Option<i32>,
+    /// The working dir of the process running in this pane
+    pub last_known_cwd: Option<String>,
 }
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ClientInfo {
     pub client_id: ClientId,
