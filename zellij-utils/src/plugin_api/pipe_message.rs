@@ -30,12 +30,14 @@ impl TryFrom<ProtobufPipeMessage> for PipeMessage {
             .map(|arg| (arg.key, arg.value))
             .collect();
         let is_private = protobuf_pipe_message.is_private;
+        let client_id = protobuf_pipe_message.client_id as u16;
         Ok(PipeMessage {
             source,
             name,
             payload,
             args,
             is_private,
+            client_id,
         })
     }
 }
@@ -60,6 +62,7 @@ impl TryFrom<PipeMessage> for ProtobufPipeMessage {
             .map(|(key, value)| ProtobufArg { key, value })
             .collect();
         let is_private = pipe_message.is_private;
+        let client_id = pipe_message.client_id as u32;
         Ok(ProtobufPipeMessage {
             source,
             cli_source_id,
@@ -68,6 +71,7 @@ impl TryFrom<PipeMessage> for ProtobufPipeMessage {
             payload,
             args,
             is_private,
+            client_id,
         })
     }
 }
