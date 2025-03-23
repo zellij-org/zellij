@@ -9,12 +9,22 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = { workspace = true }
+interprocess = { workspace = true }
+lazy_static = { workspace = true }
+libc = { workspace = true }
 log = { workspace = true }
 mio = { version = "0.7.11", default-features = false, features = ['os-ext'] }
+nix = { workspace = true }
+notify-debouncer-full = { workspace = true }
+regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { version = "0.8", default-features = false }
+signal-hook = { workspace = true }
+termwiz = { workspace = true }
 url = { workspace = true }
+uuid = { workspace = true }
 zellij-utils = { workspace = true }
 
 [dev-dependencies]

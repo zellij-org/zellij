@@ -1,7 +1,7 @@
 use std::io::prelude::*;
 use std::process::{Command, Stdio};
 
-use zellij_utils::anyhow::{Context, Result};
+use anyhow::{Context, Result};
 
 pub struct CopyCommand {
     command: String,
