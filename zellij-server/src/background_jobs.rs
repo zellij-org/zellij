@@ -55,6 +55,7 @@ pub enum BackgroundJob {
         Vec<u8>,                  // body
         BTreeMap<String, String>, // context
     ),
+    RenderToClients,
     Exit,
 }
 
@@ -74,6 +75,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::RunCommand(..) => BackgroundJobContext::RunCommand,
             BackgroundJob::WebRequest(..) => BackgroundJobContext::WebRequest,
             BackgroundJob::ReportPluginList(..) => BackgroundJobContext::ReportPluginList,
+            BackgroundJob::RenderToClients => BackgroundJobContext::ReportPluginList,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -83,6 +85,7 @@ static FLASH_DURATION_MS: u64 = 1000;
 static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
 static SESSION_READ_DURATION: u64 = 1000;
 static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
+static REPAINT_DELAY_MS: u64 = 10;
 
 pub(crate) fn background_jobs_main(
     bus: Bus<BackgroundJob>,
@@ -100,6 +103,7 @@ pub(crate) fn background_jobs_main(
     let last_serialization_time = Arc::new(Mutex::new(Instant::now()));
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
                                                                            // milliseconds
+    let last_render_request: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
 
     let http_client = HttpClient::builder()
         // TODO: timeout?
@@ -359,6 +363,53 @@ pub(crate) fn background_jobs_main(
                         }
                     }
                 });
+            },
+            BackgroundJob::RenderToClients => {
+                // last_render_request being Some() represents a render request that is pending
+                // last_render_request is only ever set to Some() if an async task is spawned to
+                // send the actual render instruction
+                //
+                // given this:
+                // - if last_render_request is None and we received this job, we should spawn an
+                // async task to send the render instruction and log the current task time
+                // - if last_render_request is Some(), it means we're currently waiting to render,
+                // so we should log the render request and do nothing, once the async task has
+                // finished running, it will check to see if the render time was updated while it
+                // was running, and if so send this instruction again so the process can start anew
+                let (should_run_task, current_time) = {
+                    let mut last_render_request = last_render_request.lock().unwrap();
+                    let should_run_task = last_render_request.is_none();
+                    let current_time = Instant::now();
+                    *last_render_request = Some(current_time);
+                    (should_run_task, current_time)
+                };
+                if should_run_task {
+                    task::spawn({
+                        let senders = bus.senders.clone();
+                        let last_render_request = last_render_request.clone();
+                        let task_start_time = current_time;
+                        async move {
+                            task::sleep(std::time::Duration::from_millis(REPAINT_DELAY_MS)).await;
+                            let _ = senders.send_to_screen(ScreenInstruction::Render);
+                            {
+                                let mut last_render_request = last_render_request.lock().unwrap();
+                                if let Some(last_render_request) = *last_render_request {
+                                    if last_render_request > task_start_time {
+                                        // another render request was received while we were
+                                        // sleeping, schedule this job again so that we can also
+                                        // render that request
+                                        let _ = senders.send_to_background_jobs(
+                                            BackgroundJob::RenderToClients,
+                                        );
+                                    }
+                                }
+                                // reset the last_render_request so that the task will be spawned
+                                // again once a new request is received
+                                *last_render_request = None;
+                            }
+                        }
+                    });
+                }
             },
             BackgroundJob::Exit => {
                 for loading_plugin in loading_plugins.values() {

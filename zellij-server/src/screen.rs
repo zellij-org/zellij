@@ -2900,6 +2900,10 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
+                let _ = screen
+                    .bus
+                    .senders
+                    .send_to_background_jobs(BackgroundJob::RenderToClients);
             },
             ScreenInstruction::PluginBytes(mut plugin_render_assets) => {
                 for plugin_render_asset in plugin_render_assets.iter_mut() {
