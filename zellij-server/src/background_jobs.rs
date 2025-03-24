@@ -365,14 +365,17 @@ pub(crate) fn background_jobs_main(
                 });
             },
             BackgroundJob::RenderToClients => {
-                // TODO:
-                // 1. add a RenderToClients job and have it run 10ms after it was received - DONE
-                // 2. if another RenderToClients job arrives during this 10ms period, we log it in a HashMap
-                // 3. after the job runs, if any jobs were received in the interim, it schedules itself to run in
-                //    another 10ms and repeat
-                // 4. remove all the renders from terminal_bytes and have Screen send a RenderToClients here after
-                //    it processes pty data
-                
+                // last_render_request being Some() represents a render request that is pending
+                // last_render_request is only ever set to Some() if an async task is spawned to
+                // send the actual render instruction
+                //
+                // given this:
+                // - if last_render_request is None and we received this job, we should spawn an
+                // async task to send the render instruction and log the current task time
+                // - if last_render_request is Some(), it means we're currently waiting to render,
+                // so we should log the render request and do nothing, once the async task has
+                // finished running, it will check to see if the render time was updated while it
+                // was running, and if so send this instruction again so the process can start anew
                 let (should_run_task, current_time) = {
                     let mut last_render_request = last_render_request.lock().unwrap();
                     let should_run_task = last_render_request.is_none();
@@ -393,9 +396,14 @@ pub(crate) fn background_jobs_main(
                                 let mut last_render_request = last_render_request.lock().unwrap();
                                 if let Some(last_render_request) = *last_render_request {
                                     if last_render_request > task_start_time {
+                                        // another render request was received while we were
+                                        // sleeping, schedule this job again so that we can also
+                                        // render that request
                                         let _ = senders.send_to_background_jobs(BackgroundJob::RenderToClients);
                                     }
                                 }
+                                // reset the last_render_request so that the task will be spawned
+                                // again once a new request is received
                                 *last_render_request = None;
                             }
                         }

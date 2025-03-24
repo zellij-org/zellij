@@ -101,12 +101,6 @@ impl TerminalBytes {
                     self.last_render = Instant::now();
                 },
                 ReadResult::Ok(n_bytes) => {
-                    // TODO:
-                    // - experiment with not sending renders through here at all, but rather in
-                    // screen, whenever we receive data, we create an atomic async task that will
-                    // send us a render after <render delay> (start with 10ms and then tune it)
-                    // - this will hopefully allow enough data to accumulate and prevent flickering
-                    // in none 2026 apps
                     let bytes = &buf[..n_bytes];
                     if self.debug {
                         let _ = debug_to_file(bytes, self.pid);
