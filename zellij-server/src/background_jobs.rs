@@ -1,4 +1,4 @@
-use zellij_utils::async_std::task;
+use async_std::task;
 use zellij_utils::consts::{
     session_info_cache_file_name, session_info_folder_for_session, session_layout_cache_file_name,
     ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
@@ -7,9 +7,9 @@ use zellij_utils::data::{Event, HttpVerb, SessionInfo};
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 use zellij_utils::input::layout::RunPlugin;
 
-use zellij_utils::isahc::prelude::*;
-use zellij_utils::isahc::AsyncReadResponseExt;
-use zellij_utils::isahc::{config::RedirectPolicy, HttpClient, Request};
+use isahc::prelude::*;
+use isahc::AsyncReadResponseExt;
+use isahc::{config::RedirectPolicy, HttpClient, Request};
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
@@ -295,7 +295,7 @@ pub(crate) fn background_jobs_main(
                             http_client: HttpClient,
                         ) -> Result<
                             (u16, BTreeMap<String, String>, Vec<u8>), // status_code, headers, body
-                            zellij_utils::isahc::Error,
+                            isahc::Error,
                         > {
                             let mut request = match verb {
                                 HttpVerb::Get => Request::get(url),

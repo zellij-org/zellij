@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use zellij_utils::errors::FatalError;
 
-use zellij_utils::notify_debouncer_full::notify::{self, Event, RecursiveMode, Watcher};
+use notify_debouncer_full::notify::{self, Event, RecursiveMode, Watcher};
 use zellij_utils::setup::Setup;
 
 use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser, SyncOutput};
@@ -25,6 +25,7 @@ use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
 };
+use termwiz::input::InputEvent;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{set_permissions, ZELLIJ_SOCK_DIR},
@@ -34,7 +35,6 @@ use zellij_utils::{
     input::{config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     pane_size::Size,
-    termwiz::input::InputEvent,
 };
 use zellij_utils::{cli::CliArgs, input::layout::Layout};
 

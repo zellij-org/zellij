@@ -2,15 +2,13 @@ use std::{collections::VecDeque, io::Write};
 
 use crate::plugins::PluginId;
 use log::{debug, error};
-use zellij_utils::{errors::prelude::*, serde};
+use zellij_utils::errors::prelude::*;
 
-use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // 16kB log buffer
 const ZELLIJ_MAX_PIPE_BUFFER_SIZE: usize = 16_384;
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(crate = "self::serde")]
 pub struct LoggingPipe {
     buffer: VecDeque<u8>,
     plugin_name: String,
@@ -30,7 +28,7 @@ impl LoggingPipe {
         debug!(
             "|{:<25.25}| {} [{:<10.15}] {}",
             self.plugin_name,
-            Local::now().format("%Y-%m-%d %H:%M:%S.%3f"),
+            chrono::Local::now().format("%Y-%m-%d %H:%M:%S.%3f"),
             format!("id: {}", self.plugin_id),
             message
         );

@@ -16,7 +16,7 @@ use wasmtime_wasi::{
 
 use crate::{thread_bus::ThreadSenders, ClientId};
 
-use zellij_utils::async_channel::Sender;
+use async_channel::Sender;
 use zellij_utils::{
     data::EventType,
     data::InputMode,

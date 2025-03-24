@@ -2,11 +2,11 @@ use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::zellij_exports::wasi_write_object;
 use wasmtime::{Instance, Store};
 
-use zellij_utils::async_channel::{unbounded, Receiver, Sender};
-use zellij_utils::async_std::task;
+use async_channel::{unbounded, Receiver, Sender};
+use async_std::task;
+use prost::Message;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::plugin_api::message::ProtobufMessage;
-use zellij_utils::prost::Message;
 
 pub struct RunningWorker {
     pub instance: Instance,

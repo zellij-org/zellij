@@ -1,18 +1,18 @@
+use anyhow;
+use humantime::format_duration;
+use interprocess::local_socket::LocalSocketStream;
 use std::collections::HashMap;
 use std::os::unix::fs::FileTypeExt;
 use std::time::{Duration, SystemTime};
 use std::{fs, io, process};
 use suggest::Suggest;
 use zellij_utils::{
-    anyhow,
     consts::{
         session_info_folder_for_session, session_layout_cache_file_name,
         ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
     },
     envs,
-    humantime::format_duration,
     input::layout::Layout,
-    interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
 };
 
