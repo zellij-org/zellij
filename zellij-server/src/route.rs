@@ -644,6 +644,7 @@ pub(crate) fn route_action(
                 },
                 SearchOption::WholeWord => ScreenInstruction::SearchToggleWholeWord(client_id),
                 SearchOption::Wrap => ScreenInstruction::SearchToggleWrap(client_id),
+                SearchOption::Regex => ScreenInstruction::SearchToggleRegex(client_id),
             };
             senders
                 .send_to_screen(instruction)

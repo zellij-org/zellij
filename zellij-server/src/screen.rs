@@ -269,6 +269,7 @@ pub enum ScreenInstruction {
     SearchToggleCaseSensitivity(ClientId),
     SearchToggleWholeWord(ClientId),
     SearchToggleWrap(ClientId),
+    SearchToggleRegex(ClientId),
     AddRedPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional error text
     ClearPaneFrameColorOverride(Vec<PaneId>),
     PreviousSwapLayout(ClientId),
@@ -537,6 +538,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::SearchToggleWholeWord(..) => ScreenContext::SearchToggleWholeWord,
             ScreenInstruction::SearchToggleWrap(..) => ScreenContext::SearchToggleWrap,
+            ScreenInstruction::SearchToggleRegex(..) => ScreenContext::SearchToggleRegex,
             ScreenInstruction::AddRedPaneFrameColorOverride(..) => {
                 ScreenContext::AddRedPaneFrameColorOverride
             },
@@ -3999,6 +4001,15 @@ pub(crate) fn screen_thread_main(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.toggle_search_whole_words(client_id)
+                );
+                screen.render(None)?;
+                screen.unblock_input()?;
+            },
+            ScreenInstruction::SearchToggleRegex(client_id) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.toggle_search_regex(client_id)
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;

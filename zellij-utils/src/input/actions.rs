@@ -74,6 +74,7 @@ pub enum SearchOption {
     CaseSensitivity,
     WholeWord,
     Wrap,
+    Regex,
 }
 
 impl FromStr for SearchOption {
@@ -85,6 +86,7 @@ impl FromStr for SearchOption {
             },
             "WholeWord" | "wholeword" | "Wholeword" => Ok(SearchOption::WholeWord),
             "Wrap" | "wrap" => Ok(SearchOption::Wrap),
+            "Regex" | "regex" => Ok(SearchOption::Regex),
             _ => Err(format!(
                 "Failed to parse SearchOption. Unknown SearchOption: {}",
                 s
