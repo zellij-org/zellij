@@ -3,7 +3,7 @@ use crate::{
     screen::ScreenInstruction,
     thread_bus::ThreadSenders,
 };
-use async_std::{future::timeout as async_timeout, task};
+use async_std::task;
 use std::{
     os::unix::io::RawFd,
     time::{Duration, Instant},
@@ -14,32 +14,12 @@ use zellij_utils::{
     logging::debug_to_file,
 };
 
-enum ReadResult {
-    Ok(usize),
-    Timeout,
-    Err(std::io::Error),
-}
-
-impl From<std::io::Result<usize>> for ReadResult {
-    fn from(e: std::io::Result<usize>) -> ReadResult {
-        match e {
-            Err(e) => ReadResult::Err(e),
-            Ok(n) => ReadResult::Ok(n),
-        }
-    }
-}
-
 pub(crate) struct TerminalBytes {
     pid: RawFd,
     terminal_id: u32,
     senders: ThreadSenders,
     async_reader: Box<dyn AsyncReader>,
     debug: bool,
-    render_deadline: Option<Instant>,
-    backed_up: bool,
-    minimum_render_send_time: Option<Duration>,
-    buffering_pause: Duration,
-    last_render: Instant,
 }
 
 impl TerminalBytes {
@@ -56,11 +36,6 @@ impl TerminalBytes {
             senders,
             debug,
             async_reader: os_input.async_file_reader(pid),
-            render_deadline: None,
-            backed_up: false,
-            minimum_render_send_time: None,
-            buffering_pause: Duration::from_millis(30),
-            last_render: Instant::now(),
         }
     }
     pub async fn listen(&mut self) -> Result<()> {
@@ -81,26 +56,13 @@ impl TerminalBytes {
         err_ctx.add_call(ContextType::AsyncTask);
         let mut buf = [0u8; 65536];
         loop {
-            match self.deadline_read(&mut buf).await {
-                // EOF
-                ReadResult::Ok(0) => break,
-                // Some error occured
-                ReadResult::Err(err) => {
+            match self.async_reader.read(&mut buf).await {
+                Ok(0) => break, // EOF
+                Err(err) => {
                     log::error!("{}", err);
                     break;
                 },
-                ReadResult::Timeout => {
-//                     log::info!("ScreenInstruction::Render 0");
-//                     let time_to_send_render = self
-//                         .async_send_to_screen(ScreenInstruction::Render)
-//                         .await
-//                         .with_context(err_context)?;
-                    // self.update_render_send_time(time_to_send_render);
-                    // next read does not need a deadline as we just rendered everything
-                    self.render_deadline = None;
-                    self.last_render = Instant::now();
-                },
-                ReadResult::Ok(n_bytes) => {
+                Ok(n_bytes) => {
                     let bytes = &buf[..n_bytes];
                     if self.debug {
                         let _ = debug_to_file(bytes, self.pid);
@@ -111,20 +73,6 @@ impl TerminalBytes {
                     ))
                     .await
                     .with_context(err_context)?;
-                    if !self.backed_up {
-                        // we're not backed up, let's send an immediate render instruction
-//                         log::info!("ScreenInstruction::Render 1");
-//                         let time_to_send_render = self
-//                             .async_send_to_screen(ScreenInstruction::Render)
-//                             .await
-//                             .with_context(err_context)?;
-//                         self.update_render_send_time(time_to_send_render);
-                        self.last_render = Instant::now();
-                    }
-                    // if we already have a render_deadline we keep it, otherwise we set it
-                    // to buffering_pause since the last time we rendered.
-                    self.render_deadline
-                        .get_or_insert(self.last_render + self.buffering_pause);
                 },
             }
         }
@@ -158,45 +106,5 @@ impl TerminalBytes {
             .await
             .context("failed to async-send to screen")?;
         Ok(sent_at.elapsed())
-    }
-    fn update_render_send_time(&mut self, time_to_send_render: Duration) {
-        match self.minimum_render_send_time.as_mut() {
-            Some(minimum_render_time) => {
-                if time_to_send_render < *minimum_render_time {
-                    *minimum_render_time = time_to_send_render;
-                }
-                if time_to_send_render > *minimum_render_time * 10 {
-                    // sending the render instruction took an especially long time, we can safely
-                    // assume the screen thread is backed up and we should only send render
-                    // instructions sparingly
-                    self.backed_up = true;
-                } else if time_to_send_render < *minimum_render_time * 5 {
-                    // the screen thread is not backed up, we atomically unset the backed_up
-                    // indication
-                    self.backed_up = false;
-                }
-            },
-            None => {
-                self.minimum_render_send_time = Some(time_to_send_render);
-            },
-        }
-    }
-    async fn deadline_read(&mut self, buf: &mut [u8]) -> ReadResult {
-        if !self.backed_up {
-            self.async_reader.read(buf).await.into()
-        } else if let Some(deadline) = self.render_deadline {
-            let timeout = deadline.checked_duration_since(Instant::now());
-            if let Some(timeout) = timeout {
-                match async_timeout(timeout, self.async_reader.read(buf)).await {
-                    Ok(res) => res.into(),
-                    _ => ReadResult::Timeout,
-                }
-            } else {
-                // deadline has already elapsed
-                ReadResult::Timeout
-            }
-        } else {
-            self.async_reader.read(buf).await.into()
-        }
     }
 }
