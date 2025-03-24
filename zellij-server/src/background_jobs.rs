@@ -389,8 +389,7 @@ pub(crate) fn background_jobs_main(
                         let last_render_request = last_render_request.clone();
                         let task_start_time = current_time;
                         async move {
-                            task::sleep(std::time::Duration::from_millis(REPAINT_DELAY_MS))
-                                .await;
+                            task::sleep(std::time::Duration::from_millis(REPAINT_DELAY_MS)).await;
                             let _ = senders.send_to_screen(ScreenInstruction::Render);
                             {
                                 let mut last_render_request = last_render_request.lock().unwrap();
@@ -399,7 +398,9 @@ pub(crate) fn background_jobs_main(
                                         // another render request was received while we were
                                         // sleeping, schedule this job again so that we can also
                                         // render that request
-                                        let _ = senders.send_to_background_jobs(BackgroundJob::RenderToClients);
+                                        let _ = senders.send_to_background_jobs(
+                                            BackgroundJob::RenderToClients,
+                                        );
                                     }
                                 }
                                 // reset the last_render_request so that the task will be spawned
@@ -409,9 +410,7 @@ pub(crate) fn background_jobs_main(
                         }
                     });
                 }
-
-
-            }
+            },
             BackgroundJob::Exit => {
                 for loading_plugin in loading_plugins.values() {
                     loading_plugin.store(false, Ordering::SeqCst);

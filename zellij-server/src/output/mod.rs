@@ -433,9 +433,6 @@ impl Output {
                     client_serialized_render_instructions.push_str(&vte_instruction);
                 }
             }
-//             log::info!("*****");
-//             log::info!("{:?}", client_serialized_render_instructions);
-
             serialized_render_instructions.insert(client_id, client_serialized_render_instructions);
         }
         Ok(serialized_render_instructions)
