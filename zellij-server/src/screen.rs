@@ -2890,6 +2890,15 @@ pub(crate) fn screen_thread_main(
         // when this cache is Dropped, for more information, see the comments in PtyWriter
         let _resize_cache = ResizeCache::new(thread_senders.clone());
 
+        if let ScreenInstruction::UpdateSessionInfos(..) = &event {
+            // no op
+        } else if let ScreenInstruction::PtyBytes(_, vte_bytes) = &event {
+            log::info!("*******");
+            log::info!("pty_bytes: {:#?}", String::from_utf8_lossy(vte_bytes));
+        } else {
+            log::info!("*******");
+            log::info!("event: {:#?}", event);
+        };
         match event {
             ScreenInstruction::PtyBytes(pid, vte_bytes) => {
                 let all_tabs = screen.get_tabs_mut();
@@ -2900,6 +2909,9 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
+                let _ = screen.bus
+                    .senders
+                    .send_to_background_jobs(BackgroundJob::RenderToClients);
             },
             ScreenInstruction::PluginBytes(mut plugin_render_assets) => {
                 for plugin_render_asset in plugin_render_assets.iter_mut() {

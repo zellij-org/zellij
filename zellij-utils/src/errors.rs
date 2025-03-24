@@ -511,6 +511,7 @@ pub enum BackgroundJobContext {
     RunCommand,
     WebRequest,
     ReportPluginList,
+    RenderToClients,
     Exit,
 }
 

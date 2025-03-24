@@ -90,16 +90,23 @@ impl TerminalBytes {
                     break;
                 },
                 ReadResult::Timeout => {
-                    let time_to_send_render = self
-                        .async_send_to_screen(ScreenInstruction::Render)
-                        .await
-                        .with_context(err_context)?;
-                    self.update_render_send_time(time_to_send_render);
+//                     log::info!("ScreenInstruction::Render 0");
+//                     let time_to_send_render = self
+//                         .async_send_to_screen(ScreenInstruction::Render)
+//                         .await
+//                         .with_context(err_context)?;
+                    // self.update_render_send_time(time_to_send_render);
                     // next read does not need a deadline as we just rendered everything
                     self.render_deadline = None;
                     self.last_render = Instant::now();
                 },
                 ReadResult::Ok(n_bytes) => {
+                    // TODO:
+                    // - experiment with not sending renders through here at all, but rather in
+                    // screen, whenever we receive data, we create an atomic async task that will
+                    // send us a render after <render delay> (start with 10ms and then tune it)
+                    // - this will hopefully allow enough data to accumulate and prevent flickering
+                    // in none 2026 apps
                     let bytes = &buf[..n_bytes];
                     if self.debug {
                         let _ = debug_to_file(bytes, self.pid);
@@ -112,11 +119,12 @@ impl TerminalBytes {
                     .with_context(err_context)?;
                     if !self.backed_up {
                         // we're not backed up, let's send an immediate render instruction
-                        let time_to_send_render = self
-                            .async_send_to_screen(ScreenInstruction::Render)
-                            .await
-                            .with_context(err_context)?;
-                        self.update_render_send_time(time_to_send_render);
+//                         log::info!("ScreenInstruction::Render 1");
+//                         let time_to_send_render = self
+//                             .async_send_to_screen(ScreenInstruction::Render)
+//                             .await
+//                             .with_context(err_context)?;
+//                         self.update_render_send_time(time_to_send_render);
                         self.last_render = Instant::now();
                     }
                     // if we already have a render_deadline we keep it, otherwise we set it

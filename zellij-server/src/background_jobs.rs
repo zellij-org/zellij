@@ -55,6 +55,7 @@ pub enum BackgroundJob {
         Vec<u8>,                  // body
         BTreeMap<String, String>, // context
     ),
+    RenderToClients,
     Exit,
 }
 
@@ -74,6 +75,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::RunCommand(..) => BackgroundJobContext::RunCommand,
             BackgroundJob::WebRequest(..) => BackgroundJobContext::WebRequest,
             BackgroundJob::ReportPluginList(..) => BackgroundJobContext::ReportPluginList,
+            BackgroundJob::RenderToClients => BackgroundJobContext::ReportPluginList,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -83,6 +85,7 @@ static FLASH_DURATION_MS: u64 = 1000;
 static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
 static SESSION_READ_DURATION: u64 = 1000;
 static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
+static REPAINT_DELAY_MS: u64 = 10;
 
 pub(crate) fn background_jobs_main(
     bus: Bus<BackgroundJob>,
@@ -100,6 +103,7 @@ pub(crate) fn background_jobs_main(
     let last_serialization_time = Arc::new(Mutex::new(Instant::now()));
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
                                                                            // milliseconds
+    let last_render_request: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
 
     let http_client = HttpClient::builder()
         // TODO: timeout?
@@ -360,6 +364,46 @@ pub(crate) fn background_jobs_main(
                     }
                 });
             },
+            BackgroundJob::RenderToClients => {
+                // TODO:
+                // 1. add a RenderToClients job and have it run 10ms after it was received - DONE
+                // 2. if another RenderToClients job arrives during this 10ms period, we log it in a HashMap
+                // 3. after the job runs, if any jobs were received in the interim, it schedules itself to run in
+                //    another 10ms and repeat
+                // 4. remove all the renders from terminal_bytes and have Screen send a RenderToClients here after
+                //    it processes pty data
+                
+                let (should_run_task, current_time) = {
+                    let mut last_render_request = last_render_request.lock().unwrap();
+                    let should_run_task = last_render_request.is_none();
+                    let current_time = Instant::now();
+                    *last_render_request = Some(current_time);
+                    (should_run_task, current_time)
+                };
+                if should_run_task {
+                    task::spawn({
+                        let senders = bus.senders.clone();
+                        let last_render_request = last_render_request.clone();
+                        let task_start_time = current_time;
+                        async move {
+                            task::sleep(std::time::Duration::from_millis(REPAINT_DELAY_MS))
+                                .await;
+                            let _ = senders.send_to_screen(ScreenInstruction::Render);
+                            {
+                                let mut last_render_request = last_render_request.lock().unwrap();
+                                if let Some(last_render_request) = *last_render_request {
+                                    if last_render_request > task_start_time {
+                                        let _ = senders.send_to_background_jobs(BackgroundJob::RenderToClients);
+                                    }
+                                }
+                                *last_render_request = None;
+                            }
+                        }
+                    });
+                }
+
+
+            }
             BackgroundJob::Exit => {
                 for loading_plugin in loading_plugins.values() {
                     loading_plugin.store(false, Ordering::SeqCst);
