@@ -25,9 +25,8 @@ use wasm_bridge::WasmBridge;
 use async_std::{channel, future::timeout, task};
 use zellij_utils::{
     data::{
-        ClientInfo, Event, EventType, FloatingPaneCoordinates, InputMode, MessageToPlugin,
-        PermissionStatus, PermissionType, PipeMessage, PipeSource, PluginCapabilities,
-        WebServerStatus,
+        self, ClientInfo, Event, EventType, FloatingPaneCoordinates, InputMode, MessageToPlugin,
+        PermissionStatus, PermissionType, PipeMessage, PipeSource, PluginCapabilities, WebServerStatus,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -116,6 +115,7 @@ pub enum PluginInstruction {
     DumpLayoutToPlugin(SessionLayoutMetadata, PluginId),
     LogLayoutToHd(SessionLayoutMetadata),
     CliPipe {
+        pane_id: Option<PaneId>,
         pipe_id: String,
         name: String,
         payload: Option<String>,
@@ -142,6 +142,7 @@ pub enum PluginInstruction {
         skip_cache: bool,
         cli_client_id: ClientId,
         plugin_and_client_id: Option<(u32, ClientId)>,
+        pane_id: Option<PaneId>,
     },
     CachePluginEvents {
         plugin_id: PluginId,
@@ -679,6 +680,7 @@ pub(crate) fn plugin_thread_main(
                 );
             },
             PluginInstruction::CliPipe {
+                pane_id,
                 pipe_id,
                 name,
                 payload,
@@ -700,7 +702,8 @@ pub(crate) fn plugin_thread_main(
                         // send to specific plugin(s)
                         pipe_to_specific_plugins(
                             PipeSource::Cli(pipe_id.clone()),
-                            cli_client_id,
+                            None,
+                            pane_id,
                             &plugin_url,
                             &configuration,
                             &cwd,
@@ -725,7 +728,8 @@ pub(crate) fn plugin_thread_main(
                         // no specific destination, send to all plugins
                         pipe_to_all_plugins(
                             PipeSource::Cli(pipe_id.clone()),
-                            cli_client_id,
+                            None,
+                            pane_id,
                             &name,
                             &payload,
                             &args,
@@ -737,6 +741,7 @@ pub(crate) fn plugin_thread_main(
                 wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone())?;
             },
             PluginInstruction::KeybindPipe {
+                pane_id,
                 name,
                 payload,
                 plugin,
@@ -760,7 +765,8 @@ pub(crate) fn plugin_thread_main(
                         Some(client_id),
                         PipeMessage::new(
                             PipeSource::Keybind,
-                            client_id,
+                            Some(client_id),
+                            pane_id.map(Into::into),
                             name,
                             &payload,
                             &args,
@@ -773,7 +779,8 @@ pub(crate) fn plugin_thread_main(
                             // send to specific plugin(s)
                             pipe_to_specific_plugins(
                                 PipeSource::Keybind,
-                                cli_client_id,
+                                Some(cli_client_id),
+                                pane_id,
                                 &plugin_url,
                                 &configuration,
                                 &cwd,
@@ -797,7 +804,8 @@ pub(crate) fn plugin_thread_main(
                             // no specific destination, send to all plugins
                             pipe_to_all_plugins(
                                 PipeSource::Keybind,
-                                cli_client_id,
+                                Some(cli_client_id),
+                                pane_id,
                                 &name,
                                 &payload,
                                 &args,
@@ -842,7 +850,8 @@ pub(crate) fn plugin_thread_main(
                         // send to specific plugin(s)
                         pipe_to_specific_plugins(
                             PipeSource::Plugin(source_plugin_id),
-                            source_client_id,
+                            Some(source_client_id),
+                            Some(PaneId::Plugin(source_plugin_id)),
                             &plugin_url,
                             &Some(message.plugin_config),
                             &None,
@@ -869,7 +878,8 @@ pub(crate) fn plugin_thread_main(
                             None,
                             PipeMessage::new(
                                 PipeSource::Plugin(source_plugin_id),
-                                source_client_id,
+                                Some(source_client_id),
+                                Some(data::PaneId::Plugin(source_plugin_id)),
                                 message.message_name,
                                 &message.message_payload,
                                 &Some(message.message_args),
@@ -885,7 +895,8 @@ pub(crate) fn plugin_thread_main(
                             None,
                             PipeMessage::new(
                                 PipeSource::Plugin(source_plugin_id),
-                                source_client_id,
+                                Some(source_client_id),
+                                Some(data::PaneId::Plugin(source_plugin_id)),
                                 message.message_name,
                                 &message.message_payload,
                                 &Some(message.message_args),
@@ -897,7 +908,8 @@ pub(crate) fn plugin_thread_main(
                         // send to all plugins
                         pipe_to_all_plugins(
                             PipeSource::Plugin(source_plugin_id),
-                            source_client_id,
+                            Some(source_client_id),
+                            Some(PaneId::Plugin(source_plugin_id)),
                             &message.message_name,
                             &message.message_payload,
                             &Some(message.message_args),
@@ -1033,7 +1045,8 @@ fn populate_session_layout_metadata(
 
 fn pipe_to_all_plugins(
     pipe_source: PipeSource,
-    from_client_id: u16,
+    from_client_id: Option<u16>,
+    pane_id: Option<PaneId>,
     name: &str,
     payload: &Option<String>,
     args: &Option<BTreeMap<String, String>>,
@@ -1049,6 +1062,7 @@ fn pipe_to_all_plugins(
             PipeMessage::new(
                 pipe_source.clone(),
                 from_client_id,
+                pane_id.map(Into::into),
                 name,
                 payload,
                 &args,
@@ -1060,7 +1074,8 @@ fn pipe_to_all_plugins(
 
 fn pipe_to_specific_plugins(
     pipe_source: PipeSource,
-    from_client_id: u16,
+    from_client_id: Option<u16>,
+    pane_id: Option<PaneId>,
     plugin_url: &str,
     configuration: &Option<BTreeMap<String, String>>,
     cwd: &Option<PathBuf>,
@@ -1109,6 +1124,7 @@ fn pipe_to_specific_plugins(
                     PipeMessage::new(
                         pipe_source.clone(),
                         from_client_id,
+                        pane_id.map(Into::into),
                         name,
                         payload,
                         args,
