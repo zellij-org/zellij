@@ -821,6 +821,7 @@ pub(crate) fn route_action(
                 let pane_id_to_replace = if should_open_in_place { pane_id } else { None };
                 senders
                     .send_to_plugin(PluginInstruction::CliPipe {
+                        pane_id,
                         pipe_id,
                         name,
                         payload,
@@ -865,6 +866,7 @@ pub(crate) fn route_action(
                 }
                 senders
                     .send_to_plugin(PluginInstruction::KeybindPipe {
+                        pane_id,
                         name,
                         payload,
                         plugin,
