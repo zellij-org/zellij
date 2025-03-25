@@ -2867,19 +2867,22 @@ pub struct PipeMessage {
     pub payload: Option<String>,
     pub args: BTreeMap<String, String>,
     pub is_private: bool,
-    pub client_id: ClientId,
+    pub client_id: Option<ClientId>,
+    pub pane_id: Option<PaneId>,
 }
 
 impl PipeMessage {
     pub fn new(
         source: PipeSource,
-        client_id: ClientId,
+        client_id: Option<ClientId>,
+        pane_id: Option<PaneId>,
         name: impl Into<String>,
         payload: &Option<String>,
         args: &Option<BTreeMap<String, String>>,
         is_private: bool,
     ) -> Self {
         PipeMessage {
+            pane_id,
             source,
             client_id,
             name: name.into(),

@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-import "pane_id.proto";
+import "event.proto";
 
 package api.pipe_message;
 
@@ -12,7 +12,8 @@ message PipeMessage {
     optional string payload = 5;
     repeated Arg args = 6;
     bool is_private = 7;
-    uint32 clientId = 8;
+    optional uint32 clientId = 8;
+    optional api.event.PaneId paneId = 9;
 }
 
 enum PipeSource {
