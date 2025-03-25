@@ -33,7 +33,7 @@ use control_message::{
 };
 use zellij_utils::{
     cli::CliArgs,
-    data::{ConnectToSession, LayoutInfo, Style},
+    data::{ConnectToSession, LayoutInfo, Style, WebSessionInfo},
     envs,
     errors::prelude::*,
     include_dir,
@@ -51,6 +51,7 @@ use zellij_utils::{
     setup::{find_default_config_dir, get_layout_dir},
     termwiz::input::{InputEvent, InputParser},
     uuid::Uuid,
+    consts::VERSION,
 };
 
 use futures::{prelude::stream::SplitSink, SinkExt, StreamExt};
@@ -165,6 +166,12 @@ async fn serve_web_client(
         .route("/ws/terminal", any(ws_handler_terminal))
         .route("/ws/terminal/{session}", any(ws_handler_terminal))
         .route("/session", post(create_new_client))
+        .route("/info/version", get(VERSION))
+        .route("/info/sessions", get(web_session_infos))
+        // TODO:
+        // - look into how we listen on IPC in the server/client stuff, then add an endpoint for
+        // the web server - through it, we'll query (with protobuffs?) for all the info we need for
+        // the share plugin
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
@@ -172,6 +179,15 @@ async fn serve_web_client(
     log::info!("Started listener on 8082");
 
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn web_session_infos() -> impl IntoResponse {
+    let mock_sessions = vec![
+        WebSessionInfo::default().with_name("fake session 1"),
+        WebSessionInfo::default().with_name("fake session 2"),
+        WebSessionInfo::default().with_name("fake session 3"),
+    ];
+    Json(mock_sessions)
 }
 
 async fn get_static_asset(AxumPath(path): AxumPath<String>) -> impl IntoResponse {

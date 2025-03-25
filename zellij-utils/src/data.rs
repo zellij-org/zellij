@@ -2151,6 +2151,21 @@ impl OriginatingPlugin {
     }
 }
 
+#[derive(Default, Serialize, Deserialize)]
+pub struct WebSessionInfo {
+    pub name: String,
+    pub web_client_count: usize,
+    pub terminal_client_count: usize
+}
+
+impl WebSessionInfo {
+    pub fn with_name(mut self, name: &str) -> Self {
+        self.name = name.to_string();
+        self
+    }
+}
+
+
 type Context = BTreeMap<String, String>;
 
 #[derive(Debug, Clone, EnumDiscriminants, ToString)]
