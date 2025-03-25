@@ -80,7 +80,7 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
             if needs_regeneration {
                 prost
                     .compile_protos(&proto_files, &[protobuf_source_dir])
-                    .context("Failed to compile proto files")?;
+                    .unwrap();
             }
         }
 
