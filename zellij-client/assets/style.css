@@ -1,6 +1,5 @@
-@font-face {
-    font-family: "MonaspaceNeon";
-    src: url("/assets/MonaspiceNeNerdFontMono-Regular.otf") format("opentype");
-    font-weight: normal;
-    font-style: normal;
+body,
+#terminal {
+    height: 100vh;
+    margin: 0;
 }
