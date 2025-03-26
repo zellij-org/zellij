@@ -518,6 +518,8 @@ pub enum BackgroundJobContext {
     RunCommand,
     WebRequest,
     ReportPluginList,
+    QueryWebServer,
+    ListWebSessions,
     Exit,
 }
 

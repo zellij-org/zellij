@@ -419,6 +419,12 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::StartWebServer => {
                         start_web_server(env)
                     },
+                    PluginCommand::QueryWebServer => {
+                        query_web_server(env)
+                    },
+                    PluginCommand::ListWebSessions => {
+                        list_web_sessions(env)
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -2132,6 +2138,24 @@ fn start_web_server(
     let _ = env.senders.send_to_server(ServerInstruction::StartWebServer(env.client_id));
 }
 
+fn query_web_server(env: &PluginEnv) {
+    let _ = env
+        .senders
+        .send_to_background_jobs(BackgroundJob::QueryWebServer(
+            env.plugin_id,
+            env.client_id,
+        ));
+}
+
+fn list_web_sessions(env: &PluginEnv) {
+    let _ = env
+        .senders
+        .send_to_background_jobs(BackgroundJob::ListWebSessions(
+            env.plugin_id,
+            env.client_id,
+        ));
+}
+
 
 // Custom panic handler for plugins.
 //
@@ -2306,6 +2330,8 @@ fn check_command_permission(
             PermissionType::Reconfigure
         },
         PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,
+        PluginCommand::QueryWebServer |
+        PluginCommand::ListWebSessions |
         PluginCommand::StartWebServer => PermissionType::StartWebServer,
         _ => return (PermissionStatus::Granted, None),
     };

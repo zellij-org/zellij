@@ -7,6 +7,7 @@ struct App {
     web_server_started: bool,
     session_is_shared: bool,
     session_name: Option<String>,
+    web_server_error: Option<String>,
 }
 
 register_plugin!(App);
@@ -28,6 +29,7 @@ impl ZellijPlugin for App {
             EventType::ModeUpdate,
             EventType::WebServerStarted,
             EventType::Timer,
+            EventType::WebServerQueryResponse,
         ]);
         query_web_server();
         list_web_sessions();
@@ -40,6 +42,7 @@ impl ZellijPlugin for App {
                 self.session_name = mode_info.session_name;
                 if let Some(session_is_shared) = mode_info.session_is_shared {
                     self.session_is_shared = session_is_shared;
+                    should_render = true;
                 }
             },
             Event::WebServerStarted => {
@@ -58,6 +61,22 @@ impl ZellijPlugin for App {
                 query_web_server();
                 list_web_sessions();
                 set_timeout(0.5);
+            }
+            Event::WebServerQueryResponse(web_serer_status) => {
+                match web_serer_status {
+                    WebServerQueryResponse::Online => {
+                        self.web_server_started = true;
+                        self.web_server_error = None;
+                    }
+                    WebServerQueryResponse::DifferentVersion(version) => {
+                        self.web_server_started = false;
+                        self.web_server_error = Some(format!("Server online with an incompatible Zellij version: {}", version));
+                    },
+                    WebServerQueryResponse::RequestFailed(_error) => {
+                        self.web_server_started = false;
+                    }
+                }
+                should_render = true;
             }
             _ => {},
         }
@@ -123,7 +142,7 @@ impl App {
             Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()).color_range(3, title.chars().count()..)
         };
         let info_line = if self.web_server_started {
-            let title = "URL:";
+            let title = "URL: ";
             let value = format!("http://localhost:8082/");
             max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
             Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count())

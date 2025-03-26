@@ -607,7 +607,17 @@ pub fn start_client(
                 }
             },
             ClientInstruction::StartWebServer => {
-                let _ = spawn_web_server(&*ipc_pipe);
+                match spawn_web_server(&*ipc_pipe) {
+                    Ok(_) => {
+                        let _ = os_input
+                            .send_to_server(ClientToServerMsg::WebServerStarted);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to start web server");
+                        // TODO: inform server
+                    }
+
+                }
             },
             _ => {},
         }

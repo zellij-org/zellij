@@ -1,9 +1,9 @@
 use zellij_utils::async_std::task;
 use zellij_utils::consts::{
     session_info_cache_file_name, session_info_folder_for_session, session_layout_cache_file_name,
-    ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
+    ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR, VERSION
 };
-use zellij_utils::data::{Event, HttpVerb, SessionInfo};
+use zellij_utils::data::{Event, HttpVerb, SessionInfo, WebServerQueryResponse};
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 use zellij_utils::input::layout::RunPlugin;
 
@@ -55,6 +55,14 @@ pub enum BackgroundJob {
         Vec<u8>,                  // body
         BTreeMap<String, String>, // context
     ),
+    QueryWebServer(
+        PluginId,
+        ClientId,
+    ),
+    ListWebSessions(
+        PluginId,
+        ClientId,
+    ),
     Exit,
 }
 
@@ -74,6 +82,8 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::RunCommand(..) => BackgroundJobContext::RunCommand,
             BackgroundJob::WebRequest(..) => BackgroundJobContext::WebRequest,
             BackgroundJob::ReportPluginList(..) => BackgroundJobContext::ReportPluginList,
+            BackgroundJob::QueryWebServer(..) => BackgroundJobContext::QueryWebServer,
+            BackgroundJob::ListWebSessions(..) => BackgroundJobContext::ListWebSessions,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -355,6 +365,122 @@ pub(crate) fn background_jobs_main(
                                         context,
                                     ),
                                 )]));
+                            },
+                        }
+                    }
+                });
+            },
+            BackgroundJob::QueryWebServer(plugin_id, client_id) => {
+                task::spawn({
+                    let senders = bus.senders.clone();
+                    let http_client = http_client.clone();
+                    async move {
+                        async fn web_request(
+                            http_client: HttpClient,
+                        ) -> Result<
+                            (u16, Vec<u8>), // status_code, body
+                            zellij_utils::isahc::Error,
+                        > {
+                            let request = Request::get("http://localhost:8082/info/version");
+                            let req = request.body(())?;
+                            let mut res = http_client.send_async(req).await?;
+
+                            let status_code = res.status();
+                            let body = res.bytes().await?;
+                            Ok((status_code.as_u16(), body))
+                        }
+                        let Some(http_client) = http_client else {
+                            log::error!("Cannot perform http request, likely due to a misconfigured http client");
+                            return;
+                        };
+
+                        match web_request(http_client).await {
+                            Ok((status, body)) => {
+                                if status == 200 && &body == VERSION.as_bytes() {
+                                    let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                        Some(plugin_id),
+                                        Some(client_id),
+                                        Event::WebServerQueryResponse(WebServerQueryResponse::Online),
+                                    )]));
+                                } else if status == 200 {
+                                    let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                        Some(plugin_id),
+                                        Some(client_id),
+                                        Event::WebServerQueryResponse(WebServerQueryResponse::DifferentVersion(String::from_utf8_lossy(&body).to_string())),
+                                    )]));
+                                } else {
+                                    let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                        Some(plugin_id),
+                                        Some(client_id),
+                                        Event::WebServerQueryResponse(WebServerQueryResponse::RequestFailed(format!("{}", status))),
+                                    )]));
+                                }
+                            },
+                            Err(e) => {
+                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                    Some(plugin_id),
+                                    Some(client_id),
+                                    Event::WebServerQueryResponse(WebServerQueryResponse::RequestFailed(format!("{}", e))),
+                                )]));
+                            },
+                        }
+                    }
+                });
+            },
+            BackgroundJob::ListWebSessions(plugin_id, client_id) => {
+                task::spawn({
+                    let senders = bus.senders.clone();
+                    let http_client = http_client.clone();
+                    async move {
+                        async fn web_request(
+                            http_client: HttpClient,
+                        ) -> Result<
+                            (u16, Vec<u8>), // status_code, body
+                            zellij_utils::isahc::Error,
+                        > {
+                            let mut request = Request::get("https://localhost:8082/info/sessions");
+                            let req = request.body(())?;
+                            let mut res = http_client.send_async(req).await?;
+
+                            let status_code = res.status();
+                            let body = res.bytes().await?;
+                            Ok((status_code.as_u16(), body))
+                        }
+                        let Some(http_client) = http_client else {
+                            log::error!("Cannot perform http request, likely due to a misconfigured http client");
+                            return;
+                        };
+
+                        match web_request(http_client).await {
+                            Ok((status, body)) => {
+                                // TODO
+//                                 if status == 200 && &body == VERSION.as_bytes() {
+//                                     let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+//                                         Some(plugin_id),
+//                                         Some(client_id),
+//                                         Event::WebServerQueryResponse(WebServerStatus::Online),
+//                                     )]));
+//                                 } else if status == 200 {
+//                                     let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+//                                         Some(plugin_id),
+//                                         Some(client_id),
+//                                         Event::WebServerQueryResponse(WebServerStatus::DifferentVersion(body.clone())),
+//                                     )]));
+//                                 } else {
+//                                     let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+//                                         Some(plugin_id),
+//                                         Some(client_id),
+//                                         Event::WebServerQueryResponse(WebServerStatus::RequestFailed(String::from_utf8_lossy(status))),
+//                                     )]));
+//                                 }
+                            },
+                            Err(e) => {
+                                // TODO
+//                                 let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+//                                     Some(plugin_id),
+//                                     Some(client_id),
+//                                     Event::WebServerQueryResponse(WebServerStatus::RequestFailed(format!("{}", e))),
+//                                 )]));
                             },
                         }
                     }

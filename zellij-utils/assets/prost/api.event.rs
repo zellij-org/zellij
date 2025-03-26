@@ -11,7 +11,7 @@ pub struct Event {
     pub name: i32,
     #[prost(
         oneof = "event::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27"
     )]
     pub payload: ::core::option::Option<event::Payload>,
 }
@@ -70,6 +70,8 @@ pub mod event {
         FailedToChangeHostFolderPayload(super::FailedToChangeHostFolderPayload),
         #[prost(message, tag = "26")]
         PastedTextPayload(super::PastedTextPayload),
+        #[prost(message, tag = "27")]
+        WebServerQueryResponsePayload(super::WebServerQueryResponsePayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -77,6 +79,14 @@ pub mod event {
 pub struct PastedTextPayload {
     #[prost(string, tag = "1")]
     pub pasted_text: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WebServerQueryResponsePayload {
+    #[prost(enumeration = "WebServerQueryResponseStatus", tag = "1")]
+    pub web_server_query_response_status: i32,
+    #[prost(string, optional, tag = "2")]
+    pub payload: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -515,6 +525,7 @@ pub enum EventType {
     PastedText = 29,
     ConfigWasWrittenToDisk = 30,
     WebServerStarted = 31,
+    WebServerQueryResponse = 32,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -555,6 +566,7 @@ impl EventType {
             EventType::PastedText => "PastedText",
             EventType::ConfigWasWrittenToDisk => "ConfigWasWrittenToDisk",
             EventType::WebServerStarted => "WebServerStarted",
+            EventType::WebServerQueryResponse => "WebServerQueryResponse",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -592,6 +604,36 @@ impl EventType {
             "PastedText" => Some(Self::PastedText),
             "ConfigWasWrittenToDisk" => Some(Self::ConfigWasWrittenToDisk),
             "WebServerStarted" => Some(Self::WebServerStarted),
+            "WebServerQueryResponse" => Some(Self::WebServerQueryResponse),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum WebServerQueryResponseStatus {
+    Online = 0,
+    DifferentVersion = 1,
+    RequestFailed = 2,
+}
+impl WebServerQueryResponseStatus {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            WebServerQueryResponseStatus::Online => "Online",
+            WebServerQueryResponseStatus::DifferentVersion => "DifferentVersion",
+            WebServerQueryResponseStatus::RequestFailed => "RequestFailed",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "Online" => Some(Self::Online),
+            "DifferentVersion" => Some(Self::DifferentVersion),
+            "RequestFailed" => Some(Self::RequestFailed),
             _ => None,
         }
     }

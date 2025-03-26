@@ -20,7 +20,7 @@ pub use super::generated_api::api::{
 use crate::data::{
     ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier,
     LayoutInfo, ModeInfo, Mouse, PaneId, PaneInfo, PaneManifest, PermissionStatus,
-    PluginCapabilities, PluginInfo, SessionInfo, Style, TabInfo,
+    PluginCapabilities, PluginInfo, SessionInfo, Style, TabInfo, WebServerQueryResponse
 };
 
 use crate::errors::prelude::*;
@@ -361,6 +361,25 @@ impl TryFrom<ProtobufEvent> for Event {
             },
             Some(ProtobufEventType::WebServerStarted) => match protobuf_event.payload {
                 None => Ok(Event::WebServerStarted),
+                _ => Err("Malformed payload for the WebServerStarted Event"),
+            },
+            Some(ProtobufEventType::WebServerQueryResponse) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::WebServerQueryResponsePayload(web_server_query_response)) => {
+                    match WebServerQueryResponseStatus::from_i32(web_server_query_response.web_server_query_response_status) {
+                        Some(WebServerQueryResponseStatus::Online) => {
+                            Ok(Event::WebServerQueryResponse(WebServerQueryResponse::Online))
+                        }
+                        Some(WebServerQueryResponseStatus::DifferentVersion) => {
+                            Ok(Event::WebServerQueryResponse(WebServerQueryResponse::DifferentVersion(web_server_query_response.payload.ok_or("payload_not_found")?)))
+                        }
+                        Some(WebServerQueryResponseStatus::RequestFailed) => {
+                            Ok(Event::WebServerQueryResponse(WebServerQueryResponse::RequestFailed(web_server_query_response.payload.ok_or("payload not found")?)))
+                        },
+                        None => {
+                            Err("Failed to convert web server query response status")
+                        }
+                    }
+                }
                 _ => Err("Malformed payload for the WebServerStarted Event"),
             },
             None => Err("Unknown Protobuf Event"),
@@ -740,6 +759,25 @@ impl TryFrom<Event> for ProtobufEvent {
             Event::WebServerStarted => Ok(ProtobufEvent {
                 name: ProtobufEventType::WebServerStarted as i32,
                 payload: None,
+            }),
+            Event::WebServerQueryResponse(web_server_query_response) => Ok(ProtobufEvent {
+                name: ProtobufEventType::WebServerQueryResponse as i32,
+                payload: Some(event::Payload::WebServerQueryResponsePayload(
+                    match web_server_query_response {
+                        WebServerQueryResponse::Online => WebServerQueryResponsePayload {
+                            web_server_query_response_status: WebServerQueryResponseStatus::Online as i32,
+                            payload: None,
+                        },
+                        WebServerQueryResponse::DifferentVersion(version) => WebServerQueryResponsePayload {
+                            web_server_query_response_status: WebServerQueryResponseStatus::DifferentVersion as i32,
+                            payload: Some(version),
+                        },
+                        WebServerQueryResponse::RequestFailed(error) => WebServerQueryResponsePayload {
+                            web_server_query_response_status: WebServerQueryResponseStatus::RequestFailed as i32,
+                            payload: Some(error),
+                        }
+                    }
+                ))
             }),
         }
     }
@@ -1333,6 +1371,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::PastedText => EventType::PastedText,
             ProtobufEventType::ConfigWasWrittenToDisk => EventType::ConfigWasWrittenToDisk,
             ProtobufEventType::WebServerStarted => EventType::WebServerStarted,
+            ProtobufEventType::WebServerQueryResponse => EventType::WebServerQueryResponse,
         })
     }
 }
@@ -1373,6 +1412,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::PastedText => ProtobufEventType::PastedText,
             EventType::ConfigWasWrittenToDisk => ProtobufEventType::ConfigWasWrittenToDisk,
             EventType::WebServerStarted => ProtobufEventType::WebServerStarted,
+            EventType::WebServerQueryResponse => ProtobufEventType::WebServerQueryResponse,
         })
     }
 }

@@ -934,6 +934,14 @@ pub enum Event {
     PastedText(String),
     ConfigWasWrittenToDisk,
     WebServerStarted,
+    WebServerQueryResponse(WebServerQueryResponse),
+}
+
+#[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
+pub enum WebServerQueryResponse {
+    Online,
+    DifferentVersion(String), // version
+    RequestFailed(String), // error
 }
 
 #[derive(
@@ -2325,4 +2333,6 @@ pub enum PluginCommand {
     OpenFileFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>, Context),
     OpenFileInPlaceOfPlugin(FileToOpen, Context),
     StartWebServer,
+    QueryWebServer,
+    ListWebSessions,
 }

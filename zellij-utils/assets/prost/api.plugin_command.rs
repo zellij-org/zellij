@@ -886,6 +886,8 @@ pub enum CommandName {
     OpenFileFloatingNearPlugin = 125,
     OpenFileInPlaceOfPlugin = 126,
     StartWebServer = 127,
+    QueryWebServer = 128,
+    ListWebSessions = 129,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1032,6 +1034,8 @@ impl CommandName {
             CommandName::OpenFileFloatingNearPlugin => "OpenFileFloatingNearPlugin",
             CommandName::OpenFileInPlaceOfPlugin => "OpenFileInPlaceOfPlugin",
             CommandName::StartWebServer => "StartWebServer",
+            CommandName::QueryWebServer => "QueryWebServer",
+            CommandName::ListWebSessions => "ListWebSessions",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1175,6 +1179,8 @@ impl CommandName {
             "OpenFileFloatingNearPlugin" => Some(Self::OpenFileFloatingNearPlugin),
             "OpenFileInPlaceOfPlugin" => Some(Self::OpenFileInPlaceOfPlugin),
             "StartWebServer" => Some(Self::StartWebServer),
+            "QueryWebServer" => Some(Self::QueryWebServer),
+            "ListWebSessions" => Some(Self::ListWebSessions),
             _ => None,
         }
     }

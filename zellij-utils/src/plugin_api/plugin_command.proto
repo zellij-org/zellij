@@ -141,6 +141,8 @@ enum CommandName {
   OpenFileFloatingNearPlugin = 125;
   OpenFileInPlaceOfPlugin = 126;
   StartWebServer = 127;
+  QueryWebServer = 128;
+  ListWebSessions = 129;
 }
 
 message PluginCommand {
