@@ -8,6 +8,7 @@ struct App {
     session_is_shared: bool,
     session_name: Option<String>,
     web_server_error: Option<String>,
+    web_session_info: Vec<WebSessionInfo>,
 }
 
 register_plugin!(App);
@@ -30,6 +31,7 @@ impl ZellijPlugin for App {
             EventType::WebServerStarted,
             EventType::Timer,
             EventType::WebServerQueryResponse,
+            EventType::WebSessionInfo,
         ]);
         query_web_server();
         list_web_sessions();
@@ -77,6 +79,9 @@ impl ZellijPlugin for App {
                     }
                 }
                 should_render = true;
+            }
+            Event::WebSessionInfo(web_session_info) => {
+                self.web_session_info = web_session_info;
             }
             _ => {},
         }
@@ -179,19 +184,34 @@ impl App {
         (vec![status_line, info_line], max_len)
     }
     pub fn render_all_sessions_list(&self) -> (Text, Vec<NestedListItem>, usize) {
-        let all_sessions_title = "All web sessions:";
-        let mock_sessions = vec![
-            WebSessionInfo::default().with_name("session 1"),
-            WebSessionInfo::default().with_name("session 2"),
-            WebSessionInfo::default().with_name("session 3"),
-        ];
-        let mut max_len = all_sessions_title.chars().count();
-        let all_sessions = Text::new(all_sessions_title).color_range(1, ..);
-        let mut nested_list = vec![];
-        for mock_session in mock_sessions {
-            max_len = std::cmp::max(mock_session.name.chars().count() + 3, max_len); // 3 is the bulletin
-            nested_list.push(NestedListItem::new(mock_session.name));
+        if self.web_session_info.is_empty() {
+            let all_sessions_title = "No active sessions.";
+            let max_len = all_sessions_title.chars().count();
+            let all_sessions = Text::new(all_sessions_title).color_range(1, ..);
+            let nested_list = vec![];
+            (all_sessions, nested_list, max_len)
+        } else {
+            let all_sessions_title = "All web sessions:";
+            let mut max_len = all_sessions_title.chars().count();
+            let all_sessions = Text::new(all_sessions_title).color_range(1, ..);
+            let mut nested_list = vec![];
+            for web_session_info in &self.web_session_info {
+                let session_name = &web_session_info.name;
+                let web_client_count = format!("{}", web_session_info.web_client_count);
+                let terminal_client_count = format!("{}", web_session_info.terminal_client_count);
+                let item_text = format!("{} [{} terminal clients, {} web clients]", session_name, web_client_count, terminal_client_count);
+                max_len = std::cmp::max(item_text.chars().count() + 3, max_len); // 3 is the bulletin
+                let terminal_client_count_start_pos = session_name.chars().count() + 2;
+                let terminal_client_count_end_pos = terminal_client_count_start_pos + terminal_client_count.chars().count();
+                let web_client_count_start_pos = terminal_client_count_end_pos + 18;
+                let web_client_count_end_pos = web_client_count_start_pos + web_client_count.chars().count();
+                nested_list.push(
+                    NestedListItem::new(item_text)
+                        .color_range(3, terminal_client_count_start_pos..terminal_client_count_end_pos)
+                        .color_range(3, web_client_count_start_pos..=web_client_count_end_pos)
+                );
+            }
+            (all_sessions, nested_list, max_len)
         }
-        (all_sessions, nested_list, max_len)
     }
 }

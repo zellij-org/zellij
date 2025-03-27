@@ -3,9 +3,10 @@ use zellij_utils::consts::{
     session_info_cache_file_name, session_info_folder_for_session, session_layout_cache_file_name,
     ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR, VERSION
 };
-use zellij_utils::data::{Event, HttpVerb, SessionInfo, WebServerQueryResponse};
+use zellij_utils::data::{Event, HttpVerb, SessionInfo, WebServerQueryResponse, WebSessionInfo};
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 use zellij_utils::input::layout::RunPlugin;
+use zellij_utils::serde_json;
 
 use zellij_utils::isahc::prelude::*;
 use zellij_utils::isahc::AsyncReadResponseExt;
@@ -438,7 +439,7 @@ pub(crate) fn background_jobs_main(
                             (u16, Vec<u8>), // status_code, body
                             zellij_utils::isahc::Error,
                         > {
-                            let mut request = Request::get("https://localhost:8082/info/sessions");
+                            let mut request = Request::get("http://localhost:8082/info/sessions");
                             let req = request.body(())?;
                             let mut res = http_client.send_async(req).await?;
 
@@ -453,34 +454,25 @@ pub(crate) fn background_jobs_main(
 
                         match web_request(http_client).await {
                             Ok((status, body)) => {
-                                // TODO
-//                                 if status == 200 && &body == VERSION.as_bytes() {
-//                                     let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-//                                         Some(plugin_id),
-//                                         Some(client_id),
-//                                         Event::WebServerQueryResponse(WebServerStatus::Online),
-//                                     )]));
-//                                 } else if status == 200 {
-//                                     let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-//                                         Some(plugin_id),
-//                                         Some(client_id),
-//                                         Event::WebServerQueryResponse(WebServerStatus::DifferentVersion(body.clone())),
-//                                     )]));
-//                                 } else {
-//                                     let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-//                                         Some(plugin_id),
-//                                         Some(client_id),
-//                                         Event::WebServerQueryResponse(WebServerStatus::RequestFailed(String::from_utf8_lossy(status))),
-//                                     )]));
-//                                 }
+                                if status == 200 {
+                                    match serde_json::from_str::<Vec<WebSessionInfo>>(&String::from_utf8_lossy(&body).to_string()) {
+                                        Ok(web_session_info) => {
+                                            let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                                Some(plugin_id),
+                                                Some(client_id),
+                                                Event::WebSessionInfo(web_session_info)
+                                            )]));
+                                        },
+                                        Err(e) => {
+                                            // TODO: somehow error without spamming the logs?
+                                        }
+                                    }
+                                } else {
+                                    // TODO: somehow error without spamming the logs?
+                                }
                             },
                             Err(e) => {
-                                // TODO
-//                                 let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-//                                     Some(plugin_id),
-//                                     Some(client_id),
-//                                     Event::WebServerQueryResponse(WebServerStatus::RequestFailed(format!("{}", e))),
-//                                 )]));
+                                // TODO: somehow error without spamming the logs?
                             },
                         }
                     }

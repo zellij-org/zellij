@@ -1277,7 +1277,10 @@ pub fn query_web_server() {
 }
 
 pub fn list_web_sessions() {
-    // TODO: implement this
+    let plugin_command = PluginCommand::ListWebSessions;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
 
 // Utility Functions

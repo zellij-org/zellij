@@ -11,7 +11,7 @@ pub struct Event {
     pub name: i32,
     #[prost(
         oneof = "event::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28"
     )]
     pub payload: ::core::option::Option<event::Payload>,
 }
@@ -72,7 +72,25 @@ pub mod event {
         PastedTextPayload(super::PastedTextPayload),
         #[prost(message, tag = "27")]
         WebServerQueryResponsePayload(super::WebServerQueryResponsePayload),
+        #[prost(message, tag = "28")]
+        WebSessionInfoPayload(super::WebSessionInfoPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WebSessionInfoPayload {
+    #[prost(message, repeated, tag = "1")]
+    pub web_session_info: ::prost::alloc::vec::Vec<WebSessionInformation>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WebSessionInformation {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "2")]
+    pub web_client_count: u32,
+    #[prost(uint32, tag = "3")]
+    pub terminal_client_count: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -526,6 +544,7 @@ pub enum EventType {
     ConfigWasWrittenToDisk = 30,
     WebServerStarted = 31,
     WebServerQueryResponse = 32,
+    WebSessionInfo = 33,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -567,6 +586,7 @@ impl EventType {
             EventType::ConfigWasWrittenToDisk => "ConfigWasWrittenToDisk",
             EventType::WebServerStarted => "WebServerStarted",
             EventType::WebServerQueryResponse => "WebServerQueryResponse",
+            EventType::WebSessionInfo => "WebSessionInfo",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -605,6 +625,7 @@ impl EventType {
             "ConfigWasWrittenToDisk" => Some(Self::ConfigWasWrittenToDisk),
             "WebServerStarted" => Some(Self::WebServerStarted),
             "WebServerQueryResponse" => Some(Self::WebServerQueryResponse),
+            "WebSessionInfo" => Some(Self::WebSessionInfo),
             _ => None,
         }
     }

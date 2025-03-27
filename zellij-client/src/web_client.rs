@@ -183,9 +183,9 @@ async fn serve_web_client(
 
 async fn web_session_infos() -> impl IntoResponse {
     let mock_sessions = vec![
-        WebSessionInfo::default().with_name("fake session 1"),
+        WebSessionInfo::default().with_name("fake session 1").with_terminal_client_count(1).with_web_client_count(2),
         WebSessionInfo::default().with_name("fake session 2"),
-        WebSessionInfo::default().with_name("fake session 3"),
+        WebSessionInfo::default().with_name("fake session 3").with_terminal_client_count(3).with_web_client_count(4),
     ];
     Json(mock_sessions)
 }
