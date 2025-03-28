@@ -216,8 +216,8 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
-    let mut connected_clients = HashSet::new();
-    connected_clients.insert(client_id);
+    let mut connected_clients = HashMap::new();
+    connected_clients.insert(client_id, false);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let character_cell_info = Rc::new(RefCell::new(None));
     let stacked_resize = Rc::new(RefCell::new(true));
@@ -257,6 +257,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        false,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -299,8 +300,8 @@ fn create_new_tab_with_swap_layouts(
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
-    let mut connected_clients = HashSet::new();
-    connected_clients.insert(client_id);
+    let mut connected_clients = HashMap::new();
+    connected_clients.insert(client_id, false);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let character_cell_info = Rc::new(RefCell::new(None));
     let stacked_resize = Rc::new(RefCell::new(stacked_resize));
@@ -340,6 +341,7 @@ fn create_new_tab_with_swap_layouts(
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        false,
     );
     let (
         base_layout,
@@ -383,8 +385,8 @@ fn create_new_tab_with_os_api(
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
-    let mut connected_clients = HashSet::new();
-    connected_clients.insert(client_id);
+    let mut connected_clients = HashMap::new();
+    connected_clients.insert(client_id, false);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let character_cell_info = Rc::new(RefCell::new(None));
     let stacked_resize = Rc::new(RefCell::new(true));
@@ -424,6 +426,7 @@ fn create_new_tab_with_os_api(
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        false,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -451,8 +454,8 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
-    let mut connected_clients = HashSet::new();
-    connected_clients.insert(client_id);
+    let mut connected_clients = HashMap::new();
+    connected_clients.insert(client_id, false);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let character_cell_info = Rc::new(RefCell::new(None));
     let stacked_resize = Rc::new(RefCell::new(true));
@@ -494,6 +497,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        false,
     );
     let pane_ids = tab_layout
         .extract_run_instructions()
@@ -537,8 +541,8 @@ fn create_new_tab_with_mock_pty_writer(
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
-    let mut connected_clients = HashSet::new();
-    connected_clients.insert(client_id);
+    let mut connected_clients = HashMap::new();
+    connected_clients.insert(client_id, false);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let character_cell_info = Rc::new(RefCell::new(None));
     let stacked_resize = Rc::new(RefCell::new(true));
@@ -578,6 +582,7 @@ fn create_new_tab_with_mock_pty_writer(
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        false,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -610,8 +615,8 @@ fn create_new_tab_with_sixel_support(
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
-    let mut connected_clients = HashSet::new();
-    connected_clients.insert(client_id);
+    let mut connected_clients = HashMap::new();
+    connected_clients.insert(client_id, false);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
         width: 8,
@@ -653,6 +658,7 @@ fn create_new_tab_with_sixel_support(
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        false,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),

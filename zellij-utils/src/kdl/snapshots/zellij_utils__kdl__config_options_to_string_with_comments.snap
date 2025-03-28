@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 5873
 expression: fake_document.to_string()
 ---
  
@@ -181,6 +180,18 @@ disable_session_metadata true
 // 
 support_kitty_keyboard_protocol false
  
+// Allow access to sessions in the browser through a local webserver
+// When enabled, navigate to http://localhost:8082
+// Default: false
+// 
+enable_web_server true
+ 
+// Font to use for the built in web client
+// When enabled, navigate to http://localhost:8082
+// Default: None
+// 
+// web_client_font "monospace"
+ 
 // Whether to stack panes when resizing beyond a certain size
 // Default: true
 // 
@@ -195,4 +206,3 @@ support_kitty_keyboard_protocol false
 // Default: true
 // 
 // show_release_notes false
-

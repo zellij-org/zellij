@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 5934
 expression: fake_config_stringified
 ---
 keybinds clear-defaults=true {
@@ -441,6 +440,18 @@ load_plugins {
 // 
 // support_kitty_keyboard_protocol false
  
+// Allow access to sessions in the browser through a local webserver
+// When enabled, navigate to http://localhost:8082
+// Default: false
+// 
+// enable_web_server false
+ 
+// Font to use for the built in web client
+// When enabled, navigate to http://localhost:8082
+// Default: None
+// 
+// web_client_font "monospace"
+ 
 // Whether to stack panes when resizing beyond a certain size
 // Default: true
 // 
@@ -455,4 +466,3 @@ load_plugins {
 // Default: true
 // 
 // show_release_notes false
-

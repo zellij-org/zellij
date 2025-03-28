@@ -294,6 +294,7 @@ fn create_new_screen(size: Size) -> Screen {
         explicitly_disable_kitty_keyboard_protocol,
         stacked_resize,
         None,
+        false,
     );
     screen
 }
@@ -383,7 +384,7 @@ impl MockScreen {
             tab_name,
             (vec![], vec![]), // swap layouts
             should_change_focus_to_new_tab,
-            self.main_client_id,
+            (self.main_client_id, false),
         ));
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
             pane_layout,
@@ -393,7 +394,7 @@ impl MockScreen {
             plugin_ids,
             tab_index,
             true,
-            self.main_client_id,
+            (self.main_client_id, false),
         ));
         self.last_opened_tab_index = Some(tab_index);
         screen_thread
@@ -470,7 +471,7 @@ impl MockScreen {
             tab_name,
             (vec![], vec![]), // swap layouts
             should_change_focus_to_new_tab,
-            self.main_client_id,
+            (self.main_client_id, false),
         ));
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
             pane_layout,
@@ -480,7 +481,7 @@ impl MockScreen {
             plugin_ids,
             tab_index,
             true,
-            self.main_client_id,
+            (self.main_client_id, false),
         ));
         self.last_opened_tab_index = Some(tab_index);
         screen_thread
@@ -504,7 +505,7 @@ impl MockScreen {
             tab_name,
             (vec![], vec![]), // swap layouts
             should_change_focus_to_new_tab,
-            self.main_client_id,
+            (self.main_client_id, false),
         ));
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
             tab_layout,
@@ -514,7 +515,7 @@ impl MockScreen {
             plugin_ids,
             0,
             true,
-            self.main_client_id,
+            (self.main_client_id, false),
         ));
         self.last_opened_tab_index = Some(tab_index);
     }
@@ -544,6 +545,7 @@ impl MockScreen {
             session_configuration: self.session_metadata.session_configuration.clone(),
             layout,
             current_input_modes: self.session_metadata.current_input_modes.clone(),
+            is_web_server_enabled: false,
         }
     }
 }
@@ -602,6 +604,7 @@ impl MockScreen {
             layout,
             session_configuration: Default::default(),
             current_input_modes: HashMap::new(),
+            is_web_server_enabled: false,
         };
 
         let os_input = FakeInputOutput::default();
@@ -672,7 +675,7 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
             new_plugin_ids,
             tab_index,
             true,
-            client_id,
+            (client_id, false),
         )
         .expect("TEST");
 }
@@ -1306,7 +1309,7 @@ fn attach_after_first_tab_closed() {
 
     screen.close_tab_at_index(0).expect("TEST");
     screen.remove_client(1).expect("TEST");
-    screen.add_client(1).expect("TEST");
+    screen.add_client(1, false).expect("TEST");
 }
 
 #[test]
@@ -3282,7 +3285,7 @@ pub fn screen_can_break_pane_to_a_new_tab() {
         Default::default(),
         1,
         true,
-        1,
+        (1, false),
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // move back to make sure the other pane is in the previous tab
@@ -3384,7 +3387,7 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
         Default::default(),
         1,
         true,
-        1,
+        (1, false),
     ));
     std::thread::sleep(std::time::Duration::from_millis(200));
     // move back to make sure the other pane is in the previous tab
@@ -3454,7 +3457,7 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
         Default::default(),
         1,
         true,
-        1,
+        (1, false),
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // move back to make sure the other pane is in the previous tab
@@ -3528,7 +3531,7 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
         Default::default(),
         1,
         true,
-        1,
+        (1, false),
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // move back to make sure the other pane is in the previous tab

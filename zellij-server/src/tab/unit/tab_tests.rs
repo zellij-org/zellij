@@ -15,7 +15,7 @@ use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 
@@ -156,10 +156,10 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
-    let mut connected_clients = HashSet::new();
+    let mut connected_clients = HashMap::new();
     let character_cell_info = Rc::new(RefCell::new(None));
     let stacked_resize = Rc::new(RefCell::new(stacked_resize));
-    connected_clients.insert(client_id);
+    connected_clients.insert(client_id, false);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
@@ -197,6 +197,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        false,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -223,10 +224,10 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
-    let mut connected_clients = HashSet::new();
+    let mut connected_clients = HashMap::new();
     let character_cell_info = Rc::new(RefCell::new(None));
     let stacked_resize = Rc::new(RefCell::new(true));
-    connected_clients.insert(client_id);
+    connected_clients.insert(client_id, false);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
@@ -264,6 +265,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        false,
     );
     let mut new_terminal_ids = vec![];
     for i in 0..layout.extract_run_instructions().len() {
@@ -297,8 +299,8 @@ fn create_new_tab_with_cell_size(
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
-    let mut connected_clients = HashSet::new();
-    connected_clients.insert(client_id);
+    let mut connected_clients = HashMap::new();
+    connected_clients.insert(client_id, false);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
@@ -337,6 +339,7 @@ fn create_new_tab_with_cell_size(
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        false,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
