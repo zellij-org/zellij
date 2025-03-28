@@ -344,6 +344,10 @@ pub struct SessionManifest {
     pub available_layouts: ::prost::alloc::vec::Vec<LayoutInfo>,
     #[prost(message, repeated, tag = "7")]
     pub plugins: ::prost::alloc::vec::Vec<PluginInfo>,
+    #[prost(bool, tag = "8")]
+    pub is_shared_on_web: bool,
+    #[prost(uint32, tag = "9")]
+    pub web_client_count: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

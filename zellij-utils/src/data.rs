@@ -1567,6 +1567,8 @@ pub struct SessionInfo {
     pub is_current_session: bool,
     pub available_layouts: Vec<LayoutInfo>,
     pub plugins: BTreeMap<u32, PluginInfo>,
+    pub is_shared_on_web: bool,
+    pub web_client_count: usize,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]

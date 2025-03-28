@@ -215,7 +215,7 @@ pub enum ScreenInstruction {
         Option<String>,
         (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), // swap layouts
         bool,                                            // should_change_focus_to_new_tab
-        ClientId,
+        (ClientId, bool), // bool -> is_web_client
     ),
     ApplyLayout(
         TiledPaneLayout,
@@ -225,7 +225,7 @@ pub enum ScreenInstruction {
         HashMap<RunPluginOrAlias, Vec<u32>>,
         usize, // tab_index
         bool,  // should change focus to new tab
-        ClientId,
+        (ClientId, bool), // bool -> is_web_client
     ),
     SwitchTabNext(ClientId),
     SwitchTabPrev(ClientId),
@@ -255,6 +255,7 @@ pub enum ScreenInstruction {
     Copy(ClientId),
     AddClient(
         ClientId,
+        bool, // is_web_client
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
     ),
@@ -670,7 +671,7 @@ pub(crate) struct Screen {
     overlay: OverlayWindow,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
-    connected_clients: Rc<RefCell<HashSet<ClientId>>>,
+    connected_clients: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_indices: BTreeMap<ClientId, usize>,
     tab_history: BTreeMap<ClientId, Vec<usize>>,
@@ -741,7 +742,7 @@ impl Screen {
             stacked_resize: Rc::new(RefCell::new(stacked_resize)),
             sixel_image_store: Rc::new(RefCell::new(SixelImageStore::default())),
             style: client_attributes.style,
-            connected_clients: Rc::new(RefCell::new(HashSet::new())),
+            connected_clients: Rc::new(RefCell::new(HashMap::new())),
             active_tab_indices: BTreeMap::new(),
             tabs: BTreeMap::new(),
             overlay: OverlayWindow::default(),
@@ -932,7 +933,7 @@ impl Screen {
                         )
                         .with_context(err_context)?;
                         let all_connected_clients: Vec<ClientId> =
-                            self.connected_clients.borrow().iter().copied().collect();
+                            self.connected_clients.borrow().iter().map(|(c, _i)| *c).collect();
                         for client_id in all_connected_clients {
                             self.update_client_tab_focus(client_id, new_tab_index);
                             match (
@@ -1387,7 +1388,7 @@ impl Screen {
         new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         tab_index: usize,
         should_change_client_focus: bool,
-        client_id: ClientId,
+        client_id_and_is_web_client: (ClientId, bool),
     ) -> Result<()> {
         if self.tabs.get(&tab_index).is_none() {
             // TODO: we should prevent this situation with a UI - eg. cannot close tabs with a
@@ -1395,9 +1396,16 @@ impl Screen {
             log::error!("Tab with index {tab_index} not found. Cannot apply layout!");
             return Ok(());
         }
+        let (client_id, mut is_web_client) = client_id_and_is_web_client;
         let client_id = if self.get_active_tab(client_id).is_ok() {
+            if let Some(connected_client_is_web_client) = self.connected_clients.borrow().get(&client_id) {
+                is_web_client = *connected_client_is_web_client;
+            }
             client_id
         } else if let Some(first_client_id) = self.get_first_client_id() {
+            if let Some(first_client_is_web_client) = self.connected_clients.borrow().get(&first_client_id) {
+                is_web_client = *first_client_is_web_client;
+            }
             first_client_id
         } else {
             client_id
@@ -1422,7 +1430,7 @@ impl Screen {
                     None
                 };
                 let all_connected_clients: Vec<ClientId> =
-                    self.connected_clients.borrow().iter().copied().collect();
+                    self.connected_clients.borrow().iter().map(|(c, _i)| *c).collect();
                 for client_id in all_connected_clients {
                     self.update_client_tab_focus(client_id, tab_index);
                 }
@@ -1472,7 +1480,7 @@ impl Screen {
 
         if !self.active_tab_indices.contains_key(&client_id) {
             // this means this is a new client and we need to add it to our state properly
-            self.add_client(client_id).with_context(err_context)?;
+            self.add_client(client_id, is_web_client).with_context(err_context)?;
         }
 
         self.log_and_report_session_state()
@@ -1480,7 +1488,7 @@ impl Screen {
             .with_context(err_context)
     }
 
-    pub fn add_client(&mut self, client_id: ClientId) -> Result<()> {
+    pub fn add_client(&mut self, client_id: ClientId, is_web_client: bool) -> Result<()> {
         let err_context = |tab_index| {
             format!("failed to attach client {client_id} to tab with index {tab_index}")
         };
@@ -1503,7 +1511,7 @@ impl Screen {
         };
 
         self.active_tab_indices.insert(client_id, tab_index);
-        self.connected_clients.borrow_mut().insert(client_id);
+        self.connected_clients.borrow_mut().insert(client_id, is_web_client);
         self.tab_history.insert(client_id, tab_history);
         self.tabs
             .get_mut(&tab_index)
@@ -1652,6 +1660,8 @@ impl Screen {
             connected_clients: self.active_tab_indices.keys().len(),
             is_current_session: true,
             available_layouts,
+            is_shared_on_web: self.session_is_shared,
+            web_client_count: self.connected_clients.borrow().iter().filter(|(_client_id, is_web_client)| **is_web_client).count(),
             plugins: Default::default(), // these are filled in by the wasm thread
         };
         self.bus
@@ -2208,6 +2218,7 @@ impl Screen {
                 tiled_panes_layout.ignore_run_instruction(active_pane_run_instruction.clone());
             }
             let should_change_focus_to_new_tab = true;
+            let is_web_client = self.connected_clients.borrow().get(&client_id).copied().unwrap_or(false);
             self.bus.senders.send_to_plugin(PluginInstruction::NewTab(
                 None,
                 default_shell,
@@ -2215,7 +2226,7 @@ impl Screen {
                 floating_panes_layout,
                 tab_index,
                 should_change_focus_to_new_tab,
-                client_id,
+                (client_id, is_web_client),
             ))?;
         } else {
             let active_pane_id = active_tab
@@ -2278,6 +2289,7 @@ impl Screen {
             tab.add_tiled_pane(pane, pane_id, None)?;
             tiled_panes_layout.ignore_run_instruction(run_instruction.clone());
         }
+        let is_web_client = self.connected_clients.borrow().get(&client_id).copied().unwrap_or(false);
         self.bus.senders.send_to_plugin(PluginInstruction::NewTab(
             None,
             default_shell,
@@ -2285,7 +2297,7 @@ impl Screen {
             floating_panes_layout,
             tab_index,
             should_change_focus_to_new_tab,
-            client_id,
+            (client_id, is_web_client),
         ))?;
         Ok(())
     }
@@ -2654,7 +2666,7 @@ impl Screen {
                 .connected_clients
                 .borrow()
                 .iter()
-                .copied()
+                .map(|(c, _i)| *c)
                 .filter(|c| self.active_tab_indices.get(&c) == Some(&tab_index))
                 .collect();
 
@@ -2769,7 +2781,7 @@ impl Screen {
         found_plugin
     }
     fn connected_clients_contains(&self, client_id: &ClientId) -> bool {
-        self.connected_clients.borrow().contains(client_id)
+        self.connected_clients.borrow().contains_key(client_id)
     }
 }
 
@@ -3616,7 +3628,7 @@ pub(crate) fn screen_thread_main(
                 tab_name,
                 swap_layouts,
                 should_change_focus_to_new_tab,
-                client_id,
+                (client_id, is_web_client),
             ) => {
                 let tab_index = screen.get_new_tab_index();
                 pending_tab_ids.insert(tab_index);
@@ -3641,7 +3653,7 @@ pub(crate) fn screen_thread_main(
                         floating_panes_layout,
                         tab_index,
                         should_change_focus_to_new_tab,
-                        client_id,
+                        (client_id, is_web_client),
                     ))?;
             },
             ScreenInstruction::ApplyLayout(
@@ -3652,7 +3664,7 @@ pub(crate) fn screen_thread_main(
                 new_plugin_ids,
                 tab_index,
                 should_change_focus_to_new_tab,
-                client_id,
+                (client_id, is_web_client),
             ) => {
                 screen.apply_layout(
                     layout,
@@ -3662,7 +3674,7 @@ pub(crate) fn screen_thread_main(
                     new_plugin_ids.clone(),
                     tab_index,
                     should_change_focus_to_new_tab,
-                    client_id,
+                    (client_id, is_web_client),
                 )?;
                 pending_tab_ids.remove(&tab_index);
                 if pending_tab_ids.is_empty() {
@@ -3712,7 +3724,7 @@ pub(crate) fn screen_thread_main(
                 // while this can affect other instances of a layout being applied, the query is
                 // very short and cheap and shouldn't cause any trouble
                 if let Some(os_input) = &mut screen.bus.os_input {
-                    for client_id in screen.connected_clients.borrow().iter() {
+                    for (client_id, _is_web_client) in screen.connected_clients.borrow().iter() {
                         let _ = os_input
                             .send_to_client(*client_id, ServerToClientMsg::QueryTerminalSize);
                     }
@@ -3765,6 +3777,7 @@ pub(crate) fn screen_thread_main(
                     screen.active_tab_indices.keys().next().copied()
                 };
                 if let Some(client_id) = client_id {
+                    let is_web_client = screen.connected_clients.borrow().get(&client_id).copied().unwrap_or(false);
                     if let Ok(tab_exists) = screen.go_to_tab_name(tab_name.clone(), client_id) {
                         screen.unblock_input()?;
                         screen.render(None)?;
@@ -3787,7 +3800,7 @@ pub(crate) fn screen_thread_main(
                                     vec![],
                                     tab_index,
                                     should_change_focus_to_new_tab,
-                                    client_id,
+                                    (client_id, is_web_client),
                                 ))?;
                         }
                     }
@@ -3885,8 +3898,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.render(None)?;
             },
-            ScreenInstruction::AddClient(client_id, tab_position_to_focus, pane_id_to_focus) => {
-                screen.add_client(client_id)?;
+            ScreenInstruction::AddClient(client_id, is_web_client, tab_position_to_focus, pane_id_to_focus) => {
+                screen.add_client(client_id, is_web_client)?;
                 let pane_id = pane_id_to_focus.map(|(pane_id, is_plugin)| {
                     if is_plugin {
                         PaneId::Plugin(pane_id)
@@ -4882,6 +4895,7 @@ pub(crate) fn screen_thread_main(
                 for tab in screen.tabs.values_mut() {
                     tab.set_session_is_shared(true);
                 }
+                screen.log_and_report_session_state();
             },
         }
     }

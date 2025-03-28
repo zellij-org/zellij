@@ -851,6 +851,8 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
                 .into_iter()
                 .map(|p| ProtobufPluginInfo::from(p))
                 .collect(),
+            is_shared_on_web: session_info.is_shared_on_web,
+            web_client_count: session_info.web_client_count as u32,
         })
     }
 }
@@ -917,6 +919,8 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
                 .filter_map(|l| LayoutInfo::try_from(l).ok())
                 .collect(),
             plugins,
+            is_shared_on_web: protobuf_session_manifest.is_shared_on_web,
+            web_client_count: protobuf_session_manifest.web_client_count as usize,
         })
     }
 }
@@ -2024,6 +2028,8 @@ fn serialize_session_update_event_with_non_default_values() {
             LayoutInfo::File("layout3".to_owned()),
         ],
         plugins,
+        is_shared_on_web: false,
+        web_client_count: 1,
     };
     let session_info_2 = SessionInfo {
         name: "session 2".to_owned(),
@@ -2039,6 +2045,8 @@ fn serialize_session_update_event_with_non_default_values() {
             LayoutInfo::File("layout3".to_owned()),
         ],
         plugins: Default::default(),
+        is_shared_on_web: false,
+        web_client_count: 0,
     };
     let session_infos = vec![session_info_1, session_info_2];
     let resurrectable_sessions = vec![];

@@ -579,7 +579,7 @@ impl Tab {
         default_mode_info: ModeInfo,
         draw_pane_frames: bool,
         auto_layout: bool,
-        connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
+        connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
         session_is_mirrored: bool,
         client_id: Option<ClientId>,
         copy_options: CopyOptions,

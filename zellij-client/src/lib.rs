@@ -310,6 +310,7 @@ pub fn start_client(
             // If these two are true, we should launch the setup wizard, if even one of them is
             // false, we should never launch it.
             let should_launch_setup_wizard = successfully_written_config;
+            let is_web_client = false;
 
             (
                 ClientToServerMsg::NewClient(
@@ -319,6 +320,7 @@ pub fn start_client(
                     Box::new(config_options.clone()),
                     Box::new(layout.unwrap()),
                     Box::new(config.plugins.clone()),
+                    is_web_client,
                     should_launch_setup_wizard,
                 ),
                 ipc_pipe,
@@ -708,6 +710,7 @@ pub fn start_server_detached(
             }
             let should_launch_setup_wizard = false; // no setup wizard when starting a detached
                                                     // server
+            let is_web_client = false;
 
             (
                 ClientToServerMsg::NewClient(
@@ -717,6 +720,7 @@ pub fn start_server_detached(
                     Box::new(config_options.clone()),
                     Box::new(layout.unwrap()),
                     Box::new(config.plugins.clone()),
+                    is_web_client,
                     should_launch_setup_wizard,
                 ),
                 ipc_pipe,

@@ -76,6 +76,7 @@ pub enum ServerInstruction {
         Box<Layout>,
         Box<PluginAliases>,
         bool, // should launch setup wizard
+        bool, // is_web_client
         ClientId,
     ),
     Render(Option<HashMap<ClientId, String>>),
@@ -91,6 +92,7 @@ pub enum ServerInstruction {
         Options,             // represents the runtime configuration options
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
+        bool, // is_web_client
         ClientId,
     ),
     ConnStatus(ClientId),
@@ -627,6 +629,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 layout,
                 plugin_aliases,
                 should_launch_setup_wizard,
+                is_web_client,
                 client_id,
             ) => {
                 let mut session = init_session(
@@ -689,7 +692,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             tab_name,
                             swap_layouts,
                             should_focus_tab,
-                            client_id,
+                            (client_id, is_web_client),
                         ))
                         .unwrap()
                 };
@@ -752,6 +755,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 runtime_config_options,
                 tab_position_to_focus,
                 pane_id_to_focus,
+                is_web_client,
                 client_id,
             ) => {
                 let mut rlock = session_data.write().unwrap();
@@ -788,6 +792,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_screen(ScreenInstruction::AddClient(
                         client_id,
+                        is_web_client,
                         tab_position_to_focus,
                         pane_id_to_focus,
                     ))

@@ -77,7 +77,7 @@ pub enum PluginInstruction {
         Vec<FloatingPaneLayout>,
         usize, // tab_index
         bool,  // should change focus to new tab
-        ClientId,
+        (ClientId, bool), // bool -> is_web_client
     ),
     ApplyCachedEvents {
         plugin_ids: Vec<PluginId>,
@@ -418,7 +418,7 @@ pub(crate) fn plugin_thread_main(
                 mut floating_panes_layout,
                 tab_index,
                 should_change_focus_to_new_tab,
-                client_id,
+                (client_id, is_web_client),
             ) => {
                 // prefer connected clients so as to avoid opening plugins in the background for
                 // CLI clients unless no-one else is connected
@@ -490,7 +490,7 @@ pub(crate) fn plugin_thread_main(
                     tab_index,
                     plugin_ids,
                     should_change_focus_to_new_tab,
-                    client_id,
+                    (client_id, is_web_client),
                 )));
             },
             PluginInstruction::ApplyCachedEvents {

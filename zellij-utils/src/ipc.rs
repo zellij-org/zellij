@@ -79,6 +79,7 @@ pub enum ClientToServerMsg {
         Box<Layout>,
         Box<PluginAliases>,
         bool, // should launch setup wizard
+        bool, // is_web_client
     ),
     AttachClient(
         ClientAttributes,

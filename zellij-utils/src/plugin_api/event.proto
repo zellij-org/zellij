@@ -283,6 +283,8 @@ message SessionManifest {
   bool is_current_session = 5;
   repeated LayoutInfo available_layouts = 6;
   repeated PluginInfo plugins = 7;
+  bool is_shared_on_web = 8;
+  uint32 web_client_count = 9;
 }
 
 message PluginInfo {

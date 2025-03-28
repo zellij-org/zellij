@@ -502,6 +502,7 @@ pub(crate) fn route_action(
                 swap_tiled_layouts.unwrap_or_else(|| default_layout.swap_tiled_layouts.clone());
             let swap_floating_layouts = swap_floating_layouts
                 .unwrap_or_else(|| default_layout.swap_floating_layouts.clone());
+            let is_web_client = false; // actions cannot be initiated directly from the web
             senders
                 .send_to_screen(ScreenInstruction::NewTab(
                     None,
@@ -511,7 +512,7 @@ pub(crate) fn route_action(
                     tab_name,
                     (swap_tiled_layouts, swap_floating_layouts),
                     should_change_focus_to_new_tab,
-                    client_id,
+                    (client_id, is_web_client),
                 ))
                 .with_context(err_context)?;
         },
@@ -1129,6 +1130,7 @@ pub(crate) fn route_thread_main(
                             layout,
                             plugin_aliases,
                             should_launch_setup_wizard,
+                            is_web_client,
                         ) => {
                             let new_client_instruction = ServerInstruction::NewClient(
                                 client_attributes,
@@ -1138,6 +1140,7 @@ pub(crate) fn route_thread_main(
                                 layout,
                                 plugin_aliases,
                                 should_launch_setup_wizard,
+                                is_web_client,
                                 client_id,
                             );
                             to_server
@@ -1167,6 +1170,7 @@ pub(crate) fn route_thread_main(
                                     runtime_config_options,
                                     tab_position_to_focus,
                                     pane_id_to_focus,
+                                    is_web_client,
                                     client_id,
                                 );
                                 to_server

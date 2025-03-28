@@ -65,7 +65,7 @@ pub enum PtyInstruction {
         usize,                               // tab_index
         HashMap<RunPluginOrAlias, Vec<u32>>, // plugin_ids
         bool,                                // should change focus to new tab
-        ClientId,
+        (ClientId, bool), // bool -> is_web_client
     ), // the String is the tab name
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
@@ -540,9 +540,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 tab_index,
                 plugin_ids,
                 should_change_focus_to_new_tab,
-                client_id,
+                client_id_and_is_web_client,
             ) => {
-                let err_context = || format!("failed to open new tab for client {}", client_id);
+                let err_context = || "failed to open new tab";
 
                 let floating_panes_layout = if floating_panes_layout.is_empty() {
                     layout.new_tab().1
@@ -557,7 +557,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     plugin_ids,
                     tab_index,
                     should_change_focus_to_new_tab,
-                    client_id,
+                    client_id_and_is_web_client,
                 )
                 .with_context(err_context)?;
             },
@@ -1025,12 +1025,13 @@ impl Pty {
         plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         tab_index: usize,
         should_change_focus_to_new_tab: bool,
-        client_id: ClientId,
+        client_id_and_is_web_client: (ClientId, bool),
     ) -> Result<()> {
-        let err_context = || format!("failed to spawn terminals for layout for client {client_id}");
+        let err_context = || format!("failed to spawn terminals for layout for");
 
         let mut default_shell =
             default_shell.unwrap_or_else(|| self.get_default_terminal(cwd, None));
+        let (client_id, is_web_client) = client_id_and_is_web_client;
         self.fill_cwd(&mut default_shell, client_id);
         let extracted_run_instructions = layout.extract_run_instructions();
         let extracted_floating_run_instructions = floating_panes_layout
@@ -1090,7 +1091,7 @@ impl Pty {
                 plugin_ids,
                 tab_index,
                 should_change_focus_to_new_tab,
-                client_id,
+                (client_id, is_web_client),
             ))
             .with_context(err_context)?;
         let mut terminals_to_start = vec![];

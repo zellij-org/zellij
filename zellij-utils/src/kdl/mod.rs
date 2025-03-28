@@ -4533,6 +4533,17 @@ impl SessionInfo {
                     .collect()
             })
             .ok_or("Failed to parse available_layouts")?;
+        let web_client_count = kdl_document
+            .get("web_client_count")
+            .and_then(|n| n.entries().iter().next())
+            .and_then(|e| e.value().as_i64())
+            .map(|c| c as usize)
+            .unwrap_or(0);
+        let is_shared_on_web = kdl_document
+            .get("is_shared_on_web")
+            .and_then(|n| n.entries().iter().next())
+            .and_then(|e| e.value().as_bool())
+            .unwrap_or(false);
         let is_current_session = name == current_session_name;
         Ok(SessionInfo {
             name,
@@ -4541,6 +4552,8 @@ impl SessionInfo {
             connected_clients,
             is_current_session,
             available_layouts,
+            web_client_count,
+            is_shared_on_web,
             plugins: Default::default(), // we do not serialize plugin information
         })
     }
@@ -4566,6 +4579,12 @@ impl SessionInfo {
         let mut panes = KdlNode::new("panes");
         panes.set_children(self.panes.encode_to_kdl());
 
+        let mut web_client_count = KdlNode::new("web_client_count");
+        web_client_count.push(self.web_client_count as i64);
+
+        let mut is_shared_on_web = KdlNode::new("is_shared_on_web");
+        is_shared_on_web.push(self.is_shared_on_web);
+
         let mut available_layouts = KdlNode::new("available_layouts");
         let mut available_layouts_children = KdlDocument::new();
         for layout_info in &self.available_layouts {
@@ -4586,6 +4605,8 @@ impl SessionInfo {
         kdl_document.nodes_mut().push(tabs);
         kdl_document.nodes_mut().push(panes);
         kdl_document.nodes_mut().push(connected_clients);
+        kdl_document.nodes_mut().push(is_shared_on_web);
+        kdl_document.nodes_mut().push(web_client_count);
         kdl_document.nodes_mut().push(available_layouts);
         kdl_document.fmt();
         kdl_document.to_string()
@@ -5139,6 +5160,8 @@ fn serialize_and_deserialize_session_info_with_data() {
             LayoutInfo::File("layout3".to_owned()),
         ],
         plugins: Default::default(),
+        web_client_count: 2,
+        is_shared_on_web: true,
     };
     let serialized = session_info.to_string();
     let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();

@@ -803,6 +803,7 @@ fn spawn_new_session(
     let cli_args = CliArgs::default(); // TODO: what do we do about this and the above setup
                                        // wizard?
     config.options.enable_web_server = Some(true);
+    let is_web_client = true;
 
     (
         ClientToServerMsg::NewClient(
@@ -814,6 +815,7 @@ fn spawn_new_session(
             Box::new(layout.unwrap()),
             Box::new(config.plugins.clone()),
             should_launch_setup_wizard,
+            is_web_client,
         ),
         zellij_ipc_pipe,
     )
