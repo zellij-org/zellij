@@ -38,7 +38,7 @@ use zellij_utils::{
     errors::prelude::*,
     include_dir,
     input::{
-        actions::Action, cast_termwiz_key, config::Config, layout::Layout, mouse::MouseEvent,
+        actions::Action, cast_termwiz_key, config::{Config, ConfigError}, layout::Layout, mouse::MouseEvent,
         options::Options,
     },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
@@ -419,6 +419,29 @@ async fn handle_ws_terminal(
         .send_to_server(ClientToServerMsg::ClientExited);
 }
 
+fn build_initial_connection(session_name: Option<String>) -> Result<Option<ConnectToSession>, &'static str> {
+    let should_start_with_welcome_screen = session_name.is_none();
+    if should_start_with_welcome_screen {
+        // if the client connects without a session path in the url, we always open the
+        // welcome screen
+        let Some(initial_session_name) = session_name.clone().or_else(generate_unique_session_name) else {
+            return Err("Failed to generate unique session name, bailing.");
+        };
+        Ok(Some(ConnectToSession {
+            name: Some(initial_session_name.clone()),
+            layout: Some(LayoutInfo::BuiltIn("welcome".to_owned())),
+            ..Default::default()
+        }))
+    } else if let Some(session_name) = session_name {
+        Ok(Some(ConnectToSession {
+            name: Some(session_name.clone()),
+            ..Default::default()
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
 fn zellij_server_listener(
     os_input: Box<dyn ClientOsApi>,
     stdout_channel_tx: tokio::sync::mpsc::UnboundedSender<String>,
@@ -430,26 +453,14 @@ fn zellij_server_listener(
         .name("server_listener".to_string())
         .spawn({
             move || {
-                let should_start_with_welcome_screen = session_name.is_none();
-                let mut reconnect_to_session: Option<ConnectToSession> = if should_start_with_welcome_screen {
-                    // if the client connects without a session path in the url, we always open the
-                    // welcome screen
-                    let Some(initial_session_name) = session_name.clone().or_else(generate_unique_session_name) else {
-                        log::error!("Failed to generate unique session name, bailing.");
+                // let should_start_with_welcome_screen = session_name.is_none();
+                // let mut reconnect_to_session: Option<ConnectToSession> = None;
+                let mut reconnect_to_session = match build_initial_connection(session_name) {
+                    Ok(initial_session_connection) => initial_session_connection,
+                    Err(e) => {
+                        log::error!("{}", e);
                         return;
-                    };
-                    Some(ConnectToSession {
-                        name: Some(initial_session_name.clone()),
-                        layout: Some(LayoutInfo::BuiltIn("welcome".to_owned())),
-                        ..Default::default()
-                    })
-                } else if let Some(session_name) = session_name {
-                    Some(ConnectToSession {
-                        name: Some(session_name.clone()),
-                        ..Default::default()
-                    })
-                } else {
-                    None
+                    }
                 };
                 'reconnect_loop: loop {
                     let reconnect_info = reconnect_to_session.take();
@@ -464,18 +475,6 @@ fn zellij_server_listener(
                     };
 
                     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
-                    let send_client_terminal_init_messages = |stdout_channel_tx: &tokio::sync::mpsc::UnboundedSender<String>| {
-                        let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
-                        let enter_alternate_screen = "\u{1b}[?1049h";
-                        let bracketed_paste = "\u{1b}[?2004h";
-                        let enter_kitty_keyboard_mode = "\u{1b}[>1u";
-                        let enable_mouse_mode = "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1015h\u{1b}[?1006h";
-                        let _ = stdout_channel_tx.send(clear_client_terminal_attributes.to_owned());
-                        let _ = stdout_channel_tx.send(enter_alternate_screen.to_owned());
-                        let _ = stdout_channel_tx.send(bracketed_paste.to_owned());
-                        let _ = stdout_channel_tx.send(enable_mouse_mode.to_owned());
-                        let _ = stdout_channel_tx.send(enter_kitty_keyboard_mode.to_owned());
-                    };
                     let mut sent_init_messages = false;
 
                     let palette = config
@@ -493,86 +492,16 @@ fn zellij_server_listener(
                     let session_name = PathBuf::from(path.clone()).file_name().unwrap().to_str().unwrap().to_owned();
 
                     let is_web_client = true;
-                    let (first_message, zellij_ipc_pipe) = if session_exists(&session_name).unwrap_or(false) { // TODO: handle error
-                        let zellij_ipc_pipe: PathBuf = {
-                            let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
-                            fs::create_dir_all(&sock_dir).unwrap();
-                            zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
-                            sock_dir.push(path);
-                            sock_dir
-                        };
-                        let first_message = ClientToServerMsg::AttachClient(
-                            client_attributes,
-                            config.clone(),
-                            config_options.clone(),
-                            None,
-                            None,
-                            is_web_client,
-                        );
-                        (first_message, zellij_ipc_pipe)
-                    } else {
-                        let force_run_commands = false; // TODO: from config for resurrection
-                                                        // layout
-                        let resurrection_layout =
-                            resurrection_layout(&session_name).map(|mut resurrection_layout| {
-                                if force_run_commands {
-                                    resurrection_layout.recursively_add_start_suspended(Some(false));
-                                }
-                                resurrection_layout
-                            });
-
-                        match resurrection_layout {
-                            Some(resurrection_layout) => {
-                                spawn_new_session(
-                                    &session_name,
-                                    is_web_client,
-                                    os_input.clone(),
-                                    config.clone(),
-                                    config_options.clone(),
-                                    Some(resurrection_layout),
-                                    client_attributes
-                                )
-                            },
-                            None => {
-                                let layout_dir = config.options.layout_dir.clone().or_else(|| {
-                                    get_layout_dir(find_default_config_dir())
-                                });
-                                let new_session_layout = match reconnect_info.as_ref().and_then(|r| r.layout.clone()) {
-                                    Some(LayoutInfo::BuiltIn(layout_name)) => Layout::from_default_assets(
-                                        &PathBuf::from(layout_name),
-                                        layout_dir.clone(),
-                                        config.clone(),
-                                    ),
-                                    Some(LayoutInfo::File(layout_name)) => Layout::from_path_or_default(
-                                        Some(&PathBuf::from(layout_name)),
-                                        layout_dir.clone(),
-                                        config.clone(),
-                                    ),
-                                    Some(LayoutInfo::Url(url)) => Layout::from_url(&url, config.clone()),
-                                    Some(LayoutInfo::Stringified(stringified_layout)) => Layout::from_stringified_layout(
-                                        &stringified_layout,
-                                        config.clone(),
-                                    ),
-                                    None => Layout::from_default_assets(
-                                        &PathBuf::from("default"),
-                                        layout_dir.clone(),
-                                        config.clone(),
-                                    )
-                                };
-
-                                spawn_new_session(
-                                    &session_name,
-                                    is_web_client,
-                                    os_input.clone(),
-                                    config.clone(),
-                                    config_options.clone(),
-                                    new_session_layout.ok().map(|(l, c)| l), // TODO: handle config
-                                    client_attributes
-                                )
-
-                            }
-                        }
-                    };
+                    let (first_message, zellij_ipc_pipe) = spawn_session_if_needed(
+                        &session_name,
+                        path,
+                        client_attributes,
+                        &config,
+                        &config_options,
+                        is_web_client,
+                        os_input.clone(),
+                        reconnect_info.as_ref().and_then(|r| r.layout.clone()),
+                    );
 
                     os_input.connect_to_server(&zellij_ipc_pipe);
                     os_input.send_to_server(first_message);
@@ -663,6 +592,19 @@ fn render_to_client(
     });
 }
 
+fn send_client_terminal_init_messages(stdout_channel_tx: &tokio::sync::mpsc::UnboundedSender<String>) {
+    let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
+    let enter_alternate_screen = "\u{1b}[?1049h";
+    let bracketed_paste = "\u{1b}[?2004h";
+    let enter_kitty_keyboard_mode = "\u{1b}[>1u";
+    let enable_mouse_mode = "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1015h\u{1b}[?1006h";
+    let _ = stdout_channel_tx.send(clear_client_terminal_attributes.to_owned());
+    let _ = stdout_channel_tx.send(enter_alternate_screen.to_owned());
+    let _ = stdout_channel_tx.send(bracketed_paste.to_owned());
+    let _ = stdout_channel_tx.send(enable_mouse_mode.to_owned());
+    let _ = stdout_channel_tx.send(enter_kitty_keyboard_mode.to_owned());
+}
+
 fn parse_stdin(
     buf: &[u8],
     os_input: Box<dyn ClientOsApi>,
@@ -735,6 +677,95 @@ fn parse_stdin(
     }
 }
 
+fn layout_for_new_session(config: &Config, requested_layout: Option<LayoutInfo>) -> Result<(Layout, Config), ConfigError> {
+    let layout_dir = config.options.layout_dir.clone().or_else(|| {
+        get_layout_dir(find_default_config_dir())
+    });
+    // match reconnect_info.as_ref().and_then(|r| r.layout.clone()) {
+    match requested_layout {
+        Some(LayoutInfo::BuiltIn(layout_name)) => Layout::from_default_assets(
+            &PathBuf::from(layout_name),
+            layout_dir.clone(),
+            config.clone(),
+        ),
+        Some(LayoutInfo::File(layout_name)) => Layout::from_path_or_default(
+            Some(&PathBuf::from(layout_name)),
+            layout_dir.clone(),
+            config.clone(),
+        ),
+        Some(LayoutInfo::Url(url)) => Layout::from_url(&url, config.clone()),
+        Some(LayoutInfo::Stringified(stringified_layout)) => Layout::from_stringified_layout(
+            &stringified_layout,
+            config.clone(),
+        ),
+        None => Layout::from_default_assets(
+            &PathBuf::from("default"),
+            layout_dir.clone(),
+            config.clone(),
+        )
+    }
+}
+
+fn spawn_session_if_needed(
+    session_name: &str,
+    path: String,
+    client_attributes: ClientAttributes,
+    config: &Config,
+    config_options: &Options,
+    is_web_client: bool,
+    os_input: Box<dyn ClientOsApi>,
+    requested_layout: Option<LayoutInfo>,
+) -> (ClientToServerMsg, PathBuf) {
+    if session_exists(&session_name).unwrap_or(false) { // TODO: handle error
+        ipc_pipe_and_first_message_for_existing_session(
+            path,
+            client_attributes,
+            &config,
+            &config_options,
+            is_web_client
+        )
+    } else {
+        let force_run_commands = false; // TODO: from config for resurrection
+                                        // layout
+        let resurrection_layout =
+            resurrection_layout(&session_name).map(|mut resurrection_layout| {
+                if force_run_commands {
+                    resurrection_layout.recursively_add_start_suspended(Some(false));
+                }
+                resurrection_layout
+            });
+
+        match resurrection_layout {
+            Some(resurrection_layout) => {
+                spawn_new_session(
+                    &session_name,
+                    is_web_client,
+                    os_input.clone(),
+                    config.clone(),
+                    config_options.clone(),
+                    Some(resurrection_layout),
+                    client_attributes
+                )
+            },
+            None => {
+                // let new_session_layout = layout_for_new_session(&config, reconnect_info.as_ref().and_then(|r| r.layout.clone()));
+                let new_session_layout = layout_for_new_session(&config, requested_layout);
+
+                spawn_new_session(
+                    &session_name,
+                    is_web_client,
+                    os_input.clone(),
+                    config.clone(),
+                    config_options.clone(),
+                    new_session_layout.ok().map(|(l, c)| l), // TODO: handle config
+                    client_attributes
+                )
+
+            }
+        }
+    }
+}
+
 fn spawn_new_session(
     name: &str,
     is_web_client: bool,
@@ -786,6 +817,25 @@ fn spawn_new_session(
         ),
         zellij_ipc_pipe,
     )
+}
+
+fn ipc_pipe_and_first_message_for_existing_session(session_name: String, client_attributes: ClientAttributes, config: &Config, config_options: &Options, is_web_client: bool) -> (ClientToServerMsg, PathBuf) {
+    let zellij_ipc_pipe: PathBuf = {
+        let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
+        fs::create_dir_all(&sock_dir).unwrap();
+        zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
+        sock_dir.push(session_name);
+        sock_dir
+    };
+    let first_message = ClientToServerMsg::AttachClient(
+        client_attributes,
+        config.clone(),
+        config_options.clone(),
+        None,
+        None,
+        is_web_client,
+    );
+    (first_message, zellij_ipc_pipe)
 }
 
 // TODO: move to zellij_utils::sessions?
