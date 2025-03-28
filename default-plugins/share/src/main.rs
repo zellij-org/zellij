@@ -31,10 +31,9 @@ impl ZellijPlugin for App {
             EventType::WebServerStarted,
             EventType::Timer,
             EventType::WebServerQueryResponse,
-            EventType::WebSessionInfo,
+            EventType::SessionUpdate,
         ]);
         query_web_server();
-        list_web_sessions();
         set_timeout(0.5);
     }
     fn update(&mut self, event: Event) -> bool {
@@ -80,8 +79,18 @@ impl ZellijPlugin for App {
                 }
                 should_render = true;
             }
-            Event::WebSessionInfo(web_session_info) => {
+            Event::SessionUpdate(session_infos, _) => {
+                let mut web_session_info = vec![];
+                for session_info in session_infos {
+                    if session_info.is_shared_on_web {
+                        let name = session_info.name;
+                        let web_client_count = session_info.web_client_count;
+                        let terminal_client_count = session_info.connected_clients.saturating_sub(web_client_count);
+                        web_session_info.push(WebSessionInfo { name, web_client_count, terminal_client_count });
+                    }
+                }
                 self.web_session_info = web_session_info;
+
             }
             _ => {},
         }
@@ -199,7 +208,7 @@ impl App {
                 let session_name = &web_session_info.name;
                 let web_client_count = format!("{}", web_session_info.web_client_count);
                 let terminal_client_count = format!("{}", web_session_info.terminal_client_count);
-                let item_text = format!("{} [{} terminal clients, {} web clients]", session_name, web_client_count, terminal_client_count);
+                let item_text = format!("{} [{} terminal clients, {} web clients]", session_name, terminal_client_count, web_client_count);
                 max_len = std::cmp::max(item_text.chars().count() + 3, max_len); // 3 is the bulletin
                 let terminal_client_count_start_pos = session_name.chars().count() + 2;
                 let terminal_client_count_end_pos = terminal_client_count_start_pos + terminal_client_count.chars().count();
