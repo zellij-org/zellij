@@ -422,9 +422,6 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::QueryWebServer => {
                         query_web_server(env)
                     },
-                    PluginCommand::ListWebSessions => {
-                        list_web_sessions(env)
-                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -2147,16 +2144,6 @@ fn query_web_server(env: &PluginEnv) {
         ));
 }
 
-fn list_web_sessions(env: &PluginEnv) {
-    let _ = env
-        .senders
-        .send_to_background_jobs(BackgroundJob::ListWebSessions(
-            env.plugin_id,
-            env.client_id,
-        ));
-}
-
-
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -2331,7 +2318,6 @@ fn check_command_permission(
         },
         PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,
         PluginCommand::QueryWebServer |
-        PluginCommand::ListWebSessions |
         PluginCommand::StartWebServer => PermissionType::StartWebServer,
         _ => return (PermissionStatus::Granted, None),
     };

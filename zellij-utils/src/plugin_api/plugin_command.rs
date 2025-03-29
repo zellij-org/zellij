@@ -1550,13 +1550,6 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     Ok(PluginCommand::QueryWebServer)
                 }
             },
-            Some(CommandName::ListWebSessions) => {
-                if protobuf_plugin_command.payload.is_some() {
-                    Err("ListWebSessions should not have a payload")
-                } else {
-                    Ok(PluginCommand::ListWebSessions)
-                }
-            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2563,10 +2556,6 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             }),
             PluginCommand::QueryWebServer => Ok(ProtobufPluginCommand {
                 name: CommandName::QueryWebServer as i32,
-                payload: None,
-            }),
-            PluginCommand::ListWebSessions => Ok(ProtobufPluginCommand {
-                name: CommandName::ListWebSessions as i32,
                 payload: None,
             }),
         }

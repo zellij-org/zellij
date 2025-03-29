@@ -56,7 +56,6 @@ enum EventType {
     ConfigWasWrittenToDisk = 30;
     WebServerStarted = 31;
     WebServerQueryResponse = 32;
-    WebSessionInfo = 33;
 }
 
 message EventNameList {
@@ -92,18 +91,7 @@ message Event {
     FailedToChangeHostFolderPayload failed_to_change_host_folder_payload = 25;
     PastedTextPayload pasted_text_payload = 26;
     WebServerQueryResponsePayload web_server_query_response_payload = 27;
-    WebSessionInfoPayload web_session_info_payload = 28;
   }
-}
-
-message WebSessionInfoPayload {
-  repeated WebSessionInformation web_session_info = 1;
-}
-
-message WebSessionInformation {
-  string name = 1;
-  uint32 web_client_count = 2;
-  uint32 terminal_client_count = 3;
 }
 
 message PastedTextPayload {

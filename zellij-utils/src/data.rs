@@ -935,7 +935,6 @@ pub enum Event {
     ConfigWasWrittenToDisk,
     WebServerStarted,
     WebServerQueryResponse(WebServerQueryResponse),
-    WebSessionInfo(Vec<WebSessionInfo>),
 }
 
 #[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
@@ -2162,27 +2161,6 @@ impl OriginatingPlugin {
     }
 }
 
-#[derive(Default, Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
-pub struct WebSessionInfo {
-    pub name: String,
-    pub web_client_count: usize,
-    pub terminal_client_count: usize
-}
-
-impl WebSessionInfo {
-    pub fn with_name(mut self, name: &str) -> Self {
-        self.name = name.to_string();
-        self
-    }
-    pub fn with_web_client_count(mut self, count: usize) -> Self {
-        self.web_client_count = count;
-        self
-    }
-    pub fn with_terminal_client_count(mut self, count: usize) -> Self {
-        self.terminal_client_count = count;
-        self
-    }
-}
 
 
 type Context = BTreeMap<String, String>;
@@ -2345,5 +2323,4 @@ pub enum PluginCommand {
     OpenFileInPlaceOfPlugin(FileToOpen, Context),
     StartWebServer,
     QueryWebServer,
-    ListWebSessions,
 }

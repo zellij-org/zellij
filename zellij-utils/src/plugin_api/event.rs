@@ -10,7 +10,7 @@ pub use super::generated_api::api::{
         PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
         PaneType as ProtobufPaneType, PluginInfo as ProtobufPluginInfo,
         ResurrectableSession as ProtobufResurrectableSession,
-        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, WebSessionInformation as ProtobufWebSessionInfo, *,
+        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
@@ -20,7 +20,7 @@ pub use super::generated_api::api::{
 use crate::data::{
     ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier,
     LayoutInfo, ModeInfo, Mouse, PaneId, PaneInfo, PaneManifest, PermissionStatus,
-    PluginCapabilities, PluginInfo, SessionInfo, Style, TabInfo, WebServerQueryResponse, WebSessionInfo
+    PluginCapabilities, PluginInfo, SessionInfo, Style, TabInfo, WebServerQueryResponse,
 };
 
 use crate::errors::prelude::*;
@@ -382,36 +382,8 @@ impl TryFrom<ProtobufEvent> for Event {
                 }
                 _ => Err("Malformed payload for the WebServerQueryResponse Event"),
             },
-            Some(ProtobufEventType::WebSessionInfo) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::WebSessionInfoPayload(web_session_info_payload)) => {
-                    Ok(Event::WebSessionInfo(web_session_info_payload.web_session_info.into_iter().filter_map(|w| w.try_into().ok()).collect()))
-                }
-                _ => Err("Malformed payload for the WebServerStarted Event"),
-            },
             None => Err("Unknown Protobuf Event"),
         }
-    }
-}
-
-impl TryFrom<ProtobufWebSessionInfo> for WebSessionInfo {
-    type Error = &'static str;
-    fn try_from(protobuf_web_session_info: ProtobufWebSessionInfo) -> Result<Self, &'static str> {
-        Ok(WebSessionInfo {
-            name: protobuf_web_session_info.name,
-            web_client_count: protobuf_web_session_info.web_client_count as usize,
-            terminal_client_count: protobuf_web_session_info.terminal_client_count as usize,
-        })
-    }
-}
-
-impl TryFrom<WebSessionInfo> for ProtobufWebSessionInfo {
-    type Error = &'static str;
-    fn try_from(web_session_info: WebSessionInfo) -> Result<Self, &'static str> {
-        Ok(ProtobufWebSessionInfo {
-            name: web_session_info.name,
-            web_client_count: web_session_info.web_client_count as u32,
-            terminal_client_count: web_session_info.terminal_client_count as u32,
-        })
     }
 }
 
@@ -806,12 +778,6 @@ impl TryFrom<Event> for ProtobufEvent {
                         }
                     }
                 ))
-            }),
-            Event::WebSessionInfo(web_session_info) => Ok(ProtobufEvent {
-                name: ProtobufEventType::WebSessionInfo as i32,
-                payload: Some(event::Payload::WebSessionInfoPayload(
-                    WebSessionInfoPayload { web_session_info: web_session_info.into_iter().filter_map(|w| w.try_into().ok()).collect() },
-                )),
             }),
         }
     }
@@ -1410,7 +1376,6 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::ConfigWasWrittenToDisk => EventType::ConfigWasWrittenToDisk,
             ProtobufEventType::WebServerStarted => EventType::WebServerStarted,
             ProtobufEventType::WebServerQueryResponse => EventType::WebServerQueryResponse,
-            ProtobufEventType::WebSessionInfo => EventType::WebSessionInfo,
         })
     }
 }
@@ -1452,7 +1417,6 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::ConfigWasWrittenToDisk => ProtobufEventType::ConfigWasWrittenToDisk,
             EventType::WebServerStarted => ProtobufEventType::WebServerStarted,
             EventType::WebServerQueryResponse => ProtobufEventType::WebServerQueryResponse,
-            EventType::WebSessionInfo => ProtobufEventType::WebSessionInfo,
         })
     }
 }

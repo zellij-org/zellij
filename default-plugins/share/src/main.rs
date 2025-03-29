@@ -60,7 +60,6 @@ impl ZellijPlugin for App {
             },
             Event::Timer(_) => {
                 query_web_server();
-                list_web_sessions();
                 set_timeout(0.5);
             }
             Event::WebServerQueryResponse(web_serer_status) => {
@@ -222,5 +221,27 @@ impl App {
             }
             (all_sessions, nested_list, max_len)
         }
+    }
+}
+
+#[derive(Default, Clone, Eq, PartialEq, Debug)]
+pub struct WebSessionInfo {
+    pub name: String,
+    pub web_client_count: usize,
+    pub terminal_client_count: usize
+}
+
+impl WebSessionInfo {
+    pub fn with_name(mut self, name: &str) -> Self {
+        self.name = name.to_string();
+        self
+    }
+    pub fn with_web_client_count(mut self, count: usize) -> Self {
+        self.web_client_count = count;
+        self
+    }
+    pub fn with_terminal_client_count(mut self, count: usize) -> Self {
+        self.terminal_client_count = count;
+        self
     }
 }
