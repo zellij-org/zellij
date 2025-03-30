@@ -133,6 +133,8 @@ pub enum ConfigError {
     ConversionError(#[from] ConversionError),
     #[error("{0}")]
     DownloadError(String),
+    #[error("failed to block on async task")]
+    Async(#[from] std::io::Error),
 }
 
 impl ConfigError {
