@@ -5185,7 +5185,6 @@ dependencies = [
  "ansi_term",
  "anyhow",
  "arrayvec 0.7.6",
- "async-channel",
  "async-trait",
  "base64 0.13.0",
  "byteorder",

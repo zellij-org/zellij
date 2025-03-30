@@ -12,7 +12,6 @@ license.workspace = true
 ansi_term = { workspace = true }
 anyhow = { workspace = true }
 arrayvec = { version = "0.7.2", default-features = false, features = ["std"] }
-async-channel = { version = "1.8.0", default-features = false }
 async-trait = { version = "0.1.50", default-features = false }
 base64 = { version = "0.13.0", default-features = false, features = ["std"] }
 byteorder = { version = "1.4.3", default-features = false, features = ["std"] }
