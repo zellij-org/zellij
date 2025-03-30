@@ -20,8 +20,6 @@ use crate::{
     pane_size::{Constraint, Dimension, PaneGeom},
     setup::{self},
 };
-#[cfg(not(target_family = "wasm"))]
-use tokio::runtime::Runtime;
 
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
@@ -1431,15 +1429,14 @@ impl Layout {
     }
     #[cfg(not(target_family = "wasm"))]
     pub fn stringified_from_url(url: &str) -> Result<String, ConfigError> {
-        let raw_layout = Runtime::new()
-            .map_err(ConfigError::Async)?
-            .block_on(async move {
-                let download = Downloader::download_without_cache(url).await;
-                match download {
-                    Ok(stringified) => Ok(stringified),
-                    Err(e) => Err(ConfigError::DownloadError(format!("{}", e))),
-                }
-            })?;
+        let runtime = crate::async_runtime();
+        let raw_layout = runtime.block_on(async move {
+            let download = Downloader::download_without_cache(url).await;
+            match download {
+                Ok(stringified) => Ok(stringified),
+                Err(e) => Err(ConfigError::DownloadError(format!("{}", e))),
+            }
+        })?;
         Ok(raw_layout)
     }
     #[cfg(target_family = "wasm")]
@@ -1481,15 +1478,14 @@ impl Layout {
     }
     #[cfg(not(target_family = "wasm"))]
     pub fn from_url(url: &str, config: Config) -> Result<(Layout, Config), ConfigError> {
-        let raw_layout = Runtime::new()
-            .map_err(ConfigError::Async)?
-            .block_on(async move {
-                let download = Downloader::download_without_cache(url).await;
-                match download {
-                    Ok(stringified) => Ok(stringified),
-                    Err(e) => Err(ConfigError::DownloadError(format!("{}", e))),
-                }
-            })?;
+        let runtime = crate::async_runtime();
+        let raw_layout = runtime.block_on(async move {
+            let download = Downloader::download_without_cache(url).await;
+            match download {
+                Ok(stringified) => Ok(stringified),
+                Err(e) => Err(ConfigError::DownloadError(format!("{}", e))),
+            }
+        })?;
         let mut layout = Layout::from_kdl(&raw_layout, Some(url.into()), None, None)?;
         layout.recursively_add_start_suspended_including_template(Some(true));
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with

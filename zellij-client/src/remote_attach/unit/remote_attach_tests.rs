@@ -299,7 +299,7 @@ mod tests {
         forget: bool,
     ) -> Result<WebSocketConnections, RemoteClientError> {
         tokio::task::spawn_blocking(move || {
-            let runtime = tokio::runtime::Runtime::new().unwrap();
+            let runtime = crate::global_async_runtime::get_tokio_runtime();
             let os_input: Box<dyn crate::os_input_output::ClientOsApi> = Box::new(MockClientOsApi);
             attach_to_remote_session(
                 &runtime,
