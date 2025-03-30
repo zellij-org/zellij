@@ -4265,6 +4265,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-stream"
+version = "0.1.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32da49809aab5c3bc678af03902d4ccddea2a87d028d86392a4b1560c6906c70"
+dependencies = [
+ "futures-core",
+ "pin-project-lite",
+ "tokio",
+]
+
+[[package]]
 name = "tokio-tungstenite"
 version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4298,6 +4309,7 @@ checksum = "66a539a9ad6d5d281510d5bd368c973d636c02dbf8a67300bfb6b950696ad7df"
 dependencies = [
  "bytes",
  "futures-core",
+ "futures-io",
  "futures-sink",
  "pin-project-lite",
  "tokio",
@@ -5446,7 +5458,6 @@ name = "zellij-utils"
 version = "0.44.0"
 dependencies = [
  "anyhow",
- "async-std",
  "backtrace",
  "bitflags 2.5.0",
  "clap",
@@ -5486,6 +5497,8 @@ dependencies = [
  "termwiz",
  "thiserror 1.0.61",
  "tokio",
+ "tokio-stream",
+ "tokio-util",
  "unicode-width 0.1.10",
  "url",
  "uuid",

@@ -1,16 +1,16 @@
-use async_std::sync::Mutex;
-use async_std::{
-    fs,
-    io::{ReadExt, WriteExt},
-    stream::StreamExt,
-};
 use isahc::prelude::*;
 use isahc::{config::RedirectPolicy, HttpClient, Request};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
+use tokio::{io::AsyncWriteExt as _, sync::Mutex};
+use tokio_stream::StreamExt as _;
+use tokio_util::compat::FuturesAsyncReadCompatExt as _;
+use tokio_util::io::ReaderStream;
 use url::Url;
+
+const STREAM_BUFFER_SIZE_BYTES: usize = 65535;
 
 #[derive(Error, Debug)]
 pub enum DownloaderError {
@@ -94,7 +94,7 @@ impl Downloader {
         let file_part_path = self.location.join(format!("{}.part", file_name));
         let (mut target, file_part_size) = {
             if file_part_path.exists() {
-                let file_part = fs::OpenOptions::new()
+                let file_part = tokio::fs::OpenOptions::new()
                     .append(true)
                     .write(true)
                     .open(&file_part_path)
@@ -111,7 +111,7 @@ impl Downloader {
 
                 (file_part, file_part_size)
             } else {
-                let file_part = fs::File::create(&file_part_path)
+                let file_part = tokio::fs::File::create(&file_part_path)
                     .await
                     .map_err(|e| DownloaderError::Io(e))?;
 
@@ -124,18 +124,18 @@ impl Downloader {
             .body(())?;
         let mut res = client.send_async(request).await?;
         let body = res.body_mut();
-        let mut stream = body.bytes();
-        while let Some(byte) = stream.next().await {
-            let byte = byte.map_err(|e| DownloaderError::Io(e))?;
+        let mut stream = ReaderStream::with_capacity(body.compat(), STREAM_BUFFER_SIZE_BYTES);
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(DownloaderError::Io)?;
             target
-                .write(&[byte])
+                .write_all(&chunk)
                 .await
-                .map_err(|e| DownloaderError::Io(e))?;
+                .map_err(DownloaderError::Io)?;
         }
 
         log::debug!("Download complete: {:?}", file_part_path);
 
-        fs::rename(file_part_path, file_path)
+        tokio::fs::rename(file_part_path, file_path)
             .await
             .map_err(|e| DownloaderError::Io(e))?;
 
@@ -154,10 +154,10 @@ impl Downloader {
 
         let mut downloaded_bytes: Vec<u8> = vec![];
         let body = res.body_mut();
-        let mut stream = body.bytes();
-        while let Some(byte) = stream.next().await {
-            let byte = byte.map_err(|e| DownloaderError::Io(e))?;
-            downloaded_bytes.push(byte);
+        let mut stream = ReaderStream::with_capacity(body.compat(), STREAM_BUFFER_SIZE_BYTES);
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(DownloaderError::Io)?;
+            downloaded_bytes.extend_from_slice(&*chunk);
         }
 
         log::debug!("Download complete");
@@ -192,7 +192,7 @@ mod tests {
     use tempfile::tempdir;
 
     #[ignore]
-    #[async_std::test]
+    #[tokio::test]
     async fn test_download_ok() {
         let location = tempdir().expect("Failed to create temp directory");
         let location_path = location.path();
@@ -213,7 +213,7 @@ mod tests {
     }
 
     #[ignore]
-    #[async_std::test]
+    #[tokio::test]
     async fn test_download_without_file_name() {
         let location = tempdir().expect("Failed to create temp directory");
         let location_path = location.path();
