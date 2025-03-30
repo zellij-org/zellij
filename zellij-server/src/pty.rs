@@ -1,5 +1,6 @@
 use crate::background_jobs::write_session_state_to_disk;
 use crate::background_jobs::BackgroundJob;
+use crate::global_async_runtime::get_tokio_runtime as async_runtime;
 use crate::route::NotificationEnd;
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
@@ -10,13 +11,10 @@ use crate::{
     thread_bus::{Bus, ThreadSenders},
     ClientId, ServerInstruction,
 };
-use async_std::{
-    self,
-    task::{self, JoinHandle},
-};
 use nix::unistd::Pid;
 use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
+use tokio::task::{self, JoinHandle};
 use zellij_utils::{
     data::{
         CommandOrPlugin, Event, FloatingPaneCoordinates, GetPaneCwdResponse, GetPanePidResponse,
@@ -1105,7 +1103,7 @@ impl Pty {
                 os_input.spawn_terminal(terminal_action, quit_cb, self.default_editor.clone())
             })
             .with_context(err_context)?;
-        let terminal_bytes = task::spawn({
+        let terminal_bytes = async_runtime().spawn({
             let err_context =
                 |terminal_id: u32| format!("failed to run async task for terminal {terminal_id}");
             let senders = self.bus.senders.clone();
@@ -1300,7 +1298,7 @@ impl Pty {
             }
             match pid_primary {
                 Ok(pid_primary) => {
-                    let terminal_bytes = task::spawn({
+                    let terminal_bytes = async_runtime().spawn({
                         let senders = self.bus.senders.clone();
                         let os_input = self
                             .bus
@@ -1475,7 +1473,7 @@ impl Pty {
             }
             match pid_primary {
                 Ok(pid_primary) => {
-                    let terminal_bytes = task::spawn({
+                    let terminal_bytes = async_runtime().spawn({
                         let senders = self.bus.senders.clone();
                         let os_input = self
                             .bus
@@ -1761,7 +1759,7 @@ impl Pty {
             PaneId::Terminal(id) => {
                 self.task_handles.remove(&id);
                 if let Some(child_fd) = self.id_to_child_pid.remove(&id) {
-                    task::block_on(async {
+                    crate::global_async_runtime::get_tokio_runtime().block_on(async {
                         let err_context = || format!("failed to run async task for pane {id}");
                         self.bus
                             .os_input
@@ -1859,7 +1857,7 @@ impl Pty {
                         os_input.re_run_command_in_terminal(id, run_command, quit_cb)
                     })
                     .with_context(err_context)?;
-                let terminal_bytes = task::spawn({
+                let terminal_bytes = async_runtime().spawn({
                     let err_context =
                         |pane_id| format!("failed to run async task for pane {pane_id:?}");
                     let senders = self.bus.senders.clone();

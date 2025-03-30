@@ -2042,7 +2042,7 @@ fn report_changes_in_config_file(
     to_server: SenderWithContext<ServerInstruction>,
 ) {
     std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = crate::global_async_runtime::get_tokio_runtime();
         rt.block_on(async move {
             let to_server = to_server.clone();
             watch_config_file_changes(config_file_path, move |new_config| {
@@ -2063,7 +2063,7 @@ fn report_changes_in_layout_dir(
     to_screen: SenderWithContext<ScreenInstruction>,
 ) {
     std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = crate::global_async_runtime::get_tokio_runtime();
         rt.block_on(async move {
             let to_plugin = to_plugin.clone();
             let to_screen = to_screen.clone();

@@ -28,7 +28,6 @@ use zellij_utils::input::layout::TabLayoutInfo;
 pub use wasm_bridge::PluginRenderAsset;
 use wasm_bridge::WasmBridge;
 
-use async_std::{channel, future::timeout, task};
 use zellij_utils::{
     data::{
         ClientInfo, CommandOrPlugin, Event, EventType, FloatingPaneCoordinates, InputMode,
@@ -310,7 +309,7 @@ pub(crate) fn plugin_thread_main(
 
     // use this channel to ensure that tasks spawned from this thread terminate before exiting
     // https://tokio.rs/tokio/topics/shutdown#waiting-for-things-to-finish-shutting-down
-    let (shutdown_send, shutdown_receive) = channel::bounded::<()>(1);
+    let (shutdown_send, mut shutdown_receive) = tokio::sync::mpsc::channel::<()>(1);
 
     let mut wasm_bridge = WasmBridge::new(
         bus.senders.clone(),
@@ -1240,8 +1239,9 @@ pub(crate) fn plugin_thread_main(
     // once all senders are dropped or the timeout is reached, recv will return an error, that we ignore
 
     drop(shutdown_send);
-    task::block_on(async {
-        let result = timeout(EXIT_TIMEOUT, shutdown_receive.recv()).await;
+    let runtime = crate::global_async_runtime::get_tokio_runtime();
+    runtime.block_on(async {
+        let result = tokio::time::timeout(EXIT_TIMEOUT, shutdown_receive.recv()).await;
         if let Err(err) = result {
             log::error!("timeout waiting for plugin tasks to finish: {}", err);
         }

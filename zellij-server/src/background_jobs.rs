@@ -1,4 +1,4 @@
-use async_std::task;
+use tokio::task;
 use zellij_utils::consts::{
     session_info_cache_file_name, session_info_folder_for_session, session_layout_cache_file_name,
     VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
@@ -135,6 +135,8 @@ pub(crate) fn background_jobs_main(
         .redirect_policy(RedirectPolicy::Follow)
         .build()
         .ok();
+    // We needn't do anything with the runtime, but it should exist at this point.
+    let runtime = crate::global_async_runtime::get_tokio_runtime();
 
     loop {
         let (event, mut err_ctx) = bus.recv().with_context(err_context)?;
@@ -145,7 +147,7 @@ pub(crate) fn background_jobs_main(
                 if job_already_running(job, &mut running_jobs) {
                     continue;
                 }
-                task::spawn({
+                runtime.spawn({
                     let senders = bus.senders.clone();
                     async move {
                         let _ = senders.send_to_screen(
@@ -154,7 +156,10 @@ pub(crate) fn background_jobs_main(
                                 Some(text),
                             ),
                         );
-                        task::sleep(std::time::Duration::from_millis(LONG_FLASH_DURATION_MS)).await;
+                        tokio::time::sleep(std::time::Duration::from_millis(
+                            LONG_FLASH_DURATION_MS,
+                        ))
+                        .await;
                         let _ = senders.send_to_screen(
                             ScreenInstruction::ClearPaneFrameColorOverride(pane_ids),
                         );
@@ -166,7 +171,7 @@ pub(crate) fn background_jobs_main(
                 if job_already_running(job, &mut running_jobs) {
                     continue;
                 }
-                task::spawn({
+                runtime.spawn({
                     let senders = bus.senders.clone();
                     let loading_plugin = loading_plugin.clone();
                     async move {
@@ -174,7 +179,7 @@ pub(crate) fn background_jobs_main(
                             let _ = senders.send_to_screen(
                                 ScreenInstruction::ProgressPluginLoadingOffset(pid),
                             );
-                            task::sleep(std::time::Duration::from_millis(
+                            tokio::time::sleep(std::time::Duration::from_millis(
                                 PLUGIN_ANIMATION_OFFSET_DURATION_MD,
                             ))
                             .await;
@@ -215,7 +220,7 @@ pub(crate) fn background_jobs_main(
                     continue;
                 }
                 running_jobs.insert(job, Instant::now());
-                task::spawn({
+                runtime.spawn({
                     let senders = bus.senders.clone();
                     let current_session_info = current_session_info.clone();
                     let current_session_name = current_session_name.clone();
@@ -277,8 +282,10 @@ pub(crate) fn background_jobs_main(
                                 );
                                 *last_serialization_time.lock().unwrap() = Instant::now();
                             }
-                            task::sleep(std::time::Duration::from_millis(SESSION_READ_DURATION))
-                                .await;
+                            tokio::time::sleep(std::time::Duration::from_millis(
+                                SESSION_READ_DURATION,
+                            ))
+                            .await;
                         }
                     }
                 });
@@ -292,17 +299,18 @@ pub(crate) fn background_jobs_main(
                 cwd,
                 context,
             ) => {
-                // when async_std::process stabilizes, we should change this to be async
-                std::thread::spawn({
+                runtime.spawn({
                     let senders = bus.senders.clone();
-                    move || {
-                        let output = std::process::Command::new(&command)
+                    async move {
+                        let output = tokio::process::Command::new(&command)
                             .args(&args)
                             .envs(env_variables)
                             .current_dir(cwd)
+                            .stdin(std::process::Stdio::null())
                             .stdout(std::process::Stdio::piped())
                             .stderr(std::process::Stdio::piped())
-                            .output();
+                            .output()
+                            .await;
                         match output {
                             Ok(output) => {
                                 let stdout = output.stdout.to_vec();
@@ -330,7 +338,7 @@ pub(crate) fn background_jobs_main(
                 });
             },
             BackgroundJob::WebRequest(plugin_id, client_id, url, verb, headers, body, context) => {
-                task::spawn({
+                runtime.spawn({
                     let senders = bus.senders.clone();
                     let http_client = http_client.clone();
                     async move {
@@ -413,23 +421,21 @@ pub(crate) fn background_jobs_main(
             },
             BackgroundJob::QueryZellijWebServerStatus => {
                 #[cfg(feature = "web_server_capability")]
-                task::spawn({
-                    let senders = bus.senders.clone();
-                    let web_server_base_url = web_server_base_url.clone();
-                    async move {
-                        let status = task::spawn_blocking(move || {
-                            query_webserver_via_ipc(&web_server_base_url)
-                        })
-                        .await
+                {
+                    let status = query_webserver_via_ipc(&web_server_base_url)
                         .unwrap_or(WebServerStatus::Offline);
-
-                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                            None,
-                            None,
-                            Event::WebServerStatus(status),
-                        )]));
-                    }
-                });
+                    runtime.spawn({
+                        let senders = bus.senders.clone();
+                        let web_server_base_url = web_server_base_url.clone();
+                        async move {
+                            let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                None,
+                                None,
+                                Event::WebServerStatus(status),
+                            )]));
+                        }
+                    });
+                }
             },
             BackgroundJob::RenderToClients => {
                 // last_render_request being Some() represents a render request that is pending
@@ -451,12 +457,13 @@ pub(crate) fn background_jobs_main(
                     (should_run_task, current_time)
                 };
                 if should_run_task {
-                    task::spawn({
+                    runtime.spawn({
                         let senders = bus.senders.clone();
                         let last_render_request = last_render_request.clone();
                         let task_start_time = current_time;
                         async move {
-                            task::sleep(std::time::Duration::from_millis(REPAINT_DELAY_MS)).await;
+                            tokio::time::sleep(std::time::Duration::from_millis(REPAINT_DELAY_MS))
+                                .await;
                             let _ = senders.send_to_screen(ScreenInstruction::RenderToClients);
                             {
                                 let mut last_render_request = last_render_request.lock().unwrap();
@@ -482,7 +489,7 @@ pub(crate) fn background_jobs_main(
                 if job_already_running(job, &mut running_jobs) {
                     continue;
                 }
-                task::spawn({
+                runtime.spawn({
                     let senders = bus.senders.clone();
                     async move {
                         let _ = senders.send_to_screen(
@@ -491,7 +498,8 @@ pub(crate) fn background_jobs_main(
                                 Some(text),
                             ),
                         );
-                        task::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS)).await;
+                        tokio::time::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS))
+                            .await;
                         let _ = senders.send_to_screen(
                             ScreenInstruction::ClearPaneFrameColorOverride(pane_ids),
                         );
