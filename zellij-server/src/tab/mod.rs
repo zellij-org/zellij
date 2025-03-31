@@ -152,6 +152,7 @@ enum BufferedTabInstruction {
 pub struct MouseEffect {
     pub state_changed: bool,
     pub leave_clipboard_message: bool,
+    pub group_pane: Option<PaneId>,
 }
 
 impl MouseEffect {
@@ -159,18 +160,28 @@ impl MouseEffect {
         MouseEffect {
             state_changed: true,
             leave_clipboard_message: false,
+            group_pane: None,
         }
     }
     pub fn leave_clipboard_message() -> Self {
         MouseEffect {
             state_changed: false,
             leave_clipboard_message: true,
+            group_pane: None,
         }
     }
     pub fn state_changed_and_leave_clipboard_message() -> Self {
         MouseEffect {
             state_changed: true,
             leave_clipboard_message: true,
+            group_pane: None,
+        }
+    }
+    pub fn group_pane(pane_id: PaneId) -> Self {
+        MouseEffect {
+            state_changed: true,
+            leave_clipboard_message: false,
+            group_pane: Some(pane_id)
         }
     }
 }
@@ -222,6 +233,8 @@ pub(crate) struct Tab {
     arrow_fonts: bool,
     styled_underlines: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
+    mouse_hover_pane_id: Option<PaneId>,
+    current_pane_group: Rc<RefCell<HashSet<PaneId>>>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -525,6 +538,7 @@ pub trait Pane {
         // No-op by default, only terminal panes support holding
     }
     fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>);
+    fn add_highlight_pane_frame_color_override(&mut self, _text: Option<String>) {}
     fn clear_pane_frame_color_override(&mut self);
     fn frame_color_override(&self) -> Option<PaletteColor>;
     fn invoked_with(&self) -> &Option<Run>;
@@ -626,6 +640,7 @@ impl Tab {
         styled_underlines: bool,
         explicitly_disable_kitty_keyboard_protocol: bool,
         default_editor: Option<PathBuf>,
+        current_pane_group: Rc<RefCell<HashSet<PaneId>>>,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -720,6 +735,8 @@ impl Tab {
             styled_underlines,
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
+            mouse_hover_pane_id: None,
+            current_pane_group,
         }
     }
 
@@ -2210,14 +2227,15 @@ impl Tab {
             floating_panes_stack,
         );
 
+        let current_pane_group: HashSet<PaneId> = { self.current_pane_group.borrow().clone() };
         self.tiled_panes
-            .render(output, self.floating_panes.panes_are_visible())
+            .render(output, self.floating_panes.panes_are_visible(), self.mouse_hover_pane_id, current_pane_group.clone())
             .with_context(err_context)?;
         if (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
             || self.floating_panes.has_pinned_panes()
         {
             self.floating_panes
-                .render(output)
+                .render(output, self.mouse_hover_pane_id, current_pane_group)
                 .with_context(err_context)?;
         }
 
@@ -3460,6 +3478,9 @@ impl Tab {
                 .ok_or_else(|| anyhow!("Failed to find pane at position"))?
                 .pid();
             match event.event_type {
+                MouseEventType::Press if event.alt && pane_id_at_position != active_pane_id => {
+                    Ok(MouseEffect::group_pane(pane_id_at_position))
+                }
                 MouseEventType::Press => {
                     if pane_id_at_position == active_pane_id {
                         self.handle_active_pane_left_mouse_press(event, client_id)
@@ -3838,6 +3859,9 @@ impl Tab {
                         .with_context(err_context)?;
                     }
                 }
+                self.mouse_hover_pane_id = None;
+            } else {
+                self.mouse_hover_pane_id = Some(pane.pid());
             }
         };
         Ok(MouseEffect::leave_clipboard_message())
@@ -4198,6 +4222,25 @@ impl Tab {
             })
         {
             pane.add_red_pane_frame_color_override(error_text);
+        }
+    }
+    pub fn add_highlight_pane_frame_color_override(
+        &mut self,
+        pane_id: PaneId,
+        error_text: Option<String>,
+    ) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.add_highlight_pane_frame_color_override(error_text);
         }
     }
     pub fn clear_pane_frame_color_override(&mut self, pane_id: PaneId) {

@@ -1,15 +1,15 @@
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Resize {
-    #[prost(enumeration = "ResizeAction", tag = "1")]
+    #[prost(enumeration="ResizeAction", tag="1")]
     pub resize_action: i32,
-    #[prost(enumeration = "ResizeDirection", optional, tag = "2")]
+    #[prost(enumeration="ResizeDirection", optional, tag="2")]
     pub direction: ::core::option::Option<i32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MoveDirection {
-    #[prost(enumeration = "ResizeDirection", tag = "1")]
+    #[prost(enumeration="ResizeDirection", tag="1")]
     pub direction: i32,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]

@@ -406,6 +406,8 @@ pub enum ScreenInstruction {
     SetFloatingPanePinned(PaneId, bool),
     StackPanes(Vec<PaneId>),
     ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
+    AddHighlightPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional
+                                                                     // message
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -616,6 +618,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ChangeFloatingPanesCoordinates(..) => {
                 ScreenContext::ChangeFloatingPanesCoordinates
             },
+            ScreenInstruction::AddHighlightPaneFrameColorOverride(..) => ScreenContext::AddHighlightPaneFrameColorOverride,
         }
     }
 }
@@ -697,6 +700,7 @@ pub(crate) struct Screen {
     default_layout_name: Option<String>,
     explicitly_disable_kitty_keyboard_protocol: bool,
     default_editor: Option<PathBuf>,
+    current_pane_group: Rc<RefCell<HashSet<PaneId>>>,
 }
 
 impl Screen {
@@ -766,6 +770,7 @@ impl Screen {
             layout_dir,
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
+            current_pane_group: Rc::new(RefCell::new(HashSet::new())),
         }
     }
 
@@ -1366,6 +1371,7 @@ impl Screen {
             self.styled_underlines,
             self.explicitly_disable_kitty_keyboard_protocol,
             self.default_editor.clone(),
+            self.current_pane_group.clone(),
         );
         for (client_id, mode_info) in &self.mode_info {
             tab.change_mode_info(mode_info.clone(), *client_id);
@@ -3868,6 +3874,14 @@ pub(crate) fn screen_thread_main(
                     .and_then(|tab| tab.handle_mouse_event(&event, client_id))
                 {
                     Ok(mouse_effect) => {
+                        if let Some(pane_id) = mouse_effect.group_pane {
+                            let mut current_pane_group = screen.current_pane_group.borrow_mut();
+                            if current_pane_group.contains(&pane_id) {
+                                current_pane_group.remove(&pane_id);
+                            } else {
+                                current_pane_group.insert(pane_id);
+                            }
+                        }
                         if mouse_effect.state_changed {
                             screen.log_and_report_session_state()?;
                         }
@@ -4013,6 +4027,18 @@ pub(crate) fn screen_thread_main(
                     for tab in all_tabs.values_mut() {
                         if tab.has_pane_with_pid(&pane_id) {
                             tab.add_red_pane_frame_color_override(pane_id, error_text.clone());
+                            break;
+                        }
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::AddHighlightPaneFrameColorOverride(pane_ids, error_text) => {
+                let all_tabs = screen.get_tabs_mut();
+                for pane_id in pane_ids {
+                    for tab in all_tabs.values_mut() {
+                        if tab.has_pane_with_pid(&pane_id) {
+                            tab.add_highlight_pane_frame_color_override(pane_id, error_text.clone());
                             break;
                         }
                     }
@@ -4525,7 +4551,32 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::BreakPane(default_layout, default_shell, client_id) => {
-                screen.break_pane(default_shell, default_layout, client_id)?;
+                if !screen.current_pane_group.borrow().is_empty() {
+                    let mut pane_group = screen.current_pane_group.borrow_mut().clone();
+                    if let Some(active_pane_id) = screen.get_active_tab(client_id).ok()
+                        .and_then(|t| t.get_active_pane_id(client_id)) {
+                            pane_group.insert(active_pane_id);
+                    }
+                    let should_change_focus_to_new_tab = true;
+                    let new_tab_name = None;
+                    screen.break_multiple_panes_to_new_tab(
+                        pane_group.iter().copied().collect(),
+                        default_shell,
+                        should_change_focus_to_new_tab,
+                        new_tab_name,
+                        client_id,
+                    )?;
+                    // TODO: is this a race?
+                    let _ = screen.bus
+                        .senders
+                        .send_to_background_jobs(BackgroundJob::HighlightPanesWithMessage(
+                            pane_group.iter().copied().collect(),
+                            "BROKEN OUT".to_owned(),
+                        ));
+                    screen.current_pane_group.borrow_mut().clear();
+                } else {
+                    screen.break_pane(default_shell, default_layout, client_id)?;
+                }
             },
             ScreenInstruction::BreakPaneRight(client_id) => {
                 screen.break_pane_to_new_tab(Direction::Right, client_id)?;

@@ -55,6 +55,7 @@ pub enum BackgroundJob {
         Vec<u8>,                  // body
         BTreeMap<String, String>, // context
     ),
+    HighlightPanesWithMessage(Vec<PaneId>, String),
     RenderToClients,
     Exit,
 }
@@ -76,6 +77,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::WebRequest(..) => BackgroundJobContext::WebRequest,
             BackgroundJob::ReportPluginList(..) => BackgroundJobContext::ReportPluginList,
             BackgroundJob::RenderToClients => BackgroundJobContext::ReportPluginList,
+            BackgroundJob::HighlightPanesWithMessage(..) => BackgroundJobContext::HighlightPanesWithMessage,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -410,6 +412,26 @@ pub(crate) fn background_jobs_main(
                         }
                     });
                 }
+            },
+            BackgroundJob::HighlightPanesWithMessage(pane_ids, text) => {
+                if job_already_running(job, &mut running_jobs) {
+                    continue;
+                }
+                task::spawn({
+                    let senders = bus.senders.clone();
+                    async move {
+                        let _ = senders.send_to_screen(
+                            ScreenInstruction::AddHighlightPaneFrameColorOverride(
+                                pane_ids.clone(),
+                                Some(text),
+                            ),
+                        );
+                        task::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS)).await;
+                        let _ = senders.send_to_screen(
+                            ScreenInstruction::ClearPaneFrameColorOverride(pane_ids),
+                        );
+                    }
+                });
             },
             BackgroundJob::Exit => {
                 for loading_plugin in loading_plugins.values() {

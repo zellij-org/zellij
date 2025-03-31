@@ -1,476 +1,471 @@
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventNameList {
-    #[prost(enumeration = "EventType", repeated, tag = "1")]
+    #[prost(enumeration="EventType", repeated, tag="1")]
     pub event_types: ::prost::alloc::vec::Vec<i32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Event {
-    #[prost(enumeration = "EventType", tag = "1")]
+    #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(
-        oneof = "event::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26"
-    )]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
 pub mod event {
     #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Payload {
-        #[prost(message, tag = "2")]
+        #[prost(message, tag="2")]
         ModeUpdatePayload(super::ModeUpdatePayload),
-        #[prost(message, tag = "3")]
+        #[prost(message, tag="3")]
         TabUpdatePayload(super::TabUpdatePayload),
-        #[prost(message, tag = "4")]
+        #[prost(message, tag="4")]
         PaneUpdatePayload(super::PaneUpdatePayload),
-        #[prost(message, tag = "5")]
+        #[prost(message, tag="5")]
         KeyPayload(super::super::key::Key),
-        #[prost(message, tag = "6")]
+        #[prost(message, tag="6")]
         MouseEventPayload(super::MouseEventPayload),
-        #[prost(float, tag = "7")]
+        #[prost(float, tag="7")]
         TimerPayload(f32),
-        #[prost(enumeration = "super::CopyDestination", tag = "8")]
+        #[prost(enumeration="super::CopyDestination", tag="8")]
         CopyToClipboardPayload(i32),
-        #[prost(bool, tag = "9")]
+        #[prost(bool, tag="9")]
         VisiblePayload(bool),
-        #[prost(message, tag = "10")]
+        #[prost(message, tag="10")]
         CustomMessagePayload(super::CustomMessagePayload),
-        #[prost(message, tag = "11")]
+        #[prost(message, tag="11")]
         FileListPayload(super::FileListPayload),
-        #[prost(message, tag = "12")]
+        #[prost(message, tag="12")]
         PermissionRequestResultPayload(super::PermissionRequestResultPayload),
-        #[prost(message, tag = "13")]
+        #[prost(message, tag="13")]
         SessionUpdatePayload(super::SessionUpdatePayload),
-        #[prost(message, tag = "14")]
+        #[prost(message, tag="14")]
         RunCommandResultPayload(super::RunCommandResultPayload),
-        #[prost(message, tag = "15")]
+        #[prost(message, tag="15")]
         WebRequestResultPayload(super::WebRequestResultPayload),
-        #[prost(message, tag = "16")]
+        #[prost(message, tag="16")]
         CommandPaneOpenedPayload(super::CommandPaneOpenedPayload),
-        #[prost(message, tag = "17")]
+        #[prost(message, tag="17")]
         CommandPaneExitedPayload(super::CommandPaneExitedPayload),
-        #[prost(message, tag = "18")]
+        #[prost(message, tag="18")]
         PaneClosedPayload(super::PaneClosedPayload),
-        #[prost(message, tag = "19")]
+        #[prost(message, tag="19")]
         EditPaneOpenedPayload(super::EditPaneOpenedPayload),
-        #[prost(message, tag = "20")]
+        #[prost(message, tag="20")]
         EditPaneExitedPayload(super::EditPaneExitedPayload),
-        #[prost(message, tag = "21")]
+        #[prost(message, tag="21")]
         CommandPaneRerunPayload(super::CommandPaneReRunPayload),
-        #[prost(message, tag = "22")]
+        #[prost(message, tag="22")]
         FailedToWriteConfigToDiskPayload(super::FailedToWriteConfigToDiskPayload),
-        #[prost(message, tag = "23")]
+        #[prost(message, tag="23")]
         ListClientsPayload(super::ListClientsPayload),
-        #[prost(message, tag = "24")]
+        #[prost(message, tag="24")]
         HostFolderChangedPayload(super::HostFolderChangedPayload),
-        #[prost(message, tag = "25")]
+        #[prost(message, tag="25")]
         FailedToChangeHostFolderPayload(super::FailedToChangeHostFolderPayload),
-        #[prost(message, tag = "26")]
+        #[prost(message, tag="26")]
         PastedTextPayload(super::PastedTextPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PastedTextPayload {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub pasted_text: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct FailedToChangeHostFolderPayload {
-    #[prost(string, optional, tag = "1")]
+    #[prost(string, optional, tag="1")]
     pub error_message: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct HostFolderChangedPayload {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub new_host_folder_path: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListClientsPayload {
-    #[prost(message, repeated, tag = "1")]
+    #[prost(message, repeated, tag="1")]
     pub client_info: ::prost::alloc::vec::Vec<ClientInfo>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientInfo {
-    #[prost(uint32, tag = "1")]
+    #[prost(uint32, tag="1")]
     pub client_id: u32,
-    #[prost(message, optional, tag = "2")]
+    #[prost(message, optional, tag="2")]
     pub pane_id: ::core::option::Option<PaneId>,
-    #[prost(string, tag = "3")]
+    #[prost(string, tag="3")]
     pub running_command: ::prost::alloc::string::String,
-    #[prost(bool, tag = "4")]
+    #[prost(bool, tag="4")]
     pub is_current_client: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct FailedToWriteConfigToDiskPayload {
-    #[prost(string, optional, tag = "1")]
+    #[prost(string, optional, tag="1")]
     pub file_path: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CommandPaneReRunPayload {
-    #[prost(uint32, tag = "1")]
+    #[prost(uint32, tag="1")]
     pub terminal_pane_id: u32,
-    #[prost(message, repeated, tag = "3")]
+    #[prost(message, repeated, tag="3")]
     pub context: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PaneClosedPayload {
-    #[prost(message, optional, tag = "1")]
+    #[prost(message, optional, tag="1")]
     pub pane_id: ::core::option::Option<PaneId>,
 }
 /// duplicate of plugin_command.PaneId because protobuffs don't like recursive imports
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PaneId {
-    #[prost(enumeration = "PaneType", tag = "1")]
+    #[prost(enumeration="PaneType", tag="1")]
     pub pane_type: i32,
-    #[prost(uint32, tag = "2")]
+    #[prost(uint32, tag="2")]
     pub id: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CommandPaneOpenedPayload {
-    #[prost(uint32, tag = "1")]
+    #[prost(uint32, tag="1")]
     pub terminal_pane_id: u32,
-    #[prost(message, repeated, tag = "2")]
+    #[prost(message, repeated, tag="2")]
     pub context: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EditPaneOpenedPayload {
-    #[prost(uint32, tag = "1")]
+    #[prost(uint32, tag="1")]
     pub terminal_pane_id: u32,
-    #[prost(message, repeated, tag = "2")]
+    #[prost(message, repeated, tag="2")]
     pub context: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CommandPaneExitedPayload {
-    #[prost(uint32, tag = "1")]
+    #[prost(uint32, tag="1")]
     pub terminal_pane_id: u32,
-    #[prost(int32, optional, tag = "2")]
+    #[prost(int32, optional, tag="2")]
     pub exit_code: ::core::option::Option<i32>,
-    #[prost(message, repeated, tag = "3")]
+    #[prost(message, repeated, tag="3")]
     pub context: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EditPaneExitedPayload {
-    #[prost(uint32, tag = "1")]
+    #[prost(uint32, tag="1")]
     pub terminal_pane_id: u32,
-    #[prost(int32, optional, tag = "2")]
+    #[prost(int32, optional, tag="2")]
     pub exit_code: ::core::option::Option<i32>,
-    #[prost(message, repeated, tag = "3")]
+    #[prost(message, repeated, tag="3")]
     pub context: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SessionUpdatePayload {
-    #[prost(message, repeated, tag = "1")]
+    #[prost(message, repeated, tag="1")]
     pub session_manifests: ::prost::alloc::vec::Vec<SessionManifest>,
-    #[prost(message, repeated, tag = "2")]
+    #[prost(message, repeated, tag="2")]
     pub resurrectable_sessions: ::prost::alloc::vec::Vec<ResurrectableSession>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RunCommandResultPayload {
-    #[prost(int32, optional, tag = "1")]
+    #[prost(int32, optional, tag="1")]
     pub exit_code: ::core::option::Option<i32>,
-    #[prost(bytes = "vec", tag = "2")]
+    #[prost(bytes="vec", tag="2")]
     pub stdout: ::prost::alloc::vec::Vec<u8>,
-    #[prost(bytes = "vec", tag = "3")]
+    #[prost(bytes="vec", tag="3")]
     pub stderr: ::prost::alloc::vec::Vec<u8>,
-    #[prost(message, repeated, tag = "4")]
+    #[prost(message, repeated, tag="4")]
     pub context: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct WebRequestResultPayload {
-    #[prost(int32, tag = "1")]
+    #[prost(int32, tag="1")]
     pub status: i32,
-    #[prost(message, repeated, tag = "2")]
+    #[prost(message, repeated, tag="2")]
     pub headers: ::prost::alloc::vec::Vec<Header>,
-    #[prost(bytes = "vec", tag = "3")]
+    #[prost(bytes="vec", tag="3")]
     pub body: ::prost::alloc::vec::Vec<u8>,
-    #[prost(message, repeated, tag = "4")]
+    #[prost(message, repeated, tag="4")]
     pub context: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ContextItem {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub name: ::prost::alloc::string::String,
-    #[prost(string, tag = "2")]
+    #[prost(string, tag="2")]
     pub value: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Header {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub name: ::prost::alloc::string::String,
-    #[prost(string, tag = "2")]
+    #[prost(string, tag="2")]
     pub value: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PermissionRequestResultPayload {
-    #[prost(bool, tag = "1")]
+    #[prost(bool, tag="1")]
     pub granted: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct FileListPayload {
-    #[prost(string, repeated, tag = "1")]
+    #[prost(string, repeated, tag="1")]
     pub paths: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-    #[prost(message, repeated, tag = "2")]
+    #[prost(message, repeated, tag="2")]
     pub paths_metadata: ::prost::alloc::vec::Vec<FileMetadata>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct FileMetadata {
     /// if this is false, the metadata for this file has not been read
-    #[prost(bool, tag = "1")]
+    #[prost(bool, tag="1")]
     pub metadata_is_set: bool,
-    #[prost(bool, tag = "2")]
+    #[prost(bool, tag="2")]
     pub is_dir: bool,
-    #[prost(bool, tag = "3")]
+    #[prost(bool, tag="3")]
     pub is_file: bool,
-    #[prost(bool, tag = "4")]
+    #[prost(bool, tag="4")]
     pub is_symlink: bool,
-    #[prost(uint64, tag = "5")]
+    #[prost(uint64, tag="5")]
     pub len: u64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CustomMessagePayload {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub message_name: ::prost::alloc::string::String,
-    #[prost(string, tag = "2")]
+    #[prost(string, tag="2")]
     pub payload: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MouseEventPayload {
-    #[prost(enumeration = "MouseEventName", tag = "1")]
+    #[prost(enumeration="MouseEventName", tag="1")]
     pub mouse_event_name: i32,
-    #[prost(oneof = "mouse_event_payload::MouseEventPayload", tags = "2, 3")]
-    pub mouse_event_payload: ::core::option::Option<
-        mouse_event_payload::MouseEventPayload,
-    >,
+    #[prost(oneof="mouse_event_payload::MouseEventPayload", tags="2, 3")]
+    pub mouse_event_payload: ::core::option::Option<mouse_event_payload::MouseEventPayload>,
 }
 /// Nested message and enum types in `MouseEventPayload`.
 pub mod mouse_event_payload {
     #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum MouseEventPayload {
-        #[prost(uint32, tag = "2")]
+        #[prost(uint32, tag="2")]
         LineCount(u32),
-        #[prost(message, tag = "3")]
+        #[prost(message, tag="3")]
         Position(super::super::action::Position),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TabUpdatePayload {
-    #[prost(message, repeated, tag = "1")]
+    #[prost(message, repeated, tag="1")]
     pub tab_info: ::prost::alloc::vec::Vec<TabInfo>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PaneUpdatePayload {
-    #[prost(message, repeated, tag = "1")]
+    #[prost(message, repeated, tag="1")]
     pub pane_manifest: ::prost::alloc::vec::Vec<PaneManifest>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PaneManifest {
-    #[prost(uint32, tag = "1")]
+    #[prost(uint32, tag="1")]
     pub tab_index: u32,
-    #[prost(message, repeated, tag = "2")]
+    #[prost(message, repeated, tag="2")]
     pub panes: ::prost::alloc::vec::Vec<PaneInfo>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SessionManifest {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub name: ::prost::alloc::string::String,
-    #[prost(message, repeated, tag = "2")]
+    #[prost(message, repeated, tag="2")]
     pub tabs: ::prost::alloc::vec::Vec<TabInfo>,
-    #[prost(message, repeated, tag = "3")]
+    #[prost(message, repeated, tag="3")]
     pub panes: ::prost::alloc::vec::Vec<PaneManifest>,
-    #[prost(uint32, tag = "4")]
+    #[prost(uint32, tag="4")]
     pub connected_clients: u32,
-    #[prost(bool, tag = "5")]
+    #[prost(bool, tag="5")]
     pub is_current_session: bool,
-    #[prost(message, repeated, tag = "6")]
+    #[prost(message, repeated, tag="6")]
     pub available_layouts: ::prost::alloc::vec::Vec<LayoutInfo>,
-    #[prost(message, repeated, tag = "7")]
+    #[prost(message, repeated, tag="7")]
     pub plugins: ::prost::alloc::vec::Vec<PluginInfo>,
-    #[prost(message, repeated, tag = "8")]
+    #[prost(message, repeated, tag="8")]
     pub tab_history: ::prost::alloc::vec::Vec<ClientTabHistory>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientTabHistory {
-    #[prost(uint32, tag = "1")]
+    #[prost(uint32, tag="1")]
     pub client_id: u32,
-    #[prost(uint32, repeated, tag = "2")]
+    #[prost(uint32, repeated, tag="2")]
     pub tab_history: ::prost::alloc::vec::Vec<u32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PluginInfo {
-    #[prost(uint32, tag = "1")]
+    #[prost(uint32, tag="1")]
     pub plugin_id: u32,
-    #[prost(string, tag = "2")]
+    #[prost(string, tag="2")]
     pub plugin_url: ::prost::alloc::string::String,
-    #[prost(message, repeated, tag = "3")]
+    #[prost(message, repeated, tag="3")]
     pub plugin_config: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct LayoutInfo {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub name: ::prost::alloc::string::String,
-    #[prost(string, tag = "2")]
+    #[prost(string, tag="2")]
     pub source: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ResurrectableSession {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub name: ::prost::alloc::string::String,
-    #[prost(uint64, tag = "2")]
+    #[prost(uint64, tag="2")]
     pub creation_time: u64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PaneInfo {
-    #[prost(uint32, tag = "1")]
+    #[prost(uint32, tag="1")]
     pub id: u32,
-    #[prost(bool, tag = "2")]
+    #[prost(bool, tag="2")]
     pub is_plugin: bool,
-    #[prost(bool, tag = "3")]
+    #[prost(bool, tag="3")]
     pub is_focused: bool,
-    #[prost(bool, tag = "4")]
+    #[prost(bool, tag="4")]
     pub is_fullscreen: bool,
-    #[prost(bool, tag = "5")]
+    #[prost(bool, tag="5")]
     pub is_floating: bool,
-    #[prost(bool, tag = "6")]
+    #[prost(bool, tag="6")]
     pub is_suppressed: bool,
-    #[prost(string, tag = "7")]
+    #[prost(string, tag="7")]
     pub title: ::prost::alloc::string::String,
-    #[prost(bool, tag = "8")]
+    #[prost(bool, tag="8")]
     pub exited: bool,
-    #[prost(int32, optional, tag = "9")]
+    #[prost(int32, optional, tag="9")]
     pub exit_status: ::core::option::Option<i32>,
-    #[prost(bool, tag = "10")]
+    #[prost(bool, tag="10")]
     pub is_held: bool,
-    #[prost(uint32, tag = "11")]
+    #[prost(uint32, tag="11")]
     pub pane_x: u32,
-    #[prost(uint32, tag = "12")]
+    #[prost(uint32, tag="12")]
     pub pane_content_x: u32,
-    #[prost(uint32, tag = "13")]
+    #[prost(uint32, tag="13")]
     pub pane_y: u32,
-    #[prost(uint32, tag = "14")]
+    #[prost(uint32, tag="14")]
     pub pane_content_y: u32,
-    #[prost(uint32, tag = "15")]
+    #[prost(uint32, tag="15")]
     pub pane_rows: u32,
-    #[prost(uint32, tag = "16")]
+    #[prost(uint32, tag="16")]
     pub pane_content_rows: u32,
-    #[prost(uint32, tag = "17")]
+    #[prost(uint32, tag="17")]
     pub pane_columns: u32,
-    #[prost(uint32, tag = "18")]
+    #[prost(uint32, tag="18")]
     pub pane_content_columns: u32,
-    #[prost(message, optional, tag = "19")]
+    #[prost(message, optional, tag="19")]
     pub cursor_coordinates_in_pane: ::core::option::Option<super::action::Position>,
-    #[prost(string, optional, tag = "20")]
+    #[prost(string, optional, tag="20")]
     pub terminal_command: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(string, optional, tag = "21")]
+    #[prost(string, optional, tag="21")]
     pub plugin_url: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(bool, tag = "22")]
+    #[prost(bool, tag="22")]
     pub is_selectable: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TabInfo {
-    #[prost(uint32, tag = "1")]
+    #[prost(uint32, tag="1")]
     pub position: u32,
-    #[prost(string, tag = "2")]
+    #[prost(string, tag="2")]
     pub name: ::prost::alloc::string::String,
-    #[prost(bool, tag = "3")]
+    #[prost(bool, tag="3")]
     pub active: bool,
-    #[prost(uint32, tag = "4")]
+    #[prost(uint32, tag="4")]
     pub panes_to_hide: u32,
-    #[prost(bool, tag = "5")]
+    #[prost(bool, tag="5")]
     pub is_fullscreen_active: bool,
-    #[prost(bool, tag = "6")]
+    #[prost(bool, tag="6")]
     pub is_sync_panes_active: bool,
-    #[prost(bool, tag = "7")]
+    #[prost(bool, tag="7")]
     pub are_floating_panes_visible: bool,
-    #[prost(uint32, repeated, tag = "8")]
+    #[prost(uint32, repeated, tag="8")]
     pub other_focused_clients: ::prost::alloc::vec::Vec<u32>,
-    #[prost(string, optional, tag = "9")]
+    #[prost(string, optional, tag="9")]
     pub active_swap_layout_name: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(bool, tag = "10")]
+    #[prost(bool, tag="10")]
     pub is_swap_layout_dirty: bool,
-    #[prost(uint32, tag = "11")]
+    #[prost(uint32, tag="11")]
     pub viewport_rows: u32,
-    #[prost(uint32, tag = "12")]
+    #[prost(uint32, tag="12")]
     pub viewport_columns: u32,
-    #[prost(uint32, tag = "13")]
+    #[prost(uint32, tag="13")]
     pub display_area_rows: u32,
-    #[prost(uint32, tag = "14")]
+    #[prost(uint32, tag="14")]
     pub display_area_columns: u32,
-    #[prost(uint32, tag = "15")]
+    #[prost(uint32, tag="15")]
     pub selectable_tiled_panes_count: u32,
-    #[prost(uint32, tag = "16")]
+    #[prost(uint32, tag="16")]
     pub selectable_floating_panes_count: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ModeUpdatePayload {
-    #[prost(enumeration = "super::input_mode::InputMode", tag = "1")]
+    #[prost(enumeration="super::input_mode::InputMode", tag="1")]
     pub current_mode: i32,
-    #[prost(message, repeated, tag = "2")]
+    #[prost(message, repeated, tag="2")]
     pub keybinds: ::prost::alloc::vec::Vec<InputModeKeybinds>,
-    #[prost(message, optional, tag = "3")]
+    #[prost(message, optional, tag="3")]
     pub style: ::core::option::Option<super::style::Style>,
-    #[prost(bool, tag = "4")]
+    #[prost(bool, tag="4")]
     pub arrow_fonts_support: bool,
-    #[prost(string, optional, tag = "5")]
+    #[prost(string, optional, tag="5")]
     pub session_name: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(enumeration = "super::input_mode::InputMode", optional, tag = "6")]
+    #[prost(enumeration="super::input_mode::InputMode", optional, tag="6")]
     pub base_mode: ::core::option::Option<i32>,
-    #[prost(string, optional, tag = "7")]
+    #[prost(string, optional, tag="7")]
     pub editor: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(string, optional, tag = "8")]
+    #[prost(string, optional, tag="8")]
     pub shell: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct InputModeKeybinds {
-    #[prost(enumeration = "super::input_mode::InputMode", tag = "1")]
+    #[prost(enumeration="super::input_mode::InputMode", tag="1")]
     pub mode: i32,
-    #[prost(message, repeated, tag = "2")]
+    #[prost(message, repeated, tag="2")]
     pub key_bind: ::prost::alloc::vec::Vec<KeyBind>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct KeyBind {
-    #[prost(message, optional, tag = "1")]
+    #[prost(message, optional, tag="1")]
     pub key: ::core::option::Option<super::key::Key>,
-    #[prost(message, repeated, tag = "2")]
+    #[prost(message, repeated, tag="2")]
     pub action: ::prost::alloc::vec::Vec<super::action::Action>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]

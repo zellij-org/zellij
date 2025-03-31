@@ -1,311 +1,308 @@
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Action {
-    #[prost(enumeration = "ActionName", tag = "1")]
+    #[prost(enumeration="ActionName", tag="1")]
     pub name: i32,
-    #[prost(
-        oneof = "action::OptionalPayload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49"
-    )]
+    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49")]
     pub optional_payload: ::core::option::Option<action::OptionalPayload>,
 }
 /// Nested message and enum types in `Action`.
 pub mod action {
     #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum OptionalPayload {
-        #[prost(message, tag = "2")]
+        #[prost(message, tag="2")]
         SwitchToModePayload(super::SwitchToModePayload),
-        #[prost(message, tag = "3")]
+        #[prost(message, tag="3")]
         WritePayload(super::WritePayload),
-        #[prost(message, tag = "4")]
+        #[prost(message, tag="4")]
         WriteCharsPayload(super::WriteCharsPayload),
-        #[prost(message, tag = "5")]
+        #[prost(message, tag="5")]
         SwitchModeForAllClientsPayload(super::SwitchToModePayload),
-        #[prost(message, tag = "6")]
+        #[prost(message, tag="6")]
         ResizePayload(super::super::resize::Resize),
-        #[prost(enumeration = "super::super::resize::ResizeDirection", tag = "7")]
+        #[prost(enumeration="super::super::resize::ResizeDirection", tag="7")]
         MoveFocusPayload(i32),
-        #[prost(enumeration = "super::super::resize::ResizeDirection", tag = "8")]
+        #[prost(enumeration="super::super::resize::ResizeDirection", tag="8")]
         MoveFocusOrTabPayload(i32),
-        #[prost(message, tag = "9")]
+        #[prost(message, tag="9")]
         MovePanePayload(super::MovePanePayload),
-        #[prost(message, tag = "10")]
+        #[prost(message, tag="10")]
         DumpScreenPayload(super::DumpScreenPayload),
-        #[prost(message, tag = "11")]
+        #[prost(message, tag="11")]
         ScrollUpAtPayload(super::ScrollAtPayload),
-        #[prost(message, tag = "12")]
+        #[prost(message, tag="12")]
         ScrollDownAtPayload(super::ScrollAtPayload),
-        #[prost(message, tag = "13")]
+        #[prost(message, tag="13")]
         NewPanePayload(super::NewPanePayload),
-        #[prost(message, tag = "14")]
+        #[prost(message, tag="14")]
         EditFilePayload(super::EditFilePayload),
-        #[prost(message, tag = "15")]
+        #[prost(message, tag="15")]
         NewFloatingPanePayload(super::NewFloatingPanePayload),
-        #[prost(message, tag = "16")]
+        #[prost(message, tag="16")]
         NewTiledPanePayload(super::NewTiledPanePayload),
-        #[prost(bytes, tag = "17")]
+        #[prost(bytes, tag="17")]
         PaneNameInputPayload(::prost::alloc::vec::Vec<u8>),
-        #[prost(uint32, tag = "18")]
+        #[prost(uint32, tag="18")]
         GoToTabPayload(u32),
-        #[prost(message, tag = "19")]
+        #[prost(message, tag="19")]
         GoToTabNamePayload(super::GoToTabNamePayload),
-        #[prost(bytes, tag = "20")]
+        #[prost(bytes, tag="20")]
         TabNameInputPayload(::prost::alloc::vec::Vec<u8>),
-        #[prost(message, tag = "21")]
+        #[prost(message, tag="21")]
         RunPayload(super::RunCommandAction),
-        #[prost(message, tag = "22")]
+        #[prost(message, tag="22")]
         LeftClickPayload(super::Position),
-        #[prost(message, tag = "23")]
+        #[prost(message, tag="23")]
         RightClickPayload(super::Position),
-        #[prost(message, tag = "24")]
+        #[prost(message, tag="24")]
         MiddleClickPayload(super::Position),
-        #[prost(message, tag = "25")]
+        #[prost(message, tag="25")]
         LaunchOrFocusPluginPayload(super::LaunchOrFocusPluginPayload),
-        #[prost(message, tag = "26")]
+        #[prost(message, tag="26")]
         LeftMouseReleasePayload(super::Position),
-        #[prost(message, tag = "27")]
+        #[prost(message, tag="27")]
         RightMouseReleasePayload(super::Position),
-        #[prost(message, tag = "28")]
+        #[prost(message, tag="28")]
         MiddleMouseReleasePayload(super::Position),
-        #[prost(bytes, tag = "32")]
+        #[prost(bytes, tag="32")]
         SearchInputPayload(::prost::alloc::vec::Vec<u8>),
-        #[prost(enumeration = "super::SearchDirection", tag = "33")]
+        #[prost(enumeration="super::SearchDirection", tag="33")]
         SearchPayload(i32),
-        #[prost(enumeration = "super::SearchOption", tag = "34")]
+        #[prost(enumeration="super::SearchOption", tag="34")]
         SearchToggleOptionPayload(i32),
-        #[prost(message, tag = "35")]
+        #[prost(message, tag="35")]
         NewTiledPluginPanePayload(super::NewPluginPanePayload),
-        #[prost(message, tag = "36")]
+        #[prost(message, tag="36")]
         NewFloatingPluginPanePayload(super::NewPluginPanePayload),
-        #[prost(string, tag = "37")]
+        #[prost(string, tag="37")]
         StartOrReloadPluginPayload(::prost::alloc::string::String),
-        #[prost(uint32, tag = "38")]
+        #[prost(uint32, tag="38")]
         CloseTerminalPanePayload(u32),
-        #[prost(uint32, tag = "39")]
+        #[prost(uint32, tag="39")]
         ClosePluginPanePayload(u32),
-        #[prost(message, tag = "40")]
+        #[prost(message, tag="40")]
         FocusTerminalPaneWithIdPayload(super::PaneIdAndShouldFloat),
-        #[prost(message, tag = "41")]
+        #[prost(message, tag="41")]
         FocusPluginPaneWithIdPayload(super::PaneIdAndShouldFloat),
-        #[prost(message, tag = "42")]
+        #[prost(message, tag="42")]
         RenameTerminalPanePayload(super::IdAndName),
-        #[prost(message, tag = "43")]
+        #[prost(message, tag="43")]
         RenamePluginPanePayload(super::IdAndName),
-        #[prost(message, tag = "44")]
+        #[prost(message, tag="44")]
         RenameTabPayload(super::IdAndName),
-        #[prost(string, tag = "45")]
+        #[prost(string, tag="45")]
         RenameSessionPayload(::prost::alloc::string::String),
-        #[prost(message, tag = "46")]
+        #[prost(message, tag="46")]
         LaunchPluginPayload(super::LaunchOrFocusPluginPayload),
-        #[prost(message, tag = "47")]
+        #[prost(message, tag="47")]
         MessagePayload(super::CliPipePayload),
-        #[prost(enumeration = "super::MoveTabDirection", tag = "48")]
+        #[prost(enumeration="super::MoveTabDirection", tag="48")]
         MoveTabPayload(i32),
-        #[prost(message, tag = "49")]
+        #[prost(message, tag="49")]
         MouseEventPayload(super::MouseEventPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CliPipePayload {
-    #[prost(string, optional, tag = "1")]
+    #[prost(string, optional, tag="1")]
     pub name: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(string, tag = "2")]
+    #[prost(string, tag="2")]
     pub payload: ::prost::alloc::string::String,
-    #[prost(message, repeated, tag = "3")]
+    #[prost(message, repeated, tag="3")]
     pub args: ::prost::alloc::vec::Vec<NameAndValue>,
-    #[prost(string, optional, tag = "4")]
+    #[prost(string, optional, tag="4")]
     pub plugin: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct IdAndName {
-    #[prost(bytes = "vec", tag = "1")]
+    #[prost(bytes="vec", tag="1")]
     pub name: ::prost::alloc::vec::Vec<u8>,
-    #[prost(uint32, tag = "2")]
+    #[prost(uint32, tag="2")]
     pub id: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PaneIdAndShouldFloat {
-    #[prost(uint32, tag = "1")]
+    #[prost(uint32, tag="1")]
     pub pane_id: u32,
-    #[prost(bool, tag = "2")]
+    #[prost(bool, tag="2")]
     pub should_float: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NewPluginPanePayload {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub plugin_url: ::prost::alloc::string::String,
-    #[prost(string, optional, tag = "2")]
+    #[prost(string, optional, tag="2")]
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(bool, tag = "3")]
+    #[prost(bool, tag="3")]
     pub skip_plugin_cache: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct LaunchOrFocusPluginPayload {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub plugin_url: ::prost::alloc::string::String,
-    #[prost(bool, tag = "2")]
+    #[prost(bool, tag="2")]
     pub should_float: bool,
-    #[prost(message, optional, tag = "3")]
+    #[prost(message, optional, tag="3")]
     pub plugin_configuration: ::core::option::Option<PluginConfiguration>,
-    #[prost(bool, tag = "4")]
+    #[prost(bool, tag="4")]
     pub move_to_focused_tab: bool,
-    #[prost(bool, tag = "5")]
+    #[prost(bool, tag="5")]
     pub should_open_in_place: bool,
-    #[prost(bool, tag = "6")]
+    #[prost(bool, tag="6")]
     pub skip_plugin_cache: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GoToTabNamePayload {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub tab_name: ::prost::alloc::string::String,
-    #[prost(bool, tag = "2")]
+    #[prost(bool, tag="2")]
     pub create: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NewFloatingPanePayload {
-    #[prost(message, optional, tag = "1")]
+    #[prost(message, optional, tag="1")]
     pub command: ::core::option::Option<RunCommandAction>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NewTiledPanePayload {
-    #[prost(message, optional, tag = "1")]
+    #[prost(message, optional, tag="1")]
     pub command: ::core::option::Option<RunCommandAction>,
-    #[prost(enumeration = "super::resize::ResizeDirection", optional, tag = "2")]
+    #[prost(enumeration="super::resize::ResizeDirection", optional, tag="2")]
     pub direction: ::core::option::Option<i32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MovePanePayload {
-    #[prost(enumeration = "super::resize::ResizeDirection", optional, tag = "1")]
+    #[prost(enumeration="super::resize::ResizeDirection", optional, tag="1")]
     pub direction: ::core::option::Option<i32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EditFilePayload {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub file_to_edit: ::prost::alloc::string::String,
-    #[prost(uint32, optional, tag = "2")]
+    #[prost(uint32, optional, tag="2")]
     pub line_number: ::core::option::Option<u32>,
-    #[prost(string, optional, tag = "3")]
+    #[prost(string, optional, tag="3")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(enumeration = "super::resize::ResizeDirection", optional, tag = "4")]
+    #[prost(enumeration="super::resize::ResizeDirection", optional, tag="4")]
     pub direction: ::core::option::Option<i32>,
-    #[prost(bool, tag = "5")]
+    #[prost(bool, tag="5")]
     pub should_float: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ScrollAtPayload {
-    #[prost(message, optional, tag = "1")]
+    #[prost(message, optional, tag="1")]
     pub position: ::core::option::Option<Position>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NewPanePayload {
-    #[prost(enumeration = "super::resize::ResizeDirection", optional, tag = "1")]
+    #[prost(enumeration="super::resize::ResizeDirection", optional, tag="1")]
     pub direction: ::core::option::Option<i32>,
-    #[prost(string, optional, tag = "2")]
+    #[prost(string, optional, tag="2")]
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SwitchToModePayload {
-    #[prost(enumeration = "super::input_mode::InputMode", tag = "1")]
+    #[prost(enumeration="super::input_mode::InputMode", tag="1")]
     pub input_mode: i32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct WritePayload {
-    #[prost(bytes = "vec", tag = "1")]
+    #[prost(bytes="vec", tag="1")]
     pub bytes_to_write: ::prost::alloc::vec::Vec<u8>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct WriteCharsPayload {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub chars: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DumpScreenPayload {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub file_path: ::prost::alloc::string::String,
-    #[prost(bool, tag = "2")]
+    #[prost(bool, tag="2")]
     pub include_scrollback: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Position {
-    #[prost(int64, tag = "1")]
+    #[prost(int64, tag="1")]
     pub line: i64,
-    #[prost(int64, tag = "2")]
+    #[prost(int64, tag="2")]
     pub column: i64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MouseEventPayload {
-    #[prost(uint32, tag = "1")]
+    #[prost(uint32, tag="1")]
     pub event_type: u32,
-    #[prost(bool, tag = "2")]
+    #[prost(bool, tag="2")]
     pub left: bool,
-    #[prost(bool, tag = "3")]
+    #[prost(bool, tag="3")]
     pub right: bool,
-    #[prost(bool, tag = "4")]
+    #[prost(bool, tag="4")]
     pub middle: bool,
-    #[prost(bool, tag = "5")]
+    #[prost(bool, tag="5")]
     pub wheel_up: bool,
-    #[prost(bool, tag = "6")]
+    #[prost(bool, tag="6")]
     pub wheel_down: bool,
-    #[prost(bool, tag = "7")]
+    #[prost(bool, tag="7")]
     pub shift: bool,
-    #[prost(bool, tag = "8")]
+    #[prost(bool, tag="8")]
     pub alt: bool,
-    #[prost(bool, tag = "9")]
+    #[prost(bool, tag="9")]
     pub ctrl: bool,
-    #[prost(int64, tag = "10")]
+    #[prost(int64, tag="10")]
     pub line: i64,
-    #[prost(int64, tag = "11")]
+    #[prost(int64, tag="11")]
     pub column: i64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RunCommandAction {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub command: ::prost::alloc::string::String,
-    #[prost(string, repeated, tag = "2")]
+    #[prost(string, repeated, tag="2")]
     pub args: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-    #[prost(string, optional, tag = "3")]
+    #[prost(string, optional, tag="3")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(enumeration = "super::resize::ResizeDirection", optional, tag = "4")]
+    #[prost(enumeration="super::resize::ResizeDirection", optional, tag="4")]
     pub direction: ::core::option::Option<i32>,
-    #[prost(string, optional, tag = "5")]
+    #[prost(string, optional, tag="5")]
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(bool, tag = "6")]
+    #[prost(bool, tag="6")]
     pub hold_on_close: bool,
-    #[prost(bool, tag = "7")]
+    #[prost(bool, tag="7")]
     pub hold_on_start: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PluginConfiguration {
-    #[prost(message, repeated, tag = "1")]
+    #[prost(message, repeated, tag="1")]
     pub name_and_value: ::prost::alloc::vec::Vec<NameAndValue>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NameAndValue {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub name: ::prost::alloc::string::String,
-    #[prost(string, tag = "2")]
+    #[prost(string, tag="2")]
     pub value: ::prost::alloc::string::String,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]

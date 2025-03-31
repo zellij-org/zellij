@@ -53,7 +53,7 @@ enum ExitStatus {
 
 pub struct FrameParams {
     pub focused_client: Option<ClientId>,
-    pub is_main_client: bool,
+    pub is_main_client: bool, // more accurately: is_focused_for_main_client
     pub other_focused_clients: Vec<ClientId>,
     pub style: Style,
     pub color: Option<PaletteColor>,
@@ -63,6 +63,7 @@ pub struct FrameParams {
     pub should_draw_pane_frames: bool,
     pub pane_is_floating: bool,
     pub content_offset: Offset,
+    pub mouse_is_hovering_over_pane: bool,
 }
 
 #[derive(Default, PartialEq)]
@@ -84,6 +85,7 @@ pub struct PaneFrame {
     is_pinned: bool,
     is_floating: bool,
     content_offset: Offset,
+    mouse_is_hovering_over_pane: bool,
 }
 
 impl PaneFrame {
@@ -111,6 +113,7 @@ impl PaneFrame {
             is_pinned: false,
             is_floating: frame_params.pane_is_floating,
             content_offset: frame_params.content_offset,
+            mouse_is_hovering_over_pane: frame_params.mouse_is_hovering_over_pane,
         }
     }
     pub fn is_pinned(mut self, is_pinned: bool) -> Self {
@@ -755,6 +758,65 @@ impl PaneFrame {
         };
         Ok(res)
     }
+    fn render_mouse_shortcuts_undertitle(&self) -> Result<Vec<TerminalCharacter>> {
+        let max_undertitle_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
+        // let (mut first_part, first_part_len) = self.first_exited_held_title_part_full();
+        let mut left_boundary =
+            foreground_color(self.get_corner(boundary_type::BOTTOM_LEFT), self.color);
+        let mut right_boundary =
+            foreground_color(self.get_corner(boundary_type::BOTTOM_RIGHT), self.color);
+        let res = if self.is_main_client {
+            self.empty_undertitle(max_undertitle_length)
+        } else {
+            let (mut hover_shortcuts, hover_shortcuts_len) = self.hover_shortcuts_part_full();
+            // let full_text_len = first_part_len + second_part_len;
+            if hover_shortcuts_len <= max_undertitle_length {
+                // render exit status and tips
+                let mut padding = String::new();
+                for _ in hover_shortcuts_len..max_undertitle_length {
+                    padding.push_str(boundary_type::HORIZONTAL);
+                }
+                let mut ret = vec![];
+                ret.append(&mut left_boundary);
+                ret.append(&mut hover_shortcuts);
+                ret.append(&mut foreground_color(&padding, self.color));
+                ret.append(&mut right_boundary);
+                ret
+//             } else if first_part_len <= max_undertitle_length {
+//                 // render only exit status
+//                 let mut padding = String::new();
+//                 for _ in first_part_len..max_undertitle_length {
+//                     padding.push_str(boundary_type::HORIZONTAL);
+//                 }
+//                 let mut ret = vec![];
+//                 ret.append(&mut left_boundary);
+//                 ret.append(&mut first_part);
+//                 ret.append(&mut foreground_color(&padding, self.color));
+//                 ret.append(&mut right_boundary);
+//                 ret
+            } else {
+                self.empty_undertitle(max_undertitle_length)
+            }
+//         } else {
+//             if first_part_len <= max_undertitle_length {
+//                 // render first part
+//                 let full_text_len = first_part_len;
+//                 let mut padding = String::new();
+//                 for _ in full_text_len..max_undertitle_length {
+//                     padding.push_str(boundary_type::HORIZONTAL);
+//                 }
+//                 let mut ret = vec![];
+//                 ret.append(&mut left_boundary);
+//                 ret.append(&mut first_part);
+//                 ret.append(&mut foreground_color(&padding, self.color));
+//                 ret.append(&mut right_boundary);
+//                 ret
+//             } else {
+//                 self.empty_undertitle(max_undertitle_length)
+//             }
+        };
+        Ok(res)
+    }
     pub fn clicked_on_pinned(&mut self, position: Position) -> bool {
         if self.is_floating {
             // TODO: this is not entirely accurate because our relative position calculation in
@@ -818,6 +880,15 @@ impl PaneFrame {
                             x,
                             y,
                         ));
+                    } else if self.mouse_is_hovering_over_pane && !self.is_main_client {
+                        let x = self.geom.x;
+                        let y = self.geom.y + row;
+                        character_chunks.push(CharacterChunk::new(
+                            self.render_mouse_shortcuts_undertitle().with_context(err_context)?,
+                            x,
+                            y,
+                        ));
+
                     } else {
                         let mut bottom_row = vec![];
                         for col in 0..self.geom.cols {
@@ -962,6 +1033,20 @@ impl PaneFrame {
                 + break_text.len()
                 + right_break_bracket.len()
                 + break_tip.len(),
+        )
+    }
+    fn hover_shortcuts_part_full(&self) -> (Vec<TerminalCharacter>, usize) {
+        // (title part, length)
+        let mut hover_shortcuts = vec![];
+        let alt_click_text = " Alt <Click>";
+        let alt_click_tip = " - group";
+
+        hover_shortcuts.append(&mut foreground_color(alt_click_text, self.color));
+        hover_shortcuts.append(&mut foreground_color(alt_click_tip, self.color));
+        (
+            hover_shortcuts,
+            alt_click_text.chars().count()
+                + alt_click_tip.chars().count()
         )
     }
     fn empty_undertitle(&self, max_undertitle_length: usize) -> Vec<TerminalCharacter> {
