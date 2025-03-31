@@ -1272,6 +1272,14 @@ impl Screen {
             None => Err(anyhow!("active tab not found for client {:?}", client_id)),
         }
     }
+    pub fn get_active_tab_position(&self, client_id: ClientId) -> Option<usize> {
+        self.active_tab_indices.get(&client_id).and_then(|tab| {
+            self
+                .tabs
+                .get(tab)
+                .map(|t| t.position)
+        })
+    }
 
     pub fn get_first_client_id(&self) -> Option<ClientId> {
         self.active_tab_indices.keys().next().copied()
@@ -4579,10 +4587,66 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::BreakPaneRight(client_id) => {
-                screen.break_pane_to_new_tab(Direction::Right, client_id)?;
+                if !screen.current_pane_group.borrow().is_empty() {
+                    let mut pane_group = screen.current_pane_group.borrow_mut().clone();
+                    if let Some(active_pane_id) = screen.get_active_tab(client_id).ok()
+                        .and_then(|t| t.get_active_pane_id(client_id)) {
+                            pane_group.insert(active_pane_id);
+                    }
+                    let should_change_focus_to_new_tab = true;
+                    if let Some(active_tab_pos) = screen.get_active_tab_position(client_id) {
+                        let new_tab_pos = (active_tab_pos + 1) % screen.tabs.len();
+                        screen.break_multiple_panes_to_tab_with_index(
+                            pane_group.iter().copied().collect(),
+                            new_tab_pos,
+                            should_change_focus_to_new_tab,
+                            client_id,
+                        )?;
+                        // TODO: is this a race?
+                        let _ = screen.bus
+                            .senders
+                            .send_to_background_jobs(BackgroundJob::HighlightPanesWithMessage(
+                                pane_group.iter().copied().collect(),
+                                "BROKEN OUT".to_owned(),
+                            ));
+                        screen.current_pane_group.borrow_mut().clear();
+                    }
+                } else {
+                    screen.break_pane_to_new_tab(Direction::Right, client_id)?;
+                }
             },
             ScreenInstruction::BreakPaneLeft(client_id) => {
-                screen.break_pane_to_new_tab(Direction::Left, client_id)?;
+                if !screen.current_pane_group.borrow().is_empty() {
+                    let mut pane_group = screen.current_pane_group.borrow_mut().clone();
+                    if let Some(active_pane_id) = screen.get_active_tab(client_id).ok()
+                        .and_then(|t| t.get_active_pane_id(client_id)) {
+                            pane_group.insert(active_pane_id);
+                    }
+                    let should_change_focus_to_new_tab = true;
+                    if let Some(active_tab_pos) = screen.get_active_tab_position(client_id) {
+                        let new_tab_pos = if active_tab_pos == 0 {
+                            screen.tabs.len().saturating_sub(1)
+                        } else {
+                            active_tab_pos - 1
+                        };
+                        screen.break_multiple_panes_to_tab_with_index(
+                            pane_group.iter().copied().collect(),
+                            new_tab_pos,
+                            should_change_focus_to_new_tab,
+                            client_id,
+                        )?;
+                        // TODO: is this a race?
+                        let _ = screen.bus
+                            .senders
+                            .send_to_background_jobs(BackgroundJob::HighlightPanesWithMessage(
+                                pane_group.iter().copied().collect(),
+                                "BROKEN OUT".to_owned(),
+                            ));
+                        screen.current_pane_group.borrow_mut().clear();
+                    }
+                } else {
+                    screen.break_pane_to_new_tab(Direction::Left, client_id)?;
+                }
             },
             ScreenInstruction::UpdateSessionInfos(new_session_infos, resurrectable_sessions) => {
                 screen.update_session_infos(new_session_infos, resurrectable_sessions)?;
