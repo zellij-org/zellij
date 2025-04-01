@@ -3067,7 +3067,9 @@ pub(crate) fn screen_thread_main(
                     let mut pane_group: Vec<_> = screen.current_pane_group.borrow().iter().copied().collect();
                     if let Some(active_pane_id) = screen.get_active_tab(client_id).ok()
                         .and_then(|t| t.get_active_pane_id(client_id)) {
-                            pane_group.push(active_pane_id);
+                            if !pane_group.contains(&active_pane_id) {
+                                pane_group.push(active_pane_id);
+                            }
                     }
                     let all_tabs = screen.get_tabs_mut();
                     let mut ejected_panes_in_group = vec![];
@@ -3212,12 +3214,32 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::Resize(client_id, strategy) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.resize(client_id, strategy),
-                    ?
-                );
+                if !screen.current_pane_group.borrow().is_empty() {
+                    let mut pane_group: Vec<PaneId> = screen.current_pane_group.borrow().iter().copied().collect();
+                    if let Some(active_pane_id) = screen.get_active_tab(client_id).ok()
+                        .and_then(|t| t.get_active_pane_id(client_id)) {
+                            // make sure the active pane id is first so it will be the root of the
+                            // stack
+                            pane_group.retain(|p| p != &active_pane_id);
+                            pane_group.insert(0, active_pane_id);
+                    }
+                    let pane_ids_in_group = pane_group.iter().copied().collect();
+                    screen.stack_panes(pane_ids_in_group);
+                    let _ = screen.bus
+                        .senders
+                        .send_to_background_jobs(BackgroundJob::HighlightPanesWithMessage(
+                            pane_group.iter().copied().collect(),
+                            "STACKED".to_owned(),
+                        ));
+                    screen.current_pane_group.borrow_mut().clear();
+                } else {
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, client_id: ClientId| tab.resize(client_id, strategy),
+                        ?
+                    );
+                }
                 screen.unblock_input()?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -4612,7 +4634,9 @@ pub(crate) fn screen_thread_main(
                     let mut pane_group = screen.current_pane_group.borrow_mut().clone();
                     if let Some(active_pane_id) = screen.get_active_tab(client_id).ok()
                         .and_then(|t| t.get_active_pane_id(client_id)) {
-                            pane_group.insert(active_pane_id);
+                            if !pane_group.contains(&active_pane_id) {
+                                pane_group.insert(active_pane_id);
+                            }
                     }
                     let should_change_focus_to_new_tab = true;
                     let new_tab_name = None;
@@ -4640,7 +4664,9 @@ pub(crate) fn screen_thread_main(
                     let mut pane_group = screen.current_pane_group.borrow_mut().clone();
                     if let Some(active_pane_id) = screen.get_active_tab(client_id).ok()
                         .and_then(|t| t.get_active_pane_id(client_id)) {
-                            pane_group.insert(active_pane_id);
+                            if !pane_group.contains(&active_pane_id) {
+                                pane_group.insert(active_pane_id);
+                            }
                     }
                     let should_change_focus_to_new_tab = true;
                     if let Some(active_tab_pos) = screen.get_active_tab_position(client_id) {
@@ -4669,7 +4695,9 @@ pub(crate) fn screen_thread_main(
                     let mut pane_group = screen.current_pane_group.borrow_mut().clone();
                     if let Some(active_pane_id) = screen.get_active_tab(client_id).ok()
                         .and_then(|t| t.get_active_pane_id(client_id)) {
-                            pane_group.insert(active_pane_id);
+                            if !pane_group.contains(&active_pane_id) {
+                                pane_group.insert(active_pane_id);
+                            }
                     }
                     let should_change_focus_to_new_tab = true;
                     if let Some(active_tab_pos) = screen.get_active_tab_position(client_id) {
@@ -5006,7 +5034,7 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(pane_id) => {
-                let additional_pane_ids: Vec<_> = screen.current_pane_group.borrow().iter().copied().collect();
+                let additional_pane_ids: Vec<_> = screen.current_pane_group.borrow().iter().copied().filter(|p| p != &pane_id).collect();
                 let all_tabs = screen.get_tabs_mut();
                 let mut ejected_panes_in_group = vec![];
                 let mut embedded_panes_in_group = vec![];

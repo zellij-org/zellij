@@ -3481,7 +3481,7 @@ impl Tab {
                 .ok_or_else(|| anyhow!("Failed to find pane at position"))?
                 .pid();
             match event.event_type {
-                MouseEventType::Press if event.alt && pane_id_at_position != active_pane_id => {
+                MouseEventType::Press if event.alt => {
                     Ok(MouseEffect::group_pane(pane_id_at_position))
                 }
                 MouseEventType::Press => {
@@ -4675,33 +4675,39 @@ impl Tab {
             return;
         }
         self.swap_layouts.set_is_tiled_damaged(); // TODO: verify we can do all the below first
-
-        // + 1 for the root pane
-        let mut stack_geoms = self
-            .tiled_panes
-            .stack_panes(root_pane_id, panes_to_stack.len() + 1);
-        if stack_geoms.is_empty() {
-            log::error!("Failed to find room for stacked panes");
-            return;
-        }
-        self.tiled_panes
-            .set_geom_for_pane_with_id(&root_pane_id, stack_geoms.remove(0));
-        let mut focused_pane_id_in_stack = None;
-        for mut pane in panes_to_stack.drain(..) {
-            let pane_id = pane.pid();
-            let stack_geom = stack_geoms.remove(0);
-            pane.set_geom(stack_geom);
-            self.tiled_panes.add_pane_with_existing_geom(pane_id, pane);
-            if self.tiled_panes.pane_id_is_focused(&pane_id) {
-                focused_pane_id_in_stack = Some(pane_id);
+        if self.pane_is_stacked(root_pane_id) {
+            for pane in panes_to_stack.drain(..) {
+                self.tiled_panes.add_pane_to_stack(&root_pane_id, pane);
             }
-        }
-        // if we had a focused pane in the stack, we expand it
-        if let Some(focused_pane_id_in_stack) = focused_pane_id_in_stack {
-            self.tiled_panes
-                .expand_pane_in_stack(focused_pane_id_in_stack);
-        } else if self.tiled_panes.pane_id_is_focused(&root_pane_id) {
             self.tiled_panes.expand_pane_in_stack(root_pane_id);
+        } else {
+            // + 1 for the root pane
+            let mut stack_geoms = self
+                .tiled_panes
+                .stack_panes(root_pane_id, panes_to_stack.len() + 1);
+            if stack_geoms.is_empty() {
+                log::error!("Failed to find room for stacked panes");
+                return;
+            }
+            self.tiled_panes
+                .set_geom_for_pane_with_id(&root_pane_id, stack_geoms.remove(0));
+            let mut focused_pane_id_in_stack = None;
+            for mut pane in panes_to_stack.drain(..) {
+                let pane_id = pane.pid();
+                let stack_geom = stack_geoms.remove(0);
+                pane.set_geom(stack_geom);
+                self.tiled_panes.add_pane_with_existing_geom(pane_id, pane);
+                if self.tiled_panes.pane_id_is_focused(&pane_id) {
+                    focused_pane_id_in_stack = Some(pane_id);
+                }
+            }
+            // if we had a focused pane in the stack, we expand it
+            if let Some(focused_pane_id_in_stack) = focused_pane_id_in_stack {
+                self.tiled_panes
+                    .expand_pane_in_stack(focused_pane_id_in_stack);
+            } else if self.tiled_panes.pane_id_is_focused(&root_pane_id) {
+                self.tiled_panes.expand_pane_in_stack(root_pane_id);
+            }
         }
     }
     pub fn change_floating_pane_coordinates(
@@ -4768,6 +4774,9 @@ impl Tab {
             PaneId::Terminal(terminal_pane_id),
             (is_scrollback_editor, replaced_pane),
         );
+    }
+    fn pane_is_stacked(&self, pane_id: PaneId) -> bool {
+        self.get_pane_with_id(pane_id).map(|p| p.position_and_size().stacked.is_some()).unwrap_or(false)
     }
 }
 

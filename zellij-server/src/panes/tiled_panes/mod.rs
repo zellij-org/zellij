@@ -226,6 +226,26 @@ impl TiledPanes {
             }
         }
     }
+    pub fn add_pane_to_stack(&mut self, pane_id_in_stack: &PaneId, mut pane: Box<dyn Pane>) {
+        let mut pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        match pane_grid.make_room_in_stack_of_pane_id_for_pane(pane_id_in_stack) {
+            Ok(new_pane_geom) => {
+                pane.set_geom(new_pane_geom);
+                self.panes.insert(pane.pid(), pane);
+                self.set_force_render(); // TODO: why do we need this?
+                return;
+            },
+            Err(_e) => {
+                let should_relayout = false;
+                return self.add_pane_without_stacked_resize(pane.pid(), pane, should_relayout);
+            },
+        }
+    }
     fn add_pane(
         &mut self,
         pane_id: PaneId,
