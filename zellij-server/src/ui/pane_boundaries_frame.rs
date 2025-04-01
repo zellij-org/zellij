@@ -760,7 +760,7 @@ impl PaneFrame {
     }
     fn render_mouse_shortcuts_undertitle(&self) -> Result<Vec<TerminalCharacter>> {
         let max_undertitle_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
-        // let (mut first_part, first_part_len) = self.first_exited_held_title_part_full();
+                                                                      // let (mut first_part, first_part_len) = self.first_exited_held_title_part_full();
         let mut left_boundary =
             foreground_color(self.get_corner(boundary_type::BOTTOM_LEFT), self.color);
         let mut right_boundary =
@@ -782,38 +782,38 @@ impl PaneFrame {
                 ret.append(&mut foreground_color(&padding, self.color));
                 ret.append(&mut right_boundary);
                 ret
-//             } else if first_part_len <= max_undertitle_length {
-//                 // render only exit status
-//                 let mut padding = String::new();
-//                 for _ in first_part_len..max_undertitle_length {
-//                     padding.push_str(boundary_type::HORIZONTAL);
-//                 }
-//                 let mut ret = vec![];
-//                 ret.append(&mut left_boundary);
-//                 ret.append(&mut first_part);
-//                 ret.append(&mut foreground_color(&padding, self.color));
-//                 ret.append(&mut right_boundary);
-//                 ret
+            //             } else if first_part_len <= max_undertitle_length {
+            //                 // render only exit status
+            //                 let mut padding = String::new();
+            //                 for _ in first_part_len..max_undertitle_length {
+            //                     padding.push_str(boundary_type::HORIZONTAL);
+            //                 }
+            //                 let mut ret = vec![];
+            //                 ret.append(&mut left_boundary);
+            //                 ret.append(&mut first_part);
+            //                 ret.append(&mut foreground_color(&padding, self.color));
+            //                 ret.append(&mut right_boundary);
+            //                 ret
             } else {
                 self.empty_undertitle(max_undertitle_length)
             }
-//         } else {
-//             if first_part_len <= max_undertitle_length {
-//                 // render first part
-//                 let full_text_len = first_part_len;
-//                 let mut padding = String::new();
-//                 for _ in full_text_len..max_undertitle_length {
-//                     padding.push_str(boundary_type::HORIZONTAL);
-//                 }
-//                 let mut ret = vec![];
-//                 ret.append(&mut left_boundary);
-//                 ret.append(&mut first_part);
-//                 ret.append(&mut foreground_color(&padding, self.color));
-//                 ret.append(&mut right_boundary);
-//                 ret
-//             } else {
-//                 self.empty_undertitle(max_undertitle_length)
-//             }
+            //         } else {
+            //             if first_part_len <= max_undertitle_length {
+            //                 // render first part
+            //                 let full_text_len = first_part_len;
+            //                 let mut padding = String::new();
+            //                 for _ in full_text_len..max_undertitle_length {
+            //                     padding.push_str(boundary_type::HORIZONTAL);
+            //                 }
+            //                 let mut ret = vec![];
+            //                 ret.append(&mut left_boundary);
+            //                 ret.append(&mut first_part);
+            //                 ret.append(&mut foreground_color(&padding, self.color));
+            //                 ret.append(&mut right_boundary);
+            //                 ret
+            //             } else {
+            //                 self.empty_undertitle(max_undertitle_length)
+            //             }
         };
         Ok(res)
     }
@@ -884,11 +884,11 @@ impl PaneFrame {
                         let x = self.geom.x;
                         let y = self.geom.y + row;
                         character_chunks.push(CharacterChunk::new(
-                            self.render_mouse_shortcuts_undertitle().with_context(err_context)?,
+                            self.render_mouse_shortcuts_undertitle()
+                                .with_context(err_context)?,
                             x,
                             y,
                         ));
-
                     } else {
                         let mut bottom_row = vec![];
                         for col in 0..self.geom.cols {
@@ -1045,8 +1045,7 @@ impl PaneFrame {
         hover_shortcuts.append(&mut foreground_color(alt_click_tip, self.color));
         (
             hover_shortcuts,
-            alt_click_text.chars().count()
-                + alt_click_tip.chars().count()
+            alt_click_text.chars().count() + alt_click_tip.chars().count(),
         )
     }
     fn empty_undertitle(&self, max_undertitle_length: usize) -> Vec<TerminalCharacter> {

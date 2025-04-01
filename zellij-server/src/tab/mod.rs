@@ -181,7 +181,7 @@ impl MouseEffect {
         MouseEffect {
             state_changed: true,
             leave_clipboard_message: false,
-            group_pane: Some(pane_id)
+            group_pane: Some(pane_id),
         }
     }
 }
@@ -1099,7 +1099,11 @@ impl Tab {
         }
         Ok(())
     }
-    pub fn toggle_pane_embed_or_floating_for_pane_id(&mut self, pane_id: PaneId, client_id: Option<ClientId>) -> Result<()> {
+    pub fn toggle_pane_embed_or_floating_for_pane_id(
+        &mut self,
+        pane_id: PaneId,
+        client_id: Option<ClientId>,
+    ) -> Result<()> {
         let err_context = || {
             format!(
                 "failed to toggle embedded/floating pane for pane_id {:?}",
@@ -2232,7 +2236,12 @@ impl Tab {
 
         let current_pane_group: HashSet<PaneId> = { self.current_pane_group.borrow().clone() };
         self.tiled_panes
-            .render(output, self.floating_panes.panes_are_visible(), self.mouse_hover_pane_id, current_pane_group.clone())
+            .render(
+                output,
+                self.floating_panes.panes_are_visible(),
+                self.mouse_hover_pane_id,
+                current_pane_group.clone(),
+            )
             .with_context(err_context)?;
         if (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
             || self.floating_panes.has_pinned_panes()
@@ -3483,7 +3492,7 @@ impl Tab {
             match event.event_type {
                 MouseEventType::Press if event.alt => {
                     Ok(MouseEffect::group_pane(pane_id_at_position))
-                }
+                },
                 MouseEventType::Press => {
                     if pane_id_at_position == active_pane_id {
                         self.handle_active_pane_left_mouse_press(event, client_id)
@@ -4776,7 +4785,9 @@ impl Tab {
         );
     }
     fn pane_is_stacked(&self, pane_id: PaneId) -> bool {
-        self.get_pane_with_id(pane_id).map(|p| p.position_and_size().stacked.is_some()).unwrap_or(false)
+        self.get_pane_with_id(pane_id)
+            .map(|p| p.position_and_size().stacked.is_some())
+            .unwrap_or(false)
     }
 }
 

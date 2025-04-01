@@ -343,7 +343,12 @@ impl FloatingPanes {
         }
         Ok(())
     }
-    pub fn render(&mut self, output: &mut Output, mouse_hover_pane_id: Option<PaneId>, current_pane_group: HashSet<PaneId>) -> Result<()> {
+    pub fn render(
+        &mut self,
+        output: &mut Output,
+        mouse_hover_pane_id: Option<PaneId>,
+        current_pane_group: HashSet<PaneId>,
+    ) -> Result<()> {
         let err_context = || "failed to render output";
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };

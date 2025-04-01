@@ -77,7 +77,9 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::WebRequest(..) => BackgroundJobContext::WebRequest,
             BackgroundJob::ReportPluginList(..) => BackgroundJobContext::ReportPluginList,
             BackgroundJob::RenderToClients => BackgroundJobContext::ReportPluginList,
-            BackgroundJob::HighlightPanesWithMessage(..) => BackgroundJobContext::HighlightPanesWithMessage,
+            BackgroundJob::HighlightPanesWithMessage(..) => {
+                BackgroundJobContext::HighlightPanesWithMessage
+            },
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }

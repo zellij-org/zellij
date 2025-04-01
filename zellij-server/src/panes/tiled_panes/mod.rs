@@ -900,7 +900,13 @@ impl TiledPanes {
     pub fn has_panes(&self) -> bool {
         !self.panes.is_empty()
     }
-    pub fn render(&mut self, output: &mut Output, floating_panes_are_visible: bool, mouse_hover_pane_id: Option<PaneId>, current_pane_group: HashSet<PaneId>) -> Result<()> {
+    pub fn render(
+        &mut self,
+        output: &mut Output,
+        floating_panes_are_visible: bool,
+        mouse_hover_pane_id: Option<PaneId>,
+        current_pane_group: HashSet<PaneId>,
+    ) -> Result<()> {
         let err_context = || "failed to render tiled panes";
 
         let connected_clients: Vec<ClientId> =
