@@ -3587,11 +3587,30 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::CloseFocusedPane(client_id) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.close_focused_pane(client_id), ?
-                );
+                if !screen.current_pane_group.borrow().is_empty() {
+                    let mut pane_group = screen.current_pane_group.borrow().clone();
+                    if let Some(active_pane_id) = screen.get_active_tab(client_id).ok()
+                        .and_then(|t| t.get_active_pane_id(client_id)) {
+                            if !pane_group.contains(&active_pane_id) {
+                                pane_group.insert(active_pane_id);
+                            }
+                    }
+                    for id in pane_group {
+                        for tab in screen.tabs.values_mut() {
+                            if tab.get_all_pane_ids().contains(&id) {
+                                tab.close_pane(id, false);
+                            }
+                        }
+                        let _ = screen.bus.senders.send_to_pty(PtyInstruction::ClosePane(id));
+                    }
+                    screen.current_pane_group.borrow_mut().clear();
+                } else {
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, client_id: ClientId| tab.close_focused_pane(client_id), ?
+                    );
+                }
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
