@@ -846,6 +846,9 @@ impl Tab {
             .non_fatal();
         }
         self.set_force_render();
+        self.senders
+            .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
+            .with_context(|| format!("failed to apply cached resizes"))?;
         Ok(())
     }
     fn relayout_tiled_panes(&mut self, search_backwards: bool) -> Result<()> {
@@ -890,6 +893,9 @@ impl Tab {
         // we do this so that the new swap layout has a chance to pass through the constraint system
         self.tiled_panes.resize(display_area);
         self.set_should_clear_display_before_rendering();
+        self.senders
+            .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
+            .with_context(|| format!("failed to apply cached resizes"))?;
         Ok(())
     }
     pub fn previous_swap_layout(&mut self) -> Result<()> {
@@ -899,9 +905,6 @@ impl Tab {
         } else {
             self.relayout_tiled_panes(search_backwards)?;
         }
-        self.senders
-            .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
-            .with_context(|| format!("failed to update plugins with mode info"))?;
         Ok(())
     }
     pub fn next_swap_layout(&mut self) -> Result<()> {
@@ -911,9 +914,6 @@ impl Tab {
         } else {
             self.relayout_tiled_panes(search_backwards)?;
         }
-        self.senders
-            .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
-            .with_context(|| format!("failed to update plugins with mode info"))?;
         Ok(())
     }
     pub fn apply_buffered_instructions(&mut self) -> Result<()> {
@@ -1061,6 +1061,9 @@ impl Tab {
     pub fn has_no_connected_clients(&self) -> bool {
         self.connected_clients.borrow().is_empty()
     }
+    pub fn pane_id_is_floating(&self, pane_id: &PaneId) -> bool {
+        self.floating_panes.panes_contain(pane_id)
+    }
     pub fn toggle_pane_embed_or_floating(&mut self, client_id: ClientId) -> Result<()> {
         let err_context =
             || format!("failed to toggle embedded/floating pane for client {client_id}");
@@ -1096,7 +1099,7 @@ impl Tab {
         }
         Ok(())
     }
-    pub fn toggle_pane_embed_or_floating_for_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
+    pub fn toggle_pane_embed_or_floating_for_pane_id(&mut self, pane_id: PaneId, client_id: Option<ClientId>) -> Result<()> {
         let err_context = || {
             format!(
                 "failed to toggle embedded/floating pane for pane_id {:?}",
@@ -1114,7 +1117,7 @@ impl Tab {
                         format!("failed to find floating pane (ID: {pane_id:?}) to embed",)
                     })
                     .with_context(err_context)?;
-                self.add_tiled_pane(floating_pane_to_embed, pane_id, None)?;
+                self.add_tiled_pane(floating_pane_to_embed, pane_id, client_id)?;
             }
         } else if self.tiled_panes.panes_contain(&pane_id) {
             if self.get_selectable_tiled_panes().count() <= 1 {
@@ -4440,7 +4443,7 @@ impl Tab {
             // confusing and not what the user intends
             self.swap_layouts.set_is_floating_damaged(); // we do this so that we won't skip to the
                                                          // next layout
-            self.next_swap_layout()?;
+            self.relayout_floating_panes(false)?;
         }
         Ok(())
     }
@@ -4474,7 +4477,7 @@ impl Tab {
             // confusing and not what the user intends
             self.swap_layouts.set_is_tiled_damaged(); // we do this so that we won't skip to the
                                                       // next layout
-            self.next_swap_layout()?;
+            self.relayout_tiled_panes(false)?;
         }
         Ok(())
     }
