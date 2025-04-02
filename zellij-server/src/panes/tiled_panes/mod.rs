@@ -904,7 +904,7 @@ impl TiledPanes {
         &mut self,
         output: &mut Output,
         floating_panes_are_visible: bool,
-        mouse_hover_pane_id: Option<PaneId>,
+        mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
         current_pane_group: HashSet<PaneId>,
     ) -> Result<()> {
         let err_context = || "failed to render tiled panes";
@@ -957,7 +957,7 @@ impl TiledPanes {
                     pane_is_stacked_under,
                     pane_is_stacked_over,
                     should_draw_pane_frames,
-                    mouse_hover_pane_id,
+                    &mouse_hover_pane_id,
                     pane_is_in_group,
                 );
                 for client_id in &connected_clients {

@@ -346,7 +346,7 @@ impl FloatingPanes {
     pub fn render(
         &mut self,
         output: &mut Output,
-        mouse_hover_pane_id: Option<PaneId>,
+        mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
         current_pane_group: HashSet<PaneId>,
     ) -> Result<()> {
         let err_context = || "failed to render output";

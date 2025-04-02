@@ -4,7 +4,7 @@ use crate::tab::Pane;
 use crate::ui::boundaries::Boundaries;
 use crate::ui::pane_boundaries_frame::FrameParams;
 use crate::ClientId;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use zellij_utils::data::{client_id_to_colors, InputMode, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
 pub struct PaneContentsAndUi<'a> {
@@ -17,7 +17,7 @@ pub struct PaneContentsAndUi<'a> {
     pane_is_stacked_under: bool,
     pane_is_stacked_over: bool,
     should_draw_pane_frames: bool,
-    mouse_is_hovering_over_pane: bool,
+    mouse_is_hovering_over_pane_for_clients: HashSet<ClientId>,
     pane_is_in_group: bool,
 }
 
@@ -32,7 +32,7 @@ impl<'a> PaneContentsAndUi<'a> {
         pane_is_stacked_under: bool,
         pane_is_stacked_over: bool,
         should_draw_pane_frames: bool,
-        mouse_hover_pane_id: Option<PaneId>,
+        mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
         pane_is_in_group: bool,
     ) -> Self {
         let mut focused_clients: Vec<ClientId> = active_panes
@@ -41,7 +41,13 @@ impl<'a> PaneContentsAndUi<'a> {
             .map(|(c_id, _p_id)| *c_id)
             .collect();
         focused_clients.sort_unstable();
-        let mouse_is_hovering_over_pane = mouse_hover_pane_id == Some(pane.pid());
+        let mouse_is_hovering_over_pane_for_clients = mouse_hover_pane_id.iter().filter_map(|(client_id, pane_id)| {
+            if pane_id == &pane.pid() {
+                Some(*client_id)
+            } else {
+                None
+            }
+        }).collect();
         PaneContentsAndUi {
             pane,
             output,
@@ -52,7 +58,7 @@ impl<'a> PaneContentsAndUi<'a> {
             pane_is_stacked_under,
             pane_is_stacked_over,
             should_draw_pane_frames,
-            mouse_is_hovering_over_pane,
+            mouse_is_hovering_over_pane_for_clients,
             pane_is_in_group,
         }
     }
@@ -231,7 +237,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 should_draw_pane_frames: self.should_draw_pane_frames,
                 pane_is_floating,
                 content_offset: self.pane.get_content_offset(),
-                mouse_is_hovering_over_pane: self.mouse_is_hovering_over_pane,
+                mouse_is_hovering_over_pane: self.mouse_is_hovering_over_pane_for_clients.contains(&client_id),
             }
         } else {
             FrameParams {
@@ -246,7 +252,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 should_draw_pane_frames: self.should_draw_pane_frames,
                 pane_is_floating,
                 content_offset: self.pane.get_content_offset(),
-                mouse_is_hovering_over_pane: self.mouse_is_hovering_over_pane,
+                mouse_is_hovering_over_pane: self.mouse_is_hovering_over_pane_for_clients.contains(&client_id),
             }
         };
 
@@ -307,7 +313,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 },
                 _ => Some(self.style.colors.frame_highlight.base),
             }
-        } else if self.mouse_is_hovering_over_pane {
+        } else if self.mouse_is_hovering_over_pane_for_clients.contains(&client_id) {
             Some(self.style.colors.frame_highlight.base)
         } else {
             self.style.colors.frame_unselected.map(|frame| frame.base)

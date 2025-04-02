@@ -261,7 +261,7 @@ pub(crate) struct Tab {
     arrow_fonts: bool,
     styled_underlines: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
-    mouse_hover_pane_id: Option<PaneId>,
+    mouse_hover_pane_id: HashMap<ClientId, PaneId>,
     current_pane_group: Rc<RefCell<HashSet<PaneId>>>,
 }
 
@@ -763,7 +763,7 @@ impl Tab {
             styled_underlines,
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
-            mouse_hover_pane_id: None,
+            mouse_hover_pane_id: HashMap::new(),
             current_pane_group,
         }
     }
@@ -2267,7 +2267,7 @@ impl Tab {
             .render(
                 output,
                 self.floating_panes.panes_are_visible(),
-                self.mouse_hover_pane_id,
+                &self.mouse_hover_pane_id,
                 current_pane_group.clone(),
             )
             .with_context(err_context)?;
@@ -2275,7 +2275,7 @@ impl Tab {
             || self.floating_panes.has_pinned_panes()
         {
             self.floating_panes
-                .render(output, self.mouse_hover_pane_id, current_pane_group)
+                .render(output, &self.mouse_hover_pane_id, current_pane_group)
                 .with_context(err_context)?;
         }
 
@@ -3519,7 +3519,7 @@ impl Tab {
                 .pid();
             match event.event_type {
                 MouseEventType::Press if event.alt => {
-                    self.mouse_hover_pane_id = None;
+                    self.mouse_hover_pane_id.remove(&client_id);
                     Ok(MouseEffect::group_toggle(pane_id_at_position))
                 },
                 MouseEventType::Motion if event.alt => {
@@ -3540,7 +3540,7 @@ impl Tab {
         } else if event.wheel_down {
             self.handle_scrollwheel_down(&event.position, 3, client_id)
         } else if event.right && event.alt {
-            self.mouse_hover_pane_id = None;
+            self.mouse_hover_pane_id.remove(&client_id);
             Ok(MouseEffect::ungroup())
         } else if event.right {
             self.handle_right_click(&event, client_id)
@@ -3906,9 +3906,10 @@ impl Tab {
                         .with_context(err_context)?;
                     }
                 }
-                self.mouse_hover_pane_id = None;
+                self.mouse_hover_pane_id.remove(&client_id);
             } else {
-                self.mouse_hover_pane_id = Some(pane.pid());
+                let pane_id = pane.pid();
+                self.mouse_hover_pane_id.insert(client_id, pane_id);
             }
         };
         Ok(MouseEffect::leave_clipboard_message())
@@ -4108,7 +4109,7 @@ impl Tab {
             .send_to_plugin(PluginInstruction::Update(plugin_updates))
             .with_context(|| format!("failed to set visibility of tab to {visible}"))?;
         if !visible {
-            self.mouse_hover_pane_id = None;
+            self.mouse_hover_pane_id.clear();
         }
         Ok(())
     }
