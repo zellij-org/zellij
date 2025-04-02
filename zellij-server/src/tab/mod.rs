@@ -262,7 +262,7 @@ pub(crate) struct Tab {
     styled_underlines: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
-    current_pane_group: Rc<RefCell<HashSet<PaneId>>>,
+    current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -668,7 +668,7 @@ impl Tab {
         styled_underlines: bool,
         explicitly_disable_kitty_keyboard_protocol: bool,
         default_editor: Option<PathBuf>,
-        current_pane_group: Rc<RefCell<HashSet<PaneId>>>,
+        current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -2262,7 +2262,7 @@ impl Tab {
             floating_panes_stack,
         );
 
-        let current_pane_group: HashSet<PaneId> = { self.current_pane_group.borrow().clone() };
+        let current_pane_group: HashMap<ClientId, Vec<PaneId>> = { self.current_pane_group.borrow().clone() };
         self.tiled_panes
             .render(
                 output,

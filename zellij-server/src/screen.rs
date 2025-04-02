@@ -702,7 +702,7 @@ pub(crate) struct Screen {
     default_layout_name: Option<String>,
     explicitly_disable_kitty_keyboard_protocol: bool,
     default_editor: Option<PathBuf>,
-    current_pane_group: Rc<RefCell<HashSet<PaneId>>>,
+    current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
 }
 
 impl Screen {
@@ -772,7 +772,7 @@ impl Screen {
             layout_dir,
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
-            current_pane_group: Rc::new(RefCell::new(HashSet::new())),
+            current_pane_group: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
@@ -2786,6 +2786,42 @@ impl Screen {
     fn connected_clients_contains(&self, client_id: &ClientId) -> bool {
         self.connected_clients.borrow().contains(client_id)
     }
+    fn client_has_pane_group(&self, client_id: &ClientId) -> bool {
+        self.current_pane_group.borrow().get(client_id).map(|p| !p.is_empty()).unwrap_or(false)
+    }
+    fn get_client_pane_group(&self, client_id: &ClientId) -> HashSet<PaneId> {
+        self.current_pane_group
+            .borrow()
+            .get(client_id)
+            .map(|p| p.iter().copied().collect())
+            .unwrap_or_else(|| HashSet::new())
+    }
+    fn clear_pane_group(&self, client_id: &ClientId) {
+        self.current_pane_group
+            .borrow_mut()
+            .get_mut(client_id)
+            .map(|p| p.clear());
+    }
+    fn toggle_pane_id_in_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
+        let mut pane_groups = self.current_pane_group.borrow_mut();
+        let client_pane_group = pane_groups
+            .entry(*client_id)
+            .or_insert_with(|| vec![]);
+        if client_pane_group.contains(&pane_id) {
+            client_pane_group.retain(|p| p != &pane_id)
+        } else {
+            client_pane_group.push(pane_id);
+        }
+    }
+    fn add_pane_id_to_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
+        let mut pane_groups = self.current_pane_group.borrow_mut();
+        let client_pane_group = pane_groups
+            .entry(*client_id)
+            .or_insert_with(|| vec![]);
+        if !client_pane_group.contains(&pane_id) {
+            client_pane_group.push(pane_id);
+        }
+    }
 }
 
 #[cfg(not(test))]
@@ -3062,17 +3098,14 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::TogglePaneEmbedOrFloating(client_id) => {
-                if !screen.current_pane_group.borrow().is_empty() {
-                    let mut pane_group: Vec<_> =
-                        screen.current_pane_group.borrow().iter().copied().collect();
+                if screen.client_has_pane_group(&client_id) {
+                    let mut pane_group = screen.get_client_pane_group(&client_id);
                     if let Some(active_pane_id) = screen
                         .get_active_tab(client_id)
                         .ok()
                         .and_then(|t| t.get_active_pane_id(client_id))
                     {
-                        if !pane_group.contains(&active_pane_id) {
-                            pane_group.push(active_pane_id);
-                        }
+                        pane_group.insert(active_pane_id);
                     }
                     let all_tabs = screen.get_tabs_mut();
                     let mut ejected_panes_in_group = vec![];
@@ -3118,7 +3151,7 @@ pub(crate) fn screen_thread_main(
                             ),
                         );
                     }
-                    screen.current_pane_group.borrow_mut().clear();
+                    screen.clear_pane_group(&client_id);
                 } else {
                     active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| tab
                         .toggle_pane_embed_or_floating(client_id), ?);
@@ -3220,9 +3253,8 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::Resize(client_id, strategy) => {
-                if !screen.current_pane_group.borrow().is_empty() {
-                    let mut pane_group: Vec<PaneId> =
-                        screen.current_pane_group.borrow().iter().copied().collect();
+                if screen.client_has_pane_group(&client_id) {
+                    let mut pane_group: Vec<PaneId> = screen.get_client_pane_group(&client_id).into_iter().collect();
                     if let Some(active_pane_id) = screen
                         .get_active_tab(client_id)
                         .ok()
@@ -3241,7 +3273,7 @@ pub(crate) fn screen_thread_main(
                             "STACKED".to_owned(),
                         ),
                     );
-                    screen.current_pane_group.borrow_mut().clear();
+                    screen.clear_pane_group(&client_id);
                 } else {
                     active_tab_and_connected_client_id!(
                         screen,
@@ -3597,8 +3629,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::CloseFocusedPane(client_id) => {
-                if !screen.current_pane_group.borrow().is_empty() {
-                    let mut pane_group = screen.current_pane_group.borrow().clone();
+                if screen.client_has_pane_group(&client_id) {
+                    let mut pane_group = screen.get_client_pane_group(&client_id);
                     if let Some(active_pane_id) = screen
                         .get_active_tab(client_id)
                         .ok()
@@ -3619,7 +3651,7 @@ pub(crate) fn screen_thread_main(
                             .senders
                             .send_to_pty(PtyInstruction::ClosePane(id));
                     }
-                    screen.current_pane_group.borrow_mut().clear();
+                    screen.clear_pane_group(&client_id);
                 } else {
                     active_tab_and_connected_client_id!(
                         screen,
@@ -3989,19 +4021,13 @@ pub(crate) fn screen_thread_main(
                 {
                     Ok(mouse_effect) => {
                         if let Some(pane_id) = mouse_effect.group_toggle {
-                            let mut current_pane_group = screen.current_pane_group.borrow_mut();
-                            if current_pane_group.contains(&pane_id) {
-                                current_pane_group.remove(&pane_id);
-                            } else {
-                                current_pane_group.insert(pane_id);
-                            }
+                            screen.toggle_pane_id_in_group(pane_id, &client_id);
                         }
                         if let Some(pane_id) = mouse_effect.group_add {
-                            let mut current_pane_group = screen.current_pane_group.borrow_mut();
-                            current_pane_group.insert(pane_id);
+                            screen.add_pane_id_to_group(pane_id, &client_id);
                         }
                         if mouse_effect.ungroup {
-                            screen.current_pane_group.borrow_mut().clear();
+                            screen.clear_pane_group(&client_id);
                         }
                         if mouse_effect.state_changed {
                             screen.log_and_report_session_state()?;
@@ -4675,8 +4701,8 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::BreakPane(default_layout, default_shell, client_id) => {
-                if !screen.current_pane_group.borrow().is_empty() {
-                    let mut pane_group = screen.current_pane_group.borrow_mut().clone();
+                if screen.client_has_pane_group(&client_id) {
+                    let mut pane_group = screen.get_client_pane_group(&client_id);
                     if let Some(active_pane_id) = screen
                         .get_active_tab(client_id)
                         .ok()
@@ -4702,14 +4728,14 @@ pub(crate) fn screen_thread_main(
                             "BROKEN OUT".to_owned(),
                         ),
                     );
-                    screen.current_pane_group.borrow_mut().clear();
+                    screen.clear_pane_group(&client_id);
                 } else {
                     screen.break_pane(default_shell, default_layout, client_id)?;
                 }
             },
             ScreenInstruction::BreakPaneRight(client_id) => {
-                if !screen.current_pane_group.borrow().is_empty() {
-                    let mut pane_group = screen.current_pane_group.borrow_mut().clone();
+                if screen.client_has_pane_group(&client_id) {
+                    let mut pane_group = screen.get_client_pane_group(&client_id);
                     if let Some(active_pane_id) = screen
                         .get_active_tab(client_id)
                         .ok()
@@ -4735,15 +4761,15 @@ pub(crate) fn screen_thread_main(
                                 "BROKEN OUT".to_owned(),
                             ),
                         );
-                        screen.current_pane_group.borrow_mut().clear();
+                        screen.clear_pane_group(&client_id);
                     }
                 } else {
                     screen.break_pane_to_new_tab(Direction::Right, client_id)?;
                 }
             },
             ScreenInstruction::BreakPaneLeft(client_id) => {
-                if !screen.current_pane_group.borrow().is_empty() {
-                    let mut pane_group = screen.current_pane_group.borrow_mut().clone();
+                if screen.client_has_pane_group(&client_id) {
+                    let mut pane_group = screen.get_client_pane_group(&client_id);
                     if let Some(active_pane_id) = screen
                         .get_active_tab(client_id)
                         .ok()
@@ -4773,7 +4799,7 @@ pub(crate) fn screen_thread_main(
                                 "BROKEN OUT".to_owned(),
                             ),
                         );
-                        screen.current_pane_group.borrow_mut().clear();
+                        screen.clear_pane_group(&client_id);
                     }
                 } else {
                     screen.break_pane_to_new_tab(Direction::Left, client_id)?;
@@ -5088,50 +5114,14 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(pane_id) => {
-                let additional_pane_ids: Vec<_> = screen
-                    .current_pane_group
-                    .borrow()
-                    .iter()
-                    .copied()
-                    .filter(|p| p != &pane_id)
-                    .collect();
                 let all_tabs = screen.get_tabs_mut();
-                let mut ejected_panes_in_group = vec![];
-                let mut embedded_panes_in_group = vec![];
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         tab.toggle_pane_embed_or_floating_for_pane_id(pane_id, None)
                             .non_fatal();
-                    }
-                    for pane_id in &additional_pane_ids {
-                        if tab.has_pane_with_pid(&pane_id) {
-                            if tab.pane_id_is_floating(&pane_id) {
-                                embedded_panes_in_group.push(*pane_id);
-                            } else {
-                                ejected_panes_in_group.push(*pane_id);
-                            }
-                            tab.toggle_pane_embed_or_floating_for_pane_id(*pane_id, None)
-                                .non_fatal();
-                        }
+                        break;
                     }
                 }
-                if !ejected_panes_in_group.is_empty() {
-                    let _ = screen.bus.senders.send_to_background_jobs(
-                        BackgroundJob::HighlightPanesWithMessage(
-                            ejected_panes_in_group,
-                            "EJECTED".to_owned(),
-                        ),
-                    );
-                }
-                if !embedded_panes_in_group.is_empty() {
-                    let _ = screen.bus.senders.send_to_background_jobs(
-                        BackgroundJob::HighlightPanesWithMessage(
-                            embedded_panes_in_group,
-                            "EMBEDDED".to_owned(),
-                        ),
-                    );
-                }
-                screen.current_pane_group.borrow_mut().clear();
                 screen.render(None)?;
             },
             ScreenInstruction::CloseTabWithIndex(tab_index) => {

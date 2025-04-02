@@ -18,7 +18,7 @@ pub struct PaneContentsAndUi<'a> {
     pane_is_stacked_over: bool,
     should_draw_pane_frames: bool,
     mouse_is_hovering_over_pane_for_clients: HashSet<ClientId>,
-    pane_is_in_group: bool,
+    current_pane_group: HashMap<ClientId, Vec<PaneId>>,
 }
 
 impl<'a> PaneContentsAndUi<'a> {
@@ -33,7 +33,7 @@ impl<'a> PaneContentsAndUi<'a> {
         pane_is_stacked_over: bool,
         should_draw_pane_frames: bool,
         mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
-        pane_is_in_group: bool,
+        current_pane_group: HashMap<ClientId, Vec<PaneId>>
     ) -> Self {
         let mut focused_clients: Vec<ClientId> = active_panes
             .iter()
@@ -59,7 +59,7 @@ impl<'a> PaneContentsAndUi<'a> {
             pane_is_stacked_over,
             should_draw_pane_frames,
             mouse_is_hovering_over_pane_for_clients,
-            pane_is_in_group,
+            current_pane_group,
         }
     }
     pub fn render_pane_contents_to_multiple_clients(
@@ -298,7 +298,7 @@ impl<'a> PaneContentsAndUi<'a> {
         let pane_focused_for_client_id = self.focused_clients.contains(&client_id);
         if let Some(override_color) = self.pane.frame_color_override() {
             Some(override_color)
-        } else if pane_focused_for_client_id || self.pane_is_in_group {
+        } else if pane_focused_for_client_id || self.current_pane_group.get(&client_id).map(|p| p.contains(&self.pane.pid())).unwrap_or(false) {
             match mode {
                 InputMode::Normal | InputMode::Locked => {
                     if session_is_mirrored || !self.multiple_users_exist_in_session {

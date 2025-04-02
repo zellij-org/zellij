@@ -905,7 +905,7 @@ impl TiledPanes {
         output: &mut Output,
         floating_panes_are_visible: bool,
         mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
-        current_pane_group: HashSet<PaneId>,
+        current_pane_group: HashMap<ClientId, Vec<PaneId>>,
     ) -> Result<()> {
         let err_context = || "failed to render tiled panes";
 
@@ -946,7 +946,6 @@ impl TiledPanes {
                 let pane_is_stacked = pane.current_geom().is_stacked();
                 let pane_is_one_liner_in_stack =
                     pane_is_stacked && pane.current_geom().rows.is_fixed();
-                let pane_is_in_group = current_pane_group.contains(&pane.pid());
                 let mut pane_contents_and_ui = PaneContentsAndUi::new(
                     pane,
                     output,
@@ -958,7 +957,7 @@ impl TiledPanes {
                     pane_is_stacked_over,
                     should_draw_pane_frames,
                     &mouse_hover_pane_id,
-                    pane_is_in_group,
+                    current_pane_group.clone(),
                 );
                 for client_id in &connected_clients {
                     let client_mode = self

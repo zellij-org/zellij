@@ -347,7 +347,7 @@ impl FloatingPanes {
         &mut self,
         output: &mut Output,
         mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
-        current_pane_group: HashSet<PaneId>,
+        current_pane_group: HashMap<ClientId, Vec<PaneId>>,
     ) -> Result<()> {
         let err_context = || "failed to render output";
         let connected_clients: Vec<ClientId> =
@@ -388,7 +388,6 @@ impl FloatingPanes {
             let multiple_users_exist_in_session =
                 { self.connected_clients_in_app.borrow().len() > 1 };
             active_panes.retain(|c_id, _| self.connected_clients.borrow().contains(c_id));
-            let pane_is_in_group = current_pane_group.contains(&pane.pid());
             let mut pane_contents_and_ui = PaneContentsAndUi::new(
                 pane,
                 output,
@@ -400,7 +399,7 @@ impl FloatingPanes {
                 false,
                 true,
                 mouse_hover_pane_id,
-                pane_is_in_group,
+                current_pane_group.clone(),
             );
             for client_id in &connected_clients {
                 let client_mode = self
