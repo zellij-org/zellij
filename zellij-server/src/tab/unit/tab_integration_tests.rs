@@ -224,6 +224,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let current_group = Rc::new(RefCell::new(HashSet::new()));
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
@@ -256,6 +257,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        current_group,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -292,6 +294,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let current_group = Rc::new(RefCell::new(HashSet::new()));
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
@@ -324,6 +327,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        current_group,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -375,6 +379,7 @@ fn create_new_tab_with_swap_layouts(
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let current_group = Rc::new(RefCell::new(HashSet::new()));
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
@@ -407,6 +412,7 @@ fn create_new_tab_with_swap_layouts(
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        current_group,
     );
     let (
         base_layout,
@@ -459,6 +465,7 @@ fn create_new_tab_with_os_api(
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let current_group = Rc::new(RefCell::new(HashSet::new()));
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
@@ -491,6 +498,7 @@ fn create_new_tab_with_os_api(
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        current_group,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -529,6 +537,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let layout = Layout::from_str(layout, "layout_file_name".into(), None, None).unwrap();
     let (tab_layout, floating_panes_layout) = layout.new_tab();
+    let current_group = Rc::new(RefCell::new(HashSet::new()));
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
@@ -561,6 +570,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        current_group,
     );
     let pane_ids = tab_layout
         .extract_run_instructions()
@@ -613,6 +623,7 @@ fn create_new_tab_with_mock_pty_writer(
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let current_group = Rc::new(RefCell::new(HashSet::new()));
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
@@ -645,6 +656,7 @@ fn create_new_tab_with_mock_pty_writer(
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        current_group,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -688,6 +700,7 @@ fn create_new_tab_with_sixel_support(
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let current_group = Rc::new(RefCell::new(HashSet::new()));
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
@@ -720,6 +733,7 @@ fn create_new_tab_with_sixel_support(
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        current_group,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
