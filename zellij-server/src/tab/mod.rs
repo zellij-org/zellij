@@ -152,7 +152,9 @@ enum BufferedTabInstruction {
 pub struct MouseEffect {
     pub state_changed: bool,
     pub leave_clipboard_message: bool,
-    pub group_pane: Option<PaneId>,
+    pub group_toggle: Option<PaneId>,
+    pub group_add: Option<PaneId>,
+    pub ungroup: bool,
 }
 
 impl MouseEffect {
@@ -160,28 +162,54 @@ impl MouseEffect {
         MouseEffect {
             state_changed: true,
             leave_clipboard_message: false,
-            group_pane: None,
+            group_toggle: None,
+            group_add: None,
+            ungroup: false,
         }
     }
     pub fn leave_clipboard_message() -> Self {
         MouseEffect {
             state_changed: false,
             leave_clipboard_message: true,
-            group_pane: None,
+            group_toggle: None,
+            group_add: None,
+            ungroup: false,
         }
     }
     pub fn state_changed_and_leave_clipboard_message() -> Self {
         MouseEffect {
             state_changed: true,
             leave_clipboard_message: true,
-            group_pane: None,
+            group_toggle: None,
+            group_add: None,
+            ungroup: false,
         }
     }
-    pub fn group_pane(pane_id: PaneId) -> Self {
+    pub fn group_toggle(pane_id: PaneId) -> Self {
         MouseEffect {
             state_changed: true,
             leave_clipboard_message: false,
-            group_pane: Some(pane_id),
+            group_toggle: Some(pane_id),
+            group_add: None,
+            ungroup: false,
+        }
+    }
+    pub fn group_add(pane_id: PaneId) -> Self {
+        MouseEffect {
+            state_changed: true,
+            leave_clipboard_message: false,
+            group_toggle: None,
+            group_add: Some(pane_id),
+            ungroup: false,
+        }
+    }
+    pub fn ungroup() -> Self {
+        MouseEffect {
+            state_changed: true,
+            leave_clipboard_message: false,
+            group_toggle: None,
+            group_add: None,
+            ungroup: true,
         }
     }
 }
@@ -3491,8 +3519,12 @@ impl Tab {
                 .pid();
             match event.event_type {
                 MouseEventType::Press if event.alt => {
-                    Ok(MouseEffect::group_pane(pane_id_at_position))
+                    self.mouse_hover_pane_id = None;
+                    Ok(MouseEffect::group_toggle(pane_id_at_position))
                 },
+                MouseEventType::Motion if event.alt => {
+                    Ok(MouseEffect::group_add(pane_id_at_position))
+                }
                 MouseEventType::Press => {
                     if pane_id_at_position == active_pane_id {
                         self.handle_active_pane_left_mouse_press(event, client_id)
@@ -3507,6 +3539,9 @@ impl Tab {
             self.handle_scrollwheel_up(&event.position, 3, client_id)
         } else if event.wheel_down {
             self.handle_scrollwheel_down(&event.position, 3, client_id)
+        } else if event.right && event.alt {
+            self.mouse_hover_pane_id = None;
+            Ok(MouseEffect::ungroup())
         } else if event.right {
             self.handle_right_click(&event, client_id)
         } else if event.middle {
@@ -4060,7 +4095,7 @@ impl Tab {
 
         Ok(())
     }
-    pub fn visible(&self, visible: bool) -> Result<()> {
+    pub fn visible(&mut self, visible: bool) -> Result<()> {
         let pids_in_this_tab = self.tiled_panes.pane_ids().filter_map(|p| match p {
             PaneId::Plugin(pid) => Some(pid),
             _ => None,
@@ -4072,6 +4107,9 @@ impl Tab {
         self.senders
             .send_to_plugin(PluginInstruction::Update(plugin_updates))
             .with_context(|| format!("failed to set visibility of tab to {visible}"))?;
+        if !visible {
+            self.mouse_hover_pane_id = None;
+        }
         Ok(())
     }
 

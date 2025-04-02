@@ -3988,13 +3988,20 @@ pub(crate) fn screen_thread_main(
                     .and_then(|tab| tab.handle_mouse_event(&event, client_id))
                 {
                     Ok(mouse_effect) => {
-                        if let Some(pane_id) = mouse_effect.group_pane {
+                        if let Some(pane_id) = mouse_effect.group_toggle {
                             let mut current_pane_group = screen.current_pane_group.borrow_mut();
                             if current_pane_group.contains(&pane_id) {
                                 current_pane_group.remove(&pane_id);
                             } else {
                                 current_pane_group.insert(pane_id);
                             }
+                        }
+                        if let Some(pane_id) = mouse_effect.group_add {
+                            let mut current_pane_group = screen.current_pane_group.borrow_mut();
+                            current_pane_group.insert(pane_id);
+                        }
+                        if mouse_effect.ungroup {
+                            screen.current_pane_group.borrow_mut().clear();
                         }
                         if mouse_effect.state_changed {
                             screen.log_and_report_session_state()?;
