@@ -39,9 +39,10 @@ impl SelectedIndex {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct PaneItem {
     text: String,
+    id: PaneId,
 }
 
 #[derive(Debug, Default)]
@@ -65,6 +66,7 @@ impl ZellijPlugin for App {
             EventType::ModeUpdate,
             EventType::RunCommandResult,
             EventType::TabUpdate,
+            EventType::PaneUpdate,
             EventType::FailedToWriteConfigToDisk,
             EventType::ConfigWasWrittenToDisk,
         ]);
@@ -73,14 +75,20 @@ impl ZellijPlugin for App {
 
         self.is_searching = true;
 
-        // MOCK DATA
-        self.left_side_panes.push(PaneItem { text: "vim src/main.rs".to_owned() });
-        self.left_side_panes.push(PaneItem { text: "htop".to_owned() });
-        self.left_side_panes.push(PaneItem { text: "fish".to_owned() });
+//         // MOCK DATA
+//         self.left_side_panes.push(PaneItem { text: "vim src/main.rs".to_owned() });
+//         self.left_side_panes.push(PaneItem { text: "htop".to_owned() });
+//         self.left_side_panes.push(PaneItem { text: "fish".to_owned() });
     }
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
+            Event::PaneUpdate(pane_manifest) => {
+                // TODO: if selected_index.is_some() or search_string is not empty, add this to
+                //    self.pending_pane_update and do it once these conditions are ripe
+                self.update_panes(pane_manifest);
+                should_render = true;
+            }
             Event::Key(key) => {
                 match key.bare_key {
                     BareKey::Tab if key.has_no_modifiers() => {
@@ -320,11 +328,6 @@ impl ZellijPlugin for App {
         let right_side_controls_text_1 = "<←↓↑> - navigate, <Ctrl c> - clear";
         let right_side_controls_1 = Text::new(right_side_controls_text_1).color_range(3, ..=4).color_range(3, 18..=25);
 
-        if self.selected_index.is_some() {
-            print_text_with_coordinates(space_shortcut.clone(), controls_x, list_y + self.left_side_panes.len() + 2, None, None);
-            print_text_with_coordinates(escape_shortcut.clone(), controls_x + space_shortcut_text.chars().count() + 1, list_y + self.left_side_panes.len() + 2, None, None);
-        }
-
         let right_side_controls_text_2 = "<b> - break out, <s> - stack, <c> - close";
         let right_side_controls_2 = Text::new(right_side_controls_text_2).color_range(3, ..=2).color_range(3, 17..=19).color_range(3, 30..=32);
         let right_side_controls_text_3 = "<r> - break right, <l> - break left";
@@ -404,5 +407,32 @@ impl ZellijPlugin for App {
             print_text_with_coordinates(escape_shortcut, cols.saturating_sub(escape_shortcut_text.chars().count()).saturating_sub(1), 0, None, None);
         }
         print_text_with_coordinates(help_line, 0, rows, None, None);
+    }
+}
+
+impl App {
+    fn update_panes(&mut self, pane_manifest: PaneManifest) {
+
+        let mut all_panes = BTreeMap::new();
+
+        for (tab_index, pane_infos) in pane_manifest.panes {
+            for pane_info in pane_infos {
+                if pane_info.is_selectable {
+                    if pane_info.is_plugin {
+                        all_panes.insert(PaneId::Plugin(pane_info.id), pane_info);
+                    } else {
+                        all_panes.insert(PaneId::Terminal(pane_info.id), pane_info);
+                    }
+                }
+            }
+        }
+        self.left_side_panes.retain(|p| all_panes.contains_key(&p.id));
+        self.right_side_panes.retain(|p| all_panes.contains_key(&p.id));
+        for (pane_id, pane) in all_panes.into_iter() {
+            let is_known = self.left_side_panes.iter().find(|p| p.id == pane_id).is_some() || self.right_side_panes.iter().find(|p| p.id == pane_id).is_some();
+            if !is_known {
+                self.left_side_panes.push(PaneItem { text: pane.title, id: pane_id });
+            }
+        }
     }
 }
