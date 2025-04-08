@@ -140,6 +140,7 @@ enum CommandName {
   OpenFileNearPlugin = 124;
   OpenFileFloatingNearPlugin = 125;
   OpenFileInPlaceOfPlugin = 126;
+  GroupAndUngroupPanes = 127;
 }
 
 message PluginCommand {
@@ -236,7 +237,13 @@ message PluginCommand {
     OpenFileNearPluginPayload open_file_near_plugin_payload = 99;
     OpenFileFloatingNearPluginPayload open_file_floating_near_plugin_payload = 100;
     OpenFileInPlaceOfPluginPayload open_file_in_place_of_plugin_payload = 101;
+    GroupAndUngroupPanesPayload group_and_ungroup_panes_payload = 102;
   }
+}
+
+message GroupAndUngroupPanesPayload {
+  repeated PaneId pane_ids_to_group = 1;
+  repeated PaneId pane_ids_to_ungroup = 2;
 }
 
 message OpenFileInPlaceOfPluginPayload {

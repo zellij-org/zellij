@@ -408,6 +408,7 @@ pub enum ScreenInstruction {
     ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
     AddHighlightPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional
                                                                      // message
+    GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, ClientId), // panes_to_group, panes_to_ungroup
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -620,6 +621,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::AddHighlightPaneFrameColorOverride(..) => {
                 ScreenContext::AddHighlightPaneFrameColorOverride
+            },
+            ScreenInstruction::GroupAndUngroupPanes(..) => {
+                ScreenContext::GroupAndUngroupPanes
             },
         }
     }
@@ -5170,6 +5174,17 @@ pub(crate) fn screen_thread_main(
                 screen.change_floating_panes_coordinates(pane_ids_and_coordinates);
                 let _ = screen.unblock_input();
                 let _ = screen.render(None);
+            },
+            ScreenInstruction::GroupAndUngroupPanes(mut pane_ids_to_group, pane_ids_to_ungroup, client_id) => {
+                {
+                    let mut current_pane_group = screen.current_pane_group.borrow_mut();
+                    let client_pane_group = current_pane_group
+                        .entry(client_id)
+                        .or_insert_with(|| vec![]);
+                    client_pane_group.append(&mut pane_ids_to_group);
+                    client_pane_group.retain(|p| !pane_ids_to_ungroup.contains(p));
+                }
+                let _ = screen.log_and_report_session_state();
             },
         }
     }

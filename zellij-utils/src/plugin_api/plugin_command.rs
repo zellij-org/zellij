@@ -28,7 +28,7 @@ pub use super::generated_api::api::{
         SetTimeoutPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
         SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
         TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload, GroupAndUngroupPanesPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1540,6 +1540,15 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for OpenFileInPlaceOfPlugin"),
             },
+            Some(CommandName::GroupAndUngroupPanes) => match protobuf_plugin_command.payload {
+                Some(Payload::GroupAndUngroupPanesPayload(group_and_ungroup_panes_payload)) => {
+                    Ok(PluginCommand::GroupAndUngroupPanes(
+                        group_and_ungroup_panes_payload.pane_ids_to_group.into_iter().filter_map(|p| p.try_into().ok()).collect(),
+                        group_and_ungroup_panes_payload.pane_ids_to_ungroup.into_iter().filter_map(|p| p.try_into().ok()).collect()
+                    ))
+                },
+                _ => Err("Mismatched payload for GroupAndUngroupPanes"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2548,6 +2557,18 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                             .into_iter()
                             .map(|(name, value)| ContextItem { name, value })
                             .collect(),
+                    },
+                )),
+            }),
+            PluginCommand::GroupAndUngroupPanes(
+                panes_to_group,
+                panes_to_ungroup,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::GroupAndUngroupPanes as i32,
+                payload: Some(Payload::GroupAndUngroupPanesPayload(
+                    GroupAndUngroupPanesPayload {
+                        pane_ids_to_group: panes_to_group.iter().filter_map(|&p| p.try_into().ok()).collect(),
+                        pane_ids_to_ungroup: panes_to_ungroup.iter().filter_map(|&p| p.try_into().ok()).collect(),
                     },
                 )),
             }),

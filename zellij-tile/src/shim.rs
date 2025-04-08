@@ -1273,6 +1273,16 @@ pub fn change_floating_panes_coordinates(
     unsafe { host_run_plugin_command() };
 }
 
+pub fn group_and_ungroup_panes(
+    pane_ids_to_group: Vec<PaneId>,
+    pane_ids_to_ungroup: Vec<PaneId>,
+) {
+    let plugin_command = PluginCommand::GroupAndUngroupPanes(pane_ids_to_group, pane_ids_to_ungroup);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 #[allow(unused)]

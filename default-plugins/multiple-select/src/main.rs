@@ -120,8 +120,6 @@ impl ZellijPlugin for App {
                         should_render = true;
                     }
                     BareKey::Enter if key.has_no_modifiers() => {
-                        // TODO: CONTINUE HERE - test this functionality until satisfied, then test
-                        // the rest of the keybindings, then add real actions
                         if self.is_searching {
                             if let Some(mut selected_index) = self.selected_index.take() {
                                 let mut all_selected_indices: BTreeSet<usize> = selected_index.additional_selected.iter().copied().collect();
@@ -141,6 +139,7 @@ impl ZellijPlugin for App {
                                         selected_panes.push(selected_pane);
                                     }
                                 }
+                                let pane_ids_to_make_selected: Vec<PaneId> = selected_panes.iter().map(|p| p.id).collect();
                                 self.right_side_panes.append(&mut selected_panes.into_iter().rev().collect());
                                 let selecting_search_results = self.search_results.is_some();
                                 self.search_results = None;
@@ -155,15 +154,21 @@ impl ZellijPlugin for App {
                                     selected_index.additional_selected.clear();
                                     self.selected_index = Some(selected_index);
                                 }
+                                self.group_panes_in_zellij(pane_ids_to_make_selected);
                             } else {
                                 if let Some(search_results) = self.search_results.take() {
+                                    let mut pane_ids_to_make_selected = vec![];
                                     for search_result in search_results {
                                         let pane_id = search_result.id;
+                                        pane_ids_to_make_selected.push(pane_id);
                                         self.left_side_panes.retain(|p| p.id != pane_id);
                                         self.right_side_panes.push(search_result);
                                     }
+                                    self.group_panes_in_zellij(pane_ids_to_make_selected);
                                 } else {
+                                    let pane_ids_to_make_selected: Vec<PaneId> = self.left_side_panes.iter().map(|p| p.id).collect();
                                     self.right_side_panes.append(&mut self.left_side_panes);
+                                    self.group_panes_in_zellij(pane_ids_to_make_selected);
                                 }
                                 self.is_searching = false;
                                 self.search_string.clear();
@@ -175,7 +180,7 @@ impl ZellijPlugin for App {
                     }
                     BareKey::Left if key.has_no_modifiers() && !self.is_searching => {
                         if !self.is_searching {
-                            if let Some(selected_index) = self.selected_index.take() {
+                            if let Some(mut selected_index) = self.selected_index.take() {
                                 let mut all_selected_indices: BTreeSet<usize> = selected_index.additional_selected.iter().copied().collect();
                                 all_selected_indices.insert(selected_index.main_selected);
 
@@ -184,10 +189,12 @@ impl ZellijPlugin for App {
                                 let mut selected_panes = vec![];
                                 for index in all_selected_indices.iter().rev() {
                                     if self.right_side_panes.len() > *index {
-                                        let selected_pane = self.right_side_panes.remove(*index);
+                                        let mut selected_pane = self.right_side_panes.remove(*index);
+                                        selected_pane.clear();
                                         selected_panes.push(selected_pane);
                                     }
                                 }
+                                self.ungroup_panes_in_zellij(selected_panes.iter().map(|p| p.id).collect());
                                 self.left_side_panes.append(&mut selected_panes.into_iter().rev().collect());
 
                                 if self.right_side_panes.is_empty() {
@@ -196,6 +203,7 @@ impl ZellijPlugin for App {
                                 } else if selected_index.main_selected > self.right_side_panes.len().saturating_sub(1) {
                                     self.selected_index = Some(SelectedIndex::new(self.right_side_panes.len().saturating_sub(1)));
                                 } else {
+                                    selected_index.additional_selected.clear();
                                     self.selected_index = Some(selected_index);
                                 }
                                 should_render = true;
@@ -223,17 +231,18 @@ impl ZellijPlugin for App {
                                     .and_then(|selected_search_result| self.left_side_panes.iter().position(|p| p.id == selected_search_result.id))
                                     .unwrap_or(*index);
                                 if self.left_side_panes.len() > index {
-                                    let selected_pane = self.left_side_panes.remove(index);
+                                    let mut selected_pane = self.left_side_panes.remove(index);
+                                    selected_pane.clear();
                                     selected_panes.push(selected_pane);
                                 }
                             }
+                            self.group_panes_in_zellij(selected_panes.iter().map(|p| p.id).collect());
                             self.right_side_panes.append(&mut selected_panes.into_iter().rev().collect());
                             let displayed_list_len = match self.search_results.as_ref() {
                                 Some(search_results) => search_results.len(),
                                 None => self.left_side_panes.len()
                             };
 
-                            // if self.left_side_panes.is_empty() {
                             if displayed_list_len == 0 {
                                 self.selected_index = None;
                                 self.is_searching = false;
@@ -252,11 +261,13 @@ impl ZellijPlugin for App {
                         if !self.is_searching {
                             // this means we're in the selection panes part and we want to clear
                             // them
+                            let mut unselected_panes = vec![];
                             for pane_item in self.right_side_panes.iter_mut() {
                                 pane_item.clear();
-
+                                unselected_panes.push(pane_item.id);
                             }
                             self.left_side_panes.append(&mut self.right_side_panes);
+                            self.ungroup_panes_in_zellij(unselected_panes);
                         }
                         self.is_searching = true;
                         self.selected_index = None;
@@ -327,7 +338,7 @@ impl ZellijPlugin for App {
 
         let search_prompt_text = "FILTER PANES: ";
         let search_prompt = if self.is_searching { Text::new(&search_prompt_text).color_range(2, ..) } else { Text::new(&search_prompt_text) };
-        let search_string_text = format!("{}_", self.search_string);
+        let search_string_text = if self.selected_index.is_none() { format!("{}_", self.search_string) } else { format!("") };
         let search_string = Text::new(search_string_text).color_range(3, ..);
         let mut left_side_panes = vec![];
         let pane_items_on_the_left = self.search_results.as_ref().unwrap_or_else(|| &self.left_side_panes);
@@ -502,12 +513,16 @@ impl App {
                 if is_grouped_for_own_client_id {
                     if let Some(position) = self.left_side_panes.iter().position(|p| p.id == pane_id) {
                         // pane was added to a pane group outside the plugin (eg. with mouse selection)
-                        self.right_side_panes.push(self.left_side_panes.remove(position));
+                        let mut pane = self.left_side_panes.remove(position);
+                        pane.clear();
+                        self.right_side_panes.push(pane);
                     }
                 } else {
                     if let Some(position) = self.right_side_panes.iter().position(|p| p.id == pane_id) {
                         // pane was removed from a pane group outside the plugin (eg. with mouse selection)
-                        self.left_side_panes.push(self.right_side_panes.remove(position));
+                        let mut pane = self.right_side_panes.remove(position);
+                        pane.clear();
+                        self.left_side_panes.push(pane);
                     }
                 }
             }
@@ -529,5 +544,11 @@ impl App {
         } else {
             self.search_results = Some(matches.into_iter().map(|(_s, pane_item)| pane_item).collect());
         }
+    }
+    fn group_panes_in_zellij(&mut self, pane_ids: Vec<PaneId>) {
+        group_and_ungroup_panes(pane_ids, vec![]);
+    }
+    fn ungroup_panes_in_zellij(&mut self, pane_ids: Vec<PaneId>) {
+        group_and_ungroup_panes(vec![], pane_ids);
     }
 }
