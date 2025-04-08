@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * build: Don't use default features (https://github.com/zellij-org/zellij/pull/4086)
 * build: Don't re-export foreign crates (https://github.com/zellij-org/zellij/pull/4087)
 * performance(terminal): reduce render count to mitigate flickering issues in apps that don't implement synchronized renders (https://github.com/zellij-org/zellij/pull/4100)
+* fix(build): update wit/wasm-parser to get around a breaking change in the rust compiler (https://github.com/zellij-org/zellij/pull/4118)
 
 ## [0.42.1] - 2025-03-21
 * fix(mouse): fix mouse handling in windows terminal (https://github.com/zellij-org/zellij/pull/4076)
