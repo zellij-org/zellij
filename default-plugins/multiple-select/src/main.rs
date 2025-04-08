@@ -1,3 +1,6 @@
+use fuzzy_matcher::skim::SkimMatcherV2;
+use fuzzy_matcher::FuzzyMatcher;
+
 use zellij_tile::prelude::*;
 
 use std::cell::RefCell;
@@ -39,10 +42,11 @@ impl SelectedIndex {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct PaneItem {
     text: String,
     id: PaneId,
+    color_indices: Vec<usize>,
 }
 
 #[derive(Debug, Default)]
@@ -52,6 +56,7 @@ struct App {
     search_string: String,
     left_side_panes: Vec<PaneItem>,
     right_side_panes: Vec<PaneItem>,
+    search_results: Option<Vec<PaneItem>>,
     is_searching: bool,
     selected_index: Option<SelectedIndex>,
 }
@@ -98,13 +103,23 @@ impl ZellijPlugin for App {
                     }
                     BareKey::Char(character) if key.has_no_modifiers() && self.is_searching && self.selected_index.is_none() => {
                         self.search_string.push(character);
+                        self.update_search_results();
+                        // TODO: CONTINUE HERE
+                        // 1. add an update_search_term function and call it whenever we update the
+                        //    search string
+                        // 2. add a self.search_results which is an Option<Vec<PaneItem>>
+                        // 3. whenever there are self.search_results, we display them instead of
+                        //    left_side_panes and operate on them instead as well
                         should_render = true;
                     }
                     BareKey::Backspace if key.has_no_modifiers() && self.is_searching && self.selected_index.is_none() => {
                         self.search_string.pop();
+                        self.update_search_results();
                         should_render = true;
                     }
                     BareKey::Enter if key.has_no_modifiers() => {
+                        // TODO: CONTINUE HERE - test this functionality until satisfied, then test
+                        // the rest of the keybindings, then add real actions
                         if self.is_searching {
                             if let Some(selected_index) = self.selected_index.take() {
                                 let mut all_selected_indices: BTreeSet<usize> = selected_index.additional_selected.iter().copied().collect();
@@ -114,14 +129,22 @@ impl ZellijPlugin for App {
                                 // removing
                                 let mut selected_panes = vec![];
                                 for index in all_selected_indices.iter().rev() {
-                                    if self.left_side_panes.len() > *index {
-                                        let selected_pane = self.left_side_panes.remove(*index);
+                                    let index = self.search_results
+                                        .as_ref()
+                                        .and_then(|search_results| search_results.get(*index).map(|i| i.id))
+                                        .and_then(|selected_search_result_id| self.left_side_panes.iter().position(|p| p.id == selected_search_result_id))
+                                        .unwrap_or(*index);
+                                    if self.left_side_panes.len() > index {
+                                        let selected_pane = self.left_side_panes.remove(index);
                                         selected_panes.push(selected_pane);
                                     }
                                 }
                                 self.right_side_panes.append(&mut selected_panes.into_iter().rev().collect());
+                                let selecting_search_results = self.search_results.is_some();
+                                self.search_results = None;
+                                self.search_string.clear();
 
-                                if self.left_side_panes.is_empty() {
+                                if self.left_side_panes.is_empty() || selecting_search_results {
                                     self.selected_index = None;
                                     self.is_searching = false;
                                 } else if selected_index.main_selected > self.left_side_panes.len().saturating_sub(1) {
@@ -130,10 +153,19 @@ impl ZellijPlugin for App {
                                     self.selected_index = Some(selected_index);
                                 }
                             } else {
-                                self.right_side_panes.append(&mut self.left_side_panes);
+                                if let Some(search_results) = self.search_results.take() {
+                                    for search_result in search_results {
+                                        let pane_id = search_result.id;
+                                        self.left_side_panes.retain(|p| p.id != pane_id);
+                                        self.right_side_panes.push(search_result);
+                                    }
+                                } else {
+                                    self.right_side_panes.append(&mut self.left_side_panes);
+                                }
                                 self.is_searching = false;
                                 self.search_string.clear();
                                 self.selected_index = None;
+                                self.search_results = None;
                             }
                         }
                         should_render = true;
@@ -168,27 +200,46 @@ impl ZellijPlugin for App {
                         }
                     }
                     BareKey::Right if key.has_no_modifiers() && self.is_searching => {
-                        if let Some(selected_index) = self.selected_index.take() {
-                            let mut all_selected_indices: BTreeSet<usize> = selected_index.additional_selected.iter().copied().collect();
+                        if let Some(mut selected_index) = self.selected_index.take() {
+                            let mut all_selected_indices: BTreeSet<usize> = selected_index.additional_selected.drain().collect();
                             all_selected_indices.insert(selected_index.main_selected);
 
                             // reverse so that the indices will remain consistent while
                             // removing
                             let mut selected_panes = vec![];
                             for index in all_selected_indices.iter().rev() {
-                                if self.left_side_panes.len() > *index {
-                                    let selected_pane = self.left_side_panes.remove(*index);
+                                let index = self.search_results
+                                    .as_mut()
+                                    .and_then(|search_results| {
+                                        if search_results.len() > *index {
+                                            Some(search_results.remove(*index))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .and_then(|selected_search_result| self.left_side_panes.iter().position(|p| p.id == selected_search_result.id))
+                                    .unwrap_or(*index);
+                                if self.left_side_panes.len() > index {
+                                    let selected_pane = self.left_side_panes.remove(index);
                                     selected_panes.push(selected_pane);
                                 }
                             }
                             self.right_side_panes.append(&mut selected_panes.into_iter().rev().collect());
+                            let displayed_list_len = match self.search_results.as_ref() {
+                                Some(search_results) => search_results.len(),
+                                None => self.left_side_panes.len()
+                            };
 
-                            if self.left_side_panes.is_empty() {
+                            // if self.left_side_panes.is_empty() {
+                            if displayed_list_len == 0 {
                                 self.selected_index = None;
                                 self.is_searching = false;
-                            } else if selected_index.main_selected > self.left_side_panes.len().saturating_sub(1) {
-                                self.selected_index = Some(SelectedIndex::new(self.left_side_panes.len().saturating_sub(1)));
+                                self.search_string.clear();
+                                self.search_results = None;
+                            } else if selected_index.main_selected > displayed_list_len.saturating_sub(1) {
+                                self.selected_index = Some(SelectedIndex::new(displayed_list_len.saturating_sub(1)));
                             } else {
+                                selected_index.additional_selected.clear();
                                 self.selected_index = Some(selected_index);
                             }
                             should_render = true;
@@ -272,8 +323,11 @@ impl ZellijPlugin for App {
         let search_string_text = format!("{}_", self.search_string);
         let search_string = Text::new(search_string_text).color_range(3, ..);
         let mut left_side_panes = vec![];
-        for (i, pane_item) in self.left_side_panes.iter().enumerate() {
-            let mut item = NestedListItem::new(&pane_item.text).color_range(0, ..);
+        let pane_items_on_the_left = self.search_results.as_ref().unwrap_or_else(|| &self.left_side_panes);
+        for (i, pane_item) in pane_items_on_the_left.iter().enumerate() {
+            let mut item = NestedListItem::new(&pane_item.text)
+                .color_range(0, ..)
+                .color_indices(3, pane_item.color_indices.iter().copied().collect());
             if Some(i) == self.selected_index.as_ref().map(|s| s.main_selected) && self.is_searching {
                 item = item.selected();
                 if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) {
@@ -373,19 +427,19 @@ impl ZellijPlugin for App {
         if self.is_searching {
             print_text_with_coordinates(search_string, left_side_base_x + search_prompt_text.chars().count(), prompt_y, None, None);
         }
-        print_nested_list_with_coordinates(left_side_panes, left_side_base_x, list_y, Some(side_width), None);
+        print_nested_list_with_coordinates(left_side_panes.clone(), left_side_base_x, list_y, Some(side_width), None);
         if self.is_searching {
             if let Some(selected_index) = self.selected_index.as_ref().map(|i| i.main_selected) {
                 print_text_with_coordinates(Text::new(">").color_range(3, ..).selected(), left_side_base_x + 1, list_y + selected_index, None, None);
             }
         }
 
-        if self.is_searching && !self.left_side_panes.is_empty() {
+        if self.is_searching && !left_side_panes.is_empty() {
             let controls_x = 1;
-            print_text_with_coordinates(enter_stage_panes, controls_x, list_y + self.left_side_panes.len() + 1, None, None);
+            print_text_with_coordinates(enter_stage_panes, controls_x, list_y + left_side_panes.len() + 1, None, None);
             if self.selected_index.is_some() {
-                print_text_with_coordinates(space_shortcut.clone(), controls_x, list_y + self.left_side_panes.len() + 2, None, None);
-                print_text_with_coordinates(escape_shortcut.clone(), controls_x + space_shortcut_text.chars().count() + 1, list_y + self.left_side_panes.len() + 2, None, None);
+                print_text_with_coordinates(space_shortcut.clone(), controls_x, list_y + left_side_panes.len() + 2, None, None);
+                print_text_with_coordinates(escape_shortcut.clone(), controls_x + space_shortcut_text.chars().count() + 1, list_y + left_side_panes.len() + 2, None, None);
             }
         }
 
@@ -431,8 +485,25 @@ impl App {
         for (pane_id, pane) in all_panes.into_iter() {
             let is_known = self.left_side_panes.iter().find(|p| p.id == pane_id).is_some() || self.right_side_panes.iter().find(|p| p.id == pane_id).is_some();
             if !is_known {
-                self.left_side_panes.push(PaneItem { text: pane.title, id: pane_id });
+                self.left_side_panes.push(PaneItem { text: pane.title, id: pane_id, color_indices: vec![] });
             }
+        }
+    }
+    fn update_search_results(&mut self) {
+        let mut matches = vec![];
+        let matcher = SkimMatcherV2::default().use_cache(true);
+        for pane_item in &self.left_side_panes {
+            if let Some((score, indices)) = matcher.fuzzy_indices(&pane_item.text, &self.search_string) {
+                let mut pane_item = pane_item.clone();
+                pane_item.color_indices = indices;
+                matches.push((score, pane_item));
+            }
+        }
+        matches.sort_by(|(a_score, _a), (b_score, _b)| b_score.cmp(&a_score));
+        if self.search_string.is_empty() {
+            self.search_results = None;
+        } else {
+            self.search_results = Some(matches.into_iter().map(|(_s, pane_item)| pane_item).collect());
         }
     }
 }

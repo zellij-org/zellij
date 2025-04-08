@@ -2235,6 +2235,7 @@ checksum = "e5ce46fe64a9d73be07dcbe690a38ce1b293be448fd8ce1e6c1b8062c9f72c6a"
 name = "multiple-select"
 version = "0.1.0"
 dependencies = [
+ "fuzzy-matcher",
  "zellij-tile",
 ]
 
