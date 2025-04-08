@@ -58,6 +58,7 @@ impl PaneItem {
 #[derive(Debug, Default)]
 struct App {
     own_plugin_id: Option<u32>,
+    own_client_id: Option<ClientId>,
     error: Option<String>,
     search_string: String,
     left_side_panes: Vec<PaneItem>,
@@ -81,8 +82,9 @@ impl ZellijPlugin for App {
             EventType::FailedToWriteConfigToDisk,
             EventType::ConfigWasWrittenToDisk,
         ]);
-        let own_plugin_id = get_plugin_ids().plugin_id;
-        self.own_plugin_id = Some(own_plugin_id);
+        let plugin_ids = get_plugin_ids();
+        self.own_plugin_id = Some(plugin_ids.plugin_id);
+        self.own_client_id = Some(plugin_ids.client_id);
 
         self.is_searching = true;
 
@@ -489,8 +491,25 @@ impl App {
         self.right_side_panes.retain(|p| all_panes.contains_key(&p.id));
         for (pane_id, pane) in all_panes.into_iter() {
             let is_known = self.left_side_panes.iter().find(|p| p.id == pane_id).is_some() || self.right_side_panes.iter().find(|p| p.id == pane_id).is_some();
+            let is_grouped_for_own_client_id = self.own_client_id.map(|client_id| pane.is_grouped_for_clients.contains(&client_id)).unwrap_or(false);
             if !is_known {
-                self.left_side_panes.push(PaneItem { text: pane.title, id: pane_id, color_indices: vec![] });
+                if is_grouped_for_own_client_id {
+                    self.right_side_panes.push(PaneItem { text: pane.title, id: pane_id, color_indices: vec![] });
+                } else {
+                    self.left_side_panes.push(PaneItem { text: pane.title, id: pane_id, color_indices: vec![] });
+                }
+            } else {
+                if is_grouped_for_own_client_id {
+                    if let Some(position) = self.left_side_panes.iter().position(|p| p.id == pane_id) {
+                        // pane was added to a pane group outside the plugin (eg. with mouse selection)
+                        self.right_side_panes.push(self.left_side_panes.remove(position));
+                    }
+                } else {
+                    if let Some(position) = self.right_side_panes.iter().position(|p| p.id == pane_id) {
+                        // pane was removed from a pane group outside the plugin (eg. with mouse selection)
+                        self.left_side_panes.push(self.right_side_panes.remove(position));
+                    }
+                }
             }
         }
     }

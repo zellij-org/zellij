@@ -395,6 +395,8 @@ pub struct PaneInfo {
     pub plugin_url: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag="22")]
     pub is_selectable: bool,
+    #[prost(uint32, repeated, tag="23")]
+    pub is_grouped_for_clients: ::prost::alloc::vec::Vec<u32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -1733,6 +1733,8 @@ pub struct PaneInfo {
     /// Unselectable panes are often used for UI elements that do not have direct user interaction
     /// (eg. the default `status-bar` or `tab-bar`).
     pub is_selectable: bool,
+    /// Grouped panes (usually through an explicit user action) that should ideally have actions performed on them in bulk
+    pub is_grouped_for_clients: Vec<ClientId>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ClientInfo {
@@ -1763,6 +1765,7 @@ pub struct PluginIds {
     pub plugin_id: u32,
     pub zellij_pid: u32,
     pub initial_cwd: PathBuf,
+    pub client_id: ClientId,
 }
 
 /// Tag used to identify the plugin in layout and config kdl files

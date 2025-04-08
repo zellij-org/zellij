@@ -2471,10 +2471,10 @@ impl TiledPanes {
             .find(|(_id, pane)| run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with()))
             .map(|(id, _)| *id)
     }
-    pub fn pane_info(&self) -> Vec<PaneInfo> {
+    pub fn pane_info(&self, current_pane_group: &HashMap<ClientId, Vec<PaneId>>) -> Vec<PaneInfo> {
         let mut pane_infos = vec![];
         for (pane_id, pane) in self.panes.iter() {
-            let mut pane_info_for_pane = pane_info_for_pane(pane_id, pane);
+            let mut pane_info_for_pane = pane_info_for_pane(pane_id, pane, &current_pane_group);
             let is_focused = self.active_panes.pane_id_is_focused(pane_id);
             pane_info_for_pane.is_floating = false;
             pane_info_for_pane.is_suppressed = false;

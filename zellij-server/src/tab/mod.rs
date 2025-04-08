@@ -4445,12 +4445,13 @@ impl Tab {
     }
     pub fn pane_infos(&self) -> Vec<PaneInfo> {
         let mut pane_info = vec![];
-        let mut tiled_pane_info = self.tiled_panes.pane_info();
-        let mut floating_pane_info = self.floating_panes.pane_info();
+        let current_pane_group = { self.current_pane_group.borrow().clone() };
+        let mut tiled_pane_info = self.tiled_panes.pane_info(&current_pane_group);
+        let mut floating_pane_info = self.floating_panes.pane_info(&current_pane_group);
         pane_info.append(&mut tiled_pane_info);
         pane_info.append(&mut floating_pane_info);
         for (pane_id, (_is_scrollback_editor, pane)) in self.suppressed_panes.iter() {
-            let mut pane_info_for_suppressed_pane = pane_info_for_pane(pane_id, pane);
+            let mut pane_info_for_suppressed_pane = pane_info_for_pane(pane_id, pane, &current_pane_group);
             pane_info_for_suppressed_pane.is_floating = false;
             pane_info_for_suppressed_pane.is_suppressed = true;
             pane_info_for_suppressed_pane.is_focused = false;
@@ -4830,7 +4831,7 @@ impl Tab {
     }
 }
 
-pub fn pane_info_for_pane(pane_id: &PaneId, pane: &Box<dyn Pane>) -> PaneInfo {
+pub fn pane_info_for_pane(pane_id: &PaneId, pane: &Box<dyn Pane>, current_pane_group: &HashMap<ClientId, Vec<PaneId>>) -> PaneInfo {
     let mut pane_info = PaneInfo::default();
     pane_info.pane_x = pane.x();
     pane_info.pane_content_x = pane.get_content_x();
@@ -4846,6 +4847,9 @@ pub fn pane_info_for_pane(pane_id: &PaneId, pane: &Box<dyn Pane>) -> PaneInfo {
     pane_info.exited = pane.exited();
     pane_info.exit_status = pane.exit_status();
     pane_info.is_held = pane.is_held();
+    let mut is_grouped_for_clients: Vec<ClientId> = current_pane_group.iter().filter_map(|(client_id, pane_ids)| if pane_ids.contains(&pane.pid()) { Some(*client_id) } else { None } ).collect();
+    is_grouped_for_clients.sort();
+    pane_info.is_grouped_for_clients = is_grouped_for_clients;
 
     match pane_id {
         PaneId::Terminal(terminal_id) => {

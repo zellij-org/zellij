@@ -547,6 +547,7 @@ fn get_plugin_ids(env: &PluginEnv) {
         plugin_id: env.plugin_id,
         zellij_pid: process::id(),
         initial_cwd: env.plugin_cwd.clone(),
+        client_id: env.client_id,
     };
     ProtobufPluginIds::try_from(ids)
         .map_err(|e| anyhow!("Failed to serialized plugin ids: {}", e))
