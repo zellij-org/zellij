@@ -49,6 +49,12 @@ struct PaneItem {
     color_indices: Vec<usize>,
 }
 
+impl PaneItem {
+    pub fn clear(&mut self) {
+        self.color_indices.clear();
+    }
+}
+
 #[derive(Debug, Default)]
 struct App {
     own_plugin_id: Option<u32>,
@@ -104,12 +110,6 @@ impl ZellijPlugin for App {
                     BareKey::Char(character) if key.has_no_modifiers() && self.is_searching && self.selected_index.is_none() => {
                         self.search_string.push(character);
                         self.update_search_results();
-                        // TODO: CONTINUE HERE
-                        // 1. add an update_search_term function and call it whenever we update the
-                        //    search string
-                        // 2. add a self.search_results which is an Option<Vec<PaneItem>>
-                        // 3. whenever there are self.search_results, we display them instead of
-                        //    left_side_panes and operate on them instead as well
                         should_render = true;
                     }
                     BareKey::Backspace if key.has_no_modifiers() && self.is_searching && self.selected_index.is_none() => {
@@ -121,7 +121,7 @@ impl ZellijPlugin for App {
                         // TODO: CONTINUE HERE - test this functionality until satisfied, then test
                         // the rest of the keybindings, then add real actions
                         if self.is_searching {
-                            if let Some(selected_index) = self.selected_index.take() {
+                            if let Some(mut selected_index) = self.selected_index.take() {
                                 let mut all_selected_indices: BTreeSet<usize> = selected_index.additional_selected.iter().copied().collect();
                                 all_selected_indices.insert(selected_index.main_selected);
 
@@ -150,6 +150,7 @@ impl ZellijPlugin for App {
                                 } else if selected_index.main_selected > self.left_side_panes.len().saturating_sub(1) {
                                     self.selected_index = Some(SelectedIndex::new(self.left_side_panes.len().saturating_sub(1)));
                                 } else {
+                                    selected_index.additional_selected.clear();
                                     self.selected_index = Some(selected_index);
                                 }
                             } else {
@@ -249,6 +250,10 @@ impl ZellijPlugin for App {
                         if !self.is_searching {
                             // this means we're in the selection panes part and we want to clear
                             // them
+                            for pane_item in self.right_side_panes.iter_mut() {
+                                pane_item.clear();
+
+                            }
                             self.left_side_panes.append(&mut self.right_side_panes);
                         }
                         self.is_searching = true;
