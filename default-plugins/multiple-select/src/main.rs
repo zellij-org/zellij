@@ -53,6 +53,31 @@ impl PaneItem {
     pub fn clear(&mut self) {
         self.color_indices.clear();
     }
+    pub fn render(&self, max_width_for_item: usize) -> NestedListItem {
+        let pane_item_text_len = self.text.chars().count();
+        if pane_item_text_len <= max_width_for_item {
+            NestedListItem::new(&self.text)
+                .color_range(0, ..)
+                .color_indices(3, self.color_indices.iter().copied().collect())
+        } else {
+            let length_of_each_half = max_width_for_item.saturating_sub(3) / 2;
+            let first_half: String = self.text.chars().take(length_of_each_half).collect();
+            let second_half: String = self.text.chars().rev().take(length_of_each_half).collect::<Vec<_>>().iter().rev().collect();
+            let second_half_start_index = pane_item_text_len.saturating_sub(length_of_each_half);
+            let adjusted_indices: Vec<usize> = self.color_indices.iter().filter_map(|i| {
+                if i < &length_of_each_half {
+                    Some(*i)
+                } else if i >= &second_half_start_index {
+                    Some(i.saturating_sub(second_half_start_index) + length_of_each_half + 3) //3 for the bulletin
+                } else {
+                    None
+                }
+            }).collect();
+            NestedListItem::new(format!("{}...{}", first_half, second_half))
+                .color_range(0, ..)
+                .color_indices(3, adjusted_indices)
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -345,6 +370,8 @@ impl ZellijPlugin for App {
         let (tab_text, tab_shortcut) = self.tab_shortcut();
 
         let side_width = (cols / 2).saturating_sub(2).saturating_sub((tab_text.chars().count() + 1) / 2);
+        let max_left_list_height = rows.saturating_sub(8);
+        let max_right_list_height = rows.saturating_sub(11);
 
         // filter panes prompt
         let (search_prompt_text, search_prompt) = self.filter_panes_prompt();
@@ -353,7 +380,13 @@ impl ZellijPlugin for App {
         let (search_string_text, search_string) = self.search_string();
 
         // left side panes list
-        let left_side_panes = self.left_side_panes_list();
+        let (
+            extra_pane_count_on_top_left,
+            extra_pane_count_on_bottom_left,
+            extra_selected_item_count_on_top_left,
+            extra_selected_item_count_on_bottom_left,
+            left_side_panes
+        ) = self.left_side_panes_list(side_width, max_left_list_height);
 
         // left side controls
         let (
@@ -372,7 +405,14 @@ impl ZellijPlugin for App {
         let (staged_prompt_text, staged_prompt) = self.selected_panes_title();
 
         // right side panes list
-        let right_side_panes = self.right_side_panes_list();
+        let (
+            extra_pane_count_on_top_right,
+            extra_pane_count_on_bottom_right,
+            extra_selected_item_count_on_top_right,
+            extra_selected_item_count_on_bottom_right,
+            right_side_panes
+        ) = self.right_side_panes_list(side_width, max_right_list_height);
+        let right_side_pane_count = right_side_panes.len();
 
         // right side controls
 
@@ -402,9 +442,22 @@ impl ZellijPlugin for App {
         }
         print_nested_list_with_coordinates(left_side_panes.clone(), left_side_base_x, list_y, Some(side_width), None);
         if self.is_searching {
+            // TODO: fix this
             if let Some(selected_index) = self.selected_index.as_ref().map(|i| i.main_selected) {
                 print_text_with_coordinates(Text::new(">").color_range(3, ..).selected(), left_side_base_x + 1, list_y + selected_index, None, None);
             }
+        }
+        if extra_pane_count_on_top_left > 0 {
+            self.print_extra_pane_count(extra_pane_count_on_top_left, extra_selected_item_count_on_top_left, list_y.saturating_sub(1), left_side_base_x, side_width);
+        }
+        if extra_pane_count_on_bottom_left > 0 {
+            self.print_extra_pane_count(extra_pane_count_on_bottom_left, extra_selected_item_count_on_bottom_left, list_y + left_side_panes.len(), left_side_base_x, side_width);
+        }
+        if extra_pane_count_on_top_right > 0 {
+            self.print_extra_pane_count(extra_pane_count_on_top_right, extra_selected_item_count_on_top_right, list_y.saturating_sub(1), right_side_base_x, side_width);
+        }
+        if extra_pane_count_on_bottom_right > 0 {
+            self.print_extra_pane_count(extra_pane_count_on_bottom_right, extra_selected_item_count_on_bottom_right, list_y + right_side_panes.len(), right_side_base_x, side_width);
         }
 
         if self.is_searching && !left_side_panes.is_empty() {
@@ -425,10 +478,10 @@ impl ZellijPlugin for App {
         }
         if self.is_searching && !self.right_side_panes.is_empty() {
         } else if !self.is_searching && !self.right_side_panes.is_empty() {
-            print_text_with_coordinates(right_side_controls_1, right_side_base_x, list_y + self.right_side_panes.len() + 1, None, None);
-            print_text_with_coordinates(right_side_controls_2, right_side_base_x, list_y + self.right_side_panes.len() + 3, None, None);
-            print_text_with_coordinates(right_side_controls_3, right_side_base_x, list_y + self.right_side_panes.len() + 4, None, None);
-            print_text_with_coordinates(right_side_controls_4, right_side_base_x, list_y + self.right_side_panes.len() + 5, None, None);
+            print_text_with_coordinates(right_side_controls_1, right_side_base_x, list_y + right_side_pane_count + 1, None, None);
+            print_text_with_coordinates(right_side_controls_2, right_side_base_x, list_y + right_side_pane_count + 3, None, None);
+            print_text_with_coordinates(right_side_controls_3, right_side_base_x, list_y + right_side_pane_count + 4, None, None);
+            print_text_with_coordinates(right_side_controls_4, right_side_base_x, list_y + right_side_pane_count + 5, None, None);
         }
         if self.selected_index.is_none() {
             print_text_with_coordinates(escape_shortcut, cols.saturating_sub(escape_shortcut_text.chars().count()).saturating_sub(1), 0, None, None);
@@ -577,13 +630,28 @@ impl App {
         let search_string = Text::new(&search_string_text).color_range(3, ..);
         (search_string_text, search_string)
     }
-    fn left_side_panes_list(&self) -> Vec<NestedListItem> {
+    fn left_side_panes_list(&self, max_width: usize, max_list_height: usize) -> (usize, usize, usize, usize, Vec<NestedListItem>) {
+        // returns: extra_pane_count_on_top, extra_pane_count_on_bottom,
+        // extra_selected_item_count_on_top, extra_selected_item_count_on_bottom, list
         let mut left_side_panes = vec![];
         let pane_items_on_the_left = self.search_results.as_ref().unwrap_or_else(|| &self.left_side_panes);
-        for (i, pane_item) in pane_items_on_the_left.iter().enumerate() {
-            let mut item = NestedListItem::new(&pane_item.text)
-                .color_range(0, ..)
-                .color_indices(3, pane_item.color_indices.iter().copied().collect());
+        let max_width_for_item = max_width.saturating_sub(3); // 3 for the list bulletin
+        let item_count = pane_items_on_the_left.iter().count();
+        let first_item_index = if self.is_searching {
+            self
+                .selected_index
+                .as_ref()
+                .map(|s| s.main_selected.saturating_sub(max_list_height / 2))
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        let last_item_index = std::cmp::min((max_list_height + first_item_index).saturating_sub(1), item_count.saturating_sub(1));
+        for (i, pane_item) in pane_items_on_the_left.iter().enumerate().skip(first_item_index) {
+            if i > last_item_index {
+                break;
+            }
+            let mut item = pane_item.render(max_width_for_item);
             if Some(i) == self.selected_index.as_ref().map(|s| s.main_selected) && self.is_searching {
                 item = item.selected();
                 if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) {
@@ -594,7 +662,19 @@ impl App {
             }
             left_side_panes.push(item);
         }
-        left_side_panes
+        let extra_panes_on_top = first_item_index;
+        let extra_panes_on_bottom = item_count.saturating_sub(last_item_index + 1);
+        let extra_selected_item_count_on_top = if self.is_searching {
+            0
+        } else {
+            self.selected_index.as_ref().map(|s| s.additional_selected.iter().filter(|a| a < &&first_item_index).count()).unwrap_or(0)
+        };
+        let extra_selected_item_count_on_bottom = if self.is_searching {
+            self.selected_index.as_ref().map(|s| s.additional_selected.iter().filter(|a| a > &&last_item_index).count()).unwrap_or(0)
+        } else {
+            0
+        };
+        (extra_panes_on_top, extra_panes_on_bottom, extra_selected_item_count_on_top, extra_selected_item_count_on_bottom, left_side_panes)
     }
     fn left_side_controls(&self) -> (&'static str, Text, &'static str, Text, &'static str, Text) {
         // returns three components and their text
@@ -637,11 +717,28 @@ impl App {
         let staged_prompt = if self.is_searching { Text::new(staged_prompt_text) } else { Text::new(staged_prompt_text).color_range(2, ..) };
         (staged_prompt_text, staged_prompt)
     }
-    fn right_side_panes_list(&self) -> Vec<NestedListItem> {
-        // right side panes list
+    fn right_side_panes_list(&self, max_width: usize, max_list_height: usize) -> (usize, usize, usize, usize, Vec<NestedListItem>) {
+        // returns: extra_pane_count_on_top, extra_pane_count_on_bottom,
+        // extra_selected_item_count_on_top, extra_selected_item_count_on_bottom, list
         let mut right_side_panes = vec![];
-        for (i, pane_item) in self.right_side_panes.iter().enumerate() {
-            let mut item = NestedListItem::new(&pane_item.text).color_range(0, ..);
+        let item_count = self.right_side_panes.iter().count();
+        let first_item_index = if self.is_searching {
+            0
+        } else {
+            self
+                .selected_index
+                .as_ref()
+                .map(|s| s.main_selected.saturating_sub(max_list_height / 2))
+                .unwrap_or(0)
+        };
+        let last_item_index = std::cmp::min((max_list_height + first_item_index).saturating_sub(1), item_count.saturating_sub(1));
+
+        let max_width_for_item = max_width.saturating_sub(3); // 3 for the list bulletin
+        for (i, pane_item) in self.right_side_panes.iter().enumerate().skip(first_item_index) {
+            if i > last_item_index {
+                break;
+            }
+            let mut item = pane_item.render(max_width_for_item);
             if &Some(i) == &self.selected_index.as_ref().map(|s| s.main_selected) && !self.is_searching {
                 item = item.selected();
                 if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) {
@@ -652,7 +749,20 @@ impl App {
             }
             right_side_panes.push(item);
         }
-        right_side_panes
+
+        let extra_panes_on_top = first_item_index;
+        let extra_panes_on_bottom = self.right_side_panes.iter().len().saturating_sub(last_item_index + 1);
+        let extra_selected_item_count_on_top = if self.is_searching {
+            0
+        } else {
+            self.selected_index.as_ref().map(|s| s.additional_selected.iter().filter(|a| a < &&first_item_index).count()).unwrap_or(0)
+        };
+        let extra_selected_item_count_on_bottom = if self.is_searching {
+            0
+        } else {
+            self.selected_index.as_ref().map(|s| s.additional_selected.iter().filter(|a| a > &&last_item_index).count()).unwrap_or(0)
+        };
+        (extra_panes_on_top, extra_panes_on_bottom, extra_selected_item_count_on_top, extra_selected_item_count_on_bottom, right_side_panes)
     }
     fn right_side_controls(&self) -> (&'static str, Text, &'static str, Text, &'static str, Text, &'static str, Text) {
         let right_side_controls_text_1 = "<←↓↑> - navigate, <Ctrl c> - clear";
@@ -696,5 +806,14 @@ impl App {
                 print_text_with_coordinates(Text::new(BOUNDARY_CHARACTER), middle_border_x, i, None, None);
             }
         }
+    }
+    fn print_extra_pane_count(&self, count: usize, selected_count: usize, y: usize, list_x: usize, list_width: usize) {
+        let extra_count_text = if selected_count > 0 {
+            format!("[+{} ({} selected)]", count, selected_count)
+        } else {
+            format!("[+{}]", count)
+        };
+        let extra_count = Text::new(&extra_count_text).color_range(1, ..);
+        print_text_with_coordinates(extra_count, (list_x + list_width).saturating_sub(extra_count_text.chars().count()), y, None, None);
     }
 }
