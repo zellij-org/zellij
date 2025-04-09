@@ -4196,6 +4196,7 @@ pub(crate) fn screen_thread_main(
                             tab.add_highlight_pane_frame_color_override(
                                 pane_id,
                                 error_text.clone(),
+                                None,
                             );
                             break;
                         }
@@ -4208,7 +4209,7 @@ pub(crate) fn screen_thread_main(
                 for pane_id in pane_ids {
                     for tab in all_tabs.values_mut() {
                         if tab.has_pane_with_pid(&pane_id) {
-                            tab.clear_pane_frame_color_override(pane_id);
+                            tab.clear_pane_frame_color_override(pane_id, None);
                             break;
                         }
                     }

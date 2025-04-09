@@ -342,120 +342,60 @@ impl ZellijPlugin for App {
         should_render
     }
     fn render(&mut self, rows: usize, cols: usize) {
-        let tab_text = " <TAB> ";
+        let (tab_text, tab_shortcut) = self.tab_shortcut();
+
         let side_width = (cols / 2).saturating_sub(2).saturating_sub((tab_text.chars().count() + 1) / 2);
 
-        let search_prompt_text = "FILTER PANES: ";
-        let search_prompt = if self.is_searching { Text::new(&search_prompt_text).color_range(2, ..) } else { Text::new(&search_prompt_text) };
-        let search_string_text = if self.selected_index.is_none() {
-            format!("{}_", self.search_string)
-        } else if self.selected_index.is_some() && !self.search_string.is_empty() {
-            format!("{}", self.search_string)
-        } else {
-            format!("")
-        };
-        let search_string = Text::new(search_string_text).color_range(3, ..);
-        let mut left_side_panes = vec![];
-        let pane_items_on_the_left = self.search_results.as_ref().unwrap_or_else(|| &self.left_side_panes);
-        for (i, pane_item) in pane_items_on_the_left.iter().enumerate() {
-            let mut item = NestedListItem::new(&pane_item.text)
-                .color_range(0, ..)
-                .color_indices(3, pane_item.color_indices.iter().copied().collect());
-            if Some(i) == self.selected_index.as_ref().map(|s| s.main_selected) && self.is_searching {
-                item = item.selected();
-                if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) {
-                    item = item.selected().color_range(1, ..);
-                }
-            } else if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) && self.is_searching {
-                item = item.selected();
-            }
-            left_side_panes.push(item);
-        }
+        // filter panes prompt
+        let (search_prompt_text, search_prompt) = self.filter_panes_prompt();
 
-        let (enter_stage_panes_text, enter_stage_panes) = if self.selected_index.is_some() {
-            let enter_stage_panes_text = "<ENTER> - select, <↓↑> - navigate";
-            let enter_stage_panes = Text::new(enter_stage_panes_text).color_range(3, ..=6).color_range(3, 18..=21);
-            (enter_stage_panes_text, enter_stage_panes)
-        } else {
-            let enter_stage_panes_text = "<ENTER> - select all, <↓↑> - navigate";
-            let enter_stage_panes = Text::new(enter_stage_panes_text).color_range(3, ..=6).color_range(3, 21..=25);
-            (enter_stage_panes_text, enter_stage_panes)
-        };
+        // search string
+        let (search_string_text, search_string) = self.search_string();
 
-        let help_line_text = "Help: Select panes on the left, then perform operations on the right.";
-        let help_line = Text::new(help_line_text);
-        let space_shortcut_text = "<SPACE> - mark many,";
-        let space_shortcut = Text::new(space_shortcut_text).color_range(3, ..=6);
-        let (escape_shortcut_text, escape_shortcut) = if self.selected_index.is_some() {
-            let escape_shortcut_text = "<ESC> - remove marks";
-            let escape_shortcut = Text::new(escape_shortcut_text).color_range(3, ..=4);
-            (escape_shortcut_text, escape_shortcut)
-        } else {
-            let escape_shortcut_text = "<ESC> - Close";
-            let escape_shortcut = Text::new(escape_shortcut_text).color_range(3, ..=4);
-            (escape_shortcut_text, escape_shortcut)
-        };
+        // left side panes list
+        let left_side_panes = self.left_side_panes_list();
 
-        let staged_prompt_text = "SELECTED PANES: ";
-        let staged_prompt = if self.is_searching { Text::new(staged_prompt_text) } else { Text::new(staged_prompt_text).color_range(2, ..) };
-        let mut right_side_panes = vec![];
-        for (i, pane_item) in self.right_side_panes.iter().enumerate() {
-            let mut item = NestedListItem::new(&pane_item.text).color_range(0, ..);
-            if &Some(i) == &self.selected_index.as_ref().map(|s| s.main_selected) && !self.is_searching {
-                item = item.selected();
-                if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) {
-                    item = item.selected().color_range(1, ..);
-                }
-            } else if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) && !self.is_searching {
-                item = item.selected();
-            }
-            right_side_panes.push(item);
-        }
+        // left side controls
+        let (
+            enter_stage_panes_text,
+            enter_stage_panes,
+            space_shortcut_text,
+            space_shortcut,
+            escape_shortcut_text,
+            escape_shortcut
+        ) = self.left_side_controls();
 
-        let right_side_controls_text_1 = "<←↓↑> - navigate, <Ctrl c> - clear";
-        let right_side_controls_1 = Text::new(right_side_controls_text_1).color_range(3, ..=4).color_range(3, 18..=25);
+        // help line
+        let (help_line_text, help_line) = self.help_line();
 
-        let right_side_controls_text_2 = "<b> - break out, <s> - stack, <c> - close";
-        let right_side_controls_2 = Text::new(right_side_controls_text_2).color_range(3, ..=2).color_range(3, 17..=19).color_range(3, 30..=32);
-        let right_side_controls_text_3 = "<r> - break right, <l> - break left";
-        let right_side_controls_3 = Text::new(right_side_controls_text_3).color_range(3, ..=2).color_range(3, 19..=21);
+        // selected panes title
+        let (staged_prompt_text, staged_prompt) = self.selected_panes_title();
 
-        let right_side_controls_text_4 = "<Enter> - group";
-        let right_side_controls_4 = Text::new(right_side_controls_text_4).color_range(3, ..=6);
+        // right side panes list
+        let right_side_panes = self.right_side_panes_list();
+
+        // right side controls
+
+        let (
+            right_side_controls_text_1,
+            right_side_controls_1,
+            right_side_controls_text_2,
+            right_side_controls_2,
+            right_side_controls_text_3,
+            right_side_controls_3,
+            right_side_controls_text_4,
+            right_side_controls_4,
+        ) = self.right_side_controls();
 
         let left_side_base_x = 2;
         let right_side_base_x = side_width + 1 + tab_text.chars().count() + 1;
         let prompt_y = 1;
         let list_y = 3;
-
         let left_boundary_start = 0;
         let left_boundary_end = left_boundary_start + side_width + 1;
-        let tab_shortcut = Text::new(tab_text).color_range(3, ..);
-        print_text_with_coordinates(tab_shortcut, left_boundary_end + 1, 0, None, None);
-        let middle_border_x = left_boundary_end + 4;
-        for i in prompt_y..rows.saturating_sub(1) {
-            // middle border
-            if i == prompt_y && self.is_searching {
-                print_text_with_coordinates(Text::new(TOP_RIGHT_CORNER_CHARACTER), middle_border_x, i, None, None);
-                print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x.saturating_sub(1), i, None, None);
-                print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x.saturating_sub(2), i, None, None);
-            } else if i == prompt_y && !self.is_searching {
-                print_text_with_coordinates(Text::new(TOP_LEFT_CORNER_CHARACTER), middle_border_x, i, None, None);
-                print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x + 1, i, None, None);
-                print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x + 2, i, None, None);
-            } else if i == rows.saturating_sub(2) && self.is_searching {
-                print_text_with_coordinates(Text::new(BOTTOM_RIGHT_CORNER_CHARACTER), middle_border_x, i, None, None);
-                print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x.saturating_sub(1), i, None, None);
-                print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x.saturating_sub(2), i, None, None);
-            } else if i == rows.saturating_sub(2) && !self.is_searching {
-                print_text_with_coordinates(Text::new(BOTTOM_LEFT_CORNER_CHARACTER), middle_border_x, i, None, None);
-                print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x + 1, i, None, None);
-                print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x + 2, i, None, None);
-            } else {
-                print_text_with_coordinates(Text::new(BOUNDARY_CHARACTER), middle_border_x, i, None, None);
-            }
-        }
 
+        self.print_middle_border(left_boundary_end + 4, prompt_y, rows.saturating_sub(2));
+        print_text_with_coordinates(tab_shortcut, left_boundary_end + 1, 0, None, None);
         print_text_with_coordinates(search_prompt, left_side_base_x, prompt_y, None, None);
         if self.is_searching {
             print_text_with_coordinates(search_string, left_side_base_x + search_prompt_text.chars().count(), prompt_y, None, None);
@@ -611,5 +551,150 @@ impl App {
             }
         }
         highlight_and_unhighlight_panes(pane_ids_to_highlight, pane_ids_to_unhighlight);
+    }
+}
+
+// ui components
+impl App {
+    fn tab_shortcut(&self) -> (&'static str, Text) {
+        let tab_text = " <TAB> ";
+        let tab_shortcut = Text::new(tab_text).color_range(3, ..);
+        (tab_text, tab_shortcut)
+    }
+    fn filter_panes_prompt(&self) -> (&'static str, Text) {
+        let search_prompt_text = "FILTER PANES: ";
+        let search_prompt = if self.is_searching { Text::new(&search_prompt_text).color_range(2, ..) } else { Text::new(&search_prompt_text) };
+        (search_prompt_text, search_prompt)
+    }
+    fn search_string(&self) -> (String, Text) {
+        let search_string_text = if self.selected_index.is_none() {
+            format!("{}_", self.search_string)
+        } else if self.selected_index.is_some() && !self.search_string.is_empty() {
+            format!("{}", self.search_string)
+        } else {
+            format!("")
+        };
+        let search_string = Text::new(&search_string_text).color_range(3, ..);
+        (search_string_text, search_string)
+    }
+    fn left_side_panes_list(&self) -> Vec<NestedListItem> {
+        let mut left_side_panes = vec![];
+        let pane_items_on_the_left = self.search_results.as_ref().unwrap_or_else(|| &self.left_side_panes);
+        for (i, pane_item) in pane_items_on_the_left.iter().enumerate() {
+            let mut item = NestedListItem::new(&pane_item.text)
+                .color_range(0, ..)
+                .color_indices(3, pane_item.color_indices.iter().copied().collect());
+            if Some(i) == self.selected_index.as_ref().map(|s| s.main_selected) && self.is_searching {
+                item = item.selected();
+                if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) {
+                    item = item.selected().color_range(1, ..);
+                }
+            } else if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) && self.is_searching {
+                item = item.selected();
+            }
+            left_side_panes.push(item);
+        }
+        left_side_panes
+    }
+    fn left_side_controls(&self) -> (&'static str, Text, &'static str, Text, &'static str, Text) {
+        // returns three components and their text
+        let (enter_stage_panes_text, enter_stage_panes) = if self.selected_index.is_some() {
+            let enter_stage_panes_text = "<ENTER> - select, <↓↑> - navigate";
+            let enter_stage_panes = Text::new(enter_stage_panes_text).color_range(3, ..=6).color_range(3, 18..=21);
+            (enter_stage_panes_text, enter_stage_panes)
+        } else {
+            let enter_stage_panes_text = "<ENTER> - select all, <↓↑> - navigate";
+            let enter_stage_panes = Text::new(enter_stage_panes_text).color_range(3, ..=6).color_range(3, 21..=25);
+            (enter_stage_panes_text, enter_stage_panes)
+        };
+        let space_shortcut_text = "<SPACE> - mark many,";
+        let space_shortcut = Text::new(space_shortcut_text).color_range(3, ..=6);
+        let (escape_shortcut_text, escape_shortcut) = if self.selected_index.is_some() {
+            let escape_shortcut_text = "<ESC> - remove marks";
+            let escape_shortcut = Text::new(escape_shortcut_text).color_range(3, ..=4);
+            (escape_shortcut_text, escape_shortcut)
+        } else {
+            let escape_shortcut_text = "<ESC> - Close";
+            let escape_shortcut = Text::new(escape_shortcut_text).color_range(3, ..=4);
+            (escape_shortcut_text, escape_shortcut)
+        };
+        (
+            enter_stage_panes_text,
+            enter_stage_panes,
+            space_shortcut_text,
+            space_shortcut,
+            escape_shortcut_text,
+            escape_shortcut
+        )
+    }
+    fn help_line(&self) -> (&'static str, Text) {
+        let help_line_text = "Help: Select panes on the left, then perform operations on the right.";
+        let help_line = Text::new(help_line_text);
+        (help_line_text, help_line)
+    }
+    fn selected_panes_title(&self) -> (&'static str, Text) {
+        let staged_prompt_text = "SELECTED PANES: ";
+        let staged_prompt = if self.is_searching { Text::new(staged_prompt_text) } else { Text::new(staged_prompt_text).color_range(2, ..) };
+        (staged_prompt_text, staged_prompt)
+    }
+    fn right_side_panes_list(&self) -> Vec<NestedListItem> {
+        // right side panes list
+        let mut right_side_panes = vec![];
+        for (i, pane_item) in self.right_side_panes.iter().enumerate() {
+            let mut item = NestedListItem::new(&pane_item.text).color_range(0, ..);
+            if &Some(i) == &self.selected_index.as_ref().map(|s| s.main_selected) && !self.is_searching {
+                item = item.selected();
+                if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) {
+                    item = item.selected().color_range(1, ..);
+                }
+            } else if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) && !self.is_searching {
+                item = item.selected();
+            }
+            right_side_panes.push(item);
+        }
+        right_side_panes
+    }
+    fn right_side_controls(&self) -> (&'static str, Text, &'static str, Text, &'static str, Text, &'static str, Text) {
+        let right_side_controls_text_1 = "<←↓↑> - navigate, <Ctrl c> - clear";
+        let right_side_controls_1 = Text::new(right_side_controls_text_1).color_range(3, ..=4).color_range(3, 18..=25);
+        let right_side_controls_text_2 = "<b> - break out, <s> - stack, <c> - close";
+        let right_side_controls_2 = Text::new(right_side_controls_text_2).color_range(3, ..=2).color_range(3, 17..=19).color_range(3, 30..=32);
+        let right_side_controls_text_3 = "<r> - break right, <l> - break left";
+        let right_side_controls_3 = Text::new(right_side_controls_text_3).color_range(3, ..=2).color_range(3, 19..=21);
+        let right_side_controls_text_4 = "<Enter> - group";
+        let right_side_controls_4 = Text::new(right_side_controls_text_4).color_range(3, ..=6);
+        (
+            right_side_controls_text_1,
+            right_side_controls_1,
+            right_side_controls_text_2,
+            right_side_controls_2,
+            right_side_controls_text_3,
+            right_side_controls_3,
+            right_side_controls_text_4,
+            right_side_controls_4,
+        )
+    }
+    fn print_middle_border(&self, middle_border_x: usize, middle_border_y: usize, middle_border_height: usize) {
+        for i in middle_border_y..=middle_border_height {
+            if i == middle_border_y && self.is_searching {
+                print_text_with_coordinates(Text::new(TOP_RIGHT_CORNER_CHARACTER), middle_border_x, i, None, None);
+                print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x.saturating_sub(1), i, None, None);
+                print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x.saturating_sub(2), i, None, None);
+            } else if i == middle_border_y && !self.is_searching {
+                print_text_with_coordinates(Text::new(TOP_LEFT_CORNER_CHARACTER), middle_border_x, i, None, None);
+                print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x + 1, i, None, None);
+                print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x + 2, i, None, None);
+            } else if i == middle_border_height && self.is_searching {
+                print_text_with_coordinates(Text::new(BOTTOM_RIGHT_CORNER_CHARACTER), middle_border_x, i, None, None);
+                print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x.saturating_sub(1), i, None, None);
+                print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x.saturating_sub(2), i, None, None);
+            } else if i == middle_border_height && !self.is_searching {
+                print_text_with_coordinates(Text::new(BOTTOM_LEFT_CORNER_CHARACTER), middle_border_x, i, None, None);
+                print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x + 1, i, None, None);
+                print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x + 2, i, None, None);
+            } else {
+                print_text_with_coordinates(Text::new(BOUNDARY_CHARACTER), middle_border_x, i, None, None);
+            }
+        }
     }
 }
