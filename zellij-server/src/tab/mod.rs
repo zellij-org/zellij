@@ -566,8 +566,8 @@ pub trait Pane {
         // No-op by default, only terminal panes support holding
     }
     fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>);
-    fn add_highlight_pane_frame_color_override(&mut self, _text: Option<String>) {}
-    fn clear_pane_frame_color_override(&mut self);
+    fn add_highlight_pane_frame_color_override(&mut self, _text: Option<String>, _client_id: Option<ClientId>) {}
+    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>);
     fn frame_color_override(&self) -> Option<PaletteColor>;
     fn invoked_with(&self) -> &Option<Run>;
     fn set_title(&mut self, title: String);
@@ -4279,6 +4279,7 @@ impl Tab {
         &mut self,
         pane_id: PaneId,
         error_text: Option<String>,
+        client_id: Option<ClientId>,
     ) {
         if let Some(pane) = self
             .tiled_panes
@@ -4291,10 +4292,10 @@ impl Tab {
                     .map(|s_p| &mut s_p.1)
             })
         {
-            pane.add_highlight_pane_frame_color_override(error_text);
+            pane.add_highlight_pane_frame_color_override(error_text, client_id);
         }
     }
-    pub fn clear_pane_frame_color_override(&mut self, pane_id: PaneId) {
+    pub fn clear_pane_frame_color_override(&mut self, pane_id: PaneId, client_id: Option<ClientId>) {
         if let Some(pane) = self
             .tiled_panes
             .get_pane_mut(pane_id)
@@ -4306,7 +4307,7 @@ impl Tab {
                     .map(|s_p| &mut s_p.1)
             })
         {
-            pane.clear_pane_frame_color_override();
+            pane.clear_pane_frame_color_override(client_id);
         }
     }
     pub fn update_plugin_loading_stage(&mut self, pid: u32, loading_indication: LoadingIndication) {

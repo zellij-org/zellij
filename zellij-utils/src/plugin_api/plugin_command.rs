@@ -28,7 +28,7 @@ pub use super::generated_api::api::{
         SetTimeoutPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
         SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
         TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload, GroupAndUngroupPanesPayload
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload, GroupAndUngroupPanesPayload, HighlightAndUnhighlightPanesPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1549,6 +1549,15 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for GroupAndUngroupPanes"),
             },
+            Some(CommandName::HighlightAndUnhighlightPanes) => match protobuf_plugin_command.payload {
+                Some(Payload::HighlightAndUnhighlightPanesPayload(highlight_and_unhighlight_panes_payload)) => {
+                    Ok(PluginCommand::HighlightAndUnhighlightPanes(
+                        highlight_and_unhighlight_panes_payload.pane_ids_to_highlight.into_iter().filter_map(|p| p.try_into().ok()).collect(),
+                        highlight_and_unhighlight_panes_payload.pane_ids_to_unhighlight.into_iter().filter_map(|p| p.try_into().ok()).collect()
+                    ))
+                },
+                _ => Err("Mismatched payload for HighlightAndUnhighlightPanes"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2569,6 +2578,18 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     GroupAndUngroupPanesPayload {
                         pane_ids_to_group: panes_to_group.iter().filter_map(|&p| p.try_into().ok()).collect(),
                         pane_ids_to_ungroup: panes_to_ungroup.iter().filter_map(|&p| p.try_into().ok()).collect(),
+                    },
+                )),
+            }),
+            PluginCommand::HighlightAndUnhighlightPanes(
+                panes_to_highlight,
+                panes_to_unhighlight,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::HighlightAndUnhighlightPanes as i32,
+                payload: Some(Payload::HighlightAndUnhighlightPanesPayload(
+                    HighlightAndUnhighlightPanesPayload {
+                        pane_ids_to_highlight: panes_to_highlight.iter().filter_map(|&p| p.try_into().ok()).collect(),
+                        pane_ids_to_unhighlight: panes_to_unhighlight.iter().filter_map(|&p| p.try_into().ok()).collect(),
                     },
                 )),
             }),

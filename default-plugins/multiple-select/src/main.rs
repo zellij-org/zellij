@@ -107,6 +107,7 @@ impl ZellijPlugin for App {
                     BareKey::Tab if key.has_no_modifiers() => {
                         self.is_searching = !self.is_searching;
                         self.selected_index = None;
+                        self.update_highlighted_panes();
                         should_render = true;
                     }
                     BareKey::Char(character) if key.has_no_modifiers() && self.is_searching && self.selected_index.is_none() => {
@@ -154,6 +155,7 @@ impl ZellijPlugin for App {
                                     selected_index.additional_selected.clear();
                                     self.selected_index = Some(selected_index);
                                 }
+                                self.update_highlighted_panes();
                                 self.group_panes_in_zellij(pane_ids_to_make_selected);
                             } else {
                                 if let Some(search_results) = self.search_results.take() {
@@ -174,6 +176,7 @@ impl ZellijPlugin for App {
                                 self.search_string.clear();
                                 self.selected_index = None;
                                 self.search_results = None;
+                                self.update_highlighted_panes();
                             }
                         }
                         should_render = true;
@@ -207,6 +210,7 @@ impl ZellijPlugin for App {
                                     self.selected_index = Some(selected_index);
                                 }
                                 should_render = true;
+                                self.update_highlighted_panes();
                             }
                         }
                     }
@@ -254,6 +258,7 @@ impl ZellijPlugin for App {
                                 selected_index.additional_selected.clear();
                                 self.selected_index = Some(selected_index);
                             }
+                            self.update_highlighted_panes();
                             should_render = true;
                         }
                     }
@@ -288,6 +293,7 @@ impl ZellijPlugin for App {
                                 self.selected_index = Some(SelectedIndex::new(0));
                             }
                         }
+                        self.update_highlighted_panes();
                         should_render = true;
                     }
                     BareKey::Up if key.has_no_modifiers() => {
@@ -309,17 +315,20 @@ impl ZellijPlugin for App {
                                 }
                             }
                         }
+                        self.update_highlighted_panes();
                         should_render = true;
                     }
                     BareKey::Char(' ') if key.has_no_modifiers() && self.selected_index.is_some() => {
                         if let Some(selected_index) = self.selected_index.as_mut() {
                             selected_index.toggle_additional_mark();
+                            self.update_highlighted_panes();
                             should_render = true;
                         }
                     }
                     BareKey::Esc if key.has_no_modifiers() => {
                         if self.selected_index.is_some() {
                             self.selected_index = None;
+                            self.update_highlighted_panes();
                         } else {
                             close_self();
                         }
@@ -338,7 +347,13 @@ impl ZellijPlugin for App {
 
         let search_prompt_text = "FILTER PANES: ";
         let search_prompt = if self.is_searching { Text::new(&search_prompt_text).color_range(2, ..) } else { Text::new(&search_prompt_text) };
-        let search_string_text = if self.selected_index.is_none() { format!("{}_", self.search_string) } else { format!("") };
+        let search_string_text = if self.selected_index.is_none() {
+            format!("{}_", self.search_string)
+        } else if self.selected_index.is_some() && !self.search_string.is_empty() {
+            format!("{}", self.search_string)
+        } else {
+            format!("")
+        };
         let search_string = Text::new(search_string_text).color_range(3, ..);
         let mut left_side_panes = vec![];
         let pane_items_on_the_left = self.search_results.as_ref().unwrap_or_else(|| &self.left_side_panes);
@@ -550,5 +565,51 @@ impl App {
     }
     fn ungroup_panes_in_zellij(&mut self, pane_ids: Vec<PaneId>) {
         group_and_ungroup_panes(vec![], pane_ids);
+    }
+    fn update_highlighted_panes(&self) {
+        let mut pane_ids_to_highlight = vec![];
+        let mut pane_ids_to_unhighlight = vec![];
+        if let Some(selected_index) = &self.selected_index {
+            if self.is_searching {
+                if let Some(main_selected_pane_id) = self.search_results
+                    .as_ref()
+                    .and_then(|s| s.get(selected_index.main_selected))
+                    .or_else(|| self.left_side_panes.get(selected_index.main_selected))
+                    .map(|p| p.id)
+                {
+                    pane_ids_to_highlight.push(main_selected_pane_id);
+                }
+                for index in &selected_index.additional_selected {
+                    if let Some(pane_id) = self.search_results
+                        .as_ref()
+                        .and_then(|s| s.get(*index))
+                        .or_else(|| self.left_side_panes.get(*index))
+                        .map(|p| p.id)
+                    {
+                        pane_ids_to_highlight.push(pane_id);
+                    }
+                }
+            } else {
+                if let Some(main_selected_pane_id) = self.right_side_panes.get(selected_index.main_selected).map(|p| p.id) {
+                    pane_ids_to_highlight.push(main_selected_pane_id);
+                }
+                for index in &selected_index.additional_selected {
+                    if let Some(pane_id) = self.right_side_panes.get(*index).map(|p| p.id) {
+                        pane_ids_to_highlight.push(pane_id);
+                    }
+                }
+            }
+        }
+        for pane in &self.left_side_panes {
+            if !pane_ids_to_highlight.contains(&pane.id) {
+                pane_ids_to_unhighlight.push(pane.id);
+            }
+        }
+        for pane in &self.right_side_panes {
+            if !pane_ids_to_highlight.contains(&pane.id) {
+                pane_ids_to_unhighlight.push(pane.id);
+            }
+        }
+        highlight_and_unhighlight_panes(pane_ids_to_highlight, pane_ids_to_unhighlight);
     }
 }

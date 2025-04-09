@@ -377,6 +377,7 @@ pub enum ScreenContext {
     ChangeFloatingPanesCoordinates,
     AddHighlightPaneFrameColorOverride,
     GroupAndUngroupPanes,
+    HighlightAndUnhighlightPanes,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

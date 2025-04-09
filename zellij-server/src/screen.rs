@@ -409,6 +409,7 @@ pub enum ScreenInstruction {
     AddHighlightPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional
                                                                      // message
     GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, ClientId), // panes_to_group, panes_to_ungroup
+    HighlightAndUnhighlightPanes(Vec<PaneId>, Vec<PaneId>, ClientId), // panes_to_highlight, panes_to_unhighlight
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -624,6 +625,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::GroupAndUngroupPanes(..) => {
                 ScreenContext::GroupAndUngroupPanes
+            },
+            ScreenInstruction::HighlightAndUnhighlightPanes(..) => {
+                ScreenContext::HighlightAndUnhighlightPanes
             },
         }
     }
@@ -5183,6 +5187,34 @@ pub(crate) fn screen_thread_main(
                         .or_insert_with(|| vec![]);
                     client_pane_group.append(&mut pane_ids_to_group);
                     client_pane_group.retain(|p| !pane_ids_to_ungroup.contains(p));
+                }
+                let _ = screen.log_and_report_session_state();
+            },
+            ScreenInstruction::HighlightAndUnhighlightPanes(pane_ids_to_highlight, pane_ids_to_unhighlight, client_id) => {
+                {
+                    let all_tabs = screen.get_tabs_mut();
+                    for pane_id in pane_ids_to_highlight {
+                        for tab in all_tabs.values_mut() {
+                            if tab.has_pane_with_pid(&pane_id) {
+                                tab.add_highlight_pane_frame_color_override(
+                                    pane_id,
+                                    None,
+                                    Some(client_id),
+                                );
+                            }
+                        }
+                    }
+                    for pane_id in pane_ids_to_unhighlight {
+                        for tab in all_tabs.values_mut() {
+                            if tab.has_pane_with_pid(&pane_id) {
+                                tab.clear_pane_frame_color_override(
+                                    pane_id,
+                                    Some(client_id),
+                                );
+                            }
+                        }
+                    }
+                    screen.render(None)?;
                 }
                 let _ = screen.log_and_report_session_state();
             },

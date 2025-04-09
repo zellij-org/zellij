@@ -646,7 +646,8 @@ impl Pane for PluginPane {
     fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) {
         self.pane_frame_color_override = Some((self.style.colors.exit_code_error.base, error_text));
     }
-    fn clear_pane_frame_color_override(&mut self) {
+    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) {
+        // TODO: if we have a client_id, we should only clear the highlight for this client
         self.pane_frame_color_override = None;
     }
     fn frame_color_override(&self) -> Option<PaletteColor> {

@@ -439,6 +439,14 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         panes_to_group.into_iter().map(|p| p.into()).collect(),
                         panes_to_ungroup.into_iter().map(|p| p.into()).collect(),
                     ),
+                    PluginCommand::HighlightAndUnhighlightPanes(
+                        panes_to_highlight,
+                        panes_to_unhighlight,
+                    ) => highlight_and_unhighlight_panes(
+                        env,
+                        panes_to_highlight.into_iter().map(|p| p.into()).collect(),
+                        panes_to_unhighlight.into_iter().map(|p| p.into()).collect(),
+                    ),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -2163,6 +2171,14 @@ fn group_and_ungroup_panes(
 ) {
     let _ = env.senders.send_to_screen(ScreenInstruction::GroupAndUngroupPanes(panes_to_group, panes_to_ungroup, env.client_id));
 }
+
+fn highlight_and_unhighlight_panes(
+    env: &PluginEnv,
+    panes_to_highlight: Vec<PaneId>,
+    panes_to_unhighlight: Vec<PaneId>,
+) {
+    let _ = env.senders.send_to_screen(ScreenInstruction::HighlightAndUnhighlightPanes(panes_to_highlight, panes_to_unhighlight, env.client_id));
+}
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -2325,6 +2341,7 @@ fn check_command_permission(
         | PluginCommand::StackPanes(..)
         | PluginCommand::ChangeFloatingPanesCoordinates(..)
         | PluginCommand::GroupAndUngroupPanes(..)
+        | PluginCommand::HighlightAndUnhighlightPanes(..)
         | PluginCommand::KillSessions(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
