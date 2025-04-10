@@ -5150,6 +5150,17 @@ pub(crate) fn screen_thread_main(
                     new_tab_name,
                     client_id,
                 )?;
+                // TODO: is this a race?
+                let pane_group = screen.get_client_pane_group(&client_id);
+                if !pane_group.is_empty() {
+                    let _ = screen.bus.senders.send_to_background_jobs(
+                        BackgroundJob::HighlightPanesWithMessage(
+                            pane_group.iter().copied().collect(),
+                            "BROKEN OUT".to_owned(),
+                        ),
+                    );
+                }
+                screen.clear_pane_group(&client_id);
             },
             ScreenInstruction::BreakPanesToTabWithIndex {
                 pane_ids,

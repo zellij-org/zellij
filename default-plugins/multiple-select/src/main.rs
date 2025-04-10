@@ -86,6 +86,7 @@ struct App {
     own_client_id: Option<ClientId>,
     error: Option<String>,
     search_string: String,
+    previous_search_string: String, // used eg. for the new tab title when breaking panes
     left_side_panes: Vec<PaneItem>,
     right_side_panes: Vec<PaneItem>,
     search_results: Option<Vec<PaneItem>>,
@@ -174,7 +175,7 @@ impl ZellijPlugin for App {
                                 self.right_side_panes.append(&mut selected_panes.into_iter().rev().collect());
                                 let selecting_search_results = self.search_results.is_some();
                                 self.search_results = None;
-                                self.search_string.clear();
+                                self.previous_search_string = self.search_string.drain(..).collect();
 
                                 if self.left_side_panes.is_empty() || selecting_search_results {
                                     self.selected_index = None;
@@ -203,7 +204,7 @@ impl ZellijPlugin for App {
                                     self.group_panes_in_zellij(pane_ids_to_make_selected);
                                 }
                                 self.is_searching = false;
-                                self.search_string.clear();
+                                self.previous_search_string = self.search_string.drain(..).collect();
                                 self.selected_index = None;
                                 self.search_results = None;
                                 self.update_highlighted_panes();
@@ -354,6 +355,20 @@ impl ZellijPlugin for App {
                             self.update_highlighted_panes();
                             should_render = true;
                         }
+                    }
+                    BareKey::Char('b') if key.has_no_modifiers() && !self.is_searching => {
+                        let pane_ids_to_break_to_new_tab: Vec<PaneId> = self
+                            .right_side_panes
+                            .iter()
+                            .map(|p| p.id)
+                            .collect();
+                        let title_for_new_tab = if !self.previous_search_string.is_empty() {
+                            Some(self.previous_search_string.clone())
+                        } else {
+                            None
+                        };
+                        break_panes_to_new_tab(&pane_ids_to_break_to_new_tab, title_for_new_tab, true);
+                        close_self();
                     }
                     BareKey::Esc if key.has_no_modifiers() => {
                         if self.selected_index.is_some() {
