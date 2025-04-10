@@ -142,6 +142,7 @@ enum CommandName {
   OpenFileInPlaceOfPlugin = 126;
   GroupAndUngroupPanes = 127;
   HighlightAndUnhighlightPanes = 128;
+  CloseMultiplePanes = 129;
 }
 
 message PluginCommand {
@@ -240,7 +241,12 @@ message PluginCommand {
     OpenFileInPlaceOfPluginPayload open_file_in_place_of_plugin_payload = 101;
     GroupAndUngroupPanesPayload group_and_ungroup_panes_payload = 102;
     HighlightAndUnhighlightPanesPayload highlight_and_unhighlight_panes_payload = 103;
+    CloseMultiplePanesPayload close_multiple_panes_payload = 104;
   }
+}
+
+message CloseMultiplePanesPayload {
+  repeated PaneId pane_ids = 1;
 }
 
 message HighlightAndUnhighlightPanesPayload {

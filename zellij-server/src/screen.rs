@@ -5174,6 +5174,16 @@ pub(crate) fn screen_thread_main(
                     should_change_focus_to_new_tab,
                     client_id,
                 )?;
+                let pane_group = screen.get_client_pane_group(&client_id);
+                if !pane_group.is_empty() {
+                    let _ = screen.bus.senders.send_to_background_jobs(
+                        BackgroundJob::HighlightPanesWithMessage(
+                            pane_group.iter().copied().collect(),
+                            "BROKEN OUT".to_owned(),
+                        ),
+                    );
+                }
+                screen.clear_pane_group(&client_id);
             },
             ScreenInstruction::TogglePanePinned(client_id) => {
                 screen.toggle_pane_pinned(client_id);

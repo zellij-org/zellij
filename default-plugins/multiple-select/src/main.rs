@@ -84,6 +84,8 @@ impl PaneItem {
 struct App {
     own_plugin_id: Option<u32>,
     own_client_id: Option<ClientId>,
+    own_tab_index: Option<usize>,
+    total_tabs_in_session: Option<usize>,
     error: Option<String>,
     search_string: String,
     previous_search_string: String, // used eg. for the new tab title when breaking panes
@@ -125,6 +127,7 @@ impl ZellijPlugin for App {
             Event::PaneUpdate(pane_manifest) => {
                 // TODO: if selected_index.is_some() or search_string is not empty, add this to
                 //    self.pending_pane_update and do it once these conditions are ripe
+                self.update_tab_info(&pane_manifest);
                 self.update_panes(pane_manifest);
                 if self.right_side_panes.is_empty() {
                     self.is_searching = true;
@@ -379,6 +382,75 @@ impl ZellijPlugin for App {
                         stack_panes(pane_ids_to_stack);
                         close_self();
                     }
+                    BareKey::Char('r') if key.has_no_modifiers() && !self.is_searching => {
+                        if let Some(own_tab_index) = self.own_tab_index {
+                            if Some(own_tab_index + 1) < self.total_tabs_in_session {
+                                let pane_ids_to_break_right: Vec<PaneId> = self
+                                    .right_side_panes
+                                    .iter()
+                                    .map(|p| p.id)
+                                    .collect();
+                                break_panes_to_tab_with_index(
+                                    &pane_ids_to_break_right,
+                                    own_tab_index + 1,
+                                    true
+                                );
+                            } else {
+                                let pane_ids_to_break_to_new_tab: Vec<PaneId> = self
+                                    .right_side_panes
+                                    .iter()
+                                    .map(|p| p.id)
+                                    .collect();
+                                let title_for_new_tab = if !self.previous_search_string.is_empty() {
+                                    Some(self.previous_search_string.clone())
+                                } else {
+                                    None
+                                };
+                                break_panes_to_new_tab(&pane_ids_to_break_to_new_tab, title_for_new_tab, true);
+                            }
+                            close_self();
+                        }
+                    }
+                    BareKey::Char('l') if key.has_no_modifiers() && !self.is_searching => {
+                        if let Some(own_tab_index) = self.own_tab_index {
+                            if own_tab_index > 0 {
+                                let pane_ids_to_break_left: Vec<PaneId> = self
+                                    .right_side_panes
+                                    .iter()
+                                    .map(|p| p.id)
+                                    .collect();
+                                break_panes_to_tab_with_index(
+                                    &pane_ids_to_break_left,
+                                    own_tab_index.saturating_sub(1),
+                                    true
+                                );
+                            } else {
+                                let pane_ids_to_break_to_new_tab: Vec<PaneId> = self
+                                    .right_side_panes
+                                    .iter()
+                                    .map(|p| p.id)
+                                    .collect();
+                                let title_for_new_tab = if !self.previous_search_string.is_empty() {
+                                    Some(self.previous_search_string.clone())
+                                } else {
+                                    None
+                                };
+                                break_panes_to_new_tab(&pane_ids_to_break_to_new_tab, title_for_new_tab, true);
+                            }
+                            close_self();
+                        }
+                    }
+                    BareKey::Char('c') if key.has_no_modifiers() && !self.is_searching => {
+                        let pane_ids_to_close: Vec<PaneId> = self
+                            .right_side_panes
+                            .iter()
+                            .map(|p| p.id)
+                            .collect();
+                        close_multiple_panes(
+                            pane_ids_to_close,
+                        );
+                        close_self();
+                    }
                     BareKey::Esc if key.has_no_modifiers() => {
                         if self.selected_index.is_some() {
                             self.selected_index = None;
@@ -563,6 +635,16 @@ impl App {
                 }
             }
         }
+    }
+    fn update_tab_info(&mut self, pane_manifest: &PaneManifest) {
+        for (tab_index, pane_infos) in &pane_manifest.panes {
+            for pane_info in pane_infos {
+                if pane_info.is_plugin && Some(pane_info.id) == self.own_plugin_id {
+                    self.own_tab_index = Some(*tab_index);
+                }
+            }
+        }
+        self.total_tabs_in_session = Some(pane_manifest.panes.keys().count());
     }
     fn update_search_results(&mut self) {
         let mut matches = vec![];

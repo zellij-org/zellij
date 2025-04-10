@@ -447,6 +447,12 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         panes_to_highlight.into_iter().map(|p| p.into()).collect(),
                         panes_to_unhighlight.into_iter().map(|p| p.into()).collect(),
                     ),
+                    PluginCommand::CloseMultiplePanes(
+                        pane_ids,
+                    ) => close_multiple_panes(
+                        env,
+                        pane_ids.into_iter().map(|p| p.into()).collect(),
+                    ),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -2179,6 +2185,23 @@ fn highlight_and_unhighlight_panes(
 ) {
     let _ = env.senders.send_to_screen(ScreenInstruction::HighlightAndUnhighlightPanes(panes_to_highlight, panes_to_unhighlight, env.client_id));
 }
+
+fn close_multiple_panes(
+    env: &PluginEnv,
+    pane_ids: Vec<PaneId>,
+) {
+    for pane_id in pane_ids {
+        match pane_id {
+            PaneId::Terminal(terminal_pane_id) => {
+                close_terminal_pane(env, terminal_pane_id);
+            },
+            PaneId::Plugin(plugin_pane_id) => {
+                close_plugin_pane(env, plugin_pane_id);
+            }
+        }
+
+    }
+}
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -2342,6 +2365,7 @@ fn check_command_permission(
         | PluginCommand::ChangeFloatingPanesCoordinates(..)
         | PluginCommand::GroupAndUngroupPanes(..)
         | PluginCommand::HighlightAndUnhighlightPanes(..)
+        | PluginCommand::CloseMultiplePanes(..)
         | PluginCommand::KillSessions(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)

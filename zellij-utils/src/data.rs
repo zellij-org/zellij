@@ -2313,4 +2313,5 @@ pub enum PluginCommand {
     GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>), // panes to group, panes to ungroup
     HighlightAndUnhighlightPanes(Vec<PaneId>, Vec<PaneId>), // panes to highlight, panes to
                                                            // unhighlight
+    CloseMultiplePanes(Vec<PaneId>),
 }

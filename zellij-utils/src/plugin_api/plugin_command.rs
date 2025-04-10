@@ -28,7 +28,8 @@ pub use super::generated_api::api::{
         SetTimeoutPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
         SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
         TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload, GroupAndUngroupPanesPayload, HighlightAndUnhighlightPanesPayload
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload, GroupAndUngroupPanesPayload,
+        HighlightAndUnhighlightPanesPayload, CloseMultiplePanesPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1558,6 +1559,14 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for HighlightAndUnhighlightPanes"),
             },
+            Some(CommandName::CloseMultiplePanes) => match protobuf_plugin_command.payload {
+                Some(Payload::CloseMultiplePanesPayload(close_multiple_panes_payload)) => {
+                    Ok(PluginCommand::CloseMultiplePanes(
+                        close_multiple_panes_payload.pane_ids.into_iter().filter_map(|p| p.try_into().ok()).collect(),
+                    ))
+                },
+                _ => Err("Mismatched payload for CloseMultiplePanes"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2590,6 +2599,16 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     HighlightAndUnhighlightPanesPayload {
                         pane_ids_to_highlight: panes_to_highlight.iter().filter_map(|&p| p.try_into().ok()).collect(),
                         pane_ids_to_unhighlight: panes_to_unhighlight.iter().filter_map(|&p| p.try_into().ok()).collect(),
+                    },
+                )),
+            }),
+            PluginCommand::CloseMultiplePanes(
+                pane_ids
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::CloseMultiplePanes as i32,
+                payload: Some(Payload::CloseMultiplePanesPayload(
+                    CloseMultiplePanesPayload {
+                        pane_ids: pane_ids.iter().filter_map(|&p| p.try_into().ok()).collect(),
                     },
                 )),
             }),
