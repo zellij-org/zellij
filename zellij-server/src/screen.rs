@@ -404,7 +404,7 @@ pub enum ScreenInstruction {
     ListClientsToPlugin(PluginId, ClientId),
     TogglePanePinned(ClientId),
     SetFloatingPanePinned(PaneId, bool),
-    StackPanes(Vec<PaneId>),
+    StackPanes(Vec<PaneId>, ClientId),
     ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
     AddHighlightPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional
                                                                      // message
@@ -5181,10 +5181,20 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::SetFloatingPanePinned(pane_id, should_be_pinned) => {
                 screen.set_floating_pane_pinned(pane_id, should_be_pinned);
             },
-            ScreenInstruction::StackPanes(pane_ids_to_stack) => {
+            ScreenInstruction::StackPanes(pane_ids_to_stack, client_id) => {
                 screen.stack_panes(pane_ids_to_stack);
                 let _ = screen.unblock_input();
                 let _ = screen.render(None);
+                let pane_group = screen.get_client_pane_group(&client_id);
+                if !pane_group.is_empty() {
+                    let _ = screen.bus.senders.send_to_background_jobs(
+                        BackgroundJob::HighlightPanesWithMessage(
+                            pane_group.iter().copied().collect(),
+                            "STACKED".to_owned(),
+                        ),
+                    );
+                }
+                screen.clear_pane_group(&client_id);
             },
             ScreenInstruction::ChangeFloatingPanesCoordinates(pane_ids_and_coordinates) => {
                 screen.change_floating_panes_coordinates(pane_ids_and_coordinates);

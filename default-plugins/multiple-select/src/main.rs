@@ -370,6 +370,15 @@ impl ZellijPlugin for App {
                         break_panes_to_new_tab(&pane_ids_to_break_to_new_tab, title_for_new_tab, true);
                         close_self();
                     }
+                    BareKey::Char('s') if key.has_no_modifiers() && !self.is_searching => {
+                        let pane_ids_to_stack: Vec<PaneId> = self
+                            .right_side_panes
+                            .iter()
+                            .map(|p| p.id)
+                            .collect();
+                        stack_panes(pane_ids_to_stack);
+                        close_self();
+                    }
                     BareKey::Esc if key.has_no_modifiers() => {
                         if self.selected_index.is_some() {
                             self.selected_index = None;
