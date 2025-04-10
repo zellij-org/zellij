@@ -1039,13 +1039,20 @@ impl PaneFrame {
         // (title part, length)
         let mut hover_shortcuts = vec![];
         let alt_click_text = " Alt <Click>";
-        let alt_click_tip = " - group";
+        let alt_click_tip = " - group,";
+        let alt_right_click_text = " Alt <Right-Click>";
+        let alt_right_click_tip = " - ungroup all ";
 
         hover_shortcuts.append(&mut foreground_color(alt_click_text, self.color));
         hover_shortcuts.append(&mut foreground_color(alt_click_tip, self.color));
+        hover_shortcuts.append(&mut foreground_color(alt_right_click_text, self.color));
+        hover_shortcuts.append(&mut foreground_color(alt_right_click_tip, self.color));
         (
             hover_shortcuts,
-            alt_click_text.chars().count() + alt_click_tip.chars().count(),
+            alt_click_text.chars().count() +
+            alt_click_tip.chars().count() +
+            alt_right_click_text.chars().count() +
+            alt_right_click_tip.chars().count()
         )
     }
     fn empty_undertitle(&self, max_undertitle_length: usize) -> Vec<TerminalCharacter> {

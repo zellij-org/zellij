@@ -111,7 +111,7 @@ impl ZellijPlugin for App {
         self.own_plugin_id = Some(plugin_ids.plugin_id);
         self.own_client_id = Some(plugin_ids.client_id);
 
-        self.is_searching = true;
+        // self.is_searching = true;
 
 //         // MOCK DATA
 //         self.left_side_panes.push(PaneItem { text: "vim src/main.rs".to_owned() });
@@ -125,6 +125,11 @@ impl ZellijPlugin for App {
                 // TODO: if selected_index.is_some() or search_string is not empty, add this to
                 //    self.pending_pane_update and do it once these conditions are ripe
                 self.update_panes(pane_manifest);
+                if self.right_side_panes.is_empty() {
+                    self.is_searching = true;
+                } else if self.left_side_panes.is_empty() {
+                    self.is_searching = false;
+                }
                 should_render = true;
             }
             Event::Key(key) => {
@@ -396,7 +401,7 @@ impl ZellijPlugin for App {
             space_shortcut,
             escape_shortcut_text,
             escape_shortcut
-        ) = self.left_side_controls();
+        ) = self.left_side_controls(side_width);
 
         // help line
         let (help_line_text, help_line) = self.help_line();
@@ -442,9 +447,8 @@ impl ZellijPlugin for App {
         }
         print_nested_list_with_coordinates(left_side_panes.clone(), left_side_base_x, list_y, Some(side_width), None);
         if self.is_searching {
-            // TODO: fix this
             if let Some(selected_index) = self.selected_index.as_ref().map(|i| i.main_selected) {
-                print_text_with_coordinates(Text::new(">").color_range(3, ..).selected(), left_side_base_x + 1, list_y + selected_index, None, None);
+                print_text_with_coordinates(Text::new(">").color_range(3, ..).selected(), left_side_base_x + 1, (list_y + selected_index).saturating_sub(extra_pane_count_on_top_left), None, None);
             }
         }
         if extra_pane_count_on_top_left > 0 {
@@ -473,7 +477,7 @@ impl ZellijPlugin for App {
         print_nested_list_with_coordinates(right_side_panes, right_side_base_x, list_y, Some(side_width), None);
         if !self.is_searching {
             if let Some(selected_index) = self.selected_index.as_ref().map(|i| i.main_selected) {
-                print_text_with_coordinates(Text::new(">").color_range(3, ..).selected(), right_side_base_x+ 1, list_y + selected_index, None, None);
+                print_text_with_coordinates(Text::new(">").color_range(3, ..).selected(), right_side_base_x+ 1, (list_y + selected_index).saturating_sub(extra_pane_count_on_top_right), None, None);
             }
         }
         if self.is_searching && !self.right_side_panes.is_empty() {
@@ -665,9 +669,9 @@ impl App {
         let extra_panes_on_top = first_item_index;
         let extra_panes_on_bottom = item_count.saturating_sub(last_item_index + 1);
         let extra_selected_item_count_on_top = if self.is_searching {
-            0
-        } else {
             self.selected_index.as_ref().map(|s| s.additional_selected.iter().filter(|a| a < &&first_item_index).count()).unwrap_or(0)
+        } else {
+            0
         };
         let extra_selected_item_count_on_bottom = if self.is_searching {
             self.selected_index.as_ref().map(|s| s.additional_selected.iter().filter(|a| a > &&last_item_index).count()).unwrap_or(0)
@@ -676,36 +680,71 @@ impl App {
         };
         (extra_panes_on_top, extra_panes_on_bottom, extra_selected_item_count_on_top, extra_selected_item_count_on_bottom, left_side_panes)
     }
-    fn left_side_controls(&self) -> (&'static str, Text, &'static str, Text, &'static str, Text) {
+    fn left_side_controls(&self, max_width: usize) -> (&'static str, Text, &'static str, Text, &'static str, Text) {
         // returns three components and their text
         let (enter_stage_panes_text, enter_stage_panes) = if self.selected_index.is_some() {
-            let enter_stage_panes_text = "<ENTER> - select, <↓↑> - navigate";
-            let enter_stage_panes = Text::new(enter_stage_panes_text).color_range(3, ..=6).color_range(3, 18..=21);
-            (enter_stage_panes_text, enter_stage_panes)
+            let enter_stage_panes_text_full = "<ENTER> - select, <↓↑> - navigate";
+            let enter_stage_panes_text_short = "<ENTER> / <↓↑>...";
+            if max_width >= enter_stage_panes_text_full.chars().count() {
+                let enter_stage_panes_full = Text::new(enter_stage_panes_text_full).color_range(3, ..=6).color_range(3, 18..=21);
+                (enter_stage_panes_text_full, enter_stage_panes_full)
+            } else {
+                let enter_stage_panes_short = Text::new(enter_stage_panes_text_short).color_range(3, ..=6).color_range(3, 10..=13);
+                (enter_stage_panes_text_short, enter_stage_panes_short)
+            }
         } else {
-            let enter_stage_panes_text = "<ENTER> - select all, <↓↑> - navigate";
-            let enter_stage_panes = Text::new(enter_stage_panes_text).color_range(3, ..=6).color_range(3, 21..=25);
-            (enter_stage_panes_text, enter_stage_panes)
+            let enter_stage_panes_text_full = "<ENTER> - select all, <↓↑> - navigate";
+            let enter_stage_panes_text_short = "<ENTER> / <↓↑>...";
+            if max_width >= enter_stage_panes_text_full.chars().count() {
+                let enter_stage_panes_full = Text::new(enter_stage_panes_text_full).color_range(3, ..=6).color_range(3, 21..=25);
+                (enter_stage_panes_text_full, enter_stage_panes_full)
+            } else {
+                let enter_stage_panes_short = Text::new(enter_stage_panes_text_short).color_range(3, ..=6).color_range(3, 10..=13);
+                (enter_stage_panes_text_short, enter_stage_panes_short)
+            }
         };
-        let space_shortcut_text = "<SPACE> - mark many,";
-        let space_shortcut = Text::new(space_shortcut_text).color_range(3, ..=6);
-        let (escape_shortcut_text, escape_shortcut) = if self.selected_index.is_some() {
-            let escape_shortcut_text = "<ESC> - remove marks";
-            let escape_shortcut = Text::new(escape_shortcut_text).color_range(3, ..=4);
-            (escape_shortcut_text, escape_shortcut)
+        // TODO: CONTINUE HERE - make this responsive
+        let space_shortcut_text_full = "<SPACE> - mark many,";
+        let space_shortcut_text_short = "<SPACE> /";
+        if self.selected_index.is_some() {
+            let escape_shortcut_text_full = "<ESC> - remove marks";
+            let escape_shortcut_text_short = "<ESC>...";
+            let (escape_shortcut, space_shortcut, escape_shortcut_text, space_shortcut_text) = if max_width >= space_shortcut_text_full.chars().count() + escape_shortcut_text_full.chars().count() {
+                (
+                    Text::new(escape_shortcut_text_full).color_range(3, ..=4),
+                    Text::new(space_shortcut_text_full).color_range(3, ..=6),
+                    escape_shortcut_text_full,
+                    space_shortcut_text_full,
+                )
+            } else {
+                (
+                    Text::new(escape_shortcut_text_short).color_range(3, ..=4),
+                    Text::new(space_shortcut_text_short).color_range(3, ..=6),
+                    escape_shortcut_text_short,
+                    space_shortcut_text_short,
+                )
+            };
+            (
+                enter_stage_panes_text,
+                enter_stage_panes,
+                space_shortcut_text,
+                space_shortcut,
+                escape_shortcut_text,
+                escape_shortcut
+            )
         } else {
             let escape_shortcut_text = "<ESC> - Close";
             let escape_shortcut = Text::new(escape_shortcut_text).color_range(3, ..=4);
-            (escape_shortcut_text, escape_shortcut)
-        };
-        (
-            enter_stage_panes_text,
-            enter_stage_panes,
-            space_shortcut_text,
-            space_shortcut,
-            escape_shortcut_text,
-            escape_shortcut
-        )
+            let space_shortcut = Text::new(space_shortcut_text_full).color_range(3, ..=6);
+            (
+                enter_stage_panes_text,
+                enter_stage_panes,
+                space_shortcut_text_full, // TODO: not accurate
+                space_shortcut,
+                escape_shortcut_text, // TODO: not accurate
+                escape_shortcut
+            )
+        }
     }
     fn help_line(&self) -> (&'static str, Text) {
         let help_line_text = "Help: Select panes on the left, then perform operations on the right.";
