@@ -2875,7 +2875,7 @@ impl Tab {
                 self.swap_layouts.set_is_floating_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
-                let _ = self.next_swap_layout();
+                let _ = self.relayout_floating_panes(false);
             }
         } else {
             if self.tiled_panes.fullscreen_is_active() {
@@ -2888,7 +2888,7 @@ impl Tab {
                 self.swap_layouts.set_is_tiled_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
-                let _ = self.next_swap_layout();
+                let _ = self.relayout_tiled_panes(false);
             }
         };
         let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
