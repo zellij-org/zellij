@@ -22,6 +22,7 @@ pub fn one_line_ui(
     base_mode_is_locked: bool,
     text_copied_to_clipboard_destination: Option<CopyDestination>,
     clipboard_failure: bool,
+    grouped_pane_count: Option<usize>,
 ) -> LinePart {
     if let Some(text_copied_to_clipboard_destination) = text_copied_to_clipboard_destination {
         return text_copied_hint(text_copied_to_clipboard_destination);
@@ -38,7 +39,10 @@ pub fn one_line_ui(
     render_mode_key_indicators(help, max_len, separator, base_mode_is_locked)
         .map(|mode_key_indicators| append(&mode_key_indicators, &mut max_len))
         .and_then(|_| match help.mode {
-            InputMode::Normal | InputMode::Locked => render_secondary_info(help, tab_info, max_len)
+            InputMode::Normal | InputMode::Locked => match grouped_pane_count {
+                    Some(grouped_pane_count) => render_group_controls(help, grouped_pane_count, max_len),
+                    None => render_secondary_info(help, tab_info, max_len),
+                }
                 .map(|secondary_info| append(&secondary_info, &mut max_len)),
             _ => add_keygroup_separator(help, max_len)
                 .map(|key_group_separator| append(&key_group_separator, &mut max_len))
@@ -654,6 +658,76 @@ fn render_common_modifiers(
         suffix_separator
     );
     line_part_to_render.len += prefix_text.chars().count() + separator.chars().count();
+}
+
+fn render_group_controls(
+    help: &ModeInfo,
+    grouped_pane_count: usize,
+    max_len: usize,
+) -> Option<LinePart> {
+    let keymap = help.get_mode_keybinds();
+    let multiple_select_key = multiple_select_key(&keymap).iter().next().map(|key| format!("{}", key)).unwrap_or("UNBOUND".to_owned());
+    let supports_arrow_fonts = !help.capabilities.arrow_fonts;
+    let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
+
+    let full_selected_panes_text = format!("{} SELECTED PANES", grouped_pane_count);
+    let full_group_actions_text = format!("<{}> Group Actions", &multiple_select_key);
+    let full_ungroup_text = format!("<ESC> Ungroup");
+    let ribbon_paddings_len = 8; // 2 ribbons
+    let full_controls_line_len = full_selected_panes_text.chars().count() +
+        1 +
+        full_group_actions_text.chars().count() +
+        full_ungroup_text.chars().count() +
+        ribbon_paddings_len +
+        1; // 1 for the end padding
+
+    let short_selected_panes_text = format!("{} SELECTED", grouped_pane_count);
+    let short_group_actions_text = format!("<{}>", &multiple_select_key);
+    let short_ungroup_text = format!("<ESC>");
+    let ribbon_paddings_len = 8; // 2 ribbons
+    let short_controls_line_len = short_selected_panes_text.chars().count() +
+        1 +
+        short_group_actions_text.chars().count() +
+        short_ungroup_text.chars().count() +
+        ribbon_paddings_len +
+        1; // 1 for the end padding
+
+    let line_part = if max_len >= full_controls_line_len {
+        let selected_panes = serialize_text(&Text::new(&full_selected_panes_text).color_range(0, ..));
+        let group_actions_ribbon = serialize_ribbon(&Text::new(&full_group_actions_text).color_range(0, 1..=multiple_select_key.chars().count()));
+        let ungroup_ribbon = serialize_ribbon(&Text::new(&full_ungroup_text).color_range(0, 1..=3));
+        let controls_line = format!("{} {}{}", selected_panes, group_actions_ribbon, ungroup_ribbon);
+        let remaining_space = max_len.saturating_sub(full_controls_line_len);
+        let mut padding = String::new();
+        let mut padding_len = 0;
+        for _ in 0..remaining_space {
+            padding.push_str(&ANSIStrings(&[colored_elements.superkey_prefix.paint(" ")]).to_string());
+            padding_len += 1;
+        }
+        Some(LinePart {
+            part: format!("{}{}", padding, controls_line),
+            len: full_controls_line_len + padding_len
+        })
+    } else if max_len >= short_controls_line_len {
+        let selected_panes = serialize_text(&Text::new(&short_selected_panes_text).color_range(0, ..));
+        let group_actions_ribbon = serialize_ribbon(&Text::new(&short_group_actions_text).color_range(0, 1..=multiple_select_key.chars().count()));
+        let ungroup_ribbon = serialize_ribbon(&Text::new(&short_ungroup_text).color_range(0, 1..=3));
+        let controls_line = format!("{} {}{}", selected_panes, group_actions_ribbon, ungroup_ribbon);
+        let remaining_space = max_len.saturating_sub(short_controls_line_len);
+        let mut padding = String::new();
+        let mut padding_len = 0;
+        for _ in 0..remaining_space {
+            padding.push_str(&ANSIStrings(&[colored_elements.superkey_prefix.paint(" ")]).to_string());
+            padding_len += 1;
+        }
+        Some(LinePart {
+            part: format!("{}{}", padding, controls_line),
+            len: short_controls_line_len + padding_len
+        })
+    } else {
+        None
+    };
+    line_part
 }
 
 fn render_secondary_info(
@@ -1502,6 +1576,25 @@ fn configuration_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithMo
         let has_match = acvec
             .iter()
             .find(|a| a.launches_plugin("configuration"))
+            .is_some();
+        if has_match {
+            Some(key.clone())
+        } else {
+            None
+        }
+    });
+    if let Some(matching) = matching.take() {
+        vec![matching]
+    } else {
+        vec![]
+    }
+}
+
+fn multiple_select_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithModifier> {
+    let mut matching = keymap.iter().find_map(|(key, acvec)| {
+        let has_match = acvec
+            .iter()
+            .find(|a| a.launches_plugin("zellij:multiple-select")) // TODO: make this an alias
             .is_some();
         if has_match {
             Some(key.clone())

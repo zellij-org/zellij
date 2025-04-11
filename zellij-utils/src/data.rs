@@ -494,6 +494,9 @@ impl KeyWithModifier {
     pub fn is_key_with_super_modifier(&self, key: BareKey) -> bool {
         self.bare_key == key && self.key_modifiers.contains(&KeyModifier::Super)
     }
+    pub fn is_cancel_key(&self) -> bool {
+        self.bare_key == BareKey::Esc || self.is_key_with_ctrl_modifier(BareKey::Char('c'))
+    }
     #[cfg(not(target_family = "wasm"))]
     pub fn to_termwiz_modifiers(&self) -> Modifiers {
         let mut modifiers = Modifiers::empty();

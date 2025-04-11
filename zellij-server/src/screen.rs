@@ -10,7 +10,7 @@ use std::time::Duration;
 use log::{debug, warn};
 use zellij_utils::data::{
     Direction, KeyWithModifier, PaneManifest, PluginPermission, Resize, ResizeStrategy,
-    SessionInfo, Styling,
+    SessionInfo, Styling, BareKey
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -2804,6 +2804,13 @@ impl Screen {
             .map(|p| p.iter().copied().collect())
             .unwrap_or_else(|| HashSet::new())
     }
+    fn client_has_active_pane_group(&self, client_id: &ClientId) -> bool {
+        self.current_pane_group
+            .borrow()
+            .get(client_id)
+            .map(|p| !p.is_empty())
+            .unwrap_or(false)
+    }
     fn clear_pane_group(&self, client_id: &ClientId) {
         self.current_pane_group
             .borrow_mut()
@@ -3241,21 +3248,26 @@ pub(crate) fn screen_thread_main(
                 client_id,
             ) => {
                 let mut state_changed = false;
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| {
-                        let write_result = match tab.is_sync_panes_active() {
-                            true => tab.write_to_terminals_on_current_tab(&key_with_modifier, raw_bytes, is_kitty_keyboard_protocol, client_id),
-                            false => tab.write_to_active_terminal(&key_with_modifier, raw_bytes, is_kitty_keyboard_protocol, client_id),
-                        };
-                        if let Ok(true) = write_result {
-                            state_changed = true;
-                        }
-                        write_result
-                    },
-                    ?
-                );
+                if screen.client_has_pane_group(&client_id) && key_with_modifier.as_ref().map(|k| k.is_cancel_key()).unwrap_or(false) {
+                    screen.clear_pane_group(&client_id);
+                    state_changed = true;
+                } else {
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, client_id: ClientId| {
+                            let write_result = match tab.is_sync_panes_active() {
+                                true => tab.write_to_terminals_on_current_tab(&key_with_modifier, raw_bytes, is_kitty_keyboard_protocol, client_id),
+                                false => tab.write_to_active_terminal(&key_with_modifier, raw_bytes, is_kitty_keyboard_protocol, client_id),
+                            };
+                            if let Ok(true) = write_result {
+                                state_changed = true;
+                            }
+                            write_result
+                        },
+                        ?
+                    );
+                }
                 if state_changed {
                     screen.log_and_report_session_state()?;
                 }

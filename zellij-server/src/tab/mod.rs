@@ -2936,7 +2936,7 @@ impl Tab {
                 self.swap_layouts.set_is_floating_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
-                let _ = self.next_swap_layout();
+                let _ = self.relayout_floating_panes(false);
             }
             // we do this so that the logical index will not affect ordering in the target tab
             if let Some(closed_pane) = closed_pane.as_mut() {
@@ -2954,7 +2954,7 @@ impl Tab {
                 self.swap_layouts.set_is_tiled_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
-                let _ = self.next_swap_layout();
+                let _ = self.relayout_tiled_panes(false);
             }
             // we do this so that the logical index will not affect ordering in the target tab
             if let Some(closed_pane) = closed_pane.as_mut() {
