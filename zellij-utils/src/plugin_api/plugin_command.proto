@@ -143,6 +143,8 @@ enum CommandName {
   GroupAndUngroupPanes = 127;
   HighlightAndUnhighlightPanes = 128;
   CloseMultiplePanes = 129;
+  FloatMultiplePanes = 130;
+  EmbedMultiplePanes = 131;
 }
 
 message PluginCommand {
@@ -242,7 +244,17 @@ message PluginCommand {
     GroupAndUngroupPanesPayload group_and_ungroup_panes_payload = 102;
     HighlightAndUnhighlightPanesPayload highlight_and_unhighlight_panes_payload = 103;
     CloseMultiplePanesPayload close_multiple_panes_payload = 104;
+    FloatMultiplePanesPayload float_multiple_panes_payload = 105;
+    EmbedMultiplePanesPayload embed_multiple_panes_payload = 106;
   }
+}
+
+message EmbedMultiplePanesPayload {
+  repeated PaneId pane_ids = 1;
+}
+
+message FloatMultiplePanesPayload {
+  repeated PaneId pane_ids = 1;
 }
 
 message CloseMultiplePanesPayload {

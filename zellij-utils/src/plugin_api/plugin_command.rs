@@ -29,7 +29,8 @@ pub use super::generated_api::api::{
         SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
         TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
         WriteCharsToPaneIdPayload, WriteToPaneIdPayload, GroupAndUngroupPanesPayload,
-        HighlightAndUnhighlightPanesPayload, CloseMultiplePanesPayload
+        HighlightAndUnhighlightPanesPayload, CloseMultiplePanesPayload, FloatMultiplePanesPayload,
+        EmbedMultiplePanesPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1567,6 +1568,22 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for CloseMultiplePanes"),
             },
+            Some(CommandName::FloatMultiplePanes) => match protobuf_plugin_command.payload {
+                Some(Payload::FloatMultiplePanesPayload(float_multiple_panes_payload)) => {
+                    Ok(PluginCommand::FloatMultiplePanes(
+                        float_multiple_panes_payload.pane_ids.into_iter().filter_map(|p| p.try_into().ok()).collect(),
+                    ))
+                },
+                _ => Err("Mismatched payload for FloatMultiplePanes"),
+            },
+            Some(CommandName::EmbedMultiplePanes) => match protobuf_plugin_command.payload {
+                Some(Payload::EmbedMultiplePanesPayload(embed_multiple_panes_payload)) => {
+                    Ok(PluginCommand::EmbedMultiplePanes(
+                        embed_multiple_panes_payload.pane_ids.into_iter().filter_map(|p| p.try_into().ok()).collect(),
+                    ))
+                },
+                _ => Err("Mismatched payload for EmbedMultiplePanes"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2608,6 +2625,26 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::CloseMultiplePanes as i32,
                 payload: Some(Payload::CloseMultiplePanesPayload(
                     CloseMultiplePanesPayload {
+                        pane_ids: pane_ids.iter().filter_map(|&p| p.try_into().ok()).collect(),
+                    },
+                )),
+            }),
+            PluginCommand::FloatMultiplePanes(
+                pane_ids
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::FloatMultiplePanes as i32,
+                payload: Some(Payload::FloatMultiplePanesPayload(
+                    FloatMultiplePanesPayload {
+                        pane_ids: pane_ids.iter().filter_map(|&p| p.try_into().ok()).collect(),
+                    },
+                )),
+            }),
+            PluginCommand::EmbedMultiplePanes(
+                pane_ids
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::EmbedMultiplePanes as i32,
+                payload: Some(Payload::EmbedMultiplePanesPayload(
+                    EmbedMultiplePanesPayload {
                         pane_ids: pane_ids.iter().filter_map(|&p| p.try_into().ok()).collect(),
                     },
                 )),

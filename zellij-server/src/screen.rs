@@ -10,7 +10,7 @@ use std::time::Duration;
 use log::{debug, warn};
 use zellij_utils::data::{
     Direction, KeyWithModifier, PaneManifest, PluginPermission, Resize, ResizeStrategy,
-    SessionInfo, Styling, BareKey
+    SessionInfo, Styling
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -410,6 +410,8 @@ pub enum ScreenInstruction {
                                                                      // message
     GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, ClientId), // panes_to_group, panes_to_ungroup
     HighlightAndUnhighlightPanes(Vec<PaneId>, Vec<PaneId>, ClientId), // panes_to_highlight, panes_to_unhighlight
+    FloatMultiplePanes(Vec<PaneId>, ClientId),
+    EmbedMultiplePanes(Vec<PaneId>, ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -628,6 +630,12 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::HighlightAndUnhighlightPanes(..) => {
                 ScreenContext::HighlightAndUnhighlightPanes
+            },
+            ScreenInstruction::FloatMultiplePanes(..) => {
+                ScreenContext::FloatMultiplePanes
+            },
+            ScreenInstruction::EmbedMultiplePanes(..) => {
+                ScreenContext::EmbedMultiplePanes
             },
         }
     }
@@ -3273,35 +3281,12 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::Resize(client_id, strategy) => {
-                if screen.client_has_pane_group(&client_id) {
-                    let mut pane_group: Vec<PaneId> = screen.get_client_pane_group(&client_id).into_iter().collect();
-                    if let Some(active_pane_id) = screen
-                        .get_active_tab(client_id)
-                        .ok()
-                        .and_then(|t| t.get_active_pane_id(client_id))
-                    {
-                        // make sure the active pane id is first so it will be the root of the
-                        // stack
-                        pane_group.retain(|p| p != &active_pane_id);
-                        pane_group.insert(0, active_pane_id);
-                    }
-                    let pane_ids_in_group = pane_group.iter().copied().collect();
-                    screen.stack_panes(pane_ids_in_group);
-                    let _ = screen.bus.senders.send_to_background_jobs(
-                        BackgroundJob::HighlightPanesWithMessage(
-                            pane_group.iter().copied().collect(),
-                            "STACKED".to_owned(),
-                        ),
-                    );
-                    screen.clear_pane_group(&client_id);
-                } else {
-                    active_tab_and_connected_client_id!(
-                        screen,
-                        client_id,
-                        |tab: &mut Tab, client_id: ClientId| tab.resize(client_id, strategy),
-                        ?
-                    );
-                }
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.resize(client_id, strategy),
+                    ?
+                );
                 screen.unblock_input()?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -5262,6 +5247,68 @@ pub(crate) fn screen_thread_main(
                 }
                 let _ = screen.log_and_report_session_state();
             },
+            ScreenInstruction::FloatMultiplePanes(pane_ids_to_float, client_id) => {
+                {
+                    let all_tabs = screen.get_tabs_mut();
+                    let mut ejected_panes_in_group = vec![];
+                    for pane_id in pane_ids_to_float{
+                        for tab in all_tabs.values_mut() {
+                            if tab.has_pane_with_pid(&pane_id) {
+                                if !tab.pane_id_is_floating(&pane_id) {
+                                    ejected_panes_in_group.push(pane_id);
+                                    tab.toggle_pane_embed_or_floating_for_pane_id(
+                                        pane_id,
+                                        Some(client_id),
+                                    )
+                                    .non_fatal();
+                                }
+                                tab.show_floating_panes();
+                            }
+                        }
+                    }
+                    screen.render(None)?;
+                    if !ejected_panes_in_group.is_empty() {
+                        let _ = screen.bus.senders.send_to_background_jobs(
+                            BackgroundJob::HighlightPanesWithMessage(
+                                ejected_panes_in_group,
+                                "EJECTED".to_owned(),
+                            ),
+                        );
+                    }
+                }
+                let _ = screen.log_and_report_session_state();
+            },
+            ScreenInstruction::EmbedMultiplePanes(pane_ids_to_float, client_id) => {
+                {
+                    let all_tabs = screen.get_tabs_mut();
+                    let mut embedded_panes_in_group = vec![];
+                    for pane_id in pane_ids_to_float{
+                        for tab in all_tabs.values_mut() {
+                            if tab.has_pane_with_pid(&pane_id) {
+                                if tab.pane_id_is_floating(&pane_id) {
+                                    embedded_panes_in_group.push(pane_id);
+                                    tab.toggle_pane_embed_or_floating_for_pane_id(
+                                        pane_id,
+                                        Some(client_id),
+                                    )
+                                    .non_fatal();
+                                }
+                                tab.hide_floating_panes();
+                            }
+                        }
+                    }
+                    screen.render(None)?;
+                    if !embedded_panes_in_group.is_empty() {
+                        let _ = screen.bus.senders.send_to_background_jobs(
+                            BackgroundJob::HighlightPanesWithMessage(
+                                embedded_panes_in_group,
+                                "EMBEDDED".to_owned(),
+                            ),
+                        );
+                    }
+                }
+                let _ = screen.log_and_report_session_state();
+            }
         }
     }
     Ok(())

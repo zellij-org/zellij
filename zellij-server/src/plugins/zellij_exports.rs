@@ -453,6 +453,18 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         env,
                         pane_ids.into_iter().map(|p| p.into()).collect(),
                     ),
+                    PluginCommand::FloatMultiplePanes(
+                        pane_ids,
+                    ) => float_multiple_panes(
+                        env,
+                        pane_ids.into_iter().map(|p| p.into()).collect(),
+                    ),
+                    PluginCommand::EmbedMultiplePanes(
+                        pane_ids,
+                    ) => embed_multiple_panes(
+                        env,
+                        pane_ids.into_iter().map(|p| p.into()).collect(),
+                    ),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -2202,6 +2214,21 @@ fn close_multiple_panes(
 
     }
 }
+
+fn float_multiple_panes(
+    env: &PluginEnv,
+    pane_ids: Vec<PaneId>,
+) {
+    let _ = env.senders.send_to_screen(ScreenInstruction::FloatMultiplePanes(pane_ids, env.client_id));
+}
+
+fn embed_multiple_panes(
+    env: &PluginEnv,
+    pane_ids: Vec<PaneId>,
+) {
+    let _ = env.senders.send_to_screen(ScreenInstruction::EmbedMultiplePanes(pane_ids, env.client_id));
+}
+
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -2366,6 +2393,8 @@ fn check_command_permission(
         | PluginCommand::GroupAndUngroupPanes(..)
         | PluginCommand::HighlightAndUnhighlightPanes(..)
         | PluginCommand::CloseMultiplePanes(..)
+        | PluginCommand::FloatMultiplePanes(..)
+        | PluginCommand::EmbedMultiplePanes(..)
         | PluginCommand::KillSessions(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)

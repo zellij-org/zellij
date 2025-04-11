@@ -1302,6 +1302,24 @@ pub fn close_multiple_panes(
     unsafe { host_run_plugin_command() };
 }
 
+pub fn float_multiple_panes(
+    pane_ids: Vec<PaneId>,
+) {
+    let plugin_command = PluginCommand::FloatMultiplePanes(pane_ids);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn embed_multiple_panes(
+    pane_ids: Vec<PaneId>,
+) {
+    let plugin_command = PluginCommand::EmbedMultiplePanes(pane_ids);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 #[allow(unused)]

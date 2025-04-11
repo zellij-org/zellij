@@ -2317,4 +2317,6 @@ pub enum PluginCommand {
     HighlightAndUnhighlightPanes(Vec<PaneId>, Vec<PaneId>), // panes to highlight, panes to
                                                            // unhighlight
     CloseMultiplePanes(Vec<PaneId>),
+    FloatMultiplePanes(Vec<PaneId>),
+    EmbedMultiplePanes(Vec<PaneId>),
 }

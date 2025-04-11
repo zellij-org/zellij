@@ -371,6 +371,7 @@ impl ZellijPlugin for App {
                             None
                         };
                         break_panes_to_new_tab(&pane_ids_to_break_to_new_tab, title_for_new_tab, true);
+                        self.ungroup_panes_in_zellij(pane_ids_to_break_to_new_tab);
                         close_self();
                     }
                     BareKey::Char('s') if key.has_no_modifiers() && !self.is_searching => {
@@ -379,7 +380,28 @@ impl ZellijPlugin for App {
                             .iter()
                             .map(|p| p.id)
                             .collect();
-                        stack_panes(pane_ids_to_stack);
+                        stack_panes(pane_ids_to_stack.clone());
+                        self.ungroup_panes_in_zellij(pane_ids_to_stack);
+                        close_self();
+                    }
+                    BareKey::Char('f') if key.has_no_modifiers() && !self.is_searching => {
+                        let pane_ids_to_float: Vec<PaneId> = self
+                            .right_side_panes
+                            .iter()
+                            .map(|p| p.id)
+                            .collect();
+                        float_multiple_panes(pane_ids_to_float.clone());
+                        self.ungroup_panes_in_zellij(pane_ids_to_float);
+                        close_self();
+                    }
+                    BareKey::Char('e') if key.has_no_modifiers() && !self.is_searching => {
+                        let pane_ids_to_embed: Vec<PaneId> = self
+                            .right_side_panes
+                            .iter()
+                            .map(|p| p.id)
+                            .collect();
+                        embed_multiple_panes(pane_ids_to_embed.clone());
+                        self.ungroup_panes_in_zellij(pane_ids_to_embed);
                         close_self();
                     }
                     BareKey::Char('r') if key.has_no_modifiers() && !self.is_searching => {
@@ -916,8 +938,8 @@ impl App {
         let right_side_controls_2 = Text::new(right_side_controls_text_2).color_range(3, ..=2).color_range(3, 17..=19).color_range(3, 30..=32);
         let right_side_controls_text_3 = "<r> - break right, <l> - break left";
         let right_side_controls_3 = Text::new(right_side_controls_text_3).color_range(3, ..=2).color_range(3, 19..=21);
-        let right_side_controls_text_4 = "<Enter> - group";
-        let right_side_controls_4 = Text::new(right_side_controls_text_4).color_range(3, ..=6);
+        let right_side_controls_text_4 = "<e> - embed, <f> - float";
+        let right_side_controls_4 = Text::new(right_side_controls_text_4).color_range(3, ..=2).color_range(3, 13..=15);
         (
             right_side_controls_text_1,
             right_side_controls_1,
