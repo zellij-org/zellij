@@ -24,3 +24,6 @@ pub mod downloader; // Requires async_std
 pub mod ipc; // Requires interprocess
 #[cfg(not(target_family = "wasm"))]
 pub mod logging; // Requires log4rs
+
+// TODO(hartan): Remove this re-export for the next minor release.
+pub use ::prost;
