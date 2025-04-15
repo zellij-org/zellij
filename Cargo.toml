@@ -1,6 +1,6 @@
 [package]
 name = "zellij"
-version = "0.43.0"
+version = "0.42.2"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition = "2021"
 description = "A terminal workspace with batteries included"
@@ -14,8 +14,8 @@ rust-version = "1.84"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-zellij-client = { path = "zellij-client/", version = "0.43.0" }
-zellij-server = { path = "zellij-server/", version = "0.43.0" }
+zellij-client = { path = "zellij-client/", version = "0.42.2" }
+zellij-server = { path = "zellij-server/", version = "0.42.2" }
 zellij-utils = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
@@ -83,7 +83,7 @@ unicode-width = { version = "0.1.8", default-features = false }
 url = { version = "2.2.2", default-features = false, features = ["serde"] }
 uuid = { version = "1.4.1", default-features = false, features = ["serde", "v4", "std"] }
 vte = { version = "0.11.0", default-features = false }
-zellij-utils = { path = "zellij-utils/", version = "0.43.0" }
+zellij-utils = { path = "zellij-utils/", version = "0.42.2" }
 
 [profile.dev-opt]
 inherits = "dev"
