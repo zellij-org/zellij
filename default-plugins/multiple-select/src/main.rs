@@ -392,7 +392,11 @@ impl ZellijPlugin for App {
                     BareKey::Down if key.has_no_modifiers() => {
                         match self.selected_index.as_mut() {
                             Some(selected_index) =>{
-                                if self.visibility_and_focus.left_side_is_focused() && selected_index.main_selected == self.left_side_panes.len().saturating_sub(1) {
+                                let is_searching = self.search_results.is_some();
+                                let search_result_count = self.search_results.as_ref().map(|s| s.len()).unwrap_or(0);
+                                if self.visibility_and_focus.left_side_is_focused() && is_searching && selected_index.main_selected == search_result_count.saturating_sub(1) {
+                                    selected_index.main_selected = 0;
+                                } else if self.visibility_and_focus.left_side_is_focused() && !is_searching && selected_index.main_selected == self.left_side_panes.len().saturating_sub(1) {
                                     selected_index.main_selected = 0;
                                 } else if self.visibility_and_focus.right_side_is_focused() && selected_index.main_selected == self.right_side_panes.len().saturating_sub(1) {
                                     selected_index.main_selected = 0;
@@ -401,8 +405,14 @@ impl ZellijPlugin for App {
                                 }
                             },
                             None => {
-                                if self.visibility_and_focus.left_side_is_focused() && !self.left_side_panes.is_empty() {
-                                    self.selected_index = Some(SelectedIndex::new(0));
+                                if self.visibility_and_focus.left_side_is_focused() {
+                                    let is_searching = self.search_results.is_some();
+                                    let has_search_results = self.search_results.as_ref().map(|s| !s.is_empty()).unwrap_or(false);
+                                    if is_searching && has_search_results {
+                                        self.selected_index = Some(SelectedIndex::new(0));
+                                    } else if !is_searching && !self.left_side_panes.is_empty() {
+                                        self.selected_index = Some(SelectedIndex::new(0));
+                                    }
                                 } else if self.visibility_and_focus.right_side_is_focused() && !self.right_side_panes.is_empty() {
                                     self.selected_index = Some(SelectedIndex::new(0));
                                 }
@@ -415,7 +425,11 @@ impl ZellijPlugin for App {
                         match self.selected_index.as_mut() {
                             Some(selected_index) =>{
                                 if self.visibility_and_focus.left_side_is_focused() && selected_index.main_selected == 0 {
-                                    selected_index.main_selected = self.left_side_panes.len().saturating_sub(1);
+                                    if let Some(search_result_count) = self.search_results.as_ref().map(|s| s.len()) {
+                                        selected_index.main_selected = search_result_count.saturating_sub(1);
+                                    } else {
+                                        selected_index.main_selected = self.left_side_panes.len().saturating_sub(1);
+                                    }
                                 } else if self.visibility_and_focus.right_side_is_focused() && selected_index.main_selected == 0 {
                                     selected_index.main_selected = self.right_side_panes.len().saturating_sub(1);
                                 } else {
@@ -423,8 +437,15 @@ impl ZellijPlugin for App {
                                 }
                             },
                             None => {
-                                if self.visibility_and_focus.left_side_is_focused() && !self.left_side_panes.is_empty() {
-                                    self.selected_index = Some(SelectedIndex::new(self.left_side_panes.len().saturating_sub(1)));
+                                if self.visibility_and_focus.left_side_is_focused() {
+                                    let is_searching = self.search_results.is_some();
+                                    let has_search_results = self.search_results.as_ref().map(|s| !s.is_empty()).unwrap_or(false);
+                                    if is_searching && has_search_results {
+                                        let search_results_count = self.search_results.as_ref().map(|s| s.len()).unwrap_or(0);
+                                        self.selected_index = Some(SelectedIndex::new(search_results_count.saturating_sub(1)));
+                                    } else if !is_searching && !self.left_side_panes.is_empty() {
+                                        self.selected_index = Some(SelectedIndex::new(self.left_side_panes.len().saturating_sub(1)));
+                                    }
                                 } else if self.visibility_and_focus.right_side_is_focused() && !self.right_side_panes.is_empty() {
                                     self.selected_index = Some(SelectedIndex::new(self.right_side_panes.len().saturating_sub(1)));
                                 }
@@ -722,13 +743,29 @@ impl App {
         let search_prompt = if self.visibility_and_focus.left_side_is_focused() { Text::new(&search_prompt_text).color_range(2, ..) } else { Text::new(&search_prompt_text) };
         (search_prompt_text, search_prompt)
     }
-    fn filter(&self) -> Text {
+    fn filter(&self, max_width: usize) -> Text {
         let search_string_text = if self.selected_index.is_none() && self.search_string.is_empty() {
-            format!("[Type filter term...]")
+            let full = "[Type filter term...]";
+            let short = "[...]";
+            if max_width >= full.chars().count() {
+                full.to_owned()
+            } else {
+                short.to_owned()
+            }
         } else if self.selected_index.is_none() && !self.search_string.is_empty() {
-            format!("{}_", self.search_string)
+            if max_width >= self.search_string.chars().count() + 1 {
+                format!("{}_", self.search_string)
+            } else {
+                let truncated: String = self.search_string.chars().rev().take(max_width.saturating_sub(4)).collect::<Vec<_>>().iter().rev().collect();
+                format!("...{}_", truncated)
+            }
         } else if self.selected_index.is_some() && !self.search_string.is_empty() {
-            format!("{}", self.search_string)
+            if max_width >= self.search_string.chars().count() {
+                format!("{}", self.search_string)
+            } else {
+                let truncated: String = self.search_string.chars().rev().take(max_width.saturating_sub(4)).collect::<Vec<_>>().iter().rev().collect();
+                format!("...{}", truncated)
+            }
         } else {
             format!("")
         };
@@ -897,15 +934,35 @@ impl App {
         };
         (extra_panes_on_top, extra_panes_on_bottom, extra_selected_item_count_on_top, extra_selected_item_count_on_bottom, right_side_panes)
     }
-    fn right_side_controls(&self) -> (Text, Text, Text, Text) {
-        let right_side_controls_text_1 = "<←↓↑> - navigate, <Ctrl c> - clear";
-        let right_side_controls_1 = Text::new(right_side_controls_text_1).color_range(3, ..=4).color_range(3, 18..=25);
-        let right_side_controls_text_2 = "<b> - break out, <s> - stack, <c> - close";
-        let right_side_controls_2 = Text::new(right_side_controls_text_2).color_range(3, ..=2).color_range(3, 17..=19).color_range(3, 30..=32);
-        let right_side_controls_text_3 = "<r> - break right, <l> - break left";
-        let right_side_controls_3 = Text::new(right_side_controls_text_3).color_range(3, ..=2).color_range(3, 19..=21);
-        let right_side_controls_text_4 = "<e> - embed, <f> - float";
-        let right_side_controls_4 = Text::new(right_side_controls_text_4).color_range(3, ..=2).color_range(3, 13..=15);
+    fn right_side_controls(&self, cols: usize) -> (Text, Text, Text, Text) {
+        let right_side_controls_text_1_full = "<←↓↑> - navigate, <Ctrl c> - clear";
+        let right_side_controls_text_1_short = "<←↓↑>/<Ctrl c>...";
+        let right_side_controls_1 = if cols >= right_side_controls_text_1_full.chars().count() {
+            Text::new(right_side_controls_text_1_full).color_range(3, ..=4).color_range(3, 18..=25)
+        } else {
+            Text::new(right_side_controls_text_1_short).color_range(3, ..=4).color_range(3, 6..=13)
+        };
+        let right_side_controls_text_2_full = "<b> - break out, <s> - stack, <c> - close";
+        let right_side_controls_text_2_short = "<b>/<s>/<c>...";
+        let right_side_controls_2 = if cols >= right_side_controls_text_2_full.chars().count() {
+            Text::new(right_side_controls_text_2_full).color_range(3, ..=2).color_range(3, 17..=19).color_range(3, 30..=32)
+        } else {
+            Text::new(right_side_controls_text_2_short).color_range(3, ..=2).color_range(3, 4..=6).color_range(3, 8..=10)
+        };
+        let right_side_controls_text_3_full = "<r> - break right, <l> - break left";
+        let right_side_controls_text_3_short = "<r>/<l>...";
+        let right_side_controls_3 = if cols >= right_side_controls_text_3_full.chars().count() {
+            Text::new(right_side_controls_text_3_full).color_range(3, ..=2).color_range(3, 19..=21)
+        } else {
+            Text::new(right_side_controls_text_3_short).color_range(3, ..=2).color_range(3, 4..=6)
+        };
+        let right_side_controls_text_4_full = "<e> - embed, <f> - float";
+        let right_side_controls_text_4_short = "<e>/<f>...";
+        let right_side_controls_4 = if cols >= right_side_controls_text_4_full.chars().count() {
+            Text::new(right_side_controls_text_4_full).color_range(3, ..=2).color_range(3, 13..=15)
+        } else {
+            Text::new(right_side_controls_text_4_short).color_range(3, ..=2).color_range(3, 4..=6)
+        };
         (
             right_side_controls_1,
             right_side_controls_2,
@@ -963,8 +1020,8 @@ impl App {
             extra_selected_item_count_on_bottom_left,
             left_side_panes
         ) = self.left_side_panes_list(side_width, max_left_list_height);
-        let filter = self.filter();
         let (filter_prompt_text, filter_prompt) = self.filter_panes_prompt();
+        let filter = self.filter(side_width.saturating_sub(filter_prompt_text.chars().count() + 1));
         let (
             _enter_select_panes_text,
             enter_select_panes,
@@ -1021,7 +1078,7 @@ impl App {
             right_side_controls_2,
             right_side_controls_3,
             right_side_controls_4,
-        ) = self.right_side_controls();
+        ) = self.right_side_controls(side_width);
         if extra_pane_count_on_top_right > 0 {
             self.print_extra_pane_count(extra_pane_count_on_top_right, extra_selected_item_count_on_top_right, list_y.saturating_sub(1), right_side_base_x, side_width);
         }
@@ -1042,16 +1099,34 @@ impl App {
             print_text_with_coordinates(right_side_controls_4, right_side_base_x + 1, list_y + right_side_pane_count + 5, None, None);
         }
     }
-    fn render_help_line(&self, rows: usize, _cols: usize) {
+    fn render_help_line(&self, rows: usize, cols: usize) {
         let help_line_text = match self.visibility_and_focus {
             VisibilityAndFocus::OnlyLeftSideVisible => {
-                "Help: Select one or more panes to group for bulk operations."
+                let full_help_line = "Help: Select one or more panes to group for bulk operations";
+                let short_help_line = "Help: Select panes to group";
+                if cols >= full_help_line.chars().count() {
+                    full_help_line
+                } else {
+                    short_help_line
+                }
             },
             VisibilityAndFocus::OnlyRightSideVisible => {
-                "Help: Perform bulk operations on all selected panes."
+                let full_help_line = "Help: Perform bulk operations on all selected panes";
+                let short_help_line = "Help: Perform bulk operations";
+                if cols >= full_help_line.chars().count() {
+                    full_help_line
+                } else {
+                    short_help_line
+                }
             }
             _ => {
-                "Help: Select panes on the left, then perform operations on the right."
+                let full_help_line = "Help: Select panes on the left, then perform operations on the right.";
+                let short_help_line = "Help: Group panes for bulk operations";
+                if cols >= full_help_line.chars().count() {
+                    full_help_line
+                } else {
+                    short_help_line
+                }
             }
         };
         let help_line = Text::new(help_line_text);
