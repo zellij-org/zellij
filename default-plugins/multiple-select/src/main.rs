@@ -80,6 +80,88 @@ impl PaneItem {
     }
 }
 
+#[derive(Debug)]
+enum VisibilityAndFocus {
+    OnlyLeftSideVisible,
+    OnlyRightSideVisible,
+    BothSidesVisibleLeftSideFocused,
+    BothSidesVisibleRightSideFocused,
+}
+
+impl Default for VisibilityAndFocus {
+    fn default() -> Self {
+        VisibilityAndFocus::OnlyLeftSideVisible
+    }
+}
+
+impl VisibilityAndFocus {
+    pub fn left_side_is_focused(&self) -> bool {
+        match self {
+            VisibilityAndFocus::OnlyLeftSideVisible | VisibilityAndFocus::BothSidesVisibleLeftSideFocused => true,
+            _ => false
+        }
+    }
+    pub fn right_side_is_focused(&self) -> bool {
+        match self {
+            VisibilityAndFocus::OnlyRightSideVisible | VisibilityAndFocus::BothSidesVisibleRightSideFocused => true,
+            _ => false
+        }
+    }
+    pub fn left_side_is_visible(&self) -> bool {
+        match self {
+            VisibilityAndFocus::OnlyRightSideVisible => false,
+            _ => true
+        }
+    }
+    pub fn right_side_is_visible(&self) -> bool {
+        match self {
+            VisibilityAndFocus::OnlyLeftSideVisible => false,
+            _ => true
+        }
+    }
+    pub fn focus_left_side(&mut self) {
+        *self = VisibilityAndFocus::BothSidesVisibleLeftSideFocused
+    }
+    pub fn hide_left_side(&mut self) {
+        *self = VisibilityAndFocus::OnlyRightSideVisible
+    }
+    pub fn hide_right_side(&mut self) {
+        *self = VisibilityAndFocus::OnlyLeftSideVisible
+    }
+    pub fn focus_right_side(&mut self) {
+        *self = VisibilityAndFocus::BothSidesVisibleRightSideFocused
+    }
+    pub fn toggle_focus(&mut self) {
+        match self {
+            VisibilityAndFocus::BothSidesVisibleLeftSideFocused => {
+                *self = VisibilityAndFocus::BothSidesVisibleRightSideFocused
+            }
+            VisibilityAndFocus::BothSidesVisibleRightSideFocused => {
+                *self = VisibilityAndFocus::BothSidesVisibleLeftSideFocused
+            }
+            VisibilityAndFocus::OnlyLeftSideVisible => {
+                *self = VisibilityAndFocus::BothSidesVisibleRightSideFocused
+            }
+            VisibilityAndFocus::OnlyRightSideVisible => {
+                *self = VisibilityAndFocus::BothSidesVisibleLeftSideFocused
+            }
+        }
+    }
+    pub fn show_both_sides(&mut self) {
+        match self {
+            VisibilityAndFocus::OnlyLeftSideVisible => {
+                *self = VisibilityAndFocus::BothSidesVisibleLeftSideFocused
+            }
+            VisibilityAndFocus::OnlyRightSideVisible => {
+                *self = VisibilityAndFocus::BothSidesVisibleRightSideFocused
+            }
+            VisibilityAndFocus::BothSidesVisibleLeftSideFocused | VisibilityAndFocus::BothSidesVisibleRightSideFocused => {
+                // no-op
+            }
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 struct App {
     own_plugin_id: Option<u32>,
@@ -92,7 +174,7 @@ struct App {
     left_side_panes: Vec<PaneItem>,
     right_side_panes: Vec<PaneItem>,
     search_results: Option<Vec<PaneItem>>,
-    is_searching: bool,
+    visibility_and_focus: VisibilityAndFocus,
     selected_index: Option<SelectedIndex>,
 }
 
@@ -127,35 +209,62 @@ impl ZellijPlugin for App {
             Event::PaneUpdate(pane_manifest) => {
                 // TODO: if selected_index.is_some() or search_string is not empty, add this to
                 //    self.pending_pane_update and do it once these conditions are ripe
+                let is_first_update = self.right_side_panes.is_empty() && self.left_side_panes.is_empty();
+                let panes_on_the_left_before = self.left_side_panes.len();
+                let panes_on_the_right_before = self.right_side_panes.len();
                 self.update_tab_info(&pane_manifest);
                 self.update_panes(pane_manifest);
-                if self.right_side_panes.is_empty() {
-                    self.is_searching = true;
-                } else if self.left_side_panes.is_empty() {
-                    self.is_searching = false;
+                if is_first_update && !self.right_side_panes.is_empty() {
+                    // in this case, the plugin was started with an existing group
+                    // most likely, the user wants to perform operations just on this group, so we
+                    // only show the group, giving the option to add more panes
+                    self.visibility_and_focus.hide_left_side();
+                }
+                let pane_count_changed = (panes_on_the_left_before != self.left_side_panes.len()) || (panes_on_the_right_before != self.right_side_panes.len());
+                // TODO: CONTINUE HERE - why is self.right_side_panes zero when searching, then
+                // selecting a few search results and pressing enter
+                eprintln!("before if, panes_on_the_right_before: {:?}, self.panes_on_the_right: {:?}", panes_on_the_right_before, self.right_side_panes.len());
+                if !is_first_update && pane_count_changed {
+                    eprintln!("this, right?");
+                    let has_panes_on_the_right = !self.right_side_panes.is_empty();
+                    let has_panes_on_the_left = !self.left_side_panes.is_empty();
+                    if has_panes_on_the_right && has_panes_on_the_left {
+                        eprintln!("1");
+                        self.visibility_and_focus.show_both_sides();
+                    } else if has_panes_on_the_right {
+                        eprintln!("2");
+                        self.visibility_and_focus.hide_left_side();
+                    } else if has_panes_on_the_left {
+                        eprintln!("3");
+                        self.visibility_and_focus.hide_right_side();
+                    }
                 }
                 should_render = true;
             }
             Event::Key(key) => {
+                eprintln!("key: {:?}", key);
                 match key.bare_key {
                     BareKey::Tab if key.has_no_modifiers() => {
-                        self.is_searching = !self.is_searching;
+                        self.visibility_and_focus.toggle_focus();
                         self.selected_index = None;
                         self.update_highlighted_panes();
                         should_render = true;
                     }
-                    BareKey::Char(character) if key.has_no_modifiers() && self.is_searching && self.selected_index.is_none() => {
+                    // BareKey::Char(character) if key.has_no_modifiers() && self.is_searching && self.selected_index.is_none() => {
+                    BareKey::Char(character) if key.has_no_modifiers() && self.visibility_and_focus.left_side_is_focused() && self.selected_index.is_none() => {
                         self.search_string.push(character);
                         self.update_search_results();
                         should_render = true;
                     }
-                    BareKey::Backspace if key.has_no_modifiers() && self.is_searching && self.selected_index.is_none() => {
+                    // BareKey::Backspace if key.has_no_modifiers() && self.is_searching && self.selected_index.is_none() => {
+                    BareKey::Backspace if key.has_no_modifiers() && self.visibility_and_focus.left_side_is_focused() && self.selected_index.is_none() => {
                         self.search_string.pop();
                         self.update_search_results();
                         should_render = true;
                     }
                     BareKey::Enter if key.has_no_modifiers() => {
-                        if self.is_searching {
+                        // if self.is_searching {
+                        if self.visibility_and_focus.left_side_is_focused() {
                             if let Some(mut selected_index) = self.selected_index.take() {
                                 let mut all_selected_indices: BTreeSet<usize> = selected_index.additional_selected.iter().copied().collect();
                                 all_selected_indices.insert(selected_index.main_selected);
@@ -176,21 +285,25 @@ impl ZellijPlugin for App {
                                 }
                                 let pane_ids_to_make_selected: Vec<PaneId> = selected_panes.iter().map(|p| p.id).collect();
                                 self.right_side_panes.append(&mut selected_panes.into_iter().rev().collect());
-                                let selecting_search_results = self.search_results.is_some();
+                                // let selecting_search_results = self.search_results.is_some();
+                                let emptied_search_results = self.search_results.as_ref().map(|s| s.is_empty()).unwrap_or(false);
                                 self.search_results = None;
                                 self.previous_search_string = self.search_string.drain(..).collect();
 
-                                if self.left_side_panes.is_empty() || selecting_search_results {
+                                if self.left_side_panes.is_empty() || emptied_search_results {
                                     self.selected_index = None;
-                                    self.is_searching = false;
-                                } else if selected_index.main_selected > self.left_side_panes.len().saturating_sub(1) {
-                                    self.selected_index = Some(SelectedIndex::new(self.left_side_panes.len().saturating_sub(1)));
+                                    // self.is_searching = false;
+                                    // self.visibility_and_focus.focus_right_side();
+                                    self.visibility_and_focus.hide_left_side();
                                 } else {
-                                    selected_index.additional_selected.clear();
-                                    self.selected_index = Some(selected_index);
+                                    self.selected_index = None;
+                                    eprintln!("focusing right side");
+                                    eprintln!("right side pane count: {:?}", self.right_side_panes.len());
+                                    self.visibility_and_focus.focus_right_side();
                                 }
                                 self.update_highlighted_panes();
                                 self.group_panes_in_zellij(pane_ids_to_make_selected);
+                                eprintln!("right side pane count in the end: {:?}", self.right_side_panes.len());
                             } else {
                                 if let Some(search_results) = self.search_results.take() {
                                     let mut pane_ids_to_make_selected = vec![];
@@ -206,7 +319,10 @@ impl ZellijPlugin for App {
                                     self.right_side_panes.append(&mut self.left_side_panes);
                                     self.group_panes_in_zellij(pane_ids_to_make_selected);
                                 }
-                                self.is_searching = false;
+                                // self.is_searching = false;
+                                self.visibility_and_focus.hide_left_side(); // TODO: might
+                                                                              // want to
+                                                                              // hide_right_side
                                 self.previous_search_string = self.search_string.drain(..).collect();
                                 self.selected_index = None;
                                 self.search_results = None;
@@ -215,8 +331,10 @@ impl ZellijPlugin for App {
                         }
                         should_render = true;
                     }
-                    BareKey::Left if key.has_no_modifiers() && !self.is_searching => {
-                        if !self.is_searching {
+                    // BareKey::Left if key.has_no_modifiers() && !self.is_searching => {
+                    BareKey::Left if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
+                        // if !self.is_searching {
+                        if self.visibility_and_focus.right_side_is_focused() {
                             if let Some(mut selected_index) = self.selected_index.take() {
                                 let mut all_selected_indices: BTreeSet<usize> = selected_index.additional_selected.iter().copied().collect();
                                 all_selected_indices.insert(selected_index.main_selected);
@@ -236,19 +354,22 @@ impl ZellijPlugin for App {
 
                                 if self.right_side_panes.is_empty() {
                                     self.selected_index = None;
-                                    self.is_searching = true;
+                                    self.visibility_and_focus.hide_right_side();
                                 } else if selected_index.main_selected > self.right_side_panes.len().saturating_sub(1) {
                                     self.selected_index = Some(SelectedIndex::new(self.right_side_panes.len().saturating_sub(1)));
+                                    self.visibility_and_focus.show_both_sides();
                                 } else {
                                     selected_index.additional_selected.clear();
                                     self.selected_index = Some(selected_index);
+                                    self.visibility_and_focus.show_both_sides();
                                 }
                                 should_render = true;
                                 self.update_highlighted_panes();
                             }
                         }
                     }
-                    BareKey::Right if key.has_no_modifiers() && self.is_searching => {
+                    // BareKey::Right if key.has_no_modifiers() && self.is_searching => {
+                    BareKey::Right if key.has_no_modifiers() && self.visibility_and_focus.left_side_is_focused() => {
                         if let Some(mut selected_index) = self.selected_index.take() {
                             let mut all_selected_indices: BTreeSet<usize> = selected_index.additional_selected.drain().collect();
                             all_selected_indices.insert(selected_index.main_selected);
@@ -283,21 +404,25 @@ impl ZellijPlugin for App {
 
                             if displayed_list_len == 0 {
                                 self.selected_index = None;
-                                self.is_searching = false;
+                                // self.is_searching = false;
+                                // self.visibility_and_focus.focus_right_side();
+                                self.visibility_and_focus.hide_left_side();
                                 self.search_string.clear();
                                 self.search_results = None;
                             } else if selected_index.main_selected > displayed_list_len.saturating_sub(1) {
                                 self.selected_index = Some(SelectedIndex::new(displayed_list_len.saturating_sub(1)));
+                                self.visibility_and_focus.show_both_sides();
                             } else {
                                 selected_index.additional_selected.clear();
                                 self.selected_index = Some(selected_index);
+                                self.visibility_and_focus.show_both_sides();
                             }
                             self.update_highlighted_panes();
                             should_render = true;
                         }
                     }
                     BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
-                        if !self.is_searching {
+                        if self.visibility_and_focus.right_side_is_focused() {
                             // this means we're in the selection panes part and we want to clear
                             // them
                             let mut unselected_panes = vec![];
@@ -307,24 +432,39 @@ impl ZellijPlugin for App {
                             }
                             self.left_side_panes.append(&mut self.right_side_panes);
                             self.ungroup_panes_in_zellij(unselected_panes);
+                            self.visibility_and_focus.hide_right_side();
+                            self.selected_index = None;
+                        } else if self.visibility_and_focus.left_side_is_focused() {
+                            if self.selected_index.is_some() {
+                                self.selected_index = None;
+                                self.update_highlighted_panes();
+                            } else {
+                                close_self();
+                            }
                         }
-                        self.is_searching = true;
-                        self.selected_index = None;
+                        // self.is_searching = true;
+                        // self.selected_index = None;
                         should_render = true;
                     }
                     BareKey::Down if key.has_no_modifiers() => {
                         match self.selected_index.as_mut() {
                             Some(selected_index) =>{
-                                if self.is_searching && selected_index.main_selected == self.left_side_panes.len().saturating_sub(1) {
+                                // if self.is_searching && selected_index.main_selected == self.left_side_panes.len().saturating_sub(1) {
+                                if self.visibility_and_focus.left_side_is_focused() && selected_index.main_selected == self.left_side_panes.len().saturating_sub(1) {
                                     selected_index.main_selected = 0;
-                                } else if !self.is_searching && selected_index.main_selected == self.right_side_panes.len().saturating_sub(1) {
+                                // } else if !self.is_searching && selected_index.main_selected == self.right_side_panes.len().saturating_sub(1) {
+                                } else if self.visibility_and_focus.right_side_is_focused() && selected_index.main_selected == self.right_side_panes.len().saturating_sub(1) {
                                     selected_index.main_selected = 0;
                                 } else {
                                     selected_index.main_selected += 1
                                 }
                             },
                             None => {
-                                self.selected_index = Some(SelectedIndex::new(0));
+                                if self.visibility_and_focus.left_side_is_focused() && !self.left_side_panes.is_empty() {
+                                    self.selected_index = Some(SelectedIndex::new(0));
+                                } else if self.visibility_and_focus.right_side_is_focused() && !self.right_side_panes.is_empty() {
+                                    self.selected_index = Some(SelectedIndex::new(0));
+                                }
                             }
                         }
                         self.update_highlighted_panes();
@@ -333,18 +473,18 @@ impl ZellijPlugin for App {
                     BareKey::Up if key.has_no_modifiers() => {
                         match self.selected_index.as_mut() {
                             Some(selected_index) =>{
-                                if self.is_searching && selected_index.main_selected == 0 {
+                                if self.visibility_and_focus.left_side_is_focused() && selected_index.main_selected == 0 {
                                     selected_index.main_selected = self.left_side_panes.len().saturating_sub(1);
-                                } else if !self.is_searching && selected_index.main_selected == 0 {
+                                } else if self.visibility_and_focus.right_side_is_focused() && selected_index.main_selected == 0 {
                                     selected_index.main_selected = self.right_side_panes.len().saturating_sub(1);
                                 } else {
                                     selected_index.main_selected = selected_index.main_selected.saturating_sub(1);
                                 }
                             },
                             None => {
-                                if self.is_searching {
+                                if self.visibility_and_focus.left_side_is_focused() && !self.left_side_panes.is_empty() {
                                     self.selected_index = Some(SelectedIndex::new(self.left_side_panes.len().saturating_sub(1)));
-                                } else {
+                                } else if self.visibility_and_focus.right_side_is_focused() && !self.right_side_panes.is_empty() {
                                     self.selected_index = Some(SelectedIndex::new(self.right_side_panes.len().saturating_sub(1)));
                                 }
                             }
@@ -359,7 +499,8 @@ impl ZellijPlugin for App {
                             should_render = true;
                         }
                     }
-                    BareKey::Char('b') if key.has_no_modifiers() && !self.is_searching => {
+                    // BareKey::Char('b') if key.has_no_modifiers() && !self.is_searching => {
+                    BareKey::Char('b') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
                         let pane_ids_to_break_to_new_tab: Vec<PaneId> = self
                             .right_side_panes
                             .iter()
@@ -374,7 +515,8 @@ impl ZellijPlugin for App {
                         self.ungroup_panes_in_zellij(pane_ids_to_break_to_new_tab);
                         close_self();
                     }
-                    BareKey::Char('s') if key.has_no_modifiers() && !self.is_searching => {
+                    // BareKey::Char('s') if key.has_no_modifiers() && !self.is_searching => {
+                    BareKey::Char('s') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
                         let pane_ids_to_stack: Vec<PaneId> = self
                             .right_side_panes
                             .iter()
@@ -384,7 +526,8 @@ impl ZellijPlugin for App {
                         self.ungroup_panes_in_zellij(pane_ids_to_stack);
                         close_self();
                     }
-                    BareKey::Char('f') if key.has_no_modifiers() && !self.is_searching => {
+                    // BareKey::Char('f') if key.has_no_modifiers() && !self.is_searching => {
+                    BareKey::Char('f') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
                         let pane_ids_to_float: Vec<PaneId> = self
                             .right_side_panes
                             .iter()
@@ -394,7 +537,8 @@ impl ZellijPlugin for App {
                         self.ungroup_panes_in_zellij(pane_ids_to_float);
                         close_self();
                     }
-                    BareKey::Char('e') if key.has_no_modifiers() && !self.is_searching => {
+                    // BareKey::Char('e') if key.has_no_modifiers() && !self.is_searching => {
+                    BareKey::Char('e') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
                         let pane_ids_to_embed: Vec<PaneId> = self
                             .right_side_panes
                             .iter()
@@ -404,7 +548,8 @@ impl ZellijPlugin for App {
                         self.ungroup_panes_in_zellij(pane_ids_to_embed);
                         close_self();
                     }
-                    BareKey::Char('r') if key.has_no_modifiers() && !self.is_searching => {
+                    // BareKey::Char('r') if key.has_no_modifiers() && !self.is_searching => {
+                    BareKey::Char('r') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
                         if let Some(own_tab_index) = self.own_tab_index {
                             if Some(own_tab_index + 1) < self.total_tabs_in_session {
                                 let pane_ids_to_break_right: Vec<PaneId> = self
@@ -433,7 +578,8 @@ impl ZellijPlugin for App {
                             close_self();
                         }
                     }
-                    BareKey::Char('l') if key.has_no_modifiers() && !self.is_searching => {
+                    // BareKey::Char('l') if key.has_no_modifiers() && !self.is_searching => {
+                    BareKey::Char('l') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
                         if let Some(own_tab_index) = self.own_tab_index {
                             if own_tab_index > 0 {
                                 let pane_ids_to_break_left: Vec<PaneId> = self
@@ -462,7 +608,8 @@ impl ZellijPlugin for App {
                             close_self();
                         }
                     }
-                    BareKey::Char('c') if key.has_no_modifiers() && !self.is_searching => {
+                    // BareKey::Char('c') if key.has_no_modifiers() && !self.is_searching => {
+                    BareKey::Char('c') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
                         let pane_ids_to_close: Vec<PaneId> = self
                             .right_side_panes
                             .iter()
@@ -492,7 +639,16 @@ impl ZellijPlugin for App {
     fn render(&mut self, rows: usize, cols: usize) {
         let (tab_text, tab_shortcut) = self.tab_shortcut();
 
-        let side_width = (cols / 2).saturating_sub(2).saturating_sub((tab_text.chars().count() + 1) / 2);
+        let side_width = match self.visibility_and_focus {
+            VisibilityAndFocus::OnlyLeftSideVisible | VisibilityAndFocus::OnlyRightSideVisible => {
+                // cols.saturating_sub(2).saturating_sub(tab_text.chars().count() + 1)
+                cols.saturating_sub(4)
+            }
+            VisibilityAndFocus::BothSidesVisibleLeftSideFocused | VisibilityAndFocus::BothSidesVisibleRightSideFocused => {
+                // (cols / 2).saturating_sub(2).saturating_sub((tab_text.chars().count() + 1) / 2)
+                (cols / 2).saturating_sub(3)
+            }
+        };
         let max_left_list_height = rows.saturating_sub(8);
         let max_right_list_height = rows.saturating_sub(11);
 
@@ -550,39 +706,71 @@ impl ZellijPlugin for App {
             right_side_controls_4,
         ) = self.right_side_controls();
 
-        let left_side_base_x = 2;
-        let right_side_base_x = side_width + 1 + tab_text.chars().count() + 1;
+        let left_side_base_x = 1;
+        let right_side_base_x = match self.visibility_and_focus {
+            VisibilityAndFocus::OnlyLeftSideVisible | VisibilityAndFocus::OnlyRightSideVisible => {
+                left_side_base_x
+            }
+            VisibilityAndFocus::BothSidesVisibleLeftSideFocused | VisibilityAndFocus::BothSidesVisibleRightSideFocused => {
+                // side_width + 1 + tab_text.chars().count() + 1
+                side_width + 4
+            }
+        };
         let prompt_y = 1;
         let list_y = 3;
-        let left_boundary_start = 0;
-        let left_boundary_end = left_boundary_start + side_width + 1;
+        // let left_boundary_end = side_width + 1;
+        let (boundary_x, tab_toggle_x) = match self.visibility_and_focus {
+            VisibilityAndFocus::OnlyRightSideVisible => {
+                (left_side_base_x.saturating_sub(2), 0)
+            }
+            VisibilityAndFocus::BothSidesVisibleLeftSideFocused | VisibilityAndFocus::BothSidesVisibleRightSideFocused => {
+                (side_width + 2, side_width) // TODO: is the second one accurate?
+            }
+            VisibilityAndFocus::OnlyLeftSideVisible => {
+                (side_width + 2, 0) // tab_toggle is not shown
+            }
+        };
 
-        self.print_middle_border(left_boundary_end + 4, prompt_y, rows.saturating_sub(2));
-        print_text_with_coordinates(tab_shortcut, left_boundary_end + 1, 0, None, None);
-        print_text_with_coordinates(search_prompt, left_side_base_x, prompt_y, None, None);
-        if self.is_searching {
+        // self.print_middle_border(left_boundary_end + 4, prompt_y, rows.saturating_sub(2));
+        self.print_middle_border(boundary_x, prompt_y, rows.saturating_sub(2));
+        // print_text_with_coordinates(tab_shortcut, left_boundary_end + 1, 0, None, None);
+        print_text_with_coordinates(tab_shortcut, tab_toggle_x, 0, None, None);
+
+        if self.visibility_and_focus.left_side_is_visible() {
+            print_text_with_coordinates(search_prompt, left_side_base_x, prompt_y, None, None);
+        }
+        // if self.is_searching {
+        if self.visibility_and_focus.left_side_is_focused() {
             print_text_with_coordinates(search_string, left_side_base_x + search_prompt_text.chars().count(), prompt_y, None, None);
         }
-        print_nested_list_with_coordinates(left_side_panes.clone(), left_side_base_x, list_y, Some(side_width), None);
-        if self.is_searching {
+        if self.visibility_and_focus.left_side_is_visible() {
+            print_nested_list_with_coordinates(left_side_panes.clone(), left_side_base_x, list_y, Some(side_width), None);
+        }
+        // if self.is_searching {
+        if self.visibility_and_focus.left_side_is_focused() {
             if let Some(selected_index) = self.selected_index.as_ref().map(|i| i.main_selected) {
                 print_text_with_coordinates(Text::new(">").color_range(3, ..).selected(), left_side_base_x + 1, (list_y + selected_index).saturating_sub(extra_pane_count_on_top_left), None, None);
             }
         }
-        if extra_pane_count_on_top_left > 0 {
-            self.print_extra_pane_count(extra_pane_count_on_top_left, extra_selected_item_count_on_top_left, list_y.saturating_sub(1), left_side_base_x, side_width);
+        if self.visibility_and_focus.left_side_is_visible() {
+            if extra_pane_count_on_top_left > 0 {
+                self.print_extra_pane_count(extra_pane_count_on_top_left, extra_selected_item_count_on_top_left, list_y.saturating_sub(1), left_side_base_x, side_width);
+            }
+            if extra_pane_count_on_bottom_left > 0 {
+                self.print_extra_pane_count(extra_pane_count_on_bottom_left, extra_selected_item_count_on_bottom_left, list_y + left_side_panes.len(), left_side_base_x, side_width);
+            }
         }
-        if extra_pane_count_on_bottom_left > 0 {
-            self.print_extra_pane_count(extra_pane_count_on_bottom_left, extra_selected_item_count_on_bottom_left, list_y + left_side_panes.len(), left_side_base_x, side_width);
-        }
-        if extra_pane_count_on_top_right > 0 {
-            self.print_extra_pane_count(extra_pane_count_on_top_right, extra_selected_item_count_on_top_right, list_y.saturating_sub(1), right_side_base_x, side_width);
-        }
-        if extra_pane_count_on_bottom_right > 0 {
-            self.print_extra_pane_count(extra_pane_count_on_bottom_right, extra_selected_item_count_on_bottom_right, list_y + right_side_panes.len(), right_side_base_x, side_width);
+        if self.visibility_and_focus.right_side_is_visible() {
+            if extra_pane_count_on_top_right > 0 {
+                self.print_extra_pane_count(extra_pane_count_on_top_right, extra_selected_item_count_on_top_right, list_y.saturating_sub(1), right_side_base_x, side_width);
+            }
+            if extra_pane_count_on_bottom_right > 0 {
+                self.print_extra_pane_count(extra_pane_count_on_bottom_right, extra_selected_item_count_on_bottom_right, list_y + right_side_panes.len(), right_side_base_x, side_width);
+            }
         }
 
-        if self.is_searching && !left_side_panes.is_empty() {
+        // if self.is_searching && !left_side_panes.is_empty() {
+        if self.visibility_and_focus.left_side_is_focused() && !left_side_panes.is_empty() {
             let controls_x = 1;
             print_text_with_coordinates(enter_stage_panes, controls_x, list_y + left_side_panes.len() + 1, None, None);
             if self.selected_index.is_some() {
@@ -591,15 +779,20 @@ impl ZellijPlugin for App {
             }
         }
 
-        print_text_with_coordinates(staged_prompt, right_side_base_x, prompt_y, None, None);
-        print_nested_list_with_coordinates(right_side_panes, right_side_base_x, list_y, Some(side_width), None);
-        if !self.is_searching {
+        if self.visibility_and_focus.right_side_is_visible() {
+            print_text_with_coordinates(staged_prompt, right_side_base_x + 3, prompt_y, None, None);
+            print_nested_list_with_coordinates(right_side_panes, right_side_base_x, list_y, Some(side_width), None);
+        }
+        // if !self.is_searching {
+        if self.visibility_and_focus.right_side_is_focused() {
             if let Some(selected_index) = self.selected_index.as_ref().map(|i| i.main_selected) {
                 print_text_with_coordinates(Text::new(">").color_range(3, ..).selected(), right_side_base_x+ 1, (list_y + selected_index).saturating_sub(extra_pane_count_on_top_right), None, None);
             }
         }
-        if self.is_searching && !self.right_side_panes.is_empty() {
-        } else if !self.is_searching && !self.right_side_panes.is_empty() {
+        // if self.is_searching && !self.right_side_panes.is_empty() {
+        if self.visibility_and_focus.left_side_is_focused() && !self.right_side_panes.is_empty() {
+        // } else if !self.is_searching && !self.right_side_panes.is_empty() {
+        } else if self.visibility_and_focus.right_side_is_focused() && !self.right_side_panes.is_empty() {
             print_text_with_coordinates(right_side_controls_1, right_side_base_x, list_y + right_side_pane_count + 1, None, None);
             print_text_with_coordinates(right_side_controls_2, right_side_base_x, list_y + right_side_pane_count + 3, None, None);
             print_text_with_coordinates(right_side_controls_3, right_side_base_x, list_y + right_side_pane_count + 4, None, None);
@@ -695,7 +888,7 @@ impl App {
         let mut pane_ids_to_highlight = vec![];
         let mut pane_ids_to_unhighlight = vec![];
         if let Some(selected_index) = &self.selected_index {
-            if self.is_searching {
+            if self.visibility_and_focus.left_side_is_focused() {
                 if let Some(main_selected_pane_id) = self.search_results
                     .as_ref()
                     .and_then(|s| s.get(selected_index.main_selected))
@@ -742,17 +935,24 @@ impl App {
 // ui components
 impl App {
     fn tab_shortcut(&self) -> (&'static str, Text) {
-        let tab_text = " <TAB> ";
-        let tab_shortcut = Text::new(tab_text).color_range(3, ..);
+        let tab_text = match self.visibility_and_focus {
+            VisibilityAndFocus::BothSidesVisibleRightSideFocused | VisibilityAndFocus::BothSidesVisibleLeftSideFocused => "<TAB>",
+            VisibilityAndFocus::OnlyRightSideVisible => "<TAB> - select more panes",
+            VisibilityAndFocus::OnlyLeftSideVisible => "",
+        };
+        let tab_shortcut = Text::new(tab_text).color_range(3, ..=4);
         (tab_text, tab_shortcut)
     }
     fn filter_panes_prompt(&self) -> (&'static str, Text) {
-        let search_prompt_text = "FILTER PANES: ";
-        let search_prompt = if self.is_searching { Text::new(&search_prompt_text).color_range(2, ..) } else { Text::new(&search_prompt_text) };
+        let search_prompt_text = if self.search_string.is_empty() { "ALL PANES " } else { "FILTER: " };
+        // let search_prompt = if self.is_searching { Text::new(&search_prompt_text).color_range(2, ..) } else { Text::new(&search_prompt_text) };
+        let search_prompt = if self.visibility_and_focus.left_side_is_focused() { Text::new(&search_prompt_text).color_range(2, ..) } else { Text::new(&search_prompt_text) };
         (search_prompt_text, search_prompt)
     }
     fn search_string(&self) -> (String, Text) {
-        let search_string_text = if self.selected_index.is_none() {
+        let search_string_text = if self.selected_index.is_none() && self.search_string.is_empty() {
+            format!("[Type filter term...]")
+        } else if self.selected_index.is_none() && !self.search_string.is_empty() {
             format!("{}_", self.search_string)
         } else if self.selected_index.is_some() && !self.search_string.is_empty() {
             format!("{}", self.search_string)
@@ -769,7 +969,8 @@ impl App {
         let pane_items_on_the_left = self.search_results.as_ref().unwrap_or_else(|| &self.left_side_panes);
         let max_width_for_item = max_width.saturating_sub(3); // 3 for the list bulletin
         let item_count = pane_items_on_the_left.iter().count();
-        let first_item_index = if self.is_searching {
+        // let first_item_index = if self.is_searching {
+        let first_item_index = if self.visibility_and_focus.left_side_is_focused() {
             self
                 .selected_index
                 .as_ref()
@@ -784,24 +985,28 @@ impl App {
                 break;
             }
             let mut item = pane_item.render(max_width_for_item);
-            if Some(i) == self.selected_index.as_ref().map(|s| s.main_selected) && self.is_searching {
+            // if Some(i) == self.selected_index.as_ref().map(|s| s.main_selected) && self.is_searching {
+            if Some(i) == self.selected_index.as_ref().map(|s| s.main_selected) && self.visibility_and_focus.left_side_is_focused() {
                 item = item.selected();
                 if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) {
                     item = item.selected().color_range(1, ..);
                 }
-            } else if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) && self.is_searching {
+            // } else if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) && self.is_searching {
+            } else if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) && self.visibility_and_focus.left_side_is_focused() {
                 item = item.selected();
             }
             left_side_panes.push(item);
         }
         let extra_panes_on_top = first_item_index;
         let extra_panes_on_bottom = item_count.saturating_sub(last_item_index + 1);
-        let extra_selected_item_count_on_top = if self.is_searching {
+        // let extra_selected_item_count_on_top = if self.is_searching {
+        let extra_selected_item_count_on_top = if self.visibility_and_focus.left_side_is_focused() {
             self.selected_index.as_ref().map(|s| s.additional_selected.iter().filter(|a| a < &&first_item_index).count()).unwrap_or(0)
         } else {
             0
         };
-        let extra_selected_item_count_on_bottom = if self.is_searching {
+        // let extra_selected_item_count_on_bottom = if self.is_searching {
+        let extra_selected_item_count_on_bottom = if self.visibility_and_focus.left_side_is_focused() {
             self.selected_index.as_ref().map(|s| s.additional_selected.iter().filter(|a| a > &&last_item_index).count()).unwrap_or(0)
         } else {
             0
@@ -811,13 +1016,13 @@ impl App {
     fn left_side_controls(&self, max_width: usize) -> (&'static str, Text, &'static str, Text, &'static str, Text) {
         // returns three components and their text
         let (enter_stage_panes_text, enter_stage_panes) = if self.selected_index.is_some() {
-            let enter_stage_panes_text_full = "<ENTER> - select, <↓↑> - navigate";
-            let enter_stage_panes_text_short = "<ENTER> / <↓↑>...";
+            let enter_stage_panes_text_full = "<ENTER> - select, <↓↑→> - navigate";
+            let enter_stage_panes_text_short = "<ENTER> / <↓↑→>...";
             if max_width >= enter_stage_panes_text_full.chars().count() {
-                let enter_stage_panes_full = Text::new(enter_stage_panes_text_full).color_range(3, ..=6).color_range(3, 18..=21);
+                let enter_stage_panes_full = Text::new(enter_stage_panes_text_full).color_range(3, ..=6).color_range(3, 18..=22);
                 (enter_stage_panes_text_full, enter_stage_panes_full)
             } else {
-                let enter_stage_panes_short = Text::new(enter_stage_panes_text_short).color_range(3, ..=6).color_range(3, 10..=13);
+                let enter_stage_panes_short = Text::new(enter_stage_panes_text_short).color_range(3, ..=6).color_range(3, 10..=14);
                 (enter_stage_panes_text_short, enter_stage_panes_short)
             }
         } else {
@@ -831,22 +1036,21 @@ impl App {
                 (enter_stage_panes_text_short, enter_stage_panes_short)
             }
         };
-        // TODO: CONTINUE HERE - make this responsive
         let space_shortcut_text_full = "<SPACE> - mark many,";
         let space_shortcut_text_short = "<SPACE> /";
         if self.selected_index.is_some() {
-            let escape_shortcut_text_full = "<ESC> - remove marks";
-            let escape_shortcut_text_short = "<ESC>...";
+            let escape_shortcut_text_full = "<Ctrl c> - remove marks";
+            let escape_shortcut_text_short = "<Ctrl c>...";
             let (escape_shortcut, space_shortcut, escape_shortcut_text, space_shortcut_text) = if max_width >= space_shortcut_text_full.chars().count() + escape_shortcut_text_full.chars().count() {
                 (
-                    Text::new(escape_shortcut_text_full).color_range(3, ..=4),
+                    Text::new(escape_shortcut_text_full).color_range(3, ..=7),
                     Text::new(space_shortcut_text_full).color_range(3, ..=6),
                     escape_shortcut_text_full,
                     space_shortcut_text_full,
                 )
             } else {
                 (
-                    Text::new(escape_shortcut_text_short).color_range(3, ..=4),
+                    Text::new(escape_shortcut_text_short).color_range(3, ..=7),
                     Text::new(space_shortcut_text_short).color_range(3, ..=6),
                     escape_shortcut_text_short,
                     space_shortcut_text_short,
@@ -861,8 +1065,8 @@ impl App {
                 escape_shortcut
             )
         } else {
-            let escape_shortcut_text = "<ESC> - Close";
-            let escape_shortcut = Text::new(escape_shortcut_text).color_range(3, ..=4);
+            let escape_shortcut_text = if self.visibility_and_focus.right_side_is_visible() { "" } else { "<Ctrl c> - Close" };
+            let escape_shortcut = Text::new(escape_shortcut_text).color_range(3, ..=7);
             let space_shortcut = Text::new(space_shortcut_text_full).color_range(3, ..=6);
             (
                 enter_stage_panes_text,
@@ -875,13 +1079,24 @@ impl App {
         }
     }
     fn help_line(&self) -> (&'static str, Text) {
-        let help_line_text = "Help: Select panes on the left, then perform operations on the right.";
+        let help_line_text = match self.visibility_and_focus {
+            VisibilityAndFocus::OnlyLeftSideVisible => {
+                "Help: Select one or more panes to group for bulk operations."
+            },
+            VisibilityAndFocus::OnlyRightSideVisible => {
+                "Help: Perform bulk operations on all selected panes."
+            }
+            _ => {
+                "Help: Select panes on the left, then perform operations on the right."
+            }
+        };
         let help_line = Text::new(help_line_text);
         (help_line_text, help_line)
     }
     fn selected_panes_title(&self) -> (&'static str, Text) {
         let staged_prompt_text = "SELECTED PANES: ";
-        let staged_prompt = if self.is_searching { Text::new(staged_prompt_text) } else { Text::new(staged_prompt_text).color_range(2, ..) };
+        // let staged_prompt = if self.is_searching { Text::new(staged_prompt_text) } else { Text::new(staged_prompt_text).color_range(2, ..) };
+        let staged_prompt = if self.visibility_and_focus.left_side_is_focused() { Text::new(staged_prompt_text) } else { Text::new(staged_prompt_text).color_range(2, ..) };
         (staged_prompt_text, staged_prompt)
     }
     fn right_side_panes_list(&self, max_width: usize, max_list_height: usize) -> (usize, usize, usize, usize, Vec<NestedListItem>) {
@@ -889,7 +1104,8 @@ impl App {
         // extra_selected_item_count_on_top, extra_selected_item_count_on_bottom, list
         let mut right_side_panes = vec![];
         let item_count = self.right_side_panes.iter().count();
-        let first_item_index = if self.is_searching {
+        // let first_item_index = if self.is_searching {
+        let first_item_index = if self.visibility_and_focus.left_side_is_focused() {
             0
         } else {
             self
@@ -906,12 +1122,14 @@ impl App {
                 break;
             }
             let mut item = pane_item.render(max_width_for_item);
-            if &Some(i) == &self.selected_index.as_ref().map(|s| s.main_selected) && !self.is_searching {
+            // if &Some(i) == &self.selected_index.as_ref().map(|s| s.main_selected) && !self.is_searching {
+            if &Some(i) == &self.selected_index.as_ref().map(|s| s.main_selected) && self.visibility_and_focus.right_side_is_focused() {
                 item = item.selected();
                 if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) {
                     item = item.selected().color_range(1, ..);
                 }
-            } else if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) && !self.is_searching {
+            // } else if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) && !self.is_searching {
+            } else if self.selected_index.as_ref().map(|s| s.additional_selected.contains(&i)).unwrap_or(false) && self.visibility_and_focus.right_side_is_focused() {
                 item = item.selected();
             }
             right_side_panes.push(item);
@@ -919,12 +1137,14 @@ impl App {
 
         let extra_panes_on_top = first_item_index;
         let extra_panes_on_bottom = self.right_side_panes.iter().len().saturating_sub(last_item_index + 1);
-        let extra_selected_item_count_on_top = if self.is_searching {
+        // let extra_selected_item_count_on_top = if self.is_searching {
+        let extra_selected_item_count_on_top = if self.visibility_and_focus.left_side_is_focused() {
             0
         } else {
             self.selected_index.as_ref().map(|s| s.additional_selected.iter().filter(|a| a < &&first_item_index).count()).unwrap_or(0)
         };
-        let extra_selected_item_count_on_bottom = if self.is_searching {
+        // let extra_selected_item_count_on_bottom = if self.is_searching {
+        let extra_selected_item_count_on_bottom = if self.visibility_and_focus.left_side_is_focused() {
             0
         } else {
             self.selected_index.as_ref().map(|s| s.additional_selected.iter().filter(|a| a > &&last_item_index).count()).unwrap_or(0)
@@ -953,19 +1173,23 @@ impl App {
     }
     fn print_middle_border(&self, middle_border_x: usize, middle_border_y: usize, middle_border_height: usize) {
         for i in middle_border_y..=middle_border_height {
-            if i == middle_border_y && self.is_searching {
+            // if i == middle_border_y && self.is_searching {
+            if i == middle_border_y && self.visibility_and_focus.left_side_is_focused() {
                 print_text_with_coordinates(Text::new(TOP_RIGHT_CORNER_CHARACTER), middle_border_x, i, None, None);
                 print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x.saturating_sub(1), i, None, None);
                 print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x.saturating_sub(2), i, None, None);
-            } else if i == middle_border_y && !self.is_searching {
+            // } else if i == middle_border_y && !self.is_searching {
+            } else if i == middle_border_y && !self.visibility_and_focus.left_side_is_focused() {
                 print_text_with_coordinates(Text::new(TOP_LEFT_CORNER_CHARACTER), middle_border_x, i, None, None);
                 print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x + 1, i, None, None);
                 print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x + 2, i, None, None);
-            } else if i == middle_border_height && self.is_searching {
+            // } else if i == middle_border_height && self.is_searching {
+            } else if i == middle_border_height && self.visibility_and_focus.left_side_is_focused() {
                 print_text_with_coordinates(Text::new(BOTTOM_RIGHT_CORNER_CHARACTER), middle_border_x, i, None, None);
                 print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x.saturating_sub(1), i, None, None);
                 print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x.saturating_sub(2), i, None, None);
-            } else if i == middle_border_height && !self.is_searching {
+            // } else if i == middle_border_height && !self.is_searching {
+            } else if i == middle_border_height && !self.visibility_and_focus.left_side_is_focused() {
                 print_text_with_coordinates(Text::new(BOTTOM_LEFT_CORNER_CHARACTER), middle_border_x, i, None, None);
                 print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x + 1, i, None, None);
                 print_text_with_coordinates(Text::new(HORIZONTAL_BOUNDARY_CHARACTER), middle_border_x + 2, i, None, None);
