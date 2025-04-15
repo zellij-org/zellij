@@ -221,28 +221,20 @@ impl ZellijPlugin for App {
                     self.visibility_and_focus.hide_left_side();
                 }
                 let pane_count_changed = (panes_on_the_left_before != self.left_side_panes.len()) || (panes_on_the_right_before != self.right_side_panes.len());
-                // TODO: CONTINUE HERE - why is self.right_side_panes zero when searching, then
-                // selecting a few search results and pressing enter
-                eprintln!("before if, panes_on_the_right_before: {:?}, self.panes_on_the_right: {:?}", panes_on_the_right_before, self.right_side_panes.len());
                 if !is_first_update && pane_count_changed {
-                    eprintln!("this, right?");
                     let has_panes_on_the_right = !self.right_side_panes.is_empty();
                     let has_panes_on_the_left = !self.left_side_panes.is_empty();
                     if has_panes_on_the_right && has_panes_on_the_left {
-                        eprintln!("1");
                         self.visibility_and_focus.show_both_sides();
                     } else if has_panes_on_the_right {
-                        eprintln!("2");
                         self.visibility_and_focus.hide_left_side();
                     } else if has_panes_on_the_left {
-                        eprintln!("3");
                         self.visibility_and_focus.hide_right_side();
                     }
                 }
                 should_render = true;
             }
             Event::Key(key) => {
-                eprintln!("key: {:?}", key);
                 match key.bare_key {
                     BareKey::Tab if key.has_no_modifiers() => {
                         self.visibility_and_focus.toggle_focus();
@@ -297,13 +289,10 @@ impl ZellijPlugin for App {
                                     self.visibility_and_focus.hide_left_side();
                                 } else {
                                     self.selected_index = None;
-                                    eprintln!("focusing right side");
-                                    eprintln!("right side pane count: {:?}", self.right_side_panes.len());
                                     self.visibility_and_focus.focus_right_side();
                                 }
-                                self.update_highlighted_panes();
                                 self.group_panes_in_zellij(pane_ids_to_make_selected);
-                                eprintln!("right side pane count in the end: {:?}", self.right_side_panes.len());
+                                self.update_highlighted_panes();
                             } else {
                                 if let Some(search_results) = self.search_results.take() {
                                     let mut pane_ids_to_make_selected = vec![];
@@ -1065,7 +1054,7 @@ impl App {
                 escape_shortcut
             )
         } else {
-            let escape_shortcut_text = if self.visibility_and_focus.right_side_is_visible() { "" } else { "<Ctrl c> - Close" };
+            let escape_shortcut_text = if self.right_side_panes.is_empty() { "<Ctrl c> - Close" } else { "" };
             let escape_shortcut = Text::new(escape_shortcut_text).color_range(3, ..=7);
             let space_shortcut = Text::new(space_shortcut_text_full).color_range(3, ..=6);
             (
