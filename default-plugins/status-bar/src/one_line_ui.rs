@@ -693,7 +693,7 @@ fn render_group_controls(
         1; // 1 for the end padding
 
     let line_part = if max_len >= full_controls_line_len {
-        let selected_panes = serialize_text(&Text::new(&full_selected_panes_text).color_range(0, ..));
+        let selected_panes = serialize_text(&Text::new(&full_selected_panes_text).color_range(3, ..));
         let group_actions_ribbon = serialize_ribbon(&Text::new(&full_group_actions_text).color_range(0, 1..=multiple_select_key.chars().count()));
         let ungroup_ribbon = serialize_ribbon(&Text::new(&full_ungroup_text).color_range(0, 1..=3));
         let controls_line = format!("{} {}{}", selected_panes, group_actions_ribbon, ungroup_ribbon);
@@ -709,7 +709,7 @@ fn render_group_controls(
             len: full_controls_line_len + padding_len
         })
     } else if max_len >= short_controls_line_len {
-        let selected_panes = serialize_text(&Text::new(&short_selected_panes_text).color_range(0, ..));
+        let selected_panes = serialize_text(&Text::new(&short_selected_panes_text).color_range(3, ..));
         let group_actions_ribbon = serialize_ribbon(&Text::new(&short_group_actions_text).color_range(0, 1..=multiple_select_key.chars().count()));
         let ungroup_ribbon = serialize_ribbon(&Text::new(&short_ungroup_text).color_range(0, 1..=3));
         let controls_line = format!("{} {}{}", selected_panes, group_actions_ribbon, ungroup_ribbon);

@@ -1278,7 +1278,7 @@ pub const DEFAULT_STYLES: Styling = Styling {
     },
     frame_highlight: StyleDeclaration {
         base: PaletteColor::EightBit(default_colors::ORANGE),
-        emphasis_0: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_0: PaletteColor::EightBit(default_colors::MAGENTA),
         emphasis_1: PaletteColor::EightBit(default_colors::GREEN),
         emphasis_2: PaletteColor::EightBit(default_colors::GREEN),
         emphasis_3: PaletteColor::EightBit(default_colors::GREEN),
@@ -1436,7 +1436,7 @@ impl From<Palette> for Styling {
             },
             frame_highlight: StyleDeclaration {
                 base: palette.orange,
-                emphasis_0: palette.orange,
+                emphasis_0: palette.magenta,
                 emphasis_1: palette.orange,
                 emphasis_2: palette.orange,
                 emphasis_3: palette.orange,

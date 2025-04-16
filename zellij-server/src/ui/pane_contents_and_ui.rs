@@ -298,7 +298,9 @@ impl<'a> PaneContentsAndUi<'a> {
         let pane_focused_for_client_id = self.focused_clients.contains(&client_id);
         if let Some(override_color) = self.pane.frame_color_override() {
             Some(override_color)
-        } else if pane_focused_for_client_id || self.current_pane_group.get(&client_id).map(|p| p.contains(&self.pane.pid())).unwrap_or(false) {
+        } else if self.current_pane_group.get(&client_id).map(|p| p.contains(&self.pane.pid())).unwrap_or(false) {
+            Some(self.style.colors.frame_highlight.emphasis_0)
+        } else if pane_focused_for_client_id {
             match mode {
                 InputMode::Normal | InputMode::Locked => {
                     if session_is_mirrored || !self.multiple_users_exist_in_session {

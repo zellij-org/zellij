@@ -3121,65 +3121,9 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::TogglePaneEmbedOrFloating(client_id) => {
-                if screen.client_has_pane_group(&client_id) {
-                    let mut pane_group = screen.get_client_pane_group(&client_id);
-                    if let Some(active_pane_id) = screen
-                        .get_active_tab(client_id)
-                        .ok()
-                        .and_then(|t| t.get_active_pane_id(client_id))
-                    {
-                        pane_group.insert(active_pane_id);
-                    }
-                    let all_tabs = screen.get_tabs_mut();
-                    let mut ejected_panes_in_group = vec![];
-                    let mut embedded_panes_in_group = vec![];
-                    for tab in all_tabs.values_mut() {
-                        let mut ejected_panes_in_tab = false;
-                        let mut embedded_panes_in_tab = false;
-                        for pane_id in &pane_group {
-                            if tab.has_pane_with_pid(&pane_id) {
-                                if tab.pane_id_is_floating(&pane_id) {
-                                    embedded_panes_in_tab = true;
-                                    embedded_panes_in_group.push(*pane_id);
-                                } else {
-                                    ejected_panes_in_tab = true;
-                                    ejected_panes_in_group.push(*pane_id);
-                                }
-                                tab.toggle_pane_embed_or_floating_for_pane_id(
-                                    *pane_id,
-                                    Some(client_id),
-                                )
-                                .non_fatal();
-                            }
-                        }
-                        if ejected_panes_in_tab && !embedded_panes_in_tab {
-                            tab.show_floating_panes();
-                        } else if embedded_panes_in_tab && !ejected_panes_in_tab {
-                            tab.hide_floating_panes();
-                        }
-                    }
-                    if !ejected_panes_in_group.is_empty() {
-                        let _ = screen.bus.senders.send_to_background_jobs(
-                            BackgroundJob::HighlightPanesWithMessage(
-                                ejected_panes_in_group,
-                                "EJECTED".to_owned(),
-                            ),
-                        );
-                    }
-                    if !embedded_panes_in_group.is_empty() {
-                        let _ = screen.bus.senders.send_to_background_jobs(
-                            BackgroundJob::HighlightPanesWithMessage(
-                                embedded_panes_in_group,
-                                "EMBEDDED".to_owned(),
-                            ),
-                        );
-                    }
-                    screen.clear_pane_group(&client_id);
-                } else {
-                    active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| tab
-                        .toggle_pane_embed_or_floating(client_id), ?);
-                    screen.unblock_input()?;
-                }
+                active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| tab
+                    .toggle_pane_embed_or_floating(client_id), ?);
+                screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
             },
@@ -3634,36 +3578,11 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::CloseFocusedPane(client_id) => {
-                if screen.client_has_pane_group(&client_id) {
-                    let mut pane_group = screen.get_client_pane_group(&client_id);
-                    if let Some(active_pane_id) = screen
-                        .get_active_tab(client_id)
-                        .ok()
-                        .and_then(|t| t.get_active_pane_id(client_id))
-                    {
-                        if !pane_group.contains(&active_pane_id) {
-                            pane_group.insert(active_pane_id);
-                        }
-                    }
-                    for id in pane_group {
-                        for tab in screen.tabs.values_mut() {
-                            if tab.get_all_pane_ids().contains(&id) {
-                                tab.close_pane(id, false);
-                            }
-                        }
-                        let _ = screen
-                            .bus
-                            .senders
-                            .send_to_pty(PtyInstruction::ClosePane(id));
-                    }
-                    screen.clear_pane_group(&client_id);
-                } else {
-                    active_tab_and_connected_client_id!(
-                        screen,
-                        client_id,
-                        |tab: &mut Tab, client_id: ClientId| tab.close_focused_pane(client_id), ?
-                    );
-                }
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.close_focused_pane(client_id), ?
+                );
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
@@ -4707,109 +4626,13 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::BreakPane(default_layout, default_shell, client_id) => {
-                if screen.client_has_pane_group(&client_id) {
-                    let mut pane_group = screen.get_client_pane_group(&client_id);
-                    if let Some(active_pane_id) = screen
-                        .get_active_tab(client_id)
-                        .ok()
-                        .and_then(|t| t.get_active_pane_id(client_id))
-                    {
-                        if !pane_group.contains(&active_pane_id) {
-                            pane_group.insert(active_pane_id);
-                        }
-                    }
-                    let should_change_focus_to_new_tab = true;
-                    let new_tab_name = None;
-                    screen.break_multiple_panes_to_new_tab(
-                        pane_group.iter().copied().collect(),
-                        default_shell,
-                        should_change_focus_to_new_tab,
-                        new_tab_name,
-                        client_id,
-                    )?;
-                    // TODO: is this a race?
-                    let _ = screen.bus.senders.send_to_background_jobs(
-                        BackgroundJob::HighlightPanesWithMessage(
-                            pane_group.iter().copied().collect(),
-                            "BROKEN OUT".to_owned(),
-                        ),
-                    );
-                    screen.clear_pane_group(&client_id);
-                } else {
-                    screen.break_pane(default_shell, default_layout, client_id)?;
-                }
+                screen.break_pane(default_shell, default_layout, client_id)?;
             },
             ScreenInstruction::BreakPaneRight(client_id) => {
-                if screen.client_has_pane_group(&client_id) {
-                    let mut pane_group = screen.get_client_pane_group(&client_id);
-                    if let Some(active_pane_id) = screen
-                        .get_active_tab(client_id)
-                        .ok()
-                        .and_then(|t| t.get_active_pane_id(client_id))
-                    {
-                        if !pane_group.contains(&active_pane_id) {
-                            pane_group.insert(active_pane_id);
-                        }
-                    }
-                    let should_change_focus_to_new_tab = true;
-                    if let Some(active_tab_pos) = screen.get_active_tab_position(client_id) {
-                        let new_tab_pos = (active_tab_pos + 1) % screen.tabs.len();
-                        screen.break_multiple_panes_to_tab_with_index(
-                            pane_group.iter().copied().collect(),
-                            new_tab_pos,
-                            should_change_focus_to_new_tab,
-                            client_id,
-                        )?;
-                        // TODO: is this a race?
-                        let _ = screen.bus.senders.send_to_background_jobs(
-                            BackgroundJob::HighlightPanesWithMessage(
-                                pane_group.iter().copied().collect(),
-                                "BROKEN OUT".to_owned(),
-                            ),
-                        );
-                        screen.clear_pane_group(&client_id);
-                    }
-                } else {
-                    screen.break_pane_to_new_tab(Direction::Right, client_id)?;
-                }
+                screen.break_pane_to_new_tab(Direction::Right, client_id)?;
             },
             ScreenInstruction::BreakPaneLeft(client_id) => {
-                if screen.client_has_pane_group(&client_id) {
-                    let mut pane_group = screen.get_client_pane_group(&client_id);
-                    if let Some(active_pane_id) = screen
-                        .get_active_tab(client_id)
-                        .ok()
-                        .and_then(|t| t.get_active_pane_id(client_id))
-                    {
-                        if !pane_group.contains(&active_pane_id) {
-                            pane_group.insert(active_pane_id);
-                        }
-                    }
-                    let should_change_focus_to_new_tab = true;
-                    if let Some(active_tab_pos) = screen.get_active_tab_position(client_id) {
-                        let new_tab_pos = if active_tab_pos == 0 {
-                            screen.tabs.len().saturating_sub(1)
-                        } else {
-                            active_tab_pos - 1
-                        };
-                        screen.break_multiple_panes_to_tab_with_index(
-                            pane_group.iter().copied().collect(),
-                            new_tab_pos,
-                            should_change_focus_to_new_tab,
-                            client_id,
-                        )?;
-                        // TODO: is this a race?
-                        let _ = screen.bus.senders.send_to_background_jobs(
-                            BackgroundJob::HighlightPanesWithMessage(
-                                pane_group.iter().copied().collect(),
-                                "BROKEN OUT".to_owned(),
-                            ),
-                        );
-                        screen.clear_pane_group(&client_id);
-                    }
-                } else {
-                    screen.break_pane_to_new_tab(Direction::Left, client_id)?;
-                }
+                screen.break_pane_to_new_tab(Direction::Left, client_id)?;
             },
             ScreenInstruction::UpdateSessionInfos(new_session_infos, resurrectable_sessions) => {
                 screen.update_session_infos(new_session_infos, resurrectable_sessions)?;
