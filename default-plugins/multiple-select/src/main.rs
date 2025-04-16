@@ -174,6 +174,7 @@ impl ZellijPlugin for App {
         let plugin_ids = get_plugin_ids();
         self.own_plugin_id = Some(plugin_ids.plugin_id);
         self.own_client_id = Some(plugin_ids.client_id);
+        rename_plugin_pane(plugin_ids.plugin_id, "Multiple Select");
     }
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
