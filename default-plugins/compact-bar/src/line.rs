@@ -4,6 +4,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::{LinePart, ARROW_SEPARATOR};
 use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
+use zellij_tile::prelude::actions::Action;
 
 fn get_current_title_len(current_title: &[LinePart]) -> usize {
     current_title.iter().map(|p| p.len).sum()
@@ -251,6 +252,8 @@ pub fn tab_line(
     mode: InputMode,
     active_swap_layout_name: &Option<String>,
     is_swap_layout_dirty: bool,
+    mode_info: &ModeInfo,
+    grouped_pane_count: Option<usize>,
 ) -> Vec<LinePart> {
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
     let mut tabs_before_active = all_tabs;
@@ -286,15 +289,23 @@ pub fn tab_line(
     if current_title_len < cols {
         let mut remaining_space = cols - current_title_len;
         let remaining_bg = palette.text_unselected.background;
-        if let Some(swap_layout_status) = swap_layout_status(
-            remaining_space,
-            active_swap_layout_name,
-            is_swap_layout_dirty,
-            mode,
-            &palette,
-            tab_separator(capabilities),
-        ) {
-            remaining_space -= swap_layout_status.len;
+        let right_side_component = match grouped_pane_count {
+            Some(grouped_pane_count) => {
+                render_group_controls(mode_info, grouped_pane_count, remaining_space)
+            },
+            None => {
+                swap_layout_status(
+                    remaining_space,
+                    active_swap_layout_name,
+                    is_swap_layout_dirty,
+                    mode,
+                    &palette,
+                    tab_separator(capabilities),
+                )
+            }
+        };
+        if let Some(right_side_component) = right_side_component {
+            remaining_space -= right_side_component.len;
             let mut buffer = String::new();
             for _ in 0..remaining_space {
                 buffer.push_str(&style!(remaining_bg, remaining_bg).paint(" ").to_string());
@@ -304,7 +315,7 @@ pub fn tab_line(
                 len: remaining_space,
                 tab_index: None,
             });
-            prefix.push(swap_layout_status);
+            prefix.push(right_side_component);
         }
     }
 
@@ -371,5 +382,98 @@ fn swap_layout_status(
             }
         },
         None => None,
+    }
+}
+
+fn render_group_controls(
+    help: &ModeInfo,
+    grouped_pane_count: usize,
+    max_len: usize,
+) -> Option<LinePart> {
+    let keymap = help.get_mode_keybinds();
+    let multiple_select_key = multiple_select_key(&keymap).iter().next().map(|key| format!("{}", key)).unwrap_or("UNBOUND".to_owned());
+    let background = help.style.colors.text_unselected.background;
+    let foreground = help.style.colors.text_unselected.base;
+    let superkey_prefix_style = style!(foreground, background).bold();
+
+    let full_selected_panes_text = format!("{} SELECTED PANES", grouped_pane_count);
+    let full_group_actions_text = format!("<{}> Group Actions", &multiple_select_key);
+    let full_ungroup_text = format!("<ESC> Ungroup");
+    let ribbon_paddings_len = 8; // 2 ribbons
+    let full_controls_line_len = full_selected_panes_text.chars().count() +
+        1 +
+        full_group_actions_text.chars().count() +
+        full_ungroup_text.chars().count() +
+        ribbon_paddings_len +
+        1; // 1 for the end padding
+
+    let short_selected_panes_text = format!("{} SELECTED", grouped_pane_count);
+    let short_group_actions_text = format!("<{}>", &multiple_select_key);
+    let short_ungroup_text = format!("<ESC>");
+    let ribbon_paddings_len = 8; // 2 ribbons
+    let short_controls_line_len = short_selected_panes_text.chars().count() +
+        1 +
+        short_group_actions_text.chars().count() +
+        short_ungroup_text.chars().count() +
+        ribbon_paddings_len +
+        1; // 1 for the end padding
+
+    let line_part = if max_len >= full_controls_line_len {
+        let selected_panes = serialize_text(&Text::new(&full_selected_panes_text).color_range(3, ..));
+        let group_actions_ribbon = serialize_ribbon(&Text::new(&full_group_actions_text).color_range(0, 1..=multiple_select_key.chars().count()));
+        let ungroup_ribbon = serialize_ribbon(&Text::new(&full_ungroup_text).color_range(0, 1..=3));
+        let controls_line = format!("{} {}{}", selected_panes, group_actions_ribbon, ungroup_ribbon);
+        let remaining_space = max_len.saturating_sub(full_controls_line_len);
+        let mut padding = String::new();
+        let mut padding_len = 0;
+        for _ in 0..remaining_space {
+            // padding.push_str(&ANSIStrings(&[colored_elements.superkey_prefix.paint(" ")]).to_string());
+            padding.push_str(&ANSIStrings(&[superkey_prefix_style.paint(" ")]).to_string());
+            padding_len += 1;
+        }
+        Some(LinePart {
+            part: format!("{}{}", padding, controls_line),
+            len: full_controls_line_len + padding_len,
+            tab_index: None
+        })
+    } else if max_len >= short_controls_line_len {
+        let selected_panes = serialize_text(&Text::new(&short_selected_panes_text).color_range(3, ..));
+        let group_actions_ribbon = serialize_ribbon(&Text::new(&short_group_actions_text).color_range(0, 1..=multiple_select_key.chars().count()));
+        let ungroup_ribbon = serialize_ribbon(&Text::new(&short_ungroup_text).color_range(0, 1..=3));
+        let controls_line = format!("{} {}{}", selected_panes, group_actions_ribbon, ungroup_ribbon);
+        let remaining_space = max_len.saturating_sub(short_controls_line_len);
+        let mut padding = String::new();
+        let mut padding_len = 0;
+        for _ in 0..remaining_space {
+            padding.push_str(&ANSIStrings(&[superkey_prefix_style.paint(" ")]).to_string());
+            padding_len += 1;
+        }
+        Some(LinePart {
+            part: format!("{}{}", padding, controls_line),
+            len: short_controls_line_len + padding_len,
+            tab_index: None,
+        })
+    } else {
+        None
+    };
+    line_part
+}
+
+fn multiple_select_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithModifier> {
+    let mut matching = keymap.iter().find_map(|(key, acvec)| {
+        let has_match = acvec
+            .iter()
+            .find(|a| a.launches_plugin("zellij:multiple-select")) // TODO: make this an alias
+            .is_some();
+        if has_match {
+            Some(key.clone())
+        } else {
+            None
+        }
+    });
+    if let Some(matching) = matching.take() {
+        vec![matching]
+    } else {
+        vec![]
     }
 }
