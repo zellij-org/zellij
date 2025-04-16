@@ -230,7 +230,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 is_main_client: pane_focused_for_client_id,
                 other_focused_clients: vec![],
                 style: self.style,
-                color: frame_color,
+                color: frame_color.map(|c| c.0),
                 other_cursors_exist_in_session: false,
                 pane_is_stacked_over: self.pane_is_stacked_over,
                 pane_is_stacked_under: self.pane_is_stacked_under,
@@ -245,7 +245,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 is_main_client: pane_focused_for_client_id,
                 other_focused_clients,
                 style: self.style,
-                color: frame_color,
+                color: frame_color.map(|c| c.0),
                 other_cursors_exist_in_session: self.multiple_users_exist_in_session,
                 pane_is_stacked_over: self.pane_is_stacked_over,
                 pane_is_stacked_under: self.pane_is_stacked_under,
@@ -294,31 +294,37 @@ impl<'a> PaneContentsAndUi<'a> {
         client_id: ClientId,
         mode: InputMode,
         session_is_mirrored: bool,
-    ) -> Option<PaletteColor> {
+    ) -> Option<(PaletteColor, usize)> { // (color, color_precedence)
         let pane_focused_for_client_id = self.focused_clients.contains(&client_id);
-        if let Some(override_color) = self.pane.frame_color_override() {
-            Some(override_color)
-        } else if self.current_pane_group.get(&client_id).map(|p| p.contains(&self.pane.pid())).unwrap_or(false) {
-            Some(self.style.colors.frame_highlight.emphasis_0)
+        let pane_is_in_group = self.current_pane_group
+            .get(&client_id)
+            .map(|p| p.contains(&self.pane.pid()))
+            .unwrap_or(false);
+        if self.pane.frame_color_override().is_some() && !pane_is_in_group {
+            self.pane.frame_color_override().map(|override_color| (override_color, 4))
+        } else if pane_is_in_group && !pane_focused_for_client_id {
+            Some((self.style.colors.frame_highlight.emphasis_0, 2))
         } else if pane_focused_for_client_id {
             match mode {
                 InputMode::Normal | InputMode::Locked => {
                     if session_is_mirrored || !self.multiple_users_exist_in_session {
-                        Some(self.style.colors.frame_selected.base)
+                        Some((self.style.colors.frame_selected.base, 3))
                     } else {
                         let colors = client_id_to_colors(
                             client_id,
                             self.style.colors.multiplayer_user_colors,
                         );
-                        colors.map(|colors| colors.0)
+                        colors.map(|colors| (colors.0, 3))
                     }
                 },
-                _ => Some(self.style.colors.frame_highlight.base),
+                _ => {
+                    Some((self.style.colors.frame_highlight.base, 3))
+                }
             }
         } else if self.mouse_is_hovering_over_pane_for_clients.contains(&client_id) {
-            Some(self.style.colors.frame_highlight.base)
+            Some((self.style.colors.frame_highlight.base, 1))
         } else {
-            self.style.colors.frame_unselected.map(|frame| frame.base)
+            self.style.colors.frame_unselected.map(|frame| (frame.base, 0))
         }
     }
 }
