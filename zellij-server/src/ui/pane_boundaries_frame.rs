@@ -872,20 +872,20 @@ impl PaneFrame {
                     character_chunks.push(CharacterChunk::new(title, x, y));
                 } else if row == self.geom.rows - 1 {
                     // bottom row
-                    if self.exit_status.is_some() || self.is_first_run {
-                        let x = self.geom.x;
-                        let y = self.geom.y + row;
-                        character_chunks.push(CharacterChunk::new(
-                            self.render_held_undertitle().with_context(err_context)?,
-                            x,
-                            y,
-                        ));
-                    } else if self.mouse_is_hovering_over_pane && !self.is_main_client {
+                    if self.mouse_is_hovering_over_pane && !self.is_main_client {
                         let x = self.geom.x;
                         let y = self.geom.y + row;
                         character_chunks.push(CharacterChunk::new(
                             self.render_mouse_shortcuts_undertitle()
                                 .with_context(err_context)?,
+                            x,
+                            y,
+                        ));
+                    } else if self.exit_status.is_some() || self.is_first_run {
+                        let x = self.geom.x;
+                        let y = self.geom.y + row;
+                        character_chunks.push(CharacterChunk::new(
+                            self.render_held_undertitle().with_context(err_context)?,
                             x,
                             y,
                         ));
