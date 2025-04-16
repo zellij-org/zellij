@@ -1032,7 +1032,7 @@ impl App {
             escape_shortcut
         ) = self.left_side_controls(side_width);
         print_text_with_coordinates(filter_prompt, left_side_base_x, title_y, None, None);
-        if is_focused {
+        if is_focused && !self.search_string.is_empty() {
             print_text_with_coordinates(filter, left_side_base_x + filter_prompt_text.chars().count(), title_y, None, None);
         }
         print_nested_list_with_coordinates(left_side_panes.clone(), left_side_base_x, list_y, Some(side_width), None);
