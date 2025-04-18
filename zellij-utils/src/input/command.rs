@@ -1,7 +1,7 @@
 //! Trigger a command
 use crate::data::{Direction, OriginatingPlugin};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 #[derive(Debug, Clone)]
 pub enum TerminalAction {
@@ -52,6 +52,8 @@ pub struct RunCommand {
     #[serde(default)]
     pub args: Vec<String>,
     #[serde(default)]
+    pub env_vars: HashMap<String, String>,
+    #[serde(default)]
     pub cwd: Option<PathBuf>,
     #[serde(default)]
     pub hold_on_close: bool,
@@ -84,6 +86,8 @@ pub struct RunCommandAction {
     pub command: PathBuf,
     #[serde(default)]
     pub args: Vec<String>,
+    #[serde(alias = "env")]
+    pub env_vars: HashMap<String, String>,
     #[serde(default)]
     pub cwd: Option<PathBuf>,
     #[serde(default)]
@@ -102,6 +106,7 @@ impl From<RunCommandAction> for RunCommand {
             command: action.command,
             args: action.args,
             cwd: action.cwd,
+            env_vars: action.env_vars,
             hold_on_close: action.hold_on_close,
             hold_on_start: action.hold_on_start,
             originating_plugin: action.originating_plugin,
@@ -115,6 +120,7 @@ impl From<RunCommand> for RunCommandAction {
             command: run_command.command,
             args: run_command.args,
             cwd: run_command.cwd,
+            env_vars: run_command.env_vars,
             direction: None,
             hold_on_close: run_command.hold_on_close,
             hold_on_start: run_command.hold_on_start,
