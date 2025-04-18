@@ -189,9 +189,12 @@ fn build_command_line(cmd: &RunCommand) -> Vec<u16> {
 /// Build a UTF-16 environment block (each entry `KEY=VALUE\0`, terminated by
 /// an extra `\0`) from the current process environment, adding
 /// `ZELLIJ_PANE_ID`.
-fn build_environment_block(terminal_id: u32) -> Vec<u16> {
+fn build_environment_block(terminal_id: u32, env_vars: &HashMap<String, String>) -> Vec<u16> {
     let mut block: Vec<u16> = Vec::new();
-    for (key, value) in std::env::vars() {
+    let env_vars_it = std::env::vars()
+        .map(|(k, v)| (&k, &v))
+        .chain(env_vars.iter());
+    for (key, value) in env_vars_it {
         if key == "ZELLIJ_PANE_ID" {
             continue;
         }
@@ -325,7 +328,7 @@ fn spawn_child_process(
 
     // --- command line & environment ---
     let mut cmd_line = build_command_line(cmd);
-    let env_block = build_environment_block(terminal_id);
+    let env_block = build_environment_block(terminal_id, &cmd.env_vars);
 
     let cwd: Option<Vec<u16>> = cmd.cwd.as_ref().and_then(|p| {
         if p.exists() && p.is_dir() {

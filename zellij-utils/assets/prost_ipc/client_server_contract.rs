@@ -1580,6 +1580,17 @@ pub mod floating_coordinate {
         Percent(f32),
     }
 }
+
+
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RunCommandActionEnvVariables {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub value: ::prost::alloc::string::String,
+}
+
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RunCommandAction {
@@ -1589,6 +1600,8 @@ pub struct RunCommandAction {
     pub args: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(string, optional, tag="3")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag="9")]
+    pub env_vars: ::prost::alloc::vec::Vec<RunCommandActionEnvVariables>,
     /// Added missing direction field
     #[prost(enumeration="Direction", optional, tag="4")]
     pub direction: ::core::option::Option<i32>,
