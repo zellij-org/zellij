@@ -3,7 +3,10 @@ use crate::{
     os_input_output::ClientOsApi, stdin_ansi_parser::AnsiStdinInstruction, ClientId,
     ClientInstruction, CommandIsExecuting, InputInstruction,
 };
-use termwiz::input::{InputEvent, Modifiers, MouseButtons, MouseEvent as TermwizMouseEvent};
+use termwiz::input::{
+    InputEvent, KeyCodeEncodeModes, KeyboardEncoding, Modifiers, MouseButtons,
+    MouseEvent as TermwizMouseEvent,
+};
 use zellij_utils::{
     channels::{Receiver, SenderWithContext, OPENCALLS},
     data::{InputMode, KeyWithModifier},
@@ -158,14 +161,27 @@ impl InputHandler {
                 break;
             }
             match self.receive_input_instructions.recv() {
-                Ok((InputInstruction::KeyEvent(input_event, raw_bytes), _error_context)) => {
+                Ok((InputInstruction::KeyEvent(input_event), _error_context)) => {
                     match input_event {
                         InputEvent::Key(key_event) => {
+                            let key_code_encode_modes = KeyCodeEncodeModes {
+                                encoding: KeyboardEncoding::Xterm,
+                                application_cursor_keys: false,
+                                newline_mode: false,
+                                modify_other_keys: None,
+                            };
+
+                            let raw_bytes: Vec<u8> = key_event
+                                .key
+                                .encode(key_event.modifiers, key_code_encode_modes, true)
+                                .unwrap()
+                                .into_bytes();
                             let key = cast_termwiz_key(
                                 key_event,
                                 &raw_bytes,
                                 Some((&self.config.keybinds, &self.mode)),
                             );
+
                             self.handle_key(&key, raw_bytes, false);
                         },
                         InputEvent::Mouse(mouse_event) => {
