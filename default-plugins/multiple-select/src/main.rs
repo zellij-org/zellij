@@ -170,6 +170,7 @@ impl ZellijPlugin for App {
             EventType::PaneUpdate,
             EventType::FailedToWriteConfigToDisk,
             EventType::ConfigWasWrittenToDisk,
+            EventType::BeforeClose,
         ]);
         let plugin_ids = get_plugin_ids();
         self.own_plugin_id = Some(plugin_ids.plugin_id);
@@ -588,6 +589,9 @@ impl ZellijPlugin for App {
                     _ => {}
                 }
             },
+            Event::BeforeClose => {
+                self.unhighlight_all_panes();
+            }
             _ => {},
         }
         should_render
@@ -734,6 +738,16 @@ impl App {
             }
         }
         highlight_and_unhighlight_panes(pane_ids_to_highlight, pane_ids_to_unhighlight);
+    }
+    fn unhighlight_all_panes(&mut self) {
+        let mut pane_ids_to_unhighlight = HashSet::new();
+        for pane_item in self.left_side_panes.drain(..) {
+            pane_ids_to_unhighlight.insert(pane_item.id);
+        }
+        for pane_item in self.right_side_panes.drain(..) {
+            pane_ids_to_unhighlight.insert(pane_item.id);
+        }
+        highlight_and_unhighlight_panes(vec![], pane_ids_to_unhighlight.into_iter().collect());
     }
 }
 

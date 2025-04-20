@@ -519,6 +519,7 @@ pub enum EventType {
     FailedToChangeHostFolder = 28,
     PastedText = 29,
     ConfigWasWrittenToDisk = 30,
+    BeforeClose = 31,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -558,6 +559,7 @@ impl EventType {
             EventType::FailedToChangeHostFolder => "FailedToChangeHostFolder",
             EventType::PastedText => "PastedText",
             EventType::ConfigWasWrittenToDisk => "ConfigWasWrittenToDisk",
+            EventType::BeforeClose => "BeforeClose",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -594,6 +596,7 @@ impl EventType {
             "FailedToChangeHostFolder" => Some(Self::FailedToChangeHostFolder),
             "PastedText" => Some(Self::PastedText),
             "ConfigWasWrittenToDisk" => Some(Self::ConfigWasWrittenToDisk),
+            "BeforeClose" => Some(Self::BeforeClose),
             _ => None,
         }
     }

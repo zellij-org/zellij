@@ -359,6 +359,10 @@ impl TryFrom<ProtobufEvent> for Event {
                 None => Ok(Event::ConfigWasWrittenToDisk),
                 _ => Err("Malformed payload for the ConfigWasWrittenToDisk Event"),
             },
+            Some(ProtobufEventType::BeforeClose) => match protobuf_event.payload {
+                None => Ok(Event::BeforeClose),
+                _ => Err("Malformed payload for the BeforeClose Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -731,6 +735,10 @@ impl TryFrom<Event> for ProtobufEvent {
             }),
             Event::ConfigWasWrittenToDisk => Ok(ProtobufEvent {
                 name: ProtobufEventType::ConfigWasWrittenToDisk as i32,
+                payload: None,
+            }),
+            Event::BeforeClose => Ok(ProtobufEvent {
+                name: ProtobufEventType::BeforeClose as i32,
                 payload: None,
             }),
         }
@@ -1354,6 +1362,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::FailedToChangeHostFolder => EventType::FailedToChangeHostFolder,
             ProtobufEventType::PastedText => EventType::PastedText,
             ProtobufEventType::ConfigWasWrittenToDisk => EventType::ConfigWasWrittenToDisk,
+            ProtobufEventType::BeforeClose => EventType::BeforeClose,
         })
     }
 }
@@ -1393,6 +1402,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::FailedToChangeHostFolder => ProtobufEventType::FailedToChangeHostFolder,
             EventType::PastedText => ProtobufEventType::PastedText,
             EventType::ConfigWasWrittenToDisk => ProtobufEventType::ConfigWasWrittenToDisk,
+            EventType::BeforeClose => ProtobufEventType::BeforeClose,
         })
     }
 }

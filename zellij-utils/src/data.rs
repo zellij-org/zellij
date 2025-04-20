@@ -937,6 +937,7 @@ pub enum Event {
     FailedToChangeHostFolder(Option<String>), // String -> the error we got when changing
     PastedText(String),
     ConfigWasWrittenToDisk,
+    BeforeClose,
 }
 
 #[derive(
