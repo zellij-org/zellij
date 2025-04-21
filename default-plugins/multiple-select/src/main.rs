@@ -90,6 +90,12 @@ impl Default for VisibilityAndFocus {
 }
 
 impl VisibilityAndFocus {
+    pub fn only_left_side_is_focused(&self) -> bool {
+        match self {
+            VisibilityAndFocus::OnlyLeftSideVisible => true,
+            _ => false
+        }
+    }
     pub fn left_side_is_focused(&self) -> bool {
         match self {
             VisibilityAndFocus::OnlyLeftSideVisible | VisibilityAndFocus::BothSidesVisibleLeftSideFocused => true,
@@ -386,6 +392,7 @@ impl ZellijPlugin for App {
                                 self.selected_index = None;
                                 self.update_highlighted_panes();
                             } else {
+                                self.ungroup_all_panes();
                                 close_self();
                             }
                         }
@@ -466,7 +473,7 @@ impl ZellijPlugin for App {
                     BareKey::Char('b') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
                         let pane_ids_to_break_to_new_tab: Vec<PaneId> = self
                             .right_side_panes
-                            .iter()
+                            .drain(..)
                             .map(|p| p.id)
                             .collect();
                         let title_for_new_tab = if !self.previous_search_string.is_empty() {
@@ -481,7 +488,7 @@ impl ZellijPlugin for App {
                     BareKey::Char('s') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
                         let pane_ids_to_stack: Vec<PaneId> = self
                             .right_side_panes
-                            .iter()
+                            .drain(..)
                             .map(|p| p.id)
                             .collect();
                         stack_panes(pane_ids_to_stack.clone());
@@ -491,7 +498,7 @@ impl ZellijPlugin for App {
                     BareKey::Char('f') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
                         let pane_ids_to_float: Vec<PaneId> = self
                             .right_side_panes
-                            .iter()
+                            .drain(..)
                             .map(|p| p.id)
                             .collect();
                         float_multiple_panes(pane_ids_to_float.clone());
@@ -501,7 +508,7 @@ impl ZellijPlugin for App {
                     BareKey::Char('e') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
                         let pane_ids_to_embed: Vec<PaneId> = self
                             .right_side_panes
-                            .iter()
+                            .drain(..)
                             .map(|p| p.id)
                             .collect();
                         embed_multiple_panes(pane_ids_to_embed.clone());
@@ -513,7 +520,7 @@ impl ZellijPlugin for App {
                             if Some(own_tab_index + 1) < self.total_tabs_in_session {
                                 let pane_ids_to_break_right: Vec<PaneId> = self
                                     .right_side_panes
-                                    .iter()
+                                    .drain(..)
                                     .map(|p| p.id)
                                     .collect();
                                 break_panes_to_tab_with_index(
@@ -524,7 +531,7 @@ impl ZellijPlugin for App {
                             } else {
                                 let pane_ids_to_break_to_new_tab: Vec<PaneId> = self
                                     .right_side_panes
-                                    .iter()
+                                    .drain(..)
                                     .map(|p| p.id)
                                     .collect();
                                 let title_for_new_tab = if !self.previous_search_string.is_empty() {
@@ -542,7 +549,7 @@ impl ZellijPlugin for App {
                             if own_tab_index > 0 {
                                 let pane_ids_to_break_left: Vec<PaneId> = self
                                     .right_side_panes
-                                    .iter()
+                                    .drain(..)
                                     .map(|p| p.id)
                                     .collect();
                                 break_panes_to_tab_with_index(
@@ -553,7 +560,7 @@ impl ZellijPlugin for App {
                             } else {
                                 let pane_ids_to_break_to_new_tab: Vec<PaneId> = self
                                     .right_side_panes
-                                    .iter()
+                                    .drain(..)
                                     .map(|p| p.id)
                                     .collect();
                                 let title_for_new_tab = if !self.previous_search_string.is_empty() {
@@ -569,7 +576,7 @@ impl ZellijPlugin for App {
                     BareKey::Char('c') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
                         let pane_ids_to_close: Vec<PaneId> = self
                             .right_side_panes
-                            .iter()
+                            .drain(..)
                             .map(|p| p.id)
                             .collect();
                         close_multiple_panes(
@@ -598,7 +605,7 @@ impl ZellijPlugin for App {
     }
     fn render(&mut self, rows: usize, cols: usize) {
         self.render_close_shortcut(cols);
-        self.render_tab_shortcut(cols);
+        self.render_tab_shortcut(cols, rows);
         match self.visibility_and_focus {
             VisibilityAndFocus::OnlyLeftSideVisible => self.render_left_side(rows, cols, true),
             VisibilityAndFocus::OnlyRightSideVisible => self.render_right_side(rows, cols, true),
@@ -741,13 +748,23 @@ impl App {
     }
     fn unhighlight_all_panes(&mut self) {
         let mut pane_ids_to_unhighlight = HashSet::new();
-        for pane_item in self.left_side_panes.drain(..) {
+        for pane_item in &self.left_side_panes {
             pane_ids_to_unhighlight.insert(pane_item.id);
         }
-        for pane_item in self.right_side_panes.drain(..) {
+        for pane_item in &self.right_side_panes {
             pane_ids_to_unhighlight.insert(pane_item.id);
         }
         highlight_and_unhighlight_panes(vec![], pane_ids_to_unhighlight.into_iter().collect());
+    }
+    fn ungroup_all_panes(&mut self) {
+        let mut pane_ids_to_ungroup = HashSet::new();
+        for pane_item in &self.left_side_panes {
+            pane_ids_to_ungroup.insert(pane_item.id);
+        }
+        for pane_item in &self.right_side_panes {
+            pane_ids_to_ungroup.insert(pane_item.id);
+        }
+        group_and_ungroup_panes(vec![], pane_ids_to_ungroup.into_iter().collect());
     }
 }
 
@@ -1001,21 +1018,28 @@ impl App {
     fn render_close_shortcut(&self, cols: usize) {
         let should_render_close_shortcut = self.visibility_and_focus.left_side_is_focused() && self.selected_index.is_none();
         if should_render_close_shortcut {
+            let x_coordinates_right_padding = if self.visibility_and_focus.only_left_side_is_focused() { 5 } else { 1 };
             let ctrl_c_shortcut_text = "<Ctrl c> - Close";
             let ctrl_c_shortcut = Text::new(ctrl_c_shortcut_text).color_range(3, ..=7);
-            print_text_with_coordinates(ctrl_c_shortcut, cols.saturating_sub(ctrl_c_shortcut_text.chars().count()).saturating_sub(1), 0, None, None);
+            print_text_with_coordinates(ctrl_c_shortcut, cols.saturating_sub(ctrl_c_shortcut_text.chars().count()).saturating_sub(x_coordinates_right_padding), 0, None, None);
         }
     }
-    fn render_tab_shortcut(&self, cols: usize) {
+    fn render_tab_shortcut(&self, cols: usize, rows: usize) {
         match self.visibility_and_focus {
-            VisibilityAndFocus::BothSidesVisibleRightSideFocused | VisibilityAndFocus::BothSidesVisibleLeftSideFocused => {
+            VisibilityAndFocus::BothSidesVisibleRightSideFocused => {
                 let side_width = self.calculate_side_width(cols);
-                let tab_shortcut = Text::new("<TAB>").color_range(3, ..=4);
-                print_text_with_coordinates(tab_shortcut, side_width, 0, None, None);
+                let tab_shortcut = Text::new("<TAB> - select more panes").color_range(3, ..=4);
+                print_text_with_coordinates(tab_shortcut, side_width + 6, rows.saturating_sub(2), None, None);
+            }
+            VisibilityAndFocus::BothSidesVisibleLeftSideFocused => {
+                let side_width = self.calculate_side_width(cols);
+                let tab_shortcut_text = "<TAB> - browse selected panes";
+                let tab_shortcut = Text::new(tab_shortcut_text).color_range(3, ..=4);
+                print_text_with_coordinates(tab_shortcut, side_width.saturating_sub(tab_shortcut_text.chars().count() + 1), rows.saturating_sub(2), None, None);
             }
             VisibilityAndFocus::OnlyRightSideVisible => {
                 let tab_shortcut = Text::new("<TAB> - select more panes").color_range(3, ..=4);
-                print_text_with_coordinates(tab_shortcut, 0, 0, None, None);
+                print_text_with_coordinates(tab_shortcut, 4, rows.saturating_sub(2), None, None);
             }
             VisibilityAndFocus::OnlyLeftSideVisible => {
                 // not visible
@@ -1023,9 +1047,9 @@ impl App {
         };
     }
     fn render_left_side(&self, rows: usize, cols: usize, is_focused: bool) {
-        let title_y = 1;
+        let title_y = 0;
         let left_side_base_x = 1;
-        let list_y = 3;
+        let list_y = 2;
         let side_width = self.calculate_side_width(cols);
         let max_left_list_height = rows.saturating_sub(8);
         let (
@@ -1046,7 +1070,7 @@ impl App {
             escape_shortcut
         ) = self.left_side_controls(side_width);
         print_text_with_coordinates(filter_prompt, left_side_base_x, title_y, None, None);
-        if is_focused && !self.search_string.is_empty() {
+        if is_focused {
             print_text_with_coordinates(filter, left_side_base_x + filter_prompt_text.chars().count(), title_y, None, None);
         }
         print_nested_list_with_coordinates(left_side_panes.clone(), left_side_base_x, list_y, Some(side_width), None);
@@ -1076,8 +1100,8 @@ impl App {
             VisibilityAndFocus::OnlyLeftSideVisible | VisibilityAndFocus::OnlyRightSideVisible => 1,
             VisibilityAndFocus::BothSidesVisibleLeftSideFocused | VisibilityAndFocus::BothSidesVisibleRightSideFocused => side_width + 4,
         };
-        let title_y = 1;
-        let list_y: usize = 3;
+        let title_y = 0;
+        let list_y: usize = 2;
         let max_right_list_height = rows.saturating_sub(11);
         let selected_prompt = self.selected_panes_title();
         let (
@@ -1155,7 +1179,7 @@ impl App {
             VisibilityAndFocus::BothSidesVisibleRightSideFocused |
             VisibilityAndFocus::OnlyLeftSideVisible => side_width + 2
         };
-        let y = 1;
+        let y = 0;
         let height = rows.saturating_sub(2);
         for i in y..=height {
             if i == y && self.visibility_and_focus.left_side_is_focused() {
