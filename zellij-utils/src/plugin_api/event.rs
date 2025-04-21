@@ -1080,10 +1080,12 @@ impl TryFrom<ProtobufPaneInfo> for PaneInfo {
             terminal_command: protobuf_pane_info.terminal_command,
             plugin_url: protobuf_pane_info.plugin_url,
             is_selectable: protobuf_pane_info.is_selectable,
-            is_grouped_for_clients: protobuf_pane_info
-                .is_grouped_for_clients
+            index_in_pane_group: protobuf_pane_info
+                .index_in_pane_group
                 .iter()
-                .map(|c| *c as u16)
+                .map(|index_in_pane_group| {
+                    (index_in_pane_group.client_id as u16, index_in_pane_group.index as usize)
+                })
                 .collect(),
         })
     }
@@ -1120,10 +1122,15 @@ impl TryFrom<PaneInfo> for ProtobufPaneInfo {
             terminal_command: pane_info.terminal_command,
             plugin_url: pane_info.plugin_url,
             is_selectable: pane_info.is_selectable,
-            is_grouped_for_clients: pane_info
-                .is_grouped_for_clients
+            index_in_pane_group: pane_info
+                .index_in_pane_group
                 .iter()
-                .map(|c| *c as u32)
+                .map(|(&client_id, &index)| {
+                    IndexInPaneGroup {
+                        client_id: client_id as u32,
+                        index: index as u32
+                    }
+                })
                 .collect(),
         })
     }
@@ -1904,6 +1911,14 @@ fn serialize_session_update_event_with_non_default_values() {
         TabInfo::default(),
     ];
     let mut panes = HashMap::new();
+    let mut index_in_pane_group_1 = BTreeMap::new();
+    index_in_pane_group_1.insert(1, 0);
+    index_in_pane_group_1.insert(2, 0);
+    index_in_pane_group_1.insert(3, 0);
+    let mut index_in_pane_group_2 = BTreeMap::new();
+    index_in_pane_group_2.insert(1, 1);
+    index_in_pane_group_2.insert(2, 1);
+    index_in_pane_group_2.insert(3, 1);
     let panes_list = vec![
         PaneInfo {
             id: 1,
@@ -1928,7 +1943,7 @@ fn serialize_session_update_event_with_non_default_values() {
             terminal_command: Some("foo".to_owned()),
             plugin_url: None,
             is_selectable: true,
-            is_grouped_for_clients: vec![1, 2, 3],
+            index_in_pane_group: index_in_pane_group_1,
         },
         PaneInfo {
             id: 1,
@@ -1953,7 +1968,7 @@ fn serialize_session_update_event_with_non_default_values() {
             terminal_command: None,
             plugin_url: Some("i_am_a_fake_plugin".to_owned()),
             is_selectable: true,
-            is_grouped_for_clients: vec![1, 2, 3],
+            index_in_pane_group: index_in_pane_group_2,
         },
     ];
     panes.insert(0, panes_list);

@@ -46,7 +46,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, BTreeMap},
     str,
 };
 use zellij_utils::{
@@ -4705,16 +4705,21 @@ impl Tab {
             self.set_force_render();
         }
     }
-    pub fn has_room_for_stack(&self, root_pane_id: PaneId, stack_size: usize) -> bool {
+    pub fn has_room_for_stack(&mut self, root_pane_id: PaneId, stack_size: usize) -> bool {
         if self.floating_panes.panes_contain(&root_pane_id)
             || self.suppressed_panes.contains_key(&root_pane_id)
         {
             log::error!("Root pane of stack cannot be floating or suppressed");
             return false;
         }
-        self.get_pane_with_id(root_pane_id)
-            .map(|p| p.position_and_size().rows.as_usize() >= stack_size + MIN_TERMINAL_HEIGHT)
-            .unwrap_or(false)
+        if self.pane_is_stacked(root_pane_id) {
+            let room_left_in_stack = self.tiled_panes.room_left_in_stack_of_pane_id(&root_pane_id).unwrap_or(0);
+            stack_size <= room_left_in_stack
+        } else {
+            self.get_pane_with_id(root_pane_id)
+                .map(|p| p.position_and_size().rows.as_usize() >= stack_size + MIN_TERMINAL_HEIGHT)
+                .unwrap_or(false)
+        }
     }
     pub fn set_tiled_panes_damaged(&mut self) {
         self.swap_layouts.set_is_tiled_damaged();
@@ -4848,9 +4853,14 @@ pub fn pane_info_for_pane(pane_id: &PaneId, pane: &Box<dyn Pane>, current_pane_g
     pane_info.exited = pane.exited();
     pane_info.exit_status = pane.exit_status();
     pane_info.is_held = pane.is_held();
-    let mut is_grouped_for_clients: Vec<ClientId> = current_pane_group.iter().filter_map(|(client_id, pane_ids)| if pane_ids.contains(&pane.pid()) { Some(*client_id) } else { None } ).collect();
-    is_grouped_for_clients.sort();
-    pane_info.is_grouped_for_clients = is_grouped_for_clients;
+    let index_in_pane_group: BTreeMap<ClientId, usize> = current_pane_group.iter().filter_map(|(client_id, pane_ids)| {
+        if let Some(position) = pane_ids.iter().position(|p_id| p_id == &pane.pid()) {
+            Some((*client_id, position))
+        } else {
+            None
+        }
+    }).collect();
+    pane_info.index_in_pane_group = index_in_pane_group;
 
     match pane_id {
         PaneId::Terminal(terminal_id) => {

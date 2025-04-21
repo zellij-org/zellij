@@ -305,7 +305,12 @@ message PaneInfo {
     optional string terminal_command = 20;
     optional string plugin_url = 21;
     bool is_selectable = 22;
-    repeated uint32 is_grouped_for_clients = 23;
+    repeated IndexInPaneGroup index_in_pane_group = 23;
+}
+
+message IndexInPaneGroup {
+  uint32 client_id = 1;
+  uint32 index = 2;
 }
 
 message TabInfo {

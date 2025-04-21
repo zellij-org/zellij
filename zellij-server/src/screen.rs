@@ -2612,7 +2612,7 @@ impl Screen {
         };
         let target_tab_has_room_for_stack = self
             .tabs
-            .get(&root_tab_id)
+            .get_mut(&root_tab_id)
             .map(|t| t.has_room_for_stack(root_pane_id, stack_size))
             .unwrap_or(false);
         if !target_tab_has_room_for_stack {

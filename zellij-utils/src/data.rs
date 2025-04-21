@@ -1738,8 +1738,9 @@ pub struct PaneInfo {
     /// Unselectable panes are often used for UI elements that do not have direct user interaction
     /// (eg. the default `status-bar` or `tab-bar`).
     pub is_selectable: bool,
-    /// Grouped panes (usually through an explicit user action) that should ideally have actions performed on them in bulk
-    pub is_grouped_for_clients: Vec<ClientId>,
+    /// Grouped panes (usually through an explicit user action) that are staged for a bulk action
+    /// the index is kept track of in order to preserve the pane group order
+    pub index_in_pane_group: BTreeMap<ClientId, usize>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ClientInfo {

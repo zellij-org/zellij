@@ -639,12 +639,22 @@ impl App {
         }
         self.left_side_panes.retain(|p| all_panes.contains_key(&p.id));
         self.right_side_panes.retain(|p| all_panes.contains_key(&p.id));
+        let mut new_selected_panes: BTreeMap<usize, PaneItem> = BTreeMap::new(); // usize -> index_in_pane_group
         for (pane_id, pane) in all_panes.into_iter() {
             let is_known = self.left_side_panes.iter().find(|p| p.id == pane_id).is_some() || self.right_side_panes.iter().find(|p| p.id == pane_id).is_some();
-            let is_grouped_for_own_client_id = self.own_client_id.map(|client_id| pane.is_grouped_for_clients.contains(&client_id)).unwrap_or(false);
+            let index_in_pane_group = self.own_client_id
+              .and_then(|own_client_id| {
+                pane.index_in_pane_group.get(&own_client_id)
+              });
+            let is_grouped_for_own_client_id = index_in_pane_group.is_some();
             if !is_known {
                 if is_grouped_for_own_client_id {
-                    self.right_side_panes.push(PaneItem { text: pane.title, id: pane_id, color_indices: vec![] });
+                    if let Some(index_in_pane_group) = index_in_pane_group {
+                        // we do this rather than adding them directly to right_side_panes so that
+                        // we can make sure they're in the same order as the group is so that
+                        // things like stacking order will do the right thing
+                        new_selected_panes.insert(*index_in_pane_group, PaneItem { text: pane.title, id: pane_id, color_indices: vec![] });
+                    }
                 } else {
                     self.left_side_panes.push(PaneItem { text: pane.title, id: pane_id, color_indices: vec![] });
                 }
@@ -665,6 +675,9 @@ impl App {
                     }
                 }
             }
+        }
+        for (_index_in_pane_group, pane_item) in new_selected_panes.into_iter() {
+            self.right_side_panes.push(pane_item);
         }
     }
     fn update_tab_info(&mut self, pane_manifest: &PaneManifest) {

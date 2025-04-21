@@ -200,6 +200,15 @@ impl TiledPanes {
             .is_some();
         has_room_for_new_pane || pane_grid.has_room_for_new_stacked_pane() || self.panes.is_empty()
     }
+    pub fn room_left_in_stack_of_pane_id(&mut self, pane_id: &PaneId) -> Option<usize> {
+        let mut pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        pane_grid.room_left_in_stack_of_pane_id(pane_id)
+    }
 
     pub fn assign_geom_for_pane_with_run(&mut self, run: Option<Run>) {
         // here we're removing the first pane we find with this run instruction and re-adding it so
