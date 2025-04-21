@@ -3200,26 +3200,21 @@ pub(crate) fn screen_thread_main(
                 client_id,
             ) => {
                 let mut state_changed = false;
-                if screen.client_has_pane_group(&client_id) && key_with_modifier.as_ref().map(|k| k.is_cancel_key()).unwrap_or(false) {
-                    screen.clear_pane_group(&client_id);
-                    state_changed = true;
-                } else {
-                    active_tab_and_connected_client_id!(
-                        screen,
-                        client_id,
-                        |tab: &mut Tab, client_id: ClientId| {
-                            let write_result = match tab.is_sync_panes_active() {
-                                true => tab.write_to_terminals_on_current_tab(&key_with_modifier, raw_bytes, is_kitty_keyboard_protocol, client_id),
-                                false => tab.write_to_active_terminal(&key_with_modifier, raw_bytes, is_kitty_keyboard_protocol, client_id),
-                            };
-                            if let Ok(true) = write_result {
-                                state_changed = true;
-                            }
-                            write_result
-                        },
-                        ?
-                    );
-                }
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| {
+                        let write_result = match tab.is_sync_panes_active() {
+                            true => tab.write_to_terminals_on_current_tab(&key_with_modifier, raw_bytes, is_kitty_keyboard_protocol, client_id),
+                            false => tab.write_to_active_terminal(&key_with_modifier, raw_bytes, is_kitty_keyboard_protocol, client_id),
+                        };
+                        if let Ok(true) = write_result {
+                            state_changed = true;
+                        }
+                        write_result
+                    },
+                    ?
+                );
                 if state_changed {
                     screen.log_and_report_session_state()?;
                 }

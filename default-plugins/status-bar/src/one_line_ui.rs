@@ -672,31 +672,26 @@ fn render_group_controls(
 
     let full_selected_panes_text = format!("{} SELECTED PANES", grouped_pane_count);
     let full_group_actions_text = format!("<{}> Group Actions", &multiple_select_key);
-    let full_ungroup_text = format!("<ESC> Ungroup");
-    let ribbon_paddings_len = 8; // 2 ribbons
+    let ribbon_paddings_len = 4;
     let full_controls_line_len = full_selected_panes_text.chars().count() +
         1 +
         full_group_actions_text.chars().count() +
-        full_ungroup_text.chars().count() +
         ribbon_paddings_len +
         1; // 1 for the end padding
 
     let short_selected_panes_text = format!("{} SELECTED", grouped_pane_count);
     let short_group_actions_text = format!("<{}>", &multiple_select_key);
-    let short_ungroup_text = format!("<ESC>");
-    let ribbon_paddings_len = 8; // 2 ribbons
+    let ribbon_paddings_len = 4;
     let short_controls_line_len = short_selected_panes_text.chars().count() +
         1 +
         short_group_actions_text.chars().count() +
-        short_ungroup_text.chars().count() +
         ribbon_paddings_len +
         1; // 1 for the end padding
 
     let line_part = if max_len >= full_controls_line_len {
         let selected_panes = serialize_text(&Text::new(&full_selected_panes_text).color_range(3, ..));
         let group_actions_ribbon = serialize_ribbon(&Text::new(&full_group_actions_text).color_range(0, 1..=multiple_select_key.chars().count()));
-        let ungroup_ribbon = serialize_ribbon(&Text::new(&full_ungroup_text).color_range(0, 1..=3));
-        let controls_line = format!("{} {}{}", selected_panes, group_actions_ribbon, ungroup_ribbon);
+        let controls_line = format!("{} {}", selected_panes, group_actions_ribbon);
         let remaining_space = max_len.saturating_sub(full_controls_line_len);
         let mut padding = String::new();
         let mut padding_len = 0;
@@ -711,8 +706,7 @@ fn render_group_controls(
     } else if max_len >= short_controls_line_len {
         let selected_panes = serialize_text(&Text::new(&short_selected_panes_text).color_range(3, ..));
         let group_actions_ribbon = serialize_ribbon(&Text::new(&short_group_actions_text).color_range(0, 1..=multiple_select_key.chars().count()));
-        let ungroup_ribbon = serialize_ribbon(&Text::new(&short_ungroup_text).color_range(0, 1..=3));
-        let controls_line = format!("{} {}{}", selected_panes, group_actions_ribbon, ungroup_ribbon);
+        let controls_line = format!("{} {}", selected_panes, group_actions_ribbon);
         let remaining_space = max_len.saturating_sub(short_controls_line_len);
         let mut padding = String::new();
         let mut padding_len = 0;
