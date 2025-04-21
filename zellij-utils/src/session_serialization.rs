@@ -163,6 +163,7 @@ fn serialize_tiled_pane(
     pane_contents: &mut BTreeMap<String, String>,
 ) -> KdlNode {
     let (command, args) = extract_command_and_args(&layout.run);
+    let env_vars = extract_env_vars(&layout.run);
     let (plugin, plugin_config) = extract_plugin_and_config(&layout.run);
     let (edit, _line_number) = extract_edit_and_line_number(&layout.run);
     let cwd = layout.run.as_ref().and_then(|r| r.get_cwd());
@@ -185,11 +186,13 @@ fn serialize_tiled_pane(
     let has_child_attributes = !layout.children.is_empty()
         || layout.external_children_index.is_some()
         || !args.is_empty()
+        || !env_vars.map(HashMap::is_empty).unwrap_or(true)
         || plugin.is_some()
         || command.is_some();
     if has_child_attributes {
         let mut tiled_pane_node_children = KdlDocument::new();
         serialize_args(args, &mut tiled_pane_node_children);
+        serialize_env_vars(env_vars, &mut tiled_pane_node_children);
         serialize_start_suspended(&command, &mut tiled_pane_node_children);
         serialize_plugin(plugin, plugin_config, &mut tiled_pane_node_children);
         if layout.children.is_empty() && layout.external_children_index.is_some() {
@@ -220,6 +223,12 @@ pub fn extract_command_and_args(layout_run: &Option<Run>) -> (Option<String>, Ve
             run_command.args.clone(),
         ),
         _ => (None, vec![]),
+    }
+}
+pub fn extract_env_vars(layout_run: &Option<Run>) -> Option<&HashMap<String, String>> {
+    match layout_run {
+        Some(Run::Command(run_command)) => Some(&run_command.env_vars),
+        _ => None,
     }
 }
 pub fn extract_plugin_and_config(
@@ -318,6 +327,26 @@ fn serialize_args(args: Vec<String>, pane_node_children: &mut KdlDocument) {
         }
         pane_node_children.nodes_mut().push(args_node);
     }
+}
+fn serialize_env_vars(
+    env_vars: Option<&HashMap<String, String>>,
+    pane_node_children: &mut KdlDocument,
+) {
+    let Some(env_vars) = env_vars else {
+        return;
+    };
+    if env_vars.is_empty() {
+        return;
+    }
+    let mut env_vars_doc = KdlDocument::new();
+    for (name, value) in env_vars {
+        let mut node = KdlNode::new(name.as_str());
+        node.entries_mut().push(KdlEntry::new(value.as_str()));
+        env_vars_doc.nodes_mut().push(node);
+    }
+    let mut env_vars_node = KdlNode::new("env_vars");
+    env_vars_node.set_children(env_vars_doc);
+    pane_node_children.nodes_mut().push(env_vars_node);
 }
 
 fn serialize_plugin(
