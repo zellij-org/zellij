@@ -75,6 +75,16 @@ impl std::fmt::Display for RunCommand {
             command.push(' ');
             command.push_str(arg);
         }
+        if !self.env_vars.is_empty() {
+            command.push_str(" {");
+            for (name, value) in &self.env_vars {
+                command.push_str(name);
+                command.push_str("=\"");
+                command.push_str(value);
+                command.push('"');
+            }
+            command.push('}');
+        }
         write!(f, "{}", command)
     }
 }
