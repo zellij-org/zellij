@@ -84,12 +84,12 @@ impl Text {
 
         let mut prefix = "".to_owned();
 
-        if self.opaque {
-            prefix = format!("z{}", prefix);
-        }
-
         if self.selected {
             prefix = format!("x{}", prefix);
+        }
+
+        if self.opaque {
+            prefix = format!("z{}", prefix);
         }
 
         format!("{}{}{}", prefix, indices, text)

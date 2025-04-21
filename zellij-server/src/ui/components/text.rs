@@ -59,13 +59,13 @@ pub fn stringify_text(
         }
         text_width += character_width;
 
-        if text.selected {
+        if text.selected || text.opaque {
             // we do this so that selected text will appear selected
             // even if it does not have color indices
             stringified.push_str(&format!("{}", base_text_style));
         }
 
-        if !text.indices.is_empty() || text.selected {
+        if !text.indices.is_empty() || text.selected || text.opaque {
             let character_with_styling =
                 color_index_character(character, i, &text, style, base_text_style);
             stringified.push_str(&character_with_styling);
