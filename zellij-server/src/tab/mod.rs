@@ -263,6 +263,7 @@ pub(crate) struct Tab {
     explicitly_disable_kitty_keyboard_protocol: bool,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
     current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
+    advanced_mouse_actions: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -669,6 +670,7 @@ impl Tab {
         explicitly_disable_kitty_keyboard_protocol: bool,
         default_editor: Option<PathBuf>,
         current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
+        advanced_mouse_actions: bool,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -765,6 +767,7 @@ impl Tab {
             default_editor,
             mouse_hover_pane_id: HashMap::new(),
             current_pane_group,
+            advanced_mouse_actions,
         }
     }
 
@@ -3909,7 +3912,9 @@ impl Tab {
                 self.mouse_hover_pane_id.remove(&client_id);
             } else {
                 let pane_id = pane.pid();
-                self.mouse_hover_pane_id.insert(client_id, pane_id);
+                if self.advanced_mouse_actions {
+                    self.mouse_hover_pane_id.insert(client_id, pane_id);
+                }
             }
         };
         Ok(MouseEffect::leave_clipboard_message())
@@ -4684,6 +4689,9 @@ impl Tab {
     }
     pub fn update_auto_layout(&mut self, auto_layout: bool) {
         self.auto_layout = auto_layout;
+    }
+    pub fn update_advanced_mouse_actions(&mut self, advanced_mouse_actions: bool) {
+        self.advanced_mouse_actions = advanced_mouse_actions;
     }
     pub fn extract_suppressed_panes(&mut self) -> SuppressedPanes {
         self.suppressed_panes.drain().collect()

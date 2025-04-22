@@ -371,6 +371,7 @@ pub enum ScreenInstruction {
         hide_session_name: bool,
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
+        advanced_mouse_actions: bool,
     },
     RerunCommandPane(u32), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
@@ -739,6 +740,7 @@ pub(crate) struct Screen {
     explicitly_disable_kitty_keyboard_protocol: bool,
     default_editor: Option<PathBuf>,
     current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
+    advanced_mouse_actions: bool,
 }
 
 impl Screen {
@@ -765,6 +767,7 @@ impl Screen {
         explicitly_disable_kitty_keyboard_protocol: bool,
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
+        advanced_mouse_actions: bool,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -809,6 +812,7 @@ impl Screen {
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
             current_pane_group: Rc::new(RefCell::new(HashMap::new())),
+            advanced_mouse_actions,
         }
     }
 
@@ -1415,6 +1419,7 @@ impl Screen {
             self.explicitly_disable_kitty_keyboard_protocol,
             self.default_editor.clone(),
             self.current_pane_group.clone(),
+            self.advanced_mouse_actions,
         );
         for (client_id, mode_info) in &self.mode_info {
             tab.change_mode_info(mode_info.clone(), *client_id);
@@ -2523,6 +2528,7 @@ impl Screen {
         hide_session_name: bool,
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
+        advanced_mouse_actions: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
@@ -2537,6 +2543,7 @@ impl Screen {
         self.copy_options.command = copy_command.clone();
         self.copy_options.copy_on_select = copy_on_select;
         self.draw_pane_frames = pane_frames;
+        self.advanced_mouse_actions = advanced_mouse_actions;
         self.default_mode_info
             .update_arrow_fonts(should_support_arrow_fonts);
         self.default_mode_info
@@ -2556,6 +2563,7 @@ impl Screen {
             tab.update_copy_options(&self.copy_options);
             tab.set_pane_frames(pane_frames);
             tab.update_arrow_fonts(should_support_arrow_fonts);
+            tab.update_advanced_mouse_actions(advanced_mouse_actions);
         }
 
         // client specific configuration
@@ -2949,6 +2957,7 @@ pub(crate) fn screen_thread_main(
         .unwrap_or(false); // by default, we try to support this if the terminal supports it and
                            // the program running inside a pane requests it
     let stacked_resize = config_options.stacked_resize.unwrap_or(true);
+    let advanced_mouse_actions = config_options.advanced_mouse_actions.unwrap_or(true);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -2982,6 +2991,7 @@ pub(crate) fn screen_thread_main(
         explicitly_disable_kitty_keyboard_protocol,
         stacked_resize,
         default_editor,
+        advanced_mouse_actions,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
@@ -3978,13 +3988,19 @@ pub(crate) fn screen_thread_main(
                 {
                     Ok(mouse_effect) => {
                         if let Some(pane_id) = mouse_effect.group_toggle {
-                            screen.toggle_pane_id_in_group(pane_id, &client_id);
+                            if screen.advanced_mouse_actions {
+                                screen.toggle_pane_id_in_group(pane_id, &client_id);
+                            }
                         }
                         if let Some(pane_id) = mouse_effect.group_add {
-                            screen.add_pane_id_to_group(pane_id, &client_id);
+                            if screen.advanced_mouse_actions {
+                                screen.add_pane_id_to_group(pane_id, &client_id);
+                            }
                         }
                         if mouse_effect.ungroup {
-                            screen.clear_pane_group(&client_id);
+                            if screen.advanced_mouse_actions {
+                                screen.clear_pane_group(&client_id);
+                            }
                         }
                         if mouse_effect.state_changed {
                             screen.log_and_report_session_state()?;
@@ -4776,6 +4792,7 @@ pub(crate) fn screen_thread_main(
                 hide_session_name,
                 stacked_resize,
                 default_editor,
+                advanced_mouse_actions,
             } => {
                 screen
                     .reconfigure(
@@ -4793,6 +4810,7 @@ pub(crate) fn screen_thread_main(
                         hide_session_name,
                         stacked_resize,
                         default_editor,
+                        advanced_mouse_actions,
                         client_id,
                     )
                     .non_fatal();

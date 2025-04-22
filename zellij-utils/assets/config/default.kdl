@@ -433,7 +433,7 @@ load_plugins {
 //
 // show_release_notes false
 
-// Whether to show startup tips on session start
+// Whether to enable mouse hover effects and pane grouping functionality
 // Default: true
 //
-// show_startup_tips false
+// advanced_mouse_actions false
