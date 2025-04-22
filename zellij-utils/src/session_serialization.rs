@@ -673,6 +673,7 @@ fn serialize_floating_pane(
     let mut floating_pane_node = KdlNode::new("pane");
     let mut floating_pane_node_children = KdlDocument::new();
     let (command, args) = extract_command_and_args(&layout.run);
+    let env_vars = extract_env_vars(&layout.run);
     let (plugin, plugin_config) = extract_plugin_and_config(&layout.run);
     let (edit, _line_number) = extract_edit_and_line_number(&layout.run);
     let cwd = layout.run.as_ref().and_then(|r| r.get_cwd());
@@ -691,6 +692,7 @@ fn serialize_floating_pane(
     serialize_start_suspended(&command, &mut floating_pane_node_children);
     serialize_floating_layout_attributes(&layout, &mut floating_pane_node_children);
     serialize_args(args, &mut floating_pane_node_children);
+    serialize_env_vars(env_vars, &mut floating_pane_node_children);
     serialize_plugin(plugin, plugin_config, &mut floating_pane_node_children);
     floating_pane_node.set_children(floating_pane_node_children);
     floating_pane_node
