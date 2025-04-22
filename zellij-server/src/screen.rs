@@ -412,6 +412,11 @@ pub enum ScreenInstruction {
     HighlightAndUnhighlightPanes(Vec<PaneId>, Vec<PaneId>, ClientId), // panes_to_highlight, panes_to_unhighlight
     FloatMultiplePanes(Vec<PaneId>, ClientId),
     EmbedMultiplePanes(Vec<PaneId>, ClientId),
+    TogglePaneInGroup(ClientId),
+    GroupPaneUp(ClientId),
+    GroupPaneDown(ClientId),
+    GroupPaneLeft(ClientId),
+    GroupPaneRight(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -636,6 +641,21 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::EmbedMultiplePanes(..) => {
                 ScreenContext::EmbedMultiplePanes
+            },
+            ScreenInstruction::TogglePaneInGroup(..) => {
+                ScreenContext::TogglePaneInGroup
+            },
+            ScreenInstruction::GroupPaneUp(..) => {
+                ScreenContext::GroupPaneUp
+            },
+            ScreenInstruction::GroupPaneDown(..) => {
+                ScreenContext::GroupPaneDown
+            },
+            ScreenInstruction::GroupPaneLeft(..) => {
+                ScreenContext::GroupPaneLeft
+            },
+            ScreenInstruction::GroupPaneRight(..) => {
+                ScreenContext::GroupPaneRight
             },
         }
     }
@@ -2830,11 +2850,29 @@ impl Screen {
         let client_pane_group = pane_groups
             .entry(*client_id)
             .or_insert_with(|| vec![]);
-        if client_pane_group.contains(&pane_id) {
-            client_pane_group.retain(|p| p != &pane_id)
+        let message = if client_pane_group.contains(&pane_id) {
+            client_pane_group.retain(|p| p != &pane_id);
+            "UNGROUPED"
         } else {
             client_pane_group.push(pane_id);
-        }
+            "GROUPED"
+        };
+        let is_active_pane = self.get_active_tab(*client_id).ok()
+            .and_then(|active_tab| {
+              active_tab.get_active_pane_id(*client_id)
+            })
+            .map(|active_pane_id| active_pane_id == pane_id)
+              .unwrap_or(false);
+      if is_active_pane {
+        // we only do this for the active pane so that there's a clear UI indication that this
+        // action happened
+        let _ = self.bus.senders.send_to_background_jobs(
+            BackgroundJob::HighlightPanesWithMessage(
+                vec![pane_id],
+                message.to_owned(),
+            ),
+        );
+      }
     }
     fn add_pane_id_to_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
         let mut pane_groups = self.current_pane_group.borrow_mut();
@@ -5036,6 +5074,169 @@ pub(crate) fn screen_thread_main(
                     client_pane_group.retain(|p| !pane_ids_to_ungroup.contains(p));
                 }
                 let _ = screen.log_and_report_session_state();
+            },
+            ScreenInstruction::TogglePaneInGroup(client_id) => {
+                let err_context = "Can't add pane to group";
+                let active_tab = screen.get_active_tab(client_id)
+                    .with_context(|| err_context)?;
+                let active_pane_id = active_tab
+                    .get_active_pane_id(client_id)
+                    .with_context(|| err_context)?;
+                screen.toggle_pane_id_in_group(active_pane_id, &client_id);
+                let _ = screen.log_and_report_session_state();
+
+            },
+            ScreenInstruction::GroupPaneUp(client_id) => {
+               let base_pane_id = screen
+                 .get_active_tab(client_id)
+                 .ok()
+                 .and_then(|t| t.get_active_pane_id(client_id));
+               let client_pane_group = screen.get_client_pane_group(&client_id);
+               let active_tab = screen.get_active_tab_mut(client_id).ok();
+               match (base_pane_id, active_tab) {
+                 (Some(base_pane_id), Some(active_tab)) => {
+                      let mut pane_id_to_add = active_tab.next_selectable_pane_id_above(&base_pane_id);
+                      while pane_id_to_add.map(|p_id| client_pane_group.contains(&p_id)).unwrap_or(false) {
+                        match pane_id_to_add {
+                          Some(p_id) => {
+                            pane_id_to_add = active_tab.next_selectable_pane_id_above(&p_id);
+                          },
+                          None => {
+                            break;
+                          }
+                        }
+                      }
+
+                      if let Some(pane_id_to_add) = pane_id_to_add {
+                          {
+                              let mut current_pane_group = screen.current_pane_group.borrow_mut();
+                              let client_pane_group = current_pane_group
+                                  .entry(client_id)
+                                  .or_insert_with(|| vec![]);
+                              if !client_pane_group.contains(&base_pane_id) {
+                                  client_pane_group.push(base_pane_id);
+                              }
+                              client_pane_group.push(pane_id_to_add);
+                          }
+                          let _ = screen.log_and_report_session_state();
+                      }
+                 },
+                 _ => {}
+               }
+            },
+            ScreenInstruction::GroupPaneDown(client_id) => {
+               let base_pane_id = screen
+                 .get_active_tab(client_id)
+                 .ok()
+                 .and_then(|t| t.get_active_pane_id(client_id));
+               let client_pane_group = screen.get_client_pane_group(&client_id);
+               let active_tab = screen.get_active_tab_mut(client_id).ok();
+               match (base_pane_id, active_tab) {
+                 (Some(base_pane_id), Some(active_tab)) => {
+                      let mut pane_id_to_add = active_tab.next_selectable_pane_id_below(&base_pane_id);
+                      while pane_id_to_add.map(|p_id| client_pane_group.contains(&p_id)).unwrap_or(false) {
+                        match pane_id_to_add {
+                          Some(p_id) => {
+                            pane_id_to_add = active_tab.next_selectable_pane_id_below(&p_id);
+                          },
+                          None => {
+                            break;
+                          }
+                        }
+                      }
+
+                      if let Some(pane_id_to_add) = pane_id_to_add {
+                          {
+                              let mut current_pane_group = screen.current_pane_group.borrow_mut();
+                              let client_pane_group = current_pane_group
+                                  .entry(client_id)
+                                  .or_insert_with(|| vec![]);
+                              if !client_pane_group.contains(&base_pane_id) {
+                                  client_pane_group.push(base_pane_id);
+                              }
+                              client_pane_group.push(pane_id_to_add);
+                          }
+                          let _ = screen.log_and_report_session_state();
+                      }
+                 },
+                 _ => {}
+               }
+            },
+            ScreenInstruction::GroupPaneLeft(client_id) => {
+               let base_pane_id = screen
+                 .get_active_tab(client_id)
+                 .ok()
+                 .and_then(|t| t.get_active_pane_id(client_id));
+               let client_pane_group = screen.get_client_pane_group(&client_id);
+               let active_tab = screen.get_active_tab_mut(client_id).ok();
+               match (base_pane_id, active_tab) {
+                 (Some(base_pane_id), Some(active_tab)) => {
+                      let mut pane_id_to_add = active_tab.next_selectable_pane_id_to_the_left(&base_pane_id);
+                      while pane_id_to_add.map(|p_id| client_pane_group.contains(&p_id)).unwrap_or(false) {
+                        match pane_id_to_add {
+                          Some(p_id) => {
+                            pane_id_to_add = active_tab.next_selectable_pane_id_to_the_left(&p_id);
+                          },
+                          None => {
+                            break;
+                          }
+                        }
+                      }
+
+                      if let Some(pane_id_to_add) = pane_id_to_add {
+                          {
+                              let mut current_pane_group = screen.current_pane_group.borrow_mut();
+                              let client_pane_group = current_pane_group
+                                  .entry(client_id)
+                                  .or_insert_with(|| vec![]);
+                              if !client_pane_group.contains(&base_pane_id) {
+                                  client_pane_group.push(base_pane_id);
+                              }
+                              client_pane_group.push(pane_id_to_add);
+                          }
+                          let _ = screen.log_and_report_session_state();
+                      }
+                 },
+                 _ => {}
+               }
+            },
+            ScreenInstruction::GroupPaneRight(client_id) => {
+               let base_pane_id = screen
+                 .get_active_tab(client_id)
+                 .ok()
+                 .and_then(|t| t.get_active_pane_id(client_id));
+               let client_pane_group = screen.get_client_pane_group(&client_id);
+               let active_tab = screen.get_active_tab_mut(client_id).ok();
+               match (base_pane_id, active_tab) {
+                 (Some(base_pane_id), Some(active_tab)) => {
+                      let mut pane_id_to_add = active_tab.next_selectable_pane_id_to_the_right(&base_pane_id);
+                      while pane_id_to_add.map(|p_id| client_pane_group.contains(&p_id)).unwrap_or(false) {
+                        match pane_id_to_add {
+                          Some(p_id) => {
+                            pane_id_to_add = active_tab.next_selectable_pane_id_to_the_right(&p_id);
+                          },
+                          None => {
+                            break;
+                          }
+                        }
+                      }
+
+                      if let Some(pane_id_to_add) = pane_id_to_add {
+                          {
+                              let mut current_pane_group = screen.current_pane_group.borrow_mut();
+                              let client_pane_group = current_pane_group
+                                  .entry(client_id)
+                                  .or_insert_with(|| vec![]);
+                              if !client_pane_group.contains(&base_pane_id) {
+                                  client_pane_group.push(base_pane_id);
+                              }
+                              client_pane_group.push(pane_id_to_add);
+                          }
+                          let _ = screen.log_and_report_session_state();
+                      }
+                 },
+                 _ => {}
+               }
             },
             ScreenInstruction::HighlightAndUnhighlightPanes(pane_ids_to_highlight, pane_ids_to_unhighlight, client_id) => {
                 {

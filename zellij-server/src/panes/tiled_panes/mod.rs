@@ -1753,7 +1753,7 @@ impl TiledPanes {
                     *self.viewport.borrow(),
                 );
                 let next_index = pane_grid
-                    .next_selectable_pane_id_below(&active_pane_id)
+                    .next_selectable_pane_id_below(&active_pane_id, false)
                     .or_else(|| pane_grid.progress_stack_down_if_in_stack(&active_pane_id));
                 match next_index {
                     Some(p) => {
@@ -1804,7 +1804,7 @@ impl TiledPanes {
                     *self.viewport.borrow(),
                 );
                 let next_index = pane_grid
-                    .next_selectable_pane_id_above(&active_pane_id)
+                    .next_selectable_pane_id_above(&active_pane_id, false)
                     .or_else(|| pane_grid.progress_stack_up_if_in_stack(&active_pane_id));
                 match next_index {
                     Some(p) => {
@@ -2009,7 +2009,7 @@ impl TiledPanes {
             *self.viewport.borrow(),
         );
         let next_index = pane_grid
-            .next_selectable_pane_id_below(&pane_id)
+            .next_selectable_pane_id_below(&pane_id, false)
             .or_else(|| pane_grid.progress_stack_down_if_in_stack(&pane_id));
         if let Some(p) = next_index {
             let current_position = self.panes.get(&pane_id).unwrap();
@@ -2164,7 +2164,7 @@ impl TiledPanes {
             *self.viewport.borrow(),
         );
         let next_index = pane_grid
-            .next_selectable_pane_id_above(&pane_id)
+            .next_selectable_pane_id_above(&pane_id, false)
             .or_else(|| pane_grid.progress_stack_up_if_in_stack(&pane_id));
         if let Some(p) = next_index {
             let current_position = self.panes.get(&pane_id).unwrap();
@@ -2531,6 +2531,44 @@ impl TiledPanes {
     ) -> Result<(HashSet<PaneId>, HashSet<PaneId>)> {
         StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
             .stacked_pane_ids_under_and_over_flexible_panes()
+    }
+    pub fn next_selectable_pane_id_above(&mut self, pane_id: &PaneId) -> Option<PaneId> {
+        let pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        let include_panes_in_stack = true;
+        pane_grid.next_selectable_pane_id_above(&pane_id, include_panes_in_stack)
+    }
+    pub fn next_selectable_pane_id_below(&mut self, pane_id: &PaneId) -> Option<PaneId> {
+        let pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        let include_panes_in_stack = true;
+        pane_grid.next_selectable_pane_id_below(&pane_id, include_panes_in_stack)
+    }
+    pub fn next_selectable_pane_id_to_the_left(&mut self, pane_id: &PaneId) -> Option<PaneId> {
+        let pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        pane_grid.next_selectable_pane_id_to_the_left(&pane_id)
+    }
+    pub fn next_selectable_pane_id_to_the_right(&mut self, pane_id: &PaneId) -> Option<PaneId> {
+        let pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        pane_grid.next_selectable_pane_id_to_the_right(&pane_id)
     }
 }
 

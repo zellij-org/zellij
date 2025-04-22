@@ -1103,6 +1103,11 @@ impl Action {
                 Some(node)
             },
             Action::TogglePanePinned => Some(KdlNode::new("TogglePanePinned")),
+            Action::TogglePaneInGroup => Some(KdlNode::new("TogglePaneInGroup")),
+            Action::GroupPaneUp => Some(KdlNode::new("GroupPaneUp")),
+            Action::GroupPaneDown => Some(KdlNode::new("GroupPaneDown")),
+            Action::GroupPaneLeft => Some(KdlNode::new("GroupPaneLeft")),
+            Action::GroupPaneRight => Some(KdlNode::new("GroupPaneRight")),
             _ => None,
         }
     }
@@ -1798,6 +1803,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 })
             },
             "TogglePanePinned" => Ok(Action::TogglePanePinned),
+            "TogglePaneInGroup" => Ok(Action::TogglePaneInGroup),
+            "GroupPaneLeft" => Ok(Action::GroupPaneLeft),
+            "GroupPaneRight" => Ok(Action::GroupPaneRight),
+            "GroupPaneDown" => Ok(Action::GroupPaneDown),
+            "GroupPaneUp" => Ok(Action::GroupPaneUp),
             _ => Err(ConfigError::new_kdl_error(
                 format!("Unsupported action: {}", action_name).into(),
                 kdl_action.span().offset(),

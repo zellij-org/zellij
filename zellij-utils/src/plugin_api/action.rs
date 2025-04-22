@@ -692,6 +692,26 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("TogglePanePinned should not have a payload"),
                 None => Ok(Action::TogglePanePinned),
             },
+            Some(ProtobufActionName::TogglePaneInGroup) => match protobuf_action.optional_payload {
+                Some(_) => Err("TogglePaneInGroup should not have a payload"),
+                None => Ok(Action::TogglePaneInGroup),
+            },
+            Some(ProtobufActionName::GroupPaneUp) => match protobuf_action.optional_payload {
+                Some(_) => Err("GroupPaneUp should not have a payload"),
+                None => Ok(Action::GroupPaneUp),
+            },
+            Some(ProtobufActionName::GroupPaneDown) => match protobuf_action.optional_payload {
+                Some(_) => Err("GroupPaneDown should not have a payload"),
+                None => Ok(Action::GroupPaneDown),
+            },
+            Some(ProtobufActionName::GroupPaneLeft) => match protobuf_action.optional_payload {
+                Some(_) => Err("GroupPaneLeft should not have a payload"),
+                None => Ok(Action::GroupPaneLeft),
+            },
+            Some(ProtobufActionName::GroupPaneRight) => match protobuf_action.optional_payload {
+                Some(_) => Err("GroupPaneRight should not have a payload"),
+                None => Ok(Action::GroupPaneRight),
+            },
             Some(ProtobufActionName::KeybindPipe) => match protobuf_action.optional_payload {
                 Some(_) => Err("KeybindPipe should not have a payload"),
                 // TODO: at some point we might want to support a payload here
@@ -1234,6 +1254,26 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::TogglePanePinned { .. } => Ok(ProtobufAction {
                 name: ProtobufActionName::TogglePanePinned as i32,
+                optional_payload: None,
+            }),
+            Action::TogglePaneInGroup { .. } => Ok(ProtobufAction {
+                name: ProtobufActionName::TogglePaneInGroup as i32,
+                optional_payload: None,
+            }),
+            Action::GroupPaneUp { .. } => Ok(ProtobufAction {
+                name: ProtobufActionName::GroupPaneUp as i32,
+                optional_payload: None,
+            }),
+            Action::GroupPaneDown { .. } => Ok(ProtobufAction {
+                name: ProtobufActionName::GroupPaneDown as i32,
+                optional_payload: None,
+            }),
+            Action::GroupPaneLeft { .. } => Ok(ProtobufAction {
+                name: ProtobufActionName::GroupPaneLeft as i32,
+                optional_payload: None,
+            }),
+            Action::GroupPaneRight { .. } => Ok(ProtobufAction {
+                name: ProtobufActionName::GroupPaneRight as i32,
                 optional_payload: None,
             }),
             Action::NoOp

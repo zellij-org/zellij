@@ -950,6 +950,31 @@ pub(crate) fn route_action(
                 )]))
                 .with_context(err_context)?;
         },
+        Action::TogglePaneInGroup => {
+            senders
+                .send_to_screen(ScreenInstruction::TogglePaneInGroup(client_id))
+                .with_context(err_context)?;
+        },
+        Action::GroupPaneUp => {
+            senders
+                .send_to_screen(ScreenInstruction::GroupPaneUp(client_id))
+                .with_context(err_context)?;
+        },
+        Action::GroupPaneDown => {
+            senders
+                .send_to_screen(ScreenInstruction::GroupPaneDown(client_id))
+                .with_context(err_context)?;
+        },
+        Action::GroupPaneLeft => {
+            senders
+                .send_to_screen(ScreenInstruction::GroupPaneLeft(client_id))
+                .with_context(err_context)?;
+        },
+        Action::GroupPaneRight => {
+            senders
+                .send_to_screen(ScreenInstruction::GroupPaneRight(client_id))
+                .with_context(err_context)?;
+        },
     }
     Ok(should_break)
 }

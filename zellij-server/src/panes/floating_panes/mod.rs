@@ -1146,4 +1146,48 @@ impl FloatingPanes {
             pane.update_rounded_corners(rounded_corners);
         }
     }
+    pub fn next_selectable_pane_id_above(&mut self, pane_id: &PaneId) -> Option<PaneId> {
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
+        let floating_pane_grid = FloatingPaneGrid::new(
+            &mut self.panes,
+            &mut self.desired_pane_positions,
+            display_area,
+            viewport,
+        );
+        floating_pane_grid.next_selectable_pane_id_above(&pane_id)
+    }
+    pub fn next_selectable_pane_id_below(&mut self, pane_id: &PaneId) -> Option<PaneId> {
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
+        let floating_pane_grid = FloatingPaneGrid::new(
+            &mut self.panes,
+            &mut self.desired_pane_positions,
+            display_area,
+            viewport,
+        );
+        floating_pane_grid.next_selectable_pane_id_below(&pane_id)
+    }
+    pub fn next_selectable_pane_id_to_the_left(&mut self, pane_id: &PaneId) -> Option<PaneId> {
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
+        let floating_pane_grid = FloatingPaneGrid::new(
+            &mut self.panes,
+            &mut self.desired_pane_positions,
+            display_area,
+            viewport,
+        );
+        floating_pane_grid.next_selectable_pane_id_to_the_left(&pane_id)
+    }
+    pub fn next_selectable_pane_id_to_the_right(&mut self, pane_id: &PaneId) -> Option<PaneId> {
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
+        let floating_pane_grid = FloatingPaneGrid::new(
+            &mut self.panes,
+            &mut self.desired_pane_positions,
+            display_area,
+            viewport,
+        );
+        floating_pane_grid.next_selectable_pane_id_to_the_right(&pane_id)
+    }
 }

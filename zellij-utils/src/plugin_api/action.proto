@@ -241,6 +241,11 @@ enum ActionName {
     KeybindPipe = 84;
     TogglePanePinned = 85;
     MouseEvent = 86;
+    TogglePaneInGroup = 87;
+    GroupPaneUp = 88;
+    GroupPaneDown = 89;
+    GroupPaneLeft = 90;
+    GroupPaneRight = 91;
 }
 
 message Position {
