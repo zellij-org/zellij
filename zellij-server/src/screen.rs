@@ -2858,29 +2858,11 @@ impl Screen {
         let client_pane_group = pane_groups
             .entry(*client_id)
             .or_insert_with(|| vec![]);
-        let message = if client_pane_group.contains(&pane_id) {
+        if client_pane_group.contains(&pane_id) {
             client_pane_group.retain(|p| p != &pane_id);
-            "UNGROUPED"
         } else {
             client_pane_group.push(pane_id);
-            "GROUPED"
         };
-        let is_active_pane = self.get_active_tab(*client_id).ok()
-            .and_then(|active_tab| {
-              active_tab.get_active_pane_id(*client_id)
-            })
-            .map(|active_pane_id| active_pane_id == pane_id)
-              .unwrap_or(false);
-      if is_active_pane {
-        // we only do this for the active pane so that there's a clear UI indication that this
-        // action happened
-        let _ = self.bus.senders.send_to_background_jobs(
-            BackgroundJob::HighlightPanesWithMessage(
-                vec![pane_id],
-                message.to_owned(),
-            ),
-        );
-      }
     }
     fn add_pane_id_to_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
         let mut pane_groups = self.current_pane_group.borrow_mut();

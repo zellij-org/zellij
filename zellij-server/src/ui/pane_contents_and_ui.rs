@@ -294,7 +294,8 @@ impl<'a> PaneContentsAndUi<'a> {
         client_id: ClientId,
         mode: InputMode,
         session_is_mirrored: bool,
-    ) -> Option<(PaletteColor, usize)> { // (color, color_precedence)
+    ) -> Option<(PaletteColor, usize)> { // (color, color_precedence) (the color_precedence is used
+                                         // for the no-pane-frames mode)
         let pane_focused_for_client_id = self.focused_clients.contains(&client_id);
         let pane_is_in_group = self.current_pane_group
             .get(&client_id)
@@ -304,6 +305,8 @@ impl<'a> PaneContentsAndUi<'a> {
             self.pane.frame_color_override().map(|override_color| (override_color, 4))
         } else if pane_is_in_group && !pane_focused_for_client_id {
             Some((self.style.colors.frame_highlight.emphasis_0, 2))
+        } else if pane_is_in_group && pane_focused_for_client_id {
+            Some((self.style.colors.frame_highlight.emphasis_1, 3))
         } else if pane_focused_for_client_id {
             match mode {
                 InputMode::Normal | InputMode::Locked => {
