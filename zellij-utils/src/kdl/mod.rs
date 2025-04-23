@@ -2335,7 +2335,6 @@ impl Options {
             disable_session_metadata,
             support_kitty_keyboard_protocol,
             enable_web_server,
-            web_client_font,
             stacked_resize,
             show_startup_tips,
             show_release_notes,
@@ -3167,35 +3166,6 @@ impl Options {
             None
         }
     }
-    fn web_client_font_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!(
-            "{}\n{}\n{}\n{}\n{}",
-            " ",
-            "// Font to use for the built in web client",
-            "// When enabled, navigate to http://localhost:8082",
-            "// Default: None",
-            "// ",
-        );
-
-        let create_node = |node_value: &str| -> KdlNode {
-            let mut node = KdlNode::new("web_client_font");
-            node.push(node_value.to_owned());
-            node
-        };
-        if let Some(web_client_font) = &self.web_client_font {
-            let mut node = create_node(web_client_font);
-            if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
-            }
-            Some(node)
-        } else if add_comments {
-            let mut node = create_node("monospace");
-            node.set_leading(format!("{}\n// ", comment_text));
-            Some(node)
-        } else {
-            None
-        }
-    }
     fn stacked_resize_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
@@ -3363,9 +3333,6 @@ impl Options {
         }
         if let Some(enable_web_server) = self.enable_web_server_to_kdl(add_comments) {
             nodes.push(enable_web_server);
-        }
-        if let Some(web_client_font) = self.web_client_font_to_kdl(add_comments) {
-            nodes.push(web_client_font);
         }
         if let Some(stacked_resize) = self.stacked_resize_to_kdl(add_comments) {
             nodes.push(stacked_resize);
