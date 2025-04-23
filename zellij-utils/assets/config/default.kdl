@@ -437,3 +437,7 @@ load_plugins {
 // Default: true
 //
 // show_startup_tips false
+
+web_client {
+    font "monospace"
+}

@@ -15,6 +15,7 @@ use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
+use crate::input::web_client::WebClientConfig;
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use strum::IntoEnumIterator;
@@ -3863,6 +3864,10 @@ impl Config {
         if let Some(env_config) = kdl_config.get("env") {
             let config_env = EnvironmentVariables::from_kdl(&env_config)?;
             config.env = config.env.merge(config_env);
+        }
+        if let Some(web_client_config) = kdl_config.get("web_client") {
+            let config_web_client = WebClientConfig::from_kdl(&web_client_config)?;
+            config.web_client = config.web_client.merge(config_web_client);
         }
         Ok(config)
     }
