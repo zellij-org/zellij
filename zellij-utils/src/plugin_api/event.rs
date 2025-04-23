@@ -817,7 +817,7 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
                 .into_iter()
                 .map(|p| ProtobufPluginInfo::from(p))
                 .collect(),
-            is_shared_on_web: session_info.is_shared_on_web,
+            web_clients_allowed: session_info.web_clients_allowed,
             web_client_count: session_info.web_client_count as u32,
         })
     }
@@ -885,7 +885,7 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
                 .filter_map(|l| LayoutInfo::try_from(l).ok())
                 .collect(),
             plugins,
-            is_shared_on_web: protobuf_session_manifest.is_shared_on_web,
+            web_clients_allowed : protobuf_session_manifest.web_clients_allowed,
             web_client_count: protobuf_session_manifest.web_client_count as usize,
         })
     }
@@ -1239,7 +1239,8 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             .editor
             .map(|e| PathBuf::from(e));
         let shell = protobuf_mode_update_payload.shell.map(|s| PathBuf::from(s));
-        let session_is_shared = protobuf_mode_update_payload.session_is_shared;
+        let web_clients_allowed = protobuf_mode_update_payload.web_clients_allowed;
+        let web_sharing_allowed = protobuf_mode_update_payload.web_sharing_allowed;
         let capabilities = PluginCapabilities {
             arrow_fonts: protobuf_mode_update_payload.arrow_fonts_support,
         };
@@ -1252,7 +1253,8 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             base_mode,
             editor,
             shell,
-            session_is_shared,
+            web_clients_allowed,
+            web_sharing_allowed,
         };
         Ok(mode_info)
     }
@@ -1270,7 +1272,8 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
         let session_name = mode_info.session_name;
         let editor = mode_info.editor.map(|e| e.display().to_string());
         let shell = mode_info.shell.map(|s| s.display().to_string());
-        let session_is_shared = mode_info.session_is_shared;
+        let web_clients_allowed = mode_info.web_clients_allowed;
+        let web_sharing_allowed = mode_info.web_sharing_allowed;
         let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
         for (input_mode, input_mode_keybinds) in mode_info.keybinds {
             let mode: ProtobufInputMode = input_mode.try_into()?;
@@ -1304,7 +1307,8 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             base_mode: base_mode.map(|b_m| b_m as i32),
             editor,
             shell,
-            session_is_shared,
+            web_clients_allowed,
+            web_sharing_allowed,
         })
     }
 }
@@ -1557,7 +1561,8 @@ fn serialize_mode_update_event_with_non_default_values() {
         base_mode: Some(InputMode::Locked),
         editor: Some(PathBuf::from("my_awesome_editor")),
         shell: Some(PathBuf::from("my_awesome_shell")),
-        session_is_shared: Some(true),
+        web_clients_allowed: Some(true),
+        web_sharing_allowed: Some(true),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
@@ -1992,7 +1997,7 @@ fn serialize_session_update_event_with_non_default_values() {
             LayoutInfo::File("layout3".to_owned()),
         ],
         plugins,
-        is_shared_on_web: false,
+        web_clients_allowed: false,
         web_client_count: 1,
     };
     let session_info_2 = SessionInfo {
@@ -2009,7 +2014,7 @@ fn serialize_session_update_event_with_non_default_values() {
             LayoutInfo::File("layout3".to_owned()),
         ],
         plugins: Default::default(),
-        is_shared_on_web: false,
+        web_clients_allowed: false,
         web_client_count: 0,
     };
     let session_infos = vec![session_info_1, session_info_2];

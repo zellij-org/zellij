@@ -163,9 +163,16 @@ pub struct Options {
     pub support_kitty_keyboard_protocol: Option<bool>,
 
     /// Whether to allow access to sessions in the browser through a local webserver
+    /// Possible values:
+    /// - on (the session will be shared in the browser and the web server started on startup
+    /// if it's not already running)
+    /// - off (the session will not be shared on startup and neither will the web server be started, but this can be toggled to "on" by an explicit action)
+    /// - disabled (the session will not be shared, the web server will not be started on startup
+    /// and it will not be possible to toggle the web server on for this session)
+    /// Default: "off"
     #[clap(long, value_parser)]
     #[serde(default)]
-    pub enable_web_server: Option<bool>,
+    pub web_server: Option<WebServer>,
 
     /// The name of the session to create when starting Zellij
     #[clap(long, value_parser)]
@@ -212,6 +219,49 @@ impl FromStr for Clipboard {
             "System" | "system" => Ok(Self::System),
             "Primary" | "primary" => Ok(Self::Primary),
             _ => Err(format!("No such clipboard: {}", s)),
+        }
+    }
+}
+
+#[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
+pub enum WebServer {
+    #[serde(alias = "on")]
+    On,
+    #[serde(alias = "off")]
+    Off,
+    #[serde(alias = "disabled")]
+    Disabled,
+}
+
+impl Default for WebServer {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
+impl WebServer {
+    pub fn is_on(&self) -> bool {
+        match self {
+            WebServer::On => true,
+            _ => false
+        }
+    }
+    pub fn web_clients_allowed(&self) -> bool {
+        match self {
+            WebServer::On | WebServer::Off => true,
+            _ => false
+        }
+    }
+}
+
+impl FromStr for WebServer {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "On" | "on" => Ok(Self::On),
+            "Off" | "off" => Ok(Self::Off),
+            "Disabled" | "disabled" => Ok(Self::Disabled),
+            _ => Err(format!("No such option: {}", s)),
         }
     }
 }
@@ -267,7 +317,7 @@ impl Options {
         let support_kitty_keyboard_protocol = other
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
-        let enable_web_server = other.enable_web_server.or(self.enable_web_server);
+        let web_server = other.web_server.or(self.web_server);
         let web_client_font = other
             .web_client_font
             .or_else(|| self.web_client_font.clone());
@@ -303,7 +353,7 @@ impl Options {
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
-            enable_web_server,
+            web_server,
             web_client_font,
             stacked_resize,
             show_startup_tips,
@@ -366,7 +416,7 @@ impl Options {
         let support_kitty_keyboard_protocol = other
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
-        let enable_web_server = other.enable_web_server.or(self.enable_web_server);
+        let web_server = other.web_server.or(self.web_server);
         let web_client_font = other
             .web_client_font
             .or_else(|| self.web_client_font.clone());
@@ -402,7 +452,7 @@ impl Options {
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
-            enable_web_server,
+            web_server,
             web_client_font,
             stacked_resize,
             show_startup_tips,
@@ -472,7 +522,7 @@ impl From<CliOptions> for Options {
             styled_underlines: opts.styled_underlines,
             serialization_interval: opts.serialization_interval,
             support_kitty_keyboard_protocol: opts.support_kitty_keyboard_protocol,
-            enable_web_server: opts.enable_web_server,
+            web_server: opts.web_server,
             web_client_font: opts.web_client_font,
             stacked_resize: opts.stacked_resize,
             show_release_notes: opts.show_release_notes,

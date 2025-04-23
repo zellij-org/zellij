@@ -11,7 +11,7 @@ use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
     Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, SplitSize,
 };
-use crate::input::options::{Clipboard, OnForceClose, Options};
+use crate::input::options::{Clipboard, WebServer, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
@@ -2291,9 +2291,16 @@ impl Options {
             "support_kitty_keyboard_protocol"
         )
         .map(|(v, _)| v);
-        let enable_web_server =
-            kdl_property_first_arg_as_bool_or_error!(kdl_options, "enable_web_server")
-                .map(|(v, _)| v);
+        let web_server =
+            match kdl_property_first_arg_as_string_or_error!(kdl_options, "web_server") {
+                Some((string, entry)) => Some(WebServer::from_str(string).map_err(|_| {
+                    kdl_parsing_error!(
+                        format!("Invalid value for web_server: '{}'", string),
+                        entry
+                    )
+                })?),
+                None => None,
+            };
         let web_client_font =
             kdl_property_first_arg_as_string_or_error!(kdl_options, "web_client_font")
                 .map(|(web_client_font, _entry)| web_client_font.to_string());
@@ -2333,7 +2340,7 @@ impl Options {
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
-            enable_web_server,
+            web_server,
             web_client_font,
             stacked_resize,
             show_startup_tips,
@@ -3137,29 +3144,38 @@ impl Options {
             None
         }
     }
-    fn enable_web_server_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+    fn web_server_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
-            "{}\n{}\n{}\n{}\n{}",
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
             " ",
-            "// Allow access to sessions in the browser through a local webserver",
-            "// When enabled, navigate to http://localhost:8082",
-            "// Default: false",
+            "// Whether to allow access to sessions in the browser through a local webserver",
+            "// Possible values:",
+            "// - on (the session will be shared in the browser and the web server started on startup",
+            "// if it's not already running)",
+            "// - off (the session will not be shared on startup and neither will the web server be started, but this can be toggled to \"on\" by an explicit action)",
+            "// - disabled (the session will not be shared, the web server will not be started on startup",
+            "// and it will not be possible to toggle the web server on for this session)",
+            "// Default: \"off\"",
             "// ",
         );
 
-        let create_node = |node_value: bool| -> KdlNode {
-            let mut node = KdlNode::new("enable_web_server");
-            node.push(KdlValue::Bool(node_value));
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("web_server");
+            node.push(node_value.to_owned());
             node
         };
-        if let Some(enable_web_server) = self.enable_web_server {
-            let mut node = create_node(enable_web_server);
+        if let Some(web_server) = &self.web_server {
+            let mut node = match web_server {
+                WebServer::On => create_node("on"),
+                WebServer::Off => create_node("off"),
+                WebServer::Disabled => create_node("disabled"),
+            };
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
-            let mut node = create_node(false);
+            let mut node = create_node("off");
             node.set_leading(format!("{}\n// ", comment_text));
             Some(node)
         } else {
@@ -3360,7 +3376,7 @@ impl Options {
         {
             nodes.push(support_kitty_keyboard_protocol);
         }
-        if let Some(enable_web_server) = self.enable_web_server_to_kdl(add_comments) {
+        if let Some(enable_web_server) = self.web_server_to_kdl(add_comments) {
             nodes.push(enable_web_server);
         }
         if let Some(web_client_font) = self.web_client_font_to_kdl(add_comments) {
@@ -4539,8 +4555,8 @@ impl SessionInfo {
             .and_then(|e| e.value().as_i64())
             .map(|c| c as usize)
             .unwrap_or(0);
-        let is_shared_on_web = kdl_document
-            .get("is_shared_on_web")
+        let web_clients_allowed = kdl_document
+            .get("web_clients_allowed")
             .and_then(|n| n.entries().iter().next())
             .and_then(|e| e.value().as_bool())
             .unwrap_or(false);
@@ -4553,7 +4569,7 @@ impl SessionInfo {
             is_current_session,
             available_layouts,
             web_client_count,
-            is_shared_on_web,
+            web_clients_allowed,
             plugins: Default::default(), // we do not serialize plugin information
         })
     }
@@ -4582,8 +4598,8 @@ impl SessionInfo {
         let mut web_client_count = KdlNode::new("web_client_count");
         web_client_count.push(self.web_client_count as i64);
 
-        let mut is_shared_on_web = KdlNode::new("is_shared_on_web");
-        is_shared_on_web.push(self.is_shared_on_web);
+        let mut web_clients_allowed = KdlNode::new("web_clients_allowed");
+        web_clients_allowed.push(self.web_clients_allowed);
 
         let mut available_layouts = KdlNode::new("available_layouts");
         let mut available_layouts_children = KdlDocument::new();
@@ -4605,7 +4621,7 @@ impl SessionInfo {
         kdl_document.nodes_mut().push(tabs);
         kdl_document.nodes_mut().push(panes);
         kdl_document.nodes_mut().push(connected_clients);
-        kdl_document.nodes_mut().push(is_shared_on_web);
+        kdl_document.nodes_mut().push(web_clients_allowed);
         kdl_document.nodes_mut().push(web_client_count);
         kdl_document.nodes_mut().push(available_layouts);
         kdl_document.fmt();
@@ -5161,7 +5177,7 @@ fn serialize_and_deserialize_session_info_with_data() {
         ],
         plugins: Default::default(),
         web_client_count: 2,
-        is_shared_on_web: true,
+        web_clients_allowed: true,
     };
     let serialized = session_info.to_string();
     let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();

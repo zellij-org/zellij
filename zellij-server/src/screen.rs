@@ -699,7 +699,7 @@ pub(crate) struct Screen {
     default_layout_name: Option<String>,
     explicitly_disable_kitty_keyboard_protocol: bool,
     default_editor: Option<PathBuf>,
-    session_is_shared: bool,
+    web_clients_allowed: bool,
 }
 
 impl Screen {
@@ -726,7 +726,7 @@ impl Screen {
         explicitly_disable_kitty_keyboard_protocol: bool,
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
-        session_is_shared: bool,
+        web_clients_allowed: bool,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -770,7 +770,7 @@ impl Screen {
             layout_dir,
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
-            session_is_shared,
+            web_clients_allowed,
         }
     }
 
@@ -1371,7 +1371,7 @@ impl Screen {
             self.styled_underlines,
             self.explicitly_disable_kitty_keyboard_protocol,
             self.default_editor.clone(),
-            self.session_is_shared,
+            self.web_clients_allowed,
         );
         for (client_id, mode_info) in &self.mode_info {
             tab.change_mode_info(mode_info.clone(), *client_id);
@@ -1660,7 +1660,7 @@ impl Screen {
             connected_clients: self.active_tab_indices.keys().len(),
             is_current_session: true,
             available_layouts,
-            is_shared_on_web: self.session_is_shared,
+            web_clients_allowed: self.web_clients_allowed,
             web_client_count: self.connected_clients.borrow().iter().filter(|(_client_id, is_web_client)| **is_web_client).count(),
             plugins: Default::default(), // these are filled in by the wasm thread
         };
@@ -2849,7 +2849,7 @@ pub(crate) fn screen_thread_main(
         .unwrap_or(false); // by default, we try to support this if the terminal supports it and
                            // the program running inside a pane requests it
     let stacked_resize = config_options.stacked_resize.unwrap_or(true);
-    let session_is_shared = config_options.enable_web_server.unwrap_or(false);
+    let web_clients_allowed = config_options.web_server.map(|s| s.web_clients_allowed()).unwrap_or(true);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -2883,7 +2883,7 @@ pub(crate) fn screen_thread_main(
         explicitly_disable_kitty_keyboard_protocol,
         stacked_resize,
         default_editor,
-        session_is_shared,
+        web_clients_allowed,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
@@ -4891,11 +4891,12 @@ pub(crate) fn screen_thread_main(
                 let _ = screen.render(None);
             },
             ScreenInstruction::WebServerStarted => {
-                screen.session_is_shared = true;
-                for tab in screen.tabs.values_mut() {
-                    tab.set_session_is_shared(true);
-                }
-                screen.log_and_report_session_state();
+                // TODO: maybe we don't need this anymore?
+                // screen.session_is_shared = true;
+//                 for tab in screen.tabs.values_mut() {
+//                     tab.set_session_is_shared(true);
+//                 }
+//                 screen.log_and_report_session_state();
             },
         }
     }

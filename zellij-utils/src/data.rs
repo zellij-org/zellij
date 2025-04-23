@@ -1519,7 +1519,11 @@ pub struct ModeInfo {
     pub session_name: Option<String>,
     pub editor: Option<PathBuf>,
     pub shell: Option<PathBuf>,
-    pub session_is_shared: Option<bool>,
+    pub web_clients_allowed: Option<bool>,
+    // web_sharing_allowed: false -> it is not possible to switch on web sharing for this session
+    // web_sharing_allowed: true -> it is possible to switch on web sharing for this session
+    // through an explicit user action
+    pub web_sharing_allowed: Option<bool>,
 }
 
 impl ModeInfo {
@@ -1566,7 +1570,7 @@ pub struct SessionInfo {
     pub is_current_session: bool,
     pub available_layouts: Vec<LayoutInfo>,
     pub plugins: BTreeMap<u32, PluginInfo>,
-    pub is_shared_on_web: bool,
+    pub web_clients_allowed: bool,
     pub web_client_count: usize,
 }
 

@@ -312,7 +312,7 @@ pub(crate) struct SessionMetaData {
     pub layout: Box<Layout>,
     pub current_input_modes: HashMap<ClientId, InputMode>,
     pub session_configuration: SessionConfiguration,
-    pub is_web_server_enabled: bool, // this is a special attribute explicitly set on session
+    pub allow_web_connections: bool, // this is a special attribute explicitly set on session
                                      // initialization because we don't want it to be overridden by
                                      // configuration changes
     screen_thread: Option<thread::JoinHandle<()>>,
@@ -1267,13 +1267,18 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 }
             },
             ServerInstruction::StartWebServer(client_id) => {
-                session_data.write().map(|mut s| s.as_mut().map(|mut s| s.is_web_server_enabled = true));
-                send_to_client!(
-                    client_id,
-                    os_input,
-                    ServerToClientMsg::StartWebServer,
-                    session_state
-                );
+                if cfg!(feature = "web_server_capability") {
+                    session_data.write().map(|mut s| s.as_mut().map(|s| s.allow_web_connections = true));
+                    send_to_client!(
+                        client_id,
+                        os_input,
+                        ServerToClientMsg::StartWebServer,
+                        session_state
+                    );
+                } else {
+                    // TODO: test this
+                    log::error!("Cannot start web server: this instance of Zellij was compiled without web_server_capability");
+                }
             }
             ServerInstruction::WebServerStarted => {
                 session_data
@@ -1539,7 +1544,7 @@ fn init_session(
         pty_writer_thread: Some(pty_writer_thread),
         background_jobs_thread: Some(background_jobs_thread),
         #[cfg(feature = "web_server_capability")]
-        is_web_server_enabled: config.options.enable_web_server.unwrap_or(false),
+        allow_web_connections: config.options.web_server.map(|w| w.is_on()).unwrap_or(false),
         #[cfg(not(feature = "web_server_capability"))]
         is_web_server_enabled: false,
     }

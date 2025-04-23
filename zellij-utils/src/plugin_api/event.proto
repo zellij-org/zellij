@@ -271,7 +271,7 @@ message SessionManifest {
   bool is_current_session = 5;
   repeated LayoutInfo available_layouts = 6;
   repeated PluginInfo plugins = 7;
-  bool is_shared_on_web = 8;
+  bool web_clients_allowed = 8;
   uint32 web_client_count = 9;
 }
 
@@ -344,7 +344,8 @@ message ModeUpdatePayload {
   optional input_mode.InputMode base_mode = 6;
   optional string editor = 7;
   optional string shell = 8;
-  optional bool session_is_shared = 9;
+  optional bool web_clients_allowed = 9;
+  optional bool web_sharing_allowed = 10;
 }
 
 message InputModeKeybinds {

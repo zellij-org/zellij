@@ -196,7 +196,7 @@ pub(crate) struct Tab {
     arrow_fonts: bool,
     styled_underlines: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
-    session_is_shared: bool,
+    web_clients_allowed: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -592,7 +592,7 @@ impl Tab {
         styled_underlines: bool,
         explicitly_disable_kitty_keyboard_protocol: bool,
         default_editor: Option<PathBuf>,
-        session_is_shared: bool,
+        web_clients_allowed: bool,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -689,7 +689,7 @@ impl Tab {
             styled_underlines,
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
-            session_is_shared,
+            web_clients_allowed,
         }
     }
 
@@ -900,7 +900,7 @@ impl Tab {
                 .clone();
             mode_info.shell = Some(self.default_shell.clone());
             mode_info.editor = self.default_editor.clone();
-            mode_info.session_is_shared = Some(self.session_is_shared);
+            mode_info.web_clients_allowed = Some(self.web_clients_allowed);
             plugin_updates.push((None, Some(*client_id), Event::ModeUpdate(mode_info)));
         }
         self.senders
@@ -4443,10 +4443,10 @@ impl Tab {
             self.default_shell = default_shell;
         }
     }
-    pub fn set_session_is_shared(&mut self, session_is_shared: bool) {
-        self.session_is_shared = true;
-        self.update_input_modes();
-    }
+//     pub fn set_session_is_shared(&mut self, session_is_shared: bool) {
+//         self.session_is_shared = true;
+//         self.update_input_modes();
+//     }
     pub fn update_default_editor(&mut self, mut default_editor: Option<PathBuf>) {
         if let Some(default_editor) = default_editor.take() {
             self.default_editor = Some(default_editor);

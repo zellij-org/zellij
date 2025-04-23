@@ -5,7 +5,8 @@ use std::collections::BTreeMap;
 #[derive(Debug, Default)]
 struct App {
     web_server_started: bool,
-    session_is_shared: bool,
+    web_sharing_allowed: bool,
+    web_clients_allowed: bool,
     session_name: Option<String>,
     web_server_error: Option<String>,
     web_session_info: Vec<WebSessionInfo>,
@@ -15,16 +16,6 @@ register_plugin!(App);
 
 impl ZellijPlugin for App {
     fn load(&mut self, _configuration: BTreeMap<String, String>) {
-        //  TODO CONTINUE HERE:
-        //  1. when starting up, check the server status by trying to connect to its /info/version
-        //     endpoint - if it's the same version, we assume it's up and running (account for
-        //     error conditions later)
-        //  2. Get the session list info from /info/sessions every 0.5 seconds and populate it in
-        //     the UI
-        //  3. Once this works, account for error conditions and see how it works when restarting
-        //     the server manually
-        //  4. Follow this up by populating the mock info on the server with real information and
-        //     then build out the rest of the UI (stop sharing session, open in browser, etc.)
         subscribe(&[
             EventType::Key,
             EventType::ModeUpdate,
@@ -41,8 +32,12 @@ impl ZellijPlugin for App {
         match event {
             Event::ModeUpdate(mode_info) => {
                 self.session_name = mode_info.session_name;
-                if let Some(session_is_shared) = mode_info.session_is_shared {
-                    self.session_is_shared = session_is_shared;
+                if let Some(web_clients_allowed) = mode_info.web_clients_allowed {
+                    self.web_clients_allowed = web_clients_allowed;
+                    should_render = true;
+                }
+                if let Some(web_sharing_allowed) = mode_info.web_sharing_allowed {
+                    self.web_sharing_allowed = web_sharing_allowed;
                     should_render = true;
                 }
             },
@@ -81,7 +76,7 @@ impl ZellijPlugin for App {
             Event::SessionUpdate(session_infos, _) => {
                 let mut web_session_info = vec![];
                 for session_info in session_infos {
-                    if session_info.is_shared_on_web {
+                    if session_info.web_clients_allowed {
                         let name = session_info.name;
                         let web_client_count = session_info.web_client_count;
                         let terminal_client_count = session_info.connected_clients.saturating_sub(web_client_count);
@@ -168,31 +163,42 @@ impl App {
     }
     pub fn render_current_session_status(&self) -> (Vec<Text>, usize) {
         let mut max_len = 0;
-        let status_line = if self.session_is_shared {
+        let status_line = if self.web_clients_allowed && self.web_server_started {
             let title = "Current session: ";
             let value = "SHARING";
             max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
             Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()).color_range(3, title.chars().count()..)
-        } else {
+        } else if self.web_clients_allowed {
             let title = "Current session: ";
             let value = "NOT SHARING";
             max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
             Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()).color_range(3, title.chars().count()..)
+        } else {
+            let title = "Current session: ";
+            let value = "SHARING IS DISABLED";
+            max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
+            Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()).color_range(3, title.chars().count()..)
         };
-        let info_line = if self.session_is_shared {
+        let info_line = if self.web_clients_allowed && self.web_server_started {
             let title = "Session URL: ";
             let value = format!("http://localhost:8082/{}", self.session_name.clone().unwrap_or_else(|| "".to_owned()));
             max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
-            Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count())
+            Some(Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()))
         } else {
-            let text = "Press <SPACE> to share";
-            max_len = std::cmp::max(max_len, text.chars().count());
-            Text::new(text).color_range(3, 6..=12)
+            None
+            // TODO: do we want to print something else here if the session is not shared?
+//             let text = "Press <SPACE> to share";
+//             max_len = std::cmp::max(max_len, text.chars().count());
+//             Text::new(text).color_range(3, 6..=12)
         };
-        (vec![status_line, info_line], max_len)
+        let mut text_elements = vec![status_line];
+        if let Some(info_line) = info_line {
+            text_elements.push(info_line);
+        }
+        (text_elements, max_len)
     }
     pub fn render_all_sessions_list(&self) -> (Text, Vec<NestedListItem>, usize) {
-        if self.web_session_info.is_empty() {
+        if self.web_session_info.is_empty() || !self.web_server_started {
             let all_sessions_title = "No active sessions.";
             let max_len = all_sessions_title.chars().count();
             let all_sessions = Text::new(all_sessions_title).color_range(1, ..);

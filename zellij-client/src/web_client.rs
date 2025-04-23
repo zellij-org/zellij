@@ -39,7 +39,7 @@ use zellij_utils::{
     include_dir,
     input::{
         actions::Action, cast_termwiz_key, config::{Config, ConfigError}, layout::Layout, mouse::MouseEvent,
-        options::Options,
+        options::{Options, WebServer},
     },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     serde::{Deserialize, Serialize},
@@ -788,7 +788,7 @@ fn spawn_new_session(
     let should_launch_setup_wizard = false;
     let cli_args = CliArgs::default(); // TODO: what do we do about this and the above setup
                                        // wizard?
-    config.options.enable_web_server = Some(true);
+    config.options.web_server = Some(WebServer::On);
     let is_web_client = true;
 
     (

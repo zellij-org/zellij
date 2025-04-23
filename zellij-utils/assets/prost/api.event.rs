@@ -327,7 +327,7 @@ pub struct SessionManifest {
     #[prost(message, repeated, tag = "7")]
     pub plugins: ::prost::alloc::vec::Vec<PluginInfo>,
     #[prost(bool, tag = "8")]
-    pub is_shared_on_web: bool,
+    pub web_clients_allowed: bool,
     #[prost(uint32, tag = "9")]
     pub web_client_count: u32,
 }
@@ -461,7 +461,9 @@ pub struct ModeUpdatePayload {
     #[prost(string, optional, tag = "8")]
     pub shell: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, optional, tag = "9")]
-    pub session_is_shared: ::core::option::Option<bool>,
+    pub web_clients_allowed: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag = "10")]
+    pub web_sharing_allowed: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
