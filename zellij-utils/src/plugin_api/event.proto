@@ -341,6 +341,7 @@ message ModeUpdatePayload {
   optional input_mode.InputMode base_mode = 6;
   optional string editor = 7;
   optional string shell = 8;
+  optional bool currently_marking_pane_group = 9;
 }
 
 message InputModeKeybinds {

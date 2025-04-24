@@ -36,11 +36,13 @@ pub fn one_line_ui(
         *max_len = max_len.saturating_sub(line_part.len);
     };
 
+    let currently_marking_pane_group = help.currently_marking_pane_group.unwrap_or(false);
     render_mode_key_indicators(help, max_len, separator, base_mode_is_locked)
         .map(|mode_key_indicators| append(&mode_key_indicators, &mut max_len))
         .and_then(|_| match help.mode {
             InputMode::Normal | InputMode::Locked => match grouped_pane_count {
                     Some(grouped_pane_count) => render_group_controls(help, grouped_pane_count, max_len),
+                    None if currently_marking_pane_group => render_group_controls(help, 0, max_len),
                     None => render_secondary_info(help, tab_info, max_len),
                 }
                 .map(|secondary_info| append(&secondary_info, &mut max_len)),
@@ -665,31 +667,37 @@ fn render_group_controls(
     grouped_pane_count: usize,
     max_len: usize,
 ) -> Option<LinePart> {
+    let currently_marking_group = help.currently_marking_pane_group.unwrap_or(false);
     let keymap = help.get_mode_keybinds();
     let multiple_select_key = multiple_select_key(&keymap).iter().next().map(|key| format!("{}", key)).unwrap_or("UNBOUND".to_owned());
     let pane_group_toggle_key = single_action_key(&keymap, &[Action::TogglePaneInGroup]).iter().next().map(|key| format!("{}", key)).unwrap_or("UNBOUND".to_owned());
+    let group_mark_toggle_key = single_action_key(&keymap, &[Action::ToggleGroupMarking]).iter().next().map(|key| format!("{}", key)).unwrap_or("UNBOUND".to_owned());
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
     let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
 
     let full_selected_panes_text = format!("{} SELECTED PANES", grouped_pane_count);
     let full_group_actions_text = format!("<{}> Group Actions", &multiple_select_key);
     let full_toggle_group_text = format!("<{}> Toggle Group", &pane_group_toggle_key);
-    let ribbon_paddings_len = 8;
+    let full_group_mark_toggle_text = format!("<{}> Group Many", &group_mark_toggle_key);
+    let ribbon_paddings_len = 12;
     let full_controls_line_len = full_selected_panes_text.chars().count() +
         1 +
         full_group_actions_text.chars().count() +
         full_toggle_group_text.chars().count() +
+        full_group_mark_toggle_text.chars().count() +
         ribbon_paddings_len +
         1; // 1 for the end padding
 
     let short_selected_panes_text = format!("{} SELECTED", grouped_pane_count);
     let short_group_actions_text = format!("<{}>", &multiple_select_key);
     let short_toggle_group_text = format!("<{}>", &pane_group_toggle_key);
-    let ribbon_paddings_len = 8;
+    let short_group_mark_toggle_text = format!("<{}>", &group_mark_toggle_key);
+    let ribbon_paddings_len = 12;
     let short_controls_line_len = short_selected_panes_text.chars().count() +
         1 +
         short_group_actions_text.chars().count() +
         short_toggle_group_text.chars().count() +
+        short_group_mark_toggle_text.chars().count() +
         ribbon_paddings_len +
         1; // 1 for the end padding
 
@@ -697,7 +705,12 @@ fn render_group_controls(
         let selected_panes = serialize_text(&Text::new(&full_selected_panes_text).color_range(3, ..).opaque());
         let group_actions_ribbon = serialize_ribbon(&Text::new(&full_group_actions_text).color_range(0, 1..=multiple_select_key.chars().count()));
         let toggle_group_ribbon = serialize_ribbon(&Text::new(&full_toggle_group_text).color_range(0, 1..=pane_group_toggle_key.chars().count()));
-        let controls_line = format!("{} {}{}", selected_panes, group_actions_ribbon, toggle_group_ribbon);
+        let mut group_mark_toggle_ribbon = Text::new(&full_group_mark_toggle_text).color_range(0, 1..=group_mark_toggle_key.chars().count());
+        if currently_marking_group {
+            group_mark_toggle_ribbon = group_mark_toggle_ribbon.selected();
+        }
+        let group_mark_toggle_ribbon = serialize_ribbon(&group_mark_toggle_ribbon);
+        let controls_line = format!("{} {}{}{}", selected_panes, group_actions_ribbon, toggle_group_ribbon, group_mark_toggle_ribbon);
         let remaining_space = max_len.saturating_sub(full_controls_line_len);
         let mut padding = String::new();
         let mut padding_len = 0;
@@ -713,7 +726,12 @@ fn render_group_controls(
         let selected_panes = serialize_text(&Text::new(&short_selected_panes_text).color_range(3, ..).opaque());
         let group_actions_ribbon = serialize_ribbon(&Text::new(&short_group_actions_text).color_range(0, 1..=multiple_select_key.chars().count()));
         let toggle_group_ribbon = serialize_ribbon(&Text::new(&short_toggle_group_text).color_range(0, 1..=pane_group_toggle_key.chars().count()));
-        let controls_line = format!("{} {}{}", selected_panes, group_actions_ribbon, toggle_group_ribbon);
+        let mut group_mark_toggle_ribbon = Text::new(&short_group_mark_toggle_text).color_range(0, 1..=group_mark_toggle_key.chars().count());
+        if currently_marking_group {
+            group_mark_toggle_ribbon = group_mark_toggle_ribbon.selected();
+        }
+        let group_mark_toggle_ribbon = serialize_ribbon(&group_mark_toggle_ribbon);
+        let controls_line = format!("{} {}{}{}", selected_panes, group_actions_ribbon, toggle_group_ribbon, group_mark_toggle_ribbon);
         let remaining_space = max_len.saturating_sub(short_controls_line_len);
         let mut padding = String::new();
         let mut padding_len = 0;
@@ -1406,9 +1424,6 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Switch Location"), s("Move"), action_key_group(&km, &[
             &[Action::MovePane(Some(Dir::Left))], &[Action::MovePane(Some(Dir::Down))],
             &[Action::MovePane(Some(Dir::Up))], &[Action::MovePane(Some(Dir::Right))]])),
-        (s("Group Panes"), s("Group"), action_key_group(&km, &[
-            &[Action::GroupPaneLeft], &[Action::GroupPaneDown],
-            &[Action::GroupPaneUp], &[Action::GroupPaneRight]])),
         (s("When done"), s("Back"), to_basemode_key),
     ]} else if mi.mode == IM::Scroll { vec![
         (s("Enter search term"), s("Search"),

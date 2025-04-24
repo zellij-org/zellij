@@ -297,10 +297,7 @@ pub enum Action {
     StackPanes(Vec<PaneId>),
     ChangeFloatingPaneCoordinates(PaneId, FloatingPaneCoordinates),
     TogglePaneInGroup,
-    GroupPaneUp,
-    GroupPaneDown,
-    GroupPaneLeft,
-    GroupPaneRight,
+    ToggleGroupMarking,
 }
 
 impl Action {

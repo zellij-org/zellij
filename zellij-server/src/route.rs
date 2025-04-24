@@ -955,24 +955,9 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::TogglePaneInGroup(client_id))
                 .with_context(err_context)?;
         },
-        Action::GroupPaneUp => {
+        Action::ToggleGroupMarking => {
             senders
-                .send_to_screen(ScreenInstruction::GroupPaneUp(client_id))
-                .with_context(err_context)?;
-        },
-        Action::GroupPaneDown => {
-            senders
-                .send_to_screen(ScreenInstruction::GroupPaneDown(client_id))
-                .with_context(err_context)?;
-        },
-        Action::GroupPaneLeft => {
-            senders
-                .send_to_screen(ScreenInstruction::GroupPaneLeft(client_id))
-                .with_context(err_context)?;
-        },
-        Action::GroupPaneRight => {
-            senders
-                .send_to_screen(ScreenInstruction::GroupPaneRight(client_id))
+                .send_to_screen(ScreenInstruction::ToggleGroupMarking(client_id))
                 .with_context(err_context)?;
         },
     }

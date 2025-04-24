@@ -381,10 +381,7 @@ pub enum ScreenContext {
     FloatMultiplePanes,
     EmbedMultiplePanes,
     TogglePaneInGroup,
-    GroupPaneUp,
-    GroupPaneDown,
-    GroupPaneLeft,
-    GroupPaneRight,
+    ToggleGroupMarking,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

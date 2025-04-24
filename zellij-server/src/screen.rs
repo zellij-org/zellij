@@ -414,10 +414,7 @@ pub enum ScreenInstruction {
     FloatMultiplePanes(Vec<PaneId>, ClientId),
     EmbedMultiplePanes(Vec<PaneId>, ClientId),
     TogglePaneInGroup(ClientId),
-    GroupPaneUp(ClientId),
-    GroupPaneDown(ClientId),
-    GroupPaneLeft(ClientId),
-    GroupPaneRight(ClientId),
+    ToggleGroupMarking(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -646,17 +643,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TogglePaneInGroup(..) => {
                 ScreenContext::TogglePaneInGroup
             },
-            ScreenInstruction::GroupPaneUp(..) => {
-                ScreenContext::GroupPaneUp
-            },
-            ScreenInstruction::GroupPaneDown(..) => {
-                ScreenContext::GroupPaneDown
-            },
-            ScreenInstruction::GroupPaneLeft(..) => {
-                ScreenContext::GroupPaneLeft
-            },
-            ScreenInstruction::GroupPaneRight(..) => {
-                ScreenContext::GroupPaneRight
+            ScreenInstruction::ToggleGroupMarking(..) => {
+                ScreenContext::ToggleGroupMarking
             },
         }
     }
@@ -741,6 +729,7 @@ pub(crate) struct Screen {
     default_editor: Option<PathBuf>,
     current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
     advanced_mouse_actions: bool,
+    currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
 }
 
 impl Screen {
@@ -812,6 +801,7 @@ impl Screen {
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
             current_pane_group: Rc::new(RefCell::new(HashMap::new())),
+            currently_marking_pane_group: Rc::new(RefCell::new(HashMap::new())),
             advanced_mouse_actions,
         }
     }
@@ -1304,6 +1294,10 @@ impl Screen {
         &mut self.tabs
     }
 
+    pub fn get_tabs(&self) -> &BTreeMap<usize, Tab> {
+        &self.tabs
+    }
+
     /// Returns an immutable reference to this [`Screen`]'s active [`Tab`].
     pub fn get_active_tab(&self, client_id: ClientId) -> Result<&Tab> {
         match self.active_tab_indices.get(&client_id) {
@@ -1419,6 +1413,7 @@ impl Screen {
             self.explicitly_disable_kitty_keyboard_protocol,
             self.default_editor.clone(),
             self.current_pane_group.clone(),
+            self.currently_marking_pane_group.clone(),
             self.advanced_mouse_actions,
         );
         for (client_id, mode_info) in &self.mode_info {
@@ -2847,30 +2842,98 @@ impl Screen {
             .map(|p| !p.is_empty())
             .unwrap_or(false)
     }
-    fn clear_pane_group(&self, client_id: &ClientId) {
+    fn clear_pane_group(&mut self, client_id: &ClientId) {
         self.current_pane_group
             .borrow_mut()
             .get_mut(client_id)
             .map(|p| p.clear());
+        self.currently_marking_pane_group.borrow_mut().remove(client_id);
     }
     fn toggle_pane_id_in_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
-        let mut pane_groups = self.current_pane_group.borrow_mut();
-        let client_pane_group = pane_groups
-            .entry(*client_id)
-            .or_insert_with(|| vec![]);
-        if client_pane_group.contains(&pane_id) {
-            client_pane_group.retain(|p| p != &pane_id);
-        } else {
-            client_pane_group.push(pane_id);
-        };
+        {
+            let mut pane_groups = self.current_pane_group.borrow_mut();
+            let client_pane_group = pane_groups
+                .entry(*client_id)
+                .or_insert_with(|| vec![]);
+            if client_pane_group.contains(&pane_id) {
+                client_pane_group.retain(|p| p != &pane_id);
+            } else {
+                client_pane_group.push(pane_id);
+            };
+        }
+        self.retain_only_existing_panes_in_pane_groups();
     }
     fn add_pane_id_to_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
-        let mut pane_groups = self.current_pane_group.borrow_mut();
-        let client_pane_group = pane_groups
-            .entry(*client_id)
-            .or_insert_with(|| vec![]);
-        if !client_pane_group.contains(&pane_id) {
-            client_pane_group.push(pane_id);
+        {
+            let mut pane_groups = self.current_pane_group.borrow_mut();
+            let client_pane_group = pane_groups
+                .entry(*client_id)
+                .or_insert_with(|| vec![]);
+            if !client_pane_group.contains(&pane_id) {
+                client_pane_group.push(pane_id);
+            }
+        }
+        self.retain_only_existing_panes_in_pane_groups();
+    }
+    fn add_active_pane_to_group_if_marking(&mut self, client_id: &ClientId) {
+        {
+            if self.currently_marking_pane_group.borrow().get(client_id).copied().unwrap_or(false) {
+                let active_pane_id = self.get_active_pane_id(&client_id);
+                if let Some(active_pane_id) = active_pane_id {
+                    self.add_pane_id_to_group(active_pane_id, &client_id);
+                }
+            }
+        }
+        self.retain_only_existing_panes_in_pane_groups();
+    }
+    fn get_active_pane_id(&self, client_id: &ClientId) -> Option<PaneId> {
+        let active_tab = self.get_active_tab(*client_id).ok()?;
+        active_tab
+            .get_active_pane_id(*client_id)
+    }
+
+    fn group_and_ungroup_panes(&mut self, mut pane_ids_to_group: Vec<PaneId>, pane_ids_to_ungroup: Vec<PaneId>, client_id: ClientId) {
+        {
+            let mut current_pane_group = self.current_pane_group.borrow_mut();
+            let client_pane_group = current_pane_group
+                .entry(client_id)
+                .or_insert_with(|| vec![]);
+            client_pane_group.append(&mut pane_ids_to_group);
+            client_pane_group.retain(|p| !pane_ids_to_ungroup.contains(p));
+        }
+        self.retain_only_existing_panes_in_pane_groups();
+        let _ = self.log_and_report_session_state();
+    }
+    fn retain_only_existing_panes_in_pane_groups(&mut self) {
+        let clients_with_empty_group = {
+            let mut clients_with_empty_group = vec![];
+            let mut current_pane_group = self.current_pane_group.borrow_mut();
+            for (client_id, panes_in_group) in current_pane_group.iter_mut() {
+                let all_tabs = self.get_tabs();
+                panes_in_group.retain(|p_id| {
+                    let mut found = false;
+                    for tab in all_tabs.values() {
+                        if tab.has_pane_with_pid(&p_id) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    found
+                });
+                if panes_in_group.is_empty() {
+                    clients_with_empty_group.push(*client_id)
+                }
+            }
+            clients_with_empty_group
+        };
+        for client_id in &clients_with_empty_group {
+            self.currently_marking_pane_group.borrow_mut().remove(client_id);
+        }
+        if !clients_with_empty_group.is_empty() {
+            let all_tabs = self.get_tabs_mut();
+            for tab in all_tabs.values_mut() {
+                let _ = tab.update_input_modes();
+            }
         }
     }
 }
@@ -3296,12 +3359,14 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab.move_focus_left(client_id),
                     ?
                 );
+                screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::MoveFocusLeftOrPreviousTab(client_id) => {
                 screen.move_focus_left_or_previous_tab(client_id)?;
+                screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.unblock_input()?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -3313,6 +3378,7 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab.move_focus_down(client_id),
                     ?
                 );
+                screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
@@ -3324,12 +3390,14 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab.move_focus_right(client_id),
                     ?
                 );
+                screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::MoveFocusRightOrNextTab(client_id) => {
                 screen.move_focus_right_or_next_tab(client_id)?;
+                screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.unblock_input()?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -3341,6 +3409,7 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab.move_focus_up(client_id),
                     ?
                 );
+                screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
@@ -3647,6 +3716,7 @@ pub(crate) fn screen_thread_main(
 
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
+                screen.retain_only_existing_panes_in_pane_groups();
             },
             ScreenInstruction::HoldPane(id, exit_status, run_command) => {
                 let is_first_run = false;
@@ -5064,15 +5134,8 @@ pub(crate) fn screen_thread_main(
                 let _ = screen.unblock_input();
                 let _ = screen.render(None);
             },
-            ScreenInstruction::GroupAndUngroupPanes(mut pane_ids_to_group, pane_ids_to_ungroup, client_id) => {
-                {
-                    let mut current_pane_group = screen.current_pane_group.borrow_mut();
-                    let client_pane_group = current_pane_group
-                        .entry(client_id)
-                        .or_insert_with(|| vec![]);
-                    client_pane_group.append(&mut pane_ids_to_group);
-                    client_pane_group.retain(|p| !pane_ids_to_ungroup.contains(p));
-                }
+            ScreenInstruction::GroupAndUngroupPanes(pane_ids_to_group, pane_ids_to_ungroup, client_id) => {
+                screen.group_and_ungroup_panes(pane_ids_to_group, pane_ids_to_ungroup, client_id);
                 let _ = screen.log_and_report_session_state();
             },
             ScreenInstruction::TogglePaneInGroup(client_id) => {
@@ -5086,157 +5149,31 @@ pub(crate) fn screen_thread_main(
                 let _ = screen.log_and_report_session_state();
 
             },
-            ScreenInstruction::GroupPaneUp(client_id) => {
-               let base_pane_id = screen
-                 .get_active_tab(client_id)
-                 .ok()
-                 .and_then(|t| t.get_active_pane_id(client_id));
-               let client_pane_group = screen.get_client_pane_group(&client_id);
-               let active_tab = screen.get_active_tab_mut(client_id).ok();
-               match (base_pane_id, active_tab) {
-                 (Some(base_pane_id), Some(active_tab)) => {
-                      let mut pane_id_to_add = active_tab.next_selectable_pane_id_above(&base_pane_id);
-                      while pane_id_to_add.map(|p_id| client_pane_group.contains(&p_id)).unwrap_or(false) {
-                        match pane_id_to_add {
-                          Some(p_id) => {
-                            pane_id_to_add = active_tab.next_selectable_pane_id_above(&p_id);
-                          },
-                          None => {
-                            break;
-                          }
-                        }
-                      }
+            ScreenInstruction::ToggleGroupMarking(client_id) => {
+                let marking_pane_group = {
+                    // TODO: move to a function and clarify stuff
+                    let mut currently_marking_pane_group = screen.currently_marking_pane_group.borrow_mut();
+                    let previous_value = currently_marking_pane_group.remove(&client_id).unwrap_or(false);
+                    let new_value = !previous_value;
+                    if new_value {
+                        currently_marking_pane_group.insert(client_id, true);
+                    }
+                    new_value
+                };
+                if marking_pane_group {
+                    let active_pane_id = screen.get_active_pane_id(&client_id);
+                    if let Some(active_pane_id) = active_pane_id {
+                        screen.add_pane_id_to_group(active_pane_id, &client_id);
+                    }
+                }
 
-                      if let Some(pane_id_to_add) = pane_id_to_add {
-                          {
-                              let mut current_pane_group = screen.current_pane_group.borrow_mut();
-                              let client_pane_group = current_pane_group
-                                  .entry(client_id)
-                                  .or_insert_with(|| vec![]);
-                              if !client_pane_group.contains(&base_pane_id) {
-                                  client_pane_group.push(base_pane_id);
-                              }
-                              client_pane_group.push(pane_id_to_add);
-                          }
-                          let _ = screen.log_and_report_session_state();
-                      }
-                 },
-                 _ => {}
-               }
-            },
-            ScreenInstruction::GroupPaneDown(client_id) => {
-               let base_pane_id = screen
-                 .get_active_tab(client_id)
-                 .ok()
-                 .and_then(|t| t.get_active_pane_id(client_id));
-               let client_pane_group = screen.get_client_pane_group(&client_id);
-               let active_tab = screen.get_active_tab_mut(client_id).ok();
-               match (base_pane_id, active_tab) {
-                 (Some(base_pane_id), Some(active_tab)) => {
-                      let mut pane_id_to_add = active_tab.next_selectable_pane_id_below(&base_pane_id);
-                      while pane_id_to_add.map(|p_id| client_pane_group.contains(&p_id)).unwrap_or(false) {
-                        match pane_id_to_add {
-                          Some(p_id) => {
-                            pane_id_to_add = active_tab.next_selectable_pane_id_below(&p_id);
-                          },
-                          None => {
-                            break;
-                          }
-                        }
-                      }
+                // TODO: only if value changed
+                for tab in screen.tabs.values_mut() {
+                    tab.update_input_modes()?;
+                }
 
-                      if let Some(pane_id_to_add) = pane_id_to_add {
-                          {
-                              let mut current_pane_group = screen.current_pane_group.borrow_mut();
-                              let client_pane_group = current_pane_group
-                                  .entry(client_id)
-                                  .or_insert_with(|| vec![]);
-                              if !client_pane_group.contains(&base_pane_id) {
-                                  client_pane_group.push(base_pane_id);
-                              }
-                              client_pane_group.push(pane_id_to_add);
-                          }
-                          let _ = screen.log_and_report_session_state();
-                      }
-                 },
-                 _ => {}
-               }
-            },
-            ScreenInstruction::GroupPaneLeft(client_id) => {
-               let base_pane_id = screen
-                 .get_active_tab(client_id)
-                 .ok()
-                 .and_then(|t| t.get_active_pane_id(client_id));
-               let client_pane_group = screen.get_client_pane_group(&client_id);
-               let active_tab = screen.get_active_tab_mut(client_id).ok();
-               match (base_pane_id, active_tab) {
-                 (Some(base_pane_id), Some(active_tab)) => {
-                      let mut pane_id_to_add = active_tab.next_selectable_pane_id_to_the_left(&base_pane_id);
-                      while pane_id_to_add.map(|p_id| client_pane_group.contains(&p_id)).unwrap_or(false) {
-                        match pane_id_to_add {
-                          Some(p_id) => {
-                            pane_id_to_add = active_tab.next_selectable_pane_id_to_the_left(&p_id);
-                          },
-                          None => {
-                            break;
-                          }
-                        }
-                      }
+                let _ = screen.log_and_report_session_state();
 
-                      if let Some(pane_id_to_add) = pane_id_to_add {
-                          {
-                              let mut current_pane_group = screen.current_pane_group.borrow_mut();
-                              let client_pane_group = current_pane_group
-                                  .entry(client_id)
-                                  .or_insert_with(|| vec![]);
-                              if !client_pane_group.contains(&base_pane_id) {
-                                  client_pane_group.push(base_pane_id);
-                              }
-                              client_pane_group.push(pane_id_to_add);
-                          }
-                          let _ = screen.log_and_report_session_state();
-                      }
-                 },
-                 _ => {}
-               }
-            },
-            ScreenInstruction::GroupPaneRight(client_id) => {
-               let base_pane_id = screen
-                 .get_active_tab(client_id)
-                 .ok()
-                 .and_then(|t| t.get_active_pane_id(client_id));
-               let client_pane_group = screen.get_client_pane_group(&client_id);
-               let active_tab = screen.get_active_tab_mut(client_id).ok();
-               match (base_pane_id, active_tab) {
-                 (Some(base_pane_id), Some(active_tab)) => {
-                      let mut pane_id_to_add = active_tab.next_selectable_pane_id_to_the_right(&base_pane_id);
-                      while pane_id_to_add.map(|p_id| client_pane_group.contains(&p_id)).unwrap_or(false) {
-                        match pane_id_to_add {
-                          Some(p_id) => {
-                            pane_id_to_add = active_tab.next_selectable_pane_id_to_the_right(&p_id);
-                          },
-                          None => {
-                            break;
-                          }
-                        }
-                      }
-
-                      if let Some(pane_id_to_add) = pane_id_to_add {
-                          {
-                              let mut current_pane_group = screen.current_pane_group.borrow_mut();
-                              let client_pane_group = current_pane_group
-                                  .entry(client_id)
-                                  .or_insert_with(|| vec![]);
-                              if !client_pane_group.contains(&base_pane_id) {
-                                  client_pane_group.push(base_pane_id);
-                              }
-                              client_pane_group.push(pane_id_to_add);
-                          }
-                          let _ = screen.log_and_report_session_state();
-                      }
-                 },
-                 _ => {}
-               }
             },
             ScreenInstruction::HighlightAndUnhighlightPanes(pane_ids_to_highlight, pane_ids_to_unhighlight, client_id) => {
                 {

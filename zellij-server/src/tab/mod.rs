@@ -264,6 +264,7 @@ pub(crate) struct Tab {
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
     current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
     advanced_mouse_actions: bool,
+    currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -670,6 +671,7 @@ impl Tab {
         explicitly_disable_kitty_keyboard_protocol: bool,
         default_editor: Option<PathBuf>,
         current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
+        currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
         advanced_mouse_actions: bool,
     ) -> Self {
         let name = if name.is_empty() {
@@ -767,6 +769,7 @@ impl Tab {
             default_editor,
             mouse_hover_pane_id: HashMap::new(),
             current_pane_group,
+            currently_marking_pane_group,
             advanced_mouse_actions,
         }
     }
@@ -984,6 +987,7 @@ impl Tab {
         // this updates all plugins with the client's input mode
         let mode_infos = self.mode_info.borrow();
         let mut plugin_updates = vec![];
+        let currently_marking_pane_group = self.currently_marking_pane_group.borrow();
         for client_id in self.connected_clients.borrow().iter() {
             let mut mode_info = mode_infos
                 .get(client_id)
@@ -991,6 +995,7 @@ impl Tab {
                 .clone();
             mode_info.shell = Some(self.default_shell.clone());
             mode_info.editor = self.default_editor.clone();
+            mode_info.currently_marking_pane_group = currently_marking_pane_group.get(client_id).copied();
             plugin_updates.push((None, Some(*client_id), Event::ModeUpdate(mode_info)));
         }
         self.senders

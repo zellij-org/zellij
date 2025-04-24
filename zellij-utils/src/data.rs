@@ -1513,6 +1513,7 @@ pub struct ModeInfo {
     pub session_name: Option<String>,
     pub editor: Option<PathBuf>,
     pub shell: Option<PathBuf>,
+    pub currently_marking_pane_group: Option<bool>,
 }
 
 impl ModeInfo {
