@@ -2611,10 +2611,11 @@ impl Screen {
             );
         }
     }
-    pub fn stack_panes(&mut self, mut pane_ids_to_stack: Vec<PaneId>) {
+    pub fn stack_panes(&mut self, mut pane_ids_to_stack: Vec<PaneId>) -> Option<PaneId>{
+        // if successful, returns the pane id of the root pane
         if pane_ids_to_stack.is_empty() {
             log::error!("Got an empty list of pane_ids to stack");
-            return;
+            return None;
         }
         let stack_size = pane_ids_to_stack.len();
         let root_pane_id = pane_ids_to_stack.remove(0);
@@ -2631,8 +2632,10 @@ impl Screen {
             .copied()
         else {
             log::error!("Failed to find tab for root_pane_id: {:?}", root_pane_id);
-            return;
+            return None;
         };
+
+        let mut panes_to_stack = vec![];
         let target_tab_has_room_for_stack = self
             .tabs
             .get_mut(&root_tab_id)
@@ -2640,10 +2643,9 @@ impl Screen {
             .unwrap_or(false);
         if !target_tab_has_room_for_stack {
             log::error!("No room for stack with root pane id: {:?}", root_pane_id);
-            return;
+            return None;
         }
 
-        let mut panes_to_stack = vec![];
         for (tab_id, tab) in self.tabs.iter_mut() {
             if tab_id == &root_tab_id {
                 // we do this before we extract panes so that the extraction won't trigger a
@@ -2666,6 +2668,7 @@ impl Screen {
         self.tabs
             .get_mut(&root_tab_id)
             .map(|t| t.stack_panes(root_pane_id, panes_to_stack));
+        return Some(root_pane_id);
     }
     pub fn change_floating_panes_coordinates(
         &mut self,
@@ -5115,19 +5118,21 @@ pub(crate) fn screen_thread_main(
                 screen.set_floating_pane_pinned(pane_id, should_be_pinned);
             },
             ScreenInstruction::StackPanes(pane_ids_to_stack, client_id) => {
-                screen.stack_panes(pane_ids_to_stack);
-                let _ = screen.unblock_input();
-                let _ = screen.render(None);
-                let pane_group = screen.get_client_pane_group(&client_id);
-                if !pane_group.is_empty() {
-                    let _ = screen.bus.senders.send_to_background_jobs(
-                        BackgroundJob::HighlightPanesWithMessage(
-                            pane_group.iter().copied().collect(),
-                            "STACKED".to_owned(),
-                        ),
-                    );
+                if let Some(root_pane_id) = screen.stack_panes(pane_ids_to_stack) {
+                    screen.focus_pane_with_id(root_pane_id, false, client_id);
+                    let _ = screen.unblock_input();
+                    let _ = screen.render(None);
+                    let pane_group = screen.get_client_pane_group(&client_id);
+                    if !pane_group.is_empty() {
+                        let _ = screen.bus.senders.send_to_background_jobs(
+                            BackgroundJob::HighlightPanesWithMessage(
+                                pane_group.iter().copied().collect(),
+                                "STACKED".to_owned(),
+                            ),
+                        );
+                    }
+                    screen.clear_pane_group(&client_id);
                 }
-                screen.clear_pane_group(&client_id);
             },
             ScreenInstruction::ChangeFloatingPanesCoordinates(pane_ids_and_coordinates) => {
                 screen.change_floating_panes_coordinates(pane_ids_and_coordinates);

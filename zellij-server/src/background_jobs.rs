@@ -86,6 +86,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
 }
 
 static FLASH_DURATION_MS: u64 = 1000;
+static HIGHLIGHT_FLASH_DURATION_MS: u64 = 600;
 static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
 static SESSION_READ_DURATION: u64 = 1000;
 static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
@@ -428,7 +429,7 @@ pub(crate) fn background_jobs_main(
                                 Some(text),
                             ),
                         );
-                        task::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS)).await;
+                        task::sleep(std::time::Duration::from_millis(HIGHLIGHT_FLASH_DURATION_MS)).await;
                         let _ = senders.send_to_screen(
                             ScreenInstruction::ClearPaneFrameColorOverride(pane_ids),
                         );

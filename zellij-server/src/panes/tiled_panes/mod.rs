@@ -687,6 +687,16 @@ impl TiledPanes {
         self.set_force_render();
         self.reapply_pane_frames();
     }
+    pub fn pane_ids_in_stack_of_pane_id(&mut self, pane_id: &PaneId) -> Vec<PaneId> {
+        if let Some(stack_id) = self.panes.get(pane_id).and_then(|p| p.position_and_size().stacked) {
+            StackedPanes::new_from_btreemap(
+                &mut self.panes,
+                &self.panes_to_hide
+            ).pane_ids_in_stack(stack_id)
+        } else {
+            vec![]
+        }
+    }
     pub fn focus_pane_for_all_clients_in_stack(&mut self, pane_id: PaneId, stack_id: usize) {
         let connected_clients: Vec<ClientId> =
             self.connected_clients.borrow().iter().copied().collect();
