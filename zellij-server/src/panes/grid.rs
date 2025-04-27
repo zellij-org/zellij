@@ -28,7 +28,7 @@ pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 
 use vte::{Params, Perform};
 use zellij_utils::{consts::VERSION, shared::version_number};
-
+use zellij_utils::mouse_pointer_shapes::MousePointerShape;
 use crate::output::{CharacterChunk, OutputBuffer, SixelImageChunk};
 use crate::panes::alacritty_functions::{parse_number, xparse_color};
 use crate::panes::link_handler::LinkHandler;
@@ -2384,6 +2384,12 @@ impl Grid {
                 );
                 Some(mouse_event)
             },
+        }
+    }
+    pub fn get_mouse_pointer_shape(&self) -> MousePointerShape {
+        match &self.mouse_tracking {
+            MouseTracking::Off => MousePointerShape::Text,
+            _ => MousePointerShape::Default
         }
     }
     pub fn is_alternate_mode_active(&self) -> bool {

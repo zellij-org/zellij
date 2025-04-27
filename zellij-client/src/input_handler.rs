@@ -281,6 +281,12 @@ impl InputHandler {
                     .send(ClientInstruction::SetSynchronizedOutput(enabled))
                     .unwrap();
             },
+            AnsiStdinInstruction::MousePointerShapesSupport(support_values) => {
+                let is_supported = !support_values.is_empty() && support_values.iter().all(|&v| v);
+                self.send_client_instructions
+                    .send(ClientInstruction::SetMousePointerShapesSupported(is_supported))
+                    .unwrap();
+            },
         }
     }
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {

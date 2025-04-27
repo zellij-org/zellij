@@ -26,6 +26,7 @@ use crate::{
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
 };
 use termwiz::input::InputEvent;
+use zellij_utils::mouse_pointer_shapes::{MousePointerShape, MousePointerShapeProtocolMode};
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{set_permissions, ZELLIJ_SOCK_DIR},
@@ -56,6 +57,8 @@ pub(crate) enum ClientInstruction {
     CliPipeOutput((), ()),   // String -> pipe name, String -> output
     QueryTerminalSize,
     WriteConfigToDisk { config: String },
+    SetMousePointerShapesSupported(bool),
+    SetMousePointerShape(MousePointerShape),
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -80,6 +83,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::WriteConfigToDisk { config } => {
                 ClientInstruction::WriteConfigToDisk { config }
             },
+            ServerToClientMsg::SetMousePointerShape(pointer_shape) => {
+                ClientInstruction::SetMousePointerShape(pointer_shape)
+            },
         }
     }
 }
@@ -102,6 +108,10 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::CliPipeOutput(..) => ClientContext::CliPipeOutput,
             ClientInstruction::QueryTerminalSize => ClientContext::QueryTerminalSize,
             ClientInstruction::WriteConfigToDisk { .. } => ClientContext::WriteConfigToDisk,
+            ClientInstruction::SetMousePointerShapesSupported(..) => {
+                ClientContext::SetMousePointerShapesSupported
+            },
+            ClientInstruction::SetMousePointerShape(..) => ClientContext::SetMousePointerShape,
         }
     }
 }
@@ -441,9 +451,17 @@ pub fn start_client(
     let mut exit_msg = String::new();
     let mut loading = true;
     let mut pending_instructions = vec![];
-    let mut synchronised_output = match os_input.env_variable("TERM").as_deref() {
+    let env_term = os_input.env_variable("TERM");
+    let env_term = env_term.as_deref();
+    let mut synchronised_output = match env_term {
         Some("alacritty") => Some(SyncOutput::DCS),
         _ => None,
+    };
+    let is_xterm = env_term == Some("xterm") || env_term.map(|o| o.starts_with("xterm-")) == Some(true);
+    let mut mouse_pointer_shape_protocol_mode = if is_xterm {
+        Some(MousePointerShapeProtocolMode::XTerm)
+    } else {
+        None
     };
 
     let mut stdout = os_input.get_stdout_writer();
@@ -561,6 +579,22 @@ pub fn start_client(
                     },
                 }
             },
+            ClientInstruction::SetMousePointerShapesSupported(is_supported) => {
+                mouse_pointer_shape_protocol_mode = if is_supported {
+                    Some(MousePointerShapeProtocolMode::Kitty)
+                } else {
+                    None
+                }
+            },
+            ClientInstruction::SetMousePointerShape(shape) => {
+                if let Some(mode) = mouse_pointer_shape_protocol_mode {
+                    let mut stdout = os_input.get_stdout_writer();
+                    stdout
+                        .write_all(shape.generate_set_mouse_pointer_escape_sequence(mode).as_bytes())
+                        .expect("cannot write to stdout");
+                    stdout.flush().expect("could not flush");
+                }
+            }
             _ => {},
         }
     }

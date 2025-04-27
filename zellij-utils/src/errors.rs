@@ -468,6 +468,8 @@ pub enum ClientContext {
     CliPipeOutput,
     QueryTerminalSize,
     WriteConfigToDisk,
+    SetMousePointerShapesSupported,
+    SetMousePointerShape,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.

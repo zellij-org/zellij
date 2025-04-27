@@ -69,6 +69,9 @@ impl StdinAnsiParser {
             "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p",
         );
 
+        // query mouse pointer shapes support
+        query_string += "\u{1b}]22;?default,text\u{1b}\u{5c}";
+
         // query colors
         // eg. <ESC>]4;5;?<ESC>\ => query color register number 5
         for i in 0..256 {
@@ -151,6 +154,9 @@ impl StdinAnsiParser {
             if let Ok(ansi_sequence) = AnsiStdinInstruction::bg_or_fg_from_bytes(&self.raw_buffer) {
                 self.pending_events.push(ansi_sequence);
                 self.raw_buffer.clear();
+            } else if let Some(ansi_sequence) = AnsiStdinInstruction::mouse_pointer_shapes_support_from_bytes(&self.raw_buffer) {
+                self.pending_events.push(ansi_sequence);
+                self.raw_buffer.clear();
             } else if let Ok((color_register, color_sequence)) =
                 color_sequence_from_bytes(&self.raw_buffer)
             {
@@ -181,6 +187,7 @@ pub enum AnsiStdinInstruction {
     ForegroundColor(String),
     ColorRegisters(Vec<(usize, String)>),
     SynchronizedOutput(Option<SyncOutput>),
+    MousePointerShapesSupport(Vec<bool>),
 }
 
 impl AnsiStdinInstruction {
@@ -281,6 +288,20 @@ impl AnsiStdinInstruction {
         } else {
             None
         }
+    }
+    pub fn mouse_pointer_shapes_support_from_bytes(bytes: &[u8]) -> Option<Self> {
+        // eg. <ESC>]22;1,1,0,1<ESC>\
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"^\u{1b}]22;([0-9,]+)\u{1b}\\$").unwrap();
+        }
+        let key_string = String::from_utf8_lossy(bytes);
+        let captures = RE.captures_iter(&key_string).next()?;
+        let support_string = captures[1].to_string();
+        let support_values = support_string
+            .split(',')
+            .map(|s| s == "1")
+            .collect::<Vec<bool>>();
+        Some(AnsiStdinInstruction::MousePointerShapesSupport(support_values))
     }
 }
 
