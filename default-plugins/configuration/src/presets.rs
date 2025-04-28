@@ -174,6 +174,8 @@ keybinds clear-defaults=true {{
                 move_to_focused_tab true
             }}
         }}
+        bind "{secondary_modifier} p" {{ TogglePaneInGroup; }}
+        bind "{secondary_modifier} Shift p" {{ ToggleGroupMarking; }}
     }}
     shared_except "locked" "renametab" "renamepane" {{
         bind "Enter" {{ SwitchToMode "Locked"; }}
@@ -404,6 +406,8 @@ keybinds clear-defaults=true {{
                 move_to_focused_tab true
             }}
         }}
+        bind "{secondary_modifier} p" {{ TogglePaneInGroup; }}
+        bind "{secondary_modifier} Shift p" {{ ToggleGroupMarking; }}
     }}
     shared_except "normal" "locked" {{
         bind "Enter" "Esc" {{ SwitchToMode "Normal"; }}
@@ -613,6 +617,8 @@ keybinds clear-defaults=true {{
                 move_to_focused_tab true
             }}
         }}
+        bind "{secondary_modifier} p" {{ TogglePaneInGroup; }}
+        bind "{secondary_modifier} Shift p" {{ ToggleGroupMarking; }}
     }}
     shared_except "normal" "locked" {{
         bind "Enter" "Esc" {{ SwitchToMode "Normal"; }}
@@ -1182,6 +1188,8 @@ keybinds clear-defaults=true {{
                 move_to_focused_tab true
             }}
         }}
+        bind "{secondary_modifier} p" {{ TogglePaneInGroup; }}
+        bind "{secondary_modifier} Shift p" {{ ToggleGroupMarking; }}
     }}
     shared_except "normal" "locked" {{
         bind "Enter" "Esc" {{ SwitchToMode "Normal"; }}
