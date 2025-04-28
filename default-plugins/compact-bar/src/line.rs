@@ -435,7 +435,7 @@ fn render_group_controls(
     };
     let full_group_actions_text = format!("<{}> Group Actions", &multiple_select_key);
     let full_toggle_group_text = format!("<{}> Toggle Group", &pane_group_toggle_key);
-    let full_group_mark_toggle_text = format!("<{}> Group Many", &group_mark_toggle_key);
+    let full_group_mark_toggle_text = format!("<{}> Follow Focus", &group_mark_toggle_key);
     let ribbon_paddings_len = 12;
     let full_controls_line_len = full_selected_panes_text.chars().count() +
         1 +
