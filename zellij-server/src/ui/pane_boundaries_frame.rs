@@ -760,7 +760,6 @@ impl PaneFrame {
     }
     fn render_mouse_shortcuts_undertitle(&self) -> Result<Vec<TerminalCharacter>> {
         let max_undertitle_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
-                                                                      // let (mut first_part, first_part_len) = self.first_exited_held_title_part_full();
         let mut left_boundary =
             foreground_color(self.get_corner(boundary_type::BOTTOM_LEFT), self.color);
         let mut right_boundary =
@@ -769,7 +768,6 @@ impl PaneFrame {
             self.empty_undertitle(max_undertitle_length)
         } else {
             let (mut hover_shortcuts, hover_shortcuts_len) = self.hover_shortcuts_part_full();
-            // let full_text_len = first_part_len + second_part_len;
             if hover_shortcuts_len <= max_undertitle_length {
                 // render exit status and tips
                 let mut padding = String::new();
@@ -782,38 +780,9 @@ impl PaneFrame {
                 ret.append(&mut foreground_color(&padding, self.color));
                 ret.append(&mut right_boundary);
                 ret
-            //             } else if first_part_len <= max_undertitle_length {
-            //                 // render only exit status
-            //                 let mut padding = String::new();
-            //                 for _ in first_part_len..max_undertitle_length {
-            //                     padding.push_str(boundary_type::HORIZONTAL);
-            //                 }
-            //                 let mut ret = vec![];
-            //                 ret.append(&mut left_boundary);
-            //                 ret.append(&mut first_part);
-            //                 ret.append(&mut foreground_color(&padding, self.color));
-            //                 ret.append(&mut right_boundary);
-            //                 ret
             } else {
                 self.empty_undertitle(max_undertitle_length)
             }
-            //         } else {
-            //             if first_part_len <= max_undertitle_length {
-            //                 // render first part
-            //                 let full_text_len = first_part_len;
-            //                 let mut padding = String::new();
-            //                 for _ in full_text_len..max_undertitle_length {
-            //                     padding.push_str(boundary_type::HORIZONTAL);
-            //                 }
-            //                 let mut ret = vec![];
-            //                 ret.append(&mut left_boundary);
-            //                 ret.append(&mut first_part);
-            //                 ret.append(&mut foreground_color(&padding, self.color));
-            //                 ret.append(&mut right_boundary);
-            //                 ret
-            //             } else {
-            //                 self.empty_undertitle(max_undertitle_length)
-            //             }
         };
         Ok(res)
     }

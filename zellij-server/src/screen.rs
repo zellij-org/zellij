@@ -5155,30 +5155,28 @@ pub(crate) fn screen_thread_main(
 
             },
             ScreenInstruction::ToggleGroupMarking(client_id) => {
-                let marking_pane_group = {
-                    // TODO: move to a function and clarify stuff
+                let (was_marking_before, marking_pane_group_now) = {
                     let mut currently_marking_pane_group = screen.currently_marking_pane_group.borrow_mut();
                     let previous_value = currently_marking_pane_group.remove(&client_id).unwrap_or(false);
                     let new_value = !previous_value;
                     if new_value {
                         currently_marking_pane_group.insert(client_id, true);
                     }
-                    new_value
+                    (previous_value, new_value)
                 };
-                if marking_pane_group {
+                if marking_pane_group_now {
                     let active_pane_id = screen.get_active_pane_id(&client_id);
                     if let Some(active_pane_id) = active_pane_id {
                         screen.add_pane_id_to_group(active_pane_id, &client_id);
                     }
                 }
-
-                // TODO: only if value changed
-                for tab in screen.tabs.values_mut() {
-                    tab.update_input_modes()?;
+                let value_changed = was_marking_before != marking_pane_group_now;
+                if value_changed {
+                    for tab in screen.tabs.values_mut() {
+                        tab.update_input_modes()?;
+                    }
+                    let _ = screen.log_and_report_session_state();
                 }
-
-                let _ = screen.log_and_report_session_state();
-
             },
             ScreenInstruction::HighlightAndUnhighlightPanes(pane_ids_to_highlight, pane_ids_to_unhighlight, client_id) => {
                 {
