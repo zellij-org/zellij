@@ -6,7 +6,7 @@ use ansi_term::{
 use std::collections::HashMap;
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
-use zellij_tile_utils::palette_match;
+use zellij_tile_utils::{palette_match, style};
 
 use crate::first_line::{to_char, KeyAction, KeyMode, KeyShortcut};
 use crate::second_line::{system_clipboard_error, text_copied_hint};
@@ -700,8 +700,9 @@ fn render_group_controls(
     let multiple_select_key = multiple_select_key.iter().next().map(|key| format!("{}", key)).unwrap_or("UNBOUND".to_owned());
     let pane_group_toggle_key = pane_group_toggle_key.iter().next().map(|key| format!("{}", key)).unwrap_or("UNBOUND".to_owned());
     let group_mark_toggle_key = group_mark_toggle_key.iter().next().map(|key| format!("{}", key)).unwrap_or("UNBOUND".to_owned());
-    let supports_arrow_fonts = !help.capabilities.arrow_fonts;
-    let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
+    let background = help.style.colors.text_unselected.background;
+    let foreground = help.style.colors.text_unselected.base;
+    let superkey_prefix_style = style!(foreground, background).bold();
     let common_modifier_text = if common_modifiers.is_empty() { "".to_owned() } else { format!("{} + ", common_modifiers.iter().map(|c| c.to_string()).collect::<Vec<_>>().join("-")) };
     let full_selected_panes_text = if common_modifier_text.is_empty() {
         format!("{} SELECTED PANES", grouped_pane_count)
@@ -759,7 +760,7 @@ fn render_group_controls(
         let mut padding = String::new();
         let mut padding_len = 0;
         for _ in 0..remaining_space {
-            padding.push_str(&ANSIStrings(&[colored_elements.superkey_prefix.paint(" ")]).to_string());
+            padding.push_str(&ANSIStrings(&[superkey_prefix_style.paint(" ")]).to_string());
             padding_len += 1;
         }
         Some(LinePart {
@@ -785,7 +786,7 @@ fn render_group_controls(
         let mut padding = String::new();
         let mut padding_len = 0;
         for _ in 0..remaining_space {
-            padding.push_str(&ANSIStrings(&[colored_elements.superkey_prefix.paint(" ")]).to_string());
+            padding.push_str(&ANSIStrings(&[superkey_prefix_style.paint(" ")]).to_string());
             padding_len += 1;
         }
         Some(LinePart {
