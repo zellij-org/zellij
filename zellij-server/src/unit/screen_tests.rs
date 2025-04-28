@@ -271,6 +271,7 @@ fn create_new_screen(size: Size) -> Screen {
     let arrow_fonts = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let stacked_resize = true;
+    let advanced_mouse_actions = true;
     let screen = Screen::new(
         bus,
         &client_attributes,
@@ -293,6 +294,7 @@ fn create_new_screen(size: Size) -> Screen {
         explicitly_disable_kitty_keyboard_protocol,
         stacked_resize,
         None,
+        advanced_mouse_actions,
     );
     screen
 }

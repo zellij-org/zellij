@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 855
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -121,6 +120,7 @@ Config {
         stacked_resize: None,
         show_startup_tips: None,
         show_release_notes: None,
+        advanced_mouse_actions: None,
     },
     themes: {},
     plugins: PluginAliases {

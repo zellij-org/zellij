@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 755
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -213,6 +212,35 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                LaunchOrFocusPlugin(
+                    RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "multiple-select",
+                                ),
+                            ),
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {
@@ -272,6 +300,27 @@ Config {
                 SwitchToMode(
                     Pane,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                TogglePaneInGroup,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                    Shift,
+                },
+            }: [
+                ToggleGroupMarking,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -711,6 +760,35 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                LaunchOrFocusPlugin(
+                    RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "multiple-select",
+                                ),
+                            ),
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {
@@ -770,6 +848,27 @@ Config {
                 SwitchToMode(
                     Pane,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                TogglePaneInGroup,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                    Shift,
+                },
+            }: [
+                ToggleGroupMarking,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -1167,6 +1266,35 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                LaunchOrFocusPlugin(
+                    RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "multiple-select",
+                                ),
+                            ),
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {},
@@ -1249,6 +1377,27 @@ Config {
                 SwitchToMode(
                     Normal,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                TogglePaneInGroup,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                    Shift,
+                },
+            }: [
+                ToggleGroupMarking,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -1765,6 +1914,35 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                LaunchOrFocusPlugin(
+                    RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "multiple-select",
+                                ),
+                            ),
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {},
@@ -1842,6 +2020,27 @@ Config {
                 SwitchToMode(
                     Pane,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                TogglePaneInGroup,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                    Shift,
+                },
+            }: [
+                ToggleGroupMarking,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -2253,6 +2452,35 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                LaunchOrFocusPlugin(
+                    RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "multiple-select",
+                                ),
+                            ),
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {
@@ -2312,6 +2540,27 @@ Config {
                 SwitchToMode(
                     Pane,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                TogglePaneInGroup,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                    Shift,
+                },
+            }: [
+                ToggleGroupMarking,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -2607,6 +2856,35 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                LaunchOrFocusPlugin(
+                    RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "multiple-select",
+                                ),
+                            ),
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {
@@ -2666,6 +2944,27 @@ Config {
                 SwitchToMode(
                     Pane,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                TogglePaneInGroup,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                    Shift,
+                },
+            }: [
+                ToggleGroupMarking,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -3033,6 +3332,35 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                LaunchOrFocusPlugin(
+                    RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "multiple-select",
+                                ),
+                            ),
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {},
@@ -3122,6 +3450,27 @@ Config {
                 SwitchToMode(
                     Pane,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                TogglePaneInGroup,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                    Shift,
+                },
+            }: [
+                ToggleGroupMarking,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -3412,6 +3761,35 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                LaunchOrFocusPlugin(
+                    RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "multiple-select",
+                                ),
+                            ),
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {
@@ -3471,6 +3849,27 @@ Config {
                 SwitchToMode(
                     Pane,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                TogglePaneInGroup,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                    Shift,
+                },
+            }: [
+                ToggleGroupMarking,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -3744,6 +4143,35 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                LaunchOrFocusPlugin(
+                    RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "multiple-select",
+                                ),
+                            ),
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {
@@ -3803,6 +4231,27 @@ Config {
                 SwitchToMode(
                     Pane,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                TogglePaneInGroup,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                    Shift,
+                },
+            }: [
+                ToggleGroupMarking,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -4130,6 +4579,35 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                LaunchOrFocusPlugin(
+                    RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "multiple-select",
+                                ),
+                            ),
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {
@@ -4217,6 +4695,27 @@ Config {
                 SwitchToMode(
                     Pane,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                TogglePaneInGroup,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                    Shift,
+                },
+            }: [
+                ToggleGroupMarking,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -4593,6 +5092,35 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                LaunchOrFocusPlugin(
+                    RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "multiple-select",
+                                ),
+                            ),
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {},
@@ -4670,6 +5198,27 @@ Config {
                 SwitchToMode(
                     Pane,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                TogglePaneInGroup,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                    Shift,
+                },
+            }: [
+                ToggleGroupMarking,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -4938,6 +5487,35 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                LaunchOrFocusPlugin(
+                    RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "multiple-select",
+                                ),
+                            ),
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {
@@ -4997,6 +5575,27 @@ Config {
                 SwitchToMode(
                     Pane,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                TogglePaneInGroup,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                    Shift,
+                },
+            }: [
+                ToggleGroupMarking,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -5448,6 +6047,35 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                LaunchOrFocusPlugin(
+                    RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "multiple-select",
+                                ),
+                            ),
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {},
@@ -5537,6 +6165,27 @@ Config {
                 SwitchToMode(
                     Pane,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                TogglePaneInGroup,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Alt,
+                    Shift,
+                },
+            }: [
+                ToggleGroupMarking,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -5643,6 +6292,7 @@ Config {
         stacked_resize: None,
         show_startup_tips: None,
         show_release_notes: None,
+        advanced_mouse_actions: None,
     },
     themes: {},
     plugins: PluginAliases {
