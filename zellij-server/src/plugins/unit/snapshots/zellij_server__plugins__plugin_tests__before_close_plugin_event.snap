@@ -1,0 +1,17 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+expression: "format!(\"{:#?}\", sent_instruction)"
+---
+HighlightAndUnhighlightPanes(
+    [
+        Terminal(
+            1,
+        ),
+    ],
+    [
+        Plugin(
+            1,
+        ),
+    ],
+    1,
+)

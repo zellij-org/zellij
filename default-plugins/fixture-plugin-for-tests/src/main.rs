@@ -67,6 +67,7 @@ impl ZellijPlugin for State {
             EventType::FileSystemCreate,
             EventType::FileSystemUpdate,
             EventType::FileSystemDelete,
+            EventType::BeforeClose,
         ]);
         watch_filesystem();
     }
@@ -534,6 +535,10 @@ impl ZellijPlugin for State {
                 if message == "pong" {
                     self.received_payload = Some(payload.clone());
                 }
+            },
+            Event::BeforeClose => {
+                // this is just to assert something to make sure this event was triggered
+                highlight_and_unhighlight_panes(vec![PaneId::Terminal(1)], vec![PaneId::Plugin(1)]);
             },
             Event::SystemClipboardFailure => {
                 // this is just to trigger the worker message
