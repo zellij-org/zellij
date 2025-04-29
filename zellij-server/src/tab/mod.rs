@@ -3888,6 +3888,7 @@ impl Tab {
         event: &MouseEvent,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
+        let advanced_mouse_actions = self.advanced_mouse_actions;
         let err_context = || format!("failed to handle mouse no click for client {client_id}");
         let absolute_position = event.position;
 

@@ -2684,6 +2684,85 @@ impl Screen {
             }
         }
     }
+    pub fn handle_mouse_event(&mut self, event: MouseEvent, client_id: ClientId) {
+        match self
+            .get_active_tab_mut(client_id)
+            .and_then(|tab| tab.handle_mouse_event(&event, client_id))
+        {
+            Ok(mouse_effect) => {
+                if let Some(pane_id) = mouse_effect.group_toggle {
+                    if self.advanced_mouse_actions {
+                        self.toggle_pane_id_in_group(pane_id, &client_id);
+                    }
+                }
+                if let Some(pane_id) = mouse_effect.group_add {
+                    if self.advanced_mouse_actions {
+                        self.add_pane_id_to_group(pane_id, &client_id);
+                    }
+                }
+                if mouse_effect.ungroup {
+                    if self.advanced_mouse_actions {
+                        self.clear_pane_group(&client_id);
+                    }
+                }
+                if mouse_effect.state_changed {
+                    let _ = self.log_and_report_session_state();
+                }
+                if !mouse_effect.leave_clipboard_message {
+                    let _ =
+                        self
+                            .bus
+                            .senders
+                            .send_to_plugin(PluginInstruction::Update(vec![(
+                                None,
+                                Some(client_id),
+                                Event::InputReceived,
+                            )]));
+                }
+                self.render(None).non_fatal();
+            },
+            Err(e) => {
+                eprintln!("mouse event error: {:?}", e);
+                log::error!("Failed to process MouseEvent: {}", e);
+            },
+        }
+    }
+    pub fn toggle_pane_in_group(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = "Can't add pane to group";
+        let active_tab = self.get_active_tab(client_id)
+            .with_context(|| err_context)?;
+        let active_pane_id = active_tab
+            .get_active_pane_id(client_id)
+            .with_context(|| err_context)?;
+        self.toggle_pane_id_in_group(active_pane_id, &client_id);
+        let _ = self.log_and_report_session_state();
+        Ok(())
+    }
+    pub fn toggle_group_marking(&mut self, client_id: ClientId) -> Result<()> {
+        let (was_marking_before, marking_pane_group_now) = {
+            let mut currently_marking_pane_group = self.currently_marking_pane_group.borrow_mut();
+            let previous_value = currently_marking_pane_group.remove(&client_id).unwrap_or(false);
+            let new_value = !previous_value;
+            if new_value {
+                currently_marking_pane_group.insert(client_id, true);
+            }
+            (previous_value, new_value)
+        };
+        if marking_pane_group_now {
+            let active_pane_id = self.get_active_pane_id(&client_id);
+            if let Some(active_pane_id) = active_pane_id {
+                self.add_pane_id_to_group(active_pane_id, &client_id);
+            }
+        }
+        let value_changed = was_marking_before != marking_pane_group_now;
+        if value_changed {
+            for tab in self.tabs.values_mut() {
+                tab.update_input_modes()?;
+            }
+            let _ = self.log_and_report_session_state();
+        }
+        Ok(())
+    }
     fn unblock_input(&self) -> Result<()> {
         self.bus
             .senders
@@ -4037,46 +4116,7 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::MouseEvent(event, client_id) => {
-                match screen
-                    .get_active_tab_mut(client_id)
-                    .and_then(|tab| tab.handle_mouse_event(&event, client_id))
-                {
-                    Ok(mouse_effect) => {
-                        if let Some(pane_id) = mouse_effect.group_toggle {
-                            if screen.advanced_mouse_actions {
-                                screen.toggle_pane_id_in_group(pane_id, &client_id);
-                            }
-                        }
-                        if let Some(pane_id) = mouse_effect.group_add {
-                            if screen.advanced_mouse_actions {
-                                screen.add_pane_id_to_group(pane_id, &client_id);
-                            }
-                        }
-                        if mouse_effect.ungroup {
-                            if screen.advanced_mouse_actions {
-                                screen.clear_pane_group(&client_id);
-                            }
-                        }
-                        if mouse_effect.state_changed {
-                            screen.log_and_report_session_state()?;
-                        }
-                        if !mouse_effect.leave_clipboard_message {
-                            let _ =
-                                screen
-                                    .bus
-                                    .senders
-                                    .send_to_plugin(PluginInstruction::Update(vec![(
-                                        None,
-                                        Some(client_id),
-                                        Event::InputReceived,
-                                    )]));
-                        }
-                        screen.render(None).non_fatal();
-                    },
-                    Err(e) => {
-                        log::error!("Failed to process MouseEvent: {}", e);
-                    },
-                }
+                screen.handle_mouse_event(event, client_id);
             },
             ScreenInstruction::Copy(client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
@@ -5144,39 +5184,10 @@ pub(crate) fn screen_thread_main(
                 let _ = screen.log_and_report_session_state();
             },
             ScreenInstruction::TogglePaneInGroup(client_id) => {
-                let err_context = "Can't add pane to group";
-                let active_tab = screen.get_active_tab(client_id)
-                    .with_context(|| err_context)?;
-                let active_pane_id = active_tab
-                    .get_active_pane_id(client_id)
-                    .with_context(|| err_context)?;
-                screen.toggle_pane_id_in_group(active_pane_id, &client_id);
-                let _ = screen.log_and_report_session_state();
-
+                screen.toggle_pane_in_group(client_id).non_fatal();
             },
             ScreenInstruction::ToggleGroupMarking(client_id) => {
-                let (was_marking_before, marking_pane_group_now) = {
-                    let mut currently_marking_pane_group = screen.currently_marking_pane_group.borrow_mut();
-                    let previous_value = currently_marking_pane_group.remove(&client_id).unwrap_or(false);
-                    let new_value = !previous_value;
-                    if new_value {
-                        currently_marking_pane_group.insert(client_id, true);
-                    }
-                    (previous_value, new_value)
-                };
-                if marking_pane_group_now {
-                    let active_pane_id = screen.get_active_pane_id(&client_id);
-                    if let Some(active_pane_id) = active_pane_id {
-                        screen.add_pane_id_to_group(active_pane_id, &client_id);
-                    }
-                }
-                let value_changed = was_marking_before != marking_pane_group_now;
-                if value_changed {
-                    for tab in screen.tabs.values_mut() {
-                        tab.update_input_modes()?;
-                    }
-                    let _ = screen.log_and_report_session_state();
-                }
+                screen.toggle_group_marking(client_id).non_fatal();
             },
             ScreenInstruction::HighlightAndUnhighlightPanes(pane_ids_to_highlight, pane_ids_to_unhighlight, client_id) => {
                 {
