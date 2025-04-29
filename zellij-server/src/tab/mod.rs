@@ -3895,7 +3895,6 @@ impl Tab {
         event: &MouseEvent,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
-        let advanced_mouse_actions = self.advanced_mouse_actions;
         let err_context = || format!("failed to handle mouse no click for client {client_id}");
         let absolute_position = event.position;
 
@@ -4836,38 +4835,6 @@ impl Tab {
     }
     pub fn get_display_area(&self) -> Size {
         self.display_area.borrow().clone()
-    }
-    pub fn next_selectable_pane_id_above(&mut self, pane_id: &PaneId) -> Option<PaneId> {
-        if self.pane_id_is_floating(pane_id) {
-            self.floating_panes.next_selectable_pane_id_above(&pane_id)
-        } else {
-            self.tiled_panes.next_selectable_pane_id_above(&pane_id)
-        }
-    }
-    pub fn next_selectable_pane_id_below(&mut self, pane_id: &PaneId) -> Option<PaneId> {
-        if self.pane_id_is_floating(pane_id) {
-            self.floating_panes.next_selectable_pane_id_below(&pane_id)
-        } else {
-            self.tiled_panes.next_selectable_pane_id_below(&pane_id)
-        }
-    }
-    pub fn next_selectable_pane_id_to_the_left(&mut self, pane_id: &PaneId) -> Option<PaneId> {
-        if self.pane_id_is_floating(pane_id) {
-            self.floating_panes
-                .next_selectable_pane_id_to_the_left(&pane_id)
-        } else {
-            self.tiled_panes
-                .next_selectable_pane_id_to_the_left(&pane_id)
-        }
-    }
-    pub fn next_selectable_pane_id_to_the_right(&mut self, pane_id: &PaneId) -> Option<PaneId> {
-        if self.pane_id_is_floating(pane_id) {
-            self.floating_panes
-                .next_selectable_pane_id_to_the_right(&pane_id)
-        } else {
-            self.tiled_panes
-                .next_selectable_pane_id_to_the_right(&pane_id)
-        }
     }
     fn new_scrollback_editor_pane(&self, pid: u32) -> TerminalPane {
         let next_terminal_position = self.get_next_terminal_position();

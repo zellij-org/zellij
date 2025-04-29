@@ -1298,11 +1298,6 @@ impl Screen {
             None => Err(anyhow!("active tab not found for client {:?}", client_id)),
         }
     }
-    pub fn get_active_tab_position(&self, client_id: ClientId) -> Option<usize> {
-        self.active_tab_indices
-            .get(&client_id)
-            .and_then(|tab| self.tabs.get(tab).map(|t| t.position))
-    }
 
     pub fn get_first_client_id(&self) -> Option<ClientId> {
         self.active_tab_indices.keys().next().copied()
@@ -2899,26 +2894,12 @@ impl Screen {
     fn connected_clients_contains(&self, client_id: &ClientId) -> bool {
         self.connected_clients.borrow().contains(client_id)
     }
-    fn client_has_pane_group(&self, client_id: &ClientId) -> bool {
-        self.current_pane_group
-            .borrow()
-            .get(client_id)
-            .map(|p| !p.is_empty())
-            .unwrap_or(false)
-    }
     fn get_client_pane_group(&self, client_id: &ClientId) -> HashSet<PaneId> {
         self.current_pane_group
             .borrow()
             .get(client_id)
             .map(|p| p.iter().copied().collect())
             .unwrap_or_else(|| HashSet::new())
-    }
-    fn client_has_active_pane_group(&self, client_id: &ClientId) -> bool {
-        self.current_pane_group
-            .borrow()
-            .get(client_id)
-            .map(|p| !p.is_empty())
-            .unwrap_or(false)
     }
     fn clear_pane_group(&mut self, client_id: &ClientId) {
         self.current_pane_group
@@ -5165,7 +5146,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::StackPanes(pane_ids_to_stack, client_id) => {
                 if let Some(root_pane_id) = screen.stack_panes(pane_ids_to_stack) {
-                    screen.focus_pane_with_id(root_pane_id, false, client_id);
+                    let _ = screen.focus_pane_with_id(root_pane_id, false, client_id);
                     let _ = screen.unblock_input();
                     let _ = screen.render(None);
                     let pane_group = screen.get_client_pane_group(&client_id);
