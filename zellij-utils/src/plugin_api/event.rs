@@ -359,6 +359,10 @@ impl TryFrom<ProtobufEvent> for Event {
                 None => Ok(Event::ConfigWasWrittenToDisk),
                 _ => Err("Malformed payload for the ConfigWasWrittenToDisk Event"),
             },
+            Some(ProtobufEventType::BeforeClose) => match protobuf_event.payload {
+                None => Ok(Event::BeforeClose),
+                _ => Err("Malformed payload for the BeforeClose Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -733,6 +737,10 @@ impl TryFrom<Event> for ProtobufEvent {
                 name: ProtobufEventType::ConfigWasWrittenToDisk as i32,
                 payload: None,
             }),
+            Event::BeforeClose => Ok(ProtobufEvent {
+                name: ProtobufEventType::BeforeClose as i32,
+                payload: None,
+            }),
         }
     }
 }
@@ -1072,6 +1080,16 @@ impl TryFrom<ProtobufPaneInfo> for PaneInfo {
             terminal_command: protobuf_pane_info.terminal_command,
             plugin_url: protobuf_pane_info.plugin_url,
             is_selectable: protobuf_pane_info.is_selectable,
+            index_in_pane_group: protobuf_pane_info
+                .index_in_pane_group
+                .iter()
+                .map(|index_in_pane_group| {
+                    (
+                        index_in_pane_group.client_id as u16,
+                        index_in_pane_group.index as usize,
+                    )
+                })
+                .collect(),
         })
     }
 }
@@ -1107,6 +1125,14 @@ impl TryFrom<PaneInfo> for ProtobufPaneInfo {
             terminal_command: pane_info.terminal_command,
             plugin_url: pane_info.plugin_url,
             is_selectable: pane_info.is_selectable,
+            index_in_pane_group: pane_info
+                .index_in_pane_group
+                .iter()
+                .map(|(&client_id, &index)| IndexInPaneGroup {
+                    client_id: client_id as u32,
+                    index: index as u32,
+                })
+                .collect(),
         })
     }
 }
@@ -1216,6 +1242,8 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
         let capabilities = PluginCapabilities {
             arrow_fonts: protobuf_mode_update_payload.arrow_fonts_support,
         };
+        let currently_marking_pane_group =
+            protobuf_mode_update_payload.currently_marking_pane_group;
         let mode_info = ModeInfo {
             mode: current_mode,
             keybinds,
@@ -1225,6 +1253,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             base_mode,
             editor,
             shell,
+            currently_marking_pane_group,
         };
         Ok(mode_info)
     }
@@ -1242,6 +1271,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
         let session_name = mode_info.session_name;
         let editor = mode_info.editor.map(|e| e.display().to_string());
         let shell = mode_info.shell.map(|s| s.display().to_string());
+        let currently_marking_pane_group = mode_info.currently_marking_pane_group;
         let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
         for (input_mode, input_mode_keybinds) in mode_info.keybinds {
             let mode: ProtobufInputMode = input_mode.try_into()?;
@@ -1275,6 +1305,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             base_mode: base_mode.map(|b_m| b_m as i32),
             editor,
             shell,
+            currently_marking_pane_group,
         })
     }
 }
@@ -1344,6 +1375,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::FailedToChangeHostFolder => EventType::FailedToChangeHostFolder,
             ProtobufEventType::PastedText => EventType::PastedText,
             ProtobufEventType::ConfigWasWrittenToDisk => EventType::ConfigWasWrittenToDisk,
+            ProtobufEventType::BeforeClose => EventType::BeforeClose,
         })
     }
 }
@@ -1383,6 +1415,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::FailedToChangeHostFolder => ProtobufEventType::FailedToChangeHostFolder,
             EventType::PastedText => ProtobufEventType::PastedText,
             EventType::ConfigWasWrittenToDisk => ProtobufEventType::ConfigWasWrittenToDisk,
+            EventType::BeforeClose => ProtobufEventType::BeforeClose,
         })
     }
 }
@@ -1523,6 +1556,7 @@ fn serialize_mode_update_event_with_non_default_values() {
         base_mode: Some(InputMode::Locked),
         editor: Some(PathBuf::from("my_awesome_editor")),
         shell: Some(PathBuf::from("my_awesome_shell")),
+        currently_marking_pane_group: Some(false),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
@@ -1884,6 +1918,14 @@ fn serialize_session_update_event_with_non_default_values() {
         TabInfo::default(),
     ];
     let mut panes = HashMap::new();
+    let mut index_in_pane_group_1 = BTreeMap::new();
+    index_in_pane_group_1.insert(1, 0);
+    index_in_pane_group_1.insert(2, 0);
+    index_in_pane_group_1.insert(3, 0);
+    let mut index_in_pane_group_2 = BTreeMap::new();
+    index_in_pane_group_2.insert(1, 1);
+    index_in_pane_group_2.insert(2, 1);
+    index_in_pane_group_2.insert(3, 1);
     let panes_list = vec![
         PaneInfo {
             id: 1,
@@ -1908,6 +1950,7 @@ fn serialize_session_update_event_with_non_default_values() {
             terminal_command: Some("foo".to_owned()),
             plugin_url: None,
             is_selectable: true,
+            index_in_pane_group: index_in_pane_group_1,
         },
         PaneInfo {
             id: 1,
@@ -1932,6 +1975,7 @@ fn serialize_session_update_event_with_non_default_values() {
             terminal_command: None,
             plugin_url: Some("i_am_a_fake_plugin".to_owned()),
             is_selectable: true,
+            index_in_pane_group: index_in_pane_group_2,
         },
     ];
     panes.insert(0, panes_list);

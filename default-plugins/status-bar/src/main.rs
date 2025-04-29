@@ -39,6 +39,8 @@ struct State {
     display_system_clipboard_failure: bool,
     classic_ui: bool,
     base_mode_is_locked: bool,
+    own_client_id: Option<ClientId>,
+    grouped_panes_count: Option<usize>,
 }
 
 register_plugin!(State);
@@ -197,10 +199,12 @@ impl ZellijPlugin for State {
             .get("classic")
             .map(|c| c == "true")
             .unwrap_or(false);
+        self.own_client_id = Some(get_plugin_ids().client_id);
         set_selectable(false);
         subscribe(&[
             EventType::ModeUpdate,
             EventType::TabUpdate,
+            EventType::PaneUpdate,
             EventType::CopyToClipboard,
             EventType::InputReceived,
             EventType::SystemClipboardFailure,
@@ -222,6 +226,28 @@ impl ZellijPlugin for State {
                     should_render = true;
                 }
                 self.tabs = tabs;
+            },
+            Event::PaneUpdate(pane_manifest) => {
+                if let Some(own_client_id) = self.own_client_id {
+                    let mut grouped_panes_count = 0;
+                    for (_tab_index, pane_infos) in pane_manifest.panes {
+                        for pane_info in pane_infos {
+                            let is_in_pane_group =
+                                pane_info.index_in_pane_group.get(&own_client_id).is_some();
+                            if is_in_pane_group {
+                                grouped_panes_count += 1;
+                            }
+                        }
+                    }
+                    if Some(grouped_panes_count) != self.grouped_panes_count {
+                        if grouped_panes_count == 0 {
+                            self.grouped_panes_count = None;
+                        } else {
+                            self.grouped_panes_count = Some(grouped_panes_count);
+                        }
+                        should_render = true;
+                    }
+                }
             },
             Event::CopyToClipboard(copy_destination) => {
                 match self.text_copy_destination {
@@ -280,6 +306,7 @@ impl ZellijPlugin for State {
                     self.base_mode_is_locked,
                     self.text_copy_destination,
                     self.display_system_clipboard_failure,
+                    self.grouped_panes_count,
                 ),
                 fill_bg,
             );

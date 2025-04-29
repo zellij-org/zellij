@@ -28,9 +28,7 @@ impl PermissionType {
             PermissionType::WriteToStdin => "WriteToStdin",
             PermissionType::WebAccess => "WebAccess",
             PermissionType::ReadCliPipes => "ReadCliPipes",
-            PermissionType::MessageAndLaunchOtherPlugins => {
-                "MessageAndLaunchOtherPlugins"
-            }
+            PermissionType::MessageAndLaunchOtherPlugins => "MessageAndLaunchOtherPlugins",
             PermissionType::Reconfigure => "Reconfigure",
             PermissionType::FullHdAccess => "FullHdAccess",
         }

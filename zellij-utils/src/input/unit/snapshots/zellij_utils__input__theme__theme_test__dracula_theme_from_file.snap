@@ -449,16 +449,12 @@ expression: "format!(\"{:#?}\", theme)"
                 emphasis_0: Rgb(
                     (
                         255,
-                        184,
-                        108,
+                        121,
+                        198,
                     ),
                 ),
-                emphasis_1: Rgb(
-                    (
-                        255,
-                        184,
-                        108,
-                    ),
+                emphasis_1: EightBit(
+                    0,
                 ),
                 emphasis_2: Rgb(
                     (

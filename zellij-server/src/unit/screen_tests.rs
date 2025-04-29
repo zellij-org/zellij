@@ -19,9 +19,11 @@ use zellij_utils::input::layout::{
     FloatingPaneLayout, Layout, PluginAlias, PluginUserConfiguration, Run, RunPlugin,
     RunPluginLocation, RunPluginOrAlias, SplitDirection, SplitSize, TiledPaneLayout,
 };
+use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
+use zellij_utils::position::Position;
 
 use crate::background_jobs::BackgroundJob;
 use crate::pty_writer::PtyWriteInstruction;
@@ -243,7 +245,7 @@ impl ServerOsApi for FakeInputOutput {
     }
 }
 
-fn create_new_screen(size: Size) -> Screen {
+fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     let fake_os_input = FakeInputOutput::default();
     bus.os_input = Some(Box::new(fake_os_input));
@@ -293,6 +295,7 @@ fn create_new_screen(size: Size) -> Screen {
         explicitly_disable_kitty_keyboard_protocol,
         stacked_resize,
         None,
+        advanced_mouse_actions,
     );
     screen
 }
@@ -316,6 +319,7 @@ struct MockScreen {
     pub config_options: Options,
     pub session_metadata: SessionMetaData,
     pub config: Config,
+    advanced_mouse_actions: bool,
     last_opened_tab_index: Option<usize>,
 }
 
@@ -325,7 +329,8 @@ impl MockScreen {
         initial_layout: Option<TiledPaneLayout>,
         initial_floating_panes_layout: Vec<FloatingPaneLayout>,
     ) -> std::thread::JoinHandle<()> {
-        let config = self.config.clone();
+        let mut config = self.config.clone();
+        config.options.advanced_mouse_actions = Some(self.advanced_mouse_actions);
         let client_attributes = self.client_attributes.clone();
         let screen_bus = Bus::new(
             vec![self.screen_receiver.take().unwrap()],
@@ -626,7 +631,11 @@ impl MockScreen {
             session_metadata,
             last_opened_tab_index: None,
             config: Config::default(),
+            advanced_mouse_actions: true,
         }
+    }
+    pub fn set_advanced_hover_effects(&mut self, advanced_mouse_actions: bool) {
+        self.advanced_mouse_actions = advanced_mouse_actions;
     }
 }
 
@@ -682,7 +691,7 @@ fn open_new_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size);
+    let mut screen = create_new_screen(size, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -701,7 +710,7 @@ pub fn switch_to_prev_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size);
+    let mut screen = create_new_screen(size, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -720,7 +729,7 @@ pub fn switch_to_next_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size);
+    let mut screen = create_new_screen(size, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -740,7 +749,7 @@ pub fn switch_to_tab_name() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size);
+    let mut screen = create_new_screen(size, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -774,7 +783,7 @@ pub fn close_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size);
+    let mut screen = create_new_screen(size, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -794,7 +803,7 @@ pub fn close_the_middle_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size);
+    let mut screen = create_new_screen(size, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -816,7 +825,7 @@ fn move_focus_left_at_left_screen_edge_changes_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size);
+    let mut screen = create_new_screen(size, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -848,10 +857,13 @@ fn basic_move_of_active_tab_to_left() {
 }
 
 fn create_fixed_size_screen() -> Screen {
-    create_new_screen(Size {
-        cols: 121,
-        rows: 20,
-    })
+    create_new_screen(
+        Size {
+            cols: 121,
+            rows: 20,
+        },
+        true,
+    )
 }
 
 #[test]
@@ -981,7 +993,7 @@ fn move_focus_right_at_right_screen_edge_changes_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size);
+    let mut screen = create_new_screen(size, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -1002,7 +1014,7 @@ pub fn toggle_to_previous_tab_simple() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(position_and_size);
+    let mut screen = create_new_screen(position_and_size, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -1030,7 +1042,7 @@ pub fn toggle_to_previous_tab_create_tabs_only() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(position_and_size);
+    let mut screen = create_new_screen(position_and_size, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -1080,7 +1092,7 @@ pub fn toggle_to_previous_tab_delete() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(position_and_size);
+    let mut screen = create_new_screen(position_and_size, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -1176,7 +1188,7 @@ fn switch_to_tab_with_fullscreen() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size);
+    let mut screen = create_new_screen(size, true);
 
     new_tab(&mut screen, 1, 1);
     {
@@ -1212,7 +1224,7 @@ fn update_screen_pixel_dimensions() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size);
+    let mut screen = create_new_screen(size, true);
     let initial_pixel_dimensions = screen.pixel_dimensions;
     screen.update_pixel_dimensions(PixelDimensions {
         character_cell_size: Some(SizeInPixels {
@@ -1291,7 +1303,7 @@ fn attach_after_first_tab_closed() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size);
+    let mut screen = create_new_screen(size, true);
 
     new_tab(&mut screen, 1, 0);
     {
@@ -1314,7 +1326,7 @@ fn open_new_floating_pane_with_custom_coordinates() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size);
+    let mut screen = create_new_screen(size, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1349,7 +1361,7 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size);
+    let mut screen = create_new_screen(size, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1376,6 +1388,257 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
     assert_eq!(active_pane.y(), 10, "y coordinates set properly");
     assert_eq!(active_pane.rows(), 10, "rows set properly");
     assert_eq!(active_pane.cols(), 10, "columns set properly");
+}
+
+#[test]
+pub fn mouse_hover_effect() {
+    let size = Size {
+        cols: 130,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let hover_mouse_event_1 = MouseEvent::new_buttonless_motion(Position::new(5, 70));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::MouseEvent(
+        hover_mouse_event_1,
+        client_id,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    for (_cursor_coordinates, snapshot) in snapshots {
+        assert_snapshot!(format!("{}", snapshot));
+    }
+}
+
+#[test]
+pub fn disabled_mouse_hover_effect() {
+    let size = Size {
+        cols: 130,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.set_advanced_hover_effects(false);
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let hover_mouse_event_1 = MouseEvent::new_buttonless_motion(Position::new(5, 70));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::MouseEvent(
+        hover_mouse_event_1,
+        client_id,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    for (_cursor_coordinates, snapshot) in snapshots {
+        assert_snapshot!(format!("{}", snapshot));
+    }
+}
+
+#[test]
+fn group_panes_with_mouse() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true);
+
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.handle_mouse_event(
+        MouseEvent::new_left_press_with_alt_event(Position::new(2, 80)),
+        client_id,
+    );
+
+    assert_eq!(
+        screen.current_pane_group.borrow().get(&client_id),
+        Some(&vec![PaneId::Terminal(2)]),
+        "Pane Id added to client's pane group"
+    );
+
+    screen.handle_mouse_event(
+        MouseEvent::new_left_press_with_alt_event(Position::new(2, 80)),
+        client_id,
+    );
+
+    assert_eq!(
+        screen.current_pane_group.borrow().get(&client_id),
+        Some(&vec![]),
+        "Pane Id removed from client's pane group"
+    );
+}
+
+#[test]
+fn group_panes_with_keyboard() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true);
+
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    let _ = screen.toggle_pane_in_group(client_id);
+
+    assert_eq!(
+        screen.current_pane_group.borrow().get(&client_id),
+        Some(&vec![PaneId::Terminal(2)]),
+        "Pane Id added to client's pane group"
+    );
+
+    let _ = screen.toggle_pane_in_group(client_id);
+
+    assert_eq!(
+        screen.current_pane_group.borrow().get(&client_id),
+        Some(&vec![]),
+        "Pane Id removed from client's pane group"
+    );
+}
+
+#[test]
+fn group_panes_following_focus() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true);
+
+    new_tab(&mut screen, 1, 0);
+
+    {
+        let active_tab = screen.get_active_tab_mut(client_id).unwrap();
+        let should_float = Some(false);
+        for i in 2..5 {
+            active_tab
+                .new_pane(
+                    PaneId::Terminal(i),
+                    None,
+                    should_float,
+                    None,
+                    None,
+                    false,
+                    Some(client_id),
+                )
+                .unwrap();
+        }
+    }
+    {
+        screen.toggle_group_marking(client_id).unwrap();
+        screen
+            .get_active_tab_mut(client_id)
+            .unwrap()
+            .move_focus_up(client_id)
+            .unwrap();
+        screen.add_active_pane_to_group_if_marking(&client_id);
+        assert_eq!(
+            screen.current_pane_group.borrow().get(&client_id),
+            Some(&vec![PaneId::Terminal(4), PaneId::Terminal(3)]),
+            "Pane Id of focused pane and newly focused pane above added to pane group"
+        );
+    }
+    {
+        let _ = screen.toggle_group_marking(client_id);
+        screen
+            .get_active_tab_mut(client_id)
+            .unwrap()
+            .move_focus_up(client_id)
+            .unwrap();
+        let _ = screen.add_active_pane_to_group_if_marking(&client_id);
+        assert_eq!(screen.current_pane_group.borrow().get(&client_id), Some(&vec![PaneId::Terminal(4), PaneId::Terminal(3)]), "Pane Id of newly focused pane not added to group after the group marking was toggled off");
+    }
+}
+
+#[test]
+fn break_group_with_mouse() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true);
+
+    new_tab(&mut screen, 1, 0);
+
+    {
+        let active_tab = screen.get_active_tab_mut(client_id).unwrap();
+        let should_float = Some(false);
+        for i in 2..5 {
+            active_tab
+                .new_pane(
+                    PaneId::Terminal(i),
+                    None,
+                    should_float,
+                    None,
+                    None,
+                    false,
+                    Some(client_id),
+                )
+                .unwrap();
+        }
+    }
+    {
+        screen.toggle_group_marking(client_id).unwrap();
+        screen
+            .get_active_tab_mut(client_id)
+            .unwrap()
+            .move_focus_up(client_id)
+            .unwrap();
+        screen.add_active_pane_to_group_if_marking(&client_id);
+        screen
+            .get_active_tab_mut(client_id)
+            .unwrap()
+            .move_focus_up(client_id)
+            .unwrap();
+        screen.add_active_pane_to_group_if_marking(&client_id);
+        assert_eq!(
+            screen.current_pane_group.borrow().get(&client_id),
+            Some(&vec![
+                PaneId::Terminal(4),
+                PaneId::Terminal(3),
+                PaneId::Terminal(2)
+            ]),
+            "Group contains 3 panes"
+        );
+    }
+
+    screen.handle_mouse_event(
+        MouseEvent::new_right_press_with_alt_event(Position::new(2, 80)),
+        client_id,
+    );
+    assert_eq!(
+        screen.current_pane_group.borrow().get(&client_id),
+        Some(&vec![]),
+        "Group cleared by mouse event"
+    );
 }
 
 // Following are tests for sending CLI actions

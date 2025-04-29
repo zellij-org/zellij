@@ -431,6 +431,30 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         close_plugin_after_replace,
                         context,
                     ),
+                    PluginCommand::GroupAndUngroupPanes(panes_to_group, panes_to_ungroup) => {
+                        group_and_ungroup_panes(
+                            env,
+                            panes_to_group.into_iter().map(|p| p.into()).collect(),
+                            panes_to_ungroup.into_iter().map(|p| p.into()).collect(),
+                        )
+                    },
+                    PluginCommand::HighlightAndUnhighlightPanes(
+                        panes_to_highlight,
+                        panes_to_unhighlight,
+                    ) => highlight_and_unhighlight_panes(
+                        env,
+                        panes_to_highlight.into_iter().map(|p| p.into()).collect(),
+                        panes_to_unhighlight.into_iter().map(|p| p.into()).collect(),
+                    ),
+                    PluginCommand::CloseMultiplePanes(pane_ids) => {
+                        close_multiple_panes(env, pane_ids.into_iter().map(|p| p.into()).collect())
+                    },
+                    PluginCommand::FloatMultiplePanes(pane_ids) => {
+                        float_multiple_panes(env, pane_ids.into_iter().map(|p| p.into()).collect())
+                    },
+                    PluginCommand::EmbedMultiplePanes(pane_ids) => {
+                        embed_multiple_panes(env, pane_ids.into_iter().map(|p| p.into()).collect())
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -547,6 +571,7 @@ fn get_plugin_ids(env: &PluginEnv) {
         plugin_id: env.plugin_id,
         zellij_pid: process::id(),
         initial_cwd: env.plugin_cwd.clone(),
+        client_id: env.client_id,
     };
     ProtobufPluginIds::try_from(ids)
         .map_err(|e| anyhow!("Failed to serialized plugin ids: {}", e))
@@ -1864,7 +1889,7 @@ fn set_floating_pane_pinned(env: &PluginEnv, pane_id: PaneId, should_be_pinned: 
 fn stack_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::StackPanes(pane_ids));
+        .send_to_screen(ScreenInstruction::StackPanes(pane_ids, env.client_id));
 }
 
 fn change_floating_panes_coordinates(
@@ -2147,6 +2172,65 @@ fn load_new_plugin(
     }
 }
 
+fn group_and_ungroup_panes(
+    env: &PluginEnv,
+    panes_to_group: Vec<PaneId>,
+    panes_to_ungroup: Vec<PaneId>,
+) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::GroupAndUngroupPanes(
+            panes_to_group,
+            panes_to_ungroup,
+            env.client_id,
+        ));
+}
+
+fn highlight_and_unhighlight_panes(
+    env: &PluginEnv,
+    panes_to_highlight: Vec<PaneId>,
+    panes_to_unhighlight: Vec<PaneId>,
+) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::HighlightAndUnhighlightPanes(
+            panes_to_highlight,
+            panes_to_unhighlight,
+            env.client_id,
+        ));
+}
+
+fn close_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
+    for pane_id in pane_ids {
+        match pane_id {
+            PaneId::Terminal(terminal_pane_id) => {
+                close_terminal_pane(env, terminal_pane_id);
+            },
+            PaneId::Plugin(plugin_pane_id) => {
+                close_plugin_pane(env, plugin_pane_id);
+            },
+        }
+    }
+}
+
+fn float_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::FloatMultiplePanes(
+            pane_ids,
+            env.client_id,
+        ));
+}
+
+fn embed_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::EmbedMultiplePanes(
+            pane_ids,
+            env.client_id,
+        ));
+}
+
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -2308,6 +2392,11 @@ fn check_command_permission(
         | PluginCommand::SetFloatingPanePinned(..)
         | PluginCommand::StackPanes(..)
         | PluginCommand::ChangeFloatingPanesCoordinates(..)
+        | PluginCommand::GroupAndUngroupPanes(..)
+        | PluginCommand::HighlightAndUnhighlightPanes(..)
+        | PluginCommand::CloseMultiplePanes(..)
+        | PluginCommand::FloatMultiplePanes(..)
+        | PluginCommand::EmbedMultiplePanes(..)
         | PluginCommand::KillSessions(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)

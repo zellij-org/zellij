@@ -494,6 +494,10 @@ impl KeyWithModifier {
     pub fn is_key_with_super_modifier(&self, key: BareKey) -> bool {
         self.bare_key == key && self.key_modifiers.contains(&KeyModifier::Super)
     }
+    pub fn is_cancel_key(&self) -> bool {
+        // self.bare_key == BareKey::Esc || self.is_key_with_ctrl_modifier(BareKey::Char('c'))
+        self.bare_key == BareKey::Esc
+    }
     #[cfg(not(target_family = "wasm"))]
     pub fn to_termwiz_modifiers(&self) -> Modifiers {
         let mut modifiers = Modifiers::empty();
@@ -933,6 +937,7 @@ pub enum Event {
     FailedToChangeHostFolder(Option<String>), // String -> the error we got when changing
     PastedText(String),
     ConfigWasWrittenToDisk,
+    BeforeClose,
 }
 
 #[derive(
@@ -1274,8 +1279,8 @@ pub const DEFAULT_STYLES: Styling = Styling {
     },
     frame_highlight: StyleDeclaration {
         base: PaletteColor::EightBit(default_colors::ORANGE),
-        emphasis_0: PaletteColor::EightBit(default_colors::GREEN),
-        emphasis_1: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_0: PaletteColor::EightBit(default_colors::MAGENTA),
+        emphasis_1: PaletteColor::EightBit(default_colors::PURPLE),
         emphasis_2: PaletteColor::EightBit(default_colors::GREEN),
         emphasis_3: PaletteColor::EightBit(default_colors::GREEN),
         background: PaletteColor::EightBit(default_colors::GREEN),
@@ -1432,8 +1437,8 @@ impl From<Palette> for Styling {
             },
             frame_highlight: StyleDeclaration {
                 base: palette.orange,
-                emphasis_0: palette.orange,
-                emphasis_1: palette.orange,
+                emphasis_0: palette.magenta,
+                emphasis_1: palette.purple,
                 emphasis_2: palette.orange,
                 emphasis_3: palette.orange,
                 background: Default::default(),
@@ -1508,6 +1513,7 @@ pub struct ModeInfo {
     pub session_name: Option<String>,
     pub editor: Option<PathBuf>,
     pub shell: Option<PathBuf>,
+    pub currently_marking_pane_group: Option<bool>,
 }
 
 impl ModeInfo {
@@ -1733,6 +1739,9 @@ pub struct PaneInfo {
     /// Unselectable panes are often used for UI elements that do not have direct user interaction
     /// (eg. the default `status-bar` or `tab-bar`).
     pub is_selectable: bool,
+    /// Grouped panes (usually through an explicit user action) that are staged for a bulk action
+    /// the index is kept track of in order to preserve the pane group order
+    pub index_in_pane_group: BTreeMap<ClientId, usize>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ClientInfo {
@@ -1763,6 +1772,7 @@ pub struct PluginIds {
     pub plugin_id: u32,
     pub zellij_pid: u32,
     pub initial_cwd: PathBuf,
+    pub client_id: ClientId,
 }
 
 /// Tag used to identify the plugin in layout and config kdl files
@@ -2307,4 +2317,10 @@ pub enum PluginCommand {
     OpenFileNearPlugin(FileToOpen, Context),
     OpenFileFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>, Context),
     OpenFileInPlaceOfPlugin(FileToOpen, bool, Context), // bool -> close_plugin_after_replace
+    GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>),     // panes to group, panes to ungroup
+    HighlightAndUnhighlightPanes(Vec<PaneId>, Vec<PaneId>), // panes to highlight, panes to
+    // unhighlight
+    CloseMultiplePanes(Vec<PaneId>),
+    FloatMultiplePanes(Vec<PaneId>),
+    EmbedMultiplePanes(Vec<PaneId>),
 }

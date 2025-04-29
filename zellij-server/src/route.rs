@@ -938,6 +938,7 @@ pub(crate) fn route_action(
             senders
                 .send_to_screen(ScreenInstruction::StackPanes(
                     pane_ids_to_stack.iter().map(|p| PaneId::from(*p)).collect(),
+                    client_id,
                 ))
                 .with_context(err_context)?;
         },
@@ -947,6 +948,16 @@ pub(crate) fn route_action(
                     pane_id.into(),
                     coordinates,
                 )]))
+                .with_context(err_context)?;
+        },
+        Action::TogglePaneInGroup => {
+            senders
+                .send_to_screen(ScreenInstruction::TogglePaneInGroup(client_id))
+                .with_context(err_context)?;
+        },
+        Action::ToggleGroupMarking => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleGroupMarking(client_id))
                 .with_context(err_context)?;
         },
     }

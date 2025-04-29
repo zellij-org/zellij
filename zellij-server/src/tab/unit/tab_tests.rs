@@ -165,10 +165,13 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
     let copy_options = CopyOptions::default();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let current_pane_group = Rc::new(RefCell::new(HashMap::new()));
+    let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
+    let advanced_mouse_actions = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -197,6 +200,9 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        current_pane_group,
+        currently_marking_pane_group,
+        advanced_mouse_actions,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -232,10 +238,13 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let copy_options = CopyOptions::default();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let current_pane_group = Rc::new(RefCell::new(HashMap::new()));
+    let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
+    let advanced_mouse_actions = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -264,6 +273,9 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        current_pane_group,
+        currently_marking_pane_group,
+        advanced_mouse_actions,
     );
     let mut new_terminal_ids = vec![];
     for i in 0..layout.extract_run_instructions().len() {
@@ -304,11 +316,14 @@ fn create_new_tab_with_cell_size(
     let copy_options = CopyOptions::default();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let stacked_resize = Rc::new(RefCell::new(true));
+    let current_pane_group = Rc::new(RefCell::new(HashMap::new()));
+    let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
-    let stacked_resize = Rc::new(RefCell::new(true));
+    let advanced_mouse_actions = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -337,6 +352,9 @@ fn create_new_tab_with_cell_size(
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        current_pane_group,
+        currently_marking_pane_group,
+        advanced_mouse_actions,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),

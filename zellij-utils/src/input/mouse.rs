@@ -208,4 +208,34 @@ impl MouseEvent {
         };
         event
     }
+    pub fn new_left_press_with_alt_event(position: Position) -> Self {
+        let event = MouseEvent {
+            event_type: MouseEventType::Press,
+            left: true,
+            right: false,
+            middle: false,
+            wheel_up: false,
+            wheel_down: false,
+            shift: false,
+            alt: true,
+            ctrl: false,
+            position,
+        };
+        event
+    }
+    pub fn new_right_press_with_alt_event(position: Position) -> Self {
+        let event = MouseEvent {
+            event_type: MouseEventType::Press,
+            left: false,
+            right: true,
+            middle: false,
+            wheel_up: false,
+            wheel_down: false,
+            shift: false,
+            alt: true,
+            ctrl: false,
+            position,
+        };
+        event
+    }
 }

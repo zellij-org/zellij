@@ -4,7 +4,7 @@ use crate::tab::Pane;
 use crate::ui::boundaries::Boundaries;
 use crate::ui::pane_boundaries_frame::FrameParams;
 use crate::ClientId;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use zellij_utils::data::{client_id_to_colors, InputMode, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
 pub struct PaneContentsAndUi<'a> {
@@ -17,6 +17,8 @@ pub struct PaneContentsAndUi<'a> {
     pane_is_stacked_under: bool,
     pane_is_stacked_over: bool,
     should_draw_pane_frames: bool,
+    mouse_is_hovering_over_pane_for_clients: HashSet<ClientId>,
+    current_pane_group: HashMap<ClientId, Vec<PaneId>>,
 }
 
 impl<'a> PaneContentsAndUi<'a> {
@@ -30,6 +32,8 @@ impl<'a> PaneContentsAndUi<'a> {
         pane_is_stacked_under: bool,
         pane_is_stacked_over: bool,
         should_draw_pane_frames: bool,
+        mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
+        current_pane_group: HashMap<ClientId, Vec<PaneId>>,
     ) -> Self {
         let mut focused_clients: Vec<ClientId> = active_panes
             .iter()
@@ -37,6 +41,16 @@ impl<'a> PaneContentsAndUi<'a> {
             .map(|(c_id, _p_id)| *c_id)
             .collect();
         focused_clients.sort_unstable();
+        let mouse_is_hovering_over_pane_for_clients = mouse_hover_pane_id
+            .iter()
+            .filter_map(|(client_id, pane_id)| {
+                if pane_id == &pane.pid() {
+                    Some(*client_id)
+                } else {
+                    None
+                }
+            })
+            .collect();
         PaneContentsAndUi {
             pane,
             output,
@@ -47,6 +61,8 @@ impl<'a> PaneContentsAndUi<'a> {
             pane_is_stacked_under,
             pane_is_stacked_over,
             should_draw_pane_frames,
+            mouse_is_hovering_over_pane_for_clients,
+            current_pane_group,
         }
     }
     pub fn render_pane_contents_to_multiple_clients(
@@ -217,13 +233,16 @@ impl<'a> PaneContentsAndUi<'a> {
                 is_main_client: pane_focused_for_client_id,
                 other_focused_clients: vec![],
                 style: self.style,
-                color: frame_color,
+                color: frame_color.map(|c| c.0),
                 other_cursors_exist_in_session: false,
                 pane_is_stacked_over: self.pane_is_stacked_over,
                 pane_is_stacked_under: self.pane_is_stacked_under,
                 should_draw_pane_frames: self.should_draw_pane_frames,
                 pane_is_floating,
                 content_offset: self.pane.get_content_offset(),
+                mouse_is_hovering_over_pane: self
+                    .mouse_is_hovering_over_pane_for_clients
+                    .contains(&client_id),
             }
         } else {
             FrameParams {
@@ -231,13 +250,16 @@ impl<'a> PaneContentsAndUi<'a> {
                 is_main_client: pane_focused_for_client_id,
                 other_focused_clients,
                 style: self.style,
-                color: frame_color,
+                color: frame_color.map(|c| c.0),
                 other_cursors_exist_in_session: self.multiple_users_exist_in_session,
                 pane_is_stacked_over: self.pane_is_stacked_over,
                 pane_is_stacked_under: self.pane_is_stacked_under,
                 should_draw_pane_frames: self.should_draw_pane_frames,
                 pane_is_floating,
                 content_offset: self.pane.get_content_offset(),
+                mouse_is_hovering_over_pane: self
+                    .mouse_is_hovering_over_pane_for_clients
+                    .contains(&client_id),
             }
         };
 
@@ -279,27 +301,48 @@ impl<'a> PaneContentsAndUi<'a> {
         client_id: ClientId,
         mode: InputMode,
         session_is_mirrored: bool,
-    ) -> Option<PaletteColor> {
+    ) -> Option<(PaletteColor, usize)> {
+        // (color, color_precedence) (the color_precedence is used
+        // for the no-pane-frames mode)
         let pane_focused_for_client_id = self.focused_clients.contains(&client_id);
-        if let Some(override_color) = self.pane.frame_color_override() {
-            Some(override_color)
+        let pane_is_in_group = self
+            .current_pane_group
+            .get(&client_id)
+            .map(|p| p.contains(&self.pane.pid()))
+            .unwrap_or(false);
+        if self.pane.frame_color_override().is_some() && !pane_is_in_group {
+            self.pane
+                .frame_color_override()
+                .map(|override_color| (override_color, 4))
+        } else if pane_is_in_group && !pane_focused_for_client_id {
+            Some((self.style.colors.frame_highlight.emphasis_0, 2))
+        } else if pane_is_in_group && pane_focused_for_client_id {
+            Some((self.style.colors.frame_highlight.emphasis_1, 3))
         } else if pane_focused_for_client_id {
             match mode {
                 InputMode::Normal | InputMode::Locked => {
                     if session_is_mirrored || !self.multiple_users_exist_in_session {
-                        Some(self.style.colors.frame_selected.base)
+                        Some((self.style.colors.frame_selected.base, 3))
                     } else {
                         let colors = client_id_to_colors(
                             client_id,
                             self.style.colors.multiplayer_user_colors,
                         );
-                        colors.map(|colors| colors.0)
+                        colors.map(|colors| (colors.0, 3))
                     }
                 },
-                _ => Some(self.style.colors.frame_highlight.base),
+                _ => Some((self.style.colors.frame_highlight.base, 3)),
             }
+        } else if self
+            .mouse_is_hovering_over_pane_for_clients
+            .contains(&client_id)
+        {
+            Some((self.style.colors.frame_highlight.base, 1))
         } else {
-            self.style.colors.frame_unselected.map(|frame| frame.base)
+            self.style
+                .colors
+                .frame_unselected
+                .map(|frame| (frame.base, 0))
         }
     }
 }

@@ -33,7 +33,7 @@ pub type BoundaryType = &'static str; // easy way to refer to boundary_type abov
 pub struct BoundarySymbol {
     boundary_type: BoundaryType,
     invisible: bool,
-    color: Option<PaletteColor>,
+    color: Option<(PaletteColor, usize)>, // (color, color_precedence)
 }
 
 impl BoundarySymbol {
@@ -41,10 +41,10 @@ impl BoundarySymbol {
         BoundarySymbol {
             boundary_type,
             invisible: false,
-            color: Some(PaletteColor::EightBit(colors::GRAY)),
+            color: Some((PaletteColor::EightBit(colors::GRAY), 0)),
         }
     }
-    pub fn color(&mut self, color: Option<PaletteColor>) -> Self {
+    pub fn color(&mut self, color: Option<(PaletteColor, usize)>) -> Self {
         self.color = color;
         *self
     }
@@ -66,7 +66,7 @@ impl BoundarySymbol {
             TerminalCharacter::new_singlewidth_styled(
                 character,
                 RESET_STYLES
-                    .foreground(self.color.map(|palette_color| palette_color.into()))
+                    .foreground(self.color.map(|palette_color| palette_color.0.into()))
                     .into(),
             )
         };
@@ -79,7 +79,7 @@ impl Display for BoundarySymbol {
         match self.invisible {
             true => write!(f, " "),
             false => match self.color {
-                Some(color) => match color {
+                Some(color) => match color.0 {
                     PaletteColor::Rgb((r, g, b)) => {
                         write!(f, "{}", RGB(r, g, b).paint(self.boundary_type))
                     },
@@ -99,7 +99,17 @@ fn combine_symbols(
 ) -> Option<BoundarySymbol> {
     use boundary_type::*;
     let invisible = current_symbol.invisible || next_symbol.invisible;
-    let color = current_symbol.color.or(next_symbol.color);
+    let color = match (current_symbol.color, next_symbol.color) {
+        (Some(current_symbol_color), Some(next_symbol_color)) => {
+            let ret = if current_symbol_color.1 >= next_symbol_color.1 {
+                Some(current_symbol_color)
+            } else {
+                Some(next_symbol_color)
+            };
+            ret
+        },
+        _ => current_symbol.color.or(next_symbol.color),
+    };
     match (current_symbol.boundary_type, next_symbol.boundary_type) {
         (CROSS, _) | (_, CROSS) => {
             // (┼, *) or (*, ┼) => Some(┼)
@@ -447,7 +457,7 @@ impl Boundaries {
     pub fn add_rect(
         &mut self,
         rect: &dyn Pane,
-        color: Option<PaletteColor>,
+        color: Option<(PaletteColor, usize)>, // (color, color_precedence)
         pane_is_on_top_of_stack: bool,
         pane_is_on_bottom_of_stack: bool,
         pane_is_stacked_under: bool,

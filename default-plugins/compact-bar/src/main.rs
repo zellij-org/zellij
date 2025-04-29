@@ -26,6 +26,8 @@ struct State {
     tab_line: Vec<LinePart>,
     text_copy_destination: Option<CopyDestination>,
     display_system_clipboard_failure: bool,
+    own_client_id: Option<ClientId>,
+    grouped_panes_count: Option<usize>,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -42,7 +44,9 @@ impl ZellijPlugin for State {
             EventType::CopyToClipboard,
             EventType::InputReceived,
             EventType::SystemClipboardFailure,
+            EventType::PaneUpdate,
         ]);
+        self.own_client_id = Some(get_plugin_ids().client_id);
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -107,6 +111,28 @@ impl ZellijPlugin for State {
                 }
                 self.text_copy_destination = None;
                 self.display_system_clipboard_failure = false;
+            },
+            Event::PaneUpdate(pane_manifest) => {
+                if let Some(own_client_id) = self.own_client_id {
+                    let mut grouped_panes_count = 0;
+                    for (_tab_index, pane_infos) in pane_manifest.panes {
+                        for pane_info in pane_infos {
+                            let is_in_pane_group =
+                                pane_info.index_in_pane_group.get(&own_client_id).is_some();
+                            if is_in_pane_group {
+                                grouped_panes_count += 1;
+                            }
+                        }
+                    }
+                    if Some(grouped_panes_count) != self.grouped_panes_count {
+                        if grouped_panes_count == 0 {
+                            self.grouped_panes_count = None;
+                        } else {
+                            self.grouped_panes_count = Some(grouped_panes_count);
+                        }
+                        should_render = true;
+                    }
+                }
             },
             _ => {
                 eprintln!("Got unrecognized event: {:?}", event);
@@ -181,6 +207,8 @@ impl ZellijPlugin for State {
                 self.mode_info.mode,
                 &active_swap_layout_name,
                 is_swap_layout_dirty,
+                &self.mode_info,
+                self.grouped_panes_count,
             );
             let output = self
                 .tab_line

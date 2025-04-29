@@ -13,6 +13,7 @@ impl TryFrom<ProtobufPluginIds> for PluginIds {
             plugin_id: protobuf_plugin_ids.plugin_id as u32,
             zellij_pid: protobuf_plugin_ids.zellij_pid as u32,
             initial_cwd: PathBuf::from(protobuf_plugin_ids.initial_cwd),
+            client_id: protobuf_plugin_ids.client_id as u16,
         })
     }
 }
@@ -24,6 +25,7 @@ impl TryFrom<PluginIds> for ProtobufPluginIds {
             plugin_id: plugin_ids.plugin_id as i32,
             zellij_pid: plugin_ids.zellij_pid as i32,
             initial_cwd: plugin_ids.initial_cwd.display().to_string(),
+            client_id: plugin_ids.client_id as u32,
         })
     }
 }

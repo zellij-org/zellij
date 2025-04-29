@@ -140,6 +140,11 @@ enum CommandName {
   OpenFileNearPlugin = 124;
   OpenFileFloatingNearPlugin = 125;
   OpenFileInPlaceOfPlugin = 126;
+  GroupAndUngroupPanes = 127;
+  HighlightAndUnhighlightPanes = 128;
+  CloseMultiplePanes = 129;
+  FloatMultiplePanes = 130;
+  EmbedMultiplePanes = 131;
 }
 
 message PluginCommand {
@@ -236,7 +241,34 @@ message PluginCommand {
     OpenFileNearPluginPayload open_file_near_plugin_payload = 99;
     OpenFileFloatingNearPluginPayload open_file_floating_near_plugin_payload = 100;
     OpenFileInPlaceOfPluginPayload open_file_in_place_of_plugin_payload = 101;
+    GroupAndUngroupPanesPayload group_and_ungroup_panes_payload = 102;
+    HighlightAndUnhighlightPanesPayload highlight_and_unhighlight_panes_payload = 103;
+    CloseMultiplePanesPayload close_multiple_panes_payload = 104;
+    FloatMultiplePanesPayload float_multiple_panes_payload = 105;
+    EmbedMultiplePanesPayload embed_multiple_panes_payload = 106;
   }
+}
+
+message EmbedMultiplePanesPayload {
+  repeated PaneId pane_ids = 1;
+}
+
+message FloatMultiplePanesPayload {
+  repeated PaneId pane_ids = 1;
+}
+
+message CloseMultiplePanesPayload {
+  repeated PaneId pane_ids = 1;
+}
+
+message HighlightAndUnhighlightPanesPayload {
+  repeated PaneId pane_ids_to_highlight = 1;
+  repeated PaneId pane_ids_to_unhighlight = 2;
+}
+
+message GroupAndUngroupPanesPayload {
+  repeated PaneId pane_ids_to_group = 1;
+  repeated PaneId pane_ids_to_ungroup = 2;
 }
 
 message OpenFileInPlaceOfPluginPayload {

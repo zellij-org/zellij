@@ -47,6 +47,7 @@ members = [
     "default-plugins/configuration",
     "default-plugins/plugin-manager",
     "default-plugins/about",
+    "default-plugins/multiple-select",
     "zellij-client",
     "zellij-server",
     "zellij-utils",

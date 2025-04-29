@@ -200,6 +200,15 @@ impl TiledPanes {
             .is_some();
         has_room_for_new_pane || pane_grid.has_room_for_new_stacked_pane() || self.panes.is_empty()
     }
+    pub fn room_left_in_stack_of_pane_id(&mut self, pane_id: &PaneId) -> Option<usize> {
+        let mut pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        pane_grid.room_left_in_stack_of_pane_id(pane_id)
+    }
 
     pub fn assign_geom_for_pane_with_run(&mut self, run: Option<Run>) {
         // here we're removing the first pane we find with this run instruction and re-adding it so
@@ -224,6 +233,26 @@ impl TiledPanes {
                 pane.set_geom(pane_geom);
                 self.add_pane_with_existing_geom(pane.pid(), pane);
             }
+        }
+    }
+    pub fn add_pane_to_stack(&mut self, pane_id_in_stack: &PaneId, mut pane: Box<dyn Pane>) {
+        let mut pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        match pane_grid.make_room_in_stack_of_pane_id_for_pane(pane_id_in_stack) {
+            Ok(new_pane_geom) => {
+                pane.set_geom(new_pane_geom);
+                self.panes.insert(pane.pid(), pane);
+                self.set_force_render(); // TODO: why do we need this?
+                return;
+            },
+            Err(_e) => {
+                let should_relayout = false;
+                return self.add_pane_without_stacked_resize(pane.pid(), pane, should_relayout);
+            },
         }
     }
     fn add_pane(
@@ -658,6 +687,18 @@ impl TiledPanes {
         self.set_force_render();
         self.reapply_pane_frames();
     }
+    pub fn pane_ids_in_stack_of_pane_id(&mut self, pane_id: &PaneId) -> Vec<PaneId> {
+        if let Some(stack_id) = self
+            .panes
+            .get(pane_id)
+            .and_then(|p| p.position_and_size().stacked)
+        {
+            StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+                .pane_ids_in_stack(stack_id)
+        } else {
+            vec![]
+        }
+    }
     pub fn focus_pane_for_all_clients_in_stack(&mut self, pane_id: PaneId, stack_id: usize) {
         let connected_clients: Vec<ClientId> =
             self.connected_clients.borrow().iter().copied().collect();
@@ -880,7 +921,13 @@ impl TiledPanes {
     pub fn has_panes(&self) -> bool {
         !self.panes.is_empty()
     }
-    pub fn render(&mut self, output: &mut Output, floating_panes_are_visible: bool) -> Result<()> {
+    pub fn render(
+        &mut self,
+        output: &mut Output,
+        floating_panes_are_visible: bool,
+        mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
+        current_pane_group: HashMap<ClientId, Vec<PaneId>>,
+    ) -> Result<()> {
         let err_context = || "failed to render tiled panes";
 
         let connected_clients: Vec<ClientId> =
@@ -930,6 +977,8 @@ impl TiledPanes {
                     pane_is_stacked_under,
                     pane_is_stacked_over,
                     should_draw_pane_frames,
+                    &mouse_hover_pane_id,
+                    current_pane_group.clone(),
                 );
                 for client_id in &connected_clients {
                     let client_mode = self
@@ -1716,7 +1765,7 @@ impl TiledPanes {
                     *self.viewport.borrow(),
                 );
                 let next_index = pane_grid
-                    .next_selectable_pane_id_below(&active_pane_id)
+                    .next_selectable_pane_id_below(&active_pane_id, false)
                     .or_else(|| pane_grid.progress_stack_down_if_in_stack(&active_pane_id));
                 match next_index {
                     Some(p) => {
@@ -1767,7 +1816,7 @@ impl TiledPanes {
                     *self.viewport.borrow(),
                 );
                 let next_index = pane_grid
-                    .next_selectable_pane_id_above(&active_pane_id)
+                    .next_selectable_pane_id_above(&active_pane_id, false)
                     .or_else(|| pane_grid.progress_stack_up_if_in_stack(&active_pane_id));
                 match next_index {
                     Some(p) => {
@@ -1972,7 +2021,7 @@ impl TiledPanes {
             *self.viewport.borrow(),
         );
         let next_index = pane_grid
-            .next_selectable_pane_id_below(&pane_id)
+            .next_selectable_pane_id_below(&pane_id, false)
             .or_else(|| pane_grid.progress_stack_down_if_in_stack(&pane_id));
         if let Some(p) = next_index {
             let current_position = self.panes.get(&pane_id).unwrap();
@@ -2127,7 +2176,7 @@ impl TiledPanes {
             *self.viewport.borrow(),
         );
         let next_index = pane_grid
-            .next_selectable_pane_id_above(&pane_id)
+            .next_selectable_pane_id_above(&pane_id, false)
             .or_else(|| pane_grid.progress_stack_up_if_in_stack(&pane_id));
         if let Some(p) = next_index {
             let current_position = self.panes.get(&pane_id).unwrap();
@@ -2443,10 +2492,10 @@ impl TiledPanes {
             .find(|(_id, pane)| run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with()))
             .map(|(id, _)| *id)
     }
-    pub fn pane_info(&self) -> Vec<PaneInfo> {
+    pub fn pane_info(&self, current_pane_group: &HashMap<ClientId, Vec<PaneId>>) -> Vec<PaneInfo> {
         let mut pane_infos = vec![];
         for (pane_id, pane) in self.panes.iter() {
-            let mut pane_info_for_pane = pane_info_for_pane(pane_id, pane);
+            let mut pane_info_for_pane = pane_info_for_pane(pane_id, pane, &current_pane_group);
             let is_focused = self.active_panes.pane_id_is_focused(pane_id);
             pane_info_for_pane.is_floating = false;
             pane_info_for_pane.is_suppressed = false;
@@ -2494,6 +2543,44 @@ impl TiledPanes {
     ) -> Result<(HashSet<PaneId>, HashSet<PaneId>)> {
         StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
             .stacked_pane_ids_under_and_over_flexible_panes()
+    }
+    pub fn next_selectable_pane_id_above(&mut self, pane_id: &PaneId) -> Option<PaneId> {
+        let pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        let include_panes_in_stack = true;
+        pane_grid.next_selectable_pane_id_above(&pane_id, include_panes_in_stack)
+    }
+    pub fn next_selectable_pane_id_below(&mut self, pane_id: &PaneId) -> Option<PaneId> {
+        let pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        let include_panes_in_stack = true;
+        pane_grid.next_selectable_pane_id_below(&pane_id, include_panes_in_stack)
+    }
+    pub fn next_selectable_pane_id_to_the_left(&mut self, pane_id: &PaneId) -> Option<PaneId> {
+        let pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        pane_grid.next_selectable_pane_id_to_the_left(&pane_id)
+    }
+    pub fn next_selectable_pane_id_to_the_right(&mut self, pane_id: &PaneId) -> Option<PaneId> {
+        let pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        pane_grid.next_selectable_pane_id_to_the_right(&pane_id)
     }
 }
 

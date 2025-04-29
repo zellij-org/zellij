@@ -375,6 +375,13 @@ pub enum ScreenContext {
     SetFloatingPanePinned,
     StackPanes,
     ChangeFloatingPanesCoordinates,
+    AddHighlightPaneFrameColorOverride,
+    GroupAndUngroupPanes,
+    HighlightAndUnhighlightPanes,
+    FloatMultiplePanes,
+    EmbedMultiplePanes,
+    TogglePaneInGroup,
+    ToggleGroupMarking,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -512,6 +519,7 @@ pub enum BackgroundJobContext {
     WebRequest,
     ReportPluginList,
     RenderToClients,
+    HighlightPanesWithMessage,
     Exit,
 }
 

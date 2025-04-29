@@ -54,6 +54,7 @@ enum EventType {
     FailedToChangeHostFolder = 28;
     PastedText = 29;
     ConfigWasWrittenToDisk = 30;
+    BeforeClose = 31;
 }
 
 message EventNameList {
@@ -304,6 +305,12 @@ message PaneInfo {
     optional string terminal_command = 20;
     optional string plugin_url = 21;
     bool is_selectable = 22;
+    repeated IndexInPaneGroup index_in_pane_group = 23;
+}
+
+message IndexInPaneGroup {
+  uint32 client_id = 1;
+  uint32 index = 2;
 }
 
 message TabInfo {
@@ -334,6 +341,7 @@ message ModeUpdatePayload {
   optional input_mode.InputMode base_mode = 6;
   optional string editor = 7;
   optional string shell = 8;
+  optional bool currently_marking_pane_group = 9;
 }
 
 message InputModeKeybinds {

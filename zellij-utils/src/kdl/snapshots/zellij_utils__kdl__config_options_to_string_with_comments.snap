@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 5873
 expression: fake_document.to_string()
 ---
  
@@ -195,4 +194,7 @@ support_kitty_keyboard_protocol false
 // Default: true
 // 
 // show_release_notes false
-
+ 
+// Whether to enable mouse hover effects and pane grouping functionality
+// default is true
+// advanced_mouse_actions false

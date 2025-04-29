@@ -296,6 +296,8 @@ pub enum Action {
     TogglePanePinned,
     StackPanes(Vec<PaneId>),
     ChangeFloatingPaneCoordinates(PaneId, FloatingPaneCoordinates),
+    TogglePaneInGroup,
+    ToggleGroupMarking,
 }
 
 impl Action {

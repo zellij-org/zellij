@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 5922
 expression: fake_config_stringified
 ---
 keybinds clear-defaults=true {
@@ -147,8 +146,16 @@ keybinds clear-defaults=true {
         bind "Alt j" { MoveFocus "down"; }
         bind "Alt k" { MoveFocus "up"; }
         bind "Alt l" { MoveFocusOrTab "right"; }
+        bind "Alt m" {
+            LaunchOrFocusPlugin "zellij:multiple-select" {
+                floating true
+                move_to_focused_tab true
+            }
+        }
         bind "Alt n" { NewPane; }
         bind "Alt o" { MoveTab "right"; }
+        bind "Alt p" { TogglePaneInGroup; }
+        bind "Alt Shift p" { ToggleGroupMarking; }
         bind "Ctrl q" { Quit; }
     }
     shared_except "locked" "move" {
@@ -256,4 +263,3 @@ plugins {
 }
 load_plugins {
 }
-

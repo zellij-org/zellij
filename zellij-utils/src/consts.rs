@@ -131,6 +131,7 @@ mod not_wasm {
             add_plugin!(assets, "configuration.wasm");
             add_plugin!(assets, "plugin-manager.wasm");
             add_plugin!(assets, "about.wasm");
+            add_plugin!(assets, "multiple-select.wasm");
             assets
         };
     }
