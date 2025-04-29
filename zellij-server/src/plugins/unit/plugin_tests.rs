@@ -8671,7 +8671,7 @@ pub fn before_close_plugin_event() {
         None,
         false,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    std::thread::sleep(std::time::Duration::from_millis(5000));
     // here we send an unload to plugin id 0 (the first plugin id, presumably this plugin)
     // so that its BeforeClose Event will be triggered and it will send a
     // HighlightAndUnhighlightPanes
