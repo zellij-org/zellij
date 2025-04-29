@@ -232,7 +232,8 @@ impl ZellijPlugin for State {
                     let mut grouped_panes_count = 0;
                     for (_tab_index, pane_infos) in pane_manifest.panes {
                         for pane_info in pane_infos {
-                            let is_in_pane_group = pane_info.index_in_pane_group.get(&own_client_id).is_some();
+                            let is_in_pane_group =
+                                pane_info.index_in_pane_group.get(&own_client_id).is_some();
                             if is_in_pane_group {
                                 grouped_panes_count += 1;
                             }

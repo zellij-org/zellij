@@ -10,7 +10,7 @@ use std::time::Duration;
 use log::{debug, warn};
 use zellij_utils::data::{
     Direction, KeyWithModifier, PaneManifest, PluginPermission, Resize, ResizeStrategy,
-    SessionInfo, Styling
+    SessionInfo, Styling,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -408,7 +408,7 @@ pub enum ScreenInstruction {
     StackPanes(Vec<PaneId>, ClientId),
     ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
     AddHighlightPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional
-                                                                     // message
+    // message
     GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, ClientId), // panes_to_group, panes_to_ungroup
     HighlightAndUnhighlightPanes(Vec<PaneId>, Vec<PaneId>, ClientId), // panes_to_highlight, panes_to_unhighlight
     FloatMultiplePanes(Vec<PaneId>, ClientId),
@@ -628,24 +628,14 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::AddHighlightPaneFrameColorOverride(..) => {
                 ScreenContext::AddHighlightPaneFrameColorOverride
             },
-            ScreenInstruction::GroupAndUngroupPanes(..) => {
-                ScreenContext::GroupAndUngroupPanes
-            },
+            ScreenInstruction::GroupAndUngroupPanes(..) => ScreenContext::GroupAndUngroupPanes,
             ScreenInstruction::HighlightAndUnhighlightPanes(..) => {
                 ScreenContext::HighlightAndUnhighlightPanes
             },
-            ScreenInstruction::FloatMultiplePanes(..) => {
-                ScreenContext::FloatMultiplePanes
-            },
-            ScreenInstruction::EmbedMultiplePanes(..) => {
-                ScreenContext::EmbedMultiplePanes
-            },
-            ScreenInstruction::TogglePaneInGroup(..) => {
-                ScreenContext::TogglePaneInGroup
-            },
-            ScreenInstruction::ToggleGroupMarking(..) => {
-                ScreenContext::ToggleGroupMarking
-            },
+            ScreenInstruction::FloatMultiplePanes(..) => ScreenContext::FloatMultiplePanes,
+            ScreenInstruction::EmbedMultiplePanes(..) => ScreenContext::EmbedMultiplePanes,
+            ScreenInstruction::TogglePaneInGroup(..) => ScreenContext::TogglePaneInGroup,
+            ScreenInstruction::ToggleGroupMarking(..) => ScreenContext::ToggleGroupMarking,
         }
     }
 }
@@ -2611,7 +2601,7 @@ impl Screen {
             );
         }
     }
-    pub fn stack_panes(&mut self, mut pane_ids_to_stack: Vec<PaneId>) -> Option<PaneId>{
+    pub fn stack_panes(&mut self, mut pane_ids_to_stack: Vec<PaneId>) -> Option<PaneId> {
         // if successful, returns the pane id of the root pane
         if pane_ids_to_stack.is_empty() {
             log::error!("Got an empty list of pane_ids to stack");
@@ -2709,15 +2699,14 @@ impl Screen {
                     let _ = self.log_and_report_session_state();
                 }
                 if !mouse_effect.leave_clipboard_message {
-                    let _ =
-                        self
-                            .bus
-                            .senders
-                            .send_to_plugin(PluginInstruction::Update(vec![(
-                                None,
-                                Some(client_id),
-                                Event::InputReceived,
-                            )]));
+                    let _ = self
+                        .bus
+                        .senders
+                        .send_to_plugin(PluginInstruction::Update(vec![(
+                            None,
+                            Some(client_id),
+                            Event::InputReceived,
+                        )]));
                 }
                 self.render(None).non_fatal();
             },
@@ -2729,7 +2718,8 @@ impl Screen {
     }
     pub fn toggle_pane_in_group(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = "Can't add pane to group";
-        let active_tab = self.get_active_tab(client_id)
+        let active_tab = self
+            .get_active_tab(client_id)
             .with_context(|| err_context)?;
         let active_pane_id = active_tab
             .get_active_pane_id(client_id)
@@ -2741,7 +2731,9 @@ impl Screen {
     pub fn toggle_group_marking(&mut self, client_id: ClientId) -> Result<()> {
         let (was_marking_before, marking_pane_group_now) = {
             let mut currently_marking_pane_group = self.currently_marking_pane_group.borrow_mut();
-            let previous_value = currently_marking_pane_group.remove(&client_id).unwrap_or(false);
+            let previous_value = currently_marking_pane_group
+                .remove(&client_id)
+                .unwrap_or(false);
             let new_value = !previous_value;
             if new_value {
                 currently_marking_pane_group.insert(client_id, true);
@@ -2908,7 +2900,11 @@ impl Screen {
         self.connected_clients.borrow().contains(client_id)
     }
     fn client_has_pane_group(&self, client_id: &ClientId) -> bool {
-        self.current_pane_group.borrow().get(client_id).map(|p| !p.is_empty()).unwrap_or(false)
+        self.current_pane_group
+            .borrow()
+            .get(client_id)
+            .map(|p| !p.is_empty())
+            .unwrap_or(false)
     }
     fn get_client_pane_group(&self, client_id: &ClientId) -> HashSet<PaneId> {
         self.current_pane_group
@@ -2929,14 +2925,14 @@ impl Screen {
             .borrow_mut()
             .get_mut(client_id)
             .map(|p| p.clear());
-        self.currently_marking_pane_group.borrow_mut().remove(client_id);
+        self.currently_marking_pane_group
+            .borrow_mut()
+            .remove(client_id);
     }
     fn toggle_pane_id_in_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
         {
             let mut pane_groups = self.current_pane_group.borrow_mut();
-            let client_pane_group = pane_groups
-                .entry(*client_id)
-                .or_insert_with(|| vec![]);
+            let client_pane_group = pane_groups.entry(*client_id).or_insert_with(|| vec![]);
             if client_pane_group.contains(&pane_id) {
                 client_pane_group.retain(|p| p != &pane_id);
             } else {
@@ -2948,9 +2944,7 @@ impl Screen {
     fn add_pane_id_to_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
         {
             let mut pane_groups = self.current_pane_group.borrow_mut();
-            let client_pane_group = pane_groups
-                .entry(*client_id)
-                .or_insert_with(|| vec![]);
+            let client_pane_group = pane_groups.entry(*client_id).or_insert_with(|| vec![]);
             if !client_pane_group.contains(&pane_id) {
                 client_pane_group.push(pane_id);
             }
@@ -2959,7 +2953,13 @@ impl Screen {
     }
     fn add_active_pane_to_group_if_marking(&mut self, client_id: &ClientId) {
         {
-            if self.currently_marking_pane_group.borrow().get(client_id).copied().unwrap_or(false) {
+            if self
+                .currently_marking_pane_group
+                .borrow()
+                .get(client_id)
+                .copied()
+                .unwrap_or(false)
+            {
                 let active_pane_id = self.get_active_pane_id(&client_id);
                 if let Some(active_pane_id) = active_pane_id {
                     self.add_pane_id_to_group(active_pane_id, &client_id);
@@ -2970,11 +2970,15 @@ impl Screen {
     }
     fn get_active_pane_id(&self, client_id: &ClientId) -> Option<PaneId> {
         let active_tab = self.get_active_tab(*client_id).ok()?;
-        active_tab
-            .get_active_pane_id(*client_id)
+        active_tab.get_active_pane_id(*client_id)
     }
 
-    fn group_and_ungroup_panes(&mut self, mut pane_ids_to_group: Vec<PaneId>, pane_ids_to_ungroup: Vec<PaneId>, client_id: ClientId) {
+    fn group_and_ungroup_panes(
+        &mut self,
+        mut pane_ids_to_group: Vec<PaneId>,
+        pane_ids_to_ungroup: Vec<PaneId>,
+        client_id: ClientId,
+    ) {
         {
             let mut current_pane_group = self.current_pane_group.borrow_mut();
             let client_pane_group = current_pane_group
@@ -3009,7 +3013,9 @@ impl Screen {
             clients_with_empty_group
         };
         for client_id in &clients_with_empty_group {
-            self.currently_marking_pane_group.borrow_mut().remove(client_id);
+            self.currently_marking_pane_group
+                .borrow_mut()
+                .remove(client_id);
         }
         if !clients_with_empty_group.is_empty() {
             let all_tabs = self.get_tabs_mut();
@@ -5179,7 +5185,11 @@ pub(crate) fn screen_thread_main(
                 let _ = screen.unblock_input();
                 let _ = screen.render(None);
             },
-            ScreenInstruction::GroupAndUngroupPanes(pane_ids_to_group, pane_ids_to_ungroup, client_id) => {
+            ScreenInstruction::GroupAndUngroupPanes(
+                pane_ids_to_group,
+                pane_ids_to_ungroup,
+                client_id,
+            ) => {
                 screen.group_and_ungroup_panes(pane_ids_to_group, pane_ids_to_ungroup, client_id);
                 let _ = screen.log_and_report_session_state();
             },
@@ -5189,7 +5199,11 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ToggleGroupMarking(client_id) => {
                 screen.toggle_group_marking(client_id).non_fatal();
             },
-            ScreenInstruction::HighlightAndUnhighlightPanes(pane_ids_to_highlight, pane_ids_to_unhighlight, client_id) => {
+            ScreenInstruction::HighlightAndUnhighlightPanes(
+                pane_ids_to_highlight,
+                pane_ids_to_unhighlight,
+                client_id,
+            ) => {
                 {
                     let all_tabs = screen.get_tabs_mut();
                     for pane_id in pane_ids_to_highlight {
@@ -5206,10 +5220,7 @@ pub(crate) fn screen_thread_main(
                     for pane_id in pane_ids_to_unhighlight {
                         for tab in all_tabs.values_mut() {
                             if tab.has_pane_with_pid(&pane_id) {
-                                tab.clear_pane_frame_color_override(
-                                    pane_id,
-                                    Some(client_id),
-                                );
+                                tab.clear_pane_frame_color_override(pane_id, Some(client_id));
                             }
                         }
                     }
@@ -5221,7 +5232,7 @@ pub(crate) fn screen_thread_main(
                 {
                     let all_tabs = screen.get_tabs_mut();
                     let mut ejected_panes_in_group = vec![];
-                    for pane_id in pane_ids_to_float{
+                    for pane_id in pane_ids_to_float {
                         for tab in all_tabs.values_mut() {
                             if tab.has_pane_with_pid(&pane_id) {
                                 if !tab.pane_id_is_floating(&pane_id) {
@@ -5252,7 +5263,7 @@ pub(crate) fn screen_thread_main(
                 {
                     let all_tabs = screen.get_tabs_mut();
                     let mut embedded_panes_in_group = vec![];
-                    for pane_id in pane_ids_to_float{
+                    for pane_id in pane_ids_to_float {
                         for tab in all_tabs.values_mut() {
                             if tab.has_pane_with_pid(&pane_id) {
                                 if tab.pane_id_is_floating(&pane_id) {
@@ -5278,7 +5289,7 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 let _ = screen.log_and_report_session_state();
-            }
+            },
         }
     }
     Ok(())

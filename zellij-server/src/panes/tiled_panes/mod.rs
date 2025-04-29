@@ -688,11 +688,13 @@ impl TiledPanes {
         self.reapply_pane_frames();
     }
     pub fn pane_ids_in_stack_of_pane_id(&mut self, pane_id: &PaneId) -> Vec<PaneId> {
-        if let Some(stack_id) = self.panes.get(pane_id).and_then(|p| p.position_and_size().stacked) {
-            StackedPanes::new_from_btreemap(
-                &mut self.panes,
-                &self.panes_to_hide
-            ).pane_ids_in_stack(stack_id)
+        if let Some(stack_id) = self
+            .panes
+            .get(pane_id)
+            .and_then(|p| p.position_and_size().stacked)
+        {
+            StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+                .pane_ids_in_stack(stack_id)
         } else {
             vec![]
         }

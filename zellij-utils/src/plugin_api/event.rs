@@ -1084,7 +1084,10 @@ impl TryFrom<ProtobufPaneInfo> for PaneInfo {
                 .index_in_pane_group
                 .iter()
                 .map(|index_in_pane_group| {
-                    (index_in_pane_group.client_id as u16, index_in_pane_group.index as usize)
+                    (
+                        index_in_pane_group.client_id as u16,
+                        index_in_pane_group.index as usize,
+                    )
                 })
                 .collect(),
         })
@@ -1125,11 +1128,9 @@ impl TryFrom<PaneInfo> for ProtobufPaneInfo {
             index_in_pane_group: pane_info
                 .index_in_pane_group
                 .iter()
-                .map(|(&client_id, &index)| {
-                    IndexInPaneGroup {
-                        client_id: client_id as u32,
-                        index: index as u32
-                    }
+                .map(|(&client_id, &index)| IndexInPaneGroup {
+                    client_id: client_id as u32,
+                    index: index as u32,
                 })
                 .collect(),
         })
@@ -1241,7 +1242,8 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
         let capabilities = PluginCapabilities {
             arrow_fonts: protobuf_mode_update_payload.arrow_fonts_support,
         };
-        let currently_marking_pane_group = protobuf_mode_update_payload.currently_marking_pane_group;
+        let currently_marking_pane_group =
+            protobuf_mode_update_payload.currently_marking_pane_group;
         let mode_info = ModeInfo {
             mode: current_mode,
             keybinds,

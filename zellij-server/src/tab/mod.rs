@@ -46,7 +46,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
 use std::{
-    collections::{HashMap, HashSet, BTreeMap},
+    collections::{BTreeMap, HashMap, HashSet},
     str,
 };
 use zellij_utils::{
@@ -568,7 +568,12 @@ pub trait Pane {
         // No-op by default, only terminal panes support holding
     }
     fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>);
-    fn add_highlight_pane_frame_color_override(&mut self, _text: Option<String>, _client_id: Option<ClientId>) {}
+    fn add_highlight_pane_frame_color_override(
+        &mut self,
+        _text: Option<String>,
+        _client_id: Option<ClientId>,
+    ) {
+    }
     fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>);
     fn frame_color_override(&self) -> Option<PaletteColor>;
     fn invoked_with(&self) -> &Option<Run>;
@@ -995,7 +1000,8 @@ impl Tab {
                 .clone();
             mode_info.shell = Some(self.default_shell.clone());
             mode_info.editor = self.default_editor.clone();
-            mode_info.currently_marking_pane_group = currently_marking_pane_group.get(client_id).copied();
+            mode_info.currently_marking_pane_group =
+                currently_marking_pane_group.get(client_id).copied();
             plugin_updates.push((None, Some(*client_id), Event::ModeUpdate(mode_info)));
         }
         self.senders
@@ -2270,7 +2276,8 @@ impl Tab {
             floating_panes_stack,
         );
 
-        let current_pane_group: HashMap<ClientId, Vec<PaneId>> = { self.current_pane_group.borrow().clone() };
+        let current_pane_group: HashMap<ClientId, Vec<PaneId>> =
+            { self.current_pane_group.borrow().clone() };
         self.tiled_panes
             .render(
                 output,
@@ -3532,7 +3539,7 @@ impl Tab {
                 },
                 MouseEventType::Motion if event.alt => {
                     Ok(MouseEffect::group_add(pane_id_at_position))
-                }
+                },
                 MouseEventType::Press => {
                     if pane_id_at_position == active_pane_id {
                         self.handle_active_pane_left_mouse_press(event, client_id)
@@ -4306,7 +4313,11 @@ impl Tab {
             pane.add_highlight_pane_frame_color_override(error_text, client_id);
         }
     }
-    pub fn clear_pane_frame_color_override(&mut self, pane_id: PaneId, client_id: Option<ClientId>) {
+    pub fn clear_pane_frame_color_override(
+        &mut self,
+        pane_id: PaneId,
+        client_id: Option<ClientId>,
+    ) {
         if let Some(pane) = self
             .tiled_panes
             .get_pane_mut(pane_id)
@@ -4463,7 +4474,8 @@ impl Tab {
         pane_info.append(&mut tiled_pane_info);
         pane_info.append(&mut floating_pane_info);
         for (pane_id, (_is_scrollback_editor, pane)) in self.suppressed_panes.iter() {
-            let mut pane_info_for_suppressed_pane = pane_info_for_pane(pane_id, pane, &current_pane_group);
+            let mut pane_info_for_suppressed_pane =
+                pane_info_for_pane(pane_id, pane, &current_pane_group);
             pane_info_for_suppressed_pane.is_floating = false;
             pane_info_for_suppressed_pane.is_suppressed = true;
             pane_info_for_suppressed_pane.is_focused = false;
@@ -4727,7 +4739,10 @@ impl Tab {
             return false;
         }
         if self.pane_is_stacked(root_pane_id) {
-            let room_left_in_stack = self.tiled_panes.room_left_in_stack_of_pane_id(&root_pane_id).unwrap_or(0);
+            let room_left_in_stack = self
+                .tiled_panes
+                .room_left_in_stack_of_pane_id(&root_pane_id)
+                .unwrap_or(0);
             stack_size <= room_left_in_stack
         } else {
             self.get_pane_with_id(root_pane_id)
@@ -4755,7 +4770,8 @@ impl Tab {
                 // stack so that the rest of the panes will later be added below it - which makes
                 // sense from the perspective of the user
                 if let Some(pane) = self.extract_pane(root_pane_id, true) {
-                    self.tiled_panes.add_pane_to_stack(&lowest_pane_id_in_stack, pane);
+                    self.tiled_panes
+                        .add_pane_to_stack(&lowest_pane_id_in_stack, pane);
                 }
             }
             for pane in panes_to_stack.drain(..) {
@@ -4822,32 +4838,36 @@ impl Tab {
         self.display_area.borrow().clone()
     }
     pub fn next_selectable_pane_id_above(&mut self, pane_id: &PaneId) -> Option<PaneId> {
-      if self.pane_id_is_floating(pane_id) {
-        self.floating_panes.next_selectable_pane_id_above(&pane_id)
-      } else {
-        self.tiled_panes.next_selectable_pane_id_above(&pane_id)
-      }
+        if self.pane_id_is_floating(pane_id) {
+            self.floating_panes.next_selectable_pane_id_above(&pane_id)
+        } else {
+            self.tiled_panes.next_selectable_pane_id_above(&pane_id)
+        }
     }
     pub fn next_selectable_pane_id_below(&mut self, pane_id: &PaneId) -> Option<PaneId> {
-      if self.pane_id_is_floating(pane_id) {
-        self.floating_panes.next_selectable_pane_id_below(&pane_id)
-      } else {
-        self.tiled_panes.next_selectable_pane_id_below(&pane_id)
-      }
+        if self.pane_id_is_floating(pane_id) {
+            self.floating_panes.next_selectable_pane_id_below(&pane_id)
+        } else {
+            self.tiled_panes.next_selectable_pane_id_below(&pane_id)
+        }
     }
     pub fn next_selectable_pane_id_to_the_left(&mut self, pane_id: &PaneId) -> Option<PaneId> {
-      if self.pane_id_is_floating(pane_id) {
-        self.floating_panes.next_selectable_pane_id_to_the_left(&pane_id)
-      } else {
-        self.tiled_panes.next_selectable_pane_id_to_the_left(&pane_id)
-      }
+        if self.pane_id_is_floating(pane_id) {
+            self.floating_panes
+                .next_selectable_pane_id_to_the_left(&pane_id)
+        } else {
+            self.tiled_panes
+                .next_selectable_pane_id_to_the_left(&pane_id)
+        }
     }
     pub fn next_selectable_pane_id_to_the_right(&mut self, pane_id: &PaneId) -> Option<PaneId> {
-      if self.pane_id_is_floating(pane_id) {
-        self.floating_panes.next_selectable_pane_id_to_the_right(&pane_id)
-      } else {
-        self.tiled_panes.next_selectable_pane_id_to_the_right(&pane_id)
-      }
+        if self.pane_id_is_floating(pane_id) {
+            self.floating_panes
+                .next_selectable_pane_id_to_the_right(&pane_id)
+        } else {
+            self.tiled_panes
+                .next_selectable_pane_id_to_the_right(&pane_id)
+        }
     }
     fn new_scrollback_editor_pane(&self, pid: u32) -> TerminalPane {
         let next_terminal_position = self.get_next_terminal_position();
@@ -4892,7 +4912,11 @@ impl Tab {
     }
 }
 
-pub fn pane_info_for_pane(pane_id: &PaneId, pane: &Box<dyn Pane>, current_pane_group: &HashMap<ClientId, Vec<PaneId>>) -> PaneInfo {
+pub fn pane_info_for_pane(
+    pane_id: &PaneId,
+    pane: &Box<dyn Pane>,
+    current_pane_group: &HashMap<ClientId, Vec<PaneId>>,
+) -> PaneInfo {
     let mut pane_info = PaneInfo::default();
     pane_info.pane_x = pane.x();
     pane_info.pane_content_x = pane.get_content_x();
@@ -4908,13 +4932,16 @@ pub fn pane_info_for_pane(pane_id: &PaneId, pane: &Box<dyn Pane>, current_pane_g
     pane_info.exited = pane.exited();
     pane_info.exit_status = pane.exit_status();
     pane_info.is_held = pane.is_held();
-    let index_in_pane_group: BTreeMap<ClientId, usize> = current_pane_group.iter().filter_map(|(client_id, pane_ids)| {
-        if let Some(position) = pane_ids.iter().position(|p_id| p_id == &pane.pid()) {
-            Some((*client_id, position))
-        } else {
-            None
-        }
-    }).collect();
+    let index_in_pane_group: BTreeMap<ClientId, usize> = current_pane_group
+        .iter()
+        .filter_map(|(client_id, pane_ids)| {
+            if let Some(position) = pane_ids.iter().position(|p_id| p_id == &pane.pid()) {
+                Some((*client_id, position))
+            } else {
+                None
+            }
+        })
+        .collect();
     pane_info.index_in_pane_group = index_in_pane_group;
 
     match pane_id {

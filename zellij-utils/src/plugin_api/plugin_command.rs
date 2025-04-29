@@ -5,17 +5,19 @@ pub use super::generated_api::api::{
     plugin_command::{
         plugin_command::Payload, BreakPanesToNewTabPayload, BreakPanesToTabWithIndexPayload,
         ChangeFloatingPanesCoordinatesPayload, ChangeHostFolderPayload,
-        ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseTabWithIndexPayload, CommandName,
-        ContextItem, EditScrollbackForPaneWithIdPayload, EnvVariable, ExecCmdPayload,
+        ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseMultiplePanesPayload,
+        CloseTabWithIndexPayload, CommandName, ContextItem, EditScrollbackForPaneWithIdPayload,
+        EmbedMultiplePanesPayload, EnvVariable, ExecCmdPayload,
         FixedOrPercent as ProtobufFixedOrPercent,
-        FixedOrPercentValue as ProtobufFixedOrPercentValue,
-        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, HidePaneWithIdPayload,
-        HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
-        LoadNewPluginPayload, MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload,
-        MovePaneWithPaneIdPayload, MovePayload, NewPluginArgs as ProtobufNewPluginArgs,
-        NewTabsWithLayoutInfoPayload, OpenCommandPaneFloatingNearPluginPayload,
-        OpenCommandPaneInPlaceOfPluginPayload, OpenCommandPaneNearPluginPayload,
-        OpenCommandPanePayload, OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
+        FixedOrPercentValue as ProtobufFixedOrPercentValue, FloatMultiplePanesPayload,
+        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, GroupAndUngroupPanesPayload,
+        HidePaneWithIdPayload, HighlightAndUnhighlightPanesPayload, HttpVerb as ProtobufHttpVerb,
+        IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload, LoadNewPluginPayload,
+        MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload,
+        MovePayload, NewPluginArgs as ProtobufNewPluginArgs, NewTabsWithLayoutInfoPayload,
+        OpenCommandPaneFloatingNearPluginPayload, OpenCommandPaneInPlaceOfPluginPayload,
+        OpenCommandPaneNearPluginPayload, OpenCommandPanePayload,
+        OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
         OpenFileNearPluginPayload, OpenFilePayload, OpenTerminalFloatingNearPluginPayload,
         OpenTerminalInPlaceOfPluginPayload, OpenTerminalNearPluginPayload,
         PageScrollDownInPaneIdPayload, PageScrollUpInPaneIdPayload, PaneId as ProtobufPaneId,
@@ -28,9 +30,7 @@ pub use super::generated_api::api::{
         SetTimeoutPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
         SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
         TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload, GroupAndUngroupPanesPayload,
-        HighlightAndUnhighlightPanesPayload, CloseMultiplePanesPayload, FloatMultiplePanesPayload,
-        EmbedMultiplePanesPayload,
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1545,25 +1545,47 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::GroupAndUngroupPanes) => match protobuf_plugin_command.payload {
                 Some(Payload::GroupAndUngroupPanesPayload(group_and_ungroup_panes_payload)) => {
                     Ok(PluginCommand::GroupAndUngroupPanes(
-                        group_and_ungroup_panes_payload.pane_ids_to_group.into_iter().filter_map(|p| p.try_into().ok()).collect(),
-                        group_and_ungroup_panes_payload.pane_ids_to_ungroup.into_iter().filter_map(|p| p.try_into().ok()).collect()
+                        group_and_ungroup_panes_payload
+                            .pane_ids_to_group
+                            .into_iter()
+                            .filter_map(|p| p.try_into().ok())
+                            .collect(),
+                        group_and_ungroup_panes_payload
+                            .pane_ids_to_ungroup
+                            .into_iter()
+                            .filter_map(|p| p.try_into().ok())
+                            .collect(),
                     ))
                 },
                 _ => Err("Mismatched payload for GroupAndUngroupPanes"),
             },
-            Some(CommandName::HighlightAndUnhighlightPanes) => match protobuf_plugin_command.payload {
-                Some(Payload::HighlightAndUnhighlightPanesPayload(highlight_and_unhighlight_panes_payload)) => {
-                    Ok(PluginCommand::HighlightAndUnhighlightPanes(
-                        highlight_and_unhighlight_panes_payload.pane_ids_to_highlight.into_iter().filter_map(|p| p.try_into().ok()).collect(),
-                        highlight_and_unhighlight_panes_payload.pane_ids_to_unhighlight.into_iter().filter_map(|p| p.try_into().ok()).collect()
-                    ))
-                },
-                _ => Err("Mismatched payload for HighlightAndUnhighlightPanes"),
+            Some(CommandName::HighlightAndUnhighlightPanes) => {
+                match protobuf_plugin_command.payload {
+                    Some(Payload::HighlightAndUnhighlightPanesPayload(
+                        highlight_and_unhighlight_panes_payload,
+                    )) => Ok(PluginCommand::HighlightAndUnhighlightPanes(
+                        highlight_and_unhighlight_panes_payload
+                            .pane_ids_to_highlight
+                            .into_iter()
+                            .filter_map(|p| p.try_into().ok())
+                            .collect(),
+                        highlight_and_unhighlight_panes_payload
+                            .pane_ids_to_unhighlight
+                            .into_iter()
+                            .filter_map(|p| p.try_into().ok())
+                            .collect(),
+                    )),
+                    _ => Err("Mismatched payload for HighlightAndUnhighlightPanes"),
+                }
             },
             Some(CommandName::CloseMultiplePanes) => match protobuf_plugin_command.payload {
                 Some(Payload::CloseMultiplePanesPayload(close_multiple_panes_payload)) => {
                     Ok(PluginCommand::CloseMultiplePanes(
-                        close_multiple_panes_payload.pane_ids.into_iter().filter_map(|p| p.try_into().ok()).collect(),
+                        close_multiple_panes_payload
+                            .pane_ids
+                            .into_iter()
+                            .filter_map(|p| p.try_into().ok())
+                            .collect(),
                     ))
                 },
                 _ => Err("Mismatched payload for CloseMultiplePanes"),
@@ -1571,7 +1593,11 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::FloatMultiplePanes) => match protobuf_plugin_command.payload {
                 Some(Payload::FloatMultiplePanesPayload(float_multiple_panes_payload)) => {
                     Ok(PluginCommand::FloatMultiplePanes(
-                        float_multiple_panes_payload.pane_ids.into_iter().filter_map(|p| p.try_into().ok()).collect(),
+                        float_multiple_panes_payload
+                            .pane_ids
+                            .into_iter()
+                            .filter_map(|p| p.try_into().ok())
+                            .collect(),
                     ))
                 },
                 _ => Err("Mismatched payload for FloatMultiplePanes"),
@@ -1579,7 +1605,11 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::EmbedMultiplePanes) => match protobuf_plugin_command.payload {
                 Some(Payload::EmbedMultiplePanesPayload(embed_multiple_panes_payload)) => {
                     Ok(PluginCommand::EmbedMultiplePanes(
-                        embed_multiple_panes_payload.pane_ids.into_iter().filter_map(|p| p.try_into().ok()).collect(),
+                        embed_multiple_panes_payload
+                            .pane_ids
+                            .into_iter()
+                            .filter_map(|p| p.try_into().ok())
+                            .collect(),
                     ))
                 },
                 _ => Err("Mismatched payload for EmbedMultiplePanes"),
@@ -2595,18 +2625,23 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
-            PluginCommand::GroupAndUngroupPanes(
-                panes_to_group,
-                panes_to_ungroup,
-            ) => Ok(ProtobufPluginCommand {
-                name: CommandName::GroupAndUngroupPanes as i32,
-                payload: Some(Payload::GroupAndUngroupPanesPayload(
-                    GroupAndUngroupPanesPayload {
-                        pane_ids_to_group: panes_to_group.iter().filter_map(|&p| p.try_into().ok()).collect(),
-                        pane_ids_to_ungroup: panes_to_ungroup.iter().filter_map(|&p| p.try_into().ok()).collect(),
-                    },
-                )),
-            }),
+            PluginCommand::GroupAndUngroupPanes(panes_to_group, panes_to_ungroup) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::GroupAndUngroupPanes as i32,
+                    payload: Some(Payload::GroupAndUngroupPanesPayload(
+                        GroupAndUngroupPanesPayload {
+                            pane_ids_to_group: panes_to_group
+                                .iter()
+                                .filter_map(|&p| p.try_into().ok())
+                                .collect(),
+                            pane_ids_to_ungroup: panes_to_ungroup
+                                .iter()
+                                .filter_map(|&p| p.try_into().ok())
+                                .collect(),
+                        },
+                    )),
+                })
+            },
             PluginCommand::HighlightAndUnhighlightPanes(
                 panes_to_highlight,
                 panes_to_unhighlight,
@@ -2614,14 +2649,18 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::HighlightAndUnhighlightPanes as i32,
                 payload: Some(Payload::HighlightAndUnhighlightPanesPayload(
                     HighlightAndUnhighlightPanesPayload {
-                        pane_ids_to_highlight: panes_to_highlight.iter().filter_map(|&p| p.try_into().ok()).collect(),
-                        pane_ids_to_unhighlight: panes_to_unhighlight.iter().filter_map(|&p| p.try_into().ok()).collect(),
+                        pane_ids_to_highlight: panes_to_highlight
+                            .iter()
+                            .filter_map(|&p| p.try_into().ok())
+                            .collect(),
+                        pane_ids_to_unhighlight: panes_to_unhighlight
+                            .iter()
+                            .filter_map(|&p| p.try_into().ok())
+                            .collect(),
                     },
                 )),
             }),
-            PluginCommand::CloseMultiplePanes(
-                pane_ids
-            ) => Ok(ProtobufPluginCommand {
+            PluginCommand::CloseMultiplePanes(pane_ids) => Ok(ProtobufPluginCommand {
                 name: CommandName::CloseMultiplePanes as i32,
                 payload: Some(Payload::CloseMultiplePanesPayload(
                     CloseMultiplePanesPayload {
@@ -2629,9 +2668,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
-            PluginCommand::FloatMultiplePanes(
-                pane_ids
-            ) => Ok(ProtobufPluginCommand {
+            PluginCommand::FloatMultiplePanes(pane_ids) => Ok(ProtobufPluginCommand {
                 name: CommandName::FloatMultiplePanes as i32,
                 payload: Some(Payload::FloatMultiplePanesPayload(
                     FloatMultiplePanesPayload {
@@ -2639,9 +2676,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
-            PluginCommand::EmbedMultiplePanes(
-                pane_ids
-            ) => Ok(ProtobufPluginCommand {
+            PluginCommand::EmbedMultiplePanes(pane_ids) => Ok(ProtobufPluginCommand {
                 name: CommandName::EmbedMultiplePanes as i32,
                 payload: Some(Payload::EmbedMultiplePanesPayload(
                     EmbedMultiplePanesPayload {

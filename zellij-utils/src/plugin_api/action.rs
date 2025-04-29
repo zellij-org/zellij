@@ -696,9 +696,11 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("TogglePaneInGroup should not have a payload"),
                 None => Ok(Action::TogglePaneInGroup),
             },
-            Some(ProtobufActionName::ToggleGroupMarking) => match protobuf_action.optional_payload {
-                Some(_) => Err("ToggleGroupMarking should not have a payload"),
-                None => Ok(Action::ToggleGroupMarking),
+            Some(ProtobufActionName::ToggleGroupMarking) => {
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleGroupMarking should not have a payload"),
+                    None => Ok(Action::ToggleGroupMarking),
+                }
             },
             Some(ProtobufActionName::KeybindPipe) => match protobuf_action.optional_payload {
                 Some(_) => Err("KeybindPipe should not have a payload"),

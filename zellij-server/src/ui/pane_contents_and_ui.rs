@@ -33,7 +33,7 @@ impl<'a> PaneContentsAndUi<'a> {
         pane_is_stacked_over: bool,
         should_draw_pane_frames: bool,
         mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
-        current_pane_group: HashMap<ClientId, Vec<PaneId>>
+        current_pane_group: HashMap<ClientId, Vec<PaneId>>,
     ) -> Self {
         let mut focused_clients: Vec<ClientId> = active_panes
             .iter()
@@ -41,13 +41,16 @@ impl<'a> PaneContentsAndUi<'a> {
             .map(|(c_id, _p_id)| *c_id)
             .collect();
         focused_clients.sort_unstable();
-        let mouse_is_hovering_over_pane_for_clients = mouse_hover_pane_id.iter().filter_map(|(client_id, pane_id)| {
-            if pane_id == &pane.pid() {
-                Some(*client_id)
-            } else {
-                None
-            }
-        }).collect();
+        let mouse_is_hovering_over_pane_for_clients = mouse_hover_pane_id
+            .iter()
+            .filter_map(|(client_id, pane_id)| {
+                if pane_id == &pane.pid() {
+                    Some(*client_id)
+                } else {
+                    None
+                }
+            })
+            .collect();
         PaneContentsAndUi {
             pane,
             output,
@@ -237,7 +240,9 @@ impl<'a> PaneContentsAndUi<'a> {
                 should_draw_pane_frames: self.should_draw_pane_frames,
                 pane_is_floating,
                 content_offset: self.pane.get_content_offset(),
-                mouse_is_hovering_over_pane: self.mouse_is_hovering_over_pane_for_clients.contains(&client_id),
+                mouse_is_hovering_over_pane: self
+                    .mouse_is_hovering_over_pane_for_clients
+                    .contains(&client_id),
             }
         } else {
             FrameParams {
@@ -252,7 +257,9 @@ impl<'a> PaneContentsAndUi<'a> {
                 should_draw_pane_frames: self.should_draw_pane_frames,
                 pane_is_floating,
                 content_offset: self.pane.get_content_offset(),
-                mouse_is_hovering_over_pane: self.mouse_is_hovering_over_pane_for_clients.contains(&client_id),
+                mouse_is_hovering_over_pane: self
+                    .mouse_is_hovering_over_pane_for_clients
+                    .contains(&client_id),
             }
         };
 
@@ -294,15 +301,19 @@ impl<'a> PaneContentsAndUi<'a> {
         client_id: ClientId,
         mode: InputMode,
         session_is_mirrored: bool,
-    ) -> Option<(PaletteColor, usize)> { // (color, color_precedence) (the color_precedence is used
-                                         // for the no-pane-frames mode)
+    ) -> Option<(PaletteColor, usize)> {
+        // (color, color_precedence) (the color_precedence is used
+        // for the no-pane-frames mode)
         let pane_focused_for_client_id = self.focused_clients.contains(&client_id);
-        let pane_is_in_group = self.current_pane_group
+        let pane_is_in_group = self
+            .current_pane_group
             .get(&client_id)
             .map(|p| p.contains(&self.pane.pid()))
             .unwrap_or(false);
         if self.pane.frame_color_override().is_some() && !pane_is_in_group {
-            self.pane.frame_color_override().map(|override_color| (override_color, 4))
+            self.pane
+                .frame_color_override()
+                .map(|override_color| (override_color, 4))
         } else if pane_is_in_group && !pane_focused_for_client_id {
             Some((self.style.colors.frame_highlight.emphasis_0, 2))
         } else if pane_is_in_group && pane_focused_for_client_id {
@@ -320,14 +331,18 @@ impl<'a> PaneContentsAndUi<'a> {
                         colors.map(|colors| (colors.0, 3))
                     }
                 },
-                _ => {
-                    Some((self.style.colors.frame_highlight.base, 3))
-                }
+                _ => Some((self.style.colors.frame_highlight.base, 3)),
             }
-        } else if self.mouse_is_hovering_over_pane_for_clients.contains(&client_id) {
+        } else if self
+            .mouse_is_hovering_over_pane_for_clients
+            .contains(&client_id)
+        {
             Some((self.style.colors.frame_highlight.base, 1))
         } else {
-            self.style.colors.frame_unselected.map(|frame| (frame.base, 0))
+            self.style
+                .colors
+                .frame_unselected
+                .map(|frame| (frame.base, 0))
         }
     }
 }

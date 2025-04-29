@@ -505,14 +505,14 @@ impl<'a> StackedPanes<'a> {
         let Ok(stack) = self.positions_in_stack(pane_id) else {
             return None;
         };
-        stack
-            .iter()
-            .find_map(|(_p_id, p)| if !p.rows.is_fixed() {
+        stack.iter().find_map(|(_p_id, p)| {
+            if !p.rows.is_fixed() {
                 // this is the flexible pane
                 Some(p.rows.as_usize().saturating_sub(MIN_TERMINAL_HEIGHT))
             } else {
                 None
-            })
+            }
+        })
     }
     pub fn new_stack(&self, root_pane_id: PaneId, pane_count_in_stack: usize) -> Vec<PaneGeom> {
         let mut stacked_geoms = vec![];

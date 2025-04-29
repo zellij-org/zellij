@@ -1,10 +1,10 @@
-pub mod ui;
 pub mod state;
+pub mod ui;
 
-use ui::{PaneItem};
 use state::{MarkedIndex, VisibilityAndFocus};
-use zellij_tile::prelude::*;
 use std::collections::BTreeMap;
+use ui::PaneItem;
+use zellij_tile::prelude::*;
 
 #[derive(Debug, Default)]
 pub struct App {
@@ -47,7 +47,7 @@ impl ZellijPlugin for App {
             Event::PaneUpdate(pane_manifest) => {
                 self.react_to_zellij_state_update(pane_manifest);
                 should_render = true;
-            }
+            },
             Event::Key(key) => {
                 match key.bare_key {
                     BareKey::Tab if key.has_no_modifiers() => {
@@ -55,17 +55,25 @@ impl ZellijPlugin for App {
                         self.marked_index = None;
                         self.update_highlighted_panes();
                         should_render = true;
-                    }
-                    BareKey::Char(character) if key.has_no_modifiers() && self.visibility_and_focus.left_side_is_focused() && self.marked_index.is_none() => {
+                    },
+                    BareKey::Char(character)
+                        if key.has_no_modifiers()
+                            && self.visibility_and_focus.left_side_is_focused()
+                            && self.marked_index.is_none() =>
+                    {
                         self.search_string.push(character);
                         self.update_search_results();
                         should_render = true;
-                    }
-                    BareKey::Backspace if key.has_no_modifiers() && self.visibility_and_focus.left_side_is_focused() && self.marked_index.is_none() => {
+                    },
+                    BareKey::Backspace
+                        if key.has_no_modifiers()
+                            && self.visibility_and_focus.left_side_is_focused()
+                            && self.marked_index.is_none() =>
+                    {
                         self.search_string.pop();
                         self.update_search_results();
                         should_render = true;
-                    }
+                    },
                     BareKey::Enter if key.has_no_modifiers() => {
                         if self.visibility_and_focus.left_side_is_focused() {
                             if let Some(marked_index) = self.marked_index.take() {
@@ -73,29 +81,37 @@ impl ZellijPlugin for App {
                                 self.group_panes(marked_index, keep_left_side_focused);
                             } else {
                                 match self.search_results.take() {
-                                    Some(search_results) => self.group_search_results(search_results),
-                                    None => self.group_all_panes()
+                                    Some(search_results) => {
+                                        self.group_search_results(search_results)
+                                    },
+                                    None => self.group_all_panes(),
                                 }
                                 self.handle_left_side_emptied();
                             }
                         }
                         should_render = true;
-                    }
-                    BareKey::Right if key.has_no_modifiers() && self.visibility_and_focus.left_side_is_focused() => {
+                    },
+                    BareKey::Right
+                        if key.has_no_modifiers()
+                            && self.visibility_and_focus.left_side_is_focused() =>
+                    {
                         if let Some(marked_index) = self.marked_index.take() {
                             let keep_left_side_focused = true;
                             self.group_panes(marked_index, keep_left_side_focused);
                             should_render = true;
                         }
-                    }
-                    BareKey::Left if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
+                    },
+                    BareKey::Left
+                        if key.has_no_modifiers()
+                            && self.visibility_and_focus.right_side_is_focused() =>
+                    {
                         if self.visibility_and_focus.right_side_is_focused() {
                             if let Some(marked_index) = self.marked_index.take() {
                                 self.ungroup_panes(marked_index);
                                 should_render = true;
                             }
                         }
-                    }
+                    },
                     BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                         if self.visibility_and_focus.right_side_is_focused() {
                             // this means we're in the selection panes part and we want to clear
@@ -110,46 +126,67 @@ impl ZellijPlugin for App {
                             }
                         }
                         should_render = true;
-                    }
+                    },
                     BareKey::Down if key.has_no_modifiers() => {
                         self.move_marked_index_down();
                         should_render = true;
-                    }
+                    },
                     BareKey::Up if key.has_no_modifiers() => {
                         self.move_marked_index_up();
                         should_render = true;
-                    }
+                    },
                     BareKey::Char(' ') if key.has_no_modifiers() && self.marked_index.is_some() => {
                         self.mark_entry();
                         should_render = true;
-                    }
-                    BareKey::Char('b') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
+                    },
+                    BareKey::Char('b')
+                        if key.has_no_modifiers()
+                            && self.visibility_and_focus.right_side_is_focused() =>
+                    {
                         self.break_grouped_panes_to_new_tab();
-                    }
-                    BareKey::Char('s') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
+                    },
+                    BareKey::Char('s')
+                        if key.has_no_modifiers()
+                            && self.visibility_and_focus.right_side_is_focused() =>
+                    {
                         self.stack_grouped_panes();
-                    }
-                    BareKey::Char('f') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
+                    },
+                    BareKey::Char('f')
+                        if key.has_no_modifiers()
+                            && self.visibility_and_focus.right_side_is_focused() =>
+                    {
                         self.float_grouped_panes();
-                    }
-                    BareKey::Char('e') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
+                    },
+                    BareKey::Char('e')
+                        if key.has_no_modifiers()
+                            && self.visibility_and_focus.right_side_is_focused() =>
+                    {
                         self.embed_grouped_panes();
-                    }
-                    BareKey::Char('r') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
+                    },
+                    BareKey::Char('r')
+                        if key.has_no_modifiers()
+                            && self.visibility_and_focus.right_side_is_focused() =>
+                    {
                         self.break_grouped_panes_right();
-                    }
-                    BareKey::Char('l') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
+                    },
+                    BareKey::Char('l')
+                        if key.has_no_modifiers()
+                            && self.visibility_and_focus.right_side_is_focused() =>
+                    {
                         self.break_grouped_panes_left();
-                    }
-                    BareKey::Char('c') if key.has_no_modifiers() && self.visibility_and_focus.right_side_is_focused() => {
+                    },
+                    BareKey::Char('c')
+                        if key.has_no_modifiers()
+                            && self.visibility_and_focus.right_side_is_focused() =>
+                    {
                         self.close_grouped_panes();
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
             },
             Event::BeforeClose => {
                 self.unhighlight_all_panes();
-            }
+            },
             _ => {},
         }
         should_render
@@ -163,11 +200,11 @@ impl ZellijPlugin for App {
             VisibilityAndFocus::BothSidesVisibleLeftSideFocused => {
                 self.render_left_side(rows, cols, true);
                 self.render_right_side(rows, cols, false);
-            }
+            },
             VisibilityAndFocus::BothSidesVisibleRightSideFocused => {
                 self.render_left_side(rows, cols, false);
                 self.render_right_side(rows, cols, true);
-            }
+            },
         }
         self.render_focus_boundary(rows, cols);
         self.render_help_line(rows, cols);

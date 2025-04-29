@@ -431,14 +431,13 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         close_plugin_after_replace,
                         context,
                     ),
-                    PluginCommand::GroupAndUngroupPanes(
-                        panes_to_group,
-                        panes_to_ungroup,
-                    ) => group_and_ungroup_panes(
-                        env,
-                        panes_to_group.into_iter().map(|p| p.into()).collect(),
-                        panes_to_ungroup.into_iter().map(|p| p.into()).collect(),
-                    ),
+                    PluginCommand::GroupAndUngroupPanes(panes_to_group, panes_to_ungroup) => {
+                        group_and_ungroup_panes(
+                            env,
+                            panes_to_group.into_iter().map(|p| p.into()).collect(),
+                            panes_to_ungroup.into_iter().map(|p| p.into()).collect(),
+                        )
+                    },
                     PluginCommand::HighlightAndUnhighlightPanes(
                         panes_to_highlight,
                         panes_to_unhighlight,
@@ -447,24 +446,15 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         panes_to_highlight.into_iter().map(|p| p.into()).collect(),
                         panes_to_unhighlight.into_iter().map(|p| p.into()).collect(),
                     ),
-                    PluginCommand::CloseMultiplePanes(
-                        pane_ids,
-                    ) => close_multiple_panes(
-                        env,
-                        pane_ids.into_iter().map(|p| p.into()).collect(),
-                    ),
-                    PluginCommand::FloatMultiplePanes(
-                        pane_ids,
-                    ) => float_multiple_panes(
-                        env,
-                        pane_ids.into_iter().map(|p| p.into()).collect(),
-                    ),
-                    PluginCommand::EmbedMultiplePanes(
-                        pane_ids,
-                    ) => embed_multiple_panes(
-                        env,
-                        pane_ids.into_iter().map(|p| p.into()).collect(),
-                    ),
+                    PluginCommand::CloseMultiplePanes(pane_ids) => {
+                        close_multiple_panes(env, pane_ids.into_iter().map(|p| p.into()).collect())
+                    },
+                    PluginCommand::FloatMultiplePanes(pane_ids) => {
+                        float_multiple_panes(env, pane_ids.into_iter().map(|p| p.into()).collect())
+                    },
+                    PluginCommand::EmbedMultiplePanes(pane_ids) => {
+                        embed_multiple_panes(env, pane_ids.into_iter().map(|p| p.into()).collect())
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -2187,7 +2177,13 @@ fn group_and_ungroup_panes(
     panes_to_group: Vec<PaneId>,
     panes_to_ungroup: Vec<PaneId>,
 ) {
-    let _ = env.senders.send_to_screen(ScreenInstruction::GroupAndUngroupPanes(panes_to_group, panes_to_ungroup, env.client_id));
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::GroupAndUngroupPanes(
+            panes_to_group,
+            panes_to_ungroup,
+            env.client_id,
+        ));
 }
 
 fn highlight_and_unhighlight_panes(
@@ -2195,13 +2191,16 @@ fn highlight_and_unhighlight_panes(
     panes_to_highlight: Vec<PaneId>,
     panes_to_unhighlight: Vec<PaneId>,
 ) {
-    let _ = env.senders.send_to_screen(ScreenInstruction::HighlightAndUnhighlightPanes(panes_to_highlight, panes_to_unhighlight, env.client_id));
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::HighlightAndUnhighlightPanes(
+            panes_to_highlight,
+            panes_to_unhighlight,
+            env.client_id,
+        ));
 }
 
-fn close_multiple_panes(
-    env: &PluginEnv,
-    pane_ids: Vec<PaneId>,
-) {
+fn close_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
     for pane_id in pane_ids {
         match pane_id {
             PaneId::Terminal(terminal_pane_id) => {
@@ -2209,24 +2208,27 @@ fn close_multiple_panes(
             },
             PaneId::Plugin(plugin_pane_id) => {
                 close_plugin_pane(env, plugin_pane_id);
-            }
+            },
         }
-
     }
 }
 
-fn float_multiple_panes(
-    env: &PluginEnv,
-    pane_ids: Vec<PaneId>,
-) {
-    let _ = env.senders.send_to_screen(ScreenInstruction::FloatMultiplePanes(pane_ids, env.client_id));
+fn float_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::FloatMultiplePanes(
+            pane_ids,
+            env.client_id,
+        ));
 }
 
-fn embed_multiple_panes(
-    env: &PluginEnv,
-    pane_ids: Vec<PaneId>,
-) {
-    let _ = env.senders.send_to_screen(ScreenInstruction::EmbedMultiplePanes(pane_ids, env.client_id));
+fn embed_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::EmbedMultiplePanes(
+            pane_ids,
+            env.client_id,
+        ));
 }
 
 // Custom panic handler for plugins.

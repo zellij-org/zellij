@@ -456,7 +456,9 @@ fn job_already_running(
 ) -> bool {
     match running_jobs.get_mut(&job) {
         Some(current_running_job_start_time) => {
-            if current_running_job_start_time.elapsed() > Duration::from_millis(LONG_FLASH_DURATION_MS) {
+            if current_running_job_start_time.elapsed()
+                > Duration::from_millis(LONG_FLASH_DURATION_MS)
+            {
                 *current_running_job_start_time = Instant::now();
                 false
             } else {

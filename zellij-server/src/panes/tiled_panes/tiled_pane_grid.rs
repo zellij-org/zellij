@@ -1009,7 +1009,11 @@ impl<'a> TiledPaneGrid<'a> {
             None => None,
         }
     }
-    pub fn next_selectable_pane_id_below(&self, current_pane_id: &PaneId, include_panes_in_stack: bool) -> Option<PaneId> {
+    pub fn next_selectable_pane_id_below(
+        &self,
+        current_pane_id: &PaneId,
+        include_panes_in_stack: bool,
+    ) -> Option<PaneId> {
         let panes = self.panes.borrow();
         let current_pane = panes.get(current_pane_id)?;
         let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
@@ -1079,7 +1083,11 @@ impl<'a> TiledPaneGrid<'a> {
             .copied();
         next_index
     }
-    pub fn next_selectable_pane_id_above(&self, current_pane_id: &PaneId, include_panes_in_stack: bool) -> Option<PaneId> {
+    pub fn next_selectable_pane_id_above(
+        &self,
+        current_pane_id: &PaneId,
+        include_panes_in_stack: bool,
+    ) -> Option<PaneId> {
         let panes = self.panes.borrow();
         let current_pane = panes.get(current_pane_id)?;
         let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
@@ -1094,7 +1102,6 @@ impl<'a> TiledPaneGrid<'a> {
                 if include_panes_in_stack {
                     c.is_directly_above(Box::as_ref(current_pane))
                         && c.vertically_overlaps_with(Box::as_ref(current_pane))
-
                 } else {
                     c.is_directly_above(Box::as_ref(current_pane))
                         && c.vertically_overlaps_with(Box::as_ref(current_pane))

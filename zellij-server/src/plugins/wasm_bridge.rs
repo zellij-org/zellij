@@ -318,7 +318,9 @@ impl WasmBridge {
     pub fn unload_plugin(&mut self, pid: PluginId) -> Result<()> {
         info!("Bye from plugin {}", &pid);
         let mut plugin_map = self.plugin_map.lock().unwrap();
-        for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in plugin_map.remove_plugins(pid) {
+        for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in
+            plugin_map.remove_plugins(pid)
+        {
             for (_worker_name, worker_sender) in workers {
                 drop(worker_sender.send(MessageToWorker::Exit));
             }
@@ -336,14 +338,9 @@ impl WasmBridge {
                         log::error!("{:?}", e);
 
                         // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
-                        let stringified_error =
-                            format!("{:?}", e).replace("\n", "\n\r");
+                        let stringified_error = format!("{:?}", e).replace("\n", "\n\r");
 
-                        handle_plugin_crash(
-                            plugin_id,
-                            stringified_error,
-                            self.senders.clone(),
-                        );
+                        handle_plugin_crash(plugin_id, stringified_error, self.senders.clone());
                     },
                 }
                 let cache_dir = running_plugin.store.data().plugin_own_data_dir.clone();
@@ -1706,14 +1703,13 @@ pub fn apply_before_close_event_to_plugin(
     let _should_render = update
         .call(&mut running_plugin.store, ())
         .with_context(err_context)?;
-        let pipes_to_block_or_unblock = pipes_to_block_or_unblock(running_plugin, None);
-        let plugin_render_asset = PluginRenderAsset::new(plugin_id, client_id, vec![])
-            .with_pipes(pipes_to_block_or_unblock);
-        let _ = senders
-            .send_to_plugin(PluginInstruction::UnblockCliPipes(vec![
-                plugin_render_asset,
-            ]))
-            .context("failed to unblock input pipe");
+    let pipes_to_block_or_unblock = pipes_to_block_or_unblock(running_plugin, None);
+    let plugin_render_asset =
+        PluginRenderAsset::new(plugin_id, client_id, vec![]).with_pipes(pipes_to_block_or_unblock);
+    let _ = senders
+        .send_to_plugin(PluginInstruction::UnblockCliPipes(vec![
+            plugin_render_asset,
+        ]))
+        .context("failed to unblock input pipe");
     Ok(())
 }
-

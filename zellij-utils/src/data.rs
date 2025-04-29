@@ -2317,9 +2317,9 @@ pub enum PluginCommand {
     OpenFileNearPlugin(FileToOpen, Context),
     OpenFileFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>, Context),
     OpenFileInPlaceOfPlugin(FileToOpen, bool, Context), // bool -> close_plugin_after_replace
-    GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>), // panes to group, panes to ungroup
+    GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>),     // panes to group, panes to ungroup
     HighlightAndUnhighlightPanes(Vec<PaneId>, Vec<PaneId>), // panes to highlight, panes to
-                                                           // unhighlight
+    // unhighlight
     CloseMultiplePanes(Vec<PaneId>),
     FloatMultiplePanes(Vec<PaneId>),
     EmbedMultiplePanes(Vec<PaneId>),

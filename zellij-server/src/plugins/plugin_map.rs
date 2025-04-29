@@ -50,11 +50,14 @@ impl PluginMap {
     pub fn remove_plugins(
         &mut self,
         pid: PluginId,
-    ) -> HashMap<(PluginId, ClientId), (
-        Arc<Mutex<RunningPlugin>>,
-        Arc<Mutex<Subscriptions>>,
-        HashMap<String, Sender<MessageToWorker>>,
-    )> {
+    ) -> HashMap<
+        (PluginId, ClientId),
+        (
+            Arc<Mutex<RunningPlugin>>,
+            Arc<Mutex<Subscriptions>>,
+            HashMap<String, Sender<MessageToWorker>>,
+        ),
+    > {
         let mut removed = HashMap::new();
         let ids_in_plugin_map: Vec<(PluginId, ClientId)> =
             self.plugin_assets.keys().copied().collect();

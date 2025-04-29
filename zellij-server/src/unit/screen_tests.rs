@@ -9,8 +9,6 @@ use crate::{
 };
 use insta::assert_snapshot;
 use std::path::PathBuf;
-use zellij_utils::input::mouse::MouseEvent;
-use zellij_utils::position::Position;
 use zellij_utils::cli::CliAction;
 use zellij_utils::data::{Event, Resize, Style};
 use zellij_utils::errors::{prelude::*, ErrorContext};
@@ -21,9 +19,11 @@ use zellij_utils::input::layout::{
     FloatingPaneLayout, Layout, PluginAlias, PluginUserConfiguration, Run, RunPlugin,
     RunPluginLocation, RunPluginOrAlias, SplitDirection, SplitSize, TiledPaneLayout,
 };
+use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
+use zellij_utils::position::Position;
 
 use crate::background_jobs::BackgroundJob;
 use crate::pty_writer::PtyWriteInstruction;
@@ -857,10 +857,13 @@ fn basic_move_of_active_tab_to_left() {
 }
 
 fn create_fixed_size_screen() -> Screen {
-    create_new_screen(Size {
-        cols: 121,
-        rows: 20,
-    }, true)
+    create_new_screen(
+        Size {
+            cols: 121,
+            rows: 20,
+        },
+        true,
+    )
 }
 
 #[test]
@@ -1389,7 +1392,10 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
 
 #[test]
 pub fn mouse_hover_effect() {
-    let size = Size { cols: 130, rows: 20 };
+    let size = Size {
+        cols: 130,
+        rows: 20,
+    };
     let client_id = 1;
     let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
@@ -1404,7 +1410,10 @@ pub fn mouse_hover_effect() {
         server_receiver
     );
     let hover_mouse_event_1 = MouseEvent::new_buttonless_motion(Position::new(5, 70));
-    let _ = mock_screen.to_screen.send(ScreenInstruction::MouseEvent(hover_mouse_event_1, client_id));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::MouseEvent(
+        hover_mouse_event_1,
+        client_id,
+    ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -1418,7 +1427,10 @@ pub fn mouse_hover_effect() {
 
 #[test]
 pub fn disabled_mouse_hover_effect() {
-    let size = Size { cols: 130, rows: 20 };
+    let size = Size {
+        cols: 130,
+        rows: 20,
+    };
     let client_id = 1;
     let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
@@ -1434,7 +1446,10 @@ pub fn disabled_mouse_hover_effect() {
         server_receiver
     );
     let hover_mouse_event_1 = MouseEvent::new_buttonless_motion(Position::new(5, 70));
-    let _ = mock_screen.to_screen.send(ScreenInstruction::MouseEvent(hover_mouse_event_1, client_id));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::MouseEvent(
+        hover_mouse_event_1,
+        client_id,
+    ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -1457,13 +1472,27 @@ fn group_panes_with_mouse() {
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
-    screen.handle_mouse_event(MouseEvent::new_left_press_with_alt_event(Position::new(2, 80)), client_id);
+    screen.handle_mouse_event(
+        MouseEvent::new_left_press_with_alt_event(Position::new(2, 80)),
+        client_id,
+    );
 
-    assert_eq!(screen.current_pane_group.borrow().get(&client_id), Some(&vec![PaneId::Terminal(2)]), "Pane Id added to client's pane group");
+    assert_eq!(
+        screen.current_pane_group.borrow().get(&client_id),
+        Some(&vec![PaneId::Terminal(2)]),
+        "Pane Id added to client's pane group"
+    );
 
-    screen.handle_mouse_event(MouseEvent::new_left_press_with_alt_event(Position::new(2, 80)), client_id);
+    screen.handle_mouse_event(
+        MouseEvent::new_left_press_with_alt_event(Position::new(2, 80)),
+        client_id,
+    );
 
-    assert_eq!(screen.current_pane_group.borrow().get(&client_id), Some(&vec![]), "Pane Id removed from client's pane group");
+    assert_eq!(
+        screen.current_pane_group.borrow().get(&client_id),
+        Some(&vec![]),
+        "Pane Id removed from client's pane group"
+    );
 }
 
 #[test]
@@ -1479,11 +1508,19 @@ fn group_panes_with_keyboard() {
     new_tab(&mut screen, 2, 1);
     let _ = screen.toggle_pane_in_group(client_id);
 
-    assert_eq!(screen.current_pane_group.borrow().get(&client_id), Some(&vec![PaneId::Terminal(2)]), "Pane Id added to client's pane group");
+    assert_eq!(
+        screen.current_pane_group.borrow().get(&client_id),
+        Some(&vec![PaneId::Terminal(2)]),
+        "Pane Id added to client's pane group"
+    );
 
     let _ = screen.toggle_pane_in_group(client_id);
 
-    assert_eq!(screen.current_pane_group.borrow().get(&client_id), Some(&vec![]), "Pane Id removed from client's pane group");
+    assert_eq!(
+        screen.current_pane_group.borrow().get(&client_id),
+        Some(&vec![]),
+        "Pane Id removed from client's pane group"
+    );
 }
 
 #[test]
@@ -1516,13 +1553,25 @@ fn group_panes_following_focus() {
     }
     {
         screen.toggle_group_marking(client_id).unwrap();
-        screen.get_active_tab_mut(client_id).unwrap().move_focus_up(client_id).unwrap();
+        screen
+            .get_active_tab_mut(client_id)
+            .unwrap()
+            .move_focus_up(client_id)
+            .unwrap();
         screen.add_active_pane_to_group_if_marking(&client_id);
-        assert_eq!(screen.current_pane_group.borrow().get(&client_id), Some(&vec![PaneId::Terminal(4), PaneId::Terminal(3)]), "Pane Id of focused pane and newly focused pane above added to pane group");
+        assert_eq!(
+            screen.current_pane_group.borrow().get(&client_id),
+            Some(&vec![PaneId::Terminal(4), PaneId::Terminal(3)]),
+            "Pane Id of focused pane and newly focused pane above added to pane group"
+        );
     }
     {
         let _ = screen.toggle_group_marking(client_id);
-        screen.get_active_tab_mut(client_id).unwrap().move_focus_up(client_id).unwrap();
+        screen
+            .get_active_tab_mut(client_id)
+            .unwrap()
+            .move_focus_up(client_id)
+            .unwrap();
         let _ = screen.add_active_pane_to_group_if_marking(&client_id);
         assert_eq!(screen.current_pane_group.borrow().get(&client_id), Some(&vec![PaneId::Terminal(4), PaneId::Terminal(3)]), "Pane Id of newly focused pane not added to group after the group marking was toggled off");
     }
@@ -1558,15 +1607,38 @@ fn break_group_with_mouse() {
     }
     {
         screen.toggle_group_marking(client_id).unwrap();
-        screen.get_active_tab_mut(client_id).unwrap().move_focus_up(client_id).unwrap();
+        screen
+            .get_active_tab_mut(client_id)
+            .unwrap()
+            .move_focus_up(client_id)
+            .unwrap();
         screen.add_active_pane_to_group_if_marking(&client_id);
-        screen.get_active_tab_mut(client_id).unwrap().move_focus_up(client_id).unwrap();
+        screen
+            .get_active_tab_mut(client_id)
+            .unwrap()
+            .move_focus_up(client_id)
+            .unwrap();
         screen.add_active_pane_to_group_if_marking(&client_id);
-        assert_eq!(screen.current_pane_group.borrow().get(&client_id), Some(&vec![PaneId::Terminal(4), PaneId::Terminal(3), PaneId::Terminal(2)]), "Group contains 3 panes");
+        assert_eq!(
+            screen.current_pane_group.borrow().get(&client_id),
+            Some(&vec![
+                PaneId::Terminal(4),
+                PaneId::Terminal(3),
+                PaneId::Terminal(2)
+            ]),
+            "Group contains 3 panes"
+        );
     }
 
-    screen.handle_mouse_event(MouseEvent::new_right_press_with_alt_event(Position::new(2, 80)), client_id);
-    assert_eq!(screen.current_pane_group.borrow().get(&client_id), Some(&vec![]), "Group cleared by mouse event");
+    screen.handle_mouse_event(
+        MouseEvent::new_right_press_with_alt_event(Position::new(2, 80)),
+        client_id,
+    );
+    assert_eq!(
+        screen.current_pane_group.borrow().get(&client_id),
+        Some(&vec![]),
+        "Group cleared by mouse event"
+    );
 }
 
 // Following are tests for sending CLI actions

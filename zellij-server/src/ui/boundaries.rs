@@ -107,10 +107,8 @@ fn combine_symbols(
                 Some(next_symbol_color)
             };
             ret
-        }
-        _ => {
-            current_symbol.color.or(next_symbol.color)
-        }
+        },
+        _ => current_symbol.color.or(next_symbol.color),
     };
     match (current_symbol.boundary_type, next_symbol.boundary_type) {
         (CROSS, _) | (_, CROSS) => {
