@@ -1,8 +1,8 @@
 themes {
   everforest-light {
         text_unselected {
-            base 223 221 200
-            background 92 106 114
+            base 92 106 114
+            background 242 239 223
             emphasis_0 255 158 100
             emphasis_1 53 167 124
             emphasis_2 141 161 1
@@ -17,17 +17,17 @@ themes {
             emphasis_3 223 105 186
         }
         ribbon_selected {
-            base 92 106 114
+            base 242 239 223
             background 141 161 1
-            emphasis_0 248 85 82
+            emphasis_0 79 88 94
             emphasis_1 255 158 100
             emphasis_2 223 105 186
             emphasis_3 58 148 197
         }
         ribbon_unselected {
-            base 92 106 114
-            background 92 106 114
-            emphasis_0 248 85 82
+            base 242 239 223
+            background 130 145 129
+            emphasis_0 79 88 94
             emphasis_1 223 221 200
             emphasis_2 58 148 197
             emphasis_3 223 105 186
@@ -41,15 +41,15 @@ themes {
             emphasis_3 223 105 186
         }
         table_cell_selected {
-            base 223 221 200
-            background 255 249 232
+            base 92 106 114
+            background 229 223 197
             emphasis_0 255 158 100
             emphasis_1 53 167 124
             emphasis_2 141 161 1
             emphasis_3 223 105 186
         }
         table_cell_unselected {
-            base 223 221 200
+            base 92 106 114
             background 92 106 114
             emphasis_0 255 158 100
             emphasis_1 53 167 124
@@ -57,7 +57,7 @@ themes {
             emphasis_3 223 105 186
         }
         list_selected {
-            base 223 221 200
+            base 92 106 114
             background 255 249 232
             emphasis_0 255 158 100
             emphasis_1 53 167 124
@@ -65,7 +65,7 @@ themes {
             emphasis_3 223 105 186
         }
         list_unselected {
-            base 223 221 200
+            base 92 106 114
             background 92 106 114
             emphasis_0 255 158 100
             emphasis_1 53 167 124
