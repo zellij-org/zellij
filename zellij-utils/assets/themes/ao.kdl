@@ -83,7 +83,7 @@ themes {
         frame_highlight {
             base 229 151 40
             background 0
-            emphasis_0 229 151 40
+            emphasis_0 210 168 255
             emphasis_1 229 151 40
             emphasis_2 229 151 40
             emphasis_3 229 151 40
