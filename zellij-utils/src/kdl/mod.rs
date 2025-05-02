@@ -2805,7 +2805,7 @@ impl Options {
             " ",
             "// Configure the scroll back buffer size",
             "// This is the number of lines zellij stores for each pane in the scroll back",
-            "// buffer. Excess number of lines are discarded in a FIFO fashion.",
+            "// buffer. Excess lines are discarded in a FIFO fashion.",
             "// (Requires restart)",
             "// Valid values: positive integers",
             "// Default value: 10000",

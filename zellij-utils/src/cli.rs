@@ -521,7 +521,7 @@ pub enum CliAction {
     MoveFocusOrTab {
         direction: Direction,
     },
-    /// Change the location of the focused pane in the specified direction or rotate forwrads
+    /// Change the location of the focused pane in the specified direction or rotate forwards
     /// [right|left|up|down]
     MovePane {
         direction: Option<Direction>,
