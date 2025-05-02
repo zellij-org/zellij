@@ -376,6 +376,13 @@ pub enum ScreenContext {
     StackPanes,
     ChangeFloatingPanesCoordinates,
     WebServerStarted,
+    AddHighlightPaneFrameColorOverride,
+    GroupAndUngroupPanes,
+    HighlightAndUnhighlightPanes,
+    FloatMultiplePanes,
+    EmbedMultiplePanes,
+    TogglePaneInGroup,
+    ToggleGroupMarking,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -452,7 +459,6 @@ pub enum ClientContext {
     ServerError,
     SwitchToMode,
     Connected,
-    ActiveClients,
     Log,
     LogError,
     OwnClientId,
@@ -480,7 +486,6 @@ pub enum ServerContext {
     DetachSession,
     AttachClient,
     ConnStatus,
-    ActiveClients,
     Log,
     LogError,
     SwitchSession,
@@ -520,6 +525,8 @@ pub enum BackgroundJobContext {
     ReportPluginList,
     QueryWebServer,
     ListWebSessions,
+    RenderToClients,
+    HighlightPanesWithMessage,
     Exit,
 }
 
@@ -794,7 +801,7 @@ mod not_wasm {
     /// Helper trait to convert error types that don't satisfy `anyhow`s trait requirements to
     /// anyhow errors.
     pub trait ToAnyhow<U> {
-        fn to_anyhow(self) -> crate::anyhow::Result<U>;
+        fn to_anyhow(self) -> anyhow::Result<U>;
     }
 
     /// `SendError` doesn't satisfy `anyhow`s trait requirements due to `T` possibly being a
@@ -807,19 +814,19 @@ mod not_wasm {
     impl<T: std::fmt::Debug, U> ToAnyhow<U>
         for Result<U, crate::channels::SendError<(T, ErrorContext)>>
     {
-        fn to_anyhow(self) -> crate::anyhow::Result<U> {
+        fn to_anyhow(self) -> anyhow::Result<U> {
             match self {
-                Ok(val) => crate::anyhow::Ok(val),
+                Ok(val) => anyhow::Ok(val),
                 Err(e) => {
                     let (msg, context) = e.into_inner();
                     if *crate::consts::DEBUG_MODE.get().unwrap_or(&true) {
-                        Err(crate::anyhow::anyhow!(
+                        Err(anyhow::anyhow!(
                             "failed to send message to channel: {:#?}",
                             msg
                         ))
                         .with_context(|| context.to_string())
                     } else {
-                        Err(crate::anyhow::anyhow!("failed to send message to channel"))
+                        Err(anyhow::anyhow!("failed to send message to channel"))
                             .with_context(|| context.to_string())
                     }
                 },
@@ -828,16 +835,14 @@ mod not_wasm {
     }
 
     impl<U> ToAnyhow<U> for Result<U, std::sync::PoisonError<U>> {
-        fn to_anyhow(self) -> crate::anyhow::Result<U> {
+        fn to_anyhow(self) -> anyhow::Result<U> {
             match self {
-                Ok(val) => crate::anyhow::Ok(val),
+                Ok(val) => anyhow::Ok(val),
                 Err(e) => {
                     if *crate::consts::DEBUG_MODE.get().unwrap_or(&true) {
-                        Err(crate::anyhow::anyhow!(
-                            "cannot acquire poisoned lock for {e:#?}"
-                        ))
+                        Err(anyhow::anyhow!("cannot acquire poisoned lock for {e:#?}"))
                     } else {
-                        Err(crate::anyhow::anyhow!("cannot acquire poisoned lock"))
+                        Err(anyhow::anyhow!("cannot acquire poisoned lock"))
                     }
                 },
             }

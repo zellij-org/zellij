@@ -2,6 +2,7 @@ use ansi_term::ANSIStrings;
 use unicode_width::UnicodeWidthStr;
 
 use crate::{LinePart, ARROW_SEPARATOR};
+use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
@@ -265,6 +266,8 @@ pub fn tab_line(
     mode: InputMode,
     active_swap_layout_name: &Option<String>,
     is_swap_layout_dirty: bool,
+    mode_info: &ModeInfo,
+    grouped_pane_count: Option<usize>,
 ) -> Vec<LinePart> {
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
     let mut tabs_before_active = all_tabs;
@@ -300,15 +303,21 @@ pub fn tab_line(
     if current_title_len < cols {
         let mut remaining_space = cols - current_title_len;
         let remaining_bg = palette.text_unselected.background;
-        if let Some(swap_layout_status) = swap_layout_status(
-            remaining_space,
-            active_swap_layout_name,
-            is_swap_layout_dirty,
-            mode,
-            &palette,
-            tab_separator(capabilities),
-        ) {
-            remaining_space -= swap_layout_status.len;
+        let right_side_component = match grouped_pane_count {
+            Some(grouped_pane_count) => {
+                render_group_controls(mode_info, grouped_pane_count, remaining_space)
+            },
+            None => swap_layout_status(
+                remaining_space,
+                active_swap_layout_name,
+                is_swap_layout_dirty,
+                mode,
+                &palette,
+                tab_separator(capabilities),
+            ),
+        };
+        if let Some(right_side_component) = right_side_component {
+            remaining_space -= right_side_component.len;
             let mut buffer = String::new();
             for _ in 0..remaining_space {
                 buffer.push_str(&style!(remaining_bg, remaining_bg).paint(" ").to_string());
@@ -318,7 +327,7 @@ pub fn tab_line(
                 len: remaining_space,
                 tab_index: None,
             });
-            prefix.push(swap_layout_status);
+            prefix.push(right_side_component);
         }
     }
 
@@ -386,4 +395,275 @@ fn swap_layout_status(
         },
         None => None,
     }
+}
+
+fn render_group_controls(
+    help: &ModeInfo,
+    grouped_pane_count: usize,
+    max_len: usize,
+) -> Option<LinePart> {
+    let currently_marking_group = help.currently_marking_pane_group.unwrap_or(false);
+    let keymap = help.get_mode_keybinds();
+    let (common_modifiers, multiple_select_key, pane_group_toggle_key, group_mark_toggle_key) = {
+        let multiple_select_key = multiple_select_key(&keymap);
+        let pane_group_toggle_key = single_action_key(&keymap, &[Action::TogglePaneInGroup]);
+        let group_mark_toggle_key = single_action_key(&keymap, &[Action::ToggleGroupMarking]);
+        let common_modifiers = get_common_modifiers(
+            vec![
+                multiple_select_key.iter().next(),
+                pane_group_toggle_key.iter().next(),
+                group_mark_toggle_key.iter().next(),
+            ]
+            .into_iter()
+            .filter_map(|k| k)
+            .collect(),
+        );
+        let multiple_select_key: Vec<KeyWithModifier> = multiple_select_key
+            .iter()
+            .map(|k| k.strip_common_modifiers(&common_modifiers))
+            .collect();
+        let pane_group_toggle_key: Vec<KeyWithModifier> = pane_group_toggle_key
+            .iter()
+            .map(|k| k.strip_common_modifiers(&common_modifiers))
+            .collect();
+        let group_mark_toggle_key: Vec<KeyWithModifier> = group_mark_toggle_key
+            .iter()
+            .map(|k| k.strip_common_modifiers(&common_modifiers))
+            .collect();
+        (
+            common_modifiers,
+            multiple_select_key,
+            pane_group_toggle_key,
+            group_mark_toggle_key,
+        )
+    };
+    let multiple_select_key = multiple_select_key
+        .iter()
+        .next()
+        .map(|key| format!("{}", key))
+        .unwrap_or("UNBOUND".to_owned());
+    let pane_group_toggle_key = pane_group_toggle_key
+        .iter()
+        .next()
+        .map(|key| format!("{}", key))
+        .unwrap_or("UNBOUND".to_owned());
+    let group_mark_toggle_key = group_mark_toggle_key
+        .iter()
+        .next()
+        .map(|key| format!("{}", key))
+        .unwrap_or("UNBOUND".to_owned());
+    let background = help.style.colors.text_unselected.background;
+    let foreground = help.style.colors.text_unselected.base;
+    let superkey_prefix_style = style!(foreground, background).bold();
+    let common_modifier_text = if common_modifiers.is_empty() {
+        "".to_owned()
+    } else {
+        format!(
+            "{} + ",
+            common_modifiers
+                .iter()
+                .map(|c| c.to_string())
+                .collect::<Vec<_>>()
+                .join("-")
+        )
+    };
+
+    // full
+    let full_selected_panes_text = if common_modifier_text.is_empty() {
+        format!("{} SELECTED PANES", grouped_pane_count)
+    } else {
+        format!("{} SELECTED PANES |", grouped_pane_count)
+    };
+    let full_group_actions_text = format!("<{}> Group Actions", &multiple_select_key);
+    let full_toggle_group_text = format!("<{}> Toggle Group", &pane_group_toggle_key);
+    let full_group_mark_toggle_text = format!("<{}> Follow Focus", &group_mark_toggle_key);
+    let ribbon_paddings_len = 12;
+    let full_controls_line_len = full_selected_panes_text.chars().count()
+        + 1
+        + common_modifier_text.chars().count()
+        + full_group_actions_text.chars().count()
+        + full_toggle_group_text.chars().count()
+        + full_group_mark_toggle_text.chars().count()
+        + ribbon_paddings_len
+        + 1; // 1 for the end padding
+
+    // medium
+    let medium_selected_panes_text = if common_modifier_text.is_empty() {
+        format!("{} SELECTED", grouped_pane_count)
+    } else {
+        format!("{} SELECTED |", grouped_pane_count)
+    };
+    let medium_group_actions_text = format!("<{}> Actions", &multiple_select_key);
+    let medium_toggle_group_text = format!("<{}> Toggle", &pane_group_toggle_key);
+    let medium_group_mark_toggle_text = format!("<{}> Follow", &group_mark_toggle_key);
+    let ribbon_paddings_len = 12;
+    let medium_controls_line_len = medium_selected_panes_text.chars().count()
+        + 1
+        + common_modifier_text.chars().count()
+        + medium_group_actions_text.chars().count()
+        + medium_toggle_group_text.chars().count()
+        + medium_group_mark_toggle_text.chars().count()
+        + ribbon_paddings_len
+        + 1; // 1 for the end padding
+
+    // short
+    let short_selected_panes_text = if common_modifier_text.is_empty() {
+        format!("{} SELECTED", grouped_pane_count)
+    } else {
+        format!("{} SELECTED |", grouped_pane_count)
+    };
+    let short_group_actions_text = format!("<{}>", &multiple_select_key);
+    let short_toggle_group_text = format!("<{}>", &pane_group_toggle_key);
+    let short_group_mark_toggle_text = format!("<{}>", &group_mark_toggle_key);
+    let color_emphasis_range_end = if common_modifier_text.is_empty() {
+        0
+    } else {
+        2
+    };
+    let ribbon_paddings_len = 12;
+    let short_controls_line_len = short_selected_panes_text.chars().count()
+        + 1
+        + common_modifier_text.chars().count()
+        + short_group_actions_text.chars().count()
+        + short_toggle_group_text.chars().count()
+        + short_group_mark_toggle_text.chars().count()
+        + ribbon_paddings_len
+        + 1; // 1 for the end padding
+
+    let (
+        selected_panes_text,
+        group_actions_text,
+        toggle_group_text,
+        group_mark_toggle_text,
+        controls_line_len,
+    ) = if max_len >= full_controls_line_len {
+        (
+            full_selected_panes_text,
+            full_group_actions_text,
+            full_toggle_group_text,
+            full_group_mark_toggle_text,
+            full_controls_line_len,
+        )
+    } else if max_len >= medium_controls_line_len {
+        (
+            medium_selected_panes_text,
+            medium_group_actions_text,
+            medium_toggle_group_text,
+            medium_group_mark_toggle_text,
+            medium_controls_line_len,
+        )
+    } else if max_len >= short_controls_line_len {
+        (
+            short_selected_panes_text,
+            short_group_actions_text,
+            short_toggle_group_text,
+            short_group_mark_toggle_text,
+            short_controls_line_len,
+        )
+    } else {
+        return None;
+    };
+    let selected_panes = serialize_text(
+        &Text::new(&selected_panes_text)
+            .color_range(
+                3,
+                ..selected_panes_text
+                    .chars()
+                    .count()
+                    .saturating_sub(color_emphasis_range_end),
+            )
+            .opaque(),
+    );
+    let group_actions_ribbon = serialize_ribbon(
+        &Text::new(&group_actions_text).color_range(0, 1..=multiple_select_key.chars().count()),
+    );
+    let toggle_group_ribbon = serialize_ribbon(
+        &Text::new(&toggle_group_text).color_range(0, 1..=pane_group_toggle_key.chars().count()),
+    );
+    let mut group_mark_toggle_ribbon = Text::new(&group_mark_toggle_text)
+        .color_range(0, 1..=group_mark_toggle_key.chars().count());
+    if currently_marking_group {
+        group_mark_toggle_ribbon = group_mark_toggle_ribbon.selected();
+    }
+    let group_mark_toggle_ribbon = serialize_ribbon(&group_mark_toggle_ribbon);
+    let controls_line = if common_modifiers.is_empty() {
+        format!(
+            "{} {}{}{}",
+            selected_panes, group_actions_ribbon, toggle_group_ribbon, group_mark_toggle_ribbon
+        )
+    } else {
+        let common_modifier =
+            serialize_text(&Text::new(&common_modifier_text).color_range(0, ..).opaque());
+        format!(
+            "{} {}{}{}{}",
+            selected_panes,
+            common_modifier,
+            group_actions_ribbon,
+            toggle_group_ribbon,
+            group_mark_toggle_ribbon
+        )
+    };
+    let remaining_space = max_len.saturating_sub(controls_line_len);
+    let mut padding = String::new();
+    let mut padding_len = 0;
+    for _ in 0..remaining_space {
+        padding.push_str(&ANSIStrings(&[superkey_prefix_style.paint(" ")]).to_string());
+        padding_len += 1;
+    }
+    Some(LinePart {
+        part: format!("{}{}", padding, controls_line),
+        len: controls_line_len + padding_len,
+        tab_index: None,
+    })
+}
+
+fn multiple_select_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithModifier> {
+    let mut matching = keymap.iter().find_map(|(key, acvec)| {
+        let has_match = acvec
+            .iter()
+            .find(|a| a.launches_plugin("zellij:multiple-select")) // TODO: make this an alias
+            .is_some();
+        if has_match {
+            Some(key.clone())
+        } else {
+            None
+        }
+    });
+    if let Some(matching) = matching.take() {
+        vec![matching]
+    } else {
+        vec![]
+    }
+}
+
+fn single_action_key(
+    keymap: &[(KeyWithModifier, Vec<Action>)],
+    action: &[Action],
+) -> Vec<KeyWithModifier> {
+    let mut matching = keymap.iter().find_map(|(key, acvec)| {
+        if acvec.iter().next() == action.iter().next() {
+            Some(key.clone())
+        } else {
+            None
+        }
+    });
+    if let Some(matching) = matching.take() {
+        vec![matching]
+    } else {
+        vec![]
+    }
+}
+
+fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifier> {
+    if keyvec.is_empty() {
+        return vec![];
+    }
+    let mut common_modifiers = keyvec.pop().unwrap().key_modifiers.clone();
+    for key in keyvec {
+        common_modifiers = common_modifiers
+            .intersection(&key.key_modifiers)
+            .cloned()
+            .collect();
+    }
+    common_modifiers.into_iter().collect()
 }

@@ -8,8 +8,11 @@ use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugi
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
+use async_channel::Sender;
+use async_std::task::{self, JoinHandle};
 use highway::{HighwayHash, PortableHash};
 use log::info;
+use notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     path::PathBuf,
@@ -17,17 +20,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 use wasmtime::{Engine, Module};
-use zellij_utils::async_channel::Sender;
-use zellij_utils::async_std::task::{self, JoinHandle};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{InputMode, PermissionStatus, PermissionType, PipeMessage, PipeSource};
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::permission::PermissionCache;
-use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 use zellij_utils::plugin_api::event::ProtobufEvent;
 
-use zellij_utils::prost::Message;
+use prost::Message;
 
 use crate::panes::PaneId;
 use crate::{
@@ -318,14 +318,43 @@ impl WasmBridge {
     pub fn unload_plugin(&mut self, pid: PluginId) -> Result<()> {
         info!("Bye from plugin {}", &pid);
         let mut plugin_map = self.plugin_map.lock().unwrap();
-        for (running_plugin, _, workers) in plugin_map.remove_plugins(pid) {
+        for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in
+            plugin_map.remove_plugins(pid)
+        {
             for (_worker_name, worker_sender) in workers {
                 drop(worker_sender.send(MessageToWorker::Exit));
             }
-            let running_plugin = running_plugin.lock().unwrap();
-            let cache_dir = running_plugin.store.data().plugin_own_data_dir.clone();
-            if let Err(e) = std::fs::remove_dir_all(cache_dir) {
-                log::error!("Failed to remove cache dir for plugin: {:?}", e);
+            let subscriptions = subscriptions.lock().unwrap();
+            if subscriptions.contains(&EventType::BeforeClose) {
+                let mut running_plugin = running_plugin.lock().unwrap();
+                match apply_before_close_event_to_plugin(
+                    pid,
+                    client_id,
+                    &mut running_plugin,
+                    self.senders.clone(),
+                ) {
+                    Ok(()) => {},
+                    Err(e) => {
+                        log::error!("{:?}", e);
+
+                        // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
+                        let stringified_error = format!("{:?}", e).replace("\n", "\n\r");
+
+                        handle_plugin_crash(plugin_id, stringified_error, self.senders.clone());
+                    },
+                }
+                let cache_dir = running_plugin.store.data().plugin_own_data_dir.clone();
+                if let Err(e) = std::fs::remove_dir_all(cache_dir) {
+                    log::error!("Failed to remove cache dir for plugin: {:?}", e);
+                }
+            } else {
+                // this is duplicated because of locking/unlocking order between running_plugin and
+                // subscriptions
+                let running_plugin = running_plugin.lock().unwrap();
+                let cache_dir = running_plugin.store.data().plugin_own_data_dir.clone();
+                if let Err(e) = std::fs::remove_dir_all(cache_dir) {
+                    log::error!("Failed to remove cache dir for plugin: {:?}", e);
+                }
             }
         }
         self.cached_plugin_map.clear();
@@ -1651,4 +1680,37 @@ pub fn handle_plugin_crash(plugin_id: PluginId, message: String, senders: Thread
         plugin_id,
         loading_indication,
     ));
+}
+
+pub fn apply_before_close_event_to_plugin(
+    plugin_id: PluginId,
+    client_id: ClientId,
+    running_plugin: &mut RunningPlugin,
+    senders: ThreadSenders,
+) -> Result<()> {
+    let instance = &running_plugin.instance;
+
+    let err_context = || format!("Failed to apply event to plugin {plugin_id}");
+    let event = Event::BeforeClose;
+    let protobuf_event: ProtobufEvent = event
+        .clone()
+        .try_into()
+        .map_err(|e| anyhow!("Failed to convert to protobuf: {:?}", e))?;
+    let update = instance
+        .get_typed_func::<(), i32>(&mut running_plugin.store, "update")
+        .with_context(err_context)?;
+    wasi_write_object(running_plugin.store.data(), &protobuf_event.encode_to_vec())
+        .with_context(err_context)?;
+    let _should_render = update
+        .call(&mut running_plugin.store, ())
+        .with_context(err_context)?;
+    let pipes_to_block_or_unblock = pipes_to_block_or_unblock(running_plugin, None);
+    let plugin_render_asset =
+        PluginRenderAsset::new(plugin_id, client_id, vec![]).with_pipes(pipes_to_block_or_unblock);
+    let _ = senders
+        .send_to_plugin(PluginInstruction::UnblockCliPipes(vec![
+            plugin_render_asset,
+        ]))
+        .context("failed to unblock input pipe");
+    Ok(())
 }

@@ -1799,7 +1799,9 @@ pub fn multiple_users_in_different_panes_and_same_tab() {
             name: "take snapshot after",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(63, 2) && remote_terminal.status_bar_appears()
+                if remote_terminal.cursor_position_is(63, 2)
+                    && remote_terminal.status_bar_appears()
+                    && remote_terminal.snapshot_contains("LOCK")
                 {
                     // cursor is in the newly opened second pane
                     step_is_complete = true;

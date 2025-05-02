@@ -18,6 +18,7 @@ use crate::ui::{
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
+use vte;
 use zellij_utils::data::{
     BareKey, KeyWithModifier, PermissionStatus, PermissionType, PluginPermission,
 };
@@ -31,7 +32,6 @@ use zellij_utils::{
     input::mouse::{MouseEvent, MouseEventType},
     pane_size::PaneGeom,
     shared::make_terminal_title,
-    vte,
 };
 
 macro_rules! style {
@@ -412,13 +412,7 @@ impl Pane for PluginPane {
                 self.pane_name.clone()
             };
 
-            let mut frame_geom = self.current_geom();
-            if !frame_params.should_draw_pane_frames {
-                // in this case the width of the frame needs not include the pane corners
-                frame_geom
-                    .cols
-                    .set_inner(frame_geom.cols.as_usize().saturating_sub(1));
-            }
+            let frame_geom = self.current_geom();
             let is_pinned = frame_geom.is_pinned;
             let mut frame = PaneFrame::new(
                 frame_geom.into(),
@@ -613,6 +607,10 @@ impl Pane for PluginPane {
         self.resize_grids();
     }
 
+    fn get_content_offset(&self) -> Offset {
+        self.content_offset
+    }
+
     fn store_pane_name(&mut self) {
         if self.pane_name != self.prev_pane_name {
             self.prev_pane_name = self.pane_name.clone()
@@ -648,7 +646,16 @@ impl Pane for PluginPane {
     fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) {
         self.pane_frame_color_override = Some((self.style.colors.exit_code_error.base, error_text));
     }
-    fn clear_pane_frame_color_override(&mut self) {
+    fn add_highlight_pane_frame_color_override(
+        &mut self,
+        text: Option<String>,
+        _client_id: Option<ClientId>,
+    ) {
+        // TODO: if we have a client_id, we should only highlight the frame for this client
+        self.pane_frame_color_override = Some((self.style.colors.frame_highlight.base, text));
+    }
+    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) {
+        // TODO: if we have a client_id, we should only clear the highlight for this client
         self.pane_frame_color_override = None;
     }
     fn frame_color_override(&self) -> Option<PaletteColor> {
@@ -740,6 +747,20 @@ impl Pane for PluginPane {
                 if client_frame.clicked_on_pinned(relative_position) {
                     self.toggle_pinned();
                     return true;
+                }
+            }
+        }
+        false
+    }
+    fn intercept_mouse_event_on_frame(&mut self, event: &MouseEvent, client_id: ClientId) -> bool {
+        if self.position_is_on_frame(&event.position) {
+            let relative_position = self.relative_position(&event.position);
+            if let MouseEventType::Press = event.event_type {
+                if let Some(client_frame) = self.frame.get_mut(&client_id) {
+                    if client_frame.clicked_on_pinned(relative_position) {
+                        self.toggle_pinned();
+                        return true;
+                    }
                 }
             }
         }

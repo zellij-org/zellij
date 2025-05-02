@@ -1,0 +1,38 @@
+---
+source: zellij-utils/src/session_serialization.rs
+assertion_line: 2081
+expression: kdl.0
+---
+layout {
+    tab name="Tab with \"stacked panes\"" {
+        pane size=12 split_direction="vertical" {
+            pane size=10 stacked=true {
+                pane
+                pane expanded=true
+                pane
+            }
+            pane size=10 stacked=true {
+                pane
+                pane expanded=true
+                pane
+            }
+        }
+        pane size=10 split_direction="vertical" {
+            pane size=10
+            pane size=10
+        }
+        pane size=12 split_direction="vertical" {
+            pane size=10 stacked=true {
+                pane
+                pane expanded=true
+                pane
+            }
+            pane size=10 stacked=true {
+                pane
+                pane expanded=true
+                pane
+            }
+        }
+    }
+}
+

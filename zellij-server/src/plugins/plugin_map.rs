@@ -16,7 +16,7 @@ use wasmtime_wasi::{
 
 use crate::{thread_bus::ThreadSenders, ClientId};
 
-use zellij_utils::async_channel::Sender;
+use async_channel::Sender;
 use zellij_utils::{
     data::EventType,
     data::InputMode,
@@ -50,18 +50,21 @@ impl PluginMap {
     pub fn remove_plugins(
         &mut self,
         pid: PluginId,
-    ) -> Vec<(
-        Arc<Mutex<RunningPlugin>>,
-        Arc<Mutex<Subscriptions>>,
-        HashMap<String, Sender<MessageToWorker>>,
-    )> {
-        let mut removed = vec![];
+    ) -> HashMap<
+        (PluginId, ClientId),
+        (
+            Arc<Mutex<RunningPlugin>>,
+            Arc<Mutex<Subscriptions>>,
+            HashMap<String, Sender<MessageToWorker>>,
+        ),
+    > {
+        let mut removed = HashMap::new();
         let ids_in_plugin_map: Vec<(PluginId, ClientId)> =
             self.plugin_assets.keys().copied().collect();
         for (plugin_id, client_id) in ids_in_plugin_map {
             if pid == plugin_id {
                 if let Some(plugin_asset) = self.plugin_assets.remove(&(plugin_id, client_id)) {
-                    removed.push(plugin_asset);
+                    removed.insert((plugin_id, client_id), plugin_asset);
                 }
             }
         }

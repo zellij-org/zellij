@@ -30,14 +30,14 @@ impl FileListView {
         self.path.pop();
         self.path_is_dir = true;
         self.files.clear();
-        self.reset_selected();
+        self.clear_selected();
         refresh_directory(&self.path);
     }
     pub fn descend_to_root_path(&mut self) {
         self.path.clear();
         self.path_is_dir = true;
         self.files.clear();
-        self.reset_selected();
+        self.clear_selected();
         refresh_directory(&self.path);
     }
     pub fn enter_dir(&mut self, entry: &FsEntry) {
@@ -46,10 +46,10 @@ impl FileListView {
         self.path = path;
         self.path_is_dir = is_dir;
         self.files.clear();
-        self.reset_selected();
+        self.clear_selected();
     }
-    pub fn reset_selected(&mut self) {
-        *self.selected_mut() = self.selected().unwrap_or(0);
+    pub fn clear_selected(&mut self) {
+        self.cursor_hist.remove(&self.path);
     }
     pub fn update_files(
         &mut self,

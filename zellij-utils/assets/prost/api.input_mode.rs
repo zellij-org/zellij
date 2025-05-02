@@ -1,7 +1,7 @@
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct InputModeMessage {
-    #[prost(enumeration = "InputMode", tag = "1")]
+    #[prost(enumeration="InputMode", tag="1")]
     pub input_mode: i32,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]

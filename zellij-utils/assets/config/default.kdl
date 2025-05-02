@@ -181,6 +181,14 @@ keybinds {
         bind "Alt -" { Resize "Decrease"; }
         bind "Alt [" { PreviousSwapLayout; }
         bind "Alt ]" { NextSwapLayout; }
+        bind "Alt m" {
+            LaunchOrFocusPlugin "zellij:multiple-select" {
+                floating true
+                move_to_focused_tab true
+            }
+        }
+        bind "Alt p" { TogglePaneInGroup; }
+        bind "Alt Shift p" { ToggleGroupMarking; }
     }
     shared_except "normal" "locked" {
         bind "Enter" "Esc" { SwitchToMode "Normal"; }
@@ -433,7 +441,7 @@ load_plugins {
 //
 // show_release_notes false
 
-// Whether to show startup tips on session start
+// Whether to enable mouse hover effects and pane grouping functionality
 // Default: true
 //
-// show_startup_tips false
+// advanced_mouse_actions false

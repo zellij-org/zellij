@@ -1,6 +1,6 @@
 [package]
 name = "zellij"
-version = "0.42.0"
+version = "0.43.0"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition = "2021"
 description = "A terminal workspace with batteries included"
@@ -14,18 +14,27 @@ rust-version = "1.84"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-zellij-client = { path = "zellij-client/", version = "0.42.0" }
-zellij-server = { path = "zellij-server/", version = "0.42.0" }
-zellij-utils = { path = "zellij-utils/", version = "0.42.0" }
-thiserror = "1.0.40"
-log = "0.4.17"
-dialoguer = "0.10.4"
+zellij-client = { path = "zellij-client/", version = "0.43.0" }
+zellij-server = { path = "zellij-server/", version = "0.43.0" }
+zellij-utils = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+dialoguer = { version = "0.10.4", default-features = false }
+humantime = { workspace = true }
+interprocess = { workspace = true }
+log = { workspace = true }
+miette = { workspace = true }
+names = { workspace = true }
+nix = { workspace = true }
+suggest = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
 ssh2 = "0.9.1"
 rand = "0.8.0"
 regex = "1.8.1"
+vte = { workspace = true }
 
 [workspace]
 members = [
@@ -39,6 +48,7 @@ members = [
     "default-plugins/plugin-manager",
     "default-plugins/about",
     "default-plugins/share",
+    "default-plugins/multiple-select",
     "zellij-client",
     "zellij-server",
     "zellij-utils",
@@ -47,6 +57,39 @@ members = [
     "xtask",
     ".",
 ]
+
+[workspace.dependencies]
+ansi_term = { version = "0.12.1", default-features = false }
+anyhow = { version = "1.0.70", default-features = false, features = ["backtrace", "std"] }
+async-std = { version = "1.3.0", default-features = false, features = ["attributes", "default", "std", "unstable"] }
+clap = { version = "3.2.2", default-features = false, features = ["env", "derive", "color", "std", "suggestions"] }
+humantime = { version = "2.1.0", default-features = false }
+interprocess = { version = "1.2.1", default-features = false }
+isahc = { version = "1.7.2", default-features = false, features = ["http2", "text-decoding"] }
+lazy_static = { version = "1.4.0", default-features = false }
+libc = { version = "0.2", default-features = false, features = ["std"] }
+log = { version = "0.4.17", default-features = false }
+miette = { version = "5.7.0", default-features = false, features = ["fancy"] }
+nix = { version = "0.23.1", default-features = false }
+notify-debouncer-full = { version = "0.1.0", default-features = false }
+prost = { version = "0.11.9", default-features = false, features = ["std", "prost-derive"] }
+regex = { version = "1.5.5", default-features = false, features = ["perf", "std"] }
+serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
+serde_json = { version = "1.0", default-features = false, features = ["std"] }
+signal-hook = { version = "0.3", default-features = false, features = ["iterator"] }
+strum = { version = "0.20.0", default-features = false }
+strum_macros = { version = "0.20.0", default-features = false }
+suggest = { version = "0.4.0", default-features = false }
+tempfile = { version = "3.2.0", default-features = false }
+termwiz = { version = "0.23.2", default-features = false }
+thiserror = { version = "1.0.40", default-features = false }
+unicode-width = { version = "0.1.8", default-features = false }
+url = { version = "2.2.2", default-features = false, features = ["serde"] }
+uuid = { version = "1.4.1", default-features = false, features = ["serde", "v4", "std"] }
+vte = { version = "0.11.0", default-features = false }
+names = { version = "0.14.0", default-features = false }
+include_dir = { version = "0.7.3", default-features = false }
+zellij-utils = { path = "zellij-utils/", version = "0.43.0" }
 
 [profile.dev-opt]
 inherits = "dev"

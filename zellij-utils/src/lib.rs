@@ -27,11 +27,5 @@ pub mod logging; // Requires log4rs
 #[cfg(not(target_family = "wasm"))]
 pub mod sessions;
 
-#[cfg(not(target_family = "wasm"))]
-pub use ::{
-    anyhow, async_channel, async_std, clap, humantime, include_dir, interprocess, isahc,
-    lazy_static, libc, miette, nix, notify_debouncer_full, regex, serde, serde_json, signal_hook,
-    tempfile, termwiz, url, uuid, vte,
-};
-
+// TODO(hartan): Remove this re-export for the next minor release.
 pub use ::prost;

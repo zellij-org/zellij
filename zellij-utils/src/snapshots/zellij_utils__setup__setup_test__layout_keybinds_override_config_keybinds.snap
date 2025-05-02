@@ -117,11 +117,12 @@ Config {
         serialization_interval: None,
         disable_session_metadata: None,
         support_kitty_keyboard_protocol: None,
-        enable_web_server: None,
+        web_server: None,
         web_client_font: None,
         stacked_resize: None,
         show_startup_tips: None,
         show_release_notes: None,
+        advanced_mouse_actions: None,
     },
     themes: {},
     plugins: PluginAliases {

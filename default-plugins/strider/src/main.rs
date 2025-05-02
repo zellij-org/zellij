@@ -32,7 +32,7 @@ impl ZellijPlugin for State {
             EventType::Timer,
             EventType::FileSystemUpdate,
         ]);
-        self.file_list_view.reset_selected();
+        self.file_list_view.clear_selected();
         // the caller_cwd might be different from the initial_cwd if this plugin was defined as an
         // alias, with access to a certain part of the file system (often broader) and was called
         // from an individual pane somewhere inside this broad scope - in this case, we want to
@@ -73,7 +73,11 @@ impl ZellijPlugin for State {
                     should_render = true;
                 },
                 BareKey::Esc if key.has_no_modifiers() => {
-                    self.clear_search_term_or_descend();
+                    if self.is_searching {
+                        self.clear_search_term();
+                    } else {
+                        self.file_list_view.clear_selected();
+                    }
                     should_render = true;
                 },
                 BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
@@ -87,15 +91,11 @@ impl ZellijPlugin for State {
                     self.move_selection_down();
                     should_render = true;
                 },
-                BareKey::Enter
-                    if key.has_no_modifiers() && self.handling_filepick_request_from.is_some() =>
-                {
-                    self.send_filepick_response();
+                BareKey::Right | BareKey::Tab | BareKey::Enter if key.has_no_modifiers() => {
+                    self.traverse_dir();
+                    should_render = true;
                 },
-                BareKey::Enter if key.has_no_modifiers() => {
-                    self.open_selected_path();
-                },
-                BareKey::Right | BareKey::Tab if key.has_no_modifiers() => {
+                BareKey::Right if key.has_no_modifiers() => {
                     self.traverse_dir();
                     should_render = true;
                 },
@@ -122,6 +122,12 @@ impl ZellijPlugin for State {
                 Mouse::LeftClick(line, _) => {
                     self.handle_left_click(line);
                     should_render = true;
+                },
+                Mouse::Hover(line, _) => {
+                    if line >= 0 {
+                        self.handle_mouse_hover(line);
+                        should_render = true;
+                    }
                 },
                 _ => {},
             },

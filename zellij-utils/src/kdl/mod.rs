@@ -1103,6 +1103,8 @@ impl Action {
                 Some(node)
             },
             Action::TogglePanePinned => Some(KdlNode::new("TogglePanePinned")),
+            Action::TogglePaneInGroup => Some(KdlNode::new("TogglePaneInGroup")),
+            Action::ToggleGroupMarking => Some(KdlNode::new("ToggleGroupMarking")),
             _ => None,
         }
     }
@@ -1798,6 +1800,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 })
             },
             "TogglePanePinned" => Ok(Action::TogglePanePinned),
+            "TogglePaneInGroup" => Ok(Action::TogglePaneInGroup),
+            "ToggleGroupMarking" => Ok(Action::ToggleGroupMarking),
             _ => Err(ConfigError::new_kdl_error(
                 format!("Unsupported action: {}", action_name).into(),
                 kdl_action.span().offset(),
@@ -2312,6 +2316,9 @@ impl Options {
         let show_release_notes =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "show_release_notes")
                 .map(|(v, _)| v);
+        let advanced_mouse_actions =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "advanced_mouse_actions")
+                .map(|(v, _)| v);
         Ok(Options {
             simplified_ui,
             theme,
@@ -2345,6 +2352,7 @@ impl Options {
             stacked_resize,
             show_startup_tips,
             show_release_notes,
+            advanced_mouse_actions,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -3289,6 +3297,33 @@ impl Options {
             None
         }
     }
+    fn advanced_mouse_actions_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            " ",
+            "// Whether to enable mouse hover effects and pane grouping functionality",
+            "// default is true",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("advanced_mouse_actions");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(advanced_mouse_actions) = self.advanced_mouse_actions {
+            let mut node = create_node(advanced_mouse_actions);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
@@ -3390,6 +3425,9 @@ impl Options {
         }
         if let Some(show_release_notes) = self.show_release_notes_to_kdl(add_comments) {
             nodes.push(show_release_notes);
+        }
+        if let Some(advanced_mouse_actions) = self.advanced_mouse_actions_to_kdl(add_comments) {
+            nodes.push(advanced_mouse_actions);
         }
         nodes
     }
@@ -4561,6 +4599,29 @@ impl SessionInfo {
             .and_then(|e| e.value().as_bool())
             .unwrap_or(false);
         let is_current_session = name == current_session_name;
+        let mut tab_history = BTreeMap::new();
+        if let Some(kdl_tab_history) = kdl_document.get("tab_history").and_then(|p| p.children()) {
+            for client_node in kdl_tab_history.nodes() {
+                if let Some(client_id) = client_node.children().and_then(|c| {
+                    c.get("id")
+                        .and_then(|c| c.entries().iter().next().and_then(|e| e.value().as_i64()))
+                }) {
+                    let mut history = vec![];
+                    if let Some(history_entries) = client_node
+                        .children()
+                        .and_then(|c| c.get("history"))
+                        .map(|h| h.entries())
+                    {
+                        for entry in history_entries {
+                            if let Some(entry) = entry.value().as_i64() {
+                                history.push(entry as usize);
+                            }
+                        }
+                    }
+                    tab_history.insert(client_id as u16, history);
+                }
+            }
+        }
         Ok(SessionInfo {
             name,
             tabs,
@@ -4571,6 +4632,7 @@ impl SessionInfo {
             web_client_count,
             web_clients_allowed,
             plugins: Default::default(), // we do not serialize plugin information
+            tab_history,
         })
     }
     pub fn to_string(&self) -> String {
@@ -4617,6 +4679,24 @@ impl SessionInfo {
         }
         available_layouts.set_children(available_layouts_children);
 
+        let mut tab_history = KdlNode::new("tab_history");
+        let mut tab_history_children = KdlDocument::new();
+        for (client_id, client_tab_history) in &self.tab_history {
+            let mut client_document = KdlDocument::new();
+            let mut client_node = KdlNode::new("client");
+            let mut id = KdlNode::new("id");
+            id.push(*client_id as i64);
+            client_document.nodes_mut().push(id);
+            let mut history = KdlNode::new("history");
+            for entry in client_tab_history {
+                history.push(*entry as i64);
+            }
+            client_document.nodes_mut().push(history);
+            client_node.set_children(client_document);
+            tab_history_children.nodes_mut().push(client_node);
+        }
+        tab_history.set_children(tab_history_children);
+
         kdl_document.nodes_mut().push(name);
         kdl_document.nodes_mut().push(tabs);
         kdl_document.nodes_mut().push(panes);
@@ -4624,6 +4704,7 @@ impl SessionInfo {
         kdl_document.nodes_mut().push(web_clients_allowed);
         kdl_document.nodes_mut().push(web_client_count);
         kdl_document.nodes_mut().push(available_layouts);
+        kdl_document.nodes_mut().push(tab_history);
         kdl_document.fmt();
         kdl_document.to_string()
     }
@@ -4952,6 +5033,7 @@ impl PaneInfo {
             terminal_command,
             plugin_url,
             is_selectable,
+            index_in_pane_group: Default::default(), // we don't serialize this
         };
         Ok((tab_position, pane_info))
     }
@@ -5099,6 +5181,7 @@ fn serialize_and_deserialize_session_info_with_data() {
             terminal_command: Some("foo".to_owned()),
             plugin_url: None,
             is_selectable: true,
+            index_in_pane_group: Default::default(), // we don't serialize this
         },
         PaneInfo {
             id: 1,
@@ -5123,6 +5206,7 @@ fn serialize_and_deserialize_session_info_with_data() {
             terminal_command: None,
             plugin_url: Some("i_am_a_fake_plugin".to_owned()),
             is_selectable: true,
+            index_in_pane_group: Default::default(), // we don't serialize this
         },
     ];
     let mut panes = HashMap::new();
@@ -5178,6 +5262,7 @@ fn serialize_and_deserialize_session_info_with_data() {
         plugins: Default::default(),
         web_client_count: 2,
         web_clients_allowed: true,
+        tab_history: Default::default(),
     };
     let serialized = session_info.to_string();
     let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();

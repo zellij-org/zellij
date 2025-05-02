@@ -1,4 +1,7 @@
-use crate::{panes::PaneId, tab::Pane};
+use crate::{
+    panes::PaneId,
+    tab::{Pane, MIN_TERMINAL_HEIGHT},
+};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -306,7 +309,7 @@ impl<'a> StackedPanes<'a> {
         Ok(())
     }
     fn pane_is_one_liner(&self, id: &PaneId) -> Result<bool> {
-        let err_context = || format!("Cannot determin if pane is one liner or not");
+        let err_context = || format!("Cannot determine if pane is one liner or not");
         let panes = self.panes.borrow();
         let pane_to_close = panes.get(id).with_context(err_context)?;
         Ok(pane_to_close.position_and_size().rows.is_fixed())
@@ -413,13 +416,32 @@ impl<'a> StackedPanes<'a> {
             stacked_pane_ids_over_flexible_panes,
         ))
     }
+    pub fn stacked_pane_ids_on_top_and_bottom_of_stacks(
+        &self,
+    ) -> Result<(HashSet<PaneId>, HashSet<PaneId>)> {
+        let mut stacked_pane_ids_on_top_of_stacks = HashSet::new();
+        let mut stacked_pane_ids_on_bottom_of_stacks = HashSet::new();
+        let all_stacks = self.get_all_stacks()?;
+        for stack in all_stacks {
+            if let Some((first_pane_id, _pane)) = stack.iter().next() {
+                stacked_pane_ids_on_top_of_stacks.insert(*first_pane_id);
+            }
+            if let Some((last_pane_id, _pane)) = stack.iter().last() {
+                stacked_pane_ids_on_bottom_of_stacks.insert(*last_pane_id);
+            }
+        }
+        Ok((
+            stacked_pane_ids_on_top_of_stacks,
+            stacked_pane_ids_on_bottom_of_stacks,
+        ))
+    }
     pub fn make_room_for_new_pane(&mut self) -> Result<PaneGeom> {
         let err_context = || format!("Failed to add pane to stack");
         let all_stacks = self.get_all_stacks()?;
         for stack in all_stacks {
             if let Some((id_of_flexible_pane_in_stack, _flexible_pane_in_stack)) = stack
                 .iter()
-                .find(|(_p_id, p)| !p.rows.is_fixed() && p.rows.as_usize() > 1)
+                .find(|(_p_id, p)| !p.rows.is_fixed() && p.rows.as_usize() > MIN_TERMINAL_HEIGHT)
             {
                 self.make_lowest_pane_in_stack_flexible(id_of_flexible_pane_in_stack)?;
                 let all_stacked_pane_positions =
@@ -452,7 +474,7 @@ impl<'a> StackedPanes<'a> {
         let stack = self.positions_in_stack(pane_id).with_context(err_context)?;
         if let Some((id_of_flexible_pane_in_stack, _flexible_pane_in_stack)) = stack
             .iter()
-            .find(|(_p_id, p)| !p.rows.is_fixed() && p.rows.as_usize() > 1)
+            .find(|(_p_id, p)| !p.rows.is_fixed() && p.rows.as_usize() > MIN_TERMINAL_HEIGHT)
         {
             self.make_lowest_pane_in_stack_flexible(id_of_flexible_pane_in_stack)?;
             let all_stacked_pane_positions =
@@ -477,6 +499,20 @@ impl<'a> StackedPanes<'a> {
             return Ok(position_for_new_pane);
         }
         Err(anyhow!("Not enough room for another pane!"))
+    }
+    pub fn room_left_in_stack_of_pane_id(&self, pane_id: &PaneId) -> Option<usize> {
+        // if the pane is stacked, returns the number of panes possible to add to this stack
+        let Ok(stack) = self.positions_in_stack(pane_id) else {
+            return None;
+        };
+        stack.iter().find_map(|(_p_id, p)| {
+            if !p.rows.is_fixed() {
+                // this is the flexible pane
+                Some(p.rows.as_usize().saturating_sub(MIN_TERMINAL_HEIGHT))
+            } else {
+                None
+            }
+        })
     }
     pub fn new_stack(&self, root_pane_id: PaneId, pane_count_in_stack: usize) -> Vec<PaneGeom> {
         let mut stacked_geoms = vec![];
@@ -800,6 +836,29 @@ impl<'a> StackedPanes<'a> {
             }
         }
         highest_stack_id
+    }
+    pub fn positions_and_sizes_of_all_stacks(&self) -> Option<HashMap<usize, PaneGeom>> {
+        let panes = self.panes.borrow();
+        let mut positions_and_sizes_of_all_stacks = HashMap::new();
+        for pane in panes.values() {
+            if let Some(stack_id) = pane.current_geom().stacked {
+                if !positions_and_sizes_of_all_stacks.contains_key(&stack_id) {
+                    positions_and_sizes_of_all_stacks
+                        .insert(stack_id, self.position_and_size_of_stack(&pane.pid())?);
+                }
+            }
+        }
+        Some(positions_and_sizes_of_all_stacks)
+    }
+    pub fn pane_ids_in_stack(&self, stack_id: usize) -> Vec<PaneId> {
+        let panes = self.panes.borrow();
+        let mut pane_ids_in_stack = vec![];
+        for pane in panes.values() {
+            if pane.current_geom().stacked == Some(stack_id) {
+                pane_ids_in_stack.push(pane.pid());
+            }
+        }
+        pane_ids_in_stack
     }
     fn reset_stack_size(
         &self,

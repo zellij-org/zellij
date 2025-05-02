@@ -6,6 +6,7 @@ use crate::plugins::zellij_exports::{wasi_write_object, zellij_exports};
 use crate::plugins::PluginId;
 use highway::{HighwayHash, PortableHash};
 use log::info;
+use prost::Message;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fs,
@@ -16,7 +17,6 @@ use url::Url;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 use wasmtime_wasi::{preview1::WasiP1Ctx, DirPerms, FilePerms, WasiCtxBuilder};
 use zellij_utils::consts::ZELLIJ_PLUGIN_ARTIFACT_DIR;
-use zellij_utils::prost::Message;
 
 use crate::{
     logging_pipe::LoggingPipe, screen::ScreenInstruction, thread_bus::ThreadSenders,
@@ -529,7 +529,8 @@ impl<'a> PluginLoader<'a> {
         );
         let (_wasm_bytes, cached_path) = self.plugin_bytes_and_cache_path()?;
         let timer = std::time::Instant::now();
-        let module = unsafe { Module::deserialize_file(&self.engine, &cached_path)? };
+        let file_in_cache = std::fs::read(&cached_path)?;
+        let module = unsafe { Module::deserialize(&self.engine, file_in_cache)? };
         log::info!(
             "Loaded plugin '{}' from cache folder at '{}' in {:?}",
             self.plugin_path.display(),
@@ -638,7 +639,6 @@ impl<'a> PluginLoader<'a> {
             .filter_map(|export| export.clone().into_func().map(|_| export.name()))
         {
             if function_name.ends_with("_worker") {
-                let plugin_config = self.plugin.clone();
                 let (mut store, instance) =
                     self.create_plugin_instance_and_wasi_env_for_worker()?;
 
@@ -649,7 +649,7 @@ impl<'a> PluginLoader<'a> {
                     .call(&mut store, ())
                     .with_context(err_context)?;
 
-                let worker = RunningWorker::new(store, instance, &function_name, plugin_config);
+                let worker = RunningWorker::new(store, instance, &function_name);
                 let worker_sender = plugin_worker(worker);
                 workers.insert(function_name.into(), worker_sender);
             }

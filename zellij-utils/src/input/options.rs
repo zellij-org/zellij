@@ -196,6 +196,12 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub show_release_notes: Option<bool>,
+
+    /// Whether to enable mouse hover effects and pane grouping functionality
+    /// default is true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub advanced_mouse_actions: Option<bool>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -324,6 +330,7 @@ impl Options {
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
+        let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
 
         Options {
             simplified_ui,
@@ -358,6 +365,7 @@ impl Options {
             stacked_resize,
             show_startup_tips,
             show_release_notes,
+            advanced_mouse_actions,
         }
     }
 
@@ -423,6 +431,7 @@ impl Options {
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
+        let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
 
         Options {
             simplified_ui,
@@ -457,6 +466,7 @@ impl Options {
             stacked_resize,
             show_startup_tips,
             show_release_notes,
+            advanced_mouse_actions,
         }
     }
 
@@ -525,8 +535,9 @@ impl From<CliOptions> for Options {
             web_server: opts.web_server,
             web_client_font: opts.web_client_font,
             stacked_resize: opts.stacked_resize,
-            show_release_notes: opts.show_release_notes,
             show_startup_tips: opts.show_startup_tips,
+            show_release_notes: opts.show_release_notes,
+            advanced_mouse_actions: opts.advanced_mouse_actions,
             ..Default::default()
         }
     }

@@ -350,6 +350,7 @@ pub enum ScreenInstruction {
         HoldForCommand,
         Option<InitialTitle>,
         Option<Run>,
+        bool, // close replaced pane
         ClientTabIndexOrPaneId,
     ),
     DumpLayoutToHd,
@@ -371,6 +372,7 @@ pub enum ScreenInstruction {
         hide_session_name: bool,
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
+        advanced_mouse_actions: bool,
     },
     RerunCommandPane(u32), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
@@ -404,9 +406,17 @@ pub enum ScreenInstruction {
     ListClientsToPlugin(PluginId, ClientId),
     TogglePanePinned(ClientId),
     SetFloatingPanePinned(PaneId, bool),
-    StackPanes(Vec<PaneId>),
+    StackPanes(Vec<PaneId>, ClientId),
     ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
     WebServerStarted,
+    AddHighlightPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional
+    // message
+    GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, ClientId), // panes_to_group, panes_to_ungroup
+    HighlightAndUnhighlightPanes(Vec<PaneId>, Vec<PaneId>, ClientId), // panes_to_highlight, panes_to_unhighlight
+    FloatMultiplePanes(Vec<PaneId>, ClientId),
+    EmbedMultiplePanes(Vec<PaneId>, ClientId),
+    TogglePaneInGroup(ClientId),
+    ToggleGroupMarking(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -618,6 +628,17 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::ChangeFloatingPanesCoordinates
             },
             ScreenInstruction::WebServerStarted => ScreenContext::WebServerStarted,
+            ScreenInstruction::AddHighlightPaneFrameColorOverride(..) => {
+                ScreenContext::AddHighlightPaneFrameColorOverride
+            },
+            ScreenInstruction::GroupAndUngroupPanes(..) => ScreenContext::GroupAndUngroupPanes,
+            ScreenInstruction::HighlightAndUnhighlightPanes(..) => {
+                ScreenContext::HighlightAndUnhighlightPanes
+            },
+            ScreenInstruction::FloatMultiplePanes(..) => ScreenContext::FloatMultiplePanes,
+            ScreenInstruction::EmbedMultiplePanes(..) => ScreenContext::EmbedMultiplePanes,
+            ScreenInstruction::TogglePaneInGroup(..) => ScreenContext::TogglePaneInGroup,
+            ScreenInstruction::ToggleGroupMarking(..) => ScreenContext::ToggleGroupMarking,
         }
     }
 }
@@ -700,6 +721,9 @@ pub(crate) struct Screen {
     explicitly_disable_kitty_keyboard_protocol: bool,
     default_editor: Option<PathBuf>,
     web_clients_allowed: bool,
+    current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
+    advanced_mouse_actions: bool,
+    currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
 }
 
 impl Screen {
@@ -727,6 +751,7 @@ impl Screen {
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
         web_clients_allowed: bool,
+        advanced_mouse_actions: bool,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -771,6 +796,9 @@ impl Screen {
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
             web_clients_allowed,
+            current_pane_group: Rc::new(RefCell::new(HashMap::new())),
+            currently_marking_pane_group: Rc::new(RefCell::new(HashMap::new())),
+            advanced_mouse_actions,
         }
     }
 
@@ -1262,6 +1290,10 @@ impl Screen {
         &mut self.tabs
     }
 
+    pub fn get_tabs(&self) -> &BTreeMap<usize, Tab> {
+        &self.tabs
+    }
+
     /// Returns an immutable reference to this [`Screen`]'s active [`Tab`].
     pub fn get_active_tab(&self, client_id: ClientId) -> Result<&Tab> {
         match self.active_tab_indices.get(&client_id) {
@@ -1372,6 +1404,9 @@ impl Screen {
             self.explicitly_disable_kitty_keyboard_protocol,
             self.default_editor.clone(),
             self.web_clients_allowed,
+            self.current_pane_group.clone(),
+            self.currently_marking_pane_group.clone(),
+            self.advanced_mouse_actions,
         );
         for (client_id, mode_info) in &self.mode_info {
             tab.change_mode_info(mode_info.clone(), *client_id);
@@ -1663,6 +1698,7 @@ impl Screen {
             web_clients_allowed: self.web_clients_allowed,
             web_client_count: self.connected_clients.borrow().iter().filter(|(_client_id, is_web_client)| **is_web_client).count(),
             plugins: Default::default(), // these are filled in by the wasm thread
+            tab_history: self.tab_history.clone(),
         };
         self.bus
             .senders
@@ -2415,10 +2451,16 @@ impl Screen {
         hold_for_command: HoldForCommand,
         run: Option<Run>,
         pane_title: Option<InitialTitle>,
+        close_replaced_pane: bool,
         client_id_tab_index_or_pane_id: ClientTabIndexOrPaneId,
     ) -> Result<()> {
         let suppress_pane = |tab: &mut Tab, pane_id: PaneId, new_pane_id: PaneId| {
-            let _ = tab.suppress_pane_and_replace_with_pid(pane_id, new_pane_id, run);
+            let _ = tab.suppress_pane_and_replace_with_pid(
+                pane_id,
+                new_pane_id,
+                close_replaced_pane,
+                run,
+            );
             if let Some(pane_title) = pane_title {
                 let _ = tab.rename_pane(pane_title.as_bytes().to_vec(), new_pane_id);
             }
@@ -2484,6 +2526,7 @@ impl Screen {
         hide_session_name: bool,
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
+        advanced_mouse_actions: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
@@ -2498,6 +2541,7 @@ impl Screen {
         self.copy_options.command = copy_command.clone();
         self.copy_options.copy_on_select = copy_on_select;
         self.draw_pane_frames = pane_frames;
+        self.advanced_mouse_actions = advanced_mouse_actions;
         self.default_mode_info
             .update_arrow_fonts(should_support_arrow_fonts);
         self.default_mode_info
@@ -2517,6 +2561,7 @@ impl Screen {
             tab.update_copy_options(&self.copy_options);
             tab.set_pane_frames(pane_frames);
             tab.update_arrow_fonts(should_support_arrow_fonts);
+            tab.update_advanced_mouse_actions(advanced_mouse_actions);
         }
 
         // client specific configuration
@@ -2569,10 +2614,11 @@ impl Screen {
             );
         }
     }
-    pub fn stack_panes(&mut self, mut pane_ids_to_stack: Vec<PaneId>) {
+    pub fn stack_panes(&mut self, mut pane_ids_to_stack: Vec<PaneId>) -> Option<PaneId> {
+        // if successful, returns the pane id of the root pane
         if pane_ids_to_stack.is_empty() {
             log::error!("Got an empty list of pane_ids to stack");
-            return;
+            return None;
         }
         let stack_size = pane_ids_to_stack.len();
         let root_pane_id = pane_ids_to_stack.remove(0);
@@ -2589,19 +2635,20 @@ impl Screen {
             .copied()
         else {
             log::error!("Failed to find tab for root_pane_id: {:?}", root_pane_id);
-            return;
+            return None;
         };
+
+        let mut panes_to_stack = vec![];
         let target_tab_has_room_for_stack = self
             .tabs
-            .get(&root_tab_id)
+            .get_mut(&root_tab_id)
             .map(|t| t.has_room_for_stack(root_pane_id, stack_size))
             .unwrap_or(false);
         if !target_tab_has_room_for_stack {
             log::error!("No room for stack with root pane id: {:?}", root_pane_id);
-            return;
+            return None;
         }
 
-        let mut panes_to_stack = vec![];
         for (tab_id, tab) in self.tabs.iter_mut() {
             if tab_id == &root_tab_id {
                 // we do this before we extract panes so that the extraction won't trigger a
@@ -2624,6 +2671,7 @@ impl Screen {
         self.tabs
             .get_mut(&root_tab_id)
             .map(|t| t.stack_panes(root_pane_id, panes_to_stack));
+        return Some(root_pane_id);
     }
     pub fn change_floating_panes_coordinates(
         &mut self,
@@ -2638,6 +2686,87 @@ impl Screen {
                 }
             }
         }
+    }
+    pub fn handle_mouse_event(&mut self, event: MouseEvent, client_id: ClientId) {
+        match self
+            .get_active_tab_mut(client_id)
+            .and_then(|tab| tab.handle_mouse_event(&event, client_id))
+        {
+            Ok(mouse_effect) => {
+                if let Some(pane_id) = mouse_effect.group_toggle {
+                    if self.advanced_mouse_actions {
+                        self.toggle_pane_id_in_group(pane_id, &client_id);
+                    }
+                }
+                if let Some(pane_id) = mouse_effect.group_add {
+                    if self.advanced_mouse_actions {
+                        self.add_pane_id_to_group(pane_id, &client_id);
+                    }
+                }
+                if mouse_effect.ungroup {
+                    if self.advanced_mouse_actions {
+                        self.clear_pane_group(&client_id);
+                    }
+                }
+                if mouse_effect.state_changed {
+                    let _ = self.log_and_report_session_state();
+                }
+                if !mouse_effect.leave_clipboard_message {
+                    let _ = self
+                        .bus
+                        .senders
+                        .send_to_plugin(PluginInstruction::Update(vec![(
+                            None,
+                            Some(client_id),
+                            Event::InputReceived,
+                        )]));
+                }
+                self.render(None).non_fatal();
+            },
+            Err(e) => {
+                eprintln!("mouse event error: {:?}", e);
+                log::error!("Failed to process MouseEvent: {}", e);
+            },
+        }
+    }
+    pub fn toggle_pane_in_group(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = "Can't add pane to group";
+        let active_tab = self
+            .get_active_tab(client_id)
+            .with_context(|| err_context)?;
+        let active_pane_id = active_tab
+            .get_active_pane_id(client_id)
+            .with_context(|| err_context)?;
+        self.toggle_pane_id_in_group(active_pane_id, &client_id);
+        let _ = self.log_and_report_session_state();
+        Ok(())
+    }
+    pub fn toggle_group_marking(&mut self, client_id: ClientId) -> Result<()> {
+        let (was_marking_before, marking_pane_group_now) = {
+            let mut currently_marking_pane_group = self.currently_marking_pane_group.borrow_mut();
+            let previous_value = currently_marking_pane_group
+                .remove(&client_id)
+                .unwrap_or(false);
+            let new_value = !previous_value;
+            if new_value {
+                currently_marking_pane_group.insert(client_id, true);
+            }
+            (previous_value, new_value)
+        };
+        if marking_pane_group_now {
+            let active_pane_id = self.get_active_pane_id(&client_id);
+            if let Some(active_pane_id) = active_pane_id {
+                self.add_pane_id_to_group(active_pane_id, &client_id);
+            }
+        }
+        let value_changed = was_marking_before != marking_pane_group_now;
+        if value_changed {
+            for tab in self.tabs.values_mut() {
+                tab.update_input_modes()?;
+            }
+            let _ = self.log_and_report_session_state();
+        }
+        Ok(())
     }
     fn unblock_input(&self) -> Result<()> {
         self.bus
@@ -2783,6 +2912,117 @@ impl Screen {
     fn connected_clients_contains(&self, client_id: &ClientId) -> bool {
         self.connected_clients.borrow().contains_key(client_id)
     }
+    fn get_client_pane_group(&self, client_id: &ClientId) -> HashSet<PaneId> {
+        self.current_pane_group
+            .borrow()
+            .get(client_id)
+            .map(|p| p.iter().copied().collect())
+            .unwrap_or_else(|| HashSet::new())
+    }
+    fn clear_pane_group(&mut self, client_id: &ClientId) {
+        self.current_pane_group
+            .borrow_mut()
+            .get_mut(client_id)
+            .map(|p| p.clear());
+        self.currently_marking_pane_group
+            .borrow_mut()
+            .remove(client_id);
+    }
+    fn toggle_pane_id_in_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
+        {
+            let mut pane_groups = self.current_pane_group.borrow_mut();
+            let client_pane_group = pane_groups.entry(*client_id).or_insert_with(|| vec![]);
+            if client_pane_group.contains(&pane_id) {
+                client_pane_group.retain(|p| p != &pane_id);
+            } else {
+                client_pane_group.push(pane_id);
+            };
+        }
+        self.retain_only_existing_panes_in_pane_groups();
+    }
+    fn add_pane_id_to_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
+        {
+            let mut pane_groups = self.current_pane_group.borrow_mut();
+            let client_pane_group = pane_groups.entry(*client_id).or_insert_with(|| vec![]);
+            if !client_pane_group.contains(&pane_id) {
+                client_pane_group.push(pane_id);
+            }
+        }
+        self.retain_only_existing_panes_in_pane_groups();
+    }
+    fn add_active_pane_to_group_if_marking(&mut self, client_id: &ClientId) {
+        {
+            if self
+                .currently_marking_pane_group
+                .borrow()
+                .get(client_id)
+                .copied()
+                .unwrap_or(false)
+            {
+                let active_pane_id = self.get_active_pane_id(&client_id);
+                if let Some(active_pane_id) = active_pane_id {
+                    self.add_pane_id_to_group(active_pane_id, &client_id);
+                }
+            }
+        }
+        self.retain_only_existing_panes_in_pane_groups();
+    }
+    fn get_active_pane_id(&self, client_id: &ClientId) -> Option<PaneId> {
+        let active_tab = self.get_active_tab(*client_id).ok()?;
+        active_tab.get_active_pane_id(*client_id)
+    }
+
+    fn group_and_ungroup_panes(
+        &mut self,
+        mut pane_ids_to_group: Vec<PaneId>,
+        pane_ids_to_ungroup: Vec<PaneId>,
+        client_id: ClientId,
+    ) {
+        {
+            let mut current_pane_group = self.current_pane_group.borrow_mut();
+            let client_pane_group = current_pane_group
+                .entry(client_id)
+                .or_insert_with(|| vec![]);
+            client_pane_group.append(&mut pane_ids_to_group);
+            client_pane_group.retain(|p| !pane_ids_to_ungroup.contains(p));
+        }
+        self.retain_only_existing_panes_in_pane_groups();
+        let _ = self.log_and_report_session_state();
+    }
+    fn retain_only_existing_panes_in_pane_groups(&mut self) {
+        let clients_with_empty_group = {
+            let mut clients_with_empty_group = vec![];
+            let mut current_pane_group = self.current_pane_group.borrow_mut();
+            for (client_id, panes_in_group) in current_pane_group.iter_mut() {
+                let all_tabs = self.get_tabs();
+                panes_in_group.retain(|p_id| {
+                    let mut found = false;
+                    for tab in all_tabs.values() {
+                        if tab.has_pane_with_pid(&p_id) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    found
+                });
+                if panes_in_group.is_empty() {
+                    clients_with_empty_group.push(*client_id)
+                }
+            }
+            clients_with_empty_group
+        };
+        for client_id in &clients_with_empty_group {
+            self.currently_marking_pane_group
+                .borrow_mut()
+                .remove(client_id);
+        }
+        if !clients_with_empty_group.is_empty() {
+            let all_tabs = self.get_tabs_mut();
+            for tab in all_tabs.values_mut() {
+                let _ = tab.update_input_modes();
+            }
+        }
+    }
 }
 
 #[cfg(not(test))]
@@ -2850,6 +3090,7 @@ pub(crate) fn screen_thread_main(
                            // the program running inside a pane requests it
     let stacked_resize = config_options.stacked_resize.unwrap_or(true);
     let web_clients_allowed = config_options.web_server.map(|s| s.web_clients_allowed()).unwrap_or(true);
+    let advanced_mouse_actions = config_options.advanced_mouse_actions.unwrap_or(true);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -2884,6 +3125,7 @@ pub(crate) fn screen_thread_main(
         stacked_resize,
         default_editor,
         web_clients_allowed,
+        advanced_mouse_actions,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
@@ -2912,6 +3154,10 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
+                let _ = screen
+                    .bus
+                    .senders
+                    .send_to_background_jobs(BackgroundJob::RenderToClients);
             },
             ScreenInstruction::PluginBytes(mut plugin_render_assets) => {
                 for plugin_render_asset in plugin_render_assets.iter_mut() {
@@ -3061,7 +3307,6 @@ pub(crate) fn screen_thread_main(
                     .toggle_pane_embed_or_floating(client_id), ?);
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
-
                 screen.render(None)?;
             },
             ScreenInstruction::ToggleFloatingPanes(client_id, default_shell) => {
@@ -3203,12 +3448,14 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab.move_focus_left(client_id),
                     ?
                 );
+                screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::MoveFocusLeftOrPreviousTab(client_id) => {
                 screen.move_focus_left_or_previous_tab(client_id)?;
+                screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.unblock_input()?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -3220,6 +3467,7 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab.move_focus_down(client_id),
                     ?
                 );
+                screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
@@ -3231,12 +3479,14 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab.move_focus_right(client_id),
                     ?
                 );
+                screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::MoveFocusRightOrNextTab(client_id) => {
                 screen.move_focus_right_or_next_tab(client_id)?;
+                screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.unblock_input()?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -3248,6 +3498,7 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab.move_focus_up(client_id),
                     ?
                 );
+                screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
@@ -3554,6 +3805,7 @@ pub(crate) fn screen_thread_main(
 
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
+                screen.retain_only_existing_panes_in_pane_groups();
             },
             ScreenInstruction::HoldPane(id, exit_status, run_command) => {
                 let is_first_run = false;
@@ -3872,18 +4124,7 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::MouseEvent(event, client_id) => {
-                let state_changed = screen
-                    .get_active_tab_mut(client_id)
-                    .and_then(|tab| tab.handle_mouse_event(&event, client_id));
-                match state_changed {
-                    Ok(state_changed) => {
-                        if state_changed {
-                            screen.log_and_report_session_state()?;
-                        }
-                        screen.render(None)?;
-                    },
-                    Err(err) => Err::<(), _>(err).non_fatal(),
-                }
+                screen.handle_mouse_event(event, client_id);
             },
             ScreenInstruction::Copy(client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
@@ -4015,12 +4256,28 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
             },
+            ScreenInstruction::AddHighlightPaneFrameColorOverride(pane_ids, error_text) => {
+                let all_tabs = screen.get_tabs_mut();
+                for pane_id in pane_ids {
+                    for tab in all_tabs.values_mut() {
+                        if tab.has_pane_with_pid(&pane_id) {
+                            tab.add_highlight_pane_frame_color_override(
+                                pane_id,
+                                error_text.clone(),
+                                None,
+                            );
+                            break;
+                        }
+                    }
+                }
+                screen.render(None)?;
+            },
             ScreenInstruction::ClearPaneFrameColorOverride(pane_ids) => {
                 let all_tabs = screen.get_tabs_mut();
                 for pane_id in pane_ids {
                     for tab in all_tabs.values_mut() {
                         if tab.has_pane_with_pid(&pane_id) {
-                            tab.clear_pane_frame_color_override(pane_id);
+                            tab.clear_pane_frame_color_override(pane_id, None);
                             break;
                         }
                     }
@@ -4210,6 +4467,7 @@ pub(crate) fn screen_thread_main(
                 });
                 let run_plugin = Run::Plugin(run_plugin_or_alias);
 
+                let close_replaced_pane = false;
                 if should_be_in_place {
                     if let Some(pane_id_to_replace) = pane_id_to_replace {
                         let client_tab_index_or_pane_id =
@@ -4219,6 +4477,7 @@ pub(crate) fn screen_thread_main(
                             None,
                             Some(run_plugin),
                             Some(pane_title),
+                            close_replaced_pane,
                             client_tab_index_or_pane_id,
                         )?;
                     } else if let Some(client_id) = client_id {
@@ -4229,6 +4488,7 @@ pub(crate) fn screen_thread_main(
                             None,
                             Some(run_plugin),
                             Some(pane_title),
+                            close_replaced_pane,
                             client_tab_index_or_pane_id,
                         )?;
                     } else {
@@ -4534,6 +4794,7 @@ pub(crate) fn screen_thread_main(
                 hold_for_command,
                 pane_title,
                 invoked_with,
+                close_replaced_pane,
                 client_id_tab_index_or_pane_id,
             ) => {
                 screen.replace_pane(
@@ -4541,6 +4802,7 @@ pub(crate) fn screen_thread_main(
                     hold_for_command,
                     invoked_with,
                     pane_title,
+                    close_replaced_pane,
                     client_id_tab_index_or_pane_id,
                 )?;
 
@@ -4633,6 +4895,7 @@ pub(crate) fn screen_thread_main(
                 hide_session_name,
                 stacked_resize,
                 default_editor,
+                advanced_mouse_actions,
             } => {
                 screen
                     .reconfigure(
@@ -4650,6 +4913,7 @@ pub(crate) fn screen_thread_main(
                         hide_session_name,
                         stacked_resize,
                         default_editor,
+                        advanced_mouse_actions,
                         client_id,
                     )
                     .non_fatal();
@@ -4836,7 +5100,7 @@ pub(crate) fn screen_thread_main(
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.toggle_pane_embed_or_floating_for_pane_id(pane_id)
+                        tab.toggle_pane_embed_or_floating_for_pane_id(pane_id, None)
                             .non_fatal();
                         break;
                     }
@@ -4860,6 +5124,17 @@ pub(crate) fn screen_thread_main(
                     new_tab_name,
                     client_id,
                 )?;
+                // TODO: is this a race?
+                let pane_group = screen.get_client_pane_group(&client_id);
+                if !pane_group.is_empty() {
+                    let _ = screen.bus.senders.send_to_background_jobs(
+                        BackgroundJob::HighlightPanesWithMessage(
+                            pane_group.iter().copied().collect(),
+                            "BROKEN OUT".to_owned(),
+                        ),
+                    );
+                }
+                screen.clear_pane_group(&client_id);
             },
             ScreenInstruction::BreakPanesToTabWithIndex {
                 pane_ids,
@@ -4873,6 +5148,16 @@ pub(crate) fn screen_thread_main(
                     should_change_focus_to_new_tab,
                     client_id,
                 )?;
+                let pane_group = screen.get_client_pane_group(&client_id);
+                if !pane_group.is_empty() {
+                    let _ = screen.bus.senders.send_to_background_jobs(
+                        BackgroundJob::HighlightPanesWithMessage(
+                            pane_group.iter().copied().collect(),
+                            "BROKEN OUT".to_owned(),
+                        ),
+                    );
+                }
+                screen.clear_pane_group(&client_id);
             },
             ScreenInstruction::TogglePanePinned(client_id) => {
                 screen.toggle_pane_pinned(client_id);
@@ -4880,10 +5165,22 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::SetFloatingPanePinned(pane_id, should_be_pinned) => {
                 screen.set_floating_pane_pinned(pane_id, should_be_pinned);
             },
-            ScreenInstruction::StackPanes(pane_ids_to_stack) => {
-                screen.stack_panes(pane_ids_to_stack);
-                let _ = screen.unblock_input();
-                let _ = screen.render(None);
+            ScreenInstruction::StackPanes(pane_ids_to_stack, client_id) => {
+                if let Some(root_pane_id) = screen.stack_panes(pane_ids_to_stack) {
+                    let _ = screen.focus_pane_with_id(root_pane_id, false, client_id);
+                    let _ = screen.unblock_input();
+                    let _ = screen.render(None);
+                    let pane_group = screen.get_client_pane_group(&client_id);
+                    if !pane_group.is_empty() {
+                        let _ = screen.bus.senders.send_to_background_jobs(
+                            BackgroundJob::HighlightPanesWithMessage(
+                                pane_group.iter().copied().collect(),
+                                "STACKED".to_owned(),
+                            ),
+                        );
+                    }
+                    screen.clear_pane_group(&client_id);
+                }
             },
             ScreenInstruction::ChangeFloatingPanesCoordinates(pane_ids_and_coordinates) => {
                 screen.change_floating_panes_coordinates(pane_ids_and_coordinates);
@@ -4897,6 +5194,111 @@ pub(crate) fn screen_thread_main(
 //                     tab.set_session_is_shared(true);
 //                 }
 //                 screen.log_and_report_session_state();
+            },
+            ScreenInstruction::GroupAndUngroupPanes(
+                pane_ids_to_group,
+                pane_ids_to_ungroup,
+                client_id,
+            ) => {
+                screen.group_and_ungroup_panes(pane_ids_to_group, pane_ids_to_ungroup, client_id);
+                let _ = screen.log_and_report_session_state();
+            },
+            ScreenInstruction::TogglePaneInGroup(client_id) => {
+                screen.toggle_pane_in_group(client_id).non_fatal();
+            },
+            ScreenInstruction::ToggleGroupMarking(client_id) => {
+                screen.toggle_group_marking(client_id).non_fatal();
+            },
+            ScreenInstruction::HighlightAndUnhighlightPanes(
+                pane_ids_to_highlight,
+                pane_ids_to_unhighlight,
+                client_id,
+            ) => {
+                {
+                    let all_tabs = screen.get_tabs_mut();
+                    for pane_id in pane_ids_to_highlight {
+                        for tab in all_tabs.values_mut() {
+                            if tab.has_pane_with_pid(&pane_id) {
+                                tab.add_highlight_pane_frame_color_override(
+                                    pane_id,
+                                    None,
+                                    Some(client_id),
+                                );
+                            }
+                        }
+                    }
+                    for pane_id in pane_ids_to_unhighlight {
+                        for tab in all_tabs.values_mut() {
+                            if tab.has_pane_with_pid(&pane_id) {
+                                tab.clear_pane_frame_color_override(pane_id, Some(client_id));
+                            }
+                        }
+                    }
+                    screen.render(None)?;
+                }
+                let _ = screen.log_and_report_session_state();
+            },
+            ScreenInstruction::FloatMultiplePanes(pane_ids_to_float, client_id) => {
+                {
+                    let all_tabs = screen.get_tabs_mut();
+                    let mut ejected_panes_in_group = vec![];
+                    for pane_id in pane_ids_to_float {
+                        for tab in all_tabs.values_mut() {
+                            if tab.has_pane_with_pid(&pane_id) {
+                                if !tab.pane_id_is_floating(&pane_id) {
+                                    ejected_panes_in_group.push(pane_id);
+                                    tab.toggle_pane_embed_or_floating_for_pane_id(
+                                        pane_id,
+                                        Some(client_id),
+                                    )
+                                    .non_fatal();
+                                }
+                                tab.show_floating_panes();
+                            }
+                        }
+                    }
+                    screen.render(None)?;
+                    if !ejected_panes_in_group.is_empty() {
+                        let _ = screen.bus.senders.send_to_background_jobs(
+                            BackgroundJob::HighlightPanesWithMessage(
+                                ejected_panes_in_group,
+                                "EJECTED".to_owned(),
+                            ),
+                        );
+                    }
+                }
+                let _ = screen.log_and_report_session_state();
+            },
+            ScreenInstruction::EmbedMultiplePanes(pane_ids_to_float, client_id) => {
+                {
+                    let all_tabs = screen.get_tabs_mut();
+                    let mut embedded_panes_in_group = vec![];
+                    for pane_id in pane_ids_to_float {
+                        for tab in all_tabs.values_mut() {
+                            if tab.has_pane_with_pid(&pane_id) {
+                                if tab.pane_id_is_floating(&pane_id) {
+                                    embedded_panes_in_group.push(pane_id);
+                                    tab.toggle_pane_embed_or_floating_for_pane_id(
+                                        pane_id,
+                                        Some(client_id),
+                                    )
+                                    .non_fatal();
+                                }
+                                tab.hide_floating_panes();
+                            }
+                        }
+                    }
+                    screen.render(None)?;
+                    if !embedded_panes_in_group.is_empty() {
+                        let _ = screen.bus.senders.send_to_background_jobs(
+                            BackgroundJob::HighlightPanesWithMessage(
+                                embedded_panes_in_group,
+                                "EMBEDDED".to_owned(),
+                            ),
+                        );
+                    }
+                }
+                let _ = screen.log_and_report_session_state();
             },
         }
     }

@@ -37,10 +37,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 
+use interprocess::local_socket::LocalSocketStream;
 use zellij_utils::{
     data::{InputMode, ModeInfo, Palette, Style},
     input::command::{RunCommand, TerminalAction},
-    interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };
 
@@ -201,7 +201,6 @@ impl MockPtyInstructionBus {
     }
 }
 
-// TODO: move to shared thingy with other test file
 fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     set_session_name("test".into());
     let index = 0;
@@ -225,10 +224,13 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let current_group = Rc::new(RefCell::new(HashMap::new()));
+    let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
+    let advanced_mouse_actions = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -258,6 +260,84 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
+        current_group,
+        currently_marking_pane_group,
+        advanced_mouse_actions,
+    );
+    tab.apply_layout(
+        TiledPaneLayout::default(),
+        vec![],
+        vec![(1, None)],
+        vec![],
+        HashMap::new(),
+        client_id,
+    )
+    .unwrap();
+    tab
+}
+
+fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab {
+    set_session_name("test".into());
+    let index = 0;
+    let position = 0;
+    let name = String::new();
+    let os_api = Box::new(FakeInputOutput::default());
+    let senders = ThreadSenders::default().silently_fail_on_send();
+    let max_panes = None;
+    let mode_info = default_mode;
+    let style = Style::default();
+    let draw_pane_frames = false;
+    let auto_layout = true;
+    let client_id = 1;
+    let session_is_mirrored = true;
+    let mut connected_clients = HashSet::new();
+    connected_clients.insert(client_id);
+    let connected_clients = Rc::new(RefCell::new(connected_clients));
+    let character_cell_info = Rc::new(RefCell::new(None));
+    let stacked_resize = Rc::new(RefCell::new(true));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let copy_options = CopyOptions::default();
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let current_group = Rc::new(RefCell::new(HashMap::new()));
+    let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
+    let advanced_mouse_actions = true;
+    let mut tab = Tab::new(
+        index,
+        position,
+        name,
+        size,
+        character_cell_info,
+        stacked_resize,
+        sixel_image_store,
+        os_api,
+        senders,
+        max_panes,
+        style,
+        mode_info,
+        draw_pane_frames,
+        auto_layout,
+        connected_clients,
+        session_is_mirrored,
+        Some(client_id),
+        copy_options,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        (vec![], vec![]),
+        PathBuf::from("my_default_shell"),
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+        false,
+        current_group,
+        currently_marking_pane_group,
+        advanced_mouse_actions,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -309,10 +389,13 @@ fn create_new_tab_with_swap_layouts(
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let current_group = Rc::new(RefCell::new(HashMap::new()));
+    let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
+    let advanced_mouse_actions = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -342,6 +425,9 @@ fn create_new_tab_with_swap_layouts(
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
+        current_group,
+        currently_marking_pane_group,
+        advanced_mouse_actions,
     );
     let (
         base_layout,
@@ -394,10 +480,13 @@ fn create_new_tab_with_os_api(
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let current_group = Rc::new(RefCell::new(HashMap::new()));
+    let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
+    let advanced_mouse_actions = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -427,6 +516,9 @@ fn create_new_tab_with_os_api(
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
+        current_group,
+        currently_marking_pane_group,
+        advanced_mouse_actions,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -465,10 +557,13 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let layout = Layout::from_str(layout, "layout_file_name".into(), None, None).unwrap();
     let (tab_layout, floating_panes_layout) = layout.new_tab();
+    let current_group = Rc::new(RefCell::new(HashMap::new()));
+    let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
+    let advanced_mouse_actions = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -498,6 +593,9 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
+        current_group,
+        currently_marking_pane_group,
+        advanced_mouse_actions,
     );
     let pane_ids = tab_layout
         .extract_run_instructions()
@@ -550,10 +648,13 @@ fn create_new_tab_with_mock_pty_writer(
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let current_group = Rc::new(RefCell::new(HashMap::new()));
+    let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
+    let advanced_mouse_actions = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -583,6 +684,9 @@ fn create_new_tab_with_mock_pty_writer(
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
+        current_group,
+        currently_marking_pane_group,
+        advanced_mouse_actions,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -626,10 +730,13 @@ fn create_new_tab_with_sixel_support(
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let current_group = Rc::new(RefCell::new(HashMap::new()));
+    let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
+    let advanced_mouse_actions = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -659,6 +766,9 @@ fn create_new_tab_with_sixel_support(
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
+        current_group,
+        currently_marking_pane_group,
+        advanced_mouse_actions,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -685,7 +795,7 @@ fn read_fixture(fixture_name: &str) -> Vec<u8> {
 use crate::panes::grid::Grid;
 use crate::panes::link_handler::LinkHandler;
 use insta::assert_snapshot;
-use zellij_utils::vte;
+use vte;
 
 fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: Palette) -> String {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
@@ -975,6 +1085,96 @@ fn split_stack_horizontally() {
         .unwrap();
     tab.horizontal_split(PaneId::Terminal(4), None, client_id)
         .unwrap();
+
+    tab.render(&mut output).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn render_stacks_without_pane_frames() {
+    // this checks various cases and gotchas that have to do with rendering stacked panes when we
+    // don't draw frames around panes
+    let size = Size {
+        cols: 100,
+        rows: 40,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab_without_pane_frames(size, ModeInfo::default());
+    let mut output = Output::default();
+    for i in 2..4 {
+        let new_pane_id_1 = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id_1,
+            None,
+            None,
+            None,
+            None,
+            false,
+            Some(client_id),
+        )
+        .unwrap();
+    }
+    // the below resizes will end up stacking the panes
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+        .unwrap();
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+        .unwrap();
+    tab.vertical_split(PaneId::Terminal(4), None, client_id)
+        .unwrap();
+    for i in 5..7 {
+        let new_pane_id_1 = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id_1,
+            None,
+            None,
+            None,
+            None,
+            false,
+            Some(client_id),
+        )
+        .unwrap();
+    }
+    tab.focus_pane_with_id(PaneId::Terminal(1), false, client_id);
+    for i in 7..9 {
+        let new_pane_id_1 = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id_1,
+            None,
+            None,
+            None,
+            None,
+            false,
+            Some(client_id),
+        )
+        .unwrap();
+    }
+    let _ = tab.focus_pane_with_id(PaneId::Terminal(1), false, client_id);
+    for i in 9..11 {
+        let new_pane_id_1 = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id_1,
+            None,
+            None,
+            None,
+            None,
+            false,
+            Some(client_id),
+        )
+        .unwrap();
+    }
+    tab.resize(
+        client_id,
+        ResizeStrategy::new(Resize::Increase, Some(Direction::Right)),
+    )
+    .unwrap();
+    let _ = tab.focus_pane_with_id(PaneId::Terminal(7), false, client_id);
+    let _ = tab.focus_pane_with_id(PaneId::Terminal(5), false, client_id);
 
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
@@ -5190,7 +5390,7 @@ fn close_main_stacked_pane_in_mid_stack() {
             swap_tiled_layout {
                 tab {
                     pane split_direction="vertical" {
-                        pane 
+                        pane
                         pane stacked=true { children; }
                     }
                 }

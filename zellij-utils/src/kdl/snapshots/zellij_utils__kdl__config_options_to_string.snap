@@ -29,4 +29,3 @@ styled_underlines false
 serialization_interval 1
 disable_session_metadata true
 support_kitty_keyboard_protocol false
-enable_web_server true

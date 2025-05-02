@@ -4,7 +4,7 @@ use crate::ui::boundaries::boundary_type;
 use crate::ClientId;
 use zellij_utils::data::{client_id_to_colors, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
-use zellij_utils::pane_size::Viewport;
+use zellij_utils::pane_size::{Offset, Viewport};
 use zellij_utils::position::Position;
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -53,7 +53,7 @@ enum ExitStatus {
 
 pub struct FrameParams {
     pub focused_client: Option<ClientId>,
-    pub is_main_client: bool,
+    pub is_main_client: bool, // more accurately: is_focused_for_main_client
     pub other_focused_clients: Vec<ClientId>,
     pub style: Style,
     pub color: Option<PaletteColor>,
@@ -62,6 +62,8 @@ pub struct FrameParams {
     pub pane_is_stacked_over: bool,
     pub should_draw_pane_frames: bool,
     pub pane_is_floating: bool,
+    pub content_offset: Offset,
+    pub mouse_is_hovering_over_pane: bool,
 }
 
 #[derive(Default, PartialEq)]
@@ -82,6 +84,8 @@ pub struct PaneFrame {
     should_draw_pane_frames: bool,
     is_pinned: bool,
     is_floating: bool,
+    content_offset: Offset,
+    mouse_is_hovering_over_pane: bool,
 }
 
 impl PaneFrame {
@@ -108,6 +112,8 @@ impl PaneFrame {
             should_draw_pane_frames: frame_params.should_draw_pane_frames,
             is_pinned: false,
             is_floating: frame_params.pane_is_floating,
+            content_offset: frame_params.content_offset,
+            mouse_is_hovering_over_pane: frame_params.mouse_is_hovering_over_pane,
         }
     }
     pub fn is_pinned(mut self, is_pinned: bool) -> Self {
@@ -752,6 +758,34 @@ impl PaneFrame {
         };
         Ok(res)
     }
+    fn render_mouse_shortcuts_undertitle(&self) -> Result<Vec<TerminalCharacter>> {
+        let max_undertitle_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
+        let mut left_boundary =
+            foreground_color(self.get_corner(boundary_type::BOTTOM_LEFT), self.color);
+        let mut right_boundary =
+            foreground_color(self.get_corner(boundary_type::BOTTOM_RIGHT), self.color);
+        let res = if self.is_main_client {
+            self.empty_undertitle(max_undertitle_length)
+        } else {
+            let (mut hover_shortcuts, hover_shortcuts_len) = self.hover_shortcuts_part_full();
+            if hover_shortcuts_len <= max_undertitle_length {
+                // render exit status and tips
+                let mut padding = String::new();
+                for _ in hover_shortcuts_len..max_undertitle_length {
+                    padding.push_str(boundary_type::HORIZONTAL);
+                }
+                let mut ret = vec![];
+                ret.append(&mut left_boundary);
+                ret.append(&mut hover_shortcuts);
+                ret.append(&mut foreground_color(&padding, self.color));
+                ret.append(&mut right_boundary);
+                ret
+            } else {
+                self.empty_undertitle(max_undertitle_length)
+            }
+        };
+        Ok(res)
+    }
     pub fn clicked_on_pinned(&mut self, position: Position) -> bool {
         if self.is_floating {
             // TODO: this is not entirely accurate because our relative position calculation in
@@ -776,11 +810,26 @@ impl PaneFrame {
             // if this is a stacked pane with pane frames off (and it doesn't necessarily have only
             // 1 row because it could also be a flexible stacked pane)
             // in this case we should always draw the pane title line, and only the title line
-            let one_line_title = self.render_one_line_title().with_context(err_context)?;
+            let mut one_line_title = self.render_one_line_title().with_context(err_context)?;
+
+            if self.content_offset.right != 0 && !self.should_draw_pane_frames {
+                // here what happens is that the title should be offset to the right
+                // in order to give room to the boundaries between the panes to be drawn
+                one_line_title.pop();
+            }
+            let y_coords_of_title = if self.pane_is_stacked_under && !self.should_draw_pane_frames {
+                // we only want to use the bottom offset in this case because panes that are
+                // stacked above the flexible pane should actually appear exactly where they are on
+                // screen, the content offset being "absorbed" by the flexible pane below them
+                self.geom.y.saturating_sub(self.content_offset.bottom)
+            } else {
+                self.geom.y
+            };
+
             character_chunks.push(CharacterChunk::new(
                 one_line_title,
                 self.geom.x,
-                self.geom.y,
+                y_coords_of_title,
             ));
         } else {
             for row in 0..self.geom.rows {
@@ -792,7 +841,16 @@ impl PaneFrame {
                     character_chunks.push(CharacterChunk::new(title, x, y));
                 } else if row == self.geom.rows - 1 {
                     // bottom row
-                    if self.exit_status.is_some() || self.is_first_run {
+                    if self.mouse_is_hovering_over_pane && !self.is_main_client {
+                        let x = self.geom.x;
+                        let y = self.geom.y + row;
+                        character_chunks.push(CharacterChunk::new(
+                            self.render_mouse_shortcuts_undertitle()
+                                .with_context(err_context)?,
+                            x,
+                            y,
+                        ));
+                    } else if self.exit_status.is_some() || self.is_first_run {
                         let x = self.geom.x;
                         let y = self.geom.y + row;
                         character_chunks.push(CharacterChunk::new(
@@ -944,6 +1002,26 @@ impl PaneFrame {
                 + break_text.len()
                 + right_break_bracket.len()
                 + break_tip.len(),
+        )
+    }
+    fn hover_shortcuts_part_full(&self) -> (Vec<TerminalCharacter>, usize) {
+        // (title part, length)
+        let mut hover_shortcuts = vec![];
+        let alt_click_text = " Alt <Click>";
+        let alt_click_tip = " - group,";
+        let alt_right_click_text = " Alt <Right-Click>";
+        let alt_right_click_tip = " - ungroup all ";
+
+        hover_shortcuts.append(&mut foreground_color(alt_click_text, self.color));
+        hover_shortcuts.append(&mut foreground_color(alt_click_tip, self.color));
+        hover_shortcuts.append(&mut foreground_color(alt_right_click_text, self.color));
+        hover_shortcuts.append(&mut foreground_color(alt_right_click_tip, self.color));
+        (
+            hover_shortcuts,
+            alt_click_text.chars().count()
+                + alt_click_tip.chars().count()
+                + alt_right_click_text.chars().count()
+                + alt_right_click_tip.chars().count(),
         )
     }
     fn empty_undertitle(&self, max_undertitle_length: usize) -> Vec<TerminalCharacter> {

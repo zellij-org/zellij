@@ -1,6 +1,6 @@
 [package]
 name = "zellij-tile-utils"
-version = "0.42.0"
+version = "0.43.0"
 authors = ["denis <denismaximov98@gmail.com>"]
 edition = "2021"
 description = "A utility library for Zellij plugins"
@@ -9,4 +9,4 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ansi_term = "0.12.1"
+ansi_term = { workspace = true }

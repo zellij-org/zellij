@@ -168,6 +168,14 @@ keybinds clear-defaults=true {{
         bind "{secondary_modifier} -" {{ Resize "Decrease"; }}
         bind "{secondary_modifier} [" {{ PreviousSwapLayout; }}
         bind "{secondary_modifier} ]" {{ NextSwapLayout; }}
+        bind "{secondary_modifier} m" {{ 
+            LaunchOrFocusPlugin "zellij:multiple-select" {{
+                floating true
+                move_to_focused_tab true
+            }}
+        }}
+        bind "{secondary_modifier} p" {{ TogglePaneInGroup; }}
+        bind "{secondary_modifier} Shift p" {{ ToggleGroupMarking; }}
     }}
     shared_except "locked" "renametab" "renamepane" {{
         bind "Enter" {{ SwitchToMode "Locked"; }}
@@ -392,6 +400,14 @@ keybinds clear-defaults=true {{
         bind "{secondary_modifier} -" {{ Resize "Decrease"; }}
         bind "{secondary_modifier} [" {{ PreviousSwapLayout; }}
         bind "{secondary_modifier} ]" {{ NextSwapLayout; }}
+        bind "{secondary_modifier} m" {{
+            LaunchOrFocusPlugin "zellij:multiple-select" {{
+                floating true
+                move_to_focused_tab true
+            }}
+        }}
+        bind "{secondary_modifier} p" {{ TogglePaneInGroup; }}
+        bind "{secondary_modifier} Shift p" {{ ToggleGroupMarking; }}
     }}
     shared_except "normal" "locked" {{
         bind "Enter" "Esc" {{ SwitchToMode "Normal"; }}
@@ -595,6 +611,14 @@ keybinds clear-defaults=true {{
         bind "{secondary_modifier} -" {{ Resize "Decrease"; }}
         bind "{secondary_modifier} [" {{ PreviousSwapLayout; }}
         bind "{secondary_modifier} ]" {{ NextSwapLayout; }}
+        bind "{secondary_modifier} m" {{
+            LaunchOrFocusPlugin "zellij:multiple-select" {{
+                floating true
+                move_to_focused_tab true
+            }}
+        }}
+        bind "{secondary_modifier} p" {{ TogglePaneInGroup; }}
+        bind "{secondary_modifier} Shift p" {{ ToggleGroupMarking; }}
     }}
     shared_except "normal" "locked" {{
         bind "Enter" "Esc" {{ SwitchToMode "Normal"; }}
@@ -1158,6 +1182,14 @@ keybinds clear-defaults=true {{
         bind "{secondary_modifier} -" {{ Resize "Decrease"; }}
         bind "{secondary_modifier} [" {{ PreviousSwapLayout; }}
         bind "{secondary_modifier} ]" {{ NextSwapLayout; }}
+        bind "{secondary_modifier} m" {{
+            LaunchOrFocusPlugin "zellij:multiple-select" {{
+                floating true
+                move_to_focused_tab true
+            }}
+        }}
+        bind "{secondary_modifier} p" {{ TogglePaneInGroup; }}
+        bind "{secondary_modifier} Shift p" {{ ToggleGroupMarking; }}
     }}
     shared_except "normal" "locked" {{
         bind "Enter" "Esc" {{ SwitchToMode "Normal"; }}

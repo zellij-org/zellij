@@ -1,5 +1,11 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
+<<<<<<< HEAD
+||||||| 6c39e2ff
+assertion_line: 2459
+=======
+assertion_line: 5000
+>>>>>>> main
 expression: serialized
 ---
 name ""
@@ -12,3 +18,11 @@ is_shared_on_web false
 web_client_count 0
 available_layouts {
 }
+<<<<<<< HEAD
+||||||| 6c39e2ff
+
+=======
+tab_history {
+}
+
+>>>>>>> main

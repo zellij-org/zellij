@@ -1,27 +1,27 @@
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PipeMessage {
-    #[prost(enumeration = "PipeSource", tag = "1")]
+    #[prost(enumeration="PipeSource", tag="1")]
     pub source: i32,
-    #[prost(string, optional, tag = "2")]
+    #[prost(string, optional, tag="2")]
     pub cli_source_id: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(uint32, optional, tag = "3")]
+    #[prost(uint32, optional, tag="3")]
     pub plugin_source_id: ::core::option::Option<u32>,
-    #[prost(string, tag = "4")]
+    #[prost(string, tag="4")]
     pub name: ::prost::alloc::string::String,
-    #[prost(string, optional, tag = "5")]
+    #[prost(string, optional, tag="5")]
     pub payload: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, repeated, tag = "6")]
+    #[prost(message, repeated, tag="6")]
     pub args: ::prost::alloc::vec::Vec<Arg>,
-    #[prost(bool, tag = "7")]
+    #[prost(bool, tag="7")]
     pub is_private: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Arg {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub key: ::prost::alloc::string::String,
-    #[prost(string, tag = "2")]
+    #[prost(string, tag="2")]
     pub value: ::prost::alloc::string::String,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]

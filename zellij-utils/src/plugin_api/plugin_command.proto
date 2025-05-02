@@ -142,6 +142,11 @@ enum CommandName {
   OpenFileInPlaceOfPlugin = 126;
   StartWebServer = 127;
   QueryWebServer = 128;
+  GroupAndUngroupPanes = 129;
+  HighlightAndUnhighlightPanes = 130;
+  CloseMultiplePanes = 131;
+  FloatMultiplePanes = 132;
+  EmbedMultiplePanes = 133;
 }
 
 message PluginCommand {
@@ -238,13 +243,41 @@ message PluginCommand {
     OpenFileNearPluginPayload open_file_near_plugin_payload = 99;
     OpenFileFloatingNearPluginPayload open_file_floating_near_plugin_payload = 100;
     OpenFileInPlaceOfPluginPayload open_file_in_place_of_plugin_payload = 101;
+    GroupAndUngroupPanesPayload group_and_ungroup_panes_payload = 102;
+    HighlightAndUnhighlightPanesPayload highlight_and_unhighlight_panes_payload = 103;
+    CloseMultiplePanesPayload close_multiple_panes_payload = 104;
+    FloatMultiplePanesPayload float_multiple_panes_payload = 105;
+    EmbedMultiplePanesPayload embed_multiple_panes_payload = 106;
   }
+}
+
+message EmbedMultiplePanesPayload {
+  repeated PaneId pane_ids = 1;
+}
+
+message FloatMultiplePanesPayload {
+  repeated PaneId pane_ids = 1;
+}
+
+message CloseMultiplePanesPayload {
+  repeated PaneId pane_ids = 1;
+}
+
+message HighlightAndUnhighlightPanesPayload {
+  repeated PaneId pane_ids_to_highlight = 1;
+  repeated PaneId pane_ids_to_unhighlight = 2;
+}
+
+message GroupAndUngroupPanesPayload {
+  repeated PaneId pane_ids_to_group = 1;
+  repeated PaneId pane_ids_to_ungroup = 2;
 }
 
 message OpenFileInPlaceOfPluginPayload {
   file.File file_to_open = 1;
   optional FloatingPaneCoordinates floating_pane_coordinates = 2;
   repeated ContextItem context = 3;
+  bool close_plugin_after_replace = 4;
 }
 
 message OpenFileFloatingNearPluginPayload {
@@ -262,6 +295,7 @@ message OpenFileNearPluginPayload {
 message OpenCommandPaneInPlaceOfPluginPayload {
   command.Command command_to_run = 1;
   repeated ContextItem context = 3;
+  bool close_plugin_after_replace = 4;
 }
 
 message OpenCommandPaneFloatingNearPluginPayload {
@@ -273,6 +307,7 @@ message OpenCommandPaneFloatingNearPluginPayload {
 message OpenTerminalInPlaceOfPluginPayload {
   file.File file_to_open = 1;
   repeated ContextItem context = 3;
+  bool close_plugin_after_replace = 4;
 }
 
 message OpenTerminalFloatingNearPluginPayload {

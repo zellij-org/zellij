@@ -2,14 +2,14 @@ pub use super::generated_api::api::{
     action::{Action as ProtobufAction, Position as ProtobufPosition},
     event::{
         event::Payload as ProtobufEventPayload, ClientInfo as ProtobufClientInfo,
-        CopyDestination as ProtobufCopyDestination, Event as ProtobufEvent,
-        EventNameList as ProtobufEventNameList, EventType as ProtobufEventType,
-        FileMetadata as ProtobufFileMetadata, InputModeKeybinds as ProtobufInputModeKeybinds,
-        KeyBind as ProtobufKeyBind, LayoutInfo as ProtobufLayoutInfo,
-        ModeUpdatePayload as ProtobufModeUpdatePayload, PaneId as ProtobufPaneId,
-        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
-        PaneType as ProtobufPaneType, PluginInfo as ProtobufPluginInfo,
-        ResurrectableSession as ProtobufResurrectableSession,
+        ClientTabHistory as ProtobufClientTabHistory, CopyDestination as ProtobufCopyDestination,
+        Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
+        EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
+        InputModeKeybinds as ProtobufInputModeKeybinds, KeyBind as ProtobufKeyBind,
+        LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
+        PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
+        PaneManifest as ProtobufPaneManifest, PaneType as ProtobufPaneType,
+        PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
     },
     input_mode::InputMode as ProtobufInputMode,
@@ -381,6 +381,10 @@ impl TryFrom<ProtobufEvent> for Event {
                     }
                 }
                 _ => Err("Malformed payload for the WebServerQueryResponse Event"),
+            },
+            Some(ProtobufEventType::BeforeClose) => match protobuf_event.payload {
+                None => Ok(Event::BeforeClose),
+                _ => Err("Malformed payload for the BeforeClose Event"),
             },
             None => Err("Unknown Protobuf Event"),
         }
@@ -779,6 +783,10 @@ impl TryFrom<Event> for ProtobufEvent {
                     }
                 ))
             }),
+            Event::BeforeClose => Ok(ProtobufEvent {
+                name: ProtobufEventType::BeforeClose as i32,
+                payload: None,
+            }),
         }
     }
 }
@@ -819,10 +827,23 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
                 .collect(),
             web_clients_allowed: session_info.web_clients_allowed,
             web_client_count: session_info.web_client_count as u32,
+            tab_history: session_info
+                .tab_history
+                .into_iter()
+                .map(|t| ProtobufClientTabHistory::from(t))
+                .collect(),
         })
     }
 }
 
+impl From<(u16, Vec<usize>)> for ProtobufClientTabHistory {
+    fn from((client_id, tab_history): (u16, Vec<usize>)) -> ProtobufClientTabHistory {
+        ProtobufClientTabHistory {
+            client_id: client_id as u32,
+            tab_history: tab_history.into_iter().map(|t| t as u32).collect(),
+        }
+    }
+}
 impl From<(u32, PluginInfo)> for ProtobufPluginInfo {
     fn from((plugin_id, plugin_info): (u32, PluginInfo)) -> ProtobufPluginInfo {
         ProtobufPluginInfo {
@@ -869,6 +890,16 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
                 },
             );
         }
+        let mut tab_history = BTreeMap::new();
+        for client_tab_history in protobuf_session_manifest.tab_history.into_iter() {
+            let client_id = client_tab_history.client_id;
+            let tab_history_for_client = client_tab_history
+                .tab_history
+                .iter()
+                .map(|t| *t as usize)
+                .collect();
+            tab_history.insert(client_id as u16, tab_history_for_client);
+        }
         Ok(SessionInfo {
             name: protobuf_session_manifest.name,
             tabs: protobuf_session_manifest
@@ -887,6 +918,7 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
             plugins,
             web_clients_allowed : protobuf_session_manifest.web_clients_allowed,
             web_client_count: protobuf_session_manifest.web_client_count as usize,
+            tab_history,
         })
     }
 }
@@ -1098,6 +1130,16 @@ impl TryFrom<ProtobufPaneInfo> for PaneInfo {
             terminal_command: protobuf_pane_info.terminal_command,
             plugin_url: protobuf_pane_info.plugin_url,
             is_selectable: protobuf_pane_info.is_selectable,
+            index_in_pane_group: protobuf_pane_info
+                .index_in_pane_group
+                .iter()
+                .map(|index_in_pane_group| {
+                    (
+                        index_in_pane_group.client_id as u16,
+                        index_in_pane_group.index as usize,
+                    )
+                })
+                .collect(),
         })
     }
 }
@@ -1133,6 +1175,14 @@ impl TryFrom<PaneInfo> for ProtobufPaneInfo {
             terminal_command: pane_info.terminal_command,
             plugin_url: pane_info.plugin_url,
             is_selectable: pane_info.is_selectable,
+            index_in_pane_group: pane_info
+                .index_in_pane_group
+                .iter()
+                .map(|(&client_id, &index)| IndexInPaneGroup {
+                    client_id: client_id as u32,
+                    index: index as u32,
+                })
+                .collect(),
         })
     }
 }
@@ -1244,6 +1294,8 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
         let capabilities = PluginCapabilities {
             arrow_fonts: protobuf_mode_update_payload.arrow_fonts_support,
         };
+        let currently_marking_pane_group =
+            protobuf_mode_update_payload.currently_marking_pane_group;
         let mode_info = ModeInfo {
             mode: current_mode,
             keybinds,
@@ -1255,6 +1307,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             shell,
             web_clients_allowed,
             web_sharing_allowed,
+            currently_marking_pane_group,
         };
         Ok(mode_info)
     }
@@ -1274,6 +1327,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
         let shell = mode_info.shell.map(|s| s.display().to_string());
         let web_clients_allowed = mode_info.web_clients_allowed;
         let web_sharing_allowed = mode_info.web_sharing_allowed;
+        let currently_marking_pane_group = mode_info.currently_marking_pane_group;
         let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
         for (input_mode, input_mode_keybinds) in mode_info.keybinds {
             let mode: ProtobufInputMode = input_mode.try_into()?;
@@ -1309,6 +1363,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             shell,
             web_clients_allowed,
             web_sharing_allowed,
+            currently_marking_pane_group,
         })
     }
 }
@@ -1380,6 +1435,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::ConfigWasWrittenToDisk => EventType::ConfigWasWrittenToDisk,
             ProtobufEventType::WebServerStarted => EventType::WebServerStarted,
             ProtobufEventType::WebServerQueryResponse => EventType::WebServerQueryResponse,
+            ProtobufEventType::BeforeClose => EventType::BeforeClose,
         })
     }
 }
@@ -1421,6 +1477,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::ConfigWasWrittenToDisk => ProtobufEventType::ConfigWasWrittenToDisk,
             EventType::WebServerStarted => ProtobufEventType::WebServerStarted,
             EventType::WebServerQueryResponse => ProtobufEventType::WebServerQueryResponse,
+            EventType::BeforeClose => ProtobufEventType::BeforeClose,
         })
     }
 }
@@ -1563,6 +1620,7 @@ fn serialize_mode_update_event_with_non_default_values() {
         shell: Some(PathBuf::from("my_awesome_shell")),
         web_clients_allowed: Some(true),
         web_sharing_allowed: Some(true),
+        currently_marking_pane_group: Some(false),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
@@ -1924,6 +1982,14 @@ fn serialize_session_update_event_with_non_default_values() {
         TabInfo::default(),
     ];
     let mut panes = HashMap::new();
+    let mut index_in_pane_group_1 = BTreeMap::new();
+    index_in_pane_group_1.insert(1, 0);
+    index_in_pane_group_1.insert(2, 0);
+    index_in_pane_group_1.insert(3, 0);
+    let mut index_in_pane_group_2 = BTreeMap::new();
+    index_in_pane_group_2.insert(1, 1);
+    index_in_pane_group_2.insert(2, 1);
+    index_in_pane_group_2.insert(3, 1);
     let panes_list = vec![
         PaneInfo {
             id: 1,
@@ -1948,6 +2014,7 @@ fn serialize_session_update_event_with_non_default_values() {
             terminal_command: Some("foo".to_owned()),
             plugin_url: None,
             is_selectable: true,
+            index_in_pane_group: index_in_pane_group_1,
         },
         PaneInfo {
             id: 1,
@@ -1972,6 +2039,7 @@ fn serialize_session_update_event_with_non_default_values() {
             terminal_command: None,
             plugin_url: Some("i_am_a_fake_plugin".to_owned()),
             is_selectable: true,
+            index_in_pane_group: index_in_pane_group_2,
         },
     ];
     panes.insert(0, panes_list);
@@ -1985,6 +2053,9 @@ fn serialize_session_update_event_with_non_default_values() {
             configuration: plugin_configuration,
         },
     );
+    let mut tab_history = BTreeMap::new();
+    tab_history.insert(1, vec![1, 2, 3]);
+    tab_history.insert(2, vec![1, 2, 3]);
     let session_info_1 = SessionInfo {
         name: "session 1".to_owned(),
         tabs: tab_infos,
@@ -1999,6 +2070,7 @@ fn serialize_session_update_event_with_non_default_values() {
         plugins,
         web_clients_allowed: false,
         web_client_count: 1,
+        tab_history,
     };
     let session_info_2 = SessionInfo {
         name: "session 2".to_owned(),
@@ -2016,6 +2088,7 @@ fn serialize_session_update_event_with_non_default_values() {
         plugins: Default::default(),
         web_clients_allowed: false,
         web_client_count: 0,
+        tab_history: Default::default(),
     };
     let session_infos = vec![session_info_1, session_info_2];
     let resurrectable_sessions = vec![];

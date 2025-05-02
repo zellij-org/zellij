@@ -1,6 +1,6 @@
 [package]
 name = "zellij-client"
-version = "0.42.0"
+version = "0.43.0"
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
 edition = "2021"
 description = "The client-side library for Zellij"
@@ -9,17 +9,31 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-mio = { version = "0.7.11", features = ['os-ext'] }
-serde = { version = "1.0", features = ["derive"] }
-url = { version = "2.2.2", features = ["serde"] }
-serde_yaml = "0.8"
-serde_json = "1.0"
-zellij-utils = { path = "../zellij-utils/", version = "0.42.0" }
-log = "0.4.17"
-# TODO: consider moving these to zellij-utils
+# TODO: we might want to move these to be workspace dependencies as well, but
+# work is currently being done on moving all our async stuff to tokio from async_std,
+# so let's see how that works out before rocking the boat
 tokio = { version = "1.38.1", features = ["full"], optional = true }
 futures = { version = "0.3.30", optional = true }
 axum = { version = "0.8.1", features = ["ws"], optional = true }
+
+anyhow = { workspace = true }
+interprocess = { workspace = true }
+lazy_static = { workspace = true }
+libc = { workspace = true }
+log = { workspace = true }
+mio = { version = "0.7.11", default-features = false, features = ['os-ext'] }
+nix = { workspace = true }
+notify-debouncer-full = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { version = "0.8", default-features = false }
+signal-hook = { workspace = true }
+termwiz = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+include_dir = { workspace = true }
+zellij-utils = { workspace = true }
 
 [dev-dependencies]
 insta = "1.6.0"

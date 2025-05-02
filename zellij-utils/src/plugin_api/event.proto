@@ -56,6 +56,7 @@ enum EventType {
     ConfigWasWrittenToDisk = 30;
     WebServerStarted = 31;
     WebServerQueryResponse = 32;
+    BeforeClose = 33;
 }
 
 message EventNameList {
@@ -273,6 +274,12 @@ message SessionManifest {
   repeated PluginInfo plugins = 7;
   bool web_clients_allowed = 8;
   uint32 web_client_count = 9;
+  repeated ClientTabHistory tab_history = 10;
+}
+
+message ClientTabHistory {
+  uint32 client_id = 1;
+  repeated uint32 tab_history = 2;
 }
 
 message PluginInfo {
@@ -314,6 +321,12 @@ message PaneInfo {
     optional string terminal_command = 20;
     optional string plugin_url = 21;
     bool is_selectable = 22;
+    repeated IndexInPaneGroup index_in_pane_group = 23;
+}
+
+message IndexInPaneGroup {
+  uint32 client_id = 1;
+  uint32 index = 2;
 }
 
 message TabInfo {
@@ -346,6 +359,7 @@ message ModeUpdatePayload {
   optional string shell = 8;
   optional bool web_clients_allowed = 9;
   optional bool web_sharing_allowed = 10;
+  optional bool currently_marking_pane_group = 11;
 }
 
 message InputModeKeybinds {

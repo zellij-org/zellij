@@ -10,7 +10,7 @@ use crate::data::{Direction, KeyWithModifier, PaneId, Resize};
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
-use crate::input::mouse::{MouseEvent, MouseEventType};
+use crate::input::mouse::MouseEvent;
 use crate::input::options::OnForceClose;
 use miette::{NamedSource, Report};
 use serde::{Deserialize, Serialize};
@@ -296,6 +296,8 @@ pub enum Action {
     TogglePanePinned,
     StackPanes(Vec<PaneId>),
     ChangeFloatingPaneCoordinates(PaneId, FloatingPaneCoordinates),
+    TogglePaneInGroup,
+    ToggleGroupMarking,
 }
 
 impl Action {
@@ -800,11 +802,9 @@ impl Action {
             _ => false,
         }
     }
-    pub fn is_mouse_motion(&self) -> bool {
-        if let Action::MouseEvent(mouse_event) = self {
-            if let MouseEventType::Motion = mouse_event.event_type {
-                return true;
-            }
+    pub fn is_mouse_action(&self) -> bool {
+        if let Action::MouseEvent(_mouse_event) = self {
+            return true;
         }
         false
     }

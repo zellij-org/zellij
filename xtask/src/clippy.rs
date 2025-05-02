@@ -21,7 +21,7 @@ pub fn clippy(sh: &Shell, _flags: flags::Clippy) -> anyhow::Result<()> {
         .and_then(|_| crate::cargo())
         .context("failed to run task 'clippy'")?;
 
-    for WorkspaceMember { crate_name, .. } in crate::WORKSPACE_MEMBERS.iter() {
+    for WorkspaceMember { crate_name, .. } in crate::workspace_members().iter() {
         let _pd = sh.push_dir(Path::new(crate_name));
         // Tell the user where we are now
         println!();

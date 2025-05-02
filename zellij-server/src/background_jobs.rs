@@ -1,4 +1,4 @@
-use zellij_utils::async_std::task;
+use async_std::task;
 use zellij_utils::consts::{
     session_info_cache_file_name, session_info_folder_for_session, session_layout_cache_file_name,
     ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR, VERSION
@@ -6,11 +6,10 @@ use zellij_utils::consts::{
 use zellij_utils::data::{Event, HttpVerb, SessionInfo, WebServerQueryResponse};
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 use zellij_utils::input::layout::RunPlugin;
-use zellij_utils::serde_json;
 
-use zellij_utils::isahc::prelude::*;
-use zellij_utils::isahc::AsyncReadResponseExt;
-use zellij_utils::isahc::{config::RedirectPolicy, HttpClient, Request};
+use isahc::prelude::*;
+use isahc::AsyncReadResponseExt;
+use isahc::{config::RedirectPolicy, HttpClient, Request};
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
@@ -60,6 +59,8 @@ pub enum BackgroundJob {
         PluginId,
         ClientId,
     ),
+    HighlightPanesWithMessage(Vec<PaneId>, String),
+    RenderToClients,
     Exit,
 }
 
@@ -80,15 +81,21 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::WebRequest(..) => BackgroundJobContext::WebRequest,
             BackgroundJob::ReportPluginList(..) => BackgroundJobContext::ReportPluginList,
             BackgroundJob::QueryWebServer(..) => BackgroundJobContext::QueryWebServer,
+            BackgroundJob::RenderToClients => BackgroundJobContext::ReportPluginList,
+            BackgroundJob::HighlightPanesWithMessage(..) => {
+                BackgroundJobContext::HighlightPanesWithMessage
+            },
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
 }
 
-static FLASH_DURATION_MS: u64 = 1000;
+static LONG_FLASH_DURATION_MS: u64 = 1000;
+static FLASH_DURATION_MS: u64 = 400; // Doherty threshold
 static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
 static SESSION_READ_DURATION: u64 = 1000;
 static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
+static REPAINT_DELAY_MS: u64 = 10;
 
 pub(crate) fn background_jobs_main(
     bus: Bus<BackgroundJob>,
@@ -106,6 +113,7 @@ pub(crate) fn background_jobs_main(
     let last_serialization_time = Arc::new(Mutex::new(Instant::now()));
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
                                                                            // milliseconds
+    let last_render_request: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
 
     let http_client = HttpClient::builder()
         // TODO: timeout?
@@ -131,7 +139,7 @@ pub(crate) fn background_jobs_main(
                                 Some(text),
                             ),
                         );
-                        task::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS)).await;
+                        task::sleep(std::time::Duration::from_millis(LONG_FLASH_DURATION_MS)).await;
                         let _ = senders.send_to_screen(
                             ScreenInstruction::ClearPaneFrameColorOverride(pane_ids),
                         );
@@ -297,7 +305,7 @@ pub(crate) fn background_jobs_main(
                             http_client: HttpClient,
                         ) -> Result<
                             (u16, BTreeMap<String, String>, Vec<u8>), // status_code, headers, body
-                            zellij_utils::isahc::Error,
+                            isahc::Error,
                         > {
                             let mut request = match verb {
                                 HttpVerb::Get => Request::get(url),
@@ -375,7 +383,7 @@ pub(crate) fn background_jobs_main(
                             http_client: HttpClient,
                         ) -> Result<
                             (u16, Vec<u8>), // status_code, body
-                            zellij_utils::isahc::Error,
+                            isahc::Error,
                         > {
                             let request = Request::get("http://localhost:8082/info/version");
                             let req = request.body(())?;
@@ -422,6 +430,73 @@ pub(crate) fn background_jobs_main(
                         }
                     }
                 });
+            }
+            BackgroundJob::RenderToClients => {
+                // last_render_request being Some() represents a render request that is pending
+                // last_render_request is only ever set to Some() if an async task is spawned to
+                // send the actual render instruction
+                //
+                // given this:
+                // - if last_render_request is None and we received this job, we should spawn an
+                // async task to send the render instruction and log the current task time
+                // - if last_render_request is Some(), it means we're currently waiting to render,
+                // so we should log the render request and do nothing, once the async task has
+                // finished running, it will check to see if the render time was updated while it
+                // was running, and if so send this instruction again so the process can start anew
+                let (should_run_task, current_time) = {
+                    let mut last_render_request = last_render_request.lock().unwrap();
+                    let should_run_task = last_render_request.is_none();
+                    let current_time = Instant::now();
+                    *last_render_request = Some(current_time);
+                    (should_run_task, current_time)
+                };
+                if should_run_task {
+                    task::spawn({
+                        let senders = bus.senders.clone();
+                        let last_render_request = last_render_request.clone();
+                        let task_start_time = current_time;
+                        async move {
+                            task::sleep(std::time::Duration::from_millis(REPAINT_DELAY_MS)).await;
+                            let _ = senders.send_to_screen(ScreenInstruction::Render);
+                            {
+                                let mut last_render_request = last_render_request.lock().unwrap();
+                                if let Some(last_render_request) = *last_render_request {
+                                    if last_render_request > task_start_time {
+                                        // another render request was received while we were
+                                        // sleeping, schedule this job again so that we can also
+                                        // render that request
+                                        let _ = senders.send_to_background_jobs(
+                                            BackgroundJob::RenderToClients,
+                                        );
+                                    }
+                                }
+                                // reset the last_render_request so that the task will be spawned
+                                // again once a new request is received
+                                *last_render_request = None;
+                            }
+                        }
+                    });
+                }
+            },
+            BackgroundJob::HighlightPanesWithMessage(pane_ids, text) => {
+                if job_already_running(job, &mut running_jobs) {
+                    continue;
+                }
+                task::spawn({
+                    let senders = bus.senders.clone();
+                    async move {
+                        let _ = senders.send_to_screen(
+                            ScreenInstruction::AddHighlightPaneFrameColorOverride(
+                                pane_ids.clone(),
+                                Some(text),
+                            ),
+                        );
+                        task::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS)).await;
+                        let _ = senders.send_to_screen(
+                            ScreenInstruction::ClearPaneFrameColorOverride(pane_ids),
+                        );
+                    }
+                });
             },
             BackgroundJob::Exit => {
                 for loading_plugin in loading_plugins.values() {
@@ -443,7 +518,9 @@ fn job_already_running(
 ) -> bool {
     match running_jobs.get_mut(&job) {
         Some(current_running_job_start_time) => {
-            if current_running_job_start_time.elapsed() > Duration::from_millis(FLASH_DURATION_MS) {
+            if current_running_job_start_time.elapsed()
+                > Duration::from_millis(LONG_FLASH_DURATION_MS)
+            {
                 *current_running_job_start_time = Instant::now();
                 false
             } else {

@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::rc::Rc;
 use std::time::{self, Instant};
+use vte;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::pane_size::Offset;
@@ -27,7 +28,6 @@ use zellij_utils::{
     pane_size::SizeInPixels,
     position::Position,
     shared::make_terminal_title,
-    vte,
 };
 
 use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
@@ -612,6 +612,10 @@ impl Pane for TerminalPane {
         self.reflow_lines();
     }
 
+    fn get_content_offset(&self) -> Offset {
+        self.content_offset
+    }
+
     fn store_pane_name(&mut self) {
         if self.pane_name != self.prev_pane_name {
             self.prev_pane_name = self.pane_name.clone()
@@ -738,7 +742,16 @@ impl Pane for TerminalPane {
     fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) {
         self.pane_frame_color_override = Some((self.style.colors.exit_code_error.base, error_text));
     }
-    fn clear_pane_frame_color_override(&mut self) {
+    fn add_highlight_pane_frame_color_override(
+        &mut self,
+        text: Option<String>,
+        _client_id: Option<ClientId>,
+    ) {
+        // TODO: if we have a client_id, we should only highlight the frame for this client
+        self.pane_frame_color_override = Some((self.style.colors.frame_highlight.base, text));
+    }
+    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) {
+        // TODO: if we have a client_id, we should only clear the highlight for this client
         self.pane_frame_color_override = None;
     }
     fn frame_color_override(&self) -> Option<PaletteColor> {

@@ -36,24 +36,24 @@ use zellij_utils::{
     data::{ConnectToSession, LayoutInfo, Style},
     envs,
     errors::prelude::*,
-    include_dir,
     input::{
         actions::Action, cast_termwiz_key, config::{Config, ConfigError}, layout::Layout, mouse::MouseEvent,
         options::{Options, WebServer},
     },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
-    serde::{Deserialize, Serialize},
-    serde_json,
     sessions::{
         get_name_generator, get_resurrectable_session_names, get_sessions, resurrection_layout,
         session_exists,
     },
     setup::{find_default_config_dir, get_layout_dir},
-    termwiz::input::{InputEvent, InputParser},
-    uuid::Uuid,
     consts::VERSION,
 };
 
+use uuid::Uuid;
+use serde::{Deserialize, Serialize};
+use serde_json;
+use include_dir;
+use termwiz::input::{InputEvent, InputParser};
 use futures::{prelude::stream::SplitSink, SinkExt, StreamExt};
 use log::info;
 

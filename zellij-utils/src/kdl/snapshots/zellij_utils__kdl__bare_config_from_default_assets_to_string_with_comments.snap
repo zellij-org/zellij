@@ -146,8 +146,16 @@ keybinds clear-defaults=true {
         bind "Alt j" { MoveFocus "down"; }
         bind "Alt k" { MoveFocus "up"; }
         bind "Alt l" { MoveFocusOrTab "right"; }
+        bind "Alt m" {
+            LaunchOrFocusPlugin "zellij:multiple-select" {
+                floating true
+                move_to_focused_tab true
+            }
+        }
         bind "Alt n" { NewPane; }
         bind "Alt o" { MoveTab "right"; }
+        bind "Alt p" { TogglePaneInGroup; }
+        bind "Alt Shift p" { ToggleGroupMarking; }
         bind "Ctrl q" { Quit; }
     }
     shared_except "locked" "move" {
@@ -440,11 +448,16 @@ load_plugins {
 // 
 // support_kitty_keyboard_protocol false
  
-// Allow access to sessions in the browser through a local webserver
-// When enabled, navigate to http://localhost:8082
-// Default: false
+// Whether to allow access to sessions in the browser through a local webserver
+// Possible values:
+// - on (the session will be shared in the browser and the web server started on startup
+// if it's not already running)
+// - off (the session will not be shared on startup and neither will the web server be started, but this can be toggled to "on" by an explicit action)
+// - disabled (the session will not be shared, the web server will not be started on startup
+// and it will not be possible to toggle the web server on for this session)
+// Default: "off"
 // 
-// enable_web_server false
+// web_server "off"
  
 // Font to use for the built in web client
 // When enabled, navigate to http://localhost:8082
@@ -466,3 +479,7 @@ load_plugins {
 // Default: true
 // 
 // show_release_notes false
+ 
+// Whether to enable mouse hover effects and pane grouping functionality
+// default is true
+// advanced_mouse_actions false

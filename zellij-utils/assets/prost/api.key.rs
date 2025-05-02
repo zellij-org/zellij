@@ -1,26 +1,16 @@
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Key {
-    #[prost(enumeration = "key::KeyModifier", optional, tag = "1")]
+    #[prost(enumeration="key::KeyModifier", optional, tag="1")]
     pub modifier: ::core::option::Option<i32>,
-    #[prost(enumeration = "key::KeyModifier", repeated, tag = "4")]
+    #[prost(enumeration="key::KeyModifier", repeated, tag="4")]
     pub additional_modifiers: ::prost::alloc::vec::Vec<i32>,
-    #[prost(oneof = "key::MainKey", tags = "2, 3")]
+    #[prost(oneof="key::MainKey", tags="2, 3")]
     pub main_key: ::core::option::Option<key::MainKey>,
 }
 /// Nested message and enum types in `Key`.
 pub mod key {
-    #[derive(
-        Clone,
-        Copy,
-        Debug,
-        PartialEq,
-        Eq,
-        Hash,
-        PartialOrd,
-        Ord,
-        ::prost::Enumeration
-    )]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
     #[repr(i32)]
     pub enum KeyModifier {
         Ctrl = 0,
@@ -52,17 +42,7 @@ pub mod key {
             }
         }
     }
-    #[derive(
-        Clone,
-        Copy,
-        Debug,
-        PartialEq,
-        Eq,
-        Hash,
-        PartialOrd,
-        Ord,
-        ::prost::Enumeration
-    )]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
     #[repr(i32)]
     pub enum NamedKey {
         PageDown = 0,
@@ -178,17 +158,7 @@ pub mod key {
             }
         }
     }
-    #[derive(
-        Clone,
-        Copy,
-        Debug,
-        PartialEq,
-        Eq,
-        Hash,
-        PartialOrd,
-        Ord,
-        ::prost::Enumeration
-    )]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
     #[repr(i32)]
     pub enum Char {
         A = 0,
@@ -317,11 +287,11 @@ pub mod key {
         }
     }
     #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum MainKey {
-        #[prost(enumeration = "NamedKey", tag = "2")]
+        #[prost(enumeration="NamedKey", tag="2")]
         Key(i32),
-        #[prost(enumeration = "Char", tag = "3")]
+        #[prost(enumeration="Char", tag="3")]
         Char(i32),
     }
 }
