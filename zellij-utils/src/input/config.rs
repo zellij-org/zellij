@@ -14,6 +14,7 @@ use super::layout::RunPluginOrAlias;
 use super::options::Options;
 use super::plugins::{PluginAliases, PluginsConfigError};
 use super::theme::{Themes, UiConfig};
+use super::web_client::WebClientConfig;
 use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariables;
 use crate::{home, setup};
@@ -32,6 +33,7 @@ pub struct Config {
     pub ui: UiConfig,
     pub env: EnvironmentVariables,
     pub background_plugins: HashSet<RunPluginOrAlias>,
+    pub web_client: WebClientConfig,
 }
 
 #[derive(Error, Debug)]

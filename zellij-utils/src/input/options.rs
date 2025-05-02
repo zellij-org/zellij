@@ -174,11 +174,6 @@ pub struct Options {
     #[serde(default)]
     pub web_server: Option<WebServer>,
 
-    /// The name of the session to create when starting Zellij
-    #[clap(long, value_parser)]
-    #[serde(default)]
-    pub web_client_font: Option<String>,
-
     /// Whether to stack panes when resizing beyond a certain size
     /// default is true
     #[clap(long, value_parser)]
@@ -324,9 +319,6 @@ impl Options {
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
         let web_server = other.web_server.or(self.web_server);
-        let web_client_font = other
-            .web_client_font
-            .or_else(|| self.web_client_font.clone());
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
@@ -361,7 +353,6 @@ impl Options {
             disable_session_metadata,
             support_kitty_keyboard_protocol,
             web_server,
-            web_client_font,
             stacked_resize,
             show_startup_tips,
             show_release_notes,
@@ -425,9 +416,6 @@ impl Options {
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
         let web_server = other.web_server.or(self.web_server);
-        let web_client_font = other
-            .web_client_font
-            .or_else(|| self.web_client_font.clone());
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
@@ -462,7 +450,6 @@ impl Options {
             disable_session_metadata,
             support_kitty_keyboard_protocol,
             web_server,
-            web_client_font,
             stacked_resize,
             show_startup_tips,
             show_release_notes,
@@ -533,7 +520,6 @@ impl From<CliOptions> for Options {
             serialization_interval: opts.serialization_interval,
             support_kitty_keyboard_protocol: opts.support_kitty_keyboard_protocol,
             web_server: opts.web_server,
-            web_client_font: opts.web_client_font,
             stacked_resize: opts.stacked_resize,
             show_startup_tips: opts.show_startup_tips,
             show_release_notes: opts.show_release_notes,

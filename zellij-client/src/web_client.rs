@@ -262,11 +262,7 @@ async fn handle_ws_control(mut socket: WebSocket, state: AppState) {
     info!("New Control WebSocket connection established");
 
     let set_config_msg = WebServerToWebClientControlMessage::SetConfig {
-        font: state
-            .config
-            .options
-            .web_client_font
-            .unwrap_or("Monospace".to_string()),
+        font: state.config.web_client.font.clone(),
     };
 
     socket
@@ -405,12 +401,15 @@ async fn handle_ws_terminal(
         .send_to_server(ClientToServerMsg::ClientExited);
 }
 
-fn build_initial_connection(session_name: Option<String>) -> Result<Option<ConnectToSession>, &'static str> {
+fn build_initial_connection(
+    session_name: Option<String>,
+) -> Result<Option<ConnectToSession>, &'static str> {
     let should_start_with_welcome_screen = session_name.is_none();
     if should_start_with_welcome_screen {
         // if the client connects without a session path in the url, we always open the
         // welcome screen
-        let Some(initial_session_name) = session_name.clone().or_else(generate_unique_session_name) else {
+        let Some(initial_session_name) = session_name.clone().or_else(generate_unique_session_name)
+        else {
             return Err("Failed to generate unique session name, bailing.");
         };
         Ok(Some(ConnectToSession {
@@ -446,12 +445,16 @@ fn zellij_server_listener(
                     Err(e) => {
                         log::error!("{}", e);
                         return;
-                    }
+                    },
                 };
                 'reconnect_loop: loop {
                     let reconnect_info = reconnect_to_session.take();
                     let path = {
-                        let Some(session_name) = reconnect_info.as_ref().and_then(|r| r.name.clone()).or_else(generate_unique_session_name) else {
+                        let Some(session_name) = reconnect_info
+                            .as_ref()
+                            .and_then(|r| r.name.clone())
+                            .or_else(generate_unique_session_name)
+                        else {
                             log::error!("Failed to generate unique session name, bailing.");
                             return;
                         };
@@ -475,7 +478,12 @@ fn zellij_server_listener(
                         },
                     };
 
-                    let session_name = PathBuf::from(path.clone()).file_name().unwrap().to_str().unwrap().to_owned();
+                    let session_name = PathBuf::from(path.clone())
+                        .file_name()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .to_owned();
 
                     let is_web_client = true;
                     let (first_message, zellij_ipc_pipe) = spawn_session_if_needed(
@@ -495,7 +503,8 @@ fn zellij_server_listener(
                     // we keep the _config_file_watcher here so that it's dropped on the next round
                     // of the reconnect loop
                     // TODO: get actual CliArgs
-                    let _config_file_watcher = report_changes_in_config_file(&CliArgs::default(), &os_input);
+                    let _config_file_watcher =
+                        report_changes_in_config_file(&CliArgs::default(), &os_input);
                     loop {
                         match os_input.recv_from_server() {
                             Some((ServerToClientMsg::UnblockInputThread, _)) => {
@@ -525,26 +534,30 @@ fn zellij_server_listener(
                                 reconnect_to_session = Some(connect_to_session);
                                 continue 'reconnect_loop;
                             },
-                            Some((ServerToClientMsg::WriteConfigToDisk{ config }, _)) => {
+                            Some((ServerToClientMsg::WriteConfigToDisk { config }, _)) => {
                                 // TODO: get config path from actual CLI args and differentiate
                                 // between sessions (this is also a bug in the CLI client)
                                 match Config::write_config_to_disk(config, &CliArgs::default()) {
                                     Ok(written_config) => {
-                                        let _ = os_input
-                                            .send_to_server(ClientToServerMsg::ConfigWrittenToDisk(written_config));
+                                        let _ = os_input.send_to_server(
+                                            ClientToServerMsg::ConfigWrittenToDisk(written_config),
+                                        );
                                     },
                                     Err(e) => {
                                         let error_path = e
                                             .as_ref()
                                             .map(|p| p.display().to_string())
                                             .unwrap_or_else(String::new);
-                                        log::error!("Failed to write config to disk: {}", error_path);
-                                        let _ = os_input
-                                            .send_to_server(ClientToServerMsg::FailedToWriteConfigToDisk(e));
+                                        log::error!(
+                                            "Failed to write config to disk: {}",
+                                            error_path
+                                        );
+                                        let _ = os_input.send_to_server(
+                                            ClientToServerMsg::FailedToWriteConfigToDisk(e),
+                                        );
                                     },
                                 }
-
-                            }
+                            },
                             // TODO:
                             // Exit(ExitReason),
                             // Log(Vec<String>),
@@ -578,7 +591,9 @@ fn render_to_client(
     });
 }
 
-fn send_client_terminal_init_messages(stdout_channel_tx: &tokio::sync::mpsc::UnboundedSender<String>) {
+fn send_client_terminal_init_messages(
+    stdout_channel_tx: &tokio::sync::mpsc::UnboundedSender<String>,
+) {
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let enter_alternate_screen = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
@@ -663,10 +678,15 @@ fn parse_stdin(
     }
 }
 
-fn layout_for_new_session(config: &Config, requested_layout: Option<LayoutInfo>) -> Result<(Layout, Config), ConfigError> {
-    let layout_dir = config.options.layout_dir.clone().or_else(|| {
-        get_layout_dir(find_default_config_dir())
-    });
+fn layout_for_new_session(
+    config: &Config,
+    requested_layout: Option<LayoutInfo>,
+) -> Result<(Layout, Config), ConfigError> {
+    let layout_dir = config
+        .options
+        .layout_dir
+        .clone()
+        .or_else(|| get_layout_dir(find_default_config_dir()));
     // match reconnect_info.as_ref().and_then(|r| r.layout.clone()) {
     match requested_layout {
         Some(LayoutInfo::BuiltIn(layout_name)) => Layout::from_default_assets(
@@ -680,15 +700,14 @@ fn layout_for_new_session(config: &Config, requested_layout: Option<LayoutInfo>)
             config.clone(),
         ),
         Some(LayoutInfo::Url(url)) => Layout::from_url(&url, config.clone()),
-        Some(LayoutInfo::Stringified(stringified_layout)) => Layout::from_stringified_layout(
-            &stringified_layout,
-            config.clone(),
-        ),
+        Some(LayoutInfo::Stringified(stringified_layout)) => {
+            Layout::from_stringified_layout(&stringified_layout, config.clone())
+        },
         None => Layout::from_default_assets(
             &PathBuf::from("default"),
             layout_dir.clone(),
             config.clone(),
-        )
+        ),
     }
 }
 
@@ -702,13 +721,14 @@ fn spawn_session_if_needed(
     os_input: Box<dyn ClientOsApi>,
     requested_layout: Option<LayoutInfo>,
 ) -> (ClientToServerMsg, PathBuf) {
-    if session_exists(&session_name).unwrap_or(false) { // TODO: handle error
+    if session_exists(&session_name).unwrap_or(false) {
+        // TODO: handle error
         ipc_pipe_and_first_message_for_existing_session(
             path,
             client_attributes,
             &config,
             &config_options,
-            is_web_client
+            is_web_client,
         )
     } else {
         let force_run_commands = false; // TODO: from config for resurrection
@@ -722,17 +742,15 @@ fn spawn_session_if_needed(
             });
 
         match resurrection_layout {
-            Some(resurrection_layout) => {
-                spawn_new_session(
-                    &session_name,
-                    is_web_client,
-                    os_input.clone(),
-                    config.clone(),
-                    config_options.clone(),
-                    Some(resurrection_layout),
-                    client_attributes
-                )
-            },
+            Some(resurrection_layout) => spawn_new_session(
+                &session_name,
+                is_web_client,
+                os_input.clone(),
+                config.clone(),
+                config_options.clone(),
+                Some(resurrection_layout),
+                client_attributes,
+            ),
             None => {
                 // let new_session_layout = layout_for_new_session(&config, reconnect_info.as_ref().and_then(|r| r.layout.clone()));
                 let new_session_layout = layout_for_new_session(&config, requested_layout);
@@ -744,10 +762,9 @@ fn spawn_session_if_needed(
                     config.clone(),
                     config_options.clone(),
                     new_session_layout.ok().map(|(l, c)| l), // TODO: handle config
-                    client_attributes
+                    client_attributes,
                 )
-
-            }
+            },
         }
     }
 }
@@ -807,7 +824,13 @@ fn spawn_new_session(
     )
 }
 
-fn ipc_pipe_and_first_message_for_existing_session(session_name: String, client_attributes: ClientAttributes, config: &Config, config_options: &Options, is_web_client: bool) -> (ClientToServerMsg, PathBuf) {
+fn ipc_pipe_and_first_message_for_existing_session(
+    session_name: String,
+    client_attributes: ClientAttributes,
+    config: &Config,
+    config_options: &Options,
+    is_web_client: bool,
+) -> (ClientToServerMsg, PathBuf) {
     let zellij_ipc_pipe: PathBuf = {
         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
         fs::create_dir_all(&sock_dir).unwrap();

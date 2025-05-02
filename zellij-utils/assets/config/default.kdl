@@ -445,3 +445,7 @@ load_plugins {
 // Default: true
 //
 // advanced_mouse_actions false
+
+web_client {
+    font "monospace"
+}
