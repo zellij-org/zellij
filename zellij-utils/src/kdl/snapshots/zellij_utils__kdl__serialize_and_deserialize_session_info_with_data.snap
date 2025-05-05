@@ -1,11 +1,5 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-<<<<<<< HEAD
-||||||| 6c39e2ff
-assertion_line: 5070
-=======
-assertion_line: 5111
->>>>>>> main
 expression: serialized
 ---
 name "my session name"
@@ -95,18 +89,12 @@ panes {
     }
 }
 connected_clients 2
-is_shared_on_web true
+web_clients_allowed true
 web_client_count 2
 available_layouts {
     layout1 source="file"
     layout2 source="built-in"
     layout3 source="file"
 }
-<<<<<<< HEAD
-||||||| 6c39e2ff
-
-=======
 tab_history {
 }
-
->>>>>>> main

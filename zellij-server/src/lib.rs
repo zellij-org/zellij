@@ -1610,7 +1610,7 @@ fn init_session(
         #[cfg(feature = "web_server_capability")]
         web_sharing: config.options.web_sharing.unwrap_or(WebSharing::Off),
         #[cfg(not(feature = "web_server_capability"))]
-        is_web_server_enabled: false,
+        web_sharing: WebSharing::Disabled
     }
 }
 

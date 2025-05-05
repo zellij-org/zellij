@@ -447,23 +447,34 @@ load_plugins {
 // Default: true (if the host terminal supports it)
 // 
 // support_kitty_keyboard_protocol false
- 
-// Whether to allow access to sessions in the browser through a local webserver
+// Whether to make sure a local web server is running when a new Zellij session starts.
+// This web server will allow creating new sessions and attaching to existing ones that have
+// opted in to being shared in the browser.
+// 
+// Note: a local web server can still be manually started from within a Zellij session or from the CLI.
+// If this is not desired, one can use a version of Zellij compiled without
+// web_server_capability
+// 
 // Possible values:
-// - on (the session will be shared in the browser and the web server started on startup
-// if it's not already running)
-// - off (the session will not be shared on startup and neither will the web server be started, but this can be toggled to "on" by an explicit action)
-// - disabled (the session will not be shared, the web server will not be started on startup
-// and it will not be possible to toggle the web server on for this session)
+// - true
+// - false
+// Default: false
+// 
+// web_server false
+// Whether to allow new sessions to be shared through a local web server, assuming one is
+// running (see the `web_server` option for more details).
+// 
+// Note: if Zellij was compiled without web_server_capability, this option will be locked to
+// "disabled"
+// 
+// Possible values:
+// - "on" (new sessions will allow web sharing through the local web server if it
+// is online)
+// - "off" (new sessions will not allow web sharing unless they explicitly opt-in to it)
+// - "disabled" (new sessions will not allow web sharing and will not be able to opt-in to it)
 // Default: "off"
 // 
-// web_server "off"
- 
-// Font to use for the built in web client
-// When enabled, navigate to http://localhost:8082
-// Default: None
-// 
-// web_client_font "monospace"
+// web_sharing "off"
  
 // Whether to stack panes when resizing beyond a certain size
 // Default: true

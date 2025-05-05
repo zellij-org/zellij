@@ -6290,7 +6290,7 @@ Config {
         disable_session_metadata: None,
         support_kitty_keyboard_protocol: None,
         web_server: None,
-        web_client_font: None,
+        web_sharing: None,
         stacked_resize: None,
         show_startup_tips: None,
         show_release_notes: None,
@@ -8204,4 +8204,7 @@ Config {
     },
     env: {},
     background_plugins: {},
+    web_client: WebClientConfig {
+        font: "monospace",
+    },
 }

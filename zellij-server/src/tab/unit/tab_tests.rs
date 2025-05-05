@@ -8,7 +8,7 @@ use crate::{
     ClientId,
 };
 use std::path::PathBuf;
-use zellij_utils::data::{Direction, Resize, ResizeStrategy};
+use zellij_utils::data::{Direction, Resize, ResizeStrategy, WebSharing};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
 use zellij_utils::ipc::IpcReceiverWithContext;
@@ -172,6 +172,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
     let styled_underlines = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let web_sharing = WebSharing::Off;
     let mut tab = Tab::new(
         index,
         position,
@@ -201,6 +202,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
+        web_sharing,
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
@@ -246,6 +248,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let styled_underlines = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let web_sharing = WebSharing::Off;
     let mut tab = Tab::new(
         index,
         position,
@@ -275,6 +278,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
+        web_sharing,
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
@@ -326,6 +330,7 @@ fn create_new_tab_with_cell_size(
     let styled_underlines = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let web_sharing = WebSharing::Off;
     let mut tab = Tab::new(
         index,
         position,
@@ -355,6 +360,7 @@ fn create_new_tab_with_cell_size(
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
+        web_sharing,
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,

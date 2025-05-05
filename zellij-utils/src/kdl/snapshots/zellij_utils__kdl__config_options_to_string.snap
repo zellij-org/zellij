@@ -29,3 +29,5 @@ styled_underlines false
 serialization_interval 1
 disable_session_metadata true
 support_kitty_keyboard_protocol false
+web_server true
+web_sharing "disabled"

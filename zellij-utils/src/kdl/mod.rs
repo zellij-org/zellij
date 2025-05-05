@@ -3208,7 +3208,7 @@ impl Options {
         );
 
         let create_node = |node_value: &str| -> KdlNode {
-            let mut node = KdlNode::new("web_server");
+            let mut node = KdlNode::new("web_sharing");
             node.push(node_value.to_owned());
             node
         };

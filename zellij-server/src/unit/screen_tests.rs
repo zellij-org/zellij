@@ -10,7 +10,7 @@ use crate::{
 use insta::assert_snapshot;
 use std::path::PathBuf;
 use zellij_utils::cli::CliAction;
-use zellij_utils::data::{Event, Resize, Style};
+use zellij_utils::data::{Event, Resize, Style, WebSharing};
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
@@ -273,6 +273,7 @@ fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
     let arrow_fonts = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let stacked_resize = true;
+    let web_sharing = WebSharing::Off;
     let screen = Screen::new(
         bus,
         &client_attributes,
@@ -296,6 +297,7 @@ fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
         stacked_resize,
         None,
         false,
+        web_sharing,
         advanced_mouse_actions,
     );
     screen
@@ -549,7 +551,7 @@ impl MockScreen {
             session_configuration: self.session_metadata.session_configuration.clone(),
             layout,
             current_input_modes: self.session_metadata.current_input_modes.clone(),
-            is_web_server_enabled: false,
+            web_sharing: WebSharing::Off,
         }
     }
 }
@@ -608,7 +610,7 @@ impl MockScreen {
             layout,
             session_configuration: Default::default(),
             current_input_modes: HashMap::new(),
-            is_web_server_enabled: false,
+            web_sharing: WebSharing::Off,
         };
 
         let os_input = FakeInputOutput::default();
