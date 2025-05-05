@@ -10,7 +10,7 @@ pub use super::generated_api::api::{
         PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
         PaneManifest as ProtobufPaneManifest, PaneType as ProtobufPaneType,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
-        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
+        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, WebSharing as ProtobufWebSharing, *,
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
@@ -20,7 +20,7 @@ pub use super::generated_api::api::{
 use crate::data::{
     ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier,
     LayoutInfo, ModeInfo, Mouse, PaneId, PaneInfo, PaneManifest, PermissionStatus,
-    PluginCapabilities, PluginInfo, SessionInfo, Style, TabInfo, WebServerQueryResponse,
+    PluginCapabilities, PluginInfo, SessionInfo, Style, TabInfo, WebServerQueryResponse, WebSharing
 };
 
 use crate::errors::prelude::*;
@@ -1290,7 +1290,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             .map(|e| PathBuf::from(e));
         let shell = protobuf_mode_update_payload.shell.map(|s| PathBuf::from(s));
         let web_clients_allowed = protobuf_mode_update_payload.web_clients_allowed;
-        let web_sharing_allowed = protobuf_mode_update_payload.web_sharing_allowed;
+        let web_sharing = protobuf_mode_update_payload.web_sharing.and_then(|w| ProtobufWebSharing::from_i32(w)).map(|w| w.into());
         let capabilities = PluginCapabilities {
             arrow_fonts: protobuf_mode_update_payload.arrow_fonts_support,
         };
@@ -1306,7 +1306,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             editor,
             shell,
             web_clients_allowed,
-            web_sharing_allowed,
+            web_sharing,
             currently_marking_pane_group,
         };
         Ok(mode_info)
@@ -1326,7 +1326,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
         let editor = mode_info.editor.map(|e| e.display().to_string());
         let shell = mode_info.shell.map(|s| s.display().to_string());
         let web_clients_allowed = mode_info.web_clients_allowed;
-        let web_sharing_allowed = mode_info.web_sharing_allowed;
+        let web_sharing = mode_info.web_sharing.map(|w| w as i32);
         let currently_marking_pane_group = mode_info.currently_marking_pane_group;
         let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
         for (input_mode, input_mode_keybinds) in mode_info.keybinds {
@@ -1362,7 +1362,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             editor,
             shell,
             web_clients_allowed,
-            web_sharing_allowed,
+            web_sharing,
             currently_marking_pane_group,
         })
     }
@@ -1619,7 +1619,7 @@ fn serialize_mode_update_event_with_non_default_values() {
         editor: Some(PathBuf::from("my_awesome_editor")),
         shell: Some(PathBuf::from("my_awesome_shell")),
         web_clients_allowed: Some(true),
-        web_sharing_allowed: Some(true),
+        web_sharing: Some(WebSharing::default()),
         currently_marking_pane_group: Some(false),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
@@ -2134,6 +2134,26 @@ impl TryFrom<PaneId> for ProtobufPaneId {
                 pane_type: ProtobufPaneType::Plugin as i32,
                 id,
             }),
+        }
+    }
+}
+
+impl Into<ProtobufWebSharing> for WebSharing {
+    fn into(self) -> ProtobufWebSharing {
+        match self {
+            WebSharing::On => ProtobufWebSharing::On,
+            WebSharing::Off => ProtobufWebSharing::Off,
+            WebSharing::Disabled => ProtobufWebSharing::Disabled,
+        }
+    }
+}
+
+impl Into<WebSharing> for ProtobufWebSharing {
+    fn into(self) -> WebSharing {
+        match self {
+            ProtobufWebSharing::On => WebSharing::On,
+            ProtobufWebSharing::Off => WebSharing::Off,
+            ProtobufWebSharing::Disabled => WebSharing::Disabled,
         }
     }
 }

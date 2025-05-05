@@ -46,7 +46,7 @@ use zellij_utils::{
     consts::{
         DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
-    data::{ConnectToSession, Event, InputMode, KeyWithModifier, PluginCapabilities},
+    data::{ConnectToSession, Event, InputMode, KeyWithModifier, PluginCapabilities, WebSharing},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
     input::{
@@ -122,6 +122,8 @@ pub enum ServerInstruction {
         write_config_to_disk: bool,
     },
     StartWebServer(ClientId),
+    ShareCurrentSession(ClientId),
+    StopSharingCurrentSession(ClientId),
     WebServerStarted,
 }
 
@@ -160,6 +162,8 @@ impl From<&ServerInstruction> for ServerContext {
             },
             ServerInstruction::RebindKeys { .. } => ServerContext::RebindKeys,
             ServerInstruction::StartWebServer(..) => ServerContext::StartWebServer,
+            ServerInstruction::ShareCurrentSession(..) => ServerContext::ShareCurrentSession,
+            ServerInstruction::StopSharingCurrentSession(..) => ServerContext::StopSharingCurrentSession,
             ServerInstruction::WebServerStarted => ServerContext::WebServerStarted,
         }
     }
@@ -310,9 +314,10 @@ pub(crate) struct SessionMetaData {
     pub layout: Box<Layout>,
     pub current_input_modes: HashMap<ClientId, InputMode>,
     pub session_configuration: SessionConfiguration,
-    pub allow_web_connections: bool, // this is a special attribute explicitly set on session
-                                     // initialization because we don't want it to be overridden by
-                                     // configuration changes
+    pub web_sharing: WebSharing, // this is a special attribute explicitly set on session
+                                 // initialization because we don't want it to be overridden by
+                                 // configuration changes, the only way it can be overwritten is by
+                                 // explicit plugin action
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
@@ -462,7 +467,7 @@ macro_rules! send_to_client {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct SessionState {
-    clients: HashMap<ClientId, Option<Size>>,
+    clients: HashMap<ClientId, Option<(Size, bool)>>, // bool -> is_web_client
     pipes: HashMap<String, ClientId>, // String => pipe_id
 }
 
@@ -494,20 +499,23 @@ impl SessionState {
         self.pipes.retain(|_p_id, c_id| c_id != &client_id);
     }
     pub fn set_client_size(&mut self, client_id: ClientId, size: Size) {
-        self.clients.insert(client_id, Some(size));
+        self.clients.entry(client_id).or_insert_with(Default::default).as_mut().map(|(s, _is_web_client)| *s = size);
+    }
+    pub fn set_client_data(&mut self, client_id: ClientId, size: Size, is_web_client: bool) {
+        self.clients.insert(client_id, Some((size, is_web_client)));
     }
     pub fn min_client_terminal_size(&self) -> Option<Size> {
         // None if there are no client sizes
         let mut rows: Vec<usize> = self
             .clients
             .values()
-            .filter_map(|size| size.map(|size| size.rows))
+            .filter_map(|size_and_is_web_client| size_and_is_web_client.map(|(size, _is_web_client)| size.rows))
             .collect();
         rows.sort_unstable();
         let mut cols: Vec<usize> = self
             .clients
             .values()
-            .filter_map(|size| size.map(|size| size.cols))
+            .filter_map(|size_and_is_web_client| size_and_is_web_client.map(|(size, _is_web_client)| size.cols))
             .collect();
         cols.sort_unstable();
         let min_rows = rows.first();
@@ -522,6 +530,11 @@ impl SessionState {
     }
     pub fn client_ids(&self) -> Vec<ClientId> {
         self.clients.keys().copied().collect()
+    }
+    pub fn web_client_ids(&self) -> Vec<ClientId> {
+        self.clients.iter().filter_map(|(c_id, size_and_is_web_client)| {
+          size_and_is_web_client.and_then(|(_s, is_web_client)| if is_web_client { Some(*c_id) } else { None })
+        }).collect()
     }
     pub fn get_pipe(&self, pipe_name: &str) -> Option<ClientId> {
         self.pipes.get(pipe_name).copied()
@@ -663,7 +676,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 session_state
                     .write()
                     .unwrap()
-                    .set_client_size(client_id, client_attributes.size);
+                    .set_client_data(client_id, client_attributes.size, is_web_client);
 
                 let default_shell = runtime_config_options.default_shell.map(|shell| {
                     TerminalAction::RunCommand(RunCommand {
@@ -779,7 +792,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 session_state
                     .write()
                     .unwrap()
-                    .set_client_size(client_id, attrs.size);
+                    .set_client_data(client_id, attrs.size, is_web_client);
                 let min_size = session_state
                     .read()
                     .unwrap()
@@ -1260,13 +1273,72 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             },
             ServerInstruction::StartWebServer(client_id) => {
                 if cfg!(feature = "web_server_capability") {
-                    session_data.write().map(|mut s| s.as_mut().map(|s| s.allow_web_connections = true));
                     send_to_client!(
                         client_id,
                         os_input,
                         ServerToClientMsg::StartWebServer,
                         session_state
                     );
+                } else {
+                    // TODO: test this
+                    log::error!("Cannot start web server: this instance of Zellij was compiled without web_server_capability");
+                }
+            }
+            ServerInstruction::ShareCurrentSession(client_id) => {
+                if cfg!(feature = "web_server_capability") {
+                    let successfully_changed = session_data
+                        .write()
+                        .ok()
+                        .and_then(|mut s| s.as_mut().map(|s| s.web_sharing.set_sharing()))
+                        .unwrap_or(false);
+                    if successfully_changed {
+                        session_data
+                            .write()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_screen(ScreenInstruction::SessionSharingStatusChange(true))
+                            .unwrap();
+                    }
+                } else {
+                    // TODO: test this
+                    log::error!("Cannot start web server: this instance of Zellij was compiled without web_server_capability");
+                }
+            }
+            ServerInstruction::StopSharingCurrentSession(client_id) => {
+                if cfg!(feature = "web_server_capability") {
+                    let successfully_changed = session_data
+                        .write()
+                        .ok()
+                        .and_then(|mut s| s.as_mut().map(|s| s.web_sharing.set_not_sharing()))
+                        .unwrap_or(false);
+                    if successfully_changed {
+
+                        // disconnect existing web clients
+                        let web_client_ids: Vec<ClientId> = session_state
+                            .read()
+                            .unwrap()
+                            .web_client_ids()
+                            .iter()
+                            .copied()
+                            .filter(|c| c != &client_id)
+                            .collect();
+                        for client_id in web_client_ids {
+                            let _ = os_input
+                                .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                            remove_client!(client_id, os_input, session_state);
+                        }
+
+                        session_data
+                            .write()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_screen(ScreenInstruction::SessionSharingStatusChange(false))
+                            .unwrap();
+                    }
                 } else {
                     // TODO: test this
                     log::error!("Cannot start web server: this instance of Zellij was compiled without web_server_capability");
@@ -1536,7 +1608,7 @@ fn init_session(
         pty_writer_thread: Some(pty_writer_thread),
         background_jobs_thread: Some(background_jobs_thread),
         #[cfg(feature = "web_server_capability")]
-        allow_web_connections: config.options.web_server.map(|w| w.is_on()).unwrap_or(false),
+        web_sharing: config.options.web_sharing.unwrap_or(WebSharing::Off),
         #[cfg(not(feature = "web_server_capability"))]
         is_web_server_enabled: false,
     }

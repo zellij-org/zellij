@@ -1280,6 +1280,20 @@ pub fn start_web_server() {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn share_current_session() {
+    let plugin_command = PluginCommand::ShareCurrentSession;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn stop_sharing_current_session() {
+    let plugin_command = PluginCommand::StopSharingCurrentSession;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 pub fn query_web_server() {
     let plugin_command = PluginCommand::QueryWebServer;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();

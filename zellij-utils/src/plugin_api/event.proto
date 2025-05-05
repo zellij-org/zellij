@@ -358,8 +358,14 @@ message ModeUpdatePayload {
   optional string editor = 7;
   optional string shell = 8;
   optional bool web_clients_allowed = 9;
-  optional bool web_sharing_allowed = 10;
+  optional WebSharing web_sharing = 10;
   optional bool currently_marking_pane_group = 11;
+}
+
+enum WebSharing {
+    On = 0;
+    Off = 1;
+    Disabled = 2;
 }
 
 message InputModeKeybinds {

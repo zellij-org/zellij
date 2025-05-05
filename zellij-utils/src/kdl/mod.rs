@@ -2,7 +2,7 @@ mod kdl_layout_parser;
 use crate::data::{
     BareKey, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo,
     MultiplayerColors, Palette, PaletteColor, PaneInfo, PaneManifest, PermissionType, Resize,
-    SessionInfo, StyleDeclaration, Styling, TabInfo, DEFAULT_STYLES,
+    SessionInfo, StyleDeclaration, Styling, TabInfo, DEFAULT_STYLES, WebSharing
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -11,7 +11,7 @@ use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
     Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, SplitSize,
 };
-use crate::input::options::{Clipboard, WebServer, OnForceClose, Options};
+use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
@@ -2297,10 +2297,12 @@ impl Options {
         )
         .map(|(v, _)| v);
         let web_server =
-            match kdl_property_first_arg_as_string_or_error!(kdl_options, "web_server") {
-                Some((string, entry)) => Some(WebServer::from_str(string).map_err(|_| {
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "web_server").map(|(v, _)| v);
+        let web_sharing =
+            match kdl_property_first_arg_as_string_or_error!(kdl_options, "web_sharing") {
+                Some((string, entry)) => Some(WebSharing::from_str(string).map_err(|_| {
                     kdl_parsing_error!(
-                        format!("Invalid value for web_server: '{}'", string),
+                        format!("Invalid value for web_sharing: '{}'", string),
                         entry
                     )
                 })?),
@@ -2346,6 +2348,7 @@ impl Options {
             disable_session_metadata,
             support_kitty_keyboard_protocol,
             web_server,
+            web_sharing,
             stacked_resize,
             show_startup_tips,
             show_release_notes,
@@ -3151,15 +3154,55 @@ impl Options {
     }
     fn web_server_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
-            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
-            " ",
-            "// Whether to allow access to sessions in the browser through a local webserver",
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            "// Whether to make sure a local web server is running when a new Zellij session starts.",
+            "// This web server will allow creating new sessions and attaching to existing ones that have",
+            "// opted in to being shared in the browser.",
+            "// ",
+            "// Note: a local web server can still be manually started from within a Zellij session or from the CLI.",
+            "// If this is not desired, one can use a version of Zellij compiled without",
+            "// web_server_capability",
+            "// ",
             "// Possible values:",
-            "// - on (the session will be shared in the browser and the web server started on startup",
-            "// if it's not already running)",
-            "// - off (the session will not be shared on startup and neither will the web server be started, but this can be toggled to \"on\" by an explicit action)",
-            "// - disabled (the session will not be shared, the web server will not be started on startup",
-            "// and it will not be possible to toggle the web server on for this session)",
+            "// - true",
+            "// - false",
+            "// Default: false",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("web_server");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(web_server) = self.web_server {
+            let mut node = create_node(web_server);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn web_sharing_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            "// Whether to allow new sessions to be shared through a local web server, assuming one is",
+            "// running (see the `web_server` option for more details).",
+            "// ",
+            "// Note: if Zellij was compiled without web_server_capability, this option will be locked to",
+            "// \"disabled\"",
+            "// ",
+            "// Possible values:",
+            "// - \"on\" (new sessions will allow web sharing through the local web server if it",
+            "// is online)",
+            "// - \"off\" (new sessions will not allow web sharing unless they explicitly opt-in to it)",
+            "// - \"disabled\" (new sessions will not allow web sharing and will not be able to opt-in to it)",
             "// Default: \"off\"",
             "// ",
         );
@@ -3169,11 +3212,11 @@ impl Options {
             node.push(node_value.to_owned());
             node
         };
-        if let Some(web_server) = &self.web_server {
-            let mut node = match web_server {
-                WebServer::On => create_node("on"),
-                WebServer::Off => create_node("off"),
-                WebServer::Disabled => create_node("disabled"),
+        if let Some(web_sharing) = &self.web_sharing {
+            let mut node = match web_sharing {
+                WebSharing::On => create_node("on"),
+                WebSharing::Off => create_node("off"),
+                WebSharing::Disabled => create_node("disabled"),
             };
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
@@ -3379,8 +3422,11 @@ impl Options {
         {
             nodes.push(support_kitty_keyboard_protocol);
         }
-        if let Some(enable_web_server) = self.web_server_to_kdl(add_comments) {
-            nodes.push(enable_web_server);
+        if let Some(web_server) = self.web_server_to_kdl(add_comments) {
+            nodes.push(web_server);
+        }
+        if let Some(web_sharing) = self.web_sharing_to_kdl(add_comments) {
+            nodes.push(web_sharing);
         }
         if let Some(stacked_resize) = self.stacked_resize_to_kdl(add_comments) {
             nodes.push(stacked_resize);
@@ -5994,7 +6040,8 @@ fn config_options_to_string() {
         serialization_interval 1
         disable_session_metadata true
         support_kitty_keyboard_protocol false
-        enable_web_server true
+        web_server true
+        web_sharing "disabled"
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = Options::from_kdl(&document).unwrap();
@@ -6040,7 +6087,8 @@ fn config_options_to_string_with_comments() {
         serialization_interval 1
         disable_session_metadata true
         support_kitty_keyboard_protocol false
-        enable_web_server true
+        web_server true
+        web_sharing "disabled"
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = Options::from_kdl(&document).unwrap();

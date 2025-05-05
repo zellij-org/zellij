@@ -10,7 +10,7 @@ use std::time::Duration;
 use log::{debug, warn};
 use zellij_utils::data::{
     Direction, KeyWithModifier, PaneManifest, PluginPermission, Resize, ResizeStrategy,
-    SessionInfo, Styling,
+    SessionInfo, Styling, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -417,6 +417,7 @@ pub enum ScreenInstruction {
     EmbedMultiplePanes(Vec<PaneId>, ClientId),
     TogglePaneInGroup(ClientId),
     ToggleGroupMarking(ClientId),
+    SessionSharingStatusChange(bool),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -639,6 +640,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::EmbedMultiplePanes(..) => ScreenContext::EmbedMultiplePanes,
             ScreenInstruction::TogglePaneInGroup(..) => ScreenContext::TogglePaneInGroup,
             ScreenInstruction::ToggleGroupMarking(..) => ScreenContext::ToggleGroupMarking,
+            ScreenInstruction::SessionSharingStatusChange(..) => ScreenContext::SessionSharingStatusChange,
         }
     }
 }
@@ -721,6 +723,7 @@ pub(crate) struct Screen {
     explicitly_disable_kitty_keyboard_protocol: bool,
     default_editor: Option<PathBuf>,
     web_clients_allowed: bool,
+    web_sharing: WebSharing,
     current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
     advanced_mouse_actions: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
@@ -751,6 +754,7 @@ impl Screen {
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
         web_clients_allowed: bool,
+        web_sharing: WebSharing,
         advanced_mouse_actions: bool,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
@@ -796,6 +800,7 @@ impl Screen {
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
             web_clients_allowed,
+            web_sharing,
             current_pane_group: Rc::new(RefCell::new(HashMap::new())),
             currently_marking_pane_group: Rc::new(RefCell::new(HashMap::new())),
             advanced_mouse_actions,
@@ -1404,6 +1409,7 @@ impl Screen {
             self.explicitly_disable_kitty_keyboard_protocol,
             self.default_editor.clone(),
             self.web_clients_allowed,
+            self.web_sharing,
             self.current_pane_group.clone(),
             self.currently_marking_pane_group.clone(),
             self.advanced_mouse_actions,
@@ -3089,7 +3095,8 @@ pub(crate) fn screen_thread_main(
         .unwrap_or(false); // by default, we try to support this if the terminal supports it and
                            // the program running inside a pane requests it
     let stacked_resize = config_options.stacked_resize.unwrap_or(true);
-    let web_clients_allowed = config_options.web_server.map(|s| s.web_clients_allowed()).unwrap_or(true);
+    let web_clients_allowed = config_options.web_sharing.map(|s| s.web_clients_allowed()).unwrap_or(false);
+    let web_sharing = config_options.web_sharing.unwrap_or_else(Default::default);
     let advanced_mouse_actions = config_options.advanced_mouse_actions.unwrap_or(true);
 
     let thread_senders = bus.senders.clone();
@@ -3125,6 +3132,7 @@ pub(crate) fn screen_thread_main(
         stacked_resize,
         default_editor,
         web_clients_allowed,
+        web_sharing,
         advanced_mouse_actions,
     );
 
@@ -5208,6 +5216,18 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ToggleGroupMarking(client_id) => {
                 screen.toggle_group_marking(client_id).non_fatal();
+            },
+            ScreenInstruction::SessionSharingStatusChange(web_sharing) => {
+                if web_sharing {
+                    screen.web_sharing = WebSharing::On;
+                } else {
+                    screen.web_sharing = WebSharing::Off;
+                }
+
+                for tab in screen.tabs.values_mut() {
+                    tab.update_web_sharing(screen.web_sharing);
+                }
+                screen.render(None);
             },
             ScreenInstruction::HighlightAndUnhighlightPanes(
                 pane_ids_to_highlight,

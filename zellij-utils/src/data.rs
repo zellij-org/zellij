@@ -1528,7 +1528,7 @@ pub struct ModeInfo {
     // web_sharing_allowed: false -> it is not possible to switch on web sharing for this session
     // web_sharing_allowed: true -> it is possible to switch on web sharing for this session
     // through an explicit user action
-    pub web_sharing_allowed: Option<bool>,
+    pub web_sharing: Option<WebSharing>,
     pub currently_marking_pane_group: Option<bool>,
 }
 
@@ -2176,6 +2176,70 @@ impl OriginatingPlugin {
     }
 }
 
+#[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WebSharing {
+    #[serde(alias = "on")]
+    On,
+    #[serde(alias = "off")]
+    Off,
+    #[serde(alias = "disabled")]
+    Disabled,
+}
+
+impl Default for WebSharing {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
+impl WebSharing {
+    pub fn is_on(&self) -> bool {
+        match self {
+            WebSharing::On => true,
+            _ => false
+        }
+    }
+    pub fn web_clients_allowed(&self) -> bool {
+        match self {
+            WebSharing::On => true,
+            _ => false
+        }
+    }
+    pub fn set_sharing(&mut self) -> bool {
+        // returns true if successfully set sharing
+        match self {
+            WebSharing::On => true,
+            WebSharing::Off => {
+                *self = WebSharing::On;
+                true
+            }
+            WebSharing::Disabled => false
+        }
+    }
+    pub fn set_not_sharing(&mut self) -> bool {
+        // returns true if successfully set not sharing
+        match self {
+            WebSharing::On => {
+                *self = WebSharing::Off;
+                true
+            }
+            WebSharing::Off => true,
+            WebSharing::Disabled => false
+        }
+    }
+}
+
+impl FromStr for WebSharing {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "On" | "on" => Ok(Self::On),
+            "Off" | "off" => Ok(Self::Off),
+            "Disabled" | "disabled" => Ok(Self::Disabled),
+            _ => Err(format!("No such option: {}", s)),
+        }
+    }
+}
 
 
 type Context = BTreeMap<String, String>;
@@ -2337,6 +2401,8 @@ pub enum PluginCommand {
     OpenFileNearPlugin(FileToOpen, Context),
     OpenFileFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>, Context),
     StartWebServer,
+    ShareCurrentSession,
+    StopSharingCurrentSession,
     QueryWebServer,
     OpenFileInPlaceOfPlugin(FileToOpen, bool, Context), // bool -> close_plugin_after_replace
     GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>),     // panes to group, panes to ungroup

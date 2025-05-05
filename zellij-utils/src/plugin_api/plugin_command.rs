@@ -1628,6 +1628,20 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for EmbedMultiplePanes"),
             },
+            Some(CommandName::ShareCurrentSession) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    Err("ShareCurrentSession should not have a payload")
+                } else {
+                    Ok(PluginCommand::ShareCurrentSession)
+                }
+            },
+            Some(CommandName::StopSharingCurrentSession) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    Err("StopSharingCurrentSession should not have a payload")
+                } else {
+                    Ok(PluginCommand::StopSharingCurrentSession)
+                }
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2705,6 +2719,14 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                         pane_ids: pane_ids.iter().filter_map(|&p| p.try_into().ok()).collect(),
                     },
                 )),
+            }),
+            PluginCommand::ShareCurrentSession => Ok(ProtobufPluginCommand {
+                name: CommandName::ShareCurrentSession as i32,
+                payload: None,
+            }),
+            PluginCommand::StopSharingCurrentSession => Ok(ProtobufPluginCommand {
+                name: CommandName::StopSharingCurrentSession as i32,
+                payload: None,
             }),
         }
     }

@@ -33,12 +33,12 @@ use control_message::{
 };
 use zellij_utils::{
     cli::CliArgs,
-    data::{ConnectToSession, LayoutInfo, Style},
+    data::{ConnectToSession, LayoutInfo, Style, WebSharing},
     envs,
     errors::prelude::*,
     input::{
         actions::Action, cast_termwiz_key, config::{Config, ConfigError}, layout::Layout, mouse::MouseEvent,
-        options::{Options, WebServer},
+        options::Options,
     },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     sessions::{
@@ -805,7 +805,8 @@ fn spawn_new_session(
     let should_launch_setup_wizard = false;
     let cli_args = CliArgs::default(); // TODO: what do we do about this and the above setup
                                        // wizard?
-    config.options.web_server = Some(WebServer::On);
+    config.options.web_server = Some(true);
+    config.options.web_sharing = Some(WebSharing::On);
     let is_web_client = true;
 
     (

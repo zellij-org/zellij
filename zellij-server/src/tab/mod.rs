@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use uuid::Uuid;
 use zellij_utils::data::{
     Direction, KeyWithModifier, PaneInfo, PermissionStatus, PermissionType, PluginPermission,
-    ResizeStrategy,
+    ResizeStrategy, WebSharing
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -262,6 +262,7 @@ pub(crate) struct Tab {
     styled_underlines: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
     web_clients_allowed: bool,
+    web_sharing: WebSharing,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
     current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
     advanced_mouse_actions: bool,
@@ -677,6 +678,7 @@ impl Tab {
         explicitly_disable_kitty_keyboard_protocol: bool,
         default_editor: Option<PathBuf>,
         web_clients_allowed: bool,
+        web_sharing: WebSharing,
         current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
         currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
         advanced_mouse_actions: bool,
@@ -775,6 +777,7 @@ impl Tab {
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
             web_clients_allowed,
+            web_sharing,
             mouse_hover_pane_id: HashMap::new(),
             current_pane_group,
             currently_marking_pane_group,
@@ -1004,6 +1007,7 @@ impl Tab {
             mode_info.shell = Some(self.default_shell.clone());
             mode_info.editor = self.default_editor.clone();
             mode_info.web_clients_allowed = Some(self.web_clients_allowed);
+            mode_info.web_sharing = Some(self.web_sharing);
             mode_info.currently_marking_pane_group =
                 currently_marking_pane_group.get(client_id).copied();
             plugin_updates.push((None, Some(*client_id), Event::ModeUpdate(mode_info)));
@@ -4717,6 +4721,13 @@ impl Tab {
     }
     pub fn update_advanced_mouse_actions(&mut self, advanced_mouse_actions: bool) {
         self.advanced_mouse_actions = advanced_mouse_actions;
+    }
+    pub fn update_web_sharing(&mut self, web_sharing: WebSharing) {
+        let old_value = self.web_sharing;
+        self.web_sharing = web_sharing;
+        if old_value != self.web_sharing {
+            self.update_input_modes();
+        }
     }
     pub fn extract_suppressed_panes(&mut self) -> SuppressedPanes {
         self.suppressed_panes.drain().collect()

@@ -383,6 +383,7 @@ pub enum ScreenContext {
     EmbedMultiplePanes,
     TogglePaneInGroup,
     ToggleGroupMarking,
+    SessionSharingStatusChange,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -500,6 +501,8 @@ pub enum ServerContext {
     FailedToWriteConfigToDisk,
     RebindKeys,
     StartWebServer,
+    ShareCurrentSession,
+    StopSharingCurrentSession,
     WebServerStarted,
 }
 

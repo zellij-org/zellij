@@ -477,8 +477,8 @@ pub struct ModeUpdatePayload {
     pub shell: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, optional, tag="9")]
     pub web_clients_allowed: ::core::option::Option<bool>,
-    #[prost(bool, optional, tag="10")]
-    pub web_sharing_allowed: ::core::option::Option<bool>,
+    #[prost(enumeration="WebSharing", optional, tag="10")]
+    pub web_sharing: ::core::option::Option<i32>,
     #[prost(bool, optional, tag="11")]
     pub currently_marking_pane_group: ::core::option::Option<bool>,
 }
@@ -757,6 +757,35 @@ impl MouseEventName {
             "MouseHold" => Some(Self::MouseHold),
             "MouseRelease" => Some(Self::MouseRelease),
             "MouseHover" => Some(Self::MouseHover),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum WebSharing {
+    On = 0,
+    Off = 1,
+    Disabled = 2,
+}
+impl WebSharing {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            WebSharing::On => "On",
+            WebSharing::Off => "Off",
+            WebSharing::Disabled => "Disabled",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "On" => Some(Self::On),
+            "Off" => Some(Self::Off),
+            "Disabled" => Some(Self::Disabled),
             _ => None,
         }
     }

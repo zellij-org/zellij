@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 #[derive(Debug, Default)]
 struct App {
     web_server_started: bool,
-    web_sharing_allowed: bool,
+    web_sharing: WebSharing,
     web_clients_allowed: bool,
     session_name: Option<String>,
     web_server_error: Option<String>,
@@ -36,8 +36,8 @@ impl ZellijPlugin for App {
                     self.web_clients_allowed = web_clients_allowed;
                     should_render = true;
                 }
-                if let Some(web_sharing_allowed) = mode_info.web_sharing_allowed {
-                    self.web_sharing_allowed = web_sharing_allowed;
+                if let Some(web_sharing) = mode_info.web_sharing {
+                    self.web_sharing = web_sharing;
                     should_render = true;
                 }
             },
@@ -49,6 +49,19 @@ impl ZellijPlugin for App {
                 match key.bare_key {
                     BareKey::Enter if key.has_no_modifiers() => {
                         start_web_server();
+                    }
+                    BareKey::Char(' ') if key.has_no_modifiers() => {
+                      match self.web_sharing {
+                          WebSharing::Disabled => {
+                            // no-op
+                          },
+                          WebSharing::On => {
+                            stop_sharing_current_session();
+                          },
+                          WebSharing::Off => {
+                            share_current_session();
+                          }
+                        }
                     }
                     _ => {}
                 }
@@ -163,33 +176,39 @@ impl App {
     }
     pub fn render_current_session_status(&self) -> (Vec<Text>, usize) {
         let mut max_len = 0;
-        let status_line = if self.web_clients_allowed && self.web_server_started {
-            let title = "Current session: ";
-            let value = "SHARING";
-            max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
-            Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()).color_range(3, title.chars().count()..)
-        } else if self.web_clients_allowed {
-            let title = "Current session: ";
-            let value = "NOT SHARING";
-            max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
-            Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()).color_range(3, title.chars().count()..)
-        } else {
-            let title = "Current session: ";
-            let value = "SHARING IS DISABLED";
-            max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
-            Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()).color_range(3, title.chars().count()..)
+        let status_line = match self.web_sharing {
+            WebSharing::On => {
+                let title = "Current session: ";
+                let value = "SHARING";
+                max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
+                Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()).color_range(3, title.chars().count()..)
+            }
+            WebSharing::Disabled => {
+                let title = "Current session: ";
+                let value = "SHARING IS DISABLED";
+                max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
+                Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()).color_range(3, title.chars().count()..)
+            }
+            WebSharing::Off => {
+                let title = "Current session: ";
+                let value = "NOT SHARING";
+                max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
+                Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()).color_range(3, title.chars().count()..)
+            }
         };
-        let info_line = if self.web_clients_allowed && self.web_server_started {
+        let info_line = if self.web_sharing.web_clients_allowed() && self.web_server_started {
             let title = "Session URL: ";
             let value = format!("http://localhost:8082/{}", self.session_name.clone().unwrap_or_else(|| "".to_owned()));
             max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
             Some(Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()))
+        } else if self.web_sharing.web_clients_allowed() {
+            let text = format!("...but web server is offline");
+            max_len = std::cmp::max(max_len, text.chars().count());
+            Some(Text::new(text))
         } else {
-            None
-            // TODO: do we want to print something else here if the session is not shared?
-//             let text = "Press <SPACE> to share";
-//             max_len = std::cmp::max(max_len, text.chars().count());
-//             Text::new(text).color_range(3, 6..=12)
+            let text = "Press <SPACE> to share";
+            max_len = std::cmp::max(max_len, text.chars().count());
+            Some(Text::new(text).color_range(3, 6..=12))
         };
         let mut text_elements = vec![status_line];
         if let Some(info_line) = info_line {

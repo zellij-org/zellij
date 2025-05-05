@@ -1,6 +1,6 @@
 //! Handles cli and configuration options
 use crate::cli::Command;
-use crate::data::InputMode;
+use crate::data::{InputMode, WebSharing};
 use clap::{ArgEnum, Args};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -162,17 +162,37 @@ pub struct Options {
     #[serde(default)]
     pub support_kitty_keyboard_protocol: Option<bool>,
 
-    /// Whether to allow access to sessions in the browser through a local webserver
+    /// Whether to make sure a local web server is running when a new Zellij session starts.
+    /// This web server will allow creating new sessions and attaching to existing ones that have
+    /// opted in to being shared in the browser.
+    ///
+    /// Note: a local web server can still be manually started from within a Zellij session or from the CLI.
+    /// If this is not desired, one can use a version of Zellij compiled without
+    /// web_server_capability
+    ///
     /// Possible values:
-    /// - on (the session will be shared in the browser and the web server started on startup
-    /// if it's not already running)
-    /// - off (the session will not be shared on startup and neither will the web server be started, but this can be toggled to "on" by an explicit action)
-    /// - disabled (the session will not be shared, the web server will not be started on startup
-    /// and it will not be possible to toggle the web server on for this session)
+    /// - true
+    /// - false
+    /// Default: false
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub web_server: Option<bool>,
+
+    /// Whether to allow new sessions to be shared through a local web server, assuming one is
+    /// running (see the `web_server` option for more details).
+    ///
+    /// Note: if Zellij was compiled without web_server_capability, this option will be locked to
+    /// "disabled"
+    ///
+    /// Possible values:
+    /// - "on" (new sessions will allow web sharing through the local web server if it
+    /// is online)
+    /// - "off" (new sessions will not allow web sharing unless they explicitly opt-in to it)
+    /// - "disabled" (new sessions will not allow web sharing and will not be able to opt-in to it)
     /// Default: "off"
     #[clap(long, value_parser)]
     #[serde(default)]
-    pub web_server: Option<WebServer>,
+    pub web_sharing: Option<WebSharing>,
 
     /// Whether to stack panes when resizing beyond a certain size
     /// default is true
@@ -220,49 +240,6 @@ impl FromStr for Clipboard {
             "System" | "system" => Ok(Self::System),
             "Primary" | "primary" => Ok(Self::Primary),
             _ => Err(format!("No such clipboard: {}", s)),
-        }
-    }
-}
-
-#[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
-pub enum WebServer {
-    #[serde(alias = "on")]
-    On,
-    #[serde(alias = "off")]
-    Off,
-    #[serde(alias = "disabled")]
-    Disabled,
-}
-
-impl Default for WebServer {
-    fn default() -> Self {
-        Self::Off
-    }
-}
-
-impl WebServer {
-    pub fn is_on(&self) -> bool {
-        match self {
-            WebServer::On => true,
-            _ => false
-        }
-    }
-    pub fn web_clients_allowed(&self) -> bool {
-        match self {
-            WebServer::On | WebServer::Off => true,
-            _ => false
-        }
-    }
-}
-
-impl FromStr for WebServer {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "On" | "on" => Ok(Self::On),
-            "Off" | "off" => Ok(Self::Off),
-            "Disabled" | "disabled" => Ok(Self::Disabled),
-            _ => Err(format!("No such option: {}", s)),
         }
     }
 }
@@ -319,6 +296,7 @@ impl Options {
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
         let web_server = other.web_server.or(self.web_server);
+        let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
@@ -353,6 +331,7 @@ impl Options {
             disable_session_metadata,
             support_kitty_keyboard_protocol,
             web_server,
+            web_sharing,
             stacked_resize,
             show_startup_tips,
             show_release_notes,
@@ -416,6 +395,7 @@ impl Options {
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
         let web_server = other.web_server.or(self.web_server);
+        let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
@@ -450,6 +430,7 @@ impl Options {
             disable_session_metadata,
             support_kitty_keyboard_protocol,
             web_server,
+            web_sharing,
             stacked_resize,
             show_startup_tips,
             show_release_notes,
@@ -520,6 +501,7 @@ impl From<CliOptions> for Options {
             serialization_interval: opts.serialization_interval,
             support_kitty_keyboard_protocol: opts.support_kitty_keyboard_protocol,
             web_server: opts.web_server,
+            web_sharing: opts.web_sharing,
             stacked_resize: opts.stacked_resize,
             show_startup_tips: opts.show_startup_tips,
             show_release_notes: opts.show_release_notes,

@@ -47,7 +47,7 @@ mod not_wasm {
             editor: None,
             shell: None,
             web_clients_allowed: None,
-            web_sharing_allowed: None,
+            web_sharing: None,
             currently_marking_pane_group: None,
         }
     }

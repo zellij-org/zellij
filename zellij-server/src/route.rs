@@ -1176,7 +1176,8 @@ pub(crate) fn route_thread_main(
                                 .as_ref()
                                 .map(|rlocked_sessions| {
                                     rlocked_sessions
-                                        .allow_web_connections
+                                        .web_sharing
+                                        .web_clients_allowed()
                                 })
                                 .unwrap_or(false);
                             let should_allow_connection = !is_web_client || allow_web_connections;

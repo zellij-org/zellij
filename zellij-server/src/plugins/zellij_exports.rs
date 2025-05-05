@@ -458,6 +458,12 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::StartWebServer => {
                         start_web_server(env)
                     },
+                    PluginCommand::ShareCurrentSession => {
+                        share_current_session(env)
+                    },
+                    PluginCommand::StopSharingCurrentSession => {
+                        stop_sharing_current_session(env)
+                    },
                     PluginCommand::QueryWebServer => {
                         query_web_server(env)
                     },
@@ -2184,6 +2190,14 @@ fn start_web_server(
     let _ = env.senders.send_to_server(ServerInstruction::StartWebServer(env.client_id));
 }
 
+fn share_current_session(env: &PluginEnv) {
+    let _ = env.senders.send_to_server(ServerInstruction::ShareCurrentSession(env.client_id));
+}
+
+fn stop_sharing_current_session(env: &PluginEnv) {
+    let _ = env.senders.send_to_server(ServerInstruction::StopSharingCurrentSession(env.client_id));
+}
+
 fn query_web_server(env: &PluginEnv) {
     let _ = env
         .senders
@@ -2430,6 +2444,8 @@ fn check_command_permission(
             PermissionType::Reconfigure
         },
         PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,
+        PluginCommand::ShareCurrentSession |
+        PluginCommand::StopSharingCurrentSession |
         PluginCommand::QueryWebServer |
         PluginCommand::StartWebServer => PermissionType::StartWebServer,
         _ => return (PermissionStatus::Granted, None),
