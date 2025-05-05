@@ -124,6 +124,7 @@ pub enum ServerInstruction {
     StartWebServer(ClientId),
     ShareCurrentSession(ClientId),
     StopSharingCurrentSession(ClientId),
+    SendWebClientsForbidden(ClientId),
     WebServerStarted,
 }
 
@@ -165,6 +166,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ShareCurrentSession(..) => ServerContext::ShareCurrentSession,
             ServerInstruction::StopSharingCurrentSession(..) => ServerContext::StopSharingCurrentSession,
             ServerInstruction::WebServerStarted => ServerContext::WebServerStarted,
+            ServerInstruction::SendWebClientsForbidden(..) => ServerContext::SendWebClientsForbidden,
         }
     }
 }
@@ -973,6 +975,21 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                     .unwrap();
+            },
+            ServerInstruction::SendWebClientsForbidden(client_id) => {
+                let _ = os_input
+                    .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::WebClientsForbidden));
+                remove_client!(client_id, os_input, session_state);
+                if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                        .unwrap();
+                }
             },
             ServerInstruction::KillSession => {
                 let client_ids = session_state.read().unwrap().client_ids();

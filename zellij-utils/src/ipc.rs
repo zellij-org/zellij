@@ -123,6 +123,7 @@ pub enum ExitReason {
     ForceDetached,
     CannotAttach,
     Disconnect,
+    WebClientsForbidden,
     Error(String),
 }
 
@@ -138,6 +139,10 @@ impl Display for ExitReason {
             Self::CannotAttach => write!(
                 f,
                 "Session attached to another client. Use --force flag to force connect."
+            ),
+            Self::WebClientsForbidden => write!(
+                f,
+                "Web clients are not allowed in this session - cannot attach"
             ),
             Self::Disconnect => {
                 let session_tip = match crate::envs::get_session_name() {

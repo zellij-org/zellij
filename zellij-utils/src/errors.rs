@@ -504,6 +504,7 @@ pub enum ServerContext {
     ShareCurrentSession,
     StopSharingCurrentSession,
     WebServerStarted,
+    SendWebClientsForbidden,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

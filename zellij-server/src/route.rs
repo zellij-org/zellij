@@ -1200,7 +1200,7 @@ pub(crate) fn route_thread_main(
                                     vec![error.to_owned()],
                                     client_id,
                                 ));
-                                let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
+                                let _ = to_server.send(ServerInstruction::SendWebClientsForbidden(client_id));
                             }
                         },
                         ClientToServerMsg::ClientExited => {

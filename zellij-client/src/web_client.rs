@@ -547,8 +547,11 @@ fn zellij_server_listener(
                             },
                             Some((ServerToClientMsg::Exit(exit_reason), _)) => {
                                 match exit_reason {
+                                    ExitReason::WebClientsForbidden => {
+                                        let _ = stdout_channel_tx.send(format!("\n Web Clients are not allowed to attach to this session."));
+                                    }
                                     ExitReason::Error(e) => {
-                                        eprintln!("{}", e);
+                                        log::error!("{}", e);
                                     },
                                     _ => {},
                                 }
