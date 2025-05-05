@@ -138,6 +138,7 @@ struct AppState {
     connection_table: ConnectionTable,
     config: Config,
     config_options: Options,
+    shutdown_signal_tx: tokio::sync::mpsc::UnboundedSender<ShutdownSignal>,
 }
 
 async fn serve_web_client(
@@ -147,16 +148,20 @@ async fn serve_web_client(
 ) {
     let addr = "127.0.0.1:8082";
 
+    let (shutdown_signal_tx, shutdown_signal_rx) = tokio::sync::mpsc::unbounded_channel();
+
     let state = AppState {
         connection_table,
         config,
         config_options,
+        shutdown_signal_tx,
     };
 
     async fn page_html(path: Option<AxumPath<String>>) -> Html<&'static str> {
         log::info!("Serving web client html with path: {:?}", path);
         Html(WEB_CLIENT_PAGE)
     }
+
 
     let app = Router::new()
         .route("/", get(page_html))
@@ -167,13 +172,43 @@ async fn serve_web_client(
         .route("/ws/terminal/{session}", any(ws_handler_terminal))
         .route("/session", post(create_new_client))
         .route("/info/version", get(VERSION))
+        .route("/command/shutdown", post(send_shutdown_signal))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 
     log::info!("Started listener on 8082");
 
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal(shutdown_signal_rx))
+        .await
+        .unwrap();
+}
+
+async fn shutdown_signal(mut shutdown_channel_rx: tokio::sync::mpsc::UnboundedReceiver<ShutdownSignal>) {
+    loop {
+        match shutdown_channel_rx.recv().await {
+            Some(ShutdownSignal::Shutdown) => {
+                break;
+            }
+            _ => {}
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ShutdownSignal {
+    Shutdown
+}
+
+#[derive(Serialize, Debug)]
+pub struct SendShutdownSignalResponse {
+    status: String
+}
+
+async fn send_shutdown_signal(State(state): State<AppState>) -> Json<SendShutdownSignalResponse> {
+    state.shutdown_signal_tx.send(ShutdownSignal::Shutdown).unwrap();
+    Json(SendShutdownSignalResponse { status: "Ok".to_owned() })
 }
 
 async fn get_static_asset(AxumPath(path): AxumPath<String>) -> impl IntoResponse {

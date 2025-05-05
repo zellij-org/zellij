@@ -458,6 +458,9 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::StartWebServer => {
                         start_web_server(env)
                     },
+                    PluginCommand::StopWebServer => {
+                        stop_web_server(env)
+                    },
                     PluginCommand::ShareCurrentSession => {
                         share_current_session(env)
                     },
@@ -2190,6 +2193,14 @@ fn start_web_server(
     let _ = env.senders.send_to_server(ServerInstruction::StartWebServer(env.client_id));
 }
 
+fn stop_web_server(
+    env: &PluginEnv,
+) {
+    let _ = env
+        .senders
+        .send_to_background_jobs(BackgroundJob::StopWebServer);
+}
+
 fn share_current_session(env: &PluginEnv) {
     let _ = env.senders.send_to_server(ServerInstruction::ShareCurrentSession(env.client_id));
 }
@@ -2447,6 +2458,7 @@ fn check_command_permission(
         PluginCommand::ShareCurrentSession |
         PluginCommand::StopSharingCurrentSession |
         PluginCommand::QueryWebServer |
+        PluginCommand::StopWebServer |
         PluginCommand::StartWebServer => PermissionType::StartWebServer,
         _ => return (PermissionStatus::Granted, None),
     };

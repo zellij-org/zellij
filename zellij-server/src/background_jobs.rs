@@ -61,6 +61,7 @@ pub enum BackgroundJob {
     ),
     HighlightPanesWithMessage(Vec<PaneId>, String),
     RenderToClients,
+    StopWebServer,
     Exit,
 }
 
@@ -85,6 +86,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::HighlightPanesWithMessage(..) => {
                 BackgroundJobContext::HighlightPanesWithMessage
             },
+            BackgroundJob::StopWebServer => BackgroundJobContext::StopWebServer,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -426,6 +428,40 @@ pub(crate) fn background_jobs_main(
                                     Some(client_id),
                                     Event::WebServerQueryResponse(WebServerQueryResponse::RequestFailed(format!("{}", e))),
                                 )]));
+                            },
+                        }
+                    }
+                });
+            }
+            BackgroundJob::StopWebServer => {
+                task::spawn({
+                    let http_client = http_client.clone();
+                    async move {
+                        async fn web_request(
+                            http_client: HttpClient,
+                        ) -> Result<
+                            (u16, Vec<u8>), // status_code, body
+                            isahc::Error,
+                        > {
+                            let request = Request::post("http://localhost:8082/command/shutdown");
+                            let req = request.body(())?;
+                            let mut res = http_client.send_async(req).await?;
+
+                            let status_code = res.status();
+                            let body = res.bytes().await?;
+                            Ok((status_code.as_u16(), body))
+                        }
+                        let Some(http_client) = http_client else {
+                            log::error!("Cannot perform http request, likely due to a misconfigured http client");
+                            return;
+                        };
+
+                        match web_request(http_client).await {
+                            Ok((_status, _body)) => {
+                                // no-op
+                            },
+                            Err(e) => {
+                                log::error!("Failed to shut down web server: {}", e)
                             },
                         }
                     }

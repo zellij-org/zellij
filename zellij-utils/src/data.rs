@@ -2401,6 +2401,7 @@ pub enum PluginCommand {
     OpenFileNearPlugin(FileToOpen, Context),
     OpenFileFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>, Context),
     StartWebServer,
+    StopWebServer,
     ShareCurrentSession,
     StopSharingCurrentSession,
     QueryWebServer,

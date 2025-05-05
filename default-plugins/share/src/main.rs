@@ -50,6 +50,9 @@ impl ZellijPlugin for App {
                     BareKey::Enter if key.has_no_modifiers() => {
                         start_web_server();
                     }
+                    BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                        stop_web_server();
+                    }
                     BareKey::Char(' ') if key.has_no_modifiers() => {
                       match self.web_sharing {
                           WebSharing::Disabled => {
@@ -152,10 +155,18 @@ impl App {
     pub fn render_web_server_status(&self) -> (Vec<Text>, usize) {
         let mut max_len = 0;
         let web_server_status_line = if self.web_server_started {
-            let title = "Web server status: ";
-            let value = "RUNNING";
-            max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
-            Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()).color_range(3, title.chars().count()..)
+            let title = "Web server: ";
+            let value = "RUNNING ";
+            let shortcut = "(<Ctrl c> - Stop)";
+            max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count() + shortcut.chars().count());
+            let value_start_position = title.chars().count();
+            let value_end_position = value_start_position + value.chars().count();
+            let ctrl_c_start_position = value_end_position + 1;
+            let ctrl_c_end_position = ctrl_c_start_position + 8;
+            Text::new(format!("{}{}{}", title, value, shortcut))
+                .color_range(0, ..title.chars().count())
+                .color_range(3, value_start_position..value_end_position)
+                .color_range(3, ctrl_c_start_position..ctrl_c_end_position)
         } else {
             let title = "Web server status: ";
             let value = "NOT RUNNING";

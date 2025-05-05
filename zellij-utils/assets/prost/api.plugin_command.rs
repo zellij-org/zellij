@@ -923,6 +923,7 @@ pub enum CommandName {
     EmbedMultiplePanes = 133,
     ShareCurrentSession = 134,
     StopSharingCurrentSession = 135,
+    StopWebServer = 136,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1067,6 +1068,7 @@ impl CommandName {
             CommandName::EmbedMultiplePanes => "EmbedMultiplePanes",
             CommandName::ShareCurrentSession => "ShareCurrentSession",
             CommandName::StopSharingCurrentSession => "StopSharingCurrentSession",
+            CommandName::StopWebServer => "StopWebServer",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1208,6 +1210,7 @@ impl CommandName {
             "EmbedMultiplePanes" => Some(Self::EmbedMultiplePanes),
             "ShareCurrentSession" => Some(Self::ShareCurrentSession),
             "StopSharingCurrentSession" => Some(Self::StopSharingCurrentSession),
+            "StopWebServer" => Some(Self::StopWebServer),
             _ => None,
         }
     }

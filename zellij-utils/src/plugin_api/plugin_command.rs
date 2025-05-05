@@ -1549,6 +1549,13 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     Ok(PluginCommand::StartWebServer)
                 }
             },
+            Some(CommandName::StopWebServer) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    Err("StopWebServer should not have a payload")
+                } else {
+                    Ok(PluginCommand::StopWebServer)
+                }
+            },
             Some(CommandName::QueryWebServer) => {
                 if protobuf_plugin_command.payload.is_some() {
                     Err("QueryWebServer should not have a payload")
@@ -2672,6 +2679,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             },
             PluginCommand::StartWebServer => Ok(ProtobufPluginCommand {
                 name: CommandName::StartWebServer as i32,
+                payload: None,
+            }),
+            PluginCommand::StopWebServer => Ok(ProtobufPluginCommand {
+                name: CommandName::StopWebServer as i32,
                 payload: None,
             }),
             PluginCommand::QueryWebServer => Ok(ProtobufPluginCommand {

@@ -149,6 +149,7 @@ enum CommandName {
   EmbedMultiplePanes = 133;
   ShareCurrentSession = 134;
   StopSharingCurrentSession = 135;
+  StopWebServer = 136;
 }
 
 message PluginCommand {
