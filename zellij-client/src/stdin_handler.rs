@@ -125,10 +125,7 @@ pub(crate) fn stdin_loop(
                                 break;
                             }
                             send_input_instructions
-                                .send(InputInstruction::KeyEvent(
-                                    input_event.clone(),
-                                    current_buffer.clone(),
-                                ))
+                                .send(InputInstruction::KeyEvent(input_event.clone()))
                                 .unwrap();
                         }
                     }
@@ -136,11 +133,10 @@ pub(crate) fn stdin_loop(
                     holding_mouse = is_mouse_press_or_hold(&input_event);
 
                     send_input_instructions
-                        .send(InputInstruction::KeyEvent(
-                            input_event,
-                            current_buffer.drain(..).collect(),
-                        ))
+                        .send(InputInstruction::KeyEvent(input_event))
                         .unwrap();
+
+                    current_buffer.drain(..);
                 }
             },
             Err(e) => {
