@@ -1805,9 +1805,9 @@ fn rename_plugin_pane(env: &PluginEnv, plugin_pane_id: u32, new_name: &str) {
     apply_action!(rename_pane_action, error_msg, env);
 }
 
-fn rename_tab(env: &PluginEnv, tab_index: u32, new_name: &str) {
+fn rename_tab(env: &PluginEnv, tab_position: u32, new_name: &str) {
     let error_msg = || format!("Failed to rename tab");
-    let rename_tab_action = Action::RenameTab(tab_index, new_name.as_bytes().to_vec());
+    let rename_tab_action = Action::RenameTab(tab_position, new_name.as_bytes().to_vec());
     apply_action!(rename_tab_action, error_msg, env);
 }
 
