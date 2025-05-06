@@ -164,6 +164,7 @@ impl InputHandler {
                 Ok((InputInstruction::KeyEvent(input_event), _error_context)) => {
                     match input_event {
                         InputEvent::Key(key_event) => {
+                            log::info!("InputEvent::Key: {:?}", key_event);
                             let key_code_encode_modes = KeyCodeEncodeModes {
                                 encoding: KeyboardEncoding::Xterm,
                                 application_cursor_keys: false,
@@ -185,10 +186,12 @@ impl InputHandler {
                             self.handle_key(&key, raw_bytes, false);
                         },
                         InputEvent::Mouse(mouse_event) => {
+                            log::info!("InputEvent::Mouse: {:?}", mouse_event);
                             let mouse_event = from_termwiz(&mut self.mouse_old_event, mouse_event);
                             self.handle_mouse_event(&mouse_event);
                         },
                         InputEvent::Paste(pasted_text) => {
+                            log::info!("InputEvent::Paste: {:?}", pasted_text);
                             if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
                                 self.dispatch_action(
                                     Action::Write(None, bracketed_paste_start.clone(), false),
@@ -229,6 +232,7 @@ impl InputHandler {
                     InputInstruction::KeyWithModifierEvent(key_with_modifier, raw_bytes),
                     _error_context,
                 )) => {
+                    log::info!("InputInstruction::KeyWithModifierEvent: {:?}, raw_bytes: {:?}", key_with_modifier, raw_bytes);
                     self.handle_key(&key_with_modifier, raw_bytes, true);
                 },
                 Ok((
@@ -264,6 +268,7 @@ impl InputHandler {
     ) {
         // we interpret the keys into actions on the server side so that we can change the
         // keybinds at runtime
+        log::info!("send_to_server ClientToServerMsg::Key: key: {:?}, raw_bytes: {:?}, is_kitty_keyboard_protocol: {:?}", key.clone(), raw_bytes, is_kitty_keyboard_protocol);
         self.os_input.send_to_server(ClientToServerMsg::Key(
             key.clone(),
             raw_bytes,
@@ -365,9 +370,12 @@ impl InputHandler {
                     self.mouse_mode_active = true;
                 }
             },
-            _ => self
-                .os_input
-                .send_to_server(ClientToServerMsg::Action(action, None, client_id)),
+            _ => {
+                log::info!("send_to_server, ClientToServerMsg::Action: {:?}", action);
+                self
+                    .os_input
+                    .send_to_server(ClientToServerMsg::Action(action, None, client_id));
+            }
         }
 
         should_break
