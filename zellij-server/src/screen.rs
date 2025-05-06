@@ -215,7 +215,7 @@ pub enum ScreenInstruction {
         Option<String>,
         (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), // swap layouts
         bool,                                            // should_change_focus_to_new_tab
-        (ClientId, bool), // bool -> is_web_client
+        (ClientId, bool),                                // bool -> is_web_client
     ),
     ApplyLayout(
         TiledPaneLayout,
@@ -223,8 +223,8 @@ pub enum ScreenInstruction {
         Vec<(u32, HoldForCommand)>, // new pane pids
         Vec<(u32, HoldForCommand)>, // new floating pane pids
         HashMap<RunPluginOrAlias, Vec<u32>>,
-        usize, // tab_index
-        bool,  // should change focus to new tab
+        usize,            // tab_index
+        bool,             // should change focus to new tab
         (ClientId, bool), // bool -> is_web_client
     ),
     SwitchTabNext(ClientId),
@@ -255,7 +255,7 @@ pub enum ScreenInstruction {
     Copy(ClientId),
     AddClient(
         ClientId,
-        bool, // is_web_client
+        bool,                // is_web_client
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
     ),
@@ -640,7 +640,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::EmbedMultiplePanes(..) => ScreenContext::EmbedMultiplePanes,
             ScreenInstruction::TogglePaneInGroup(..) => ScreenContext::TogglePaneInGroup,
             ScreenInstruction::ToggleGroupMarking(..) => ScreenContext::ToggleGroupMarking,
-            ScreenInstruction::SessionSharingStatusChange(..) => ScreenContext::SessionSharingStatusChange,
+            ScreenInstruction::SessionSharingStatusChange(..) => {
+                ScreenContext::SessionSharingStatusChange
+            },
         }
     }
 }
@@ -965,8 +967,12 @@ impl Screen {
                             None,
                         )
                         .with_context(err_context)?;
-                        let all_connected_clients: Vec<ClientId> =
-                            self.connected_clients.borrow().iter().map(|(c, _i)| *c).collect();
+                        let all_connected_clients: Vec<ClientId> = self
+                            .connected_clients
+                            .borrow()
+                            .iter()
+                            .map(|(c, _i)| *c)
+                            .collect();
                         for client_id in all_connected_clients {
                             self.update_client_tab_focus(client_id, new_tab_index);
                             match (
@@ -1439,12 +1445,16 @@ impl Screen {
         }
         let (client_id, mut is_web_client) = client_id_and_is_web_client;
         let client_id = if self.get_active_tab(client_id).is_ok() {
-            if let Some(connected_client_is_web_client) = self.connected_clients.borrow().get(&client_id) {
+            if let Some(connected_client_is_web_client) =
+                self.connected_clients.borrow().get(&client_id)
+            {
                 is_web_client = *connected_client_is_web_client;
             }
             client_id
         } else if let Some(first_client_id) = self.get_first_client_id() {
-            if let Some(first_client_is_web_client) = self.connected_clients.borrow().get(&first_client_id) {
+            if let Some(first_client_is_web_client) =
+                self.connected_clients.borrow().get(&first_client_id)
+            {
                 is_web_client = *first_client_is_web_client;
             }
             first_client_id
@@ -1470,8 +1480,12 @@ impl Screen {
                 } else {
                     None
                 };
-                let all_connected_clients: Vec<ClientId> =
-                    self.connected_clients.borrow().iter().map(|(c, _i)| *c).collect();
+                let all_connected_clients: Vec<ClientId> = self
+                    .connected_clients
+                    .borrow()
+                    .iter()
+                    .map(|(c, _i)| *c)
+                    .collect();
                 for client_id in all_connected_clients {
                     self.update_client_tab_focus(client_id, tab_index);
                 }
@@ -1521,7 +1535,8 @@ impl Screen {
 
         if !self.active_tab_indices.contains_key(&client_id) {
             // this means this is a new client and we need to add it to our state properly
-            self.add_client(client_id, is_web_client).with_context(err_context)?;
+            self.add_client(client_id, is_web_client)
+                .with_context(err_context)?;
         }
 
         self.log_and_report_session_state()
@@ -1552,7 +1567,9 @@ impl Screen {
         };
 
         self.active_tab_indices.insert(client_id, tab_index);
-        self.connected_clients.borrow_mut().insert(client_id, is_web_client);
+        self.connected_clients
+            .borrow_mut()
+            .insert(client_id, is_web_client);
         self.tab_history.insert(client_id, tab_history);
         self.tabs
             .get_mut(&tab_index)
@@ -1702,7 +1719,12 @@ impl Screen {
             is_current_session: true,
             available_layouts,
             web_clients_allowed: self.web_sharing.web_clients_allowed(),
-            web_client_count: self.connected_clients.borrow().iter().filter(|(_client_id, is_web_client)| **is_web_client).count(),
+            web_client_count: self
+                .connected_clients
+                .borrow()
+                .iter()
+                .filter(|(_client_id, is_web_client)| **is_web_client)
+                .count(),
             plugins: Default::default(), // these are filled in by the wasm thread
             tab_history: self.tab_history.clone(),
         };
@@ -2260,7 +2282,12 @@ impl Screen {
                 tiled_panes_layout.ignore_run_instruction(active_pane_run_instruction.clone());
             }
             let should_change_focus_to_new_tab = true;
-            let is_web_client = self.connected_clients.borrow().get(&client_id).copied().unwrap_or(false);
+            let is_web_client = self
+                .connected_clients
+                .borrow()
+                .get(&client_id)
+                .copied()
+                .unwrap_or(false);
             self.bus.senders.send_to_plugin(PluginInstruction::NewTab(
                 None,
                 default_shell,
@@ -2331,7 +2358,12 @@ impl Screen {
             tab.add_tiled_pane(pane, pane_id, None)?;
             tiled_panes_layout.ignore_run_instruction(run_instruction.clone());
         }
-        let is_web_client = self.connected_clients.borrow().get(&client_id).copied().unwrap_or(false);
+        let is_web_client = self
+            .connected_clients
+            .borrow()
+            .get(&client_id)
+            .copied()
+            .unwrap_or(false);
         self.bus.senders.send_to_plugin(PluginInstruction::NewTab(
             None,
             default_shell,
@@ -3095,7 +3127,10 @@ pub(crate) fn screen_thread_main(
         .unwrap_or(false); // by default, we try to support this if the terminal supports it and
                            // the program running inside a pane requests it
     let stacked_resize = config_options.stacked_resize.unwrap_or(true);
-    let web_clients_allowed = config_options.web_sharing.map(|s| s.web_clients_allowed()).unwrap_or(false);
+    let web_clients_allowed = config_options
+        .web_sharing
+        .map(|s| s.web_clients_allowed())
+        .unwrap_or(false);
     let web_sharing = config_options.web_sharing.unwrap_or_else(Default::default);
     let advanced_mouse_actions = config_options.advanced_mouse_actions.unwrap_or(true);
 
@@ -4037,7 +4072,12 @@ pub(crate) fn screen_thread_main(
                     screen.active_tab_indices.keys().next().copied()
                 };
                 if let Some(client_id) = client_id {
-                    let is_web_client = screen.connected_clients.borrow().get(&client_id).copied().unwrap_or(false);
+                    let is_web_client = screen
+                        .connected_clients
+                        .borrow()
+                        .get(&client_id)
+                        .copied()
+                        .unwrap_or(false);
                     if let Ok(tab_exists) = screen.go_to_tab_name(tab_name.clone(), client_id) {
                         screen.unblock_input()?;
                         screen.render(None)?;
@@ -4147,7 +4187,12 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.render(None)?;
             },
-            ScreenInstruction::AddClient(client_id, is_web_client, tab_position_to_focus, pane_id_to_focus) => {
+            ScreenInstruction::AddClient(
+                client_id,
+                is_web_client,
+                tab_position_to_focus,
+                pane_id_to_focus,
+            ) => {
                 screen.add_client(client_id, is_web_client)?;
                 let pane_id = pane_id_to_focus.map(|(pane_id, is_plugin)| {
                     if is_plugin {
@@ -5198,10 +5243,10 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::WebServerStarted => {
                 // TODO: maybe we don't need this anymore?
                 // screen.session_is_shared = true;
-//                 for tab in screen.tabs.values_mut() {
-//                     tab.set_session_is_shared(true);
-//                 }
-//                 screen.log_and_report_session_state();
+                //                 for tab in screen.tabs.values_mut() {
+                //                     tab.set_session_is_shared(true);
+                //                 }
+                //                 screen.log_and_report_session_state();
             },
             ScreenInstruction::GroupAndUngroupPanes(
                 pane_ids_to_group,

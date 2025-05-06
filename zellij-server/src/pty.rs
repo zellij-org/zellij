@@ -67,7 +67,7 @@ pub enum PtyInstruction {
         usize,                               // tab_index
         HashMap<RunPluginOrAlias, Vec<u32>>, // plugin_ids
         bool,                                // should change focus to new tab
-        (ClientId, bool), // bool -> is_web_client
+        (ClientId, bool),                    // bool -> is_web_client
     ), // the String is the tab name
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),

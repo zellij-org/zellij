@@ -176,7 +176,12 @@ fn right_more_message(
     }
 }
 
-fn tab_line_prefix(session_name: Option<&str>, session_is_shared: bool, palette: Styling, cols: usize) -> Vec<LinePart> {
+fn tab_line_prefix(
+    session_name: Option<&str>,
+    session_is_shared: bool,
+    palette: Styling,
+    cols: usize,
+) -> Vec<LinePart> {
     let prefix_text = " Zellij ".to_string();
 
     // let prefix_text_len = prefix_text.chars().count();
@@ -205,13 +210,15 @@ fn tab_line_prefix(session_name: Option<&str>, session_is_shared: bool, palette:
     }
     if session_is_shared {
         let sharing_text = "[SHARING] ";
-        let sharing_part = style!(palette.text_unselected.emphasis_3, bg_color).bold().paint(sharing_text);
+        let sharing_part = style!(palette.text_unselected.emphasis_3, bg_color)
+            .bold()
+            .paint(sharing_text);
         let sharing_part_len = sharing_text.chars().count();
         if cols.saturating_sub(running_text_len) >= sharing_part_len {
             parts.push(LinePart {
                 part: sharing_part.to_string(),
                 len: sharing_part_len,
-                tab_index: None
+                tab_index: None,
             })
         }
     }

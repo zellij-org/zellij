@@ -44,64 +44,72 @@ impl ZellijPlugin for App {
             Event::WebServerStarted => {
                 self.web_server_started = true;
                 should_render = true;
-            }
+            },
             Event::Key(key) => {
                 match key.bare_key {
                     BareKey::Enter if key.has_no_modifiers() => {
                         start_web_server();
-                    }
+                    },
                     BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                         stop_web_server();
-                    }
+                    },
                     BareKey::Char(' ') if key.has_no_modifiers() => {
-                      match self.web_sharing {
-                          WebSharing::Disabled => {
-                            // no-op
-                          },
-                          WebSharing::On => {
-                            stop_sharing_current_session();
-                          },
-                          WebSharing::Off => {
-                            share_current_session();
-                          }
+                        match self.web_sharing {
+                            WebSharing::Disabled => {
+                                // no-op
+                            },
+                            WebSharing::On => {
+                                stop_sharing_current_session();
+                            },
+                            WebSharing::Off => {
+                                share_current_session();
+                            },
                         }
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
             },
             Event::Timer(_) => {
                 query_web_server();
                 set_timeout(0.5);
-            }
+            },
             Event::WebServerQueryResponse(web_serer_status) => {
                 match web_serer_status {
                     WebServerQueryResponse::Online => {
                         self.web_server_started = true;
                         self.web_server_error = None;
-                    }
+                    },
                     WebServerQueryResponse::DifferentVersion(version) => {
                         self.web_server_started = false;
-                        self.web_server_error = Some(format!("Server online with an incompatible Zellij version: {}", version));
+                        self.web_server_error = Some(format!(
+                            "Server online with an incompatible Zellij version: {}",
+                            version
+                        ));
                     },
                     WebServerQueryResponse::RequestFailed(_error) => {
                         self.web_server_started = false;
-                    }
+                    },
                 }
                 should_render = true;
-            }
+            },
             Event::SessionUpdate(session_infos, _) => {
                 let mut web_session_info = vec![];
                 for session_info in session_infos {
                     if session_info.web_clients_allowed {
                         let name = session_info.name;
                         let web_client_count = session_info.web_client_count;
-                        let terminal_client_count = session_info.connected_clients.saturating_sub(web_client_count);
-                        web_session_info.push(WebSessionInfo { name, web_client_count, terminal_client_count });
+                        let terminal_client_count = session_info
+                            .connected_clients
+                            .saturating_sub(web_client_count);
+                        web_session_info.push(WebSessionInfo {
+                            name,
+                            web_client_count,
+                            terminal_client_count,
+                        });
                     }
                 }
                 self.web_session_info = web_session_info;
-
-            }
+            },
             _ => {},
         }
         should_render
@@ -126,10 +134,18 @@ impl ZellijPlugin for App {
         //  - Stop sharing
         //
         let (web_server_status_items, web_server_items_max_len) = self.render_web_server_status();
-        let (current_session_status_items, current_session_items_max_len) = self.render_current_session_status();
-        let (all_sessions_list_title, all_sessions_list_items, all_sessions_items_max_len) = self.render_all_sessions_list();
-        let max_item_width = std::cmp::max(web_server_items_max_len, std::cmp::max(current_session_items_max_len, all_sessions_items_max_len));
-        let item_count = web_server_status_items.len() + current_session_status_items.len() + 1 + all_sessions_list_items.len();
+        let (current_session_status_items, current_session_items_max_len) =
+            self.render_current_session_status();
+        let (all_sessions_list_title, all_sessions_list_items, all_sessions_items_max_len) =
+            self.render_all_sessions_list();
+        let max_item_width = std::cmp::max(
+            web_server_items_max_len,
+            std::cmp::max(current_session_items_max_len, all_sessions_items_max_len),
+        );
+        let item_count = web_server_status_items.len()
+            + current_session_status_items.len()
+            + 1
+            + all_sessions_list_items.len();
         let base_x = cols.saturating_sub(max_item_width) / 2;
         let base_y = rows.saturating_sub(item_count + 2) / 2; // the + 2 are the line spaces
                                                               // between items
@@ -158,7 +174,10 @@ impl App {
             let title = "Web server: ";
             let value = "RUNNING ";
             let shortcut = "(<Ctrl c> - Stop)";
-            max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count() + shortcut.chars().count());
+            max_len = std::cmp::max(
+                max_len,
+                title.chars().count() + value.chars().count() + shortcut.chars().count(),
+            );
             let value_start_position = title.chars().count();
             let value_end_position = value_start_position + value.chars().count();
             let ctrl_c_start_position = value_end_position + 1;
@@ -171,7 +190,9 @@ impl App {
             let title = "Web server status: ";
             let value = "NOT RUNNING";
             max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
-            Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()).color_range(3, title.chars().count()..)
+            Text::new(format!("{}{}", title, value))
+                .color_range(0, ..title.chars().count())
+                .color_range(3, title.chars().count()..)
         };
         let info_line = if self.web_server_started {
             let title = "URL: ";
@@ -192,24 +213,33 @@ impl App {
                 let title = "Current session: ";
                 let value = "SHARING";
                 max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
-                Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()).color_range(3, title.chars().count()..)
-            }
+                Text::new(format!("{}{}", title, value))
+                    .color_range(0, ..title.chars().count())
+                    .color_range(3, title.chars().count()..)
+            },
             WebSharing::Disabled => {
                 let title = "Current session: ";
                 let value = "SHARING IS DISABLED";
                 max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
-                Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()).color_range(3, title.chars().count()..)
-            }
+                Text::new(format!("{}{}", title, value))
+                    .color_range(0, ..title.chars().count())
+                    .color_range(3, title.chars().count()..)
+            },
             WebSharing::Off => {
                 let title = "Current session: ";
                 let value = "NOT SHARING";
                 max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
-                Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()).color_range(3, title.chars().count()..)
-            }
+                Text::new(format!("{}{}", title, value))
+                    .color_range(0, ..title.chars().count())
+                    .color_range(3, title.chars().count()..)
+            },
         };
         let info_line = if self.web_sharing.web_clients_allowed() && self.web_server_started {
             let title = "Session URL: ";
-            let value = format!("http://localhost:8082/{}", self.session_name.clone().unwrap_or_else(|| "".to_owned()));
+            let value = format!(
+                "http://localhost:8082/{}",
+                self.session_name.clone().unwrap_or_else(|| "".to_owned())
+            );
             max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
             Some(Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count()))
         } else if self.web_sharing.web_clients_allowed() {
@@ -243,16 +273,24 @@ impl App {
                 let session_name = &web_session_info.name;
                 let web_client_count = format!("{}", web_session_info.web_client_count);
                 let terminal_client_count = format!("{}", web_session_info.terminal_client_count);
-                let item_text = format!("{} [{} terminal clients, {} web clients]", session_name, terminal_client_count, web_client_count);
+                let item_text = format!(
+                    "{} [{} terminal clients, {} web clients]",
+                    session_name, terminal_client_count, web_client_count
+                );
                 max_len = std::cmp::max(item_text.chars().count() + 3, max_len); // 3 is the bulletin
                 let terminal_client_count_start_pos = session_name.chars().count() + 2;
-                let terminal_client_count_end_pos = terminal_client_count_start_pos + terminal_client_count.chars().count();
+                let terminal_client_count_end_pos =
+                    terminal_client_count_start_pos + terminal_client_count.chars().count();
                 let web_client_count_start_pos = terminal_client_count_end_pos + 18;
-                let web_client_count_end_pos = web_client_count_start_pos + web_client_count.chars().count();
+                let web_client_count_end_pos =
+                    web_client_count_start_pos + web_client_count.chars().count();
                 nested_list.push(
                     NestedListItem::new(item_text)
-                        .color_range(3, terminal_client_count_start_pos..terminal_client_count_end_pos)
-                        .color_range(3, web_client_count_start_pos..=web_client_count_end_pos)
+                        .color_range(
+                            3,
+                            terminal_client_count_start_pos..terminal_client_count_end_pos,
+                        )
+                        .color_range(3, web_client_count_start_pos..=web_client_count_end_pos),
                 );
             }
             (all_sessions, nested_list, max_len)
@@ -264,7 +302,7 @@ impl App {
 pub struct WebSessionInfo {
     pub name: String,
     pub web_client_count: usize,
-    pub terminal_client_count: usize
+    pub terminal_client_count: usize,
 }
 
 impl WebSessionInfo {

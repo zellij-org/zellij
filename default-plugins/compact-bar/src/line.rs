@@ -210,13 +210,15 @@ fn tab_line_prefix(
     }
     if session_is_shared {
         let sharing_text = " [SHARING]";
-        let sharing_part = style!(palette.text_unselected.emphasis_3, bg_color).bold().paint(sharing_text);
+        let sharing_part = style!(palette.text_unselected.emphasis_3, bg_color)
+            .bold()
+            .paint(sharing_text);
         let sharing_part_len = sharing_text.chars().count();
         if cols.saturating_sub(prefix_text_len) >= sharing_part_len {
             parts.push(LinePart {
                 part: sharing_part.to_string(),
                 len: sharing_part_len,
-                tab_index: None
+                tab_index: None,
             })
         }
     }

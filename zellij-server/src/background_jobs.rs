@@ -1,7 +1,7 @@
 use async_std::task;
 use zellij_utils::consts::{
     session_info_cache_file_name, session_info_folder_for_session, session_layout_cache_file_name,
-    ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR, VERSION
+    VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
 };
 use zellij_utils::data::{Event, HttpVerb, SessionInfo, WebServerQueryResponse};
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
@@ -55,10 +55,7 @@ pub enum BackgroundJob {
         Vec<u8>,                  // body
         BTreeMap<String, String>, // context
     ),
-    QueryWebServer(
-        PluginId,
-        ClientId,
-    ),
+    QueryWebServer(PluginId, ClientId),
     HighlightPanesWithMessage(Vec<PaneId>, String),
     RenderToClients,
     StopWebServer,
@@ -403,36 +400,52 @@ pub(crate) fn background_jobs_main(
                         match web_request(http_client).await {
                             Ok((status, body)) => {
                                 if status == 200 && &body == VERSION.as_bytes() {
-                                    let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                        Some(plugin_id),
-                                        Some(client_id),
-                                        Event::WebServerQueryResponse(WebServerQueryResponse::Online),
-                                    )]));
+                                    let _ =
+                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                            Some(plugin_id),
+                                            Some(client_id),
+                                            Event::WebServerQueryResponse(
+                                                WebServerQueryResponse::Online,
+                                            ),
+                                        )]));
                                 } else if status == 200 {
-                                    let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                        Some(plugin_id),
-                                        Some(client_id),
-                                        Event::WebServerQueryResponse(WebServerQueryResponse::DifferentVersion(String::from_utf8_lossy(&body).to_string())),
-                                    )]));
+                                    let _ =
+                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                            Some(plugin_id),
+                                            Some(client_id),
+                                            Event::WebServerQueryResponse(
+                                                WebServerQueryResponse::DifferentVersion(
+                                                    String::from_utf8_lossy(&body).to_string(),
+                                                ),
+                                            ),
+                                        )]));
                                 } else {
-                                    let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                        Some(plugin_id),
-                                        Some(client_id),
-                                        Event::WebServerQueryResponse(WebServerQueryResponse::RequestFailed(format!("{}", status))),
-                                    )]));
+                                    let _ =
+                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                            Some(plugin_id),
+                                            Some(client_id),
+                                            Event::WebServerQueryResponse(
+                                                WebServerQueryResponse::RequestFailed(format!(
+                                                    "{}",
+                                                    status
+                                                )),
+                                            ),
+                                        )]));
                                 }
                             },
                             Err(e) => {
                                 let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
                                     Some(plugin_id),
                                     Some(client_id),
-                                    Event::WebServerQueryResponse(WebServerQueryResponse::RequestFailed(format!("{}", e))),
+                                    Event::WebServerQueryResponse(
+                                        WebServerQueryResponse::RequestFailed(format!("{}", e)),
+                                    ),
                                 )]));
                             },
                         }
                     }
                 });
-            }
+            },
             BackgroundJob::StopWebServer => {
                 task::spawn({
                     let http_client = http_client.clone();
@@ -466,7 +479,7 @@ pub(crate) fn background_jobs_main(
                         }
                     }
                 });
-            }
+            },
             BackgroundJob::RenderToClients => {
                 // last_render_request being Some() represents a render request that is pending
                 // last_render_request is only ever set to Some() if an async task is spawned to

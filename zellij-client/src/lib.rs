@@ -606,14 +606,12 @@ pub fn start_client(
             ClientInstruction::StartWebServer => {
                 match spawn_web_server(&*ipc_pipe) {
                     Ok(_) => {
-                        let _ = os_input
-                            .send_to_server(ClientToServerMsg::WebServerStarted);
-                    }
+                        let _ = os_input.send_to_server(ClientToServerMsg::WebServerStarted);
+                    },
                     Err(e) => {
                         log::error!("Failed to start web server");
                         // TODO: inform server
-                    }
-
+                    },
                 }
             },
             _ => {},
@@ -666,10 +664,7 @@ pub fn start_server_detached(
     envs::set_zellij("0".to_string());
     config.env.set_vars();
 
-    let should_start_web_server = config_options
-        .web_server
-        .map(|w| w)
-        .unwrap_or(false);
+    let should_start_web_server = config_options.web_server.map(|w| w).unwrap_or(false);
 
     let palette = config
         .theme_config(config_options.theme.as_ref())

@@ -33,11 +33,16 @@ use control_message::{
 };
 use zellij_utils::{
     cli::CliArgs,
+    consts::VERSION,
     data::{ConnectToSession, LayoutInfo, Style, WebSharing},
     envs,
     errors::prelude::*,
     input::{
-        actions::Action, cast_termwiz_key, config::{Config, ConfigError}, layout::Layout, mouse::MouseEvent,
+        actions::Action,
+        cast_termwiz_key,
+        config::{Config, ConfigError},
+        layout::Layout,
+        mouse::MouseEvent,
         options::Options,
     },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
@@ -46,16 +51,15 @@ use zellij_utils::{
         session_exists,
     },
     setup::{find_default_config_dir, get_layout_dir},
-    consts::VERSION,
 };
 
-use uuid::Uuid;
+use futures::{prelude::stream::SplitSink, SinkExt, StreamExt};
+use include_dir;
+use log::info;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use include_dir;
 use termwiz::input::{InputEvent, InputParser};
-use futures::{prelude::stream::SplitSink, SinkExt, StreamExt};
-use log::info;
+use uuid::Uuid;
 
 use tokio::{runtime::Runtime, sync::mpsc::UnboundedReceiver};
 
@@ -162,7 +166,6 @@ async fn serve_web_client(
         Html(WEB_CLIENT_PAGE)
     }
 
-
     let app = Router::new()
         .route("/", get(page_html))
         .route("/{session}", get(page_html))
@@ -185,30 +188,37 @@ async fn serve_web_client(
         .unwrap();
 }
 
-async fn shutdown_signal(mut shutdown_channel_rx: tokio::sync::mpsc::UnboundedReceiver<ShutdownSignal>) {
+async fn shutdown_signal(
+    mut shutdown_channel_rx: tokio::sync::mpsc::UnboundedReceiver<ShutdownSignal>,
+) {
     loop {
         match shutdown_channel_rx.recv().await {
             Some(ShutdownSignal::Shutdown) => {
                 break;
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ShutdownSignal {
-    Shutdown
+    Shutdown,
 }
 
 #[derive(Serialize, Debug)]
 pub struct SendShutdownSignalResponse {
-    status: String
+    status: String,
 }
 
 async fn send_shutdown_signal(State(state): State<AppState>) -> Json<SendShutdownSignalResponse> {
-    state.shutdown_signal_tx.send(ShutdownSignal::Shutdown).unwrap();
-    Json(SendShutdownSignalResponse { status: "Ok".to_owned() })
+    state
+        .shutdown_signal_tx
+        .send(ShutdownSignal::Shutdown)
+        .unwrap();
+    Json(SendShutdownSignalResponse {
+        status: "Ok".to_owned(),
+    })
 }
 
 async fn get_static_asset(AxumPath(path): AxumPath<String>) -> impl IntoResponse {

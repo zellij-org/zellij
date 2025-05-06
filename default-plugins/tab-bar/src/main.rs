@@ -64,22 +64,22 @@ impl ZellijPlugin for State {
                 // TODO: move all of these query stuff to Zellij so that we don't do it from each
                 // plugin
                 query_web_server();
-            }
+            },
             Event::WebServerQueryResponse(web_serer_status) => {
                 match web_serer_status {
                     WebServerQueryResponse::Online => {
                         self.web_server_on_line = true;
-                    }
+                    },
                     WebServerQueryResponse::DifferentVersion(_version) => {
                         self.web_server_on_line = false;
                     },
                     WebServerQueryResponse::RequestFailed(_error) => {
                         self.web_server_on_line = false;
-                    }
+                    },
                 }
                 set_timeout(0.5);
                 should_render = true;
-            }
+            },
             Event::ModeUpdate(mode_info) => {
                 if self.mode_info != mode_info {
                     should_render = true;
@@ -152,7 +152,11 @@ impl ZellijPlugin for State {
 
         let background = self.mode_info.style.colors.text_unselected.background;
 
-        let session_is_shared = self.mode_info.web_sharing.map(|s| s.web_clients_allowed()).unwrap_or(false);
+        let session_is_shared = self
+            .mode_info
+            .web_sharing
+            .map(|s| s.web_clients_allowed())
+            .unwrap_or(false);
         let should_show_sharing_indication = session_is_shared && self.web_server_on_line;
         self.tab_line = tab_line(
             self.mode_info.session_name.as_deref(),

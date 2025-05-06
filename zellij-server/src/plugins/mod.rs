@@ -75,8 +75,8 @@ pub enum PluginInstruction {
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
-        usize, // tab_index
-        bool,  // should change focus to new tab
+        usize,            // tab_index
+        bool,             // should change focus to new tab
         (ClientId, bool), // bool -> is_web_client
     ),
     ApplyCachedEvents {
@@ -904,15 +904,11 @@ pub(crate) fn plugin_thread_main(
                     .non_fatal();
             },
             PluginInstruction::WebServerStarted => {
-                let updates = vec![(
-                    None,
-                    None,
-                    Event::WebServerStarted,
-                )];
+                let updates = vec![(None, None, Event::WebServerStarted)];
                 wasm_bridge
                     .update_plugins(updates, shutdown_send.clone())
                     .non_fatal();
-            }
+            },
             PluginInstruction::Exit => {
                 break;
             },

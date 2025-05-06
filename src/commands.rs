@@ -1,14 +1,6 @@
 use dialoguer::Confirm;
 use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 
-use zellij_utils::sessions::{
-    assert_dead_session, assert_session, assert_session_ne, delete_session as delete_session_impl,
-    get_active_session, get_name_generator, get_resurrectable_session_names,
-    get_resurrectable_sessions, get_sessions, get_sessions_sorted_by_mtime,
-    kill_session as kill_session_impl, match_session_name, print_sessions,
-    print_sessions_with_index, resurrection_layout, session_exists, ActiveSession,
-    SessionNameMatch,
-};
 use nix;
 use zellij_client::{
     old_config_converter::{
@@ -17,10 +9,20 @@ use zellij_client::{
     os_input_output::get_client_os_input,
     start_client as start_client_impl, ClientInfo,
 };
+use zellij_utils::sessions::{
+    assert_dead_session, assert_session, assert_session_ne, delete_session as delete_session_impl,
+    get_active_session, get_name_generator, get_resurrectable_session_names,
+    get_resurrectable_sessions, get_sessions, get_sessions_sorted_by_mtime,
+    kill_session as kill_session_impl, match_session_name, print_sessions,
+    print_sessions_with_index, resurrection_layout, session_exists, ActiveSession,
+    SessionNameMatch,
+};
 
 #[cfg(feature = "web_server_capability")]
 use zellij_client::web_client::start_web_client as start_web_client_impl;
 
+use miette::{Report, Result};
+use nix::sys::stat::{umask, Mode};
 use zellij_server::{
     daemonize, os_input_output::get_server_os_input, start_server as start_server_impl,
 };
@@ -36,8 +38,6 @@ use zellij_utils::{
     },
     setup::{find_default_config_dir, get_layout_dir, Setup},
 };
-use nix::sys::stat::{umask, Mode};
-use miette::{Report, Result};
 
 pub(crate) use zellij_utils::sessions::list_sessions;
 

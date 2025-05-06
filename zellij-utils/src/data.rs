@@ -946,7 +946,7 @@ pub enum Event {
 pub enum WebServerQueryResponse {
     Online,
     DifferentVersion(String), // version
-    RequestFailed(String), // error
+    RequestFailed(String),    // error
 }
 
 #[derive(
@@ -1001,7 +1001,9 @@ impl PermissionType {
             },
             PermissionType::Reconfigure => "Change Zellij runtime configuration".to_owned(),
             PermissionType::FullHdAccess => "Full access to the hard-drive".to_owned(),
-            PermissionType::StartWebServer => "Start a local web server to serve Zellij sessions".to_owned(),
+            PermissionType::StartWebServer => {
+                "Start a local web server to serve Zellij sessions".to_owned()
+            },
         }
     }
 }
@@ -2197,13 +2199,13 @@ impl WebSharing {
     pub fn is_on(&self) -> bool {
         match self {
             WebSharing::On => true,
-            _ => false
+            _ => false,
         }
     }
     pub fn web_clients_allowed(&self) -> bool {
         match self {
             WebSharing::On => true,
-            _ => false
+            _ => false,
         }
     }
     pub fn set_sharing(&mut self) -> bool {
@@ -2213,8 +2215,8 @@ impl WebSharing {
             WebSharing::Off => {
                 *self = WebSharing::On;
                 true
-            }
-            WebSharing::Disabled => false
+            },
+            WebSharing::Disabled => false,
         }
     }
     pub fn set_not_sharing(&mut self) -> bool {
@@ -2223,9 +2225,9 @@ impl WebSharing {
             WebSharing::On => {
                 *self = WebSharing::Off;
                 true
-            }
+            },
             WebSharing::Off => true,
-            WebSharing::Disabled => false
+            WebSharing::Disabled => false,
         }
     }
 }
@@ -2241,7 +2243,6 @@ impl FromStr for WebSharing {
         }
     }
 }
-
 
 type Context = BTreeMap<String, String>;
 

@@ -46,7 +46,7 @@ struct State {
     is_welcome_screen: bool,
     show_kill_all_sessions_warning: bool,
     request_ids: Vec<String>,
-    is_web_client: bool
+    is_web_client: bool,
 }
 
 register_plugin!(State);

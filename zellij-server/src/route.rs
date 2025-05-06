@@ -1175,9 +1175,7 @@ pub(crate) fn route_thread_main(
                             let allow_web_connections = rlocked_sessions
                                 .as_ref()
                                 .map(|rlocked_sessions| {
-                                    rlocked_sessions
-                                        .web_sharing
-                                        .web_clients_allowed()
+                                    rlocked_sessions.web_sharing.web_clients_allowed()
                                 })
                                 .unwrap_or(false);
                             let should_allow_connection = !is_web_client || allow_web_connections;
@@ -1200,7 +1198,8 @@ pub(crate) fn route_thread_main(
                                     vec![error.to_owned()],
                                     client_id,
                                 ));
-                                let _ = to_server.send(ServerInstruction::SendWebClientsForbidden(client_id));
+                                let _ = to_server
+                                    .send(ServerInstruction::SendWebClientsForbidden(client_id));
                             }
                         },
                         ClientToServerMsg::ClientExited => {
@@ -1234,7 +1233,7 @@ pub(crate) fn route_thread_main(
                         },
                         ClientToServerMsg::WebServerStarted => {
                             let _ = to_server.send(ServerInstruction::WebServerStarted);
-                        }
+                        },
                     }
                     Ok(should_break)
                 };

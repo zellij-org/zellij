@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use uuid::Uuid;
 use zellij_utils::data::{
     Direction, KeyWithModifier, PaneInfo, PermissionStatus, PermissionType, PluginPermission,
-    ResizeStrategy, WebSharing
+    ResizeStrategy, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -1012,7 +1012,11 @@ impl Tab {
             mode_info.web_sharing = Some(self.web_sharing);
             mode_info.currently_marking_pane_group =
                 currently_marking_pane_group.get(client_id).copied();
-            mode_info.is_web_client = self.connected_clients_in_app.borrow().get(&client_id).copied();
+            mode_info.is_web_client = self
+                .connected_clients_in_app
+                .borrow()
+                .get(&client_id)
+                .copied();
             plugin_updates.push((None, Some(*client_id), Event::ModeUpdate(mode_info)));
         }
         self.senders
@@ -4703,10 +4707,10 @@ impl Tab {
             self.default_shell = default_shell;
         }
     }
-//     pub fn set_session_is_shared(&mut self, session_is_shared: bool) {
-//         self.session_is_shared = true;
-//         self.update_input_modes();
-//     }
+    //     pub fn set_session_is_shared(&mut self, session_is_shared: bool) {
+    //         self.session_is_shared = true;
+    //         self.update_input_modes();
+    //     }
     pub fn update_default_editor(&mut self, mut default_editor: Option<PathBuf>) {
         if let Some(default_editor) = default_editor.take() {
             self.default_editor = Some(default_editor);

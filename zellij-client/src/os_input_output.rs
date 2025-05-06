@@ -226,7 +226,7 @@ impl ClientOsApi for ClientOsInputOutput {
             },
             None => {
                 log::warn!("Server not ready, dropping message.");
-            }
+            },
         }
     }
     fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {

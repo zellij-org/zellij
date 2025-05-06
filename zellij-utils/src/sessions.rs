@@ -1,11 +1,3 @@
-use anyhow;
-use humantime::format_duration;
-use interprocess::local_socket::LocalSocketStream;
-use std::collections::HashMap;
-use std::os::unix::fs::FileTypeExt;
-use std::time::{Duration, SystemTime};
-use std::{fs, io, process};
-use suggest::Suggest;
 use crate::{
     consts::{
         session_info_folder_for_session, session_layout_cache_file_name,
@@ -15,6 +7,14 @@ use crate::{
     input::layout::Layout,
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
 };
+use anyhow;
+use humantime::format_duration;
+use interprocess::local_socket::LocalSocketStream;
+use std::collections::HashMap;
+use std::os::unix::fs::FileTypeExt;
+use std::time::{Duration, SystemTime};
+use std::{fs, io, process};
+use suggest::Suggest;
 
 pub fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {

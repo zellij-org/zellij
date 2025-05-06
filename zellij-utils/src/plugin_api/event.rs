@@ -10,7 +10,8 @@ pub use super::generated_api::api::{
         PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
         PaneManifest as ProtobufPaneManifest, PaneType as ProtobufPaneType,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
-        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, WebSharing as ProtobufWebSharing, *,
+        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo,
+        WebSharing as ProtobufWebSharing, *,
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
@@ -20,7 +21,8 @@ pub use super::generated_api::api::{
 use crate::data::{
     ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier,
     LayoutInfo, ModeInfo, Mouse, PaneId, PaneInfo, PaneManifest, PermissionStatus,
-    PluginCapabilities, PluginInfo, SessionInfo, Style, TabInfo, WebServerQueryResponse, WebSharing
+    PluginCapabilities, PluginInfo, SessionInfo, Style, TabInfo, WebServerQueryResponse,
+    WebSharing,
 };
 
 use crate::errors::prelude::*;
@@ -364,22 +366,34 @@ impl TryFrom<ProtobufEvent> for Event {
                 _ => Err("Malformed payload for the WebServerStarted Event"),
             },
             Some(ProtobufEventType::WebServerQueryResponse) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::WebServerQueryResponsePayload(web_server_query_response)) => {
-                    match WebServerQueryResponseStatus::from_i32(web_server_query_response.web_server_query_response_status) {
-                        Some(WebServerQueryResponseStatus::Online) => {
-                            Ok(Event::WebServerQueryResponse(WebServerQueryResponse::Online))
-                        }
+                Some(ProtobufEventPayload::WebServerQueryResponsePayload(
+                    web_server_query_response,
+                )) => {
+                    match WebServerQueryResponseStatus::from_i32(
+                        web_server_query_response.web_server_query_response_status,
+                    ) {
+                        Some(WebServerQueryResponseStatus::Online) => Ok(
+                            Event::WebServerQueryResponse(WebServerQueryResponse::Online),
+                        ),
                         Some(WebServerQueryResponseStatus::DifferentVersion) => {
-                            Ok(Event::WebServerQueryResponse(WebServerQueryResponse::DifferentVersion(web_server_query_response.payload.ok_or("payload_not_found")?)))
-                        }
-                        Some(WebServerQueryResponseStatus::RequestFailed) => {
-                            Ok(Event::WebServerQueryResponse(WebServerQueryResponse::RequestFailed(web_server_query_response.payload.ok_or("payload not found")?)))
+                            Ok(Event::WebServerQueryResponse(
+                                WebServerQueryResponse::DifferentVersion(
+                                    web_server_query_response
+                                        .payload
+                                        .ok_or("payload_not_found")?,
+                                ),
+                            ))
                         },
-                        None => {
-                            Err("Failed to convert web server query response status")
-                        }
+                        Some(WebServerQueryResponseStatus::RequestFailed) => Ok(
+                            Event::WebServerQueryResponse(WebServerQueryResponse::RequestFailed(
+                                web_server_query_response
+                                    .payload
+                                    .ok_or("payload not found")?,
+                            )),
+                        ),
+                        None => Err("Failed to convert web server query response status"),
                     }
-                }
+                },
                 _ => Err("Malformed payload for the WebServerQueryResponse Event"),
             },
             Some(ProtobufEventType::BeforeClose) => match protobuf_event.payload {
@@ -769,19 +783,26 @@ impl TryFrom<Event> for ProtobufEvent {
                 payload: Some(event::Payload::WebServerQueryResponsePayload(
                     match web_server_query_response {
                         WebServerQueryResponse::Online => WebServerQueryResponsePayload {
-                            web_server_query_response_status: WebServerQueryResponseStatus::Online as i32,
+                            web_server_query_response_status: WebServerQueryResponseStatus::Online
+                                as i32,
                             payload: None,
                         },
-                        WebServerQueryResponse::DifferentVersion(version) => WebServerQueryResponsePayload {
-                            web_server_query_response_status: WebServerQueryResponseStatus::DifferentVersion as i32,
-                            payload: Some(version),
+                        WebServerQueryResponse::DifferentVersion(version) => {
+                            WebServerQueryResponsePayload {
+                                web_server_query_response_status:
+                                    WebServerQueryResponseStatus::DifferentVersion as i32,
+                                payload: Some(version),
+                            }
                         },
-                        WebServerQueryResponse::RequestFailed(error) => WebServerQueryResponsePayload {
-                            web_server_query_response_status: WebServerQueryResponseStatus::RequestFailed as i32,
-                            payload: Some(error),
-                        }
-                    }
-                ))
+                        WebServerQueryResponse::RequestFailed(error) => {
+                            WebServerQueryResponsePayload {
+                                web_server_query_response_status:
+                                    WebServerQueryResponseStatus::RequestFailed as i32,
+                                payload: Some(error),
+                            }
+                        },
+                    },
+                )),
             }),
             Event::BeforeClose => Ok(ProtobufEvent {
                 name: ProtobufEventType::BeforeClose as i32,
@@ -916,7 +937,7 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
                 .filter_map(|l| LayoutInfo::try_from(l).ok())
                 .collect(),
             plugins,
-            web_clients_allowed : protobuf_session_manifest.web_clients_allowed,
+            web_clients_allowed: protobuf_session_manifest.web_clients_allowed,
             web_client_count: protobuf_session_manifest.web_client_count as usize,
             tab_history,
         })
@@ -1290,7 +1311,10 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             .map(|e| PathBuf::from(e));
         let shell = protobuf_mode_update_payload.shell.map(|s| PathBuf::from(s));
         let web_clients_allowed = protobuf_mode_update_payload.web_clients_allowed;
-        let web_sharing = protobuf_mode_update_payload.web_sharing.and_then(|w| ProtobufWebSharing::from_i32(w)).map(|w| w.into());
+        let web_sharing = protobuf_mode_update_payload
+            .web_sharing
+            .and_then(|w| ProtobufWebSharing::from_i32(w))
+            .map(|w| w.into());
         let capabilities = PluginCapabilities {
             arrow_fonts: protobuf_mode_update_payload.arrow_fonts_support,
         };

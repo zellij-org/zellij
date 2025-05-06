@@ -92,7 +92,7 @@ pub enum ServerInstruction {
         Options,             // represents the runtime configuration options
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
-        bool, // is_web_client
+        bool,                // is_web_client
         ClientId,
     ),
     ConnStatus(ClientId),
@@ -164,9 +164,13 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::RebindKeys { .. } => ServerContext::RebindKeys,
             ServerInstruction::StartWebServer(..) => ServerContext::StartWebServer,
             ServerInstruction::ShareCurrentSession(..) => ServerContext::ShareCurrentSession,
-            ServerInstruction::StopSharingCurrentSession(..) => ServerContext::StopSharingCurrentSession,
+            ServerInstruction::StopSharingCurrentSession(..) => {
+                ServerContext::StopSharingCurrentSession
+            },
             ServerInstruction::WebServerStarted => ServerContext::WebServerStarted,
-            ServerInstruction::SendWebClientsForbidden(..) => ServerContext::SendWebClientsForbidden,
+            ServerInstruction::SendWebClientsForbidden(..) => {
+                ServerContext::SendWebClientsForbidden
+            },
         }
     }
 }
@@ -317,9 +321,9 @@ pub(crate) struct SessionMetaData {
     pub current_input_modes: HashMap<ClientId, InputMode>,
     pub session_configuration: SessionConfiguration,
     pub web_sharing: WebSharing, // this is a special attribute explicitly set on session
-                                 // initialization because we don't want it to be overridden by
-                                 // configuration changes, the only way it can be overwritten is by
-                                 // explicit plugin action
+    // initialization because we don't want it to be overridden by
+    // configuration changes, the only way it can be overwritten is by
+    // explicit plugin action
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
@@ -470,7 +474,7 @@ macro_rules! send_to_client {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct SessionState {
     clients: HashMap<ClientId, Option<(Size, bool)>>, // bool -> is_web_client
-    pipes: HashMap<String, ClientId>, // String => pipe_id
+    pipes: HashMap<String, ClientId>,                 // String => pipe_id
 }
 
 impl SessionState {
@@ -501,7 +505,11 @@ impl SessionState {
         self.pipes.retain(|_p_id, c_id| c_id != &client_id);
     }
     pub fn set_client_size(&mut self, client_id: ClientId, size: Size) {
-        self.clients.entry(client_id).or_insert_with(Default::default).as_mut().map(|(s, _is_web_client)| *s = size);
+        self.clients
+            .entry(client_id)
+            .or_insert_with(Default::default)
+            .as_mut()
+            .map(|(s, _is_web_client)| *s = size);
     }
     pub fn set_client_data(&mut self, client_id: ClientId, size: Size, is_web_client: bool) {
         self.clients.insert(client_id, Some((size, is_web_client)));
@@ -511,13 +519,17 @@ impl SessionState {
         let mut rows: Vec<usize> = self
             .clients
             .values()
-            .filter_map(|size_and_is_web_client| size_and_is_web_client.map(|(size, _is_web_client)| size.rows))
+            .filter_map(|size_and_is_web_client| {
+                size_and_is_web_client.map(|(size, _is_web_client)| size.rows)
+            })
             .collect();
         rows.sort_unstable();
         let mut cols: Vec<usize> = self
             .clients
             .values()
-            .filter_map(|size_and_is_web_client| size_and_is_web_client.map(|(size, _is_web_client)| size.cols))
+            .filter_map(|size_and_is_web_client| {
+                size_and_is_web_client.map(|(size, _is_web_client)| size.cols)
+            })
             .collect();
         cols.sort_unstable();
         let min_rows = rows.first();
@@ -534,9 +546,13 @@ impl SessionState {
         self.clients.keys().copied().collect()
     }
     pub fn web_client_ids(&self) -> Vec<ClientId> {
-        self.clients.iter().filter_map(|(c_id, size_and_is_web_client)| {
-          size_and_is_web_client.and_then(|(_s, is_web_client)| if is_web_client { Some(*c_id) } else { None })
-        }).collect()
+        self.clients
+            .iter()
+            .filter_map(|(c_id, size_and_is_web_client)| {
+                size_and_is_web_client
+                    .and_then(|(_s, is_web_client)| if is_web_client { Some(*c_id) } else { None })
+            })
+            .collect()
     }
     pub fn get_pipe(&self, pipe_name: &str) -> Option<ClientId> {
         self.pipes.get(pipe_name).copied()
@@ -675,10 +691,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .insert(client_id, default_input_mode);
 
                 *session_data.write().unwrap() = Some(session);
-                session_state
-                    .write()
-                    .unwrap()
-                    .set_client_data(client_id, client_attributes.size, is_web_client);
+                session_state.write().unwrap().set_client_data(
+                    client_id,
+                    client_attributes.size,
+                    is_web_client,
+                );
 
                 let default_shell = runtime_config_options.default_shell.map(|shell| {
                     TerminalAction::RunCommand(RunCommand {
@@ -791,10 +808,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .current_input_modes
                     .insert(client_id, default_input_mode);
 
-                session_state
-                    .write()
-                    .unwrap()
-                    .set_client_data(client_id, attrs.size, is_web_client);
+                session_state.write().unwrap().set_client_data(
+                    client_id,
+                    attrs.size,
+                    is_web_client,
+                );
                 let min_size = session_state
                     .read()
                     .unwrap()
@@ -977,8 +995,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap();
             },
             ServerInstruction::SendWebClientsForbidden(client_id) => {
-                let _ = os_input
-                    .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::WebClientsForbidden));
+                let _ = os_input.send_to_client(
+                    client_id,
+                    ServerToClientMsg::Exit(ExitReason::WebClientsForbidden),
+                );
                 remove_client!(client_id, os_input, session_state);
                 if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
                     session_data
@@ -1300,7 +1320,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     // TODO: test this
                     log::error!("Cannot start web server: this instance of Zellij was compiled without web_server_capability");
                 }
-            }
+            },
             ServerInstruction::ShareCurrentSession(client_id) => {
                 if cfg!(feature = "web_server_capability") {
                     let successfully_changed = session_data
@@ -1322,7 +1342,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     // TODO: test this
                     log::error!("Cannot start web server: this instance of Zellij was compiled without web_server_capability");
                 }
-            }
+            },
             ServerInstruction::StopSharingCurrentSession(client_id) => {
                 if cfg!(feature = "web_server_capability") {
                     let successfully_changed = session_data
@@ -1331,7 +1351,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .and_then(|mut s| s.as_mut().map(|s| s.web_sharing.set_not_sharing()))
                         .unwrap_or(false);
                     if successfully_changed {
-
                         // disconnect existing web clients
                         let web_client_ids: Vec<ClientId> = session_state
                             .read()
@@ -1342,8 +1361,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .filter(|c| c != &client_id)
                             .collect();
                         for client_id in web_client_ids {
-                            let _ = os_input
-                                .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                            let _ = os_input.send_to_client(
+                                client_id,
+                                ServerToClientMsg::Exit(ExitReason::Normal),
+                            );
                             remove_client!(client_id, os_input, session_state);
                         }
 
@@ -1360,7 +1381,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     // TODO: test this
                     log::error!("Cannot start web server: this instance of Zellij was compiled without web_server_capability");
                 }
-            }
+            },
             ServerInstruction::WebServerStarted => {
                 session_data
                     .write()
@@ -1378,7 +1399,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_plugin(PluginInstruction::WebServerStarted)
                     .unwrap();
-            }
+            },
         }
     }
 
@@ -1627,7 +1648,7 @@ fn init_session(
         #[cfg(feature = "web_server_capability")]
         web_sharing: config.options.web_sharing.unwrap_or(WebSharing::Off),
         #[cfg(not(feature = "web_server_capability"))]
-        web_sharing: WebSharing::Disabled
+        web_sharing: WebSharing::Disabled,
     }
 }
 
