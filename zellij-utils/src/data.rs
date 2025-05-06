@@ -1530,6 +1530,7 @@ pub struct ModeInfo {
     // through an explicit user action
     pub web_sharing: Option<WebSharing>,
     pub currently_marking_pane_group: Option<bool>,
+    pub is_web_client: Option<bool>,
 }
 
 impl ModeInfo {

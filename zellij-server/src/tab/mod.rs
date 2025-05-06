@@ -267,6 +267,7 @@ pub(crate) struct Tab {
     current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
     advanced_mouse_actions: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
+    connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -718,7 +719,7 @@ impl Tab {
             display_area.clone(),
             viewport.clone(),
             connected_clients.clone(),
-            connected_clients_in_app,
+            connected_clients_in_app.clone(),
             mode_info.clone(),
             character_cell_size.clone(),
             session_is_mirrored,
@@ -782,6 +783,7 @@ impl Tab {
             current_pane_group,
             currently_marking_pane_group,
             advanced_mouse_actions,
+            connected_clients_in_app,
         }
     }
 
@@ -1010,6 +1012,7 @@ impl Tab {
             mode_info.web_sharing = Some(self.web_sharing);
             mode_info.currently_marking_pane_group =
                 currently_marking_pane_group.get(client_id).copied();
+            mode_info.is_web_client = self.connected_clients_in_app.borrow().get(&client_id).copied();
             plugin_updates.push((None, Some(*client_id), Event::ModeUpdate(mode_info)));
         }
         self.senders

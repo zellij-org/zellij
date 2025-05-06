@@ -49,6 +49,7 @@ mod not_wasm {
             web_clients_allowed: None,
             web_sharing: None,
             currently_marking_pane_group: None,
+            is_web_client: None,
         }
     }
 

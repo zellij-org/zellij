@@ -1296,6 +1296,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
         };
         let currently_marking_pane_group =
             protobuf_mode_update_payload.currently_marking_pane_group;
+        let is_web_client = protobuf_mode_update_payload.is_web_client;
         let mode_info = ModeInfo {
             mode: current_mode,
             keybinds,
@@ -1308,6 +1309,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             web_clients_allowed,
             web_sharing,
             currently_marking_pane_group,
+            is_web_client,
         };
         Ok(mode_info)
     }
@@ -1328,6 +1330,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
         let web_clients_allowed = mode_info.web_clients_allowed;
         let web_sharing = mode_info.web_sharing.map(|w| w as i32);
         let currently_marking_pane_group = mode_info.currently_marking_pane_group;
+        let is_web_client = mode_info.is_web_client;
         let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
         for (input_mode, input_mode_keybinds) in mode_info.keybinds {
             let mode: ProtobufInputMode = input_mode.try_into()?;
@@ -1364,6 +1367,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             web_clients_allowed,
             web_sharing,
             currently_marking_pane_group,
+            is_web_client,
         })
     }
 }
@@ -1621,6 +1625,7 @@ fn serialize_mode_update_event_with_non_default_values() {
         web_clients_allowed: Some(true),
         web_sharing: Some(WebSharing::default()),
         currently_marking_pane_group: Some(false),
+        is_web_client: Some(false),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();

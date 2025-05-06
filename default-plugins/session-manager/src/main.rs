@@ -46,6 +46,7 @@ struct State {
     is_welcome_screen: bool,
     show_kill_all_sessions_warning: bool,
     request_ids: Vec<String>,
+    is_web_client: bool
 }
 
 register_plugin!(State);
@@ -94,6 +95,7 @@ impl ZellijPlugin for State {
         match event {
             Event::ModeUpdate(mode_info) => {
                 self.colors = Colors::new(mode_info.style.colors);
+                self.is_web_client = mode_info.is_web_client.unwrap_or(false);
                 should_render = true;
             },
             Event::Key(key) => {
@@ -549,7 +551,13 @@ impl State {
     fn update_session_infos(&mut self, session_infos: Vec<SessionInfo>) {
         let session_infos: Vec<SessionUiInfo> = session_infos
             .iter()
-            .map(|s| SessionUiInfo::from_session_info(s))
+            .filter_map(|s| {
+                if self.is_web_client && !s.web_clients_allowed {
+                    None
+                } else {
+                    Some(SessionUiInfo::from_session_info(s))
+                }
+            })
             .collect();
         let current_session_name = session_infos.iter().find_map(|s| {
             if s.is_current_session {

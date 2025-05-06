@@ -1701,7 +1701,7 @@ impl Screen {
             connected_clients: self.active_tab_indices.keys().len(),
             is_current_session: true,
             available_layouts,
-            web_clients_allowed: self.web_clients_allowed,
+            web_clients_allowed: self.web_sharing.web_clients_allowed(),
             web_client_count: self.connected_clients.borrow().iter().filter(|(_client_id, is_web_client)| **is_web_client).count(),
             plugins: Default::default(), // these are filled in by the wasm thread
             tab_history: self.tab_history.clone(),
@@ -5227,7 +5227,8 @@ pub(crate) fn screen_thread_main(
                 for tab in screen.tabs.values_mut() {
                     tab.update_web_sharing(screen.web_sharing);
                 }
-                screen.render(None);
+                let _ = screen.log_and_report_session_state();
+                let _ = screen.render(None);
             },
             ScreenInstruction::HighlightAndUnhighlightPanes(
                 pane_ids_to_highlight,

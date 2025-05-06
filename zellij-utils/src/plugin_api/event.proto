@@ -360,6 +360,7 @@ message ModeUpdatePayload {
   optional bool web_clients_allowed = 9;
   optional WebSharing web_sharing = 10;
   optional bool currently_marking_pane_group = 11;
+  optional bool is_web_client = 12;
 }
 
 enum WebSharing {

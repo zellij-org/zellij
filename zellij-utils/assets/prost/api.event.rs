@@ -481,6 +481,8 @@ pub struct ModeUpdatePayload {
     pub web_sharing: ::core::option::Option<i32>,
     #[prost(bool, optional, tag="11")]
     pub currently_marking_pane_group: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="12")]
+    pub is_web_client: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
