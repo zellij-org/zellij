@@ -938,15 +938,14 @@ pub enum Event {
     PastedText(String),
     ConfigWasWrittenToDisk,
     WebServerStarted,
-    WebServerQueryResponse(WebServerQueryResponse),
     BeforeClose,
 }
 
-#[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
-pub enum WebServerQueryResponse {
+#[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, ToString, Serialize, Deserialize)]
+pub enum WebServerStatus {
     Online,
+    Offline,
     DifferentVersion(String), // version
-    RequestFailed(String),    // error
 }
 
 #[derive(
@@ -1527,9 +1526,6 @@ pub struct ModeInfo {
     pub editor: Option<PathBuf>,
     pub shell: Option<PathBuf>,
     pub web_clients_allowed: Option<bool>,
-    // web_sharing_allowed: false -> it is not possible to switch on web sharing for this session
-    // web_sharing_allowed: true -> it is possible to switch on web sharing for this session
-    // through an explicit user action
     pub web_sharing: Option<WebSharing>,
     pub currently_marking_pane_group: Option<bool>,
     pub is_web_client: Option<bool>,
@@ -1582,6 +1578,7 @@ pub struct SessionInfo {
     pub web_clients_allowed: bool,
     pub web_client_count: usize,
     pub tab_history: BTreeMap<ClientId, Vec<usize>>,
+    pub web_server_status: Option<WebServerStatus>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -2406,7 +2403,6 @@ pub enum PluginCommand {
     StopWebServer,
     ShareCurrentSession,
     StopSharingCurrentSession,
-    QueryWebServer,
     OpenFileInPlaceOfPlugin(FileToOpen, bool, Context), // bool -> close_plugin_after_replace
     GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>),     // panes to group, panes to ungroup
     HighlightAndUnhighlightPanes(Vec<PaneId>, Vec<PaneId>), // panes to highlight, panes to

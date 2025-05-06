@@ -1727,6 +1727,7 @@ impl Screen {
                 .count(),
             plugins: Default::default(), // these are filled in by the wasm thread
             tab_history: self.tab_history.clone(),
+            web_server_status: None,
         };
         self.bus
             .senders
@@ -1739,6 +1740,12 @@ impl Screen {
         self.bus
             .senders
             .send_to_background_jobs(BackgroundJob::ReadAllSessionInfosOnMachine)
+            .with_context(err_context)?;
+        
+        // TODO: consider moving this elsewhere
+        self.bus
+            .senders
+            .send_to_background_jobs(BackgroundJob::QueryZellijWebServerStatus)
             .with_context(err_context)?;
         Ok(())
     }

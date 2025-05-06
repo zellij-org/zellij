@@ -20,12 +20,8 @@ impl ZellijPlugin for App {
             EventType::Key,
             EventType::ModeUpdate,
             EventType::WebServerStarted,
-            EventType::Timer,
-            EventType::WebServerQueryResponse,
             EventType::SessionUpdate,
         ]);
-        query_web_server();
-        set_timeout(0.5);
     }
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
@@ -69,30 +65,27 @@ impl ZellijPlugin for App {
                     _ => {},
                 }
             },
-            Event::Timer(_) => {
-                query_web_server();
-                set_timeout(0.5);
-            },
-            Event::WebServerQueryResponse(web_serer_status) => {
-                match web_serer_status {
-                    WebServerQueryResponse::Online => {
+            Event::SessionUpdate(session_infos, _) => {
+                match session_infos.iter().next().and_then(|s| s.web_server_status.as_ref()) {
+                    Some(WebServerStatus::Online) => {
                         self.web_server_started = true;
                         self.web_server_error = None;
                     },
-                    WebServerQueryResponse::DifferentVersion(version) => {
+                    Some(WebServerStatus::DifferentVersion(version)) => {
                         self.web_server_started = false;
                         self.web_server_error = Some(format!(
                             "Server online with an incompatible Zellij version: {}",
                             version
                         ));
                     },
-                    WebServerQueryResponse::RequestFailed(_error) => {
+                    Some(WebServerStatus::Offline) => {
                         self.web_server_started = false;
                     },
+                    _ => {
+                        self.web_server_started = false;
+                    }
                 }
-                should_render = true;
-            },
-            Event::SessionUpdate(session_infos, _) => {
+
                 let mut web_session_info = vec![];
                 for session_info in session_infos {
                     if session_info.web_clients_allowed {
@@ -109,6 +102,7 @@ impl ZellijPlugin for App {
                     }
                 }
                 self.web_session_info = web_session_info;
+                should_render = true;
             },
             _ => {},
         }

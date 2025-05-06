@@ -51,33 +51,22 @@ impl ZellijPlugin for State {
             EventType::ModeUpdate,
             EventType::Mouse,
             EventType::Timer,
-            EventType::WebServerQueryResponse,
+            EventType::SessionUpdate,
         ]);
-        query_web_server();
-        set_timeout(0.5);
     }
 
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
-            Event::Timer(_elapsed) => {
-                // TODO: move all of these query stuff to Zellij so that we don't do it from each
-                // plugin
-                query_web_server();
-            },
-            Event::WebServerQueryResponse(web_serer_status) => {
-                match web_serer_status {
-                    WebServerQueryResponse::Online => {
+            Event::SessionUpdate(session_infos, _) => {
+                match session_infos.iter().next().and_then(|s| s.web_server_status.as_ref()) {
+                    Some(WebServerStatus::Online) => {
                         self.web_server_on_line = true;
                     },
-                    WebServerQueryResponse::DifferentVersion(_version) => {
+                    _ => {
                         self.web_server_on_line = false;
-                    },
-                    WebServerQueryResponse::RequestFailed(_error) => {
-                        self.web_server_on_line = false;
-                    },
+                    }
                 }
-                set_timeout(0.5);
                 should_render = true;
             },
             Event::ModeUpdate(mode_info) => {

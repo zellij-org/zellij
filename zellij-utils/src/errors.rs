@@ -527,11 +527,11 @@ pub enum BackgroundJobContext {
     RunCommand,
     WebRequest,
     ReportPluginList,
-    QueryWebServer,
     ListWebSessions,
     RenderToClients,
     HighlightPanesWithMessage,
     StopWebServer,
+    QueryZellijWebServerStatus,
     Exit,
 }
 

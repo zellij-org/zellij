@@ -1556,13 +1556,6 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     Ok(PluginCommand::StopWebServer)
                 }
             },
-            Some(CommandName::QueryWebServer) => {
-                if protobuf_plugin_command.payload.is_some() {
-                    Err("QueryWebServer should not have a payload")
-                } else {
-                    Ok(PluginCommand::QueryWebServer)
-                }
-            },
             Some(CommandName::GroupAndUngroupPanes) => match protobuf_plugin_command.payload {
                 Some(Payload::GroupAndUngroupPanesPayload(group_and_ungroup_panes_payload)) => {
                     Ok(PluginCommand::GroupAndUngroupPanes(
@@ -2683,10 +2676,6 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             }),
             PluginCommand::StopWebServer => Ok(ProtobufPluginCommand {
                 name: CommandName::StopWebServer as i32,
-                payload: None,
-            }),
-            PluginCommand::QueryWebServer => Ok(ProtobufPluginCommand {
-                name: CommandName::QueryWebServer as i32,
                 payload: None,
             }),
             PluginCommand::HighlightAndUnhighlightPanes(

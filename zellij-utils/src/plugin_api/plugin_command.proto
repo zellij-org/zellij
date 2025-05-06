@@ -141,15 +141,14 @@ enum CommandName {
   OpenFileFloatingNearPlugin = 125;
   OpenFileInPlaceOfPlugin = 126;
   StartWebServer = 127;
-  QueryWebServer = 128;
-  GroupAndUngroupPanes = 129;
-  HighlightAndUnhighlightPanes = 130;
-  CloseMultiplePanes = 131;
-  FloatMultiplePanes = 132;
-  EmbedMultiplePanes = 133;
-  ShareCurrentSession = 134;
-  StopSharingCurrentSession = 135;
-  StopWebServer = 136;
+  GroupAndUngroupPanes = 128;
+  HighlightAndUnhighlightPanes = 129;
+  CloseMultiplePanes = 130;
+  FloatMultiplePanes = 131;
+  EmbedMultiplePanes = 132;
+  ShareCurrentSession = 133;
+  StopSharingCurrentSession = 134;
+  StopWebServer = 135;
 }
 
 message PluginCommand {

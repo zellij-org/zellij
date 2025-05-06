@@ -3,7 +3,7 @@ use zellij_utils::consts::{
     session_info_cache_file_name, session_info_folder_for_session, session_layout_cache_file_name,
     VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
 };
-use zellij_utils::data::{Event, HttpVerb, SessionInfo, WebServerQueryResponse};
+use zellij_utils::data::{Event, HttpVerb, SessionInfo, WebServerStatus};
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 use zellij_utils::input::layout::RunPlugin;
 
@@ -55,10 +55,10 @@ pub enum BackgroundJob {
         Vec<u8>,                  // body
         BTreeMap<String, String>, // context
     ),
-    QueryWebServer(PluginId, ClientId),
     HighlightPanesWithMessage(Vec<PaneId>, String),
     RenderToClients,
     StopWebServer,
+    QueryZellijWebServerStatus,
     Exit,
 }
 
@@ -78,12 +78,12 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::RunCommand(..) => BackgroundJobContext::RunCommand,
             BackgroundJob::WebRequest(..) => BackgroundJobContext::WebRequest,
             BackgroundJob::ReportPluginList(..) => BackgroundJobContext::ReportPluginList,
-            BackgroundJob::QueryWebServer(..) => BackgroundJobContext::QueryWebServer,
             BackgroundJob::RenderToClients => BackgroundJobContext::ReportPluginList,
             BackgroundJob::HighlightPanesWithMessage(..) => {
                 BackgroundJobContext::HighlightPanesWithMessage
             },
             BackgroundJob::StopWebServer => BackgroundJobContext::StopWebServer,
+            BackgroundJob::QueryZellijWebServerStatus => BackgroundJobContext::QueryZellijWebServerStatus,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -110,6 +110,7 @@ pub(crate) fn background_jobs_main(
         Arc::new(Mutex::new(BTreeMap::new()));
     let current_session_layout = Arc::new(Mutex::new((String::new(), BTreeMap::new())));
     let last_serialization_time = Arc::new(Mutex::new(Instant::now()));
+    let current_zellij_web_server_status: Arc<Mutex<Option<WebServerStatus>>> = Arc::new(Mutex::new(None));
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
                                                                            // milliseconds
     let last_render_request: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
@@ -197,6 +198,7 @@ pub(crate) fn background_jobs_main(
                     let current_session_layout = current_session_layout.clone();
                     let current_session_plugin_list = current_session_plugin_list.clone();
                     let last_serialization_time = last_serialization_time.clone();
+                    let current_zellij_web_server_status = current_zellij_web_server_status.clone();
                     async move {
                         loop {
                             let current_session_name =
@@ -213,6 +215,7 @@ pub(crate) fn background_jobs_main(
                             }
                             let mut session_infos_on_machine =
                                 read_other_live_session_states(&current_session_name);
+                            let web_server_status = { current_zellij_web_server_status.lock().unwrap().clone() };
                             for (session_name, session_info) in session_infos_on_machine.iter_mut()
                             {
                                 if session_name == &current_session_name {
@@ -220,6 +223,7 @@ pub(crate) fn background_jobs_main(
                                         current_session_plugin_list.lock().unwrap().clone();
                                     session_info.populate_plugin_list(current_session_plugin_list);
                                 }
+                                session_info.web_server_status = web_server_status.clone();
                             }
                             let resurrectable_sessions =
                                 find_resurrectable_sessions(&session_infos_on_machine);
@@ -373,10 +377,17 @@ pub(crate) fn background_jobs_main(
                     }
                 });
             },
-            BackgroundJob::QueryWebServer(plugin_id, client_id) => {
+            BackgroundJob::QueryZellijWebServerStatus => {
+                // this job should only be run once and it keeps track of the web server status so
+                // that plugins can display it to the user
+                if running_jobs.get(&job).is_some() {
+                    continue;
+                }
+                running_jobs.insert(job, Instant::now());
+
                 task::spawn({
-                    let senders = bus.senders.clone();
                     let http_client = http_client.clone();
+                    let current_zellij_web_server_status = current_zellij_web_server_status.clone();
                     async move {
                         async fn web_request(
                             http_client: HttpClient,
@@ -397,51 +408,26 @@ pub(crate) fn background_jobs_main(
                             return;
                         };
 
-                        match web_request(http_client).await {
-                            Ok((status, body)) => {
-                                if status == 200 && &body == VERSION.as_bytes() {
-                                    let _ =
-                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                            Some(plugin_id),
-                                            Some(client_id),
-                                            Event::WebServerQueryResponse(
-                                                WebServerQueryResponse::Online,
-                                            ),
-                                        )]));
-                                } else if status == 200 {
-                                    let _ =
-                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                            Some(plugin_id),
-                                            Some(client_id),
-                                            Event::WebServerQueryResponse(
-                                                WebServerQueryResponse::DifferentVersion(
-                                                    String::from_utf8_lossy(&body).to_string(),
-                                                ),
-                                            ),
-                                        )]));
-                                } else {
-                                    let _ =
-                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                            Some(plugin_id),
-                                            Some(client_id),
-                                            Event::WebServerQueryResponse(
-                                                WebServerQueryResponse::RequestFailed(format!(
-                                                    "{}",
-                                                    status
-                                                )),
-                                            ),
-                                        )]));
-                                }
-                            },
-                            Err(e) => {
-                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                    Some(plugin_id),
-                                    Some(client_id),
-                                    Event::WebServerQueryResponse(
-                                        WebServerQueryResponse::RequestFailed(format!("{}", e)),
-                                    ),
-                                )]));
-                            },
+                        loop {
+                            let http_client = http_client.clone();
+                            match web_request(http_client).await {
+                                Ok((status, body)) => {
+                                    if status == 200 && &body == VERSION.as_bytes() {
+                                        // online
+                                        *current_zellij_web_server_status.lock().unwrap() = Some(WebServerStatus::Online);
+                                    } else if status == 200 {
+                                        *current_zellij_web_server_status.lock().unwrap() = Some(WebServerStatus::DifferentVersion(String::from_utf8_lossy(&body).to_string()));
+                                    } else {
+                                        // offline/error
+                                        *current_zellij_web_server_status.lock().unwrap() = Some(WebServerStatus::Offline);
+                                    }
+                                },
+                                Err(_) => {
+                                    *current_zellij_web_server_status.lock().unwrap() = Some(WebServerStatus::Offline);
+                                },
+                            }
+                            task::sleep(std::time::Duration::from_millis(SESSION_READ_DURATION))
+                                .await;
                         }
                     }
                 });

@@ -459,7 +459,6 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::StopWebServer => stop_web_server(env),
                     PluginCommand::ShareCurrentSession => share_current_session(env),
                     PluginCommand::StopSharingCurrentSession => stop_sharing_current_session(env),
-                    PluginCommand::QueryWebServer => query_web_server(env),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -2201,12 +2200,6 @@ fn stop_sharing_current_session(env: &PluginEnv) {
         .send_to_server(ServerInstruction::StopSharingCurrentSession(env.client_id));
 }
 
-fn query_web_server(env: &PluginEnv) {
-    let _ = env
-        .senders
-        .send_to_background_jobs(BackgroundJob::QueryWebServer(env.plugin_id, env.client_id));
-}
-
 fn group_and_ungroup_panes(
     env: &PluginEnv,
     panes_to_group: Vec<PaneId>,
@@ -2446,7 +2439,6 @@ fn check_command_permission(
         PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,
         PluginCommand::ShareCurrentSession
         | PluginCommand::StopSharingCurrentSession
-        | PluginCommand::QueryWebServer
         | PluginCommand::StopWebServer
         | PluginCommand::StartWebServer => PermissionType::StartWebServer,
         _ => return (PermissionStatus::Granted, None),

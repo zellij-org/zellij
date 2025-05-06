@@ -55,8 +55,7 @@ enum EventType {
     PastedText = 29;
     ConfigWasWrittenToDisk = 30;
     WebServerStarted = 31;
-    WebServerQueryResponse = 32;
-    BeforeClose = 33;
+    BeforeClose = 32;
 }
 
 message EventNameList {
@@ -91,7 +90,6 @@ message Event {
     HostFolderChangedPayload host_folder_changed_payload = 24;
     FailedToChangeHostFolderPayload failed_to_change_host_folder_payload = 25;
     PastedTextPayload pasted_text_payload = 26;
-    WebServerQueryResponsePayload web_server_query_response_payload = 27;
   }
 }
 
@@ -99,14 +97,14 @@ message PastedTextPayload {
   string pasted_text = 1;
 }
 
-enum WebServerQueryResponseStatus {
+enum WebServerStatusIndication {
   Online = 0;
-  DifferentVersion = 1;
-  RequestFailed = 2;
+  Offline = 1;
+  DifferentVersion = 2;
 }
 
-message WebServerQueryResponsePayload {
-  WebServerQueryResponseStatus web_server_query_response_status = 1;
+message WebServerStatus {
+  WebServerStatusIndication web_server_status_indication = 1;
   optional string payload = 2;
 }
 
@@ -275,6 +273,7 @@ message SessionManifest {
   bool web_clients_allowed = 8;
   uint32 web_client_count = 9;
   repeated ClientTabHistory tab_history = 10;
+  WebServerStatus web_server_status = 11;
 }
 
 message ClientTabHistory {

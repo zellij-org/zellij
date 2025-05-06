@@ -4648,6 +4648,7 @@ impl SessionInfo {
             web_clients_allowed,
             plugins: Default::default(), // we do not serialize plugin information
             tab_history,
+            web_server_status: None, // we do not serialize this
         })
     }
     pub fn to_string(&self) -> String {
@@ -5278,6 +5279,7 @@ fn serialize_and_deserialize_session_info_with_data() {
         web_client_count: 2,
         web_clients_allowed: true,
         tab_history: Default::default(),
+        web_server_status: None,
     };
     let serialized = session_info.to_string();
     let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();
