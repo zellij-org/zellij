@@ -96,10 +96,10 @@ pub(crate) fn stdin_loop(
                         Some(key_with_modifier) => {
                             send_input_instructions
                                 .send(InputInstruction::KeyWithModifierEvent(
-                                    key_with_modifier,
-                                    current_buffer.drain(..).collect(),
+                                    key_with_modifier
                                 ))
                                 .unwrap();
+                            current_buffer.drain(..);
                             continue;
                         },
                         None => {},

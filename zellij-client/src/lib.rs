@@ -153,7 +153,7 @@ impl ClientInfo {
 #[derive(Debug, Clone)]
 pub(crate) enum InputInstruction {
     KeyEvent(InputEvent),
-    KeyWithModifierEvent(KeyWithModifier, Vec<u8>),
+    KeyWithModifierEvent(KeyWithModifier),
     AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
     StartedParsing,
     DoneParsing,

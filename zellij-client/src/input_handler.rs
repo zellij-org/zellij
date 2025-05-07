@@ -229,11 +229,11 @@ impl InputHandler {
                     }
                 },
                 Ok((
-                    InputInstruction::KeyWithModifierEvent(key_with_modifier, raw_bytes),
+                    InputInstruction::KeyWithModifierEvent(key_with_modifier),
                     _error_context,
                 )) => {
-                    log::info!("InputInstruction::KeyWithModifierEvent: {:?}, raw_bytes: {:?}", key_with_modifier, raw_bytes);
-                    self.handle_key(&key_with_modifier, raw_bytes, true);
+                    log::info!("InputInstruction::KeyWithModifierEvent: {:?}", key_with_modifier);
+                    self.handle_key(&key_with_modifier, key_with_modifier.serialize_kitty().unwrap().as_bytes().to_vec(), true);
                 },
                 Ok((
                     InputInstruction::AnsiStdinInstructions(ansi_stdin_instructions),
