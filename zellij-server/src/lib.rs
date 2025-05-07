@@ -1358,12 +1358,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .web_client_ids()
                             .iter()
                             .copied()
-                            .filter(|c| c != &client_id)
                             .collect();
                         for client_id in web_client_ids {
                             let _ = os_input.send_to_client(
                                 client_id,
-                                ServerToClientMsg::Exit(ExitReason::Normal),
+                                ServerToClientMsg::Exit(ExitReason::WebClientsForbidden),
                             );
                             remove_client!(client_id, os_input, session_state);
                         }

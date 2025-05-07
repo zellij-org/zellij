@@ -558,10 +558,18 @@ fn zellij_server_listener(
                             Some((ServerToClientMsg::Exit(exit_reason), _)) => {
                                 match exit_reason {
                                     ExitReason::WebClientsForbidden => {
-                                        let _ = stdout_channel_tx.send(format!("\n Web Clients are not allowed to attach to this session."));
+                                        let _ = stdout_channel_tx.send(format!("\u{1b}[2J\n Web Clients are not allowed to attach to this session."));
                                     }
                                     ExitReason::Error(e) => {
-                                        log::error!("{}", e);
+                                        // TODO: why can't we copy this error to the clipboard from
+                                        // the browser?
+                                        let goto_start_of_last_line = format!("\u{1b}[{};{}H", 1, 1);
+                                        let disable_mouse = "\u{1b}[?1006l\u{1b}[?1015l\u{1b}[?1003l\u{1b}[?1002l\u{1b}[?1000l";
+                                        let error = format!(
+                                            "{}\n{}{}\n",
+                                            disable_mouse, goto_start_of_last_line, e.to_string().replace("\n", "\n\r")
+                                        );
+                                        let _ = stdout_channel_tx.send(format!("\u{1b}[2J\n{}", error));
                                     },
                                     _ => {},
                                 }
@@ -607,7 +615,6 @@ fn zellij_server_listener(
                                 }
                             },
                             // TODO:
-                            // Exit(ExitReason),
                             // Log(Vec<String>),
                             // LogError(Vec<String>),
                             // QueryTerminalSize,
