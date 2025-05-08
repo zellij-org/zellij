@@ -28,6 +28,7 @@ names = { workspace = true }
 nix = { workspace = true }
 suggest = { workspace = true }
 thiserror = { workspace = true }
+isahc = { workspace = true }
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
@@ -63,6 +64,7 @@ ansi_term = { version = "0.12.1", default-features = false }
 anyhow = { version = "1.0.70", default-features = false, features = ["backtrace", "std"] }
 async-std = { version = "1.3.0", default-features = false, features = ["attributes", "default", "std", "unstable"] }
 clap = { version = "3.2.2", default-features = false, features = ["env", "derive", "color", "std", "suggestions"] }
+daemonize = { version = "0.5", default-features = false }
 humantime = { version = "2.1.0", default-features = false }
 interprocess = { version = "1.2.1", default-features = false }
 isahc = { version = "1.7.2", default-features = false, features = ["http2", "text-decoding"] }

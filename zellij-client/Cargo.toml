@@ -17,6 +17,7 @@ futures = { version = "0.3.30", optional = true }
 axum = { version = "0.8.1", features = ["ws"], optional = true }
 
 anyhow = { workspace = true }
+daemonize = { workspace = true }
 interprocess = { workspace = true }
 lazy_static = { workspace = true }
 libc = { workspace = true }

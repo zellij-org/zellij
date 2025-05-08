@@ -1,6 +1,15 @@
 use dialoguer::Confirm;
 use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 
+#[cfg(feature = "web_server_capability")]
+use isahc::{
+    prelude::*,
+    AsyncReadResponseExt,
+    config::RedirectPolicy,
+    HttpClient,
+    Request,
+};
+
 use nix;
 use zellij_client::{
     old_config_converter::{
@@ -151,17 +160,9 @@ pub(crate) fn start_server(path: PathBuf, debug: bool) {
     start_server_impl(Box::new(os_input), path);
 }
 
-// TODO: rename to start_web_server?
 #[cfg(feature = "web_server_capability")]
-pub(crate) fn start_web_client(path: String, debug: bool, opts: CliArgs) {
-    let current_umask = umask(Mode::all());
-    umask(current_umask);
-    daemonize::Daemonize::new()
-        .working_directory(std::env::current_dir().unwrap())
-        .umask(current_umask.bits() as u32)
-        .start()
-        .expect("could not daemonize the web server process");
-
+pub(crate) fn start_web_server(debug: bool, opts: CliArgs, run_daemonized: bool) {
+    // TODO: move this outside of this function
     let (
         config,
         layout,
@@ -183,12 +184,11 @@ pub(crate) fn start_web_client(path: String, debug: bool, opts: CliArgs) {
 
     // Set instance-wide debug mode
     zellij_utils::consts::DEBUG_MODE.set(debug).unwrap();
-    // let os_input = get_os_input(get_client_os_input);
-    start_web_client_impl(config, config_options);
+    start_web_client_impl(config, config_options, run_daemonized);
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn start_web_client(_session_name: String, _debug: bool, _opts: CliArgs) {
+pub(crate) fn start_web_server(_debug: bool, _opts: CliArgs, _run_daemonized: bool) {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot run web server!"
     );
@@ -200,6 +200,63 @@ pub(crate) fn start_web_client(_session_name: String, _debug: bool, _opts: CliAr
 
 fn create_new_client() -> ClientInfo {
     ClientInfo::New(generate_unique_session_name())
+}
+
+#[cfg(feature = "web_server_capability")]
+pub(crate) fn stop_web_server(debug: bool, opts: CliArgs) -> Result<(), String> {
+    let http_client = HttpClient::builder()
+        // TODO: timeout?
+        .redirect_policy(RedirectPolicy::Follow)
+        .build().map_err(|e| e.to_string())?;
+    let request = Request::post("http://localhost:8082/command/shutdown");
+    let req = request.body(()).map_err(|e| e.to_string())?;
+    let res = http_client.send(req).map_err(|e| e.to_string())?;
+    let status_code = res.status();
+    if status_code == 200 {
+        Ok(())
+    } else {
+        Err(format!("Failed to stop web server, got status code: {}", status_code))
+    }
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+pub(crate) fn stop_web_server(_debug: bool, _opts: CliArgs) -> Result<(), String> {
+    log::error!(
+        "This version of Zellij was compiled without web server support, cannot stop web server!"
+    );
+    eprintln!(
+        "This version of Zellij was compiled without web server support, cannot stop web server!"
+    );
+    std::process::exit(2);
+}
+
+#[cfg(feature = "web_server_capability")]
+pub(crate) fn web_server_status(debug: bool, opts: CliArgs) -> Result<String, String> {
+    let http_client = HttpClient::builder()
+        // TODO: timeout?
+        .redirect_policy(RedirectPolicy::Follow)
+        .build().map_err(|e| e.to_string())?;
+    let request = Request::get("http://localhost:8082/info/version");
+    let req = request.body(()).map_err(|e| e.to_string())?;
+    let mut res = http_client.send(req).map_err(|e| e.to_string())?;
+    let status_code = res.status();
+    if status_code == 200 {
+        let body = res.bytes().map_err(|e| e.to_string())?;
+        Ok(String::from_utf8_lossy(&body).to_string())
+    } else {
+        Err(format!("Failed to stop web server, got status code: {}", status_code))
+    }
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+pub(crate) fn web_server_status(_debug: bool, _opts: CliArgs) -> Result<String, String> {
+    log::error!(
+        "This version of Zellij was compiled without web server support, cannot get web server status!"
+    );
+    eprintln!(
+        "This version of Zellij was compiled without web server support, cannot get web server status!"
+    );
+    std::process::exit(2);
 }
 
 fn find_indexed_session(

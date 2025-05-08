@@ -5,7 +5,7 @@ mod tests;
 use clap::Parser;
 use zellij_utils::{
     cli::{CliAction, CliArgs, Command, Sessions},
-    consts::create_config_and_cache_folders,
+    consts::{create_config_and_cache_folders, VERSION},
     envs,
     input::config::Config,
     logging::*,
@@ -199,8 +199,6 @@ fn main() {
         commands::delete_session(target_session, force);
     } else if let Some(path) = opts.server {
         commands::start_server(path, opts.debug);
-    } else if let Some(path) = &opts.web {
-        commands::start_web_client(path.clone(), opts.debug, opts);
     } else if let Some(layout) = &opts.layout {
         if let Some(session_name) = opts
             .session
@@ -225,6 +223,38 @@ fn main() {
         opts.new_session_with_layout = None;
         opts.layout = Some(layout_for_new_session.clone());
         commands::start_client(opts);
+    } else if let Some(Command::Web(web_opts)) = &opts.command {
+        if web_opts.start {
+            let daemonize = web_opts.daemonize;
+            commands::start_web_server(opts.debug, opts, daemonize);
+        } else if web_opts.stop {
+            // TODO: test these without web_server_compatibility
+            match commands::stop_web_server(opts.debug, opts) {
+                Ok(()) => {
+                    println!("Stopped web server.");
+                },
+                Err(e) => {
+                    eprintln!("Failed to stop web server: {}", e);
+                    std::process::exit(2)
+                }
+            }
+        } else if web_opts.status {
+            match commands::web_server_status(opts.debug, opts) {
+                Ok(version) => {
+                    let version = version.trim();
+                    println!("Web server online with version: {}.", version);
+                    if version != VERSION {
+                        println!("");
+                        println!("Note: this version differs from the current Zellij version: {}.", VERSION);
+                        println!("Consider stopping the server with: zellij web --stop");
+                        println!("And then restarting it with: zellij web --start");
+                    }
+                },
+                Err(_e) => {
+                    println!("Web server is offline.")
+                }
+            }
+        }
     } else {
         commands::start_client(opts);
     }

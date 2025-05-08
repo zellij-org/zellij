@@ -121,8 +121,7 @@ impl ErrorInstruction for ClientInstruction {
 #[cfg(feature = "web_server_capability")]
 fn spawn_web_server(socket_path: &Path) -> io::Result<()> {
     let mut cmd = Command::new(current_exe()?);
-    cmd.arg("--web");
-    cmd.arg(socket_path);
+    cmd.arg("web");
     let status = cmd.status()?;
 
     if status.success() {

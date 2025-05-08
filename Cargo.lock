@@ -5307,6 +5307,7 @@ dependencies = [
  "humantime",
  "insta",
  "interprocess",
+ "isahc",
  "log",
  "miette",
  "names",
@@ -5328,6 +5329,7 @@ version = "0.43.0"
 dependencies = [
  "anyhow",
  "axum",
+ "daemonize",
  "futures",
  "include_dir",
  "insta",

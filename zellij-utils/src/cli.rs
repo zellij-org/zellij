@@ -4,7 +4,7 @@ use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
     input::{layout::PluginUserConfiguration, options::CliOptions},
 };
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, Args};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use url::Url;
@@ -48,7 +48,7 @@ pub struct CliArgs {
     #[clap(long, value_parser, hide = true, overrides_with = "server")]
     pub server: Option<PathBuf>,
 
-    /// Run a web client
+    /// Run a web server
     #[clap(long, value_parser, hide = true, overrides_with = "server")]
     pub web: Option<String>,
 
@@ -93,9 +93,32 @@ pub enum Command {
     #[clap(name = "setup", value_parser)]
     Setup(Setup),
 
+    /// Setup zellij and check its configuration
+    #[clap(name = "web", value_parser)]
+    Web(WebCli),
+
     /// Explore existing zellij sessions
     #[clap(flatten)]
     Sessions(Sessions),
+}
+
+#[derive(Debug, Clone, Args, Serialize, Deserialize)]
+pub struct WebCli {
+    /// Start the server (default unless --stop or --status are specified)
+    #[clap(long, value_parser, default_value("true"), default_value_if("stop", None, Some("false")), default_value_if("status", None, Some("false")))]
+    pub start: bool,
+
+    /// Stop the server
+    #[clap(long, value_parser, exclusive(true))]
+    pub stop: bool,
+
+    /// Get the server status
+    #[clap(long, value_parser, exclusive(true))]
+    pub status: bool,
+
+    /// Run the server in the background
+    #[clap(short, long, value_parser, conflicts_with_all(&["stop", "status"]))]
+    pub daemonize: bool,
 }
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]

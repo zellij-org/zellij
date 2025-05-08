@@ -21,7 +21,7 @@ bytes = { version = "1.6.0", default-features = false, features = ["std"] }
 cassowary = { version = "0.3.0", default-features = false }
 chrono = { version = "0.4.19", default-features = false, features = ["std", "clock"] }
 close_fds = { version = "0.3.2", default-features = false }
-daemonize = { version = "0.5", default-features = false }
+daemonize = { workspace = true }
 highway = { version = "0.6.4", default-features = false, features = ["std"] }
 interprocess = { workspace = true }
 isahc = { workspace = true }

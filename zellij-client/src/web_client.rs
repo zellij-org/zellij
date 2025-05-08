@@ -27,6 +27,15 @@ use axum::{
     routing::{any, get, post},
     Json, Router,
 };
+
+use {
+    interprocess::unnamed_pipe::pipe,
+};
+use std::io::prelude::*;
+
+use nix::sys::stat::{umask, Mode};
+use daemonize::{self, Outcome};
+
 use control_message::{
     WebClientToWebServerControlMessage, WebClientToWebServerControlMessagePayload,
     WebServerToWebClientControlMessage,
@@ -102,7 +111,66 @@ struct StdinMessage {
     stdin: String,
 }
 
-pub fn start_web_client(config: Config, config_options: Options) {
+fn daemonize_web_server() -> (Runtime, tokio::net::TcpListener) {
+    // TODO: test this on mac
+    let (mut exit_status_tx, mut exit_status_rx) = pipe().unwrap();
+    let current_umask = umask(Mode::all());
+    umask(current_umask);
+    let daemonization_outcome = daemonize::Daemonize::new()
+        .working_directory(std::env::current_dir().unwrap())
+        .umask(current_umask.bits() as u32)
+        .stdout(daemonize::Stdio::keep())
+        .stderr(daemonize::Stdio::keep())
+        .privileged_action(move || -> Result<(Runtime, tokio::net::TcpListener), String> {
+            let runtime = Runtime::new().map_err(|e| e.to_string())?;
+            let listener = runtime
+                .block_on(async move {tokio::net::TcpListener::bind("127.0.0.1:8082").await});
+            listener
+                .map(|listener| (runtime, listener))
+                .map_err(|e| e.to_string())
+        })
+        .execute();
+    match daemonization_outcome {
+        Outcome::Parent(Ok(parent)) => {
+            if parent.first_child_exit_code == 0 {
+                let mut buf = [0; 1];
+                // here we wait for the child to send us an exit status, indicating whether the web
+                // server was successfully started or not
+                match exit_status_rx.read_exact(&mut buf) {
+                    Ok(_) => {
+                        std::process::exit(buf.iter().next().copied().unwrap_or(0) as i32);
+                    },
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        std::process::exit(2);
+                    }
+                }
+            } else {
+                std::process::exit(parent.first_child_exit_code);
+            }
+        },
+        Outcome::Child(Ok(child)) => {
+            match child.privileged_action_result {
+                Ok(listener_and_runtime) => {
+                    println!("Web Server started on port 8082");
+                    let _ = exit_status_tx.write_all(&[0]);
+                    listener_and_runtime
+                },
+                Err(e) => {
+                    eprintln!("{}", e);
+                    let _ = exit_status_tx.write_all(&[2]);
+                    std::process::exit(2);
+                }
+            }
+        },
+        _ => {
+            eprintln!("Failed to start server");
+            std::process::exit(2);
+        }
+    }
+}
+
+pub fn start_web_client(config: Config, config_options: Options, run_daemonized: bool) {
     std::panic::set_hook({
         Box::new(move |info| {
             let thread = thread::current();
@@ -125,8 +193,15 @@ pub fn start_web_client(config: Config, config_options: Options) {
 
     let connection_table: ConnectionTable = Arc::new(Mutex::new(HashMap::new()));
 
-    let rt = Runtime::new().unwrap();
-    rt.block_on(serve_web_client(config, config_options, connection_table));
+    let (runtime, listener) = if run_daemonized {
+        daemonize_web_server()
+    } else {
+        let runtime = Runtime::new().unwrap();
+        let listener = runtime
+            .block_on(async move {tokio::net::TcpListener::bind("127.0.0.1:8082").await.unwrap()});
+        (runtime, listener)
+    };
+    runtime.block_on(serve_web_client(config, config_options, connection_table, listener));
 }
 
 const WEB_CLIENT_PAGE: &str = include_str!(concat!(
@@ -149,8 +224,8 @@ async fn serve_web_client(
     config: Config,
     config_options: Options,
     connection_table: ConnectionTable,
+    listener: tokio::net::TcpListener,
 ) {
-    let addr = "127.0.0.1:8082";
 
     let (shutdown_signal_tx, shutdown_signal_rx) = tokio::sync::mpsc::unbounded_channel();
 
@@ -178,14 +253,17 @@ async fn serve_web_client(
         .route("/command/shutdown", post(send_shutdown_signal))
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    // let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 
     log::info!("Started listener on 8082");
 
+
+    log::info!("serving web server");
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal(shutdown_signal_rx))
         .await
         .unwrap();
+    log::info!("web server down");
 }
 
 async fn shutdown_signal(
