@@ -10,6 +10,7 @@ use copy_command::CopyCommand;
 use serde;
 use std::env::temp_dir;
 use std::path::PathBuf;
+use std::net::IpAddr;
 use uuid::Uuid;
 use zellij_utils::data::{
     Direction, KeyWithModifier, PaneInfo, PermissionStatus, PermissionType, PluginPermission,
@@ -268,6 +269,10 @@ pub(crate) struct Tab {
     advanced_mouse_actions: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
     connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+    // the below are the configured values - the ones that will be set if and when the web server
+    // is brought online
+    web_server_ip: IpAddr,
+    web_server_port: u16,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -683,6 +688,8 @@ impl Tab {
         current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
         currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
         advanced_mouse_actions: bool,
+        web_server_ip: IpAddr,
+        web_server_port: u16,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -784,6 +791,8 @@ impl Tab {
             currently_marking_pane_group,
             advanced_mouse_actions,
             connected_clients_in_app,
+            web_server_ip,
+            web_server_port,
         }
     }
 
@@ -1012,6 +1021,8 @@ impl Tab {
             mode_info.web_sharing = Some(self.web_sharing);
             mode_info.currently_marking_pane_group =
                 currently_marking_pane_group.get(client_id).copied();
+            mode_info.web_server_ip = Some(self.web_server_ip);
+            mode_info.web_server_port = Some(self.web_server_port);
             mode_info.is_web_client = self
                 .connected_clients_in_app
                 .borrow()

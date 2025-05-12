@@ -9,6 +9,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
     thread,
+    net::{IpAddr, Ipv4Addr},
 };
 
 use crate::{
@@ -111,7 +112,7 @@ struct StdinMessage {
     stdin: String,
 }
 
-fn daemonize_web_server() -> (Runtime, tokio::net::TcpListener) {
+fn daemonize_web_server(web_server_ip: IpAddr, web_server_port: u16) -> (Runtime, tokio::net::TcpListener) {
     // TODO: test this on mac
     let (mut exit_status_tx, mut exit_status_rx) = pipe().unwrap();
     let current_umask = umask(Mode::all());
@@ -124,7 +125,7 @@ fn daemonize_web_server() -> (Runtime, tokio::net::TcpListener) {
         .privileged_action(move || -> Result<(Runtime, tokio::net::TcpListener), String> {
             let runtime = Runtime::new().map_err(|e| e.to_string())?;
             let listener = runtime
-                .block_on(async move {tokio::net::TcpListener::bind("127.0.0.1:8082").await});
+                .block_on(async move {tokio::net::TcpListener::bind(format!("{}:{}", web_server_ip, web_server_port)).await});
             listener
                 .map(|listener| (runtime, listener))
                 .map_err(|e| e.to_string())
@@ -152,7 +153,7 @@ fn daemonize_web_server() -> (Runtime, tokio::net::TcpListener) {
         Outcome::Child(Ok(child)) => {
             match child.privileged_action_result {
                 Ok(listener_and_runtime) => {
-                    println!("Web Server started on port 8082");
+                    println!("Web Server started on {} port {}", web_server_ip, web_server_port);
                     let _ = exit_status_tx.write_all(&[0]);
                     listener_and_runtime
                 },
@@ -188,17 +189,18 @@ pub fn start_web_client(config: Config, config_options: Options, run_daemonized:
             );
         })
     });
-
-    log::info!("WebSocket server started and listening on port 8082");
+    let web_server_ip = config_options.web_server_ip.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
 
     let connection_table: ConnectionTable = Arc::new(Mutex::new(HashMap::new()));
 
     let (runtime, listener) = if run_daemonized {
-        daemonize_web_server()
+        daemonize_web_server(web_server_ip, web_server_port)
     } else {
         let runtime = Runtime::new().unwrap();
         let listener = runtime
-            .block_on(async move {tokio::net::TcpListener::bind("127.0.0.1:8082").await.unwrap()});
+            .block_on(async move {tokio::net::TcpListener::bind(format!("{}:{}", web_server_ip, web_server_port)).await.unwrap()});
+        println!("Web Server started on {} port {}", web_server_ip, web_server_port);
         (runtime, listener)
     };
     runtime.block_on(serve_web_client(config, config_options, connection_table, listener));
@@ -236,14 +238,14 @@ async fn serve_web_client(
         shutdown_signal_tx,
     };
 
-    async fn page_html(path: Option<AxumPath<String>>) -> Html<&'static str> {
-        log::info!("Serving web client html with path: {:?}", path);
-        Html(WEB_CLIENT_PAGE)
-    }
+    let web_server_ip = state.config_options.web_server_ip.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let web_server_port = state.config_options.web_server_port.unwrap_or_else(|| 8082);
+
+    let html = Html(WEB_CLIENT_PAGE.replace("WEB_SERVER_IP", &format!("{}", web_server_ip)).replace("WEB_SERVER_PORT", &format!("{}", web_server_port)));
 
     let app = Router::new()
-        .route("/", get(page_html))
-        .route("/{session}", get(page_html))
+        .route("/", get(html.clone()))
+        .route("/{session}", get(html.clone()))
         .route("/assets/{*path}", get(get_static_asset))
         .route("/ws/control", any(ws_handler_control))
         .route("/ws/terminal", any(ws_handler_terminal))
@@ -253,17 +255,10 @@ async fn serve_web_client(
         .route("/command/shutdown", post(send_shutdown_signal))
         .with_state(state);
 
-    // let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-
-    log::info!("Started listener on 8082");
-
-
-    log::info!("serving web server");
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal(shutdown_signal_rx))
         .await
         .unwrap();
-    log::info!("web server down");
 }
 
 async fn shutdown_signal(

@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
 use std::time::Duration;
+use std::net::{IpAddr, Ipv4Addr};
 
 use log::{debug, warn};
 use zellij_utils::data::{
@@ -729,6 +730,10 @@ pub(crate) struct Screen {
     current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
     advanced_mouse_actions: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
+    // the below are the configured values - the ones that will be set if and when the web server
+    // is brought online
+    web_server_ip: IpAddr,
+    web_server_port: u16,
 }
 
 impl Screen {
@@ -758,6 +763,8 @@ impl Screen {
         web_clients_allowed: bool,
         web_sharing: WebSharing,
         advanced_mouse_actions: bool,
+        web_server_ip: IpAddr,
+        web_server_port: u16,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -806,6 +813,8 @@ impl Screen {
             current_pane_group: Rc::new(RefCell::new(HashMap::new())),
             currently_marking_pane_group: Rc::new(RefCell::new(HashMap::new())),
             advanced_mouse_actions,
+            web_server_ip,
+            web_server_port,
         }
     }
 
@@ -1419,6 +1428,8 @@ impl Screen {
             self.current_pane_group.clone(),
             self.currently_marking_pane_group.clone(),
             self.advanced_mouse_actions,
+            self.web_server_ip,
+            self.web_server_port,
         );
         for (client_id, mode_info) in &self.mode_info {
             tab.change_mode_info(mode_info.clone(), *client_id);
@@ -3125,6 +3136,8 @@ pub(crate) fn screen_thread_main(
         config_options.copy_clipboard.unwrap_or_default(),
         config_options.copy_on_select.unwrap_or(true),
     );
+    let web_server_ip = config_options.web_server_ip.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let web_server_port = config_options.web_server_port.unwrap_or(8082);
     let styled_underlines = config_options.styled_underlines.unwrap_or(true);
     let explicitly_disable_kitty_keyboard_protocol = config_options
         .support_kitty_keyboard_protocol
@@ -3176,6 +3189,8 @@ pub(crate) fn screen_thread_main(
         web_clients_allowed,
         web_sharing,
         advanced_mouse_actions,
+        web_server_ip,
+        web_server_port,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();

@@ -135,11 +135,10 @@ document.addEventListener("DOMContentLoaded", async (event) => {
 
     const ws_terminal_url =
         session_name === ""
-            ? `ws://127.0.0.1:8082/ws/terminal?web_client_id=${web_client_id}`
-            : `ws://127.0.0.1:8082/ws/terminal/${session_name}?web_client_id=${web_client_id}`;
+            ? `ws://${window.web_server_ip}:${window.web_server_port}/ws/terminal?web_client_id=${web_client_id}`
+            : `ws://${window.web_server_ip}:${window.web_server_port}/ws/terminal/${session_name}?web_client_id=${web_client_id}`;
 
     let ws_terminal = new WebSocket(ws_terminal_url);
-    // let ws_control = new WebSocket('ws://127.0.0.1:8081');
     let ws_control;
 
     addEventListener("resize", (event) => {
@@ -238,7 +237,7 @@ document.addEventListener("DOMContentLoaded", async (event) => {
         //         );
         if (own_web_client_id == "") {
             own_web_client_id = web_client_id;
-            const ws_control_url = `ws://127.0.0.1:8082/ws/control`;
+            const ws_control_url = `ws://${window.web_server_ip}:${window.web_server_port}/ws/control`;
 
             ws_control = new WebSocket(ws_control_url);
             start_ws_control();
@@ -275,7 +274,7 @@ function initTerminal() {
 }
 
 function get_client_id() {
-    return fetch("http://localhost:8082/session", {
+    return fetch(`http://${window.web_server_ip}:${window.web_server_port}/session`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",

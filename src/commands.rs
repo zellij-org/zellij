@@ -1,5 +1,7 @@
 use dialoguer::Confirm;
 use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
+use std::net::{IpAddr, Ipv4Addr};
+use std::str::FromStr;
 
 #[cfg(feature = "web_server_capability")]
 use isahc::{
@@ -161,14 +163,14 @@ pub(crate) fn start_server(path: PathBuf, debug: bool) {
 }
 
 #[cfg(feature = "web_server_capability")]
-pub(crate) fn start_web_server(debug: bool, opts: CliArgs, run_daemonized: bool) {
+pub(crate) fn start_web_server(opts: CliArgs, run_daemonized: bool) {
     // TODO: move this outside of this function
     let (
         config,
-        layout,
+        _layout,
         config_options,
-        mut config_without_layout,
-        mut config_options_without_layout,
+        _config_without_layout,
+        _config_options_without_layout,
     ) = match Setup::from_cli_args(&opts) {
         Ok(results) => results,
         Err(e) => {
@@ -182,8 +184,6 @@ pub(crate) fn start_web_server(debug: bool, opts: CliArgs, run_daemonized: bool)
         },
     };
 
-    // Set instance-wide debug mode
-    zellij_utils::consts::DEBUG_MODE.set(debug).unwrap();
     start_web_client_impl(config, config_options, run_daemonized);
 }
 
@@ -203,12 +203,16 @@ fn create_new_client() -> ClientInfo {
 }
 
 #[cfg(feature = "web_server_capability")]
-pub(crate) fn stop_web_server(debug: bool, opts: CliArgs) -> Result<(), String> {
+pub(crate) fn stop_web_server(opts: CliArgs) -> Result<(), String> {
+    let config_options = get_config_options_from_cli_args(&opts)?;
+    let web_server_ip = config_options.web_server_ip.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
+
     let http_client = HttpClient::builder()
         // TODO: timeout?
         .redirect_policy(RedirectPolicy::Follow)
         .build().map_err(|e| e.to_string())?;
-    let request = Request::post("http://localhost:8082/command/shutdown");
+    let request = Request::post(format!("http://{}:{}/command/shutdown", web_server_ip, web_server_port));
     let req = request.body(()).map_err(|e| e.to_string())?;
     let res = http_client.send(req).map_err(|e| e.to_string())?;
     let status_code = res.status();
@@ -220,7 +224,7 @@ pub(crate) fn stop_web_server(debug: bool, opts: CliArgs) -> Result<(), String> 
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn stop_web_server(_debug: bool, _opts: CliArgs) -> Result<(), String> {
+pub(crate) fn stop_web_server(_opts: CliArgs) -> Result<(), String> {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot stop web server!"
     );
@@ -231,12 +235,15 @@ pub(crate) fn stop_web_server(_debug: bool, _opts: CliArgs) -> Result<(), String
 }
 
 #[cfg(feature = "web_server_capability")]
-pub(crate) fn web_server_status(debug: bool, opts: CliArgs) -> Result<String, String> {
+pub(crate) fn web_server_status(opts: CliArgs) -> Result<String, String> {
+    let config_options = get_config_options_from_cli_args(&opts)?;
+    let web_server_ip = config_options.web_server_ip.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
     let http_client = HttpClient::builder()
         // TODO: timeout?
         .redirect_policy(RedirectPolicy::Follow)
         .build().map_err(|e| e.to_string())?;
-    let request = Request::get("http://localhost:8082/info/version");
+    let request = Request::get(format!("http://{}:{}/info/version", web_server_ip, web_server_port));
     let req = request.body(()).map_err(|e| e.to_string())?;
     let mut res = http_client.send(req).map_err(|e| e.to_string())?;
     let status_code = res.status();
@@ -249,7 +256,7 @@ pub(crate) fn web_server_status(debug: bool, opts: CliArgs) -> Result<String, St
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn web_server_status(_debug: bool, _opts: CliArgs) -> Result<String, String> {
+pub(crate) fn web_server_status(_opts: CliArgs) -> Result<String, String> {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot get web server status!"
     );
@@ -852,4 +859,10 @@ fn reload_config_from_disk(
             log::error!("Failed to reload config: {}", e);
         },
     };
+}
+
+fn get_config_options_from_cli_args(opts: &CliArgs) -> Result<Options, String> {
+    Setup::from_cli_args(&opts)
+        .map(|(_, _, config_options, _, _)| config_options)
+        .map_err(|e| e.to_string())
 }

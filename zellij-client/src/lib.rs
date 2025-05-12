@@ -14,7 +14,7 @@ use log::info;
 use std::env::current_exe;
 use std::io::{self, Write};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -119,9 +119,19 @@ impl ErrorInstruction for ClientInstruction {
 }
 
 #[cfg(feature = "web_server_capability")]
-fn spawn_web_server(socket_path: &Path) -> io::Result<()> {
+fn spawn_web_server(socket_path: &Path, opts: &CliArgs) -> io::Result<()> {
     let mut cmd = Command::new(current_exe()?);
+    if let Some(config_file_path) = Config::config_file_path(opts) {
+        // this is so that if Zellij itself was started with a different config file, we'll use it
+        // to start the webserver
+        cmd.arg("--config");
+        log::info!("adding --config {}", config_file_path.display());
+        cmd.arg(format!("{}", config_file_path.display()));
+    }
     cmd.arg("web");
+    cmd.arg("-d");
+    cmd.stdout(Stdio::null());
+    cmd.stderr(Stdio::null());
     let status = cmd.status()?;
 
     if status.success() {
@@ -137,7 +147,7 @@ fn spawn_web_server(socket_path: &Path) -> io::Result<()> {
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-fn spawn_web_server(socket_path: &Path) -> io::Result<()> {
+fn spawn_web_server(socket_path: &Path, _opts: &CliArgs) -> io::Result<()> {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot run web server!"
     );
@@ -292,7 +302,7 @@ pub fn start_client(
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
             if should_start_web_server {
-                let _ = spawn_web_server(&*ipc_pipe);
+                let _ = spawn_web_server(&*ipc_pipe, &opts);
             }
 
             let successfully_written_config =
@@ -603,7 +613,7 @@ pub fn start_client(
                 }
             },
             ClientInstruction::StartWebServer => {
-                match spawn_web_server(&*ipc_pipe) {
+                match spawn_web_server(&*ipc_pipe, &opts) {
                     Ok(_) => {
                         let _ = os_input.send_to_server(ClientToServerMsg::WebServerStarted);
                     },
@@ -695,7 +705,7 @@ pub fn start_server_detached(
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
             if should_start_web_server {
-                let _ = spawn_web_server(&*ipc_pipe);
+                let _ = spawn_web_server(&*ipc_pipe, &opts);
             }
             let should_launch_setup_wizard = false; // no setup wizard when starting a detached
                                                     // server

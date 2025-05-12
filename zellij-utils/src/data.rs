@@ -11,6 +11,7 @@ use std::fs::Metadata;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::time::Duration;
+use std::net::IpAddr;
 use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
 
 #[cfg(not(target_family = "wasm"))]
@@ -1529,6 +1530,9 @@ pub struct ModeInfo {
     pub web_sharing: Option<WebSharing>,
     pub currently_marking_pane_group: Option<bool>,
     pub is_web_client: Option<bool>,
+    // note: these are only the configured ip/port that will be bound if and when the server is up
+    pub web_server_ip: Option<IpAddr>,
+    pub web_server_port: Option<u16>,
 }
 
 impl ModeInfo {

@@ -18,6 +18,7 @@ use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
 use crate::input::web_client::WebClientConfig;
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::net::{IpAddr, Ipv4Addr};
 use strum::IntoEnumIterator;
 use uuid::Uuid;
 
@@ -2319,6 +2320,19 @@ impl Options {
         let advanced_mouse_actions =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "advanced_mouse_actions")
                 .map(|(v, _)| v);
+        let web_server_ip =
+            match kdl_property_first_arg_as_string_or_error!(kdl_options, "web_server_ip") {
+                Some((string, entry)) => Some(IpAddr::from_str(string).map_err(|_| {
+                    kdl_parsing_error!(
+                        format!("Invalid value for web_server_ip: '{}'", string),
+                        entry
+                    )
+                })?),
+                None => None,
+            };
+        let web_server_port =
+            kdl_property_first_arg_as_i64_or_error!(kdl_options, "web_server_port")
+                .map(|(web_server_port, _entry)| web_server_port as u16);
         Ok(Options {
             simplified_ui,
             theme,
@@ -2353,6 +2367,8 @@ impl Options {
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            web_server_ip,
+            web_server_port,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -3335,6 +3351,60 @@ impl Options {
             None
         }
     }
+    fn web_server_ip_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            " ",
+            "// The ip address the web server should listen on when it starts",
+            "// default is 127.0.0.1",
+        );
+
+        let create_node = |node_value: IpAddr| -> KdlNode {
+            let mut node = KdlNode::new("web_server_ip");
+            node.push(KdlValue::String(node_value.to_string()));
+            node
+        };
+        if let Some(web_server_ip) = self.web_server_ip {
+            let mut node = create_node(web_server_ip);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn web_server_port_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            " ",
+            "// The port the web server should listen on when it starts",
+            "// default is 8082",
+        );
+
+        let create_node = |node_value: u16| -> KdlNode {
+            let mut node = KdlNode::new("web_server_port");
+            node.push(KdlValue::Base10(node_value as i64));
+            node
+        };
+        if let Some(web_server_port) = self.web_server_port {
+            let mut node = create_node(web_server_port);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(8082);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
@@ -3439,6 +3509,12 @@ impl Options {
         }
         if let Some(advanced_mouse_actions) = self.advanced_mouse_actions_to_kdl(add_comments) {
             nodes.push(advanced_mouse_actions);
+        }
+        if let Some(web_server_ip) = self.web_server_ip_to_kdl(add_comments) {
+            nodes.push(web_server_ip);
+        }
+        if let Some(web_server_port) = self.web_server_port_to_kdl(add_comments) {
+            nodes.push(web_server_port);
         }
         nodes
     }

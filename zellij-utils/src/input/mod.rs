@@ -50,6 +50,8 @@ mod not_wasm {
             web_sharing: None,
             currently_marking_pane_group: None,
             is_web_client: None,
+            web_server_ip: None,
+            web_server_port: None,
         }
     }
 

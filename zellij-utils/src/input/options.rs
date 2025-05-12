@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use std::net::IpAddr;
+
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, ArgEnum)]
 pub enum OnForceClose {
     #[serde(alias = "quit")]
@@ -217,6 +219,18 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub advanced_mouse_actions: Option<bool>,
+
+    /// The ip address the web server should listen on when it starts
+    /// default is 127.0.0.1
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub web_server_ip: Option<IpAddr>,
+
+    /// The port the web server should listen on when it starts
+    /// default is 8082
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub web_server_port: Option<u16>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -301,6 +315,8 @@ impl Options {
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
+        let web_server_ip = other.web_server_ip.or(self.web_server_ip);
+        let web_server_port = other.web_server_port.or(self.web_server_port);
 
         Options {
             simplified_ui,
@@ -336,6 +352,8 @@ impl Options {
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            web_server_ip,
+            web_server_port,
         }
     }
 
@@ -400,6 +418,8 @@ impl Options {
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
+        let web_server_ip = other.web_server_ip.or(self.web_server_ip);
+        let web_server_port = other.web_server_port.or(self.web_server_port);
 
         Options {
             simplified_ui,
@@ -435,6 +455,8 @@ impl Options {
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            web_server_ip,
+            web_server_port,
         }
     }
 
@@ -506,6 +528,8 @@ impl From<CliOptions> for Options {
             show_startup_tips: opts.show_startup_tips,
             show_release_notes: opts.show_release_notes,
             advanced_mouse_actions: opts.advanced_mouse_actions,
+            web_server_ip: opts.web_server_ip,
+            web_server_port: opts.web_server_port,
             ..Default::default()
         }
     }

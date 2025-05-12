@@ -226,10 +226,10 @@ fn main() {
     } else if let Some(Command::Web(web_opts)) = &opts.command {
         if web_opts.start {
             let daemonize = web_opts.daemonize;
-            commands::start_web_server(opts.debug, opts, daemonize);
+            commands::start_web_server(opts, daemonize);
         } else if web_opts.stop {
             // TODO: test these without web_server_compatibility
-            match commands::stop_web_server(opts.debug, opts) {
+            match commands::stop_web_server(opts) {
                 Ok(()) => {
                     println!("Stopped web server.");
                 },
@@ -239,7 +239,7 @@ fn main() {
                 }
             }
         } else if web_opts.status {
-            match commands::web_server_status(opts.debug, opts) {
+            match commands::web_server_status(opts) {
                 Ok(version) => {
                     let version = version.trim();
                     println!("Web server online with version: {}.", version);

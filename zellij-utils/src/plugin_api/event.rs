@@ -32,6 +32,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::path::PathBuf;
 use std::time::Duration;
+use std::net::IpAddr;
+use std::str::FromStr;
 
 impl TryFrom<ProtobufEvent> for Event {
     type Error = &'static str;
@@ -1266,6 +1268,16 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
         let currently_marking_pane_group =
             protobuf_mode_update_payload.currently_marking_pane_group;
         let is_web_client = protobuf_mode_update_payload.is_web_client;
+
+        let web_server_ip = protobuf_mode_update_payload
+            .web_server_ip
+            .as_ref()
+            .and_then(|web_server_ip| IpAddr::from_str(web_server_ip).ok());
+
+        let web_server_port = protobuf_mode_update_payload
+            .web_server_port
+            .map(|w| w as u16);
+
         let mode_info = ModeInfo {
             mode: current_mode,
             keybinds,
@@ -1279,6 +1291,8 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             web_sharing,
             currently_marking_pane_group,
             is_web_client,
+            web_server_ip,
+            web_server_port,
         };
         Ok(mode_info)
     }
@@ -1300,6 +1314,8 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
         let web_sharing = mode_info.web_sharing.map(|w| w as i32);
         let currently_marking_pane_group = mode_info.currently_marking_pane_group;
         let is_web_client = mode_info.is_web_client;
+        let web_server_ip = mode_info.web_server_ip.map(|i| format!("{}", i));
+        let web_server_port = mode_info.web_server_port.map(|p| p as u32);
         let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
         for (input_mode, input_mode_keybinds) in mode_info.keybinds {
             let mode: ProtobufInputMode = input_mode.try_into()?;
@@ -1337,6 +1353,8 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             web_sharing,
             currently_marking_pane_group,
             is_web_client,
+            web_server_ip,
+            web_server_port,
         })
     }
 }
@@ -1593,6 +1611,8 @@ fn serialize_mode_update_event_with_non_default_values() {
         web_sharing: Some(WebSharing::default()),
         currently_marking_pane_group: Some(false),
         is_web_client: Some(false),
+        web_server_ip: IpAddr::from_str("127.0.0.1").ok(),
+        web_server_port: Some(8082),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();

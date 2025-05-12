@@ -1,4 +1,5 @@
 use zellij_tile::prelude::*;
+use std::net::IpAddr;
 
 use std::collections::BTreeMap;
 
@@ -10,6 +11,8 @@ struct App {
     session_name: Option<String>,
     web_server_error: Option<String>,
     web_session_info: Vec<WebSessionInfo>,
+    web_server_ip: Option<IpAddr>,
+    web_server_port: Option<u16>,
 }
 
 register_plugin!(App);
@@ -34,6 +37,14 @@ impl ZellijPlugin for App {
                 }
                 if let Some(web_sharing) = mode_info.web_sharing {
                     self.web_sharing = web_sharing;
+                    should_render = true;
+                }
+                if let Some(web_server_ip) = mode_info.web_server_ip {
+                    self.web_server_ip = Some(web_server_ip);
+                    should_render = true;
+                }
+                if let Some(web_server_port) = mode_info.web_server_port {
+                    self.web_server_port = Some(web_server_port);
                     should_render = true;
                 }
             },
@@ -109,24 +120,6 @@ impl ZellijPlugin for App {
         should_render
     }
     fn render(&mut self, rows: usize, cols: usize) {
-        // MOCK:
-        // 1. show server status
-        // 2. show sessions shared on the web
-        // 3. show connected clients to each session (?) web and terminal
-        // 4. controls: start server, restart server
-        //
-        // Web Server Status: RUNNING/NOT-RUNNING <Ctrl c> > Stop, <Tab> > Start/Restart
-        // URL: https://localhost:8082
-        //
-        // Current session: SHARING/NOT-SHARING
-        // Session URL: https://localhost:8082/jumping-tomato
-        //
-        // All sessions:
-        // > session_name (1 web, 2 terminal users)
-        // > session_name (0 web, 1 terminal users)
-        //  - Open in browser
-        //  - Stop sharing
-        //
         let (web_server_status_items, web_server_items_max_len) = self.render_web_server_status();
         let (current_session_status_items, current_session_items_max_len) =
             self.render_current_session_status();
@@ -190,7 +183,9 @@ impl App {
         };
         let info_line = if self.web_server_started {
             let title = "URL: ";
-            let value = format!("http://localhost:8082/");
+            let web_server_ip = self.web_server_ip.map(|i| format!("{}", i)).unwrap_or("UNDEFINED".to_owned());
+            let web_server_port = self.web_server_port.map(|p| format!("{}", p)).unwrap_or("UNDEFINED".to_owned());
+            let value = format!("http://{}:{}/", web_server_ip, web_server_port);
             max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
             Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count())
         } else {
@@ -230,8 +225,12 @@ impl App {
         };
         let info_line = if self.web_sharing.web_clients_allowed() && self.web_server_started {
             let title = "Session URL: ";
+            let web_server_ip = self.web_server_ip.map(|i| format!("{}", i)).unwrap_or("UNDEFINED".to_owned());
+            let web_server_port = self.web_server_port.map(|p| format!("{}", p)).unwrap_or("UNDEFINED".to_owned());
             let value = format!(
-                "http://localhost:8082/{}",
+                "http://{}:{}/{}",
+                web_server_ip,
+                web_server_port,
                 self.session_name.clone().unwrap_or_else(|| "".to_owned())
             );
             max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());

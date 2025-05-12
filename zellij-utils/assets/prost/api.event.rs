@@ -483,6 +483,10 @@ pub struct ModeUpdatePayload {
     pub currently_marking_pane_group: ::core::option::Option<bool>,
     #[prost(bool, optional, tag="12")]
     pub is_web_client: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="13")]
+    pub web_server_ip: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint32, optional, tag="14")]
+    pub web_server_port: ::core::option::Option<u32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -20,6 +20,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
+use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
 use crate::panes::PaneId;
@@ -100,6 +101,8 @@ pub(crate) fn background_jobs_main(
     bus: Bus<BackgroundJob>,
     serialization_interval: Option<u64>,
     disable_session_metadata: bool,
+    web_server_ip: IpAddr,
+    web_server_port: u16,
 ) -> Result<()> {
     let err_context = || "failed to write to pty".to_string();
     let mut running_jobs: HashMap<BackgroundJob, Instant> = HashMap::new();
@@ -391,11 +394,13 @@ pub(crate) fn background_jobs_main(
                     async move {
                         async fn web_request(
                             http_client: HttpClient,
+                            web_server_ip: IpAddr,
+                            web_server_port: u16,
                         ) -> Result<
                             (u16, Vec<u8>), // status_code, body
                             isahc::Error,
                         > {
-                            let request = Request::get("http://localhost:8082/info/version");
+                            let request = Request::get(format!("http://{}:{}/info/version", web_server_ip, web_server_port));
                             let req = request.body(())?;
                             let mut res = http_client.send_async(req).await?;
 
@@ -410,7 +415,7 @@ pub(crate) fn background_jobs_main(
 
                         loop {
                             let http_client = http_client.clone();
-                            match web_request(http_client).await {
+                            match web_request(http_client, web_server_ip, web_server_port).await {
                                 Ok((status, body)) => {
                                     if status == 200 && &body == VERSION.as_bytes() {
                                         // online
@@ -438,11 +443,13 @@ pub(crate) fn background_jobs_main(
                     async move {
                         async fn web_request(
                             http_client: HttpClient,
+                            web_server_ip: IpAddr,
+                            web_server_port: u16,
                         ) -> Result<
                             (u16, Vec<u8>), // status_code, body
                             isahc::Error,
                         > {
-                            let request = Request::post("http://localhost:8082/command/shutdown");
+                            let request = Request::post(format!("http://{}:{}/command/shutdown", web_server_ip, web_server_port));
                             let req = request.body(())?;
                             let mut res = http_client.send_async(req).await?;
 
@@ -455,7 +462,7 @@ pub(crate) fn background_jobs_main(
                             return;
                         };
 
-                        match web_request(http_client).await {
+                        match web_request(http_client, web_server_ip, web_server_port).await {
                             Ok((_status, _body)) => {
                                 // no-op
                             },
