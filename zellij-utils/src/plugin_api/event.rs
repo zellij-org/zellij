@@ -11,7 +11,7 @@ pub use super::generated_api::api::{
         PaneManifest as ProtobufPaneManifest, PaneType as ProtobufPaneType,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo,
-        WebSharing as ProtobufWebSharing, WebServerStatus as ProtobufWebServerStatus, *,
+        WebServerStatus as ProtobufWebServerStatus, WebSharing as ProtobufWebSharing, *,
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
@@ -21,8 +21,7 @@ pub use super::generated_api::api::{
 use crate::data::{
     ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier,
     LayoutInfo, ModeInfo, Mouse, PaneId, PaneInfo, PaneManifest, PermissionStatus,
-    PluginCapabilities, PluginInfo, SessionInfo, Style, TabInfo, WebServerStatus,
-    WebSharing,
+    PluginCapabilities, PluginInfo, SessionInfo, Style, TabInfo, WebServerStatus, WebSharing,
 };
 
 use crate::errors::prelude::*;
@@ -30,10 +29,10 @@ use crate::input::actions::Action;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
-use std::path::PathBuf;
-use std::time::Duration;
 use std::net::IpAddr;
+use std::path::PathBuf;
 use std::str::FromStr;
+use std::time::Duration;
 
 impl TryFrom<ProtobufEvent> for Event {
     type Error = &'static str;
@@ -798,7 +797,9 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
                 .into_iter()
                 .map(|t| ProtobufClientTabHistory::from(t))
                 .collect(),
-            web_server_status: session_info.web_server_status.and_then(|w| w.try_into().ok()),
+            web_server_status: session_info
+                .web_server_status
+                .and_then(|w| w.try_into().ok()),
         })
     }
 }
@@ -886,7 +887,9 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
             web_clients_allowed: protobuf_session_manifest.web_clients_allowed,
             web_client_count: protobuf_session_manifest.web_client_count as usize,
             tab_history,
-            web_server_status: protobuf_session_manifest.web_server_status.and_then(|w| w.try_into().ok()),
+            web_server_status: protobuf_session_manifest
+                .web_server_status
+                .and_then(|w| w.try_into().ok()),
         })
     }
 }
@@ -2175,10 +2178,12 @@ impl TryFrom<WebServerStatus> for ProtobufWebServerStatus {
 impl TryFrom<ProtobufWebServerStatus> for WebServerStatus {
     type Error = &'static str;
     fn try_from(protobuf_web_server_status: ProtobufWebServerStatus) -> Result<Self, &'static str> {
-        match WebServerStatusIndication::from_i32(protobuf_web_server_status.web_server_status_indication) {
+        match WebServerStatusIndication::from_i32(
+            protobuf_web_server_status.web_server_status_indication,
+        ) {
             Some(WebServerStatusIndication::Online) => Ok(WebServerStatus::Online),
             Some(WebServerStatusIndication::DifferentVersion) => {
-                let payload = protobuf_web_server_status 
+                let payload = protobuf_web_server_status
                     .payload
                     .ok_or("payload_not_found")?;
                 Ok(WebServerStatus::DifferentVersion(payload))

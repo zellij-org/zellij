@@ -226,3 +226,11 @@ web_sharing "disabled"
 // Whether to enable mouse hover effects and pane grouping functionality
 // default is true
 // advanced_mouse_actions false
+ 
+// The ip address the web server should listen on when it starts
+// default is 127.0.0.1
+// web_server_ip "127.0.0.1"
+ 
+// The port the web server should listen on when it starts
+// default is 8082
+// web_server_port 8082

@@ -14,13 +14,13 @@ use isahc::{config::RedirectPolicy, HttpClient, Request};
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::Write;
+use std::net::IpAddr;
 use std::os::unix::fs::FileTypeExt;
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
-use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
 use crate::panes::PaneId;
@@ -84,7 +84,9 @@ impl From<&BackgroundJob> for BackgroundJobContext {
                 BackgroundJobContext::HighlightPanesWithMessage
             },
             BackgroundJob::StopWebServer => BackgroundJobContext::StopWebServer,
-            BackgroundJob::QueryZellijWebServerStatus => BackgroundJobContext::QueryZellijWebServerStatus,
+            BackgroundJob::QueryZellijWebServerStatus => {
+                BackgroundJobContext::QueryZellijWebServerStatus
+            },
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -113,7 +115,8 @@ pub(crate) fn background_jobs_main(
         Arc::new(Mutex::new(BTreeMap::new()));
     let current_session_layout = Arc::new(Mutex::new((String::new(), BTreeMap::new())));
     let last_serialization_time = Arc::new(Mutex::new(Instant::now()));
-    let current_zellij_web_server_status: Arc<Mutex<Option<WebServerStatus>>> = Arc::new(Mutex::new(None));
+    let current_zellij_web_server_status: Arc<Mutex<Option<WebServerStatus>>> =
+        Arc::new(Mutex::new(None));
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
                                                                            // milliseconds
     let last_render_request: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
@@ -218,7 +221,8 @@ pub(crate) fn background_jobs_main(
                             }
                             let mut session_infos_on_machine =
                                 read_other_live_session_states(&current_session_name);
-                            let web_server_status = { current_zellij_web_server_status.lock().unwrap().clone() };
+                            let web_server_status =
+                                { current_zellij_web_server_status.lock().unwrap().clone() };
                             for (session_name, session_info) in session_infos_on_machine.iter_mut()
                             {
                                 if session_name == &current_session_name {
@@ -400,7 +404,10 @@ pub(crate) fn background_jobs_main(
                             (u16, Vec<u8>), // status_code, body
                             isahc::Error,
                         > {
-                            let request = Request::get(format!("http://{}:{}/info/version", web_server_ip, web_server_port));
+                            let request = Request::get(format!(
+                                "http://{}:{}/info/version",
+                                web_server_ip, web_server_port
+                            ));
                             let req = request.body(())?;
                             let mut res = http_client.send_async(req).await?;
 
@@ -419,16 +426,22 @@ pub(crate) fn background_jobs_main(
                                 Ok((status, body)) => {
                                     if status == 200 && &body == VERSION.as_bytes() {
                                         // online
-                                        *current_zellij_web_server_status.lock().unwrap() = Some(WebServerStatus::Online);
+                                        *current_zellij_web_server_status.lock().unwrap() =
+                                            Some(WebServerStatus::Online);
                                     } else if status == 200 {
-                                        *current_zellij_web_server_status.lock().unwrap() = Some(WebServerStatus::DifferentVersion(String::from_utf8_lossy(&body).to_string()));
+                                        *current_zellij_web_server_status.lock().unwrap() =
+                                            Some(WebServerStatus::DifferentVersion(
+                                                String::from_utf8_lossy(&body).to_string(),
+                                            ));
                                     } else {
                                         // offline/error
-                                        *current_zellij_web_server_status.lock().unwrap() = Some(WebServerStatus::Offline);
+                                        *current_zellij_web_server_status.lock().unwrap() =
+                                            Some(WebServerStatus::Offline);
                                     }
                                 },
                                 Err(_) => {
-                                    *current_zellij_web_server_status.lock().unwrap() = Some(WebServerStatus::Offline);
+                                    *current_zellij_web_server_status.lock().unwrap() =
+                                        Some(WebServerStatus::Offline);
                                 },
                             }
                             task::sleep(std::time::Duration::from_millis(SESSION_READ_DURATION))
@@ -449,7 +462,10 @@ pub(crate) fn background_jobs_main(
                             (u16, Vec<u8>), // status_code, body
                             isahc::Error,
                         > {
-                            let request = Request::post(format!("http://{}:{}/command/shutdown", web_server_ip, web_server_port));
+                            let request = Request::post(format!(
+                                "http://{}:{}/command/shutdown",
+                                web_server_ip, web_server_port
+                            ));
                             let req = request.body(())?;
                             let mut res = http_client.send_async(req).await?;
 

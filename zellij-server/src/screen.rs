@@ -2,11 +2,11 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
 use std::time::Duration;
-use std::net::{IpAddr, Ipv4Addr};
 
 use log::{debug, warn};
 use zellij_utils::data::{
@@ -1752,7 +1752,7 @@ impl Screen {
             .senders
             .send_to_background_jobs(BackgroundJob::ReadAllSessionInfosOnMachine)
             .with_context(err_context)?;
-        
+
         // TODO: consider moving this elsewhere
         self.bus
             .senders
@@ -3136,7 +3136,9 @@ pub(crate) fn screen_thread_main(
         config_options.copy_clipboard.unwrap_or_default(),
         config_options.copy_on_select.unwrap_or(true),
     );
-    let web_server_ip = config_options.web_server_ip.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let web_server_ip = config_options
+        .web_server_ip
+        .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
     let web_server_port = config_options.web_server_port.unwrap_or(8082);
     let styled_underlines = config_options.styled_underlines.unwrap_or(true);
     let explicitly_disable_kitty_keyboard_protocol = config_options

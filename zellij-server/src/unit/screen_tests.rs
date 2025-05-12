@@ -8,6 +8,7 @@ use crate::{
     ClientId, ServerInstruction, SessionMetaData, ThreadSenders,
 };
 use insta::assert_snapshot;
+use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use zellij_utils::cli::CliAction;
 use zellij_utils::data::{Event, Resize, Style, WebSharing};
@@ -274,6 +275,8 @@ fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
     let explicitly_disable_kitty_keyboard_protocol = false;
     let stacked_resize = true;
     let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
     let screen = Screen::new(
         bus,
         &client_attributes,
@@ -299,6 +302,8 @@ fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
         false,
         web_sharing,
         advanced_mouse_actions,
+        web_server_ip,
+        web_server_port,
     );
     screen
 }

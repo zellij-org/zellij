@@ -1,16 +1,10 @@
 use dialoguer::Confirm;
-use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
+use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 
 #[cfg(feature = "web_server_capability")]
-use isahc::{
-    prelude::*,
-    AsyncReadResponseExt,
-    config::RedirectPolicy,
-    HttpClient,
-    Request,
-};
+use isahc::{config::RedirectPolicy, prelude::*, AsyncReadResponseExt, HttpClient, Request};
 
 use nix;
 use zellij_client::{
@@ -165,24 +159,19 @@ pub(crate) fn start_server(path: PathBuf, debug: bool) {
 #[cfg(feature = "web_server_capability")]
 pub(crate) fn start_web_server(opts: CliArgs, run_daemonized: bool) {
     // TODO: move this outside of this function
-    let (
-        config,
-        _layout,
-        config_options,
-        _config_without_layout,
-        _config_options_without_layout,
-    ) = match Setup::from_cli_args(&opts) {
-        Ok(results) => results,
-        Err(e) => {
-            if let ConfigError::KdlError(error) = e {
-                let report: Report = error.into();
-                eprintln!("{:?}", report);
-            } else {
-                eprintln!("{}", e);
-            }
-            process::exit(1);
-        },
-    };
+    let (config, _layout, config_options, _config_without_layout, _config_options_without_layout) =
+        match Setup::from_cli_args(&opts) {
+            Ok(results) => results,
+            Err(e) => {
+                if let ConfigError::KdlError(error) = e {
+                    let report: Report = error.into();
+                    eprintln!("{:?}", report);
+                } else {
+                    eprintln!("{}", e);
+                }
+                process::exit(1);
+            },
+        };
 
     start_web_client_impl(config, config_options, run_daemonized);
 }
@@ -205,21 +194,30 @@ fn create_new_client() -> ClientInfo {
 #[cfg(feature = "web_server_capability")]
 pub(crate) fn stop_web_server(opts: CliArgs) -> Result<(), String> {
     let config_options = get_config_options_from_cli_args(&opts)?;
-    let web_server_ip = config_options.web_server_ip.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let web_server_ip = config_options
+        .web_server_ip
+        .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
     let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
 
     let http_client = HttpClient::builder()
         // TODO: timeout?
         .redirect_policy(RedirectPolicy::Follow)
-        .build().map_err(|e| e.to_string())?;
-    let request = Request::post(format!("http://{}:{}/command/shutdown", web_server_ip, web_server_port));
+        .build()
+        .map_err(|e| e.to_string())?;
+    let request = Request::post(format!(
+        "http://{}:{}/command/shutdown",
+        web_server_ip, web_server_port
+    ));
     let req = request.body(()).map_err(|e| e.to_string())?;
     let res = http_client.send(req).map_err(|e| e.to_string())?;
     let status_code = res.status();
     if status_code == 200 {
         Ok(())
     } else {
-        Err(format!("Failed to stop web server, got status code: {}", status_code))
+        Err(format!(
+            "Failed to stop web server, got status code: {}",
+            status_code
+        ))
     }
 }
 
@@ -237,13 +235,19 @@ pub(crate) fn stop_web_server(_opts: CliArgs) -> Result<(), String> {
 #[cfg(feature = "web_server_capability")]
 pub(crate) fn web_server_status(opts: CliArgs) -> Result<String, String> {
     let config_options = get_config_options_from_cli_args(&opts)?;
-    let web_server_ip = config_options.web_server_ip.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let web_server_ip = config_options
+        .web_server_ip
+        .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
     let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
     let http_client = HttpClient::builder()
         // TODO: timeout?
         .redirect_policy(RedirectPolicy::Follow)
-        .build().map_err(|e| e.to_string())?;
-    let request = Request::get(format!("http://{}:{}/info/version", web_server_ip, web_server_port));
+        .build()
+        .map_err(|e| e.to_string())?;
+    let request = Request::get(format!(
+        "http://{}:{}/info/version",
+        web_server_ip, web_server_port
+    ));
     let req = request.body(()).map_err(|e| e.to_string())?;
     let mut res = http_client.send(req).map_err(|e| e.to_string())?;
     let status_code = res.status();
@@ -251,7 +255,10 @@ pub(crate) fn web_server_status(opts: CliArgs) -> Result<String, String> {
         let body = res.bytes().map_err(|e| e.to_string())?;
         Ok(String::from_utf8_lossy(&body).to_string())
     } else {
-        Err(format!("Failed to stop web server, got status code: {}", status_code))
+        Err(format!(
+            "Failed to stop web server, got status code: {}",
+            status_code
+        ))
     }
 }
 

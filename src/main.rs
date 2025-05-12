@@ -236,7 +236,7 @@ fn main() {
                 Err(e) => {
                     eprintln!("Failed to stop web server: {}", e);
                     std::process::exit(2)
-                }
+                },
             }
         } else if web_opts.status {
             match commands::web_server_status(opts) {
@@ -245,14 +245,17 @@ fn main() {
                     println!("Web server online with version: {}.", version);
                     if version != VERSION {
                         println!("");
-                        println!("Note: this version differs from the current Zellij version: {}.", VERSION);
+                        println!(
+                            "Note: this version differs from the current Zellij version: {}.",
+                            VERSION
+                        );
                         println!("Consider stopping the server with: zellij web --stop");
                         println!("And then restarting it with: zellij web --start");
                     }
                 },
                 Err(_e) => {
                     println!("Web server is offline.")
-                }
+                },
             }
         }
     } else {

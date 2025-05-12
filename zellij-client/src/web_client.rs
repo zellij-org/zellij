@@ -6,10 +6,10 @@ mod control_message;
 use std::{
     collections::HashMap,
     env, fs,
+    net::{IpAddr, Ipv4Addr},
     path::PathBuf,
     sync::{Arc, Mutex},
     thread,
-    net::{IpAddr, Ipv4Addr},
 };
 
 use crate::{
@@ -29,13 +29,11 @@ use axum::{
     Json, Router,
 };
 
-use {
-    interprocess::unnamed_pipe::pipe,
-};
+use interprocess::unnamed_pipe::pipe;
 use std::io::prelude::*;
 
-use nix::sys::stat::{umask, Mode};
 use daemonize::{self, Outcome};
+use nix::sys::stat::{umask, Mode};
 
 use control_message::{
     WebClientToWebServerControlMessage, WebClientToWebServerControlMessagePayload,
@@ -112,7 +110,10 @@ struct StdinMessage {
     stdin: String,
 }
 
-fn daemonize_web_server(web_server_ip: IpAddr, web_server_port: u16) -> (Runtime, tokio::net::TcpListener) {
+fn daemonize_web_server(
+    web_server_ip: IpAddr,
+    web_server_port: u16,
+) -> (Runtime, tokio::net::TcpListener) {
     // TODO: test this on mac
     let (mut exit_status_tx, mut exit_status_rx) = pipe().unwrap();
     let current_umask = umask(Mode::all());
@@ -122,14 +123,18 @@ fn daemonize_web_server(web_server_ip: IpAddr, web_server_port: u16) -> (Runtime
         .umask(current_umask.bits() as u32)
         .stdout(daemonize::Stdio::keep())
         .stderr(daemonize::Stdio::keep())
-        .privileged_action(move || -> Result<(Runtime, tokio::net::TcpListener), String> {
-            let runtime = Runtime::new().map_err(|e| e.to_string())?;
-            let listener = runtime
-                .block_on(async move {tokio::net::TcpListener::bind(format!("{}:{}", web_server_ip, web_server_port)).await});
-            listener
-                .map(|listener| (runtime, listener))
-                .map_err(|e| e.to_string())
-        })
+        .privileged_action(
+            move || -> Result<(Runtime, tokio::net::TcpListener), String> {
+                let runtime = Runtime::new().map_err(|e| e.to_string())?;
+                let listener = runtime.block_on(async move {
+                    tokio::net::TcpListener::bind(format!("{}:{}", web_server_ip, web_server_port))
+                        .await
+                });
+                listener
+                    .map(|listener| (runtime, listener))
+                    .map_err(|e| e.to_string())
+            },
+        )
         .execute();
     match daemonization_outcome {
         Outcome::Parent(Ok(parent)) => {
@@ -144,30 +149,31 @@ fn daemonize_web_server(web_server_ip: IpAddr, web_server_port: u16) -> (Runtime
                     Err(e) => {
                         eprintln!("{}", e);
                         std::process::exit(2);
-                    }
+                    },
                 }
             } else {
                 std::process::exit(parent.first_child_exit_code);
             }
         },
-        Outcome::Child(Ok(child)) => {
-            match child.privileged_action_result {
-                Ok(listener_and_runtime) => {
-                    println!("Web Server started on {} port {}", web_server_ip, web_server_port);
-                    let _ = exit_status_tx.write_all(&[0]);
-                    listener_and_runtime
-                },
-                Err(e) => {
-                    eprintln!("{}", e);
-                    let _ = exit_status_tx.write_all(&[2]);
-                    std::process::exit(2);
-                }
-            }
+        Outcome::Child(Ok(child)) => match child.privileged_action_result {
+            Ok(listener_and_runtime) => {
+                println!(
+                    "Web Server started on {} port {}",
+                    web_server_ip, web_server_port
+                );
+                let _ = exit_status_tx.write_all(&[0]);
+                listener_and_runtime
+            },
+            Err(e) => {
+                eprintln!("{}", e);
+                let _ = exit_status_tx.write_all(&[2]);
+                std::process::exit(2);
+            },
         },
         _ => {
             eprintln!("Failed to start server");
             std::process::exit(2);
-        }
+        },
     }
 }
 
@@ -189,7 +195,9 @@ pub fn start_web_client(config: Config, config_options: Options, run_daemonized:
             );
         })
     });
-    let web_server_ip = config_options.web_server_ip.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let web_server_ip = config_options
+        .web_server_ip
+        .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
     let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
 
     let connection_table: ConnectionTable = Arc::new(Mutex::new(HashMap::new()));
@@ -198,12 +206,23 @@ pub fn start_web_client(config: Config, config_options: Options, run_daemonized:
         daemonize_web_server(web_server_ip, web_server_port)
     } else {
         let runtime = Runtime::new().unwrap();
-        let listener = runtime
-            .block_on(async move {tokio::net::TcpListener::bind(format!("{}:{}", web_server_ip, web_server_port)).await.unwrap()});
-        println!("Web Server started on {} port {}", web_server_ip, web_server_port);
+        let listener = runtime.block_on(async move {
+            tokio::net::TcpListener::bind(format!("{}:{}", web_server_ip, web_server_port))
+                .await
+                .unwrap()
+        });
+        println!(
+            "Web Server started on {} port {}",
+            web_server_ip, web_server_port
+        );
         (runtime, listener)
     };
-    runtime.block_on(serve_web_client(config, config_options, connection_table, listener));
+    runtime.block_on(serve_web_client(
+        config,
+        config_options,
+        connection_table,
+        listener,
+    ));
 }
 
 const WEB_CLIENT_PAGE: &str = include_str!(concat!(
@@ -228,7 +247,6 @@ async fn serve_web_client(
     connection_table: ConnectionTable,
     listener: tokio::net::TcpListener,
 ) {
-
     let (shutdown_signal_tx, shutdown_signal_rx) = tokio::sync::mpsc::unbounded_channel();
 
     let state = AppState {
@@ -238,10 +256,17 @@ async fn serve_web_client(
         shutdown_signal_tx,
     };
 
-    let web_server_ip = state.config_options.web_server_ip.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let web_server_ip = state
+        .config_options
+        .web_server_ip
+        .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
     let web_server_port = state.config_options.web_server_port.unwrap_or_else(|| 8082);
 
-    let html = Html(WEB_CLIENT_PAGE.replace("WEB_SERVER_IP", &format!("{}", web_server_ip)).replace("WEB_SERVER_PORT", &format!("{}", web_server_port)));
+    let html = Html(
+        WEB_CLIENT_PAGE
+            .replace("WEB_SERVER_IP", &format!("{}", web_server_ip))
+            .replace("WEB_SERVER_PORT", &format!("{}", web_server_port)),
+    );
 
     let app = Router::new()
         .route("/", get(html.clone()))

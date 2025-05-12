@@ -23,10 +23,10 @@ use nix::sys::stat::{umask, Mode};
 use pty_writer::{pty_writer_main, PtyWriteInstruction};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::{
+    net::{IpAddr, Ipv4Addr},
     path::PathBuf,
     sync::{Arc, RwLock},
     thread,
-    net::{IpAddr, Ipv4Addr},
 };
 use zellij_utils::envs;
 use zellij_utils::pane_size::Size;
@@ -1466,7 +1466,9 @@ fn init_session(
 
     let serialization_interval = config_options.serialization_interval;
     let disable_session_metadata = config_options.disable_session_metadata.unwrap_or(false);
-    let web_server_ip = config_options.web_server_ip.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let web_server_ip = config_options
+        .web_server_ip
+        .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
     let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
 
     let default_shell = config_options.default_shell.clone().map(|command| {

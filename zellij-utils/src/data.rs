@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::fs::Metadata;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::time::Duration;
-use std::net::IpAddr;
 use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
 
 #[cfg(not(target_family = "wasm"))]

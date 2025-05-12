@@ -6295,6 +6295,8 @@ Config {
         show_startup_tips: None,
         show_release_notes: None,
         advanced_mouse_actions: None,
+        web_server_ip: None,
+        web_server_port: None,
     },
     themes: {
         "other-theme-from-config": Theme {

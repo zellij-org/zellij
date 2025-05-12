@@ -7,6 +7,7 @@ use crate::{
     thread_bus::ThreadSenders,
     ClientId,
 };
+use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use zellij_utils::data::{Direction, Resize, ResizeStrategy, WebSharing};
 use zellij_utils::errors::prelude::*;
@@ -173,6 +174,8 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
     let mut tab = Tab::new(
         index,
         position,
@@ -206,6 +209,8 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        web_server_ip,
+        web_server_port,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -249,6 +254,8 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
     let mut tab = Tab::new(
         index,
         position,
@@ -282,6 +289,8 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        web_server_ip,
+        web_server_port,
     );
     let mut new_terminal_ids = vec![];
     for i in 0..layout.extract_run_instructions().len() {
@@ -331,6 +340,8 @@ fn create_new_tab_with_cell_size(
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
     let mut tab = Tab::new(
         index,
         position,
@@ -364,6 +375,8 @@ fn create_new_tab_with_cell_size(
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        web_server_ip,
+        web_server_port,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),

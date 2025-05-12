@@ -10,6 +10,7 @@ use crate::{
     thread_bus::ThreadSenders,
     ClientId,
 };
+use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -233,6 +234,8 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
     let mut tab = Tab::new(
         index,
         position,
@@ -266,6 +269,8 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        web_server_ip,
+        web_server_port,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -310,6 +315,8 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
     let mut tab = Tab::new(
         index,
         position,
@@ -343,6 +350,8 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        web_server_ip,
+        web_server_port,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -402,6 +411,8 @@ fn create_new_tab_with_swap_layouts(
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
     let mut tab = Tab::new(
         index,
         position,
@@ -435,6 +446,8 @@ fn create_new_tab_with_swap_layouts(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        web_server_ip,
+        web_server_port,
     );
     let (
         base_layout,
@@ -495,6 +508,8 @@ fn create_new_tab_with_os_api(
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
     let mut tab = Tab::new(
         index,
         position,
@@ -528,6 +543,8 @@ fn create_new_tab_with_os_api(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        web_server_ip,
+        web_server_port,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -574,6 +591,8 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
     let mut tab = Tab::new(
         index,
         position,
@@ -607,6 +626,8 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        web_server_ip,
+        web_server_port,
     );
     let pane_ids = tab_layout
         .extract_run_instructions()
@@ -667,6 +688,8 @@ fn create_new_tab_with_mock_pty_writer(
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
     let mut tab = Tab::new(
         index,
         position,
@@ -700,6 +723,8 @@ fn create_new_tab_with_mock_pty_writer(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        web_server_ip,
+        web_server_port,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -751,6 +776,8 @@ fn create_new_tab_with_sixel_support(
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
     let mut tab = Tab::new(
         index,
         position,
@@ -784,6 +811,8 @@ fn create_new_tab_with_sixel_support(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        web_server_ip,
+        web_server_port,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),

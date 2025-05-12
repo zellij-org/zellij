@@ -4,7 +4,7 @@ use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
     input::{layout::PluginUserConfiguration, options::CliOptions},
 };
-use clap::{Parser, Subcommand, Args};
+use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use url::Url;
@@ -105,7 +105,13 @@ pub enum Command {
 #[derive(Debug, Clone, Args, Serialize, Deserialize)]
 pub struct WebCli {
     /// Start the server (default unless --stop or --status are specified)
-    #[clap(long, value_parser, default_value("true"), default_value_if("stop", None, Some("false")), default_value_if("status", None, Some("false")))]
+    #[clap(
+        long,
+        value_parser,
+        default_value("true"),
+        default_value_if("stop", None, Some("false")),
+        default_value_if("status", None, Some("false"))
+    )]
     pub start: bool,
 
     /// Stop the server

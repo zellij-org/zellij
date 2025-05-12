@@ -3381,9 +3381,7 @@ impl Options {
     fn web_server_port_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}",
-            " ",
-            "// The port the web server should listen on when it starts",
-            "// default is 8082",
+            " ", "// The port the web server should listen on when it starts", "// default is 8082",
         );
 
         let create_node = |node_value: u16| -> KdlNode {

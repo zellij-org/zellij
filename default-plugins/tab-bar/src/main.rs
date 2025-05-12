@@ -59,13 +59,17 @@ impl ZellijPlugin for State {
         let mut should_render = false;
         match event {
             Event::SessionUpdate(session_infos, _) => {
-                match session_infos.iter().next().and_then(|s| s.web_server_status.as_ref()) {
+                match session_infos
+                    .iter()
+                    .next()
+                    .and_then(|s| s.web_server_status.as_ref())
+                {
                     Some(WebServerStatus::Online) => {
                         self.web_server_on_line = true;
                     },
                     _ => {
                         self.web_server_on_line = false;
-                    }
+                    },
                 }
                 should_render = true;
             },

@@ -1,5 +1,5 @@
-use zellij_tile::prelude::*;
 use std::net::IpAddr;
+use zellij_tile::prelude::*;
 
 use std::collections::BTreeMap;
 
@@ -77,7 +77,11 @@ impl ZellijPlugin for App {
                 }
             },
             Event::SessionUpdate(session_infos, _) => {
-                match session_infos.iter().next().and_then(|s| s.web_server_status.as_ref()) {
+                match session_infos
+                    .iter()
+                    .next()
+                    .and_then(|s| s.web_server_status.as_ref())
+                {
                     Some(WebServerStatus::Online) => {
                         self.web_server_started = true;
                         self.web_server_error = None;
@@ -94,7 +98,7 @@ impl ZellijPlugin for App {
                     },
                     _ => {
                         self.web_server_started = false;
-                    }
+                    },
                 }
 
                 let mut web_session_info = vec![];
@@ -183,8 +187,14 @@ impl App {
         };
         let info_line = if self.web_server_started {
             let title = "URL: ";
-            let web_server_ip = self.web_server_ip.map(|i| format!("{}", i)).unwrap_or("UNDEFINED".to_owned());
-            let web_server_port = self.web_server_port.map(|p| format!("{}", p)).unwrap_or("UNDEFINED".to_owned());
+            let web_server_ip = self
+                .web_server_ip
+                .map(|i| format!("{}", i))
+                .unwrap_or("UNDEFINED".to_owned());
+            let web_server_port = self
+                .web_server_port
+                .map(|p| format!("{}", p))
+                .unwrap_or("UNDEFINED".to_owned());
             let value = format!("http://{}:{}/", web_server_ip, web_server_port);
             max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
             Text::new(format!("{}{}", title, value)).color_range(0, ..title.chars().count())
@@ -225,8 +235,14 @@ impl App {
         };
         let info_line = if self.web_sharing.web_clients_allowed() && self.web_server_started {
             let title = "Session URL: ";
-            let web_server_ip = self.web_server_ip.map(|i| format!("{}", i)).unwrap_or("UNDEFINED".to_owned());
-            let web_server_port = self.web_server_port.map(|p| format!("{}", p)).unwrap_or("UNDEFINED".to_owned());
+            let web_server_ip = self
+                .web_server_ip
+                .map(|i| format!("{}", i))
+                .unwrap_or("UNDEFINED".to_owned());
+            let web_server_port = self
+                .web_server_port
+                .map(|p| format!("{}", p))
+                .unwrap_or("UNDEFINED".to_owned());
             let value = format!(
                 "http://{}:{}/{}",
                 web_server_ip,
