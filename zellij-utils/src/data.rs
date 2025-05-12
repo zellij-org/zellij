@@ -938,7 +938,7 @@ pub enum Event {
     FailedToChangeHostFolder(Option<String>), // String -> the error we got when changing
     PastedText(String),
     ConfigWasWrittenToDisk,
-    WebServerStarted,
+    WebServerStatus(WebServerStatus),
     BeforeClose,
 }
 
@@ -1582,7 +1582,6 @@ pub struct SessionInfo {
     pub web_clients_allowed: bool,
     pub web_client_count: usize,
     pub tab_history: BTreeMap<ClientId, Vec<usize>>,
-    pub web_server_status: Option<WebServerStatus>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]

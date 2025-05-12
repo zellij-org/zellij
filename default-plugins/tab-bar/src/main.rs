@@ -51,28 +51,13 @@ impl ZellijPlugin for State {
             EventType::ModeUpdate,
             EventType::Mouse,
             EventType::Timer,
-            EventType::SessionUpdate,
+            EventType::WebServerStatus,
         ]);
     }
 
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
-            Event::SessionUpdate(session_infos, _) => {
-                match session_infos
-                    .iter()
-                    .next()
-                    .and_then(|s| s.web_server_status.as_ref())
-                {
-                    Some(WebServerStatus::Online) => {
-                        self.web_server_on_line = true;
-                    },
-                    _ => {
-                        self.web_server_on_line = false;
-                    },
-                }
-                should_render = true;
-            },
             Event::ModeUpdate(mode_info) => {
                 if self.mode_info != mode_info {
                     should_render = true;
@@ -107,6 +92,17 @@ impl ZellijPlugin for State {
                     switch_tab_to(max(self.active_tab_idx.saturating_sub(1), 1) as u32);
                 },
                 _ => {},
+            },
+            Event::WebServerStatus(web_server_status) => {
+                match web_server_status {
+                    WebServerStatus::Online => {
+                        self.web_server_on_line = true;
+                    },
+                    _ => {
+                        self.web_server_on_line = false;
+                    }
+                }
+                should_render = true;
             },
             _ => {
                 eprintln!("Got unrecognized event: {:?}", event);

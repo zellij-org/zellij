@@ -375,7 +375,6 @@ pub enum ScreenContext {
     SetFloatingPanePinned,
     StackPanes,
     ChangeFloatingPanesCoordinates,
-    WebServerStarted,
     AddHighlightPaneFrameColorOverride,
     GroupAndUngroupPanes,
     HighlightAndUnhighlightPanes,

@@ -10,7 +10,6 @@ struct App {
     web_clients_allowed: bool,
     session_name: Option<String>,
     web_server_error: Option<String>,
-    web_session_info: Vec<WebSessionInfo>,
     web_server_ip: Option<IpAddr>,
     web_server_port: Option<u16>,
 }
@@ -22,8 +21,7 @@ impl ZellijPlugin for App {
         subscribe(&[
             EventType::Key,
             EventType::ModeUpdate,
-            EventType::WebServerStarted,
-            EventType::SessionUpdate,
+            EventType::WebServerStatus,
         ]);
     }
     fn update(&mut self, event: Event) -> bool {
@@ -48,8 +46,23 @@ impl ZellijPlugin for App {
                     should_render = true;
                 }
             },
-            Event::WebServerStarted => {
-                self.web_server_started = true;
+            Event::WebServerStatus(web_server_status)=> {
+                match web_server_status {
+                    WebServerStatus::Online => {
+                        self.web_server_started = true;
+                        self.web_server_error = None;
+                    },
+                    WebServerStatus::Offline => {
+                        self.web_server_started = false;
+                    },
+                    WebServerStatus::DifferentVersion(different_version) => {
+                        self.web_server_started = false;
+                        self.web_server_error = Some(format!(
+                            "Server online with an incompatible Zellij version: {}",
+                            different_version
+                        ));
+                    }
+                }
                 should_render = true;
             },
             Event::Key(key) => {
@@ -76,49 +89,6 @@ impl ZellijPlugin for App {
                     _ => {},
                 }
             },
-            Event::SessionUpdate(session_infos, _) => {
-                match session_infos
-                    .iter()
-                    .next()
-                    .and_then(|s| s.web_server_status.as_ref())
-                {
-                    Some(WebServerStatus::Online) => {
-                        self.web_server_started = true;
-                        self.web_server_error = None;
-                    },
-                    Some(WebServerStatus::DifferentVersion(version)) => {
-                        self.web_server_started = false;
-                        self.web_server_error = Some(format!(
-                            "Server online with an incompatible Zellij version: {}",
-                            version
-                        ));
-                    },
-                    Some(WebServerStatus::Offline) => {
-                        self.web_server_started = false;
-                    },
-                    _ => {
-                        self.web_server_started = false;
-                    },
-                }
-
-                let mut web_session_info = vec![];
-                for session_info in session_infos {
-                    if session_info.web_clients_allowed {
-                        let name = session_info.name;
-                        let web_client_count = session_info.web_client_count;
-                        let terminal_client_count = session_info
-                            .connected_clients
-                            .saturating_sub(web_client_count);
-                        web_session_info.push(WebSessionInfo {
-                            name,
-                            web_client_count,
-                            terminal_client_count,
-                        });
-                    }
-                }
-                self.web_session_info = web_session_info;
-                should_render = true;
-            },
             _ => {},
         }
         should_render
@@ -127,18 +97,15 @@ impl ZellijPlugin for App {
         let (web_server_status_items, web_server_items_max_len) = self.render_web_server_status();
         let (current_session_status_items, current_session_items_max_len) =
             self.render_current_session_status();
-        let (all_sessions_list_title, all_sessions_list_items, all_sessions_items_max_len) =
-            self.render_all_sessions_list();
         let max_item_width = std::cmp::max(
             web_server_items_max_len,
-            std::cmp::max(current_session_items_max_len, all_sessions_items_max_len),
+            current_session_items_max_len,
         );
         let item_count = web_server_status_items.len()
             + current_session_status_items.len()
-            + 1
-            + all_sessions_list_items.len();
+            + 1;
         let base_x = cols.saturating_sub(max_item_width) / 2;
-        let base_y = rows.saturating_sub(item_count + 2) / 2; // the + 2 are the line spaces
+        let base_y = rows.saturating_sub(item_count) / 2; // the + 2 are the line spaces
                                                               // between items
         let mut current_y = base_y;
         for item in web_server_status_items {
@@ -150,10 +117,6 @@ impl ZellijPlugin for App {
             print_text_with_coordinates(item, base_x, current_y, None, None);
             current_y += 1;
         }
-        current_y += 1; // space between items
-        print_text_with_coordinates(all_sessions_list_title, base_x, current_y, None, None);
-        current_y += 1;
-        print_nested_list_with_coordinates(all_sessions_list_items, base_x, current_y, None, None);
     }
 }
 
@@ -265,66 +228,5 @@ impl App {
             text_elements.push(info_line);
         }
         (text_elements, max_len)
-    }
-    pub fn render_all_sessions_list(&self) -> (Text, Vec<NestedListItem>, usize) {
-        if self.web_session_info.is_empty() || !self.web_server_started {
-            let all_sessions_title = "No active sessions.";
-            let max_len = all_sessions_title.chars().count();
-            let all_sessions = Text::new(all_sessions_title).color_range(1, ..);
-            let nested_list = vec![];
-            (all_sessions, nested_list, max_len)
-        } else {
-            let all_sessions_title = "All web sessions:";
-            let mut max_len = all_sessions_title.chars().count();
-            let all_sessions = Text::new(all_sessions_title).color_range(1, ..);
-            let mut nested_list = vec![];
-            for web_session_info in &self.web_session_info {
-                let session_name = &web_session_info.name;
-                let web_client_count = format!("{}", web_session_info.web_client_count);
-                let terminal_client_count = format!("{}", web_session_info.terminal_client_count);
-                let item_text = format!(
-                    "{} [{} terminal clients, {} web clients]",
-                    session_name, terminal_client_count, web_client_count
-                );
-                max_len = std::cmp::max(item_text.chars().count() + 3, max_len); // 3 is the bulletin
-                let terminal_client_count_start_pos = session_name.chars().count() + 2;
-                let terminal_client_count_end_pos =
-                    terminal_client_count_start_pos + terminal_client_count.chars().count();
-                let web_client_count_start_pos = terminal_client_count_end_pos + 18;
-                let web_client_count_end_pos =
-                    web_client_count_start_pos + web_client_count.chars().count();
-                nested_list.push(
-                    NestedListItem::new(item_text)
-                        .color_range(
-                            3,
-                            terminal_client_count_start_pos..terminal_client_count_end_pos,
-                        )
-                        .color_range(3, web_client_count_start_pos..=web_client_count_end_pos),
-                );
-            }
-            (all_sessions, nested_list, max_len)
-        }
-    }
-}
-
-#[derive(Default, Clone, Eq, PartialEq, Debug)]
-pub struct WebSessionInfo {
-    pub name: String,
-    pub web_client_count: usize,
-    pub terminal_client_count: usize,
-}
-
-impl WebSessionInfo {
-    pub fn with_name(mut self, name: &str) -> Self {
-        self.name = name.to_string();
-        self
-    }
-    pub fn with_web_client_count(mut self, count: usize) -> Self {
-        self.web_client_count = count;
-        self
-    }
-    pub fn with_terminal_client_count(mut self, count: usize) -> Self {
-        self.terminal_client_count = count;
-        self
     }
 }

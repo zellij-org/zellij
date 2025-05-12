@@ -11,7 +11,7 @@ pub use super::generated_api::api::{
         PaneManifest as ProtobufPaneManifest, PaneType as ProtobufPaneType,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo,
-        WebServerStatus as ProtobufWebServerStatus, WebSharing as ProtobufWebSharing, *,
+        WebSharing as ProtobufWebSharing, WebServerStatusPayload as ProtobufWebServerStatusPayload, *,
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
@@ -362,9 +362,11 @@ impl TryFrom<ProtobufEvent> for Event {
                 None => Ok(Event::ConfigWasWrittenToDisk),
                 _ => Err("Malformed payload for the ConfigWasWrittenToDisk Event"),
             },
-            Some(ProtobufEventType::WebServerStarted) => match protobuf_event.payload {
-                None => Ok(Event::WebServerStarted),
-                _ => Err("Malformed payload for the WebServerStarted Event"),
+            Some(ProtobufEventType::WebServerStatus) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::WebServerStatusPayload(web_server_status)) => {
+                    Ok(Event::WebServerStatus(web_server_status.try_into()?))
+                }
+                _ => Err("Malformed payload for the WebServerStatus Event"),
             },
             Some(ProtobufEventType::BeforeClose) => match protobuf_event.payload {
                 None => Ok(Event::BeforeClose),
@@ -744,9 +746,9 @@ impl TryFrom<Event> for ProtobufEvent {
                 name: ProtobufEventType::ConfigWasWrittenToDisk as i32,
                 payload: None,
             }),
-            Event::WebServerStarted => Ok(ProtobufEvent {
-                name: ProtobufEventType::WebServerStarted as i32,
-                payload: None,
+            Event::WebServerStatus(web_server_status) => Ok(ProtobufEvent {
+                name: ProtobufEventType::WebServerStatus as i32,
+                payload: Some(event::Payload::WebServerStatusPayload(ProtobufWebServerStatusPayload::try_from(web_server_status)?)),
             }),
             Event::BeforeClose => Ok(ProtobufEvent {
                 name: ProtobufEventType::BeforeClose as i32,
@@ -797,9 +799,6 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
                 .into_iter()
                 .map(|t| ProtobufClientTabHistory::from(t))
                 .collect(),
-            web_server_status: session_info
-                .web_server_status
-                .and_then(|w| w.try_into().ok()),
         })
     }
 }
@@ -887,9 +886,6 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
             web_clients_allowed: protobuf_session_manifest.web_clients_allowed,
             web_client_count: protobuf_session_manifest.web_client_count as usize,
             tab_history,
-            web_server_status: protobuf_session_manifest
-                .web_server_status
-                .and_then(|w| w.try_into().ok()),
         })
     }
 }
@@ -1427,7 +1423,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::FailedToChangeHostFolder => EventType::FailedToChangeHostFolder,
             ProtobufEventType::PastedText => EventType::PastedText,
             ProtobufEventType::ConfigWasWrittenToDisk => EventType::ConfigWasWrittenToDisk,
-            ProtobufEventType::WebServerStarted => EventType::WebServerStarted,
+            ProtobufEventType::WebServerStatus => EventType::WebServerStatus,
             ProtobufEventType::BeforeClose => EventType::BeforeClose,
         })
     }
@@ -1468,7 +1464,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::FailedToChangeHostFolder => ProtobufEventType::FailedToChangeHostFolder,
             EventType::PastedText => ProtobufEventType::PastedText,
             EventType::ConfigWasWrittenToDisk => ProtobufEventType::ConfigWasWrittenToDisk,
-            EventType::WebServerStarted => ProtobufEventType::WebServerStarted,
+            EventType::WebServerStatus => ProtobufEventType::WebServerStatus,
             EventType::BeforeClose => ProtobufEventType::BeforeClose,
         })
     }
@@ -2066,7 +2062,6 @@ fn serialize_session_update_event_with_non_default_values() {
         web_clients_allowed: false,
         web_client_count: 1,
         tab_history,
-        web_server_status: None,
     };
     let session_info_2 = SessionInfo {
         name: "session 2".to_owned(),
@@ -2085,7 +2080,6 @@ fn serialize_session_update_event_with_non_default_values() {
         web_clients_allowed: false,
         web_client_count: 0,
         tab_history: Default::default(),
-        web_server_status: None,
     };
     let session_infos = vec![session_info_1, session_info_2];
     let resurrectable_sessions = vec![];
@@ -2155,19 +2149,19 @@ impl Into<WebSharing> for ProtobufWebSharing {
     }
 }
 
-impl TryFrom<WebServerStatus> for ProtobufWebServerStatus {
+impl TryFrom<WebServerStatus> for ProtobufWebServerStatusPayload {
     type Error = &'static str;
     fn try_from(web_server_status: WebServerStatus) -> Result<Self, &'static str> {
         match web_server_status {
-            WebServerStatus::Online => Ok(ProtobufWebServerStatus {
+            WebServerStatus::Online => Ok(ProtobufWebServerStatusPayload {
                 web_server_status_indication: WebServerStatusIndication::Online as i32,
                 payload: None,
             }),
-            WebServerStatus::DifferentVersion(version) => Ok(ProtobufWebServerStatus {
+            WebServerStatus::DifferentVersion(version) => Ok(ProtobufWebServerStatusPayload {
                 web_server_status_indication: WebServerStatusIndication::DifferentVersion as i32,
                 payload: Some(format!("{}", version)),
             }),
-            WebServerStatus::Offline => Ok(ProtobufWebServerStatus {
+            WebServerStatus::Offline => Ok(ProtobufWebServerStatusPayload {
                 web_server_status_indication: WebServerStatusIndication::Offline as i32,
                 payload: None,
             }),
@@ -2175,9 +2169,9 @@ impl TryFrom<WebServerStatus> for ProtobufWebServerStatus {
     }
 }
 
-impl TryFrom<ProtobufWebServerStatus> for WebServerStatus {
+impl TryFrom<ProtobufWebServerStatusPayload> for WebServerStatus {
     type Error = &'static str;
-    fn try_from(protobuf_web_server_status: ProtobufWebServerStatus) -> Result<Self, &'static str> {
+    fn try_from(protobuf_web_server_status: ProtobufWebServerStatusPayload) -> Result<Self, &'static str> {
         match WebServerStatusIndication::from_i32(
             protobuf_web_server_status.web_server_status_indication,
         ) {

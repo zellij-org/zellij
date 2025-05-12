@@ -409,7 +409,6 @@ pub enum ScreenInstruction {
     SetFloatingPanePinned(PaneId, bool),
     StackPanes(Vec<PaneId>, ClientId),
     ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
-    WebServerStarted,
     AddHighlightPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional
     // message
     GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, ClientId), // panes_to_group, panes_to_ungroup
@@ -629,7 +628,6 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ChangeFloatingPanesCoordinates(..) => {
                 ScreenContext::ChangeFloatingPanesCoordinates
             },
-            ScreenInstruction::WebServerStarted => ScreenContext::WebServerStarted,
             ScreenInstruction::AddHighlightPaneFrameColorOverride(..) => {
                 ScreenContext::AddHighlightPaneFrameColorOverride
             },
@@ -1738,7 +1736,6 @@ impl Screen {
                 .count(),
             plugins: Default::default(), // these are filled in by the wasm thread
             tab_history: self.tab_history.clone(),
-            web_server_status: None,
         };
         self.bus
             .senders
@@ -5263,14 +5260,6 @@ pub(crate) fn screen_thread_main(
                 screen.change_floating_panes_coordinates(pane_ids_and_coordinates);
                 let _ = screen.unblock_input();
                 let _ = screen.render(None);
-            },
-            ScreenInstruction::WebServerStarted => {
-                // TODO: maybe we don't need this anymore?
-                // screen.session_is_shared = true;
-                //                 for tab in screen.tabs.values_mut() {
-                //                     tab.set_session_is_shared(true);
-                //                 }
-                //                 screen.log_and_report_session_state();
             },
             ScreenInstruction::GroupAndUngroupPanes(
                 pane_ids_to_group,

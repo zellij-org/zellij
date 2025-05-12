@@ -26,7 +26,7 @@ use async_std::{channel, future::timeout, task};
 use zellij_utils::{
     data::{
         ClientInfo, Event, EventType, InputMode, MessageToPlugin, PermissionStatus, PermissionType,
-        PipeMessage, PipeSource, PluginCapabilities,
+        PipeMessage, PipeSource, PluginCapabilities, WebServerStatus,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -904,7 +904,7 @@ pub(crate) fn plugin_thread_main(
                     .non_fatal();
             },
             PluginInstruction::WebServerStarted => {
-                let updates = vec![(None, None, Event::WebServerStarted)];
+                let updates = vec![(None, None, Event::WebServerStatus(WebServerStatus::Online))];
                 wasm_bridge
                     .update_plugins(updates, shutdown_send.clone())
                     .non_fatal();

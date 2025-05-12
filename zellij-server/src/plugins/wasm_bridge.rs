@@ -1572,7 +1572,7 @@ fn check_event_permission(
         | Event::FailedToWriteConfigToDisk(..)
         | Event::CommandPaneReRun(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
-        Event::WebServerStarted => PermissionType::StartWebServer,
+        Event::WebServerStatus(..) => PermissionType::StartWebServer,
         _ => return (PermissionStatus::Granted, None),
     };
 
