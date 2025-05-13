@@ -146,7 +146,7 @@ impl ZellijPlugin for App {
         max_item_width = std::cmp::max(max_item_width, web_server_items_width);
         let (current_session_items_width, current_session_items_height) = self.current_session_status_width_and_height();
         max_item_width = std::cmp::max(max_item_width, current_session_items_width);
-        let (usage_width, usage_height) = self.usage_width_and_height();
+        let (usage_width, usage_height) = self.usage_width_and_height(cols);
         max_item_width = std::cmp::max(max_item_width, usage_width);
         let line_count = 2 + web_server_items_height + 1 + current_session_items_height + 1 + usage_height;
 
@@ -161,7 +161,7 @@ impl ZellijPlugin for App {
         current_y += web_server_items_height + 1;
         self.render_current_session_status(base_x, current_y);
         current_y += web_server_items_height + 1;
-        self.render_usage(base_x, current_y);
+        self.render_usage(base_x, current_y, cols);
         current_y += usage_height + 1;
 
         if self.currently_hovering_over_link {
@@ -172,13 +172,6 @@ impl ZellijPlugin for App {
 
 // render methods, return UI components and the width of the widest one
 impl App {
-    // TODO:
-    // - duplicate this method, separating it to web_server_status_width and
-    // render_web_server_status
-    // - render_web_server_status will then receive its x/y and so be able cross reference it with
-    // the new self.hover_coordinates to see if the link should be rendered as hover
-    // - in addition, it should add the link itself, its coordinates and possibly a text
-    // description to self.link_coordinates
     pub fn web_server_status_width_and_height(&self) -> (usize, usize) {
         let mut max_len = 0;
         if self.web_server_started {
@@ -383,29 +376,67 @@ impl App {
             print_text_with_coordinates(info_line, x, y + 1, None, None);
         }
     }
-    pub fn usage_width_and_height(&self) -> (usize, usize) {
+    pub fn usage_width_and_height(&self, max_width: usize) -> (usize, usize) {
         let mut max_len = 0;
         let usage_title = "How it works:";
         max_len = std::cmp::max(max_len, usage_title.chars().count());
 
-        let bulletin_1 = "- Visit base URL to start a new session";
+        let bulletin_1_full = "- Visit base URL to start a new session";
+        let bulletin_1_short = "- Base URL: new session";
+        let bulletin_2_full = "- Follow base URL with a session name to attach to or create it";
+        let bulletin_2_short = "- Base URL + session name: attach or create";
+        let bulletin_3_full = "- Sessions must be explicitly shared unless specified otherwise in the config";
+        let bulletin_3_short = "- Sessions must be explicitly shared";
+
+        let bulletin_1 = if bulletin_1_full.chars().count() <= max_width {
+            bulletin_1_full
+        } else {
+            bulletin_1_short
+        };
         max_len = std::cmp::max(max_len, bulletin_1.chars().count());
 
-        let bulletin_2 = "- Follow base URL with a session name to attach to or create it";
+        let bulletin_2 = if bulletin_2_full.chars().count() <= max_width {
+            bulletin_2_full
+        } else {
+            bulletin_2_short
+        };
         max_len = std::cmp::max(max_len, bulletin_2.chars().count());
 
-        let bulletin_3 = "- Sessions must be explicitly shared unless specified otherwise in the config";
+        let bulletin_3 = if bulletin_3_full.chars().count() <= max_width {
+            bulletin_3_full
+        } else {
+            bulletin_3_short
+        };
         max_len = std::cmp::max(max_len, bulletin_3.chars().count());
-        
+
         let width = max_len;
         let height = 4;
         (width, height)
     }
-    pub fn render_usage(&self, x: usize, y: usize) {
+    pub fn render_usage(&self, x: usize, y: usize, max_width: usize) {
         let usage_title = "How it works:";
-        let bulletin_1 = "- Visit base URL to start a new session";
-        let bulletin_2 = "- Follow base URL with a session name to attach to or create it";
-        let bulletin_3 = "- Sessions must be explicitly shared unless specified otherwise in the config";
+        let bulletin_1_full = "- Visit base URL to start a new session";
+        let bulletin_1_short = "- Base URL: new session";
+        let bulletin_2_full = "- Follow base URL with a session name to attach to or create it";
+        let bulletin_2_short = "- Base URL + session name: attach or create";
+        let bulletin_3_full = "- Sessions must be explicitly shared unless specified otherwise in the config";
+        let bulletin_3_short = "- Sessions must be explicitly shared";
+
+        let bulletin_1 = if bulletin_1_full.chars().count() <= max_width {
+            bulletin_1_full
+        } else {
+            bulletin_1_short
+        };
+        let bulletin_2 = if bulletin_2_full.chars().count() <= max_width {
+            bulletin_2_full
+        } else {
+            bulletin_2_short
+        };
+        let bulletin_3 = if bulletin_3_full.chars().count() <= max_width {
+            bulletin_3_full
+        } else {
+            bulletin_3_short
+        };
 
         let usage_title = Text::new(usage_title).color_range(2, ..);
         let bulletin_1 = Text::new(bulletin_1);
