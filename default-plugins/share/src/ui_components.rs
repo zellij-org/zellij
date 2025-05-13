@@ -1,7 +1,7 @@
 use std::net::IpAddr;
 use zellij_tile::prelude::*;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use crate::CoordinatesInLine;
 
 #[derive(Debug)]
