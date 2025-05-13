@@ -16,6 +16,7 @@ struct App {
     clickable_urls: HashMap<CoordinatesInLine, String>,
     link_executable: Option<&'static str>,
     currently_hovering_over_link: bool,
+    own_plugin_id: Option<u32>,
 }
 
 register_plugin!(App);
@@ -29,7 +30,9 @@ impl ZellijPlugin for App {
             EventType::Mouse,
             EventType::RunCommandResult,
         ]);
+        self.own_plugin_id = Some(get_plugin_ids().plugin_id);
         self.query_link_executable();
+        self.change_own_title();
     }
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
@@ -489,6 +492,11 @@ impl App {
         let mut open_context = BTreeMap::new();
         open_context.insert("open_cli".to_owned(), String::new());
         run_command(&["open", "--help"], open_context);
+    }
+    pub fn change_own_title(&mut self) {
+        if let Some(own_plugin_id) = self.own_plugin_id {
+            rename_plugin_pane(own_plugin_id, "Share Session");
+        }
     }
 }
 
