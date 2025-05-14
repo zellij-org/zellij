@@ -31,6 +31,7 @@ use axum::{
 
 use interprocess::unnamed_pipe::pipe;
 use std::io::prelude::*;
+use tower_http::cors::CorsLayer;
 
 use daemonize::{self, Outcome};
 use nix::sys::stat::{umask, Mode};
@@ -278,6 +279,7 @@ async fn serve_web_client(
         .route("/session", post(create_new_client))
         .route("/info/version", get(VERSION))
         .route("/command/shutdown", post(send_shutdown_signal))
+        .layer(CorsLayer::permissive()) // TODO: configure correctly
         .with_state(state);
 
     axum::serve(listener, app)
