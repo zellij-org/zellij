@@ -35,6 +35,7 @@ url = { workspace = true }
 uuid = { workspace = true }
 include_dir = { workspace = true }
 zellij-utils = { workspace = true }
+tower-http = { version = "0.6.4", features = ["cors"] }
 
 [dev-dependencies]
 insta = "1.6.0"
