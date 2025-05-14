@@ -385,6 +385,10 @@ pub(crate) fn background_jobs_main(
                 if running_jobs.get(&job).is_some() {
                     continue;
                 }
+                if !cfg!(feature = "web_server_capability") {
+                    // no web server capability, no need to query
+                    continue;
+                }
                 running_jobs.insert(job, Instant::now());
 
                 task::spawn({

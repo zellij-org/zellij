@@ -278,7 +278,7 @@ impl CurrentSessionSection {
             let text = self.web_server_is_offline();
             let info_line = Text::new(text);
             print_text_with_coordinates(info_line, x, y + 1, None, None);
-        } else {
+        } else if !self.web_sharing.sharing_is_disabled() {
             let info_line = self.press_space_to_share().0;
             print_text_with_coordinates(info_line, x, y + 1, None, None);
         }

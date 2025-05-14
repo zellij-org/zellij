@@ -2208,6 +2208,12 @@ impl WebSharing {
             _ => false,
         }
     }
+    pub fn sharing_is_disabled(&self) -> bool {
+        match self {
+            WebSharing::Disabled => true,
+            _ => false,
+        }
+    }
     pub fn set_sharing(&mut self) -> bool {
         // returns true if successfully set sharing
         match self {
