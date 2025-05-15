@@ -52,6 +52,7 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
             release: true,
             no_plugins: false,
             plugins_only: true,
+            no_web: false,
         },
     )
     .context(err_context)?;
@@ -154,6 +155,7 @@ fn cross_compile(sh: &Shell, target: &OsString) -> anyhow::Result<()> {
             release: true,
             no_plugins: false,
             plugins_only: true,
+            no_web: false,
         },
     )
     .and_then(|_| build::manpage(sh))

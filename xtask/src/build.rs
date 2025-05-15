@@ -95,6 +95,14 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
         if flags.release {
             base_cmd = base_cmd.arg("--release");
         }
+        if flags.no_web && (crate_name == &"." || crate_name == &"zellij_utils" || crate_name == &"zellij_server" || crate_name == &"zellij_client") {
+            base_cmd = base_cmd.arg("--no-default-features");
+            base_cmd = base_cmd.arg("--features");
+            // these are the default features without web_server_capability
+            // since in cargo we don't seem to have the ability to just turn off a specific default
+            // feature and keep the others
+            base_cmd = base_cmd.arg("vendored_curl plugins_from_target");
+        }
         base_cmd.run().with_context(err_context)?;
 
         if crate_name.contains("plugins") {
