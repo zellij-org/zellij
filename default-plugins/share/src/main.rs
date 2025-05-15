@@ -4,7 +4,7 @@ use zellij_tile::prelude::*;
 
 use std::collections::{BTreeMap, HashMap};
 
-use ui_components::{Usage, WebServerStatusSection, CurrentSessionSection};
+use ui_components::{CurrentSessionSection, Usage, WebServerStatusSection};
 
 #[derive(Debug, Default)]
 struct App {
@@ -64,7 +64,7 @@ impl ZellijPlugin for App {
                     should_render = true;
                 }
             },
-            Event::WebServerStatus(web_server_status)=> {
+            Event::WebServerStatus(web_server_status) => {
                 if !self.web_server_capability {
                     return false;
                 }
@@ -82,7 +82,7 @@ impl ZellijPlugin for App {
                             "Server online with an incompatible Zellij version: {}",
                             different_version
                         ));
-                    }
+                    },
                 }
                 should_render = true;
             },
@@ -128,14 +128,14 @@ impl ZellijPlugin for App {
                                 break;
                             }
                         }
-                    }
+                    },
                     Mouse::Hover(line, column) => {
                         self.hover_coordinates = Some((column, line as usize));
                         should_render = true;
                     },
                     _ => {},
                 }
-            }
+            },
             Event::RunCommandResult(exit_code, _stdout, _stderr, context) => {
                 if !self.web_server_capability {
                     return false;
@@ -165,7 +165,11 @@ impl ZellijPlugin for App {
         self.currently_hovering_over_link = false;
         self.clickable_urls.clear();
         let usage = Usage::new();
-        let mut web_server_status_section = WebServerStatusSection::new(self.web_server_started, self.web_server_ip, self.web_server_port);
+        let mut web_server_status_section = WebServerStatusSection::new(
+            self.web_server_started,
+            self.web_server_ip,
+            self.web_server_port,
+        );
         let mut current_session_section = CurrentSessionSection::new(
             self.web_server_started,
             self.web_server_ip,
@@ -178,30 +182,48 @@ impl ZellijPlugin for App {
         let title_text = "Share Session Locally in the Browser";
         max_item_width = std::cmp::max(max_item_width, title_text.chars().count());
 
-        let (web_server_items_width, web_server_items_height) = web_server_status_section.web_server_status_width_and_height();
+        let (web_server_items_width, web_server_items_height) =
+            web_server_status_section.web_server_status_width_and_height();
         max_item_width = std::cmp::max(max_item_width, web_server_items_width);
-        let (current_session_items_width, current_session_items_height) = current_session_section.current_session_status_width_and_height();
+        let (current_session_items_width, current_session_items_height) =
+            current_session_section.current_session_status_width_and_height();
         max_item_width = std::cmp::max(max_item_width, current_session_items_width);
         let (usage_width, usage_height) = usage.usage_width_and_height(cols);
         max_item_width = std::cmp::max(max_item_width, usage_width);
-        let line_count = 2 + web_server_items_height + 1 + current_session_items_height + 1 + usage_height;
+        let line_count =
+            2 + web_server_items_height + 1 + current_session_items_height + 1 + usage_height;
 
         let base_x = cols.saturating_sub(max_item_width) / 2;
         let base_y = rows.saturating_sub(line_count) / 2; // the + 2 are the line spaces
 
         let mut current_y = base_y;
         let title = Text::new(title_text).color_range(2, ..);
-        print_text_with_coordinates(title, cols.saturating_sub(title_text.chars().count()) / 2, current_y, None, None);
+        print_text_with_coordinates(
+            title,
+            cols.saturating_sub(title_text.chars().count()) / 2,
+            current_y,
+            None,
+            None,
+        );
         current_y += 2;
-        web_server_status_section.render_web_server_status(base_x, current_y, self.hover_coordinates);
+        web_server_status_section.render_web_server_status(
+            base_x,
+            current_y,
+            self.hover_coordinates,
+        );
         self.currently_hovering_over_link = web_server_status_section.currently_hovering_over_link;
         for (coordinates, url) in web_server_status_section.clickable_urls {
             self.clickable_urls.insert(coordinates, url);
         }
         current_y += web_server_items_height + 1;
 
-        current_session_section.render_current_session_status(base_x, current_y, self.hover_coordinates);
-        self.currently_hovering_over_link = self.currently_hovering_over_link || current_session_section.currently_hovering_over_link;
+        current_session_section.render_current_session_status(
+            base_x,
+            current_y,
+            self.hover_coordinates,
+        );
+        self.currently_hovering_over_link = self.currently_hovering_over_link
+            || current_session_section.currently_hovering_over_link;
         for (coordinates, url) in current_session_section.clickable_urls {
             self.clickable_urls.insert(coordinates, url);
         }
@@ -225,8 +247,7 @@ impl App {
                 .color_range(3, 15..=25)
         } else {
             let help_text = format!("Help: Shift-Click to open in browser");
-            Text::new(help_text)
-                .color_range(3, 6..=16)
+            Text::new(help_text).color_range(3, 6..=16)
         };
         print_text_with_coordinates(help_text, x, y, None, None);
     }
@@ -262,14 +283,12 @@ impl App {
 pub struct CoordinatesInLine {
     x: usize,
     y: usize,
-    width: usize
+    width: usize,
 }
 
 impl CoordinatesInLine {
     pub fn new(x: usize, y: usize, width: usize) -> Self {
-        CoordinatesInLine {
-            x, y, width
-        }
+        CoordinatesInLine { x, y, width }
     }
     pub fn contains(&self, x: usize, y: usize) -> bool {
         x >= self.x && x <= self.x + self.width && self.y == y

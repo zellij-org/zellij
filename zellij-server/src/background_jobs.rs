@@ -425,34 +425,43 @@ pub(crate) fn background_jobs_main(
                                 Ok((status, body)) => {
                                     if status == 200 && &body == VERSION.as_bytes() {
                                         // online
-                                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                            None,
-                                            None,
-                                            Event::WebServerStatus(WebServerStatus::Online),
-                                        )]));
+                                        let _ = senders.send_to_plugin(PluginInstruction::Update(
+                                            vec![(
+                                                None,
+                                                None,
+                                                Event::WebServerStatus(WebServerStatus::Online),
+                                            )],
+                                        ));
                                     } else if status == 200 {
-                                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                            None,
-                                            None,
-                                            Event::WebServerStatus(WebServerStatus::DifferentVersion(
-                                                String::from_utf8_lossy(&body).to_string(),
-                                            ))
-                                        )]));
+                                        let _ = senders.send_to_plugin(PluginInstruction::Update(
+                                            vec![(
+                                                None,
+                                                None,
+                                                Event::WebServerStatus(
+                                                    WebServerStatus::DifferentVersion(
+                                                        String::from_utf8_lossy(&body).to_string(),
+                                                    ),
+                                                ),
+                                            )],
+                                        ));
                                     } else {
                                         // offline/error
-                                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                        let _ = senders.send_to_plugin(PluginInstruction::Update(
+                                            vec![(
+                                                None,
+                                                None,
+                                                Event::WebServerStatus(WebServerStatus::Offline),
+                                            )],
+                                        ));
+                                    }
+                                },
+                                Err(_) => {
+                                    let _ =
+                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
                                             None,
                                             None,
                                             Event::WebServerStatus(WebServerStatus::Offline),
                                         )]));
-                                    }
-                                },
-                                Err(_) => {
-                                    let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                        None,
-                                        None,
-                                        Event::WebServerStatus(WebServerStatus::Offline),
-                                    )]));
                                 },
                             }
                             task::sleep(std::time::Duration::from_millis(QUERY_WEBSERVER_DURATION))

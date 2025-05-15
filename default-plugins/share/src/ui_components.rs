@@ -1,8 +1,8 @@
 use std::net::IpAddr;
 use zellij_tile::prelude::*;
 
-use std::collections::HashMap;
 use crate::CoordinatesInLine;
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct Usage {
@@ -23,7 +23,8 @@ impl Usage {
             bulletin_1_short: "- Base URL: new session",
             bulletin_2_full: "- Follow base URL with a session name to attach to or create it",
             bulletin_2_short: "- Base URL + session name: attach or create",
-            bulletin_3_full: "- Sessions must be explicitly shared unless specified otherwise in the config",
+            bulletin_3_full:
+                "- Sessions must be explicitly shared unless specified otherwise in the config",
             bulletin_3_short: "- Sessions must be explicitly shared",
         }
     }
@@ -76,7 +77,6 @@ impl Usage {
         print_text_with_coordinates(bulletin_1, x, y + 1, None, None);
         print_text_with_coordinates(bulletin_2, x, y + 2, None, None);
         print_text_with_coordinates(bulletin_3, x, y + 3, None, None);
-
     }
 }
 
@@ -90,13 +90,17 @@ pub struct WebServerStatusSection {
 }
 
 impl WebServerStatusSection {
-    pub fn new(web_server_started: bool, web_server_ip: Option<IpAddr>, web_server_port: Option<u16>) -> Self {
+    pub fn new(
+        web_server_started: bool,
+        web_server_ip: Option<IpAddr>,
+        web_server_port: Option<u16>,
+    ) -> Self {
         WebServerStatusSection {
             web_server_started,
             web_server_ip,
             web_server_port,
             clickable_urls: HashMap::new(),
-            currently_hovering_over_link: false
+            currently_hovering_over_link: false,
         }
     }
     pub fn web_server_status_width_and_height(&self) -> (usize, usize) {
@@ -115,7 +119,12 @@ impl WebServerStatusSection {
         let height = 2;
         (width, height)
     }
-    pub fn render_web_server_status(&mut self, x: usize, y: usize, hover_coordinates: Option<(usize, usize)>) {
+    pub fn render_web_server_status(
+        &mut self,
+        x: usize,
+        y: usize,
+        hover_coordinates: Option<(usize, usize)>,
+    ) {
         let web_server_status_line = self.web_server_status_line().0;
         print_text_with_coordinates(web_server_status_line, x, y, None, None);
         if self.web_server_started {
@@ -124,14 +133,18 @@ impl WebServerStatusSection {
             let url_x = x + title.chars().count();
             let url_width = server_url.chars().count();
             let url_y = y + 1;
-            self.clickable_urls.insert(CoordinatesInLine::new(url_x, url_y, url_width), server_url.clone());
+            self.clickable_urls.insert(
+                CoordinatesInLine::new(url_x, url_y, url_width),
+                server_url.clone(),
+            );
             if hovering_on_line(url_x, url_y, url_width, hover_coordinates) {
                 self.currently_hovering_over_link = true;
                 let title = Text::new(title).color_range(0, ..title.chars().count());
                 print_text_with_coordinates(title, x, y + 1, None, None);
                 render_text_with_underline(url_x, url_y, server_url);
             } else {
-                let info_line = Text::new(format!("{}{}", title, server_url)).color_range(0, ..title.chars().count());
+                let info_line = Text::new(format!("{}{}", title, server_url))
+                    .color_range(0, ..title.chars().count());
                 print_text_with_coordinates(info_line, x, y + 1, None, None);
             }
         } else {
@@ -139,7 +152,8 @@ impl WebServerStatusSection {
             print_text_with_coordinates(info_line, x, y + 1, None, None);
         };
     }
-    fn web_server_status_line(&self) -> (Text, usize) { // (component, length)
+    fn web_server_status_line(&self) -> (Text, usize) {
+        // (component, length)
         if self.web_server_started {
             let title = "Web server: ";
             let value = "RUNNING ";
@@ -153,7 +167,7 @@ impl WebServerStatusSection {
                     .color_range(0, ..title.chars().count())
                     .color_range(3, value_start_position..value_end_position)
                     .color_range(3, ctrl_c_start_position..ctrl_c_end_position),
-                title.chars().count() + value.chars().count() + shortcut.chars().count()
+                title.chars().count() + value.chars().count() + shortcut.chars().count(),
             )
         } else {
             let title = "Web server status: ";
@@ -162,7 +176,7 @@ impl WebServerStatusSection {
                 Text::new(format!("{}{}", title, value))
                     .color_range(0, ..title.chars().count())
                     .color_range(3, title.chars().count()..),
-                title.chars().count() + value.chars().count()
+                title.chars().count() + value.chars().count(),
             )
         }
     }
@@ -177,7 +191,8 @@ impl WebServerStatusSection {
             .unwrap_or("UNDEFINED".to_owned());
         format!("http://{}:{}/", web_server_ip, web_server_port)
     }
-    fn start_server_line(&self) -> (Text, usize) { // (component, length)
+    fn start_server_line(&self) -> (Text, usize) {
+        // (component, length)
         let text = "Press <ENTER> to start";
         let length = text.chars().count();
         let component = Text::new(text).color_range(3, 6..=12);
@@ -211,7 +226,7 @@ impl CurrentSessionSection {
             session_name,
             web_sharing,
             clickable_urls: HashMap::new(),
-            currently_hovering_over_link: false
+            currently_hovering_over_link: false,
         }
     }
     pub fn current_session_status_width_and_height(&self) -> (usize, usize) {
@@ -245,17 +260,16 @@ impl CurrentSessionSection {
         let height = 2;
         (width, height)
     }
-    pub fn render_current_session_status(&mut self, x: usize, y: usize, hover_coordinates: Option<(usize, usize)>) {
+    pub fn render_current_session_status(
+        &mut self,
+        x: usize,
+        y: usize,
+        hover_coordinates: Option<(usize, usize)>,
+    ) {
         let status_line = match self.web_sharing {
-            WebSharing::On => {
-                self.render_current_session_sharing().0
-            },
-            WebSharing::Disabled => {
-                self.render_sharing_is_disabled().0
-            },
-            WebSharing::Off => {
-                self.render_not_sharing().0
-            },
+            WebSharing::On => self.render_current_session_sharing().0,
+            WebSharing::Disabled => self.render_sharing_is_disabled().0,
+            WebSharing::Off => self.render_not_sharing().0,
         };
         print_text_with_coordinates(status_line, x, y, None, None);
         if self.web_sharing.web_clients_allowed() && self.web_server_started {
@@ -264,14 +278,18 @@ impl CurrentSessionSection {
             let url_x = x + title.chars().count();
             let url_width = session_url.chars().count();
             let url_y = y + 1;
-            self.clickable_urls.insert(CoordinatesInLine::new(url_x, url_y, url_width), session_url.clone());
+            self.clickable_urls.insert(
+                CoordinatesInLine::new(url_x, url_y, url_width),
+                session_url.clone(),
+            );
             if hovering_on_line(url_x, url_y, url_width, hover_coordinates) {
                 self.currently_hovering_over_link = true;
                 let title = Text::new(title).color_range(0, ..title.chars().count());
                 print_text_with_coordinates(title, x, y + 1, None, None);
                 render_text_with_underline(url_x, url_y, session_url);
             } else {
-                let info_line = Text::new(format!("{}{}", title, session_url)).color_range(0, ..title.chars().count());
+                let info_line = Text::new(format!("{}{}", title, session_url))
+                    .color_range(0, ..title.chars().count());
                 print_text_with_coordinates(info_line, x, y + 1, None, None);
             }
         } else if self.web_sharing.web_clients_allowed() {
@@ -283,7 +301,8 @@ impl CurrentSessionSection {
             print_text_with_coordinates(info_line, x, y + 1, None, None);
         }
     }
-    fn render_current_session_sharing(&self) -> (Text, usize) { // (component, length)
+    fn render_current_session_sharing(&self) -> (Text, usize) {
+        // (component, length)
         let title = "Current session: ";
         let value = "SHARING (<SPACE> - Stop Sharing)";
         let length = title.chars().count() + value.chars().count();
@@ -297,7 +316,8 @@ impl CurrentSessionSection {
             .color_range(3, space_start_position..=space_end_position);
         (component, length)
     }
-    fn render_sharing_is_disabled(&self) -> (Text, usize) { // (component, length)
+    fn render_sharing_is_disabled(&self) -> (Text, usize) {
+        // (component, length)
         let title = "Current session: ";
         let value = "SHARING IS DISABLED";
         let length = title.chars().count() + value.chars().count();
@@ -306,7 +326,8 @@ impl CurrentSessionSection {
             .color_range(3, title.chars().count()..);
         (component, length)
     }
-    fn render_not_sharing(&self) -> (Text, usize) { // (component, length)
+    fn render_not_sharing(&self) -> (Text, usize) {
+        // (component, length)
         let title = "Current session: ";
         let value = "NOT SHARING";
         let length = title.chars().count() + value.chars().count();
@@ -334,7 +355,8 @@ impl CurrentSessionSection {
     fn web_server_is_offline(&self) -> String {
         format!("...but web server is offline")
     }
-    fn press_space_to_share(&self) -> (Text, usize) { // (component, length)
+    fn press_space_to_share(&self) -> (Text, usize) {
+        // (component, length)
         let text = "Press <SPACE> to share";
         let length = text.chars().count();
         let component = Text::new(text).color_range(3, 6..=12);
@@ -342,12 +364,15 @@ impl CurrentSessionSection {
     }
 }
 
-fn hovering_on_line(x: usize, y: usize, width: usize, hover_coordinates: Option<(usize, usize)>) -> bool {
+fn hovering_on_line(
+    x: usize,
+    y: usize,
+    width: usize,
+    hover_coordinates: Option<(usize, usize)>,
+) -> bool {
     match hover_coordinates {
-        Some((hover_x, hover_y)) => {
-            hover_y == y && hover_x <= x + width && hover_x > x
-        },
-        None => false
+        Some((hover_x, hover_y)) => hover_y == y && hover_x <= x + width && hover_x > x,
+        None => false,
     }
 }
 

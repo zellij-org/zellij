@@ -3170,14 +3170,16 @@ impl Options {
     }
     fn web_server_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
-            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
             "// Whether to make sure a local web server is running when a new Zellij session starts.",
             "// This web server will allow creating new sessions and attaching to existing ones that have",
             "// opted in to being shared in the browser.",
+            "// When enabled, navigate to http://127.0.0.1:8082",
+            "// (Requires restart)",
             "// ",
             "// Note: a local web server can still be manually started from within a Zellij session or from the CLI.",
             "// If this is not desired, one can use a version of Zellij compiled without",
-            "// web_server_capability",
+            "// `web_server_capability`",
             "// ",
             "// Possible values:",
             "// - true",
@@ -3208,17 +3210,17 @@ impl Options {
     fn web_sharing_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
-            "// Whether to allow new sessions to be shared through a local web server, assuming one is",
+            "// Whether to allow sessions started in the terminal to be shared through a local web server, assuming one is",
             "// running (see the `web_server` option for more details).",
+            "// (Requires restart)",
             "// ",
-            "// Note: if Zellij was compiled without web_server_capability, this option will be locked to",
-            "// \"disabled\"",
+            "// Note: This is an administrative separation and not intended as a security measure.",
             "// ",
             "// Possible values:",
-            "// - \"on\" (new sessions will allow web sharing through the local web server if it",
+            "// - \"on\" (allow web sharing through the local web server if it",
             "// is online)",
-            "// - \"off\" (new sessions will not allow web sharing unless they explicitly opt-in to it)",
-            "// - \"disabled\" (new sessions will not allow web sharing and will not be able to opt-in to it)",
+            "// - \"off\" (do not allow web sharing unless sessions explicitly opt-in to it)",
+            "// - \"disabled\" (do not allow web sharing and do not permit sessions started in the terminal to opt-in to it)",
             "// Default: \"off\"",
             "// ",
         );
@@ -3353,10 +3355,11 @@ impl Options {
     }
     fn web_server_ip_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
-            "{}\n{}\n{}",
+            "{}\n{}\n{}\n{}",
             " ",
             "// The ip address the web server should listen on when it starts",
-            "// default is 127.0.0.1",
+            "// Default: \"127.0.0.1\"",
+            "// (Requires restart)",
         );
 
         let create_node = |node_value: IpAddr| -> KdlNode {
@@ -3380,8 +3383,11 @@ impl Options {
     }
     fn web_server_port_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
-            "{}\n{}\n{}",
-            " ", "// The port the web server should listen on when it starts", "// default is 8082",
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// The port the web server should listen on when it starts",
+            "// Default: 8082",
+            "// (Requires restart)",
         );
 
         let create_node = |node_value: u16| -> KdlNode {

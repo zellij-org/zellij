@@ -11,7 +11,8 @@ pub use super::generated_api::api::{
         PaneManifest as ProtobufPaneManifest, PaneType as ProtobufPaneType,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo,
-        WebSharing as ProtobufWebSharing, WebServerStatusPayload as ProtobufWebServerStatusPayload, *,
+        WebServerStatusPayload as ProtobufWebServerStatusPayload, WebSharing as ProtobufWebSharing,
+        *,
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
@@ -365,7 +366,7 @@ impl TryFrom<ProtobufEvent> for Event {
             Some(ProtobufEventType::WebServerStatus) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::WebServerStatusPayload(web_server_status)) => {
                     Ok(Event::WebServerStatus(web_server_status.try_into()?))
-                }
+                },
                 _ => Err("Malformed payload for the WebServerStatus Event"),
             },
             Some(ProtobufEventType::BeforeClose) => match protobuf_event.payload {
@@ -748,7 +749,9 @@ impl TryFrom<Event> for ProtobufEvent {
             }),
             Event::WebServerStatus(web_server_status) => Ok(ProtobufEvent {
                 name: ProtobufEventType::WebServerStatus as i32,
-                payload: Some(event::Payload::WebServerStatusPayload(ProtobufWebServerStatusPayload::try_from(web_server_status)?)),
+                payload: Some(event::Payload::WebServerStatusPayload(
+                    ProtobufWebServerStatusPayload::try_from(web_server_status)?,
+                )),
             }),
             Event::BeforeClose => Ok(ProtobufEvent {
                 name: ProtobufEventType::BeforeClose as i32,
@@ -1277,8 +1280,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             .web_server_port
             .map(|w| w as u16);
 
-        let web_server_capability = protobuf_mode_update_payload
-            .web_server_capability;
+        let web_server_capability = protobuf_mode_update_payload.web_server_capability;
 
         let mode_info = ModeInfo {
             mode: current_mode,
@@ -2178,7 +2180,9 @@ impl TryFrom<WebServerStatus> for ProtobufWebServerStatusPayload {
 
 impl TryFrom<ProtobufWebServerStatusPayload> for WebServerStatus {
     type Error = &'static str;
-    fn try_from(protobuf_web_server_status: ProtobufWebServerStatusPayload) -> Result<Self, &'static str> {
+    fn try_from(
+        protobuf_web_server_status: ProtobufWebServerStatusPayload,
+    ) -> Result<Self, &'static str> {
         match WebServerStatusIndication::from_i32(
             protobuf_web_server_status.web_server_status_indication,
         ) {

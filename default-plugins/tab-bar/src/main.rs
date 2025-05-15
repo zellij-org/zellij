@@ -100,7 +100,7 @@ impl ZellijPlugin for State {
                     },
                     _ => {
                         self.web_server_on_line = false;
-                    }
+                    },
                 }
                 should_render = true;
             },
