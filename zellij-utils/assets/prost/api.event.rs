@@ -487,6 +487,8 @@ pub struct ModeUpdatePayload {
     pub web_server_ip: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(uint32, optional, tag="14")]
     pub web_server_port: ::core::option::Option<u32>,
+    #[prost(bool, optional, tag="15")]
+    pub web_server_capability: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

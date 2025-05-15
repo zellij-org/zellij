@@ -20,6 +20,7 @@ struct App {
     link_executable: Option<&'static str>,
     currently_hovering_over_link: bool,
     own_plugin_id: Option<u32>,
+    web_server_capability: bool,
 }
 
 register_plugin!(App);
@@ -58,8 +59,15 @@ impl ZellijPlugin for App {
                     self.web_server_port = Some(web_server_port);
                     should_render = true;
                 }
+                if let Some(web_server_capability) = mode_info.web_server_capability {
+                    self.web_server_capability = web_server_capability;
+                    should_render = true;
+                }
             },
             Event::WebServerStatus(web_server_status)=> {
+                if !self.web_server_capability {
+                    return false;
+                }
                 match web_server_status {
                     WebServerStatus::Online => {
                         self.web_server_started = true;
@@ -79,6 +87,9 @@ impl ZellijPlugin for App {
                 should_render = true;
             },
             Event::Key(key) => {
+                if !self.web_server_capability {
+                    return false;
+                }
                 match key.bare_key {
                     BareKey::Enter if key.has_no_modifiers() => {
                         start_web_server();
@@ -103,6 +114,9 @@ impl ZellijPlugin for App {
                 }
             },
             Event::Mouse(mouse_event) => {
+                if !self.web_server_capability {
+                    return false;
+                }
                 match mouse_event {
                     Mouse::LeftClick(line, column) => {
                         for (coordinates, url) in &self.clickable_urls {
@@ -123,6 +137,9 @@ impl ZellijPlugin for App {
                 }
             }
             Event::RunCommandResult(exit_code, _stdout, _stderr, context) => {
+                if !self.web_server_capability {
+                    return false;
+                }
                 let is_xdg_open = context.get("xdg_open_cli").is_some();
                 let is_open = context.get("open_cli").is_some();
                 if is_xdg_open {
@@ -140,6 +157,10 @@ impl ZellijPlugin for App {
         should_render
     }
     fn render(&mut self, rows: usize, cols: usize) {
+        if !self.web_server_capability {
+            self.render_no_web_server_capability(rows, cols);
+            return;
+        }
         // reset rendered state
         self.currently_hovering_over_link = false;
         self.clickable_urls.clear();
@@ -221,6 +242,19 @@ impl App {
         if let Some(own_plugin_id) = self.own_plugin_id {
             rename_plugin_pane(own_plugin_id, "Share Session");
         }
+    }
+    pub fn render_no_web_server_capability(&self, rows: usize, cols: usize) {
+        let text_full = "This version of Zellij was compiled without web sharing capabilities";
+        let text_short = "No web server capabilities";
+        let text = if cols >= text_full.chars().count() {
+            text_full
+        } else {
+            text_short
+        };
+        let text_element = Text::new(text).color_range(3, ..);
+        let text_x = cols.saturating_sub(text.chars().count()) / 2;
+        let text_y = rows / 2;
+        print_text_with_coordinates(text_element, text_x, text_y, None, None);
     }
 }
 

@@ -1277,6 +1277,9 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             .web_server_port
             .map(|w| w as u16);
 
+        let web_server_capability = protobuf_mode_update_payload
+            .web_server_capability;
+
         let mode_info = ModeInfo {
             mode: current_mode,
             keybinds,
@@ -1292,6 +1295,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             is_web_client,
             web_server_ip,
             web_server_port,
+            web_server_capability,
         };
         Ok(mode_info)
     }
@@ -1315,6 +1319,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
         let is_web_client = mode_info.is_web_client;
         let web_server_ip = mode_info.web_server_ip.map(|i| format!("{}", i));
         let web_server_port = mode_info.web_server_port.map(|p| p as u32);
+        let web_server_capability = mode_info.web_server_capability;
         let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
         for (input_mode, input_mode_keybinds) in mode_info.keybinds {
             let mode: ProtobufInputMode = input_mode.try_into()?;
@@ -1354,6 +1359,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             is_web_client,
             web_server_ip,
             web_server_port,
+            web_server_capability,
         })
     }
 }
@@ -1612,6 +1618,7 @@ fn serialize_mode_update_event_with_non_default_values() {
         is_web_client: Some(false),
         web_server_ip: IpAddr::from_str("127.0.0.1").ok(),
         web_server_port: Some(8082),
+        web_server_capability: Some(true),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();

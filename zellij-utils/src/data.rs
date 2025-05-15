@@ -1533,6 +1533,7 @@ pub struct ModeInfo {
     // note: these are only the configured ip/port that will be bound if and when the server is up
     pub web_server_ip: Option<IpAddr>,
     pub web_server_port: Option<u16>,
+    pub web_server_capability: Option<bool>,
 }
 
 impl ModeInfo {

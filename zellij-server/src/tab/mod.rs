@@ -1028,6 +1028,11 @@ impl Tab {
                 .borrow()
                 .get(&client_id)
                 .copied();
+            if cfg!(feature = "web_server_capability") {
+                mode_info.web_server_capability = Some(true);
+            } else {
+                mode_info.web_server_capability = Some(false);
+            }
             plugin_updates.push((None, Some(*client_id), Event::ModeUpdate(mode_info)));
         }
         self.senders

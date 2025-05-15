@@ -362,6 +362,7 @@ message ModeUpdatePayload {
   optional bool is_web_client = 12;
   optional string web_server_ip = 13;
   optional uint32 web_server_port = 14;
+  optional bool web_server_capability = 15;
 }
 
 enum WebSharing {

@@ -52,6 +52,7 @@ mod not_wasm {
             is_web_client: None,
             web_server_ip: None,
             web_server_port: None,
+            web_server_capability: None,
         }
     }
 
