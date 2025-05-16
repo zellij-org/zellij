@@ -4654,6 +4654,7 @@ impl TabInfo {
         let position = int_node!("position", usize);
         let name = string_node!("name");
         let active = bool_node!("active");
+        let previous = bool_node!("previous");
         let panes_to_hide = int_node!("panes_to_hide", usize);
         let is_fullscreen_active = bool_node!("is_fullscreen_active");
         let is_sync_panes_active = bool_node!("is_sync_panes_active");
@@ -4683,6 +4684,7 @@ impl TabInfo {
             position,
             name,
             active,
+            previous,
             panes_to_hide,
             is_fullscreen_active,
             is_sync_panes_active,

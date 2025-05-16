@@ -441,6 +441,8 @@ pub struct TabInfo {
     pub selectable_tiled_panes_count: u32,
     #[prost(uint32, tag="16")]
     pub selectable_floating_panes_count: u32,
+    #[prost(bool, tag="17")]
+    pub previous: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
