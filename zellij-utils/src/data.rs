@@ -939,6 +939,7 @@ pub enum Event {
     PastedText(String),
     ConfigWasWrittenToDisk,
     WebServerStatus(WebServerStatus),
+    FailedToStartWebServer(String),
     BeforeClose,
 }
 

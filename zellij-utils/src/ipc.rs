@@ -97,6 +97,7 @@ pub enum ClientToServerMsg {
     ConfigWrittenToDisk(Config),
     FailedToWriteConfigToDisk(Option<PathBuf>),
     WebServerStarted,
+    FailedToStartWebServer(String),
 }
 
 // Types of messages sent from the server to the client

@@ -24,8 +24,8 @@ impl Usage {
             bulletin_2_full: "- Follow base URL with a session name to attach to or create it",
             bulletin_2_short: "- Base URL + session name: attach or create",
             bulletin_3_full:
-                "- Sessions must be explicitly shared unless specified otherwise in the config",
-            bulletin_3_short: "- Sessions must be explicitly shared",
+                "- By default sessions not started from the web must be explicitly shared",
+            bulletin_3_short: "- Sessions not started from the web must be explicitly shared",
         }
     }
     pub fn usage_width_and_height(&self, max_width: usize) -> (usize, usize) {
@@ -85,6 +85,8 @@ pub struct WebServerStatusSection {
     web_server_started: bool,
     web_server_ip: Option<IpAddr>,
     web_server_port: Option<u16>,
+    web_server_error: Option<String>,
+    web_server_different_version_error: Option<String>, // String -> version number
     pub clickable_urls: HashMap<CoordinatesInLine, String>,
     pub currently_hovering_over_link: bool,
 }
@@ -94,6 +96,8 @@ impl WebServerStatusSection {
         web_server_started: bool,
         web_server_ip: Option<IpAddr>,
         web_server_port: Option<u16>,
+        web_server_error: Option<String>,
+        web_server_different_version_error: Option<String>,
     ) -> Self {
         WebServerStatusSection {
             web_server_started,
@@ -101,13 +105,21 @@ impl WebServerStatusSection {
             web_server_port,
             clickable_urls: HashMap::new(),
             currently_hovering_over_link: false,
+            web_server_error,
+            web_server_different_version_error,
         }
     }
     pub fn web_server_status_width_and_height(&self) -> (usize, usize) {
         let mut max_len = 0;
         let web_server_status_line_len = self.web_server_status_line().1;
         max_len = std::cmp::max(max_len, web_server_status_line_len);
-        if self.web_server_started {
+        if let Some(error) = &self.web_server_error {
+            let text_length = self.web_server_error_component(&error).1;
+            max_len = std::cmp::max(max_len, text_length);
+        } else if let Some(different_version) = &self.web_server_different_version_error {
+            let text_length = self.web_server_different_version_error_component(&different_version).1;
+            max_len = std::cmp::max(max_len, text_length);
+        } else if self.web_server_started {
             let title = "URL: ";
             let value = self.server_url();
             max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
@@ -127,7 +139,13 @@ impl WebServerStatusSection {
     ) {
         let web_server_status_line = self.web_server_status_line().0;
         print_text_with_coordinates(web_server_status_line, x, y, None, None);
-        if self.web_server_started {
+        if let Some(error) = &self.web_server_error {
+            let web_server_error_component = self.web_server_error_component(error).0;
+            print_text_with_coordinates(web_server_error_component, x, y + 1, None, None);
+        } else if let Some(different_version) = &self.web_server_different_version_error {
+            let web_server_error_component = self.web_server_different_version_error_component(different_version).0;
+            print_text_with_coordinates(web_server_error_component, x, y + 1, None, None);
+        } else if self.web_server_started {
             let title = "URL: ";
             let server_url = self.server_url();
             let url_x = x + title.chars().count();
@@ -169,6 +187,15 @@ impl WebServerStatusSection {
                     .color_range(3, ctrl_c_start_position..ctrl_c_end_position),
                 title.chars().count() + value.chars().count() + shortcut.chars().count(),
             )
+        } else if let Some(different_version) = &self.web_server_different_version_error {
+            let title = "Web server status: ";
+            let value = format!("RUNNING INCOMPATIBLE VERSION {}", different_version);
+            (
+                Text::new(format!("{}{}", title, value))
+                    .color_range(0, ..title.chars().count())
+                    .color_range(3, title.chars().count()..),
+                title.chars().count() + value.chars().count(),
+            )
         } else {
             let title = "Web server status: ";
             let value = "NOT RUNNING";
@@ -196,6 +223,22 @@ impl WebServerStatusSection {
         let text = "Press <ENTER> to start";
         let length = text.chars().count();
         let component = Text::new(text).color_range(3, 6..=12);
+        (component, length)
+    }
+    fn web_server_error_component(&self, error: &str) -> (Text, usize) {
+        // (component, length)
+        let text = format!("ERROR: {}", error);
+        let length = text.chars().count();
+        let component = Text::new(text).color_range(3, ..);
+        (component, length)
+    }
+    fn web_server_different_version_error_component(&self, _version: &str) -> (Text, usize) {
+        // (component, length)
+        let text = format!("<Ctrl c> - Stop other server");
+        let length = text.chars().count();
+        let ctrl_c_start_pos = 0;
+        let ctrl_c_end_position = ctrl_c_start_pos + 7;
+        let component = Text::new(text).color_range(3, ctrl_c_start_pos..=ctrl_c_end_position);
         (component, length)
     }
 }

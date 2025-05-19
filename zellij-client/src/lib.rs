@@ -14,7 +14,7 @@ use log::info;
 use std::env::current_exe;
 use std::io::{self, Write};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -119,39 +119,37 @@ impl ErrorInstruction for ClientInstruction {
 }
 
 #[cfg(feature = "web_server_capability")]
-fn spawn_web_server(socket_path: &Path, opts: &CliArgs) -> io::Result<()> {
-    let mut cmd = Command::new(current_exe()?);
+fn spawn_web_server(opts: &CliArgs) -> Result<String, String> {
+    let mut cmd = Command::new(current_exe().map_err(|e| e.to_string())?);
     if let Some(config_file_path) = Config::config_file_path(opts) {
         // this is so that if Zellij itself was started with a different config file, we'll use it
         // to start the webserver
         cmd.arg("--config");
-        log::info!("adding --config {}", config_file_path.display());
         cmd.arg(format!("{}", config_file_path.display()));
     }
     cmd.arg("web");
     cmd.arg("-d");
-    cmd.stdout(Stdio::null());
-    cmd.stderr(Stdio::null());
-    let status = cmd.status()?;
-
-    if status.success() {
-        Ok(())
-    } else {
-        let msg = "Process returned non-zero exit code";
-        let err_msg = match status.code() {
-            Some(c) => format!("{}: {}", msg, c),
-            None => msg.to_string(),
-        };
-        Err(io::Error::new(io::ErrorKind::Other, err_msg))
+    let output = cmd.output();
+    match output {
+        Ok(output) => {
+            if output.status.success() {
+                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            } else {
+                Err(String::from_utf8_lossy(&output.stderr).to_string())
+            }
+        }
+        Err(e) => {
+            Err(e.to_string())
+        }
     }
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-fn spawn_web_server(socket_path: &Path, _opts: &CliArgs) -> io::Result<()> {
+fn spawn_web_server(_opts: &CliArgs) -> Result<String, String> {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot run web server!"
     );
-    Ok(())
+    Ok("".to_owned())
 }
 
 pub fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
@@ -302,7 +300,7 @@ pub fn start_client(
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
             if should_start_web_server {
-                let _ = spawn_web_server(&*ipc_pipe, &opts);
+                let _ = spawn_web_server(&opts);
             }
 
             let successfully_written_config =
@@ -613,13 +611,12 @@ pub fn start_client(
                 }
             },
             ClientInstruction::StartWebServer => {
-                match spawn_web_server(&*ipc_pipe, &opts) {
+                match spawn_web_server(&opts) {
                     Ok(_) => {
                         let _ = os_input.send_to_server(ClientToServerMsg::WebServerStarted);
                     },
                     Err(e) => {
-                        log::error!("Failed to start web server");
-                        // TODO: inform server
+                        let _ = os_input.send_to_server(ClientToServerMsg::FailedToStartWebServer(e));
                     },
                 }
             },
@@ -705,7 +702,7 @@ pub fn start_server_detached(
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
             if should_start_web_server {
-                let _ = spawn_web_server(&*ipc_pipe, &opts);
+                let _ = spawn_web_server(&opts);
             }
             let should_launch_setup_wizard = false; // no setup wizard when starting a detached
                                                     // server

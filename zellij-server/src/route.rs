@@ -1234,6 +1234,9 @@ pub(crate) fn route_thread_main(
                         ClientToServerMsg::WebServerStarted => {
                             let _ = to_server.send(ServerInstruction::WebServerStarted);
                         },
+                        ClientToServerMsg::FailedToStartWebServer(error) => {
+                            let _ = to_server.send(ServerInstruction::FailedToStartWebServer(error));
+                        },
                     }
                     Ok(should_break)
                 };

@@ -12,12 +12,13 @@ use std::{
     thread,
 };
 
+use std::io::{BufRead, BufReader, prelude::*};
 use crate::{
     input_handler::from_termwiz,
     os_input_output::{get_client_os_input, ClientOsApi},
     report_changes_in_config_file, spawn_server,
 };
-use crate::{keyboard_parser::KittyKeyboardParser, web_client};
+use crate::{keyboard_parser::KittyKeyboardParser};
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -30,7 +31,6 @@ use axum::{
 };
 
 use interprocess::unnamed_pipe::pipe;
-use std::io::prelude::*;
 use tower_http::cors::CorsLayer;
 
 use daemonize::{self, Outcome};
@@ -82,12 +82,6 @@ const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201~
 //      - cargo x run --singlepass -- options --enable-web-server true
 //      - point the browser at localhost:8082
 
-// TODO:
-// - place control and terminal channels on different endpoints rather than different ports
-// - use http headers to communicate client_id rather than the payload so that we can get rid of
-// one serialization level
-// - look into flow control
-
 type ConnectionTable = Arc<Mutex<HashMap<String, Arc<Mutex<Box<dyn ClientOsApi>>>>>>; // TODO: no
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,14 +110,13 @@ fn daemonize_web_server(
     web_server_port: u16,
 ) -> (Runtime, tokio::net::TcpListener) {
     // TODO: test this on mac
+    let (mut exit_message_tx, exit_message_rx) = pipe().unwrap();
     let (mut exit_status_tx, mut exit_status_rx) = pipe().unwrap();
     let current_umask = umask(Mode::all());
     umask(current_umask);
     let daemonization_outcome = daemonize::Daemonize::new()
         .working_directory(std::env::current_dir().unwrap())
         .umask(current_umask.bits() as u32)
-        .stdout(daemonize::Stdio::keep())
-        .stderr(daemonize::Stdio::keep())
         .privileged_action(
             move || -> Result<(Runtime, tokio::net::TcpListener), String> {
                 let runtime = Runtime::new().map_err(|e| e.to_string())?;
@@ -145,7 +138,16 @@ fn daemonize_web_server(
                 // server was successfully started or not
                 match exit_status_rx.read_exact(&mut buf) {
                     Ok(_) => {
-                        std::process::exit(buf.iter().next().copied().unwrap_or(0) as i32);
+                        let exit_status = buf.iter().next().copied().unwrap_or(0) as i32;
+                        let mut message = String::new();
+                        let mut reader = BufReader::new(exit_message_rx);
+                        let _ = reader.read_line(&mut message);
+                        if exit_status == 0 {
+                            println!("{}", message.trim());
+                        } else {
+                            eprintln!("{}", message.trim());
+                        }
+                        std::process::exit(exit_status);
                     },
                     Err(e) => {
                         eprintln!("{}", e);
@@ -158,16 +160,13 @@ fn daemonize_web_server(
         },
         Outcome::Child(Ok(child)) => match child.privileged_action_result {
             Ok(listener_and_runtime) => {
-                println!(
-                    "Web Server started on {} port {}",
-                    web_server_ip, web_server_port
-                );
+                let _ = writeln!(exit_message_tx, "Web Server started on {} port {}", web_server_ip, web_server_port);
                 let _ = exit_status_tx.write_all(&[0]);
                 listener_and_runtime
             },
             Err(e) => {
-                eprintln!("{}", e);
                 let _ = exit_status_tx.write_all(&[2]);
+                let _ = writeln!(exit_message_tx, "{}", e);
                 std::process::exit(2);
             },
         },
@@ -210,13 +209,20 @@ pub fn start_web_client(config: Config, config_options: Options, run_daemonized:
         let listener = runtime.block_on(async move {
             tokio::net::TcpListener::bind(format!("{}:{}", web_server_ip, web_server_port))
                 .await
-                .unwrap()
         });
-        println!(
-            "Web Server started on {} port {}",
-            web_server_ip, web_server_port
-        );
-        (runtime, listener)
+        match listener {
+            Ok(listener) => {
+                println!(
+                    "Web Server started on {} port {}",
+                    web_server_ip, web_server_port
+                );
+                (runtime, listener)
+            }
+            Err(e) => {
+                eprintln!("{}", e);
+                std::process::exit(2);
+            }
+        }
     };
     runtime.block_on(serve_web_client(
         config,

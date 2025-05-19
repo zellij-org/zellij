@@ -373,6 +373,12 @@ impl TryFrom<ProtobufEvent> for Event {
                 None => Ok(Event::BeforeClose),
                 _ => Err("Malformed payload for the BeforeClose Event"),
             },
+            Some(ProtobufEventType::FailedToStartWebServer) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::FailedToStartWebServerPayload(failed_to_start_web_server_payload)) => {
+                    Ok(Event::FailedToStartWebServer(failed_to_start_web_server_payload.error))
+                },
+                _ => Err("Malformed payload for the FailedToStartWebServer Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -756,6 +762,14 @@ impl TryFrom<Event> for ProtobufEvent {
             Event::BeforeClose => Ok(ProtobufEvent {
                 name: ProtobufEventType::BeforeClose as i32,
                 payload: None,
+            }),
+            Event::FailedToStartWebServer(error) => Ok(ProtobufEvent {
+                name: ProtobufEventType::FailedToStartWebServer as i32,
+                payload: Some(event::Payload::FailedToStartWebServerPayload(
+                    FailedToStartWebServerPayload {
+                        error,
+                    }
+                )),
             }),
         }
     }
@@ -1433,6 +1447,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::ConfigWasWrittenToDisk => EventType::ConfigWasWrittenToDisk,
             ProtobufEventType::WebServerStatus => EventType::WebServerStatus,
             ProtobufEventType::BeforeClose => EventType::BeforeClose,
+            ProtobufEventType::FailedToStartWebServer => EventType::FailedToStartWebServer,
         })
     }
 }
@@ -1474,6 +1489,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::ConfigWasWrittenToDisk => ProtobufEventType::ConfigWasWrittenToDisk,
             EventType::WebServerStatus => ProtobufEventType::WebServerStatus,
             EventType::BeforeClose => ProtobufEventType::BeforeClose,
+            EventType::FailedToStartWebServer => ProtobufEventType::FailedToStartWebServer,
         })
     }
 }

@@ -13,6 +13,7 @@ struct App {
     web_clients_allowed: bool,
     session_name: Option<String>,
     web_server_error: Option<String>,
+    web_server_different_version_error: Option<String>,
     web_server_ip: Option<IpAddr>,
     web_server_port: Option<u16>,
     hover_coordinates: Option<(usize, usize)>, // x, y
@@ -33,6 +34,7 @@ impl ZellijPlugin for App {
             EventType::WebServerStatus,
             EventType::Mouse,
             EventType::RunCommandResult,
+            EventType::FailedToStartWebServer,
         ]);
         self.own_plugin_id = Some(get_plugin_ids().plugin_id);
         self.query_link_executable();
@@ -71,17 +73,15 @@ impl ZellijPlugin for App {
                 match web_server_status {
                     WebServerStatus::Online => {
                         self.web_server_started = true;
-                        self.web_server_error = None;
+                        self.web_server_different_version_error = None;
                     },
                     WebServerStatus::Offline => {
                         self.web_server_started = false;
+                        self.web_server_different_version_error = None;
                     },
                     WebServerStatus::DifferentVersion(different_version) => {
                         self.web_server_started = false;
-                        self.web_server_error = Some(format!(
-                            "Server online with an incompatible Zellij version: {}",
-                            different_version
-                        ));
+                        self.web_server_different_version_error = Some(different_version);
                     },
                 }
                 should_render = true;
@@ -90,8 +90,12 @@ impl ZellijPlugin for App {
                 if !self.web_server_capability {
                     return false;
                 }
+                if self.web_server_error.take().is_some() {
+                    // clear the error with any key
+                    return true;
+                }
                 match key.bare_key {
-                    BareKey::Enter if key.has_no_modifiers() => {
+                    BareKey::Enter if key.has_no_modifiers() && !self.web_server_started => {
                         start_web_server();
                     },
                     BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
@@ -152,6 +156,10 @@ impl ZellijPlugin for App {
                     }
                 }
             },
+            Event::FailedToStartWebServer(error) => {
+                self.web_server_error = Some(error);
+                should_render = true;
+            }
             _ => {},
         }
         should_render
@@ -169,6 +177,8 @@ impl ZellijPlugin for App {
             self.web_server_started,
             self.web_server_ip,
             self.web_server_port,
+            self.web_server_error.clone(), 
+            self.web_server_different_version_error.clone(),
         );
         let mut current_session_section = CurrentSessionSection::new(
             self.web_server_started,

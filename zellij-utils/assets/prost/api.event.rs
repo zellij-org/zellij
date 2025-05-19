@@ -9,7 +9,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -69,7 +69,15 @@ pub mod event {
         PastedTextPayload(super::PastedTextPayload),
         #[prost(message, tag="27")]
         WebServerStatusPayload(super::WebServerStatusPayload),
+        #[prost(message, tag="28")]
+        FailedToStartWebServerPayload(super::FailedToStartWebServerPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FailedToStartWebServerPayload {
+    #[prost(string, tag="1")]
+    pub error: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -557,6 +565,7 @@ pub enum EventType {
     ConfigWasWrittenToDisk = 30,
     WebServerStatus = 31,
     BeforeClose = 32,
+    FailedToStartWebServer = 33,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -598,6 +607,7 @@ impl EventType {
             EventType::ConfigWasWrittenToDisk => "ConfigWasWrittenToDisk",
             EventType::WebServerStatus => "WebServerStatus",
             EventType::BeforeClose => "BeforeClose",
+            EventType::FailedToStartWebServer => "FailedToStartWebServer",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -636,6 +646,7 @@ impl EventType {
             "ConfigWasWrittenToDisk" => Some(Self::ConfigWasWrittenToDisk),
             "WebServerStatus" => Some(Self::WebServerStatus),
             "BeforeClose" => Some(Self::BeforeClose),
+            "FailedToStartWebServer" => Some(Self::FailedToStartWebServer),
             _ => None,
         }
     }

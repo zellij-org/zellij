@@ -127,6 +127,7 @@ pub enum ServerInstruction {
     StopSharingCurrentSession(ClientId),
     SendWebClientsForbidden(ClientId),
     WebServerStarted,
+    FailedToStartWebServer(String),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -169,6 +170,7 @@ impl From<&ServerInstruction> for ServerContext {
                 ServerContext::StopSharingCurrentSession
             },
             ServerInstruction::WebServerStarted => ServerContext::WebServerStarted,
+            ServerInstruction::FailedToStartWebServer(..) => ServerContext::FailedToStartWebServer,
             ServerInstruction::SendWebClientsForbidden(..) => {
                 ServerContext::SendWebClientsForbidden
             },
@@ -1389,6 +1391,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .senders
                     .send_to_plugin(PluginInstruction::WebServerStarted)
+                    .unwrap();
+            },
+            ServerInstruction::FailedToStartWebServer(error) => {
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_plugin(PluginInstruction::FailedToStartWebServer(error))
                     .unwrap();
             },
         }

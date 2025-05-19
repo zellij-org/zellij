@@ -56,6 +56,7 @@ enum EventType {
     ConfigWasWrittenToDisk = 30;
     WebServerStatus = 31;
     BeforeClose = 32;
+    FailedToStartWebServer = 33;
 }
 
 message EventNameList {
@@ -91,7 +92,12 @@ message Event {
     FailedToChangeHostFolderPayload failed_to_change_host_folder_payload = 25;
     PastedTextPayload pasted_text_payload = 26;
     WebServerStatusPayload web_server_status_payload = 27;
+    FailedToStartWebServerPayload failed_to_start_web_server_payload = 28;
   }
+}
+
+message FailedToStartWebServerPayload {
+  string error = 1;
 }
 
 message PastedTextPayload {

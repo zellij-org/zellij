@@ -161,6 +161,7 @@ pub enum PluginInstruction {
     ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
     ChangePluginHostDir(PathBuf, PluginId, ClientId),
     WebServerStarted,
+    FailedToStartWebServer(String),
     Exit,
 }
 
@@ -209,6 +210,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::ListClientsToPlugin(..) => PluginContext::ListClientsToPlugin,
             PluginInstruction::ChangePluginHostDir(..) => PluginContext::ChangePluginHostDir,
             PluginInstruction::WebServerStarted => PluginContext::WebServerStarted,
+            PluginInstruction::FailedToStartWebServer(..) => PluginContext::FailedToStartWebServer,
         }
     }
 }
@@ -905,6 +907,12 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::WebServerStarted => {
                 let updates = vec![(None, None, Event::WebServerStatus(WebServerStatus::Online))];
+                wasm_bridge
+                    .update_plugins(updates, shutdown_send.clone())
+                    .non_fatal();
+            },
+            PluginInstruction::FailedToStartWebServer(error) => {
+                let updates = vec![(None, None, Event::FailedToStartWebServer(error))];
                 wasm_bridge
                     .update_plugins(updates, shutdown_send.clone())
                     .non_fatal();

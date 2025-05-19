@@ -447,6 +447,7 @@ pub enum PluginContext {
     ListClientsToPlugin,
     ChangePluginHostDir,
     WebServerStarted,
+    FailedToStartWebServer,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
@@ -503,6 +504,7 @@ pub enum ServerContext {
     ShareCurrentSession,
     StopSharingCurrentSession,
     WebServerStarted,
+    FailedToStartWebServer,
     SendWebClientsForbidden,
 }
 
