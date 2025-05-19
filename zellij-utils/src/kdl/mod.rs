@@ -4715,6 +4715,10 @@ impl TabInfo {
         active.push(self.active);
         kdl_doucment.nodes_mut().push(active);
 
+        let mut previous = KdlNode::new("previous");
+        previous.push(self.previous);
+        kdl_doucment.nodes_mut().push(previous);
+
         let mut panes_to_hide = KdlNode::new("panes_to_hide");
         panes_to_hide.push(self.panes_to_hide as i64);
         kdl_doucment.nodes_mut().push(panes_to_hide);
@@ -5111,6 +5115,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 position: 0,
                 name: "tab 1".to_owned(),
                 active: true,
+                previous: false,
                 panes_to_hide: 1,
                 is_fullscreen_active: true,
                 is_sync_panes_active: false,
@@ -5129,6 +5134,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 position: 1,
                 name: "tab 2".to_owned(),
                 active: true,
+                previous: false,
                 panes_to_hide: 0,
                 is_fullscreen_active: false,
                 is_sync_panes_active: true,
