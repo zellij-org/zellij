@@ -457,6 +457,7 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     },
                     PluginCommand::StartWebServer => start_web_server(env),
                     PluginCommand::StopWebServer => stop_web_server(env),
+                    PluginCommand::QueryWebServerStatus => query_web_server_status(env),
                     PluginCommand::ShareCurrentSession => share_current_session(env),
                     PluginCommand::StopSharingCurrentSession => stop_sharing_current_session(env),
                 },
@@ -2188,6 +2189,12 @@ fn stop_web_server(env: &PluginEnv) {
         .send_to_background_jobs(BackgroundJob::StopWebServer);
 }
 
+fn query_web_server_status(env: &PluginEnv) {
+    let _ = env
+        .senders
+        .send_to_background_jobs(BackgroundJob::QueryZellijWebServerStatus);
+}
+
 fn share_current_session(env: &PluginEnv) {
     let _ = env
         .senders
@@ -2440,6 +2447,7 @@ fn check_command_permission(
         PluginCommand::ShareCurrentSession
         | PluginCommand::StopSharingCurrentSession
         | PluginCommand::StopWebServer
+        | PluginCommand::QueryWebServerStatus
         | PluginCommand::StartWebServer => PermissionType::StartWebServer,
         _ => return (PermissionStatus::Granted, None),
     };

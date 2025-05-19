@@ -1287,6 +1287,13 @@ pub fn stop_web_server() {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn query_web_server_status() {
+    let plugin_command = PluginCommand::QueryWebServerStatus;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 pub fn share_current_session() {
     let plugin_command = PluginCommand::ShareCurrentSession;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();

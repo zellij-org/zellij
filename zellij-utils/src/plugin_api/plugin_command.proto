@@ -149,6 +149,7 @@ enum CommandName {
   ShareCurrentSession = 133;
   StopSharingCurrentSession = 134;
   StopWebServer = 135;
+  QueryWebServerStatus = 136;
 }
 
 message PluginCommand {

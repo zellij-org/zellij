@@ -96,7 +96,6 @@ static LONG_FLASH_DURATION_MS: u64 = 1000;
 static FLASH_DURATION_MS: u64 = 400; // Doherty threshold
 static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
 static SESSION_READ_DURATION: u64 = 1000;
-static QUERY_WEBSERVER_DURATION: u64 = 400;
 static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
 static REPAINT_DELAY_MS: u64 = 10;
 
@@ -380,16 +379,10 @@ pub(crate) fn background_jobs_main(
                 });
             },
             BackgroundJob::QueryZellijWebServerStatus => {
-                // this job should only be run once and it keeps track of the web server status so
-                // that plugins can display it to the user
-                if running_jobs.get(&job).is_some() {
-                    continue;
-                }
                 if !cfg!(feature = "web_server_capability") {
                     // no web server capability, no need to query
                     continue;
                 }
-                running_jobs.insert(job, Instant::now());
 
                 task::spawn({
                     let http_client = http_client.clone();
@@ -419,53 +412,49 @@ pub(crate) fn background_jobs_main(
                             return;
                         };
 
-                        loop {
-                            let http_client = http_client.clone();
-                            match web_request(http_client, web_server_ip, web_server_port).await {
-                                Ok((status, body)) => {
-                                    if status == 200 && &body == VERSION.as_bytes() {
-                                        // online
-                                        let _ = senders.send_to_plugin(PluginInstruction::Update(
-                                            vec![(
-                                                None,
-                                                None,
-                                                Event::WebServerStatus(WebServerStatus::Online),
-                                            )],
-                                        ));
-                                    } else if status == 200 {
-                                        let _ = senders.send_to_plugin(PluginInstruction::Update(
-                                            vec![(
-                                                None,
-                                                None,
-                                                Event::WebServerStatus(
-                                                    WebServerStatus::DifferentVersion(
-                                                        String::from_utf8_lossy(&body).to_string(),
-                                                    ),
+                        let http_client = http_client.clone();
+                        match web_request(http_client, web_server_ip, web_server_port).await {
+                            Ok((status, body)) => {
+                                if status == 200 && &body == VERSION.as_bytes() {
+                                    // online
+                                    let _ = senders.send_to_plugin(PluginInstruction::Update(
+                                        vec![(
+                                            None,
+                                            None,
+                                            Event::WebServerStatus(WebServerStatus::Online),
+                                        )],
+                                    ));
+                                } else if status == 200 {
+                                    let _ = senders.send_to_plugin(PluginInstruction::Update(
+                                        vec![(
+                                            None,
+                                            None,
+                                            Event::WebServerStatus(
+                                                WebServerStatus::DifferentVersion(
+                                                    String::from_utf8_lossy(&body).to_string(),
                                                 ),
-                                            )],
-                                        ));
-                                    } else {
-                                        // offline/error
-                                        let _ = senders.send_to_plugin(PluginInstruction::Update(
-                                            vec![(
-                                                None,
-                                                None,
-                                                Event::WebServerStatus(WebServerStatus::Offline),
-                                            )],
-                                        ));
-                                    }
-                                },
-                                Err(_) => {
-                                    let _ =
-                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                            ),
+                                        )],
+                                    ));
+                                } else {
+                                    // offline/error
+                                    let _ = senders.send_to_plugin(PluginInstruction::Update(
+                                        vec![(
                                             None,
                                             None,
                                             Event::WebServerStatus(WebServerStatus::Offline),
-                                        )]));
-                                },
-                            }
-                            task::sleep(std::time::Duration::from_millis(QUERY_WEBSERVER_DURATION))
-                                .await;
+                                        )],
+                                    ));
+                                }
+                            },
+                            Err(_) => {
+                                let _ =
+                                    senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                        None,
+                                        None,
+                                        Event::WebServerStatus(WebServerStatus::Offline),
+                                    )]));
+                            },
                         }
                     }
                 });
@@ -473,6 +462,7 @@ pub(crate) fn background_jobs_main(
             BackgroundJob::StopWebServer => {
                 task::spawn({
                     let http_client = http_client.clone();
+                    let senders = bus.senders.clone();
                     async move {
                         async fn web_request(
                             http_client: HttpClient,
@@ -500,7 +490,16 @@ pub(crate) fn background_jobs_main(
 
                         match web_request(http_client, web_server_ip, web_server_port).await {
                             Ok((_status, _body)) => {
-                                // no-op
+                                // optimistic update - we assume if we got a 200 here, the web
+                                // server is indeed down. If there was some internal error and it
+                                // remained up, we'll pick this up in the next status query
+                                let _ = senders.send_to_plugin(PluginInstruction::Update(
+                                    vec![(
+                                        None,
+                                        None,
+                                        Event::WebServerStatus(WebServerStatus::Offline),
+                                    )],
+                                ));
                             },
                             Err(e) => {
                                 log::error!("Failed to shut down web server: {}", e)

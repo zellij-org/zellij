@@ -2421,4 +2421,5 @@ pub enum PluginCommand {
     CloseMultiplePanes(Vec<PaneId>),
     FloatMultiplePanes(Vec<PaneId>),
     EmbedMultiplePanes(Vec<PaneId>),
+    QueryWebServerStatus,
 }

@@ -923,6 +923,7 @@ pub enum CommandName {
     ShareCurrentSession = 133,
     StopSharingCurrentSession = 134,
     StopWebServer = 135,
+    QueryWebServerStatus = 136,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1067,6 +1068,7 @@ impl CommandName {
             CommandName::ShareCurrentSession => "ShareCurrentSession",
             CommandName::StopSharingCurrentSession => "StopSharingCurrentSession",
             CommandName::StopWebServer => "StopWebServer",
+            CommandName::QueryWebServerStatus => "QueryWebServerStatus",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1208,6 +1210,7 @@ impl CommandName {
             "ShareCurrentSession" => Some(Self::ShareCurrentSession),
             "StopSharingCurrentSession" => Some(Self::StopSharingCurrentSession),
             "StopWebServer" => Some(Self::StopWebServer),
+            "QueryWebServerStatus" => Some(Self::QueryWebServerStatus),
             _ => None,
         }
     }

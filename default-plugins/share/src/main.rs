@@ -6,6 +6,8 @@ use std::collections::{BTreeMap, HashMap};
 
 use ui_components::{CurrentSessionSection, Usage, WebServerStatusSection};
 
+static WEB_SERVER_QUERY_DURATION: f64 = 0.4; // Doherty threshold
+
 #[derive(Debug, Default)]
 struct App {
     web_server_started: bool,
@@ -22,6 +24,7 @@ struct App {
     currently_hovering_over_link: bool,
     own_plugin_id: Option<u32>,
     web_server_capability: bool,
+    timer_running: bool,
 }
 
 register_plugin!(App);
@@ -35,6 +38,7 @@ impl ZellijPlugin for App {
             EventType::Mouse,
             EventType::RunCommandResult,
             EventType::FailedToStartWebServer,
+            EventType::Timer,
         ]);
         self.own_plugin_id = Some(get_plugin_ids().plugin_id);
         self.query_link_executable();
@@ -43,6 +47,10 @@ impl ZellijPlugin for App {
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
+            Event::Timer(_) => {
+                query_web_server_status();
+                set_timeout(WEB_SERVER_QUERY_DURATION);
+            }
             Event::ModeUpdate(mode_info) => {
                 self.session_name = mode_info.session_name;
                 if let Some(web_clients_allowed) = mode_info.web_clients_allowed {
@@ -63,6 +71,10 @@ impl ZellijPlugin for App {
                 }
                 if let Some(web_server_capability) = mode_info.web_server_capability {
                     self.web_server_capability = web_server_capability;
+                    if self.web_server_capability && !self.timer_running {
+                        self.timer_running = true;
+                        set_timeout(WEB_SERVER_QUERY_DURATION);
+                    }
                     should_render = true;
                 }
             },

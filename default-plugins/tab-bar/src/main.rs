@@ -32,7 +32,6 @@ struct State {
     mode_info: ModeInfo,
     tab_line: Vec<LinePart>,
     hide_swap_layout_indication: bool,
-    web_server_on_line: bool,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -50,8 +49,6 @@ impl ZellijPlugin for State {
             EventType::TabUpdate,
             EventType::ModeUpdate,
             EventType::Mouse,
-            EventType::Timer,
-            EventType::WebServerStatus,
         ]);
     }
 
@@ -93,17 +90,6 @@ impl ZellijPlugin for State {
                 },
                 _ => {},
             },
-            Event::WebServerStatus(web_server_status) => {
-                match web_server_status {
-                    WebServerStatus::Online => {
-                        self.web_server_on_line = true;
-                    },
-                    _ => {
-                        self.web_server_on_line = false;
-                    },
-                }
-                should_render = true;
-            },
             _ => {
                 eprintln!("Got unrecognized event: {:?}", event);
             },
@@ -141,15 +127,8 @@ impl ZellijPlugin for State {
 
         let background = self.mode_info.style.colors.text_unselected.background;
 
-        let session_is_shared = self
-            .mode_info
-            .web_sharing
-            .map(|s| s.web_clients_allowed())
-            .unwrap_or(false);
-        let should_show_sharing_indication = session_is_shared && self.web_server_on_line;
         self.tab_line = tab_line(
             self.mode_info.session_name.as_deref(),
-            should_show_sharing_indication,
             all_tabs,
             active_tab_index,
             cols.saturating_sub(1),
