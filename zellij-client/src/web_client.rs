@@ -75,27 +75,20 @@ use tokio::{runtime::Runtime, sync::mpsc::UnboundedReceiver};
 const BRACKETED_PASTE_START: [u8; 6] = [27, 91, 50, 48, 48, 126]; // \u{1b}[200~
 const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201~
 
-// DEV INSTRUCTIONS:
-// * to run this:
-//      - ps ax | grep web | grep zellij | grep target | awk \'{print $1}\' | xargs kill -9 # this
-//      kills the webserver from previous runs
-//      - cargo x run --singlepass -- options --enable-web-server true
-//      - point the browser at localhost:8082
-
-type ConnectionTable = Arc<Mutex<HashMap<String, Arc<Mutex<Box<dyn ClientOsApi>>>>>>; // TODO: no
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct RenderedBytes {
-    web_client_id: String,
-    bytes: String,
+#[derive(Debug, Default, Clone)]
+struct ConnectionTable {
+    client_id_to_os_api: HashMap<String, Box<dyn ClientOsApi>>
 }
 
-impl RenderedBytes {
-    pub fn new(bytes: String, web_client_id: &str) -> Self {
-        RenderedBytes {
-            web_client_id: web_client_id.to_owned(),
-            bytes,
-        }
+impl ConnectionTable {
+    pub fn add_new_client(&mut self, client_id: String, client_os_api: Box<dyn ClientOsApi>) {
+        self.client_id_to_os_api.insert(client_id, client_os_api);
+    }
+    pub fn get_client_os_api(&self, client_id: &str) -> Option<&Box<dyn ClientOsApi>> {
+        self.client_id_to_os_api.get(client_id)
+    }
+    pub fn remove_client(&mut self, client_id: &str) {
+        self.client_id_to_os_api.remove(client_id);
     }
 }
 
@@ -200,8 +193,6 @@ pub fn start_web_client(config: Config, config_options: Options, run_daemonized:
         .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
     let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
 
-    let connection_table: ConnectionTable = Arc::new(Mutex::new(HashMap::new()));
-
     let (runtime, listener) = if run_daemonized {
         daemonize_web_server(web_server_ip, web_server_port)
     } else {
@@ -227,7 +218,6 @@ pub fn start_web_client(config: Config, config_options: Options, run_daemonized:
     runtime.block_on(serve_web_client(
         config,
         config_options,
-        connection_table,
         listener,
     ));
 }
@@ -242,7 +232,7 @@ const ASSETS_DIR: include_dir::Dir<'_> = include_dir::include_dir!("$CARGO_MANIF
 
 #[derive(Clone)]
 struct AppState {
-    connection_table: ConnectionTable,
+    connection_table: Arc<Mutex<ConnectionTable>>,
     config: Config,
     config_options: Options,
     shutdown_signal_tx: tokio::sync::mpsc::UnboundedSender<ShutdownSignal>,
@@ -251,10 +241,11 @@ struct AppState {
 async fn serve_web_client(
     config: Config,
     config_options: Options,
-    connection_table: ConnectionTable,
     listener: tokio::net::TcpListener,
 ) {
     let (shutdown_signal_tx, shutdown_signal_rx) = tokio::sync::mpsc::unbounded_channel();
+
+    let connection_table = Arc::new(Mutex::new(ConnectionTable::default()));
 
     let state = AppState {
         connection_table,
@@ -367,12 +358,11 @@ struct CreateClientIdResponse {
 /// Create os_input for new client and return the client id
 async fn create_new_client(State(state): State<AppState>) -> Json<CreateClientIdResponse> {
     let web_client_id = String::from(Uuid::new_v4());
-    log::info!("New web client id: {}", web_client_id);
     let os_input = get_client_os_input().unwrap(); // TODO: log error and quit
 
-    state.connection_table.lock().unwrap().insert(
+    state.connection_table.lock().unwrap().add_new_client(
         web_client_id.to_owned(),
-        Arc::new(Mutex::new(Box::new(os_input))),
+        Box::new(os_input),
     );
 
     Json(CreateClientIdResponse { web_client_id })
@@ -428,7 +418,7 @@ async fn handle_ws_control(mut socket: WebSocket, state: AppState) {
             .connection_table
             .lock()
             .unwrap()
-            .get(&deserialized_msg.web_client_id)
+            .get_client_os_api(&deserialized_msg.web_client_id)
             .cloned()
         else {
             log::error!("Unknown web_client_id: {}", deserialized_msg.web_client_id);
@@ -440,7 +430,7 @@ async fn handle_ws_control(mut socket: WebSocket, state: AppState) {
             },
         };
 
-        let _ = client_connection.lock().unwrap().send_to_server(client_msg);
+        let _ = client_connection.send_to_server(client_msg);
     };
 
     // Handle incoming messages
@@ -480,7 +470,7 @@ async fn handle_ws_terminal(
         .connection_table
         .lock()
         .unwrap()
-        .get(&web_client_id)
+        .get_client_os_api(&web_client_id)
         .cloned()
     else {
         log::error!("Unknown web_client_id: {}", web_client_id);
@@ -495,7 +485,7 @@ async fn handle_ws_terminal(
     let (stdout_channel_tx, stdout_channel_rx) = tokio::sync::mpsc::unbounded_channel();
 
     zellij_server_listener(
-        os_input.lock().unwrap().clone(),
+        os_input.clone(),
         stdout_channel_tx,
         session_name.map(|p| p.0),
         state.config.clone(),
@@ -519,7 +509,7 @@ async fn handle_ws_terminal(
                     .connection_table
                     .lock()
                     .unwrap()
-                    .get(&web_client_id)
+                    .get_client_os_api(&web_client_id)
                     .cloned()
                 else {
                     log::error!("Unknown web_client_id: {}", web_client_id);
@@ -527,7 +517,7 @@ async fn handle_ws_terminal(
                 };
                 parse_stdin(
                     msg.as_bytes(),
-                    client_connection.lock().unwrap().clone(),
+                    client_connection.clone(),
                     &mut mouse_old_event,
                     explicitly_disable_kitty_keyboard_protocol,
                 );
@@ -538,7 +528,7 @@ async fn handle_ws_terminal(
                     .connection_table
                     .lock()
                     .unwrap()
-                    .remove(&web_client_id);
+                    .remove_client(&web_client_id);
                 break;
             },
             _ => {
@@ -547,8 +537,6 @@ async fn handle_ws_terminal(
         }
     }
     os_input
-        .lock()
-        .unwrap()
         .send_to_server(ClientToServerMsg::ClientExited);
 }
 
