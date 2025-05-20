@@ -122,6 +122,10 @@ impl ErrorInstruction for ClientInstruction {
 fn spawn_web_server(opts: &CliArgs) -> Result<String, String> {
     let mut cmd = Command::new(current_exe().map_err(|e| e.to_string())?);
     if let Some(config_file_path) = Config::config_file_path(opts) {
+        let config_file_path_exists = Path::new(&config_file_path).exists();
+        if !config_file_path_exists {
+            return Err(format!("Config file: {} does not exist", config_file_path.display()));
+        }
         // this is so that if Zellij itself was started with a different config file, we'll use it
         // to start the webserver
         cmd.arg("--config");

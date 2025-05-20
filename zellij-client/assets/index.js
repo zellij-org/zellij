@@ -244,12 +244,12 @@ document.addEventListener("DOMContentLoaded", async (event) => {
                 );
             } else if (msg.type === "Log") {
                 const { lines } = msg;
-                for line in lines {
+                for (const line in lines) {
                   console.log(line);
                 }
             } else if (msg.type === "LogError") {
                 const { lines } = msg;
-                for line in lines {
+                for (const line in lines) {
                   console.error(line);
                 }
             }

@@ -957,7 +957,7 @@ fn parse_stdin(
                 let key = cast_termwiz_key(
                     key_event.clone(),
                     &buf,
-                    None, // TODO: config, for ctrl-j etc.
+                    None,
                 );
                 os_input.send_to_server(ClientToServerMsg::Key(key.clone(), buf.to_vec(), false));
             },
@@ -1034,7 +1034,6 @@ fn spawn_session_if_needed(
     requested_layout: Option<LayoutInfo>,
 ) -> (ClientToServerMsg, PathBuf) {
     if session_exists(&session_name).unwrap_or(false) {
-        // TODO: handle error
         ipc_pipe_and_first_message_for_existing_session(
             path,
             client_attributes,
@@ -1043,8 +1042,8 @@ fn spawn_session_if_needed(
             is_web_client,
         )
     } else {
-        let force_run_commands = false; // TODO: from config for resurrection
-                                        // layout
+        let force_run_commands = false; // this can only be true through the CLI, so not relevant
+                                        // here
         let resurrection_layout =
             resurrection_layout(&session_name).map(|mut resurrection_layout| {
                 if force_run_commands {
@@ -1064,7 +1063,6 @@ fn spawn_session_if_needed(
                 client_attributes,
             ),
             None => {
-                // let new_session_layout = layout_for_new_session(&config, reconnect_info.as_ref().and_then(|r| r.layout.clone()));
                 let new_session_layout = layout_for_new_session(&config, requested_layout);
 
                 spawn_new_session(
@@ -1104,17 +1102,15 @@ fn spawn_new_session(
 
     spawn_server(&*zellij_ipc_pipe, debug).unwrap();
 
-    // TODO: make this happen
-    //     let successfully_written_config =
-    //         Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &config_opts);
+    let successfully_written_config =
+        Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &Default::default());
     // if we successfully wrote the config to disk, it means two things:
     // 1. It did not exist beforehand
     // 2. The config folder is writeable
     //
     // If these two are true, we should launch the setup wizard, if even one of them is
     // false, we should never launch it.
-    // let should_launch_setup_wizard = successfully_written_config;
-    let should_launch_setup_wizard = false;
+    let should_launch_setup_wizard = successfully_written_config;
     let cli_args = CliArgs::default(); // TODO: what do we do about this and the above setup
                                        // wizard?
     config.options.web_server = Some(true);
