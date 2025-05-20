@@ -10,6 +10,7 @@ mod stdin_handler;
 
 use log::info;
 use std::env::current_exe;
+use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
@@ -671,7 +672,12 @@ fn report_changes_in_config_file(
     os_input: &Box<dyn ClientOsApi>,
 ) -> Option<Box<dyn Watcher>> {
     match Config::config_file_path(&opts) {
-        Some(config_file_path) => {
+        Some(mut config_file_path) => {
+            if let Some(target) = fs::canonicalize(&config_file_path).ok() {
+                if target != config_file_path {
+                    config_file_path = target;
+                }
+            }
             let mut watcher = notify::recommended_watcher({
                 let os_input = os_input.clone();
                 let opts = opts.clone();
