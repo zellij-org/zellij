@@ -28,6 +28,7 @@ use axum::{
     response::{Html, IntoResponse},
     routing::{any, get, post},
     Json, Router,
+    http::StatusCode,
 };
 
 use interprocess::unnamed_pipe::pipe;
@@ -70,22 +71,58 @@ use serde_json;
 use termwiz::input::{InputEvent, InputParser};
 use uuid::Uuid;
 
-use tokio::{runtime::Runtime, sync::mpsc::UnboundedReceiver};
+use tokio::{runtime::Runtime, sync::mpsc::{UnboundedReceiver, UnboundedSender}};
 
 const BRACKETED_PASTE_START: [u8; 6] = [27, 91, 50, 48, 48, 126]; // \u{1b}[200~
 const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201~
 
 #[derive(Debug, Default, Clone)]
 struct ConnectionTable {
-    client_id_to_os_api: HashMap<String, Box<dyn ClientOsApi>>
+    // client_id_to_os_api: HashMap<String, Box<dyn ClientOsApi>>
+    client_id_to_os_api: HashMap<String, ClientChannels> // TODO: rename
+}
+
+#[derive(Debug, Clone)]
+struct ClientChannels {
+    os_api: Box<dyn ClientOsApi>,
+    control_channel_tx: Option<tokio::sync::mpsc::UnboundedSender<Message>>,
+    terminal_channel_tx: Option<tokio::sync::mpsc::UnboundedSender<String>>, // STDOUT
+}
+
+impl ClientChannels {
+    pub fn new(os_api: Box<dyn ClientOsApi>) -> Self {
+        ClientChannels {
+            os_api,
+            control_channel_tx: None,
+            terminal_channel_tx: None,
+        }
+    }
+    pub fn add_control_tx(&mut self, control_channel_tx: tokio::sync::mpsc::UnboundedSender<Message>) {
+        self.control_channel_tx = Some(control_channel_tx);
+    }
+    pub fn add_terminal_tx(&mut self, terminal_channel_tx: tokio::sync::mpsc::UnboundedSender<String>) {
+        self.terminal_channel_tx = Some(terminal_channel_tx);
+    }
 }
 
 impl ConnectionTable {
     pub fn add_new_client(&mut self, client_id: String, client_os_api: Box<dyn ClientOsApi>) {
-        self.client_id_to_os_api.insert(client_id, client_os_api);
+        self.client_id_to_os_api.insert(client_id, ClientChannels::new(client_os_api));
+    }
+    pub fn add_client_control_tx(&mut self, client_id: &str, control_channel_tx: tokio::sync::mpsc::UnboundedSender<Message>) {
+        self.client_id_to_os_api.get_mut(client_id).map(|c| c.add_control_tx(control_channel_tx));
+    }
+    pub fn add_client_terminal_tx(&mut self, client_id: &str, terminal_channel_tx: tokio::sync::mpsc::UnboundedSender<String>) {
+        self.client_id_to_os_api.get_mut(client_id).map(|c| c.add_terminal_tx(terminal_channel_tx));
     }
     pub fn get_client_os_api(&self, client_id: &str) -> Option<&Box<dyn ClientOsApi>> {
-        self.client_id_to_os_api.get(client_id)
+        self.client_id_to_os_api.get(client_id).map(|c| &c.os_api)
+    }
+    pub fn get_client_terminal_tx(&self, client_id: &str) -> Option<tokio::sync::mpsc::UnboundedSender<String>> {
+        self.client_id_to_os_api.get(client_id).and_then(|c| c.terminal_channel_tx.clone())
+    }
+    pub fn get_client_control_tx(&self, client_id: &str) -> Option<tokio::sync::mpsc::UnboundedSender<Message>> {
+        self.client_id_to_os_api.get(client_id).and_then(|c| c.control_channel_tx.clone())
     }
     pub fn remove_client(&mut self, client_id: &str) {
         self.client_id_to_os_api.remove(client_id);
@@ -356,16 +393,17 @@ struct CreateClientIdResponse {
 }
 
 /// Create os_input for new client and return the client id
-async fn create_new_client(State(state): State<AppState>) -> Json<CreateClientIdResponse> {
+async fn create_new_client(State(state): State<AppState>) -> Result<Json<CreateClientIdResponse>, (StatusCode, impl IntoResponse)> {
     let web_client_id = String::from(Uuid::new_v4());
-    let os_input = get_client_os_input().unwrap(); // TODO: log error and quit
+    let os_input = get_client_os_input()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_string())))?;
 
     state.connection_table.lock().unwrap().add_new_client(
         web_client_id.to_owned(),
         Box::new(os_input),
     );
 
-    Json(CreateClientIdResponse { web_client_id })
+    Ok(Json(CreateClientIdResponse { web_client_id }))
 }
 
 async fn ws_handler_control(
@@ -399,19 +437,23 @@ async fn ws_handler_terminal(
     ws.on_upgrade(move |socket| handle_ws_terminal(socket, session_name, params, state))
 }
 
-async fn handle_ws_control(mut socket: WebSocket, state: AppState) {
+async fn handle_ws_control(socket: WebSocket, state: AppState) {
     info!("New Control WebSocket connection established");
 
     let set_config_msg = WebServerToWebClientControlMessage::SetConfig {
         font: state.config.web_client.font.clone(),
     };
 
-    socket
+    let (control_socket_tx, mut control_socket_rx) = socket.split();
+
+
+    let (control_channel_tx, control_channel_rx) = tokio::sync::mpsc::unbounded_channel();
+    send_control_messages_to_client(control_channel_rx, control_socket_tx);
+
+    let _ = control_channel_tx
         .send(Message::Text(
             serde_json::to_string(&set_config_msg).unwrap().into(),
-        ))
-        .await
-        .unwrap();
+        ));
 
     let send_message_to_server = |deserialized_msg: WebClientToWebServerControlMessage| {
         let Some(client_connection) = state
@@ -433,14 +475,26 @@ async fn handle_ws_control(mut socket: WebSocket, state: AppState) {
         let _ = client_connection.send_to_server(client_msg);
     };
 
+    let mut set_client_control_channel = false;
+
     // Handle incoming messages
-    while let Some(Ok(msg)) = socket.next().await {
+    // while let Some(Ok(msg)) = socket.next().await {
+    while let Some(Ok(msg)) = control_socket_rx.next().await {
         match msg {
             Message::Text(msg) => {
                 let deserialized_msg: Result<WebClientToWebServerControlMessage, _> =
                     serde_json::from_str(&msg);
                 match deserialized_msg {
                     Ok(deserialized_msg) => {
+                        if !set_client_control_channel {
+                            // on first message, we set the control channel so that
+                            // zellij_server_listener has access to it too
+                            set_client_control_channel = true;
+                            state.connection_table
+                                .lock()
+                                .unwrap()
+                                .add_client_control_tx(&deserialized_msg.web_client_id, control_channel_tx.clone());
+                        }
                         send_message_to_server(deserialized_msg);
                     },
                     Err(e) => {
@@ -483,13 +537,18 @@ async fn handle_ws_terminal(
         session_name
     );
     let (stdout_channel_tx, stdout_channel_rx) = tokio::sync::mpsc::unbounded_channel();
+    state.connection_table
+        .lock()
+        .unwrap()
+        .add_client_terminal_tx(&web_client_id, stdout_channel_tx);
 
     zellij_server_listener(
         os_input.clone(),
-        stdout_channel_tx,
+        state.connection_table.clone(),
         session_name.map(|p| p.0),
         state.config.clone(),
         state.config_options.clone(),
+        web_client_id.clone(),
     );
     render_to_client(stdout_channel_rx, client_channel_tx);
 
@@ -566,19 +625,97 @@ fn build_initial_connection(
     }
 }
 
+
+// TODO: move elsewhere
+#[derive(Debug)]
+struct ClientConnectionBus {
+    connection_table: Arc<Mutex<ConnectionTable>>,
+    stdout_channel_tx: Option<UnboundedSender<String>>,
+    control_channel_tx: Option<UnboundedSender<Message>>,
+    web_client_id: String,
+}
+
+impl ClientConnectionBus {
+    pub fn new(web_client_id: &str, connection_table: &Arc<Mutex<ConnectionTable>>) -> Self {
+        let connection_table = connection_table.clone();
+        let web_client_id = web_client_id.to_owned();
+        let (stdout_channel_tx, control_channel_tx) = {
+            let connection_table = connection_table.lock().unwrap();
+            (
+                connection_table.get_client_terminal_tx(&web_client_id),
+                connection_table.get_client_control_tx(&web_client_id)
+            )
+        };
+        ClientConnectionBus {
+            connection_table,
+            stdout_channel_tx,
+            control_channel_tx,
+            web_client_id
+        }
+    }
+    pub fn send_stdout(&mut self, stdout: String) {
+        match self.stdout_channel_tx.as_ref() {
+            Some(stdout_channel_tx) => {
+                let _ = stdout_channel_tx.send(stdout);
+            },
+            None => {
+                self.get_stdout_channel_tx(); // retry to circumvent races
+                if let Some(stdout_channel_tx) = self.stdout_channel_tx.as_ref() {
+                    let _ = stdout_channel_tx.send(stdout);
+                } else {
+                    // if at this point we still don't have an STDOUT channel
+                    // likely the client disconnected and/or the state is corrupt
+                    log::error!("Failed to send STDOUT message to client");
+                }
+            }
+        }
+    }
+    pub fn send_control(&mut self, message: WebServerToWebClientControlMessage) {
+        let message = Message::Text(
+            serde_json::to_string(&message).unwrap().into(),
+        );
+        match self.control_channel_tx.as_ref() {
+            Some(control_channel_tx) => {
+                let _ = control_channel_tx.send(message);
+            },
+            None => {
+                self.get_control_channel_tx(); // retry to circumvent races
+                if let Some(control_channel_tx) = self.control_channel_tx.as_ref() {
+                    let _ = control_channel_tx.send(message);
+                } else {
+                    // if at this point we still don't have a control channel
+                    // likely the client disconnected and/or the state is corrupt
+                    log::error!("Failed to send control message to client");
+                }
+            }
+        }
+    }
+    fn get_control_channel_tx(&mut self) {
+        if let Some(control_channel_tx) = self.connection_table.lock().unwrap().get_client_control_tx(&self.web_client_id) {
+            self.control_channel_tx = Some(control_channel_tx);
+        }
+    }
+    fn get_stdout_channel_tx(&mut self) {
+        if let Some(stdout_channel_tx) = self.connection_table.lock().unwrap().get_client_terminal_tx(&self.web_client_id) {
+            self.stdout_channel_tx = Some(stdout_channel_tx);
+        }
+    }
+}
+
+
 fn zellij_server_listener(
     os_input: Box<dyn ClientOsApi>,
-    stdout_channel_tx: tokio::sync::mpsc::UnboundedSender<String>,
+    connection_table: Arc<Mutex<ConnectionTable>>,
     session_name: Option<String>,
     config: Config,
     config_options: Options,
+    web_client_id: String,
 ) {
     let _server_listener_thread = std::thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
             move || {
-                // let should_start_with_welcome_screen = session_name.is_none();
-                // let mut reconnect_to_session: Option<ConnectToSession> = None;
+                let mut client_connection_bus = ClientConnectionBus::new(&web_client_id, &connection_table);
                 let mut reconnect_to_session = match build_initial_connection(session_name) {
                     Ok(initial_session_connection) => initial_session_connection,
                     Err(e) => {
@@ -641,8 +778,9 @@ fn zellij_server_listener(
 
                     // we keep the _config_file_watcher here so that it's dropped on the next round
                     // of the reconnect loop
-                    // TODO: get actual CliArgs
                     let _config_file_watcher =
+                        // we send an empty CliArgs because it's not possible to configure the web
+                        // server through the cli
                         report_changes_in_config_file(&CliArgs::default(), &os_input);
                     loop {
                         match os_input.recv_from_server() {
@@ -652,18 +790,24 @@ fn zellij_server_listener(
                             Some((ServerToClientMsg::Exit(exit_reason), _)) => {
                                 match exit_reason {
                                     ExitReason::WebClientsForbidden => {
-                                        let _ = stdout_channel_tx.send(format!("\u{1b}[2J\n Web Clients are not allowed to attach to this session."));
+                                        client_connection_bus.send_stdout(format!("\u{1b}[2J\n Web Clients are not allowed to attach to this session."));
                                     }
                                     ExitReason::Error(e) => {
-                                        // TODO: why can't we copy this error to the clipboard from
-                                        // the browser?
+                                        // TODO: since at this point copy/paste won't work as usual
+                                        // (since there is no zellij session) we need to count on
+                                        // xterm.js's copy/paste... for linux it's ctrl-insert -
+                                        // what is it for mac?
+                                        //
+                                        // once we know, we should probably display this info here
+                                        // too
                                         let goto_start_of_last_line = format!("\u{1b}[{};{}H", 1, 1);
+                                        let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
                                         let disable_mouse = "\u{1b}[?1006l\u{1b}[?1015l\u{1b}[?1003l\u{1b}[?1002l\u{1b}[?1000l";
                                         let error = format!(
-                                            "{}\n{}{}\n",
-                                            disable_mouse, goto_start_of_last_line, e.to_string().replace("\n", "\n\r")
+                                            "{}{}\n{}{}\n",
+                                            disable_mouse, clear_client_terminal_attributes, goto_start_of_last_line, e.to_string().replace("\n", "\n\r")
                                         );
-                                        let _ = stdout_channel_tx.send(format!("\u{1b}[2J\n{}", error));
+                                        client_connection_bus.send_stdout(format!("\u{1b}[2J\n{}", error));
                                     },
                                     _ => {},
                                 }
@@ -675,10 +819,12 @@ fn zellij_server_listener(
                                     // we only send these once we've rendered the first byte to
                                     // make sure the server is ready before the client receives any
                                     // messages on the terminal channel
-                                    send_client_terminal_init_messages(&stdout_channel_tx);
+                                    for message in terminal_init_messages() {
+                                        client_connection_bus.send_stdout(message.to_owned())
+                                    }
                                     sent_init_messages = true;
                                 }
-                                let _ = stdout_channel_tx.send(bytes);
+                                client_connection_bus.send_stdout(bytes);
                             },
                             Some((ServerToClientMsg::SwitchSession(connect_to_session), _)) => {
                                 reconnect_to_session = Some(connect_to_session);
@@ -708,10 +854,15 @@ fn zellij_server_listener(
                                     },
                                 }
                             },
-                            // TODO:
-                            // Log(Vec<String>),
-                            // LogError(Vec<String>),
-                            // QueryTerminalSize,
+                            Some((ServerToClientMsg::QueryTerminalSize, _)) => {
+                                client_connection_bus.send_control(WebServerToWebClientControlMessage::QueryTerminalSize);
+                            }
+                            Some((ServerToClientMsg::Log(lines), _)) => {
+                                client_connection_bus.send_control(WebServerToWebClientControlMessage::Log{lines});
+                            }
+                            Some((ServerToClientMsg::LogError(lines), _)) => {
+                                client_connection_bus.send_control(WebServerToWebClientControlMessage::LogError{lines});
+                            }
                             _ => {},
                         }
                     }
@@ -740,19 +891,31 @@ fn render_to_client(
     });
 }
 
-fn send_client_terminal_init_messages(
-    stdout_channel_tx: &tokio::sync::mpsc::UnboundedSender<String>,
+// TODO: make sure this and the above function exit when the client is disconnected
+fn send_control_messages_to_client(
+    mut control_channel_rx: UnboundedReceiver<Message>,
+    mut socket_channel_tx: SplitSink<WebSocket, Message>,
 ) {
+    tokio::spawn(async move {
+        while let Some(message) = control_channel_rx.recv().await {
+            if socket_channel_tx
+                .send(message)
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
+    });
+}
+
+fn terminal_init_messages() -> Vec<&'static str> {
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let enter_alternate_screen = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
     let enter_kitty_keyboard_mode = "\u{1b}[>1u";
     let enable_mouse_mode = "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1015h\u{1b}[?1006h";
-    let _ = stdout_channel_tx.send(clear_client_terminal_attributes.to_owned());
-    let _ = stdout_channel_tx.send(enter_alternate_screen.to_owned());
-    let _ = stdout_channel_tx.send(bracketed_paste.to_owned());
-    let _ = stdout_channel_tx.send(enable_mouse_mode.to_owned());
-    let _ = stdout_channel_tx.send(enter_kitty_keyboard_mode.to_owned());
+    vec![clear_client_terminal_attributes, enter_alternate_screen, bracketed_paste, enter_kitty_keyboard_mode, enable_mouse_mode]
 }
 
 fn parse_stdin(

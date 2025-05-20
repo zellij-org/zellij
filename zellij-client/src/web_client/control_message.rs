@@ -18,4 +18,7 @@ pub(super) enum WebClientToWebServerControlMessagePayload {
 #[serde(tag = "type")]
 pub(super) enum WebServerToWebClientControlMessage {
     SetConfig { font: String },
+    QueryTerminalSize,
+    Log { lines: Vec<String> },
+    LogError { lines: Vec<String> },
 }

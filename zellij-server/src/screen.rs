@@ -4231,6 +4231,21 @@ pub(crate) fn screen_thread_main(
                     screen.bus.senders.send_to_screen(event).non_fatal();
                 }
                 screen.log_and_report_session_state()?;
+
+                if is_web_client {
+                    // we do this because 
+                    // we need to query the client for its size, and we must do it only after we've
+                    // added it to our state.
+                    //
+                    // we have to do this specifically for web clients because the browser (as opposed
+                    // to a traditional terminal) can only figure out its dimensions after we sent it relevant
+                    // state (eg. font, which is controlled by our config and it needs to determine cell size)
+                    if let Some(os_input) = &mut screen.bus.os_input {
+                        let _ = os_input
+                            .send_to_client(client_id, ServerToClientMsg::QueryTerminalSize);
+                    }
+                }
+
                 screen.render(None)?;
             },
             ScreenInstruction::RemoveClient(client_id) => {

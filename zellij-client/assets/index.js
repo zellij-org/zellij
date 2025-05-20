@@ -222,6 +222,36 @@ document.addEventListener("DOMContentLoaded", async (event) => {
                         },
                     })
                 );
+            } else if (msg.type === "QueryTerminalSize") {
+                const fit_dimensions = fitAddon.proposeDimensions();
+                const { rows, cols } = fit_dimensions;
+                if (rows !== term.rows || cols !== term.cols) {
+                    term.resize(cols, rows);
+                }
+                // we do this anyway even if our size didn't change
+                // because this means the server needs to know our
+                // size (eg. if we switched sessions without refreshing
+                // and our client state on the server was lost)
+                ws_control.send(
+                    JSON.stringify({
+                        web_client_id: own_web_client_id,
+                        payload: {
+                            type: "TerminalResize",
+                            rows,
+                            cols,
+                        },
+                    })
+                );
+            } else if (msg.type === "Log") {
+                const { lines } = msg;
+                for line in lines {
+                  console.log(line);
+                }
+            } else if (msg.type === "LogError") {
+                const { lines } = msg;
+                for line in lines {
+                  console.error(line);
+                }
             }
         };
 
