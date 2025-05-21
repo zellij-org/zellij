@@ -464,6 +464,9 @@ impl State {
                 } else if self.new_session_info.name().contains('/') {
                     self.show_error("Session name cannot contain '/'");
                     return;
+                } else if self.sessions.has_forbidden_session(self.new_session_info.name()) {
+                    self.show_error("This session exists and web clients cannot attach to it.");
+                    return;
                 }
                 self.new_session_info.handle_selection(&self.session_name);
             },
@@ -549,13 +552,23 @@ impl State {
         self.session_name = Some(new_name.to_owned());
     }
     fn update_session_infos(&mut self, session_infos: Vec<SessionInfo>) {
-        let session_infos: Vec<SessionUiInfo> = session_infos
+        let session_ui_infos: Vec<SessionUiInfo> = session_infos
             .iter()
             .filter_map(|s| {
                 if self.is_web_client && !s.web_clients_allowed {
                     None
                 } else {
                     Some(SessionUiInfo::from_session_info(s))
+                }
+            })
+            .collect();
+        let forbidden_sessions: Vec<SessionUiInfo> = session_infos
+            .iter()
+            .filter_map(|s| {
+                if self.is_web_client && !s.web_clients_allowed {
+                    Some(SessionUiInfo::from_session_info(s))
+                } else {
+                    None
                 }
             })
             .collect();
@@ -569,7 +582,7 @@ impl State {
         if let Some(current_session_name) = current_session_name {
             self.session_name = Some(current_session_name);
         }
-        self.sessions.set_sessions(session_infos);
+        self.sessions.set_sessions(session_ui_infos, forbidden_sessions);
     }
     fn main_menu_size(&self, rows: usize, cols: usize) -> (usize, usize, usize, usize) {
         // x, y, width, height
