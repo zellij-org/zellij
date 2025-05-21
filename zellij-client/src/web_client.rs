@@ -57,8 +57,8 @@ use zellij_utils::{
     },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     sessions::{
-        get_name_generator, get_resurrectable_session_names, get_sessions, resurrection_layout,
-        session_exists,
+        resurrection_layout,
+        session_exists, generate_unique_session_name
     },
     setup::{find_default_config_dir, get_layout_dir},
 };
@@ -999,7 +999,6 @@ fn layout_for_new_session(
         .layout_dir
         .clone()
         .or_else(|| get_layout_dir(find_default_config_dir()));
-    // match reconnect_info.as_ref().and_then(|r| r.layout.clone()) {
     match requested_layout {
         Some(LayoutInfo::BuiltIn(layout_name)) => Layout::from_default_assets(
             &PathBuf::from(layout_name),
@@ -1122,8 +1121,7 @@ fn spawn_new_session(
             client_attributes,
             Box::new(cli_args),
             Box::new(config.clone()),
-            // Box::new(config_options.clone()),
-            Box::new(config_opts.clone()), // TODO: what is the difference?
+            Box::new(config_opts.clone()),
             Box::new(layout.unwrap()),
             Box::new(config.plugins.clone()),
             should_launch_setup_wizard,
@@ -1156,30 +1154,4 @@ fn ipc_pipe_and_first_message_for_existing_session(
         is_web_client,
     );
     (first_message, zellij_ipc_pipe)
-}
-
-// TODO: move to zellij_utils::sessions?
-fn generate_unique_session_name() -> Option<String> {
-    let sessions = get_sessions().map(|sessions| {
-        sessions
-            .iter()
-            .map(|s| s.0.clone())
-            .collect::<Vec<String>>()
-    });
-    let dead_sessions = get_resurrectable_session_names();
-    let Ok(sessions) = sessions else {
-        eprintln!("Failed to list existing sessions: {:?}", sessions);
-        return None;
-    };
-
-    let name = get_name_generator()
-        .take(1000)
-        .find(|name| !sessions.contains(name) && !dead_sessions.contains(name));
-
-    if let Some(name) = name {
-        return Some(name);
-    } else {
-        eprintln!("Failed to generate a unique session name, giving up");
-        return None;
-    }
 }

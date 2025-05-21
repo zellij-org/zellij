@@ -451,6 +451,30 @@ pub fn assert_session_ne(name: &str) {
     process::exit(1);
 }
 
+pub fn generate_unique_session_name() -> Option<String> {
+    let sessions = get_sessions().map(|sessions| {
+        sessions
+            .iter()
+            .map(|s| s.0.clone())
+            .collect::<Vec<String>>()
+    });
+    let dead_sessions = get_resurrectable_session_names();
+    let Ok(sessions) = sessions else {
+        eprintln!("Failed to list existing sessions: {:?}", sessions);
+        return None;
+    };
+
+    let name = get_name_generator()
+        .take(1000)
+        .find(|name| !sessions.contains(name) && !dead_sessions.contains(name));
+
+    if let Some(name) = name {
+        return Some(name);
+    } else {
+        return None;
+    }
+}
+
 /// Create a new random name generator
 ///
 /// Used to provide a memorable handle for a session when users don't specify a session name when the session is

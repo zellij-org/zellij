@@ -16,8 +16,9 @@ use zellij_client::{
 };
 use zellij_utils::sessions::{
     assert_dead_session, assert_session, assert_session_ne, delete_session as delete_session_impl,
-    get_active_session, get_name_generator, get_resurrectable_session_names,
+    get_active_session,
     get_resurrectable_sessions, get_sessions, get_sessions_sorted_by_mtime,
+    generate_unique_session_name,
     kill_session as kill_session_impl, match_session_name, print_sessions,
     print_sessions_with_index, resurrection_layout, session_exists, ActiveSession,
     SessionNameMatch,
@@ -188,7 +189,7 @@ pub(crate) fn start_web_server(_opts: CliArgs, _run_daemonized: bool) {
 }
 
 fn create_new_client() -> ClientInfo {
-    ClientInfo::New(generate_unique_session_name())
+    ClientInfo::New(generate_unique_session_name_or_exit())
 }
 
 #[cfg(feature = "web_server_capability")]
@@ -785,7 +786,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     process::exit(0);
                 }
 
-                let session_name = generate_unique_session_name();
+                let session_name = generate_unique_session_name_or_exit();
                 start_client_plan(session_name.clone());
                 reconnect_to_session = start_client_impl(
                     Box::new(os_input),
@@ -807,29 +808,12 @@ pub(crate) fn start_client(opts: CliArgs) {
     }
 }
 
-fn generate_unique_session_name() -> String {
-    let sessions = get_sessions().map(|sessions| {
-        sessions
-            .iter()
-            .map(|s| s.0.clone())
-            .collect::<Vec<String>>()
-    });
-    let dead_sessions = get_resurrectable_session_names();
-    let Ok(sessions) = sessions else {
-        eprintln!("Failed to list existing sessions: {:?}", sessions);
-        process::exit(1);
-    };
-
-    let name = get_name_generator()
-        .take(1000)
-        .find(|name| !sessions.contains(name) && !dead_sessions.contains(name));
-
-    if let Some(name) = name {
-        return name;
-    } else {
+fn generate_unique_session_name_or_exit() -> String {
+    let Some(unique_session_name) = generate_unique_session_name() else {
         eprintln!("Failed to generate a unique session name, giving up");
         process::exit(1);
-    }
+    };
+    unique_session_name
 }
 
 pub(crate) fn list_aliases(opts: CliArgs) {
