@@ -782,6 +782,10 @@ fn zellij_server_listener(
                         // we send an empty CliArgs because it's not possible to configure the web
                         // server through the cli
                         report_changes_in_config_file(&CliArgs::default(), &os_input);
+
+                    // we do this so that the browser's URL will change to the new session name
+                    client_connection_bus.send_control(WebServerToWebClientControlMessage::SwitchedSession { new_session_name: session_name.clone() });
+
                     loop {
                         match os_input.recv_from_server() {
                             Some((ServerToClientMsg::UnblockInputThread, _)) => {

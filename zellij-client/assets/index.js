@@ -252,6 +252,9 @@ document.addEventListener("DOMContentLoaded", async (event) => {
                 for (const line in lines) {
                   console.error(line);
                 }
+            } else if (msg.type === "SwitchedSession") {
+                const { new_session_name } = msg;
+                window.location.pathname = `/${new_session_name}`;
             }
         };
 

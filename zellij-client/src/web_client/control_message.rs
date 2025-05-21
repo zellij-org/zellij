@@ -21,4 +21,5 @@ pub(super) enum WebServerToWebClientControlMessage {
     QueryTerminalSize,
     Log { lines: Vec<String> },
     LogError { lines: Vec<String> },
+    SwitchedSession { new_session_name: String },
 }
