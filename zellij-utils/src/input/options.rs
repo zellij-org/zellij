@@ -220,17 +220,13 @@ pub struct Options {
     #[serde(default)]
     pub advanced_mouse_actions: Option<bool>,
 
-    /// The ip address the web server should listen on when it starts
-    /// default is 127.0.0.1
-    #[clap(long, value_parser)]
-    #[serde(default)]
+    // these are intentionally excluded from the CLI options as they must be specified in the
+    // configuration file
     pub web_server_ip: Option<IpAddr>,
-
-    /// The port the web server should listen on when it starts
-    /// default is 8082
-    #[clap(long, value_parser)]
-    #[serde(default)]
     pub web_server_port: Option<u16>,
+    pub web_server_cert: Option<PathBuf>,
+    pub web_server_key: Option<PathBuf>,
+    pub enforce_https_for_localhost: Option<bool>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -317,6 +313,13 @@ impl Options {
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
+        let web_server_cert = other
+            .web_server_cert
+            .or_else(|| self.web_server_cert.clone());
+        let web_server_key = other.web_server_key.or_else(|| self.web_server_key.clone());
+        let enforce_https_for_localhost = other
+            .enforce_https_for_localhost
+            .or(self.enforce_https_for_localhost);
 
         Options {
             simplified_ui,
@@ -354,6 +357,9 @@ impl Options {
             advanced_mouse_actions,
             web_server_ip,
             web_server_port,
+            web_server_cert,
+            web_server_key,
+            enforce_https_for_localhost,
         }
     }
 
@@ -420,6 +426,13 @@ impl Options {
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
+        let web_server_cert = other
+            .web_server_cert
+            .or_else(|| self.web_server_cert.clone());
+        let web_server_key = other.web_server_key.or_else(|| self.web_server_key.clone());
+        let enforce_https_for_localhost = other
+            .enforce_https_for_localhost
+            .or(self.enforce_https_for_localhost);
 
         Options {
             simplified_ui,
@@ -457,6 +470,9 @@ impl Options {
             advanced_mouse_actions,
             web_server_ip,
             web_server_port,
+            web_server_cert,
+            web_server_key,
+            enforce_https_for_localhost,
         }
     }
 
@@ -530,6 +546,9 @@ impl From<CliOptions> for Options {
             advanced_mouse_actions: opts.advanced_mouse_actions,
             web_server_ip: opts.web_server_ip,
             web_server_port: opts.web_server_port,
+            web_server_cert: opts.web_server_cert,
+            web_server_key: opts.web_server_key,
+            enforce_https_for_localhost: opts.enforce_https_for_localhost,
             ..Default::default()
         }
     }

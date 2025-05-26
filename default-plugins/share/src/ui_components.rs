@@ -83,30 +83,32 @@ impl Usage {
 #[derive(Debug)]
 pub struct WebServerStatusSection {
     web_server_started: bool,
-    web_server_ip: Option<IpAddr>,
-    web_server_port: Option<u16>,
+    web_server_base_url: String,
     web_server_error: Option<String>,
     web_server_different_version_error: Option<String>, // String -> version number
+    connection_is_unencrypted: bool,
     pub clickable_urls: HashMap<CoordinatesInLine, String>,
     pub currently_hovering_over_link: bool,
+    pub currently_hovering_over_unencrypted: bool,
 }
 
 impl WebServerStatusSection {
     pub fn new(
         web_server_started: bool,
-        web_server_ip: Option<IpAddr>,
-        web_server_port: Option<u16>,
         web_server_error: Option<String>,
         web_server_different_version_error: Option<String>,
+        web_server_base_url: String,
+        connection_is_unencrypted: bool,
     ) -> Self {
         WebServerStatusSection {
             web_server_started,
-            web_server_ip,
-            web_server_port,
             clickable_urls: HashMap::new(),
             currently_hovering_over_link: false,
+            currently_hovering_over_unencrypted: false,
             web_server_error,
             web_server_different_version_error,
+            web_server_base_url,
+            connection_is_unencrypted,
         }
     }
     pub fn web_server_status_width_and_height(&self) -> (usize, usize) {
@@ -117,11 +119,17 @@ impl WebServerStatusSection {
             let text_length = self.web_server_error_component(&error).1;
             max_len = std::cmp::max(max_len, text_length);
         } else if let Some(different_version) = &self.web_server_different_version_error {
-            let text_length = self.web_server_different_version_error_component(&different_version).1;
+            let text_length = self
+                .web_server_different_version_error_component(&different_version)
+                .1;
             max_len = std::cmp::max(max_len, text_length);
         } else if self.web_server_started {
             let title = "URL: ";
-            let value = self.server_url();
+            let value = if self.connection_is_unencrypted {
+                format!("{} [*]", &self.web_server_base_url)
+            } else {
+                self.web_server_base_url.clone() // TODO: better
+            };
             max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
         } else {
             let text_length = self.start_server_line().1;
@@ -143,11 +151,13 @@ impl WebServerStatusSection {
             let web_server_error_component = self.web_server_error_component(error).0;
             print_text_with_coordinates(web_server_error_component, x, y + 1, None, None);
         } else if let Some(different_version) = &self.web_server_different_version_error {
-            let web_server_error_component = self.web_server_different_version_error_component(different_version).0;
+            let web_server_error_component = self
+                .web_server_different_version_error_component(different_version)
+                .0;
             print_text_with_coordinates(web_server_error_component, x, y + 1, None, None);
         } else if self.web_server_started {
             let title = "URL: ";
-            let server_url = self.server_url();
+            let server_url = &self.web_server_base_url;
             let url_x = x + title.chars().count();
             let url_width = server_url.chars().count();
             let url_y = y + 1;
@@ -155,15 +165,20 @@ impl WebServerStatusSection {
                 CoordinatesInLine::new(url_x, url_y, url_width),
                 server_url.clone(),
             );
+            let star_index = title.chars().count() + server_url.chars().count() + 1;
+            let info_line = if self.connection_is_unencrypted {
+                Text::new(format!("{}{} [*]", title, server_url))
+                    .color_range(0, ..title.chars().count())
+                    .color_range(1, star_index..star_index + 3)
+            } else {
+                Text::new(format!("{}{}", title, server_url))
+                    .color_range(0, ..title.chars().count())
+            };
+
+            print_text_with_coordinates(info_line, x, y + 1, None, None);
             if hovering_on_line(url_x, url_y, url_width, hover_coordinates) {
                 self.currently_hovering_over_link = true;
-                let title = Text::new(title).color_range(0, ..title.chars().count());
-                print_text_with_coordinates(title, x, y + 1, None, None);
                 render_text_with_underline(url_x, url_y, server_url);
-            } else {
-                let info_line = Text::new(format!("{}{}", title, server_url))
-                    .color_range(0, ..title.chars().count());
-                print_text_with_coordinates(info_line, x, y + 1, None, None);
             }
         } else {
             let info_line = self.start_server_line().0;
@@ -188,7 +203,7 @@ impl WebServerStatusSection {
                 title.chars().count() + value.chars().count() + shortcut.chars().count(),
             )
         } else if let Some(different_version) = &self.web_server_different_version_error {
-            let title = "Web server status: ";
+            let title = "Web server: ";
             let value = format!("RUNNING INCOMPATIBLE VERSION {}", different_version);
             (
                 Text::new(format!("{}{}", title, value))
@@ -197,7 +212,7 @@ impl WebServerStatusSection {
                 title.chars().count() + value.chars().count(),
             )
         } else {
-            let title = "Web server status: ";
+            let title = "Web server: ";
             let value = "NOT RUNNING";
             (
                 Text::new(format!("{}{}", title, value))
@@ -206,17 +221,6 @@ impl WebServerStatusSection {
                 title.chars().count() + value.chars().count(),
             )
         }
-    }
-    fn server_url(&self) -> String {
-        let web_server_ip = self
-            .web_server_ip
-            .map(|i| format!("{}", i))
-            .unwrap_or("UNDEFINED".to_owned());
-        let web_server_port = self
-            .web_server_port
-            .map(|p| format!("{}", p))
-            .unwrap_or("UNDEFINED".to_owned());
-        format!("http://{}:{}/", web_server_ip, web_server_port)
     }
     fn start_server_line(&self) -> (Text, usize) {
         // (component, length)
@@ -250,6 +254,7 @@ pub struct CurrentSessionSection {
     web_server_port: Option<u16>,
     web_sharing: WebSharing,
     session_name: Option<String>,
+    connection_is_unencrypted: bool,
     pub clickable_urls: HashMap<CoordinatesInLine, String>,
     pub currently_hovering_over_link: bool,
 }
@@ -261,6 +266,7 @@ impl CurrentSessionSection {
         web_server_port: Option<u16>,
         session_name: Option<String>,
         web_sharing: WebSharing,
+        connection_is_unencrypted: bool,
     ) -> Self {
         CurrentSessionSection {
             web_server_started,
@@ -270,6 +276,7 @@ impl CurrentSessionSection {
             web_sharing,
             clickable_urls: HashMap::new(),
             currently_hovering_over_link: false,
+            connection_is_unencrypted,
         }
     }
     pub fn current_session_status_width_and_height(&self) -> (usize, usize) {
@@ -289,9 +296,13 @@ impl CurrentSessionSection {
             },
         };
         if self.web_sharing.web_clients_allowed() && self.web_server_started {
-            let title = "Session URL: ";
-            let session_url = self.session_url();
-            max_len = std::cmp::max(max_len, title.chars().count() + session_url.chars().count());
+            let title = "URL: ";
+            let value = if self.connection_is_unencrypted {
+                format!("{} [*]", self.session_url())
+            } else {
+                self.session_url()
+            };
+            max_len = std::cmp::max(max_len, title.chars().count() + value.chars().count());
         } else if self.web_sharing.web_clients_allowed() {
             let text = self.web_server_is_offline();
             max_len = std::cmp::max(max_len, text.chars().count());
@@ -325,15 +336,19 @@ impl CurrentSessionSection {
                 CoordinatesInLine::new(url_x, url_y, url_width),
                 session_url.clone(),
             );
+            let star_index = title.chars().count() + session_url.chars().count() + 1;
+            let info_line = if self.connection_is_unencrypted {
+                Text::new(format!("{}{} [*]", title, session_url))
+                    .color_range(0, ..title.chars().count())
+                    .color_range(1, star_index..star_index + 3)
+            } else {
+                Text::new(format!("{}{}", title, session_url))
+                    .color_range(0, ..title.chars().count())
+            };
+            print_text_with_coordinates(info_line, x, y + 1, None, None);
             if hovering_on_line(url_x, url_y, url_width, hover_coordinates) {
                 self.currently_hovering_over_link = true;
-                let title = Text::new(title).color_range(0, ..title.chars().count());
-                print_text_with_coordinates(title, x, y + 1, None, None);
-                render_text_with_underline(url_x, url_y, session_url);
-            } else {
-                let info_line = Text::new(format!("{}{}", title, session_url))
-                    .color_range(0, ..title.chars().count());
-                print_text_with_coordinates(info_line, x, y + 1, None, None);
+                render_text_with_underline(url_x, url_y, &session_url);
             }
         } else if self.web_sharing.web_clients_allowed() {
             let text = self.web_server_is_offline();
@@ -407,7 +422,7 @@ impl CurrentSessionSection {
     }
 }
 
-fn hovering_on_line(
+pub fn hovering_on_line(
     x: usize,
     y: usize,
     width: usize,
@@ -419,7 +434,7 @@ fn hovering_on_line(
     }
 }
 
-fn render_text_with_underline(url_x: usize, url_y: usize, url_text: String) {
+pub fn render_text_with_underline(url_x: usize, url_y: usize, url_text: &str) {
     print!(
         "\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4m{}",
         url_y + 1,

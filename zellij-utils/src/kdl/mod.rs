@@ -2333,6 +2333,16 @@ impl Options {
         let web_server_port =
             kdl_property_first_arg_as_i64_or_error!(kdl_options, "web_server_port")
                 .map(|(web_server_port, _entry)| web_server_port as u16);
+        let web_server_cert =
+            kdl_property_first_arg_as_string_or_error!(kdl_options, "web_server_cert")
+                .map(|(string, _entry)| PathBuf::from(string));
+        let web_server_key =
+            kdl_property_first_arg_as_string_or_error!(kdl_options, "web_server_key")
+                .map(|(string, _entry)| PathBuf::from(string));
+        let enforce_https_for_localhost =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "enforce_https_for_localhost")
+                .map(|(v, _)| v);
+
         Ok(Options {
             simplified_ui,
             theme,
@@ -2369,6 +2379,9 @@ impl Options {
             advanced_mouse_actions,
             web_server_ip,
             web_server_port,
+            web_server_cert,
+            web_server_key,
+            enforce_https_for_localhost,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -3248,6 +3261,89 @@ impl Options {
             None
         }
     }
+    fn web_server_cert_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            "// A path to a certificate file to be used when setting up the web client to serve the",
+            "// connection over HTTPs",
+            "// ",
+        );
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("web_server_cert");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(web_server_cert) = &self.web_server_cert {
+            let mut node = create_node(&web_server_cert.display().to_string());
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("/path/to/cert.pem");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn web_server_key_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            "// A path to a key file to be used when setting up the web client to serve the",
+            "// connection over HTTPs",
+            "// ",
+        );
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("web_server_key");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(web_server_key) = &self.web_server_key {
+            let mut node = create_node(&web_server_key.display().to_string());
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("/path/to/key.pem");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn enforce_https_for_localhost_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            "/// Whether to enforce https connections to the web server when it is bound to localhost",
+            "/// (127.0.0.0/8)",
+            "///",
+            "/// Note: https is ALWAYS enforced when bound to non-local interfaces",
+            "///",
+            "/// Default: false",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("enforce_https_for_localhost");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(enforce_https_for_localhost) = self.enforce_https_for_localhost {
+            let mut node = create_node(enforce_https_for_localhost);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn stacked_resize_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
@@ -3501,6 +3597,17 @@ impl Options {
         }
         if let Some(web_sharing) = self.web_sharing_to_kdl(add_comments) {
             nodes.push(web_sharing);
+        }
+        if let Some(web_server_cert) = self.web_server_cert_to_kdl(add_comments) {
+            nodes.push(web_server_cert);
+        }
+        if let Some(web_server_key) = self.web_server_key_to_kdl(add_comments) {
+            nodes.push(web_server_key);
+        }
+        if let Some(enforce_https_for_localhost) =
+            self.enforce_https_for_localhost_to_kdl(add_comments)
+        {
+            nodes.push(enforce_https_for_localhost);
         }
         if let Some(stacked_resize) = self.stacked_resize_to_kdl(add_comments) {
             nodes.push(stacked_resize);

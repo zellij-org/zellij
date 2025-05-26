@@ -90,8 +90,7 @@ pub struct ClientOsInputOutput {
 
 impl std::fmt::Debug for ClientOsInputOutput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ClientOsInputOutput")
-         .finish()
+        f.debug_struct("ClientOsInputOutput").finish()
     }
 }
 

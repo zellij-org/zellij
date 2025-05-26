@@ -61,7 +61,7 @@ use zellij_utils::{
         plugins::PluginAliases,
     },
     ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
-    shared::default_palette,
+    shared::{default_palette, web_server_base_url},
 };
 
 pub type ClientId = u16;
@@ -126,7 +126,7 @@ pub enum ServerInstruction {
     ShareCurrentSession(ClientId),
     StopSharingCurrentSession(ClientId),
     SendWebClientsForbidden(ClientId),
-    WebServerStarted,
+    WebServerStarted(String), // String -> base_url
     FailedToStartWebServer(String),
 }
 
@@ -169,7 +169,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::StopSharingCurrentSession(..) => {
                 ServerContext::StopSharingCurrentSession
             },
-            ServerInstruction::WebServerStarted => ServerContext::WebServerStarted,
+            ServerInstruction::WebServerStarted(..) => ServerContext::WebServerStarted,
             ServerInstruction::FailedToStartWebServer(..) => ServerContext::FailedToStartWebServer,
             ServerInstruction::SendWebClientsForbidden(..) => {
                 ServerContext::SendWebClientsForbidden
@@ -1383,14 +1383,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     log::error!("Cannot start web server: this instance of Zellij was compiled without web_server_capability");
                 }
             },
-            ServerInstruction::WebServerStarted => {
+            ServerInstruction::WebServerStarted(base_url) => {
                 session_data
                     .write()
                     .unwrap()
                     .as_ref()
                     .unwrap()
                     .senders
-                    .send_to_plugin(PluginInstruction::WebServerStarted)
+                    .send_to_plugin(PluginInstruction::WebServerStarted(base_url))
                     .unwrap();
             },
             ServerInstruction::FailedToStartWebServer(error) => {
@@ -1473,6 +1473,9 @@ fn init_session(
         .web_server_ip
         .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
     let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
+    let has_certificate =
+        config_options.web_server_cert.is_some() && config_options.web_server_key.is_some();
+    let enforce_https_for_localhost = config_options.enforce_https_for_localhost.unwrap_or(false);
 
     let default_shell = config_options.default_shell.clone().map(|command| {
         TerminalAction::RunCommand(RunCommand {
@@ -1620,13 +1623,18 @@ fn init_session(
                 None,
                 Some(os_input.clone()),
             );
+            let web_server_base_url = web_server_base_url(
+                web_server_ip,
+                web_server_port,
+                has_certificate,
+                enforce_https_for_localhost,
+            );
             move || {
                 background_jobs_main(
                     background_jobs_bus,
                     serialization_interval,
                     disable_session_metadata,
-                    web_server_ip,
-                    web_server_port,
+                    web_server_base_url,
                 )
                 .fatal()
             }

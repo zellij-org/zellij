@@ -16,11 +16,9 @@ use zellij_client::{
 };
 use zellij_utils::sessions::{
     assert_dead_session, assert_session, assert_session_ne, delete_session as delete_session_impl,
-    get_active_session,
-    get_resurrectable_sessions, get_sessions, get_sessions_sorted_by_mtime,
-    generate_unique_session_name,
-    kill_session as kill_session_impl, match_session_name, print_sessions,
-    print_sessions_with_index, resurrection_layout, session_exists, ActiveSession,
+    generate_unique_session_name, get_active_session, get_resurrectable_sessions, get_sessions,
+    get_sessions_sorted_by_mtime, kill_session as kill_session_impl, match_session_name,
+    print_sessions, print_sessions_with_index, resurrection_layout, session_exists, ActiveSession,
     SessionNameMatch,
 };
 

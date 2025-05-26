@@ -38,4 +38,7 @@ Options {
     advanced_mouse_actions: None,
     web_server_ip: None,
     web_server_port: None,
+    web_server_cert: None,
+    web_server_key: None,
+    enforce_https_for_localhost: None,
 }

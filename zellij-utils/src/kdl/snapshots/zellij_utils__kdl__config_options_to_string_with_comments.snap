@@ -209,6 +209,22 @@ web_server true
 // Default: "off"
 // 
 web_sharing "disabled"
+// A path to a certificate file to be used when setting up the web client to serve the
+// connection over HTTPs
+// 
+// web_server_cert "/path/to/cert.pem"
+// A path to a key file to be used when setting up the web client to serve the
+// connection over HTTPs
+// 
+// web_server_key "/path/to/key.pem"
+/// Whether to enforce https connections to the web server when it is bound to localhost
+/// (127.0.0.0/8)
+///
+/// Note: https is ALWAYS enforced when bound to non-local interfaces
+///
+/// Default: false
+// 
+// enforce_https_for_localhost false
  
 // Whether to stack panes when resizing beyond a certain size
 // Default: true

@@ -13,12 +13,14 @@ pub mod web_client;
 use log::info;
 use std::env::current_exe;
 use std::io::{self, Write};
+use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use zellij_utils::errors::FatalError;
+use zellij_utils::shared::web_server_base_url;
 
 use notify_debouncer_full::notify::{self, Config as WatcherConfig, Event, RecursiveMode, Watcher};
 use zellij_utils::setup::Setup;
@@ -124,7 +126,10 @@ fn spawn_web_server(opts: &CliArgs) -> Result<String, String> {
     if let Some(config_file_path) = Config::config_file_path(opts) {
         let config_file_path_exists = Path::new(&config_file_path).exists();
         if !config_file_path_exists {
-            return Err(format!("Config file: {} does not exist", config_file_path.display()));
+            return Err(format!(
+                "Config file: {} does not exist",
+                config_file_path.display()
+            ));
         }
         // this is so that if Zellij itself was started with a different config file, we'll use it
         // to start the webserver
@@ -141,10 +146,8 @@ fn spawn_web_server(opts: &CliArgs) -> Result<String, String> {
             } else {
                 Err(String::from_utf8_lossy(&output.stderr).to_string())
             }
-        }
-        Err(e) => {
-            Err(e.to_string())
-        }
+        },
+        Err(e) => Err(e.to_string()),
     }
 }
 
@@ -269,6 +272,13 @@ pub fn start_client(
             hide_session_name: config.ui.pane_frames.hide_session_name,
         },
     };
+    let web_server_ip = config_options
+        .web_server_ip
+        .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
+    let has_certificate =
+        config_options.web_server_cert.is_some() && config_options.web_server_key.is_some();
+    let enforce_https_for_localhost = config_options.enforce_https_for_localhost.unwrap_or(false);
 
     let create_ipc_pipe = || -> std::path::PathBuf {
         let mut sock_dir = ZELLIJ_SOCK_DIR.clone();
@@ -304,7 +314,9 @@ pub fn start_client(
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
             if should_start_web_server {
-                let _ = spawn_web_server(&opts);
+                if let Err(e) = spawn_web_server(&opts) {
+                    log::error!("Failed to start web server: {}", e);
+                }
             }
 
             let successfully_written_config =
@@ -615,12 +627,22 @@ pub fn start_client(
                 }
             },
             ClientInstruction::StartWebServer => {
+                let web_server_base_url = web_server_base_url(
+                    web_server_ip,
+                    web_server_port,
+                    has_certificate,
+                    enforce_https_for_localhost,
+                );
                 match spawn_web_server(&opts) {
                     Ok(_) => {
-                        let _ = os_input.send_to_server(ClientToServerMsg::WebServerStarted);
+                        let _ = os_input.send_to_server(ClientToServerMsg::WebServerStarted(
+                            web_server_base_url,
+                        ));
                     },
                     Err(e) => {
-                        let _ = os_input.send_to_server(ClientToServerMsg::FailedToStartWebServer(e));
+                        log::error!("Failed to start web_server: {}", e);
+                        let _ =
+                            os_input.send_to_server(ClientToServerMsg::FailedToStartWebServer(e));
                     },
                 }
             },
@@ -706,7 +728,9 @@ pub fn start_server_detached(
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
             if should_start_web_server {
-                let _ = spawn_web_server(&opts);
+                if let Err(e) = spawn_web_server(&opts) {
+                    log::error!("Failed to start web server: {}", e);
+                }
             }
             let should_launch_setup_wizard = false; // no setup wizard when starting a detached
                                                     // server

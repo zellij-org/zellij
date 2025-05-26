@@ -1,5 +1,6 @@
 //! Some general utility functions.
 
+use std::net::IpAddr;
 use std::{iter, str::from_utf8};
 
 use crate::data::{Palette, PaletteColor, PaletteSource, ThemeHue};
@@ -148,4 +149,23 @@ pub fn version_number(mut version: &str) -> usize {
     }
 
     version_number
+}
+
+pub fn web_server_base_url(
+    web_server_ip: IpAddr,
+    web_server_port: u16,
+    has_certificate: bool,
+    enforce_https_for_localhost: bool,
+) -> String {
+    let is_loopback = match web_server_ip {
+        IpAddr::V4(ipv4) => ipv4.is_loopback(),
+        IpAddr::V6(ipv6) => ipv6.is_loopback(),
+    };
+
+    let url_prefix = if is_loopback && !enforce_https_for_localhost && !has_certificate {
+        "http"
+    } else {
+        "https"
+    };
+    format!("{}://{}:{}", url_prefix, web_server_ip, web_server_port)
 }

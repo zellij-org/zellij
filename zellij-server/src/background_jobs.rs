@@ -14,7 +14,6 @@ use isahc::{config::RedirectPolicy, HttpClient, Request};
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::Write;
-use std::net::IpAddr;
 use std::os::unix::fs::FileTypeExt;
 use std::path::PathBuf;
 use std::sync::{
@@ -103,8 +102,7 @@ pub(crate) fn background_jobs_main(
     bus: Bus<BackgroundJob>,
     serialization_interval: Option<u64>,
     disable_session_metadata: bool,
-    web_server_ip: IpAddr,
-    web_server_port: u16,
+    web_server_base_url: String,
 ) -> Result<()> {
     let err_context = || "failed to write to pty".to_string();
     let mut running_jobs: HashMap<BackgroundJob, Instant> = HashMap::new();
@@ -387,19 +385,17 @@ pub(crate) fn background_jobs_main(
                 task::spawn({
                     let http_client = http_client.clone();
                     let senders = bus.senders.clone();
+                    let web_server_base_url = web_server_base_url.clone();
                     async move {
                         async fn web_request(
                             http_client: HttpClient,
-                            web_server_ip: IpAddr,
-                            web_server_port: u16,
+                            web_server_base_url: &str,
                         ) -> Result<
                             (u16, Vec<u8>), // status_code, body
                             isahc::Error,
                         > {
-                            let request = Request::get(format!(
-                                "http://{}:{}/info/version",
-                                web_server_ip, web_server_port
-                            ));
+                            let request =
+                                Request::get(format!("{}/info/version", web_server_base_url,));
                             let req = request.body(())?;
                             let mut res = http_client.send_async(req).await?;
 
@@ -413,20 +409,21 @@ pub(crate) fn background_jobs_main(
                         };
 
                         let http_client = http_client.clone();
-                        match web_request(http_client, web_server_ip, web_server_port).await {
+                        match web_request(http_client, &web_server_base_url).await {
                             Ok((status, body)) => {
                                 if status == 200 && &body == VERSION.as_bytes() {
                                     // online
-                                    let _ = senders.send_to_plugin(PluginInstruction::Update(
-                                        vec![(
+                                    let _ =
+                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
                                             None,
                                             None,
-                                            Event::WebServerStatus(WebServerStatus::Online),
-                                        )],
-                                    ));
+                                            Event::WebServerStatus(WebServerStatus::Online(
+                                                web_server_base_url.clone(),
+                                            )),
+                                        )]));
                                 } else if status == 200 {
-                                    let _ = senders.send_to_plugin(PluginInstruction::Update(
-                                        vec![(
+                                    let _ =
+                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
                                             None,
                                             None,
                                             Event::WebServerStatus(
@@ -434,26 +431,34 @@ pub(crate) fn background_jobs_main(
                                                     String::from_utf8_lossy(&body).to_string(),
                                                 ),
                                             ),
-                                        )],
-                                    ));
+                                        )]));
                                 } else {
                                     // offline/error
-                                    let _ = senders.send_to_plugin(PluginInstruction::Update(
-                                        vec![(
+                                    let _ =
+                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
                                             None,
                                             None,
                                             Event::WebServerStatus(WebServerStatus::Offline),
-                                        )],
-                                    ));
+                                        )]));
                                 }
                             },
-                            Err(_) => {
-                                let _ =
-                                    senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                        None,
-                                        None,
-                                        Event::WebServerStatus(WebServerStatus::Offline),
-                                    )]));
+                            Err(e) => {
+                                if e.kind() == isahc::error::ErrorKind::ConnectionFailed {
+                                    let _ =
+                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                            None,
+                                            None,
+                                            Event::WebServerStatus(WebServerStatus::Offline),
+                                        )]));
+                                } else {
+                                    let _ =
+                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                            None,
+                                            None,
+                                            // TODO: rename FailedToStartWebServer to WebServerError
+                                            Event::FailedToStartWebServer(e.to_string()),
+                                        )]));
+                                }
                             },
                         }
                     }
@@ -463,19 +468,17 @@ pub(crate) fn background_jobs_main(
                 task::spawn({
                     let http_client = http_client.clone();
                     let senders = bus.senders.clone();
+                    let web_server_base_url = web_server_base_url.clone();
                     async move {
                         async fn web_request(
                             http_client: HttpClient,
-                            web_server_ip: IpAddr,
-                            web_server_port: u16,
+                            web_server_base_url: &str,
                         ) -> Result<
                             (u16, Vec<u8>), // status_code, body
                             isahc::Error,
                         > {
-                            let request = Request::post(format!(
-                                "http://{}:{}/command/shutdown",
-                                web_server_ip, web_server_port
-                            ));
+                            let request =
+                                Request::post(format!("{}/command/shutdown", web_server_base_url,));
                             let req = request.body(())?;
                             let mut res = http_client.send_async(req).await?;
 
@@ -488,18 +491,16 @@ pub(crate) fn background_jobs_main(
                             return;
                         };
 
-                        match web_request(http_client, web_server_ip, web_server_port).await {
+                        match web_request(http_client, &web_server_base_url).await {
                             Ok((_status, _body)) => {
                                 // optimistic update - we assume if we got a 200 here, the web
                                 // server is indeed down. If there was some internal error and it
                                 // remained up, we'll pick this up in the next status query
-                                let _ = senders.send_to_plugin(PluginInstruction::Update(
-                                    vec![(
-                                        None,
-                                        None,
-                                        Event::WebServerStatus(WebServerStatus::Offline),
-                                    )],
-                                ));
+                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                    None,
+                                    None,
+                                    Event::WebServerStatus(WebServerStatus::Offline),
+                                )]));
                             },
                             Err(e) => {
                                 log::error!("Failed to shut down web server: {}", e)

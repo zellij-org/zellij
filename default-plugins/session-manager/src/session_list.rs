@@ -17,7 +17,11 @@ pub struct SessionList {
 }
 
 impl SessionList {
-    pub fn set_sessions(&mut self, mut session_ui_infos: Vec<SessionUiInfo>, mut forbidden_sessions: Vec<SessionUiInfo>) {
+    pub fn set_sessions(
+        &mut self,
+        mut session_ui_infos: Vec<SessionUiInfo>,
+        mut forbidden_sessions: Vec<SessionUiInfo>,
+    ) {
         session_ui_infos.sort_unstable_by(|a, b| {
             if a.is_current_session {
                 std::cmp::Ordering::Less
@@ -321,7 +325,9 @@ impl SessionList {
         self.session_ui_infos.iter().any(|s| s.name == session_name)
     }
     pub fn has_forbidden_session(&self, session_name: &str) -> bool {
-        self.forbidden_sessions.iter().any(|s| s.name == session_name)
+        self.forbidden_sessions
+            .iter()
+            .any(|s| s.name == session_name)
     }
     pub fn update_session_name(&mut self, old_name: &str, new_name: &str) {
         self.session_ui_infos

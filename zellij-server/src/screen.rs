@@ -4233,7 +4233,7 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
 
                 if is_web_client {
-                    // we do this because 
+                    // we do this because
                     // we need to query the client for its size, and we must do it only after we've
                     // added it to our state.
                     //

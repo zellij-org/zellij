@@ -1,3 +1,7 @@
+function is_https () {
+    return document.location.protocol === "https:";
+}
+
 document.addEventListener("DOMContentLoaded", async (event) => {
     const web_client_id = await get_client_id();
 
@@ -133,10 +137,11 @@ document.addEventListener("DOMContentLoaded", async (event) => {
         ws_terminal.send(buffer);
     });
 
+    let ws_url_prefix = is_https() ? "wss" : "ws";
     const ws_terminal_url =
         session_name === ""
-            ? `ws://${window.web_server_ip}:${window.web_server_port}/ws/terminal?web_client_id=${web_client_id}`
-            : `ws://${window.web_server_ip}:${window.web_server_port}/ws/terminal/${session_name}?web_client_id=${web_client_id}`;
+            ? `${ws_url_prefix}://${window.web_server_ip}:${window.web_server_port}/ws/terminal?web_client_id=${web_client_id}`
+            : `${ws_url_prefix}://${window.web_server_ip}:${window.web_server_port}/ws/terminal/${session_name}?web_client_id=${web_client_id}`;
 
     let ws_terminal = new WebSocket(ws_terminal_url);
     let ws_control;
@@ -270,7 +275,7 @@ document.addEventListener("DOMContentLoaded", async (event) => {
         //         );
         if (own_web_client_id == "") {
             own_web_client_id = web_client_id;
-            const ws_control_url = `ws://${window.web_server_ip}:${window.web_server_port}/ws/control`;
+            const ws_control_url = `${ws_url_prefix}://${window.web_server_ip}:${window.web_server_port}/ws/control`;
 
             ws_control = new WebSocket(ws_control_url);
             start_ws_control();
@@ -307,7 +312,8 @@ function initTerminal() {
 }
 
 function get_client_id() {
-    return fetch(`http://${window.web_server_ip}:${window.web_server_port}/session`, {
+    let url_prefix = is_https() ? "https" : "http";
+    return fetch(`${url_prefix}://${window.web_server_ip}:${window.web_server_port}/session`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",

@@ -945,7 +945,7 @@ pub enum Event {
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, ToString, Serialize, Deserialize)]
 pub enum WebServerStatus {
-    Online,
+    Online(String), // String -> base url
     Offline,
     DifferentVersion(String), // version
 }

@@ -15,6 +15,7 @@ license = "MIT"
 tokio = { version = "1.38.1", features = ["full"], optional = true }
 futures = { version = "0.3.30", optional = true }
 axum = { version = "0.8.1", features = ["ws"], optional = true }
+axum-server = { version = "0.7", features = ["tls-rustls"] }
 
 anyhow = { workspace = true }
 daemonize = { workspace = true }

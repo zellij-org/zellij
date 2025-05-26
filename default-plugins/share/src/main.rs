@@ -1,10 +1,14 @@
 mod ui_components;
 use std::net::IpAddr;
+use url::Url;
 use zellij_tile::prelude::*;
 
 use std::collections::{BTreeMap, HashMap};
 
-use ui_components::{CurrentSessionSection, Usage, WebServerStatusSection};
+use ui_components::{
+    hovering_on_line, render_text_with_underline, CurrentSessionSection, Usage,
+    WebServerStatusSection,
+};
 
 static WEB_SERVER_QUERY_DURATION: f64 = 0.4; // Doherty threshold
 
@@ -18,10 +22,12 @@ struct App {
     web_server_different_version_error: Option<String>,
     web_server_ip: Option<IpAddr>,
     web_server_port: Option<u16>,
+    web_server_base_url: String,
     hover_coordinates: Option<(usize, usize)>, // x, y
     clickable_urls: HashMap<CoordinatesInLine, String>,
     link_executable: Option<&'static str>,
     currently_hovering_over_link: bool,
+    currently_hovering_over_unencrypted: bool,
     own_plugin_id: Option<u32>,
     web_server_capability: bool,
     timer_running: bool,
@@ -50,7 +56,7 @@ impl ZellijPlugin for App {
             Event::Timer(_) => {
                 query_web_server_status();
                 set_timeout(WEB_SERVER_QUERY_DURATION);
-            }
+            },
             Event::ModeUpdate(mode_info) => {
                 self.session_name = mode_info.session_name;
                 if let Some(web_clients_allowed) = mode_info.web_clients_allowed {
@@ -83,7 +89,8 @@ impl ZellijPlugin for App {
                     return false;
                 }
                 match web_server_status {
-                    WebServerStatus::Online => {
+                    WebServerStatus::Online(base_url) => {
+                        self.web_server_base_url = base_url;
                         self.web_server_started = true;
                         self.web_server_different_version_error = None;
                     },
@@ -171,7 +178,7 @@ impl ZellijPlugin for App {
             Event::FailedToStartWebServer(error) => {
                 self.web_server_error = Some(error);
                 should_render = true;
-            }
+            },
             _ => {},
         }
         should_render
@@ -185,12 +192,13 @@ impl ZellijPlugin for App {
         self.currently_hovering_over_link = false;
         self.clickable_urls.clear();
         let usage = Usage::new();
+        let connection_is_unencrypted = self.connection_is_unencrypted();
         let mut web_server_status_section = WebServerStatusSection::new(
             self.web_server_started,
-            self.web_server_ip,
-            self.web_server_port,
-            self.web_server_error.clone(), 
+            self.web_server_error.clone(),
             self.web_server_different_version_error.clone(),
+            self.web_server_base_url.clone(),
+            connection_is_unencrypted,
         );
         let mut current_session_section = CurrentSessionSection::new(
             self.web_server_started,
@@ -198,6 +206,7 @@ impl ZellijPlugin for App {
             self.web_server_port,
             self.session_name.clone(),
             self.web_sharing,
+            connection_is_unencrypted,
         );
 
         let mut max_item_width = 0;
@@ -212,8 +221,12 @@ impl ZellijPlugin for App {
         max_item_width = std::cmp::max(max_item_width, current_session_items_width);
         let (usage_width, usage_height) = usage.usage_width_and_height(cols);
         max_item_width = std::cmp::max(max_item_width, usage_width);
-        let line_count =
+        let mut line_count =
             2 + web_server_items_height + 1 + current_session_items_height + 1 + usage_height;
+
+        if connection_is_unencrypted {
+            line_count += 3; // space for the warning
+        }
 
         let base_x = cols.saturating_sub(max_item_width) / 2;
         let base_y = rows.saturating_sub(line_count) / 2; // the + 2 are the line spaces
@@ -234,6 +247,8 @@ impl ZellijPlugin for App {
             self.hover_coordinates,
         );
         self.currently_hovering_over_link = web_server_status_section.currently_hovering_over_link;
+        self.currently_hovering_over_unencrypted = self.currently_hovering_over_unencrypted
+            || web_server_status_section.currently_hovering_over_unencrypted;
         for (coordinates, url) in web_server_status_section.clickable_urls {
             self.clickable_urls.insert(coordinates, url);
         }
@@ -254,6 +269,11 @@ impl ZellijPlugin for App {
         usage.render_usage(base_x, current_y, cols);
         current_y += usage_height + 1;
 
+        if connection_is_unencrypted && self.web_server_started {
+            self.render_unencrypted_warning(base_x, current_y);
+            current_y += 3;
+        }
+
         if self.currently_hovering_over_link {
             self.render_link_help(base_x, current_y);
         }
@@ -272,6 +292,27 @@ impl App {
             Text::new(help_text).color_range(3, 6..=16)
         };
         print_text_with_coordinates(help_text, x, y, None, None);
+    }
+    pub fn render_unencrypted_warning(&mut self, x: usize, y: usize) {
+        let warning_text =
+            format!("[*] Connection unencrypted. Consider using an SSL certificate.");
+        let warning_text = Text::new(warning_text).color_range(1, ..3);
+        let more_info_text = "More info: ";
+        let url_text = "https://zellij.dev/documentation/web-server-ssl";
+        let more_info_line = Text::new(format!("{}{}", more_info_text, url_text));
+        let url_x = x + more_info_text.chars().count();
+        let url_y = y + 1;
+        let url_width = url_text.chars().count();
+        self.clickable_urls.insert(
+            CoordinatesInLine::new(url_x, url_y, url_width),
+            url_text.to_owned(),
+        );
+        print_text_with_coordinates(warning_text, x, y, None, None);
+        print_text_with_coordinates(more_info_line, x, y + 1, None, None);
+        if hovering_on_line(url_x, url_y, url_width, self.hover_coordinates) {
+            self.currently_hovering_over_link = true;
+            render_text_with_underline(url_x, url_y, url_text);
+        }
     }
     pub fn query_link_executable(&self) {
         let mut xdg_open_context = BTreeMap::new();
@@ -298,6 +339,12 @@ impl App {
         let text_x = cols.saturating_sub(text.chars().count()) / 2;
         let text_y = rows / 2;
         print_text_with_coordinates(text_element, text_x, text_y, None, None);
+    }
+    pub fn connection_is_unencrypted(&self) -> bool {
+        Url::parse(&self.web_server_base_url)
+            .ok()
+            .map(|b| b.scheme() == "http")
+            .unwrap_or(false)
     }
 }
 

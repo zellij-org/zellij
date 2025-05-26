@@ -12,24 +12,27 @@ use std::{
     thread,
 };
 
-use std::io::{BufRead, BufReader, prelude::*};
+use crate::keyboard_parser::KittyKeyboardParser;
 use crate::{
     input_handler::from_termwiz,
     os_input_output::{get_client_os_input, ClientOsApi},
     report_changes_in_config_file, spawn_server,
 };
-use crate::{keyboard_parser::KittyKeyboardParser};
 use axum::{
     extract::{
         ws::{Message, WebSocket},
         Path as AxumPath, Query, State, WebSocketUpgrade,
     },
     http::header,
+    http::StatusCode,
     response::{Html, IntoResponse},
     routing::{any, get, post},
     Json, Router,
-    http::StatusCode,
 };
+use std::io::{prelude::*, BufRead, BufReader};
+
+use axum_server::tls_rustls::RustlsConfig;
+use axum_server::Handle;
 
 use interprocess::unnamed_pipe::pipe;
 use tower_http::cors::CorsLayer;
@@ -56,10 +59,7 @@ use zellij_utils::{
         options::Options,
     },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
-    sessions::{
-        resurrection_layout,
-        session_exists, generate_unique_session_name
-    },
+    sessions::{generate_unique_session_name, resurrection_layout, session_exists},
     setup::{find_default_config_dir, get_layout_dir},
 };
 
@@ -71,7 +71,10 @@ use serde_json;
 use termwiz::input::{InputEvent, InputParser};
 use uuid::Uuid;
 
-use tokio::{runtime::Runtime, sync::mpsc::{UnboundedReceiver, UnboundedSender}};
+use tokio::{
+    runtime::Runtime,
+    sync::mpsc::{UnboundedReceiver, UnboundedSender},
+};
 
 const BRACKETED_PASTE_START: [u8; 6] = [27, 91, 50, 48, 48, 126]; // \u{1b}[200~
 const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201~
@@ -79,7 +82,7 @@ const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201~
 #[derive(Debug, Default, Clone)]
 struct ConnectionTable {
     // client_id_to_os_api: HashMap<String, Box<dyn ClientOsApi>>
-    client_id_to_os_api: HashMap<String, ClientChannels> // TODO: rename
+    client_id_to_os_api: HashMap<String, ClientChannels>, // TODO: rename
 }
 
 #[derive(Debug, Clone)]
@@ -97,32 +100,61 @@ impl ClientChannels {
             terminal_channel_tx: None,
         }
     }
-    pub fn add_control_tx(&mut self, control_channel_tx: tokio::sync::mpsc::UnboundedSender<Message>) {
+    pub fn add_control_tx(
+        &mut self,
+        control_channel_tx: tokio::sync::mpsc::UnboundedSender<Message>,
+    ) {
         self.control_channel_tx = Some(control_channel_tx);
     }
-    pub fn add_terminal_tx(&mut self, terminal_channel_tx: tokio::sync::mpsc::UnboundedSender<String>) {
+    pub fn add_terminal_tx(
+        &mut self,
+        terminal_channel_tx: tokio::sync::mpsc::UnboundedSender<String>,
+    ) {
         self.terminal_channel_tx = Some(terminal_channel_tx);
     }
 }
 
 impl ConnectionTable {
     pub fn add_new_client(&mut self, client_id: String, client_os_api: Box<dyn ClientOsApi>) {
-        self.client_id_to_os_api.insert(client_id, ClientChannels::new(client_os_api));
+        self.client_id_to_os_api
+            .insert(client_id, ClientChannels::new(client_os_api));
     }
-    pub fn add_client_control_tx(&mut self, client_id: &str, control_channel_tx: tokio::sync::mpsc::UnboundedSender<Message>) {
-        self.client_id_to_os_api.get_mut(client_id).map(|c| c.add_control_tx(control_channel_tx));
+    pub fn add_client_control_tx(
+        &mut self,
+        client_id: &str,
+        control_channel_tx: tokio::sync::mpsc::UnboundedSender<Message>,
+    ) {
+        self.client_id_to_os_api
+            .get_mut(client_id)
+            .map(|c| c.add_control_tx(control_channel_tx));
     }
-    pub fn add_client_terminal_tx(&mut self, client_id: &str, terminal_channel_tx: tokio::sync::mpsc::UnboundedSender<String>) {
-        self.client_id_to_os_api.get_mut(client_id).map(|c| c.add_terminal_tx(terminal_channel_tx));
+    pub fn add_client_terminal_tx(
+        &mut self,
+        client_id: &str,
+        terminal_channel_tx: tokio::sync::mpsc::UnboundedSender<String>,
+    ) {
+        self.client_id_to_os_api
+            .get_mut(client_id)
+            .map(|c| c.add_terminal_tx(terminal_channel_tx));
     }
     pub fn get_client_os_api(&self, client_id: &str) -> Option<&Box<dyn ClientOsApi>> {
         self.client_id_to_os_api.get(client_id).map(|c| &c.os_api)
     }
-    pub fn get_client_terminal_tx(&self, client_id: &str) -> Option<tokio::sync::mpsc::UnboundedSender<String>> {
-        self.client_id_to_os_api.get(client_id).and_then(|c| c.terminal_channel_tx.clone())
+    pub fn get_client_terminal_tx(
+        &self,
+        client_id: &str,
+    ) -> Option<tokio::sync::mpsc::UnboundedSender<String>> {
+        self.client_id_to_os_api
+            .get(client_id)
+            .and_then(|c| c.terminal_channel_tx.clone())
     }
-    pub fn get_client_control_tx(&self, client_id: &str) -> Option<tokio::sync::mpsc::UnboundedSender<Message>> {
-        self.client_id_to_os_api.get(client_id).and_then(|c| c.control_channel_tx.clone())
+    pub fn get_client_control_tx(
+        &self,
+        client_id: &str,
+    ) -> Option<tokio::sync::mpsc::UnboundedSender<Message>> {
+        self.client_id_to_os_api
+            .get(client_id)
+            .and_then(|c| c.control_channel_tx.clone())
     }
     pub fn remove_client(&mut self, client_id: &str) {
         self.client_id_to_os_api.remove(client_id);
@@ -138,24 +170,52 @@ struct StdinMessage {
 fn daemonize_web_server(
     web_server_ip: IpAddr,
     web_server_port: u16,
-) -> (Runtime, tokio::net::TcpListener) {
+    web_server_cert: &Option<PathBuf>,
+    web_server_key: &Option<PathBuf>,
+) -> (Runtime, std::net::TcpListener, Option<RustlsConfig>) {
     // TODO: test this on mac
     let (mut exit_message_tx, exit_message_rx) = pipe().unwrap();
     let (mut exit_status_tx, mut exit_status_rx) = pipe().unwrap();
     let current_umask = umask(Mode::all());
     umask(current_umask);
+    let web_server_key = web_server_key.clone();
+    let web_server_cert = web_server_cert.clone();
     let daemonization_outcome = daemonize::Daemonize::new()
         .working_directory(std::env::current_dir().unwrap())
         .umask(current_umask.bits() as u32)
         .privileged_action(
-            move || -> Result<(Runtime, tokio::net::TcpListener), String> {
+            move || -> Result<(Runtime, std::net::TcpListener, Option<RustlsConfig>), String> {
                 let runtime = Runtime::new().map_err(|e| e.to_string())?;
+                let tls_config = match (web_server_cert, web_server_key) {
+                    (Some(web_server_cert), Some(web_server_key)) => {
+                        let tls_config = runtime.block_on(async move {
+                            RustlsConfig::from_pem_file(
+                                PathBuf::from(web_server_cert),
+                                PathBuf::from(web_server_key),
+                            )
+                            .await
+                        });
+                        let tls_config = match tls_config {
+                            Ok(tls_config) => tls_config,
+                            Err(e) => {
+                                return Err(e.to_string());
+                            },
+                        };
+                        Some(tls_config)
+                    },
+                    (None, None) => None,
+                    _ => {
+                        return Err(
+                            "Must specify both web_server_cert and web_server_key".to_owned()
+                        )
+                    },
+                };
+
                 let listener = runtime.block_on(async move {
-                    tokio::net::TcpListener::bind(format!("{}:{}", web_server_ip, web_server_port))
-                        .await
+                    std::net::TcpListener::bind(format!("{}:{}", web_server_ip, web_server_port))
                 });
                 listener
-                    .map(|listener| (runtime, listener))
+                    .map(|listener| (runtime, listener, tls_config))
                     .map_err(|e| e.to_string())
             },
         )
@@ -190,7 +250,11 @@ fn daemonize_web_server(
         },
         Outcome::Child(Ok(child)) => match child.privileged_action_result {
             Ok(listener_and_runtime) => {
-                let _ = writeln!(exit_message_tx, "Web Server started on {} port {}", web_server_ip, web_server_port);
+                let _ = writeln!(
+                    exit_message_tx,
+                    "Web Server started on {} port {}",
+                    web_server_ip, web_server_port
+                );
                 let _ = exit_status_tx.write_all(&[0]);
                 listener_and_runtime
             },
@@ -223,39 +287,83 @@ pub fn start_web_client(config: Config, config_options: Options, run_daemonized:
                 msg,
                 info.location()
             );
+            eprintln!("{}", msg);
+            std::process::exit(2);
         })
     });
     let web_server_ip = config_options
         .web_server_ip
         .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
     let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
+    let web_server_cert = &config.options.web_server_cert;
+    let web_server_key = &config.options.web_server_key;
+    let has_https_certificate = web_server_cert.is_some() && web_server_key.is_some();
 
-    let (runtime, listener) = if run_daemonized {
-        daemonize_web_server(web_server_ip, web_server_port)
+    if let Err(e) = should_use_https(
+        web_server_ip,
+        has_https_certificate,
+        config.options.enforce_https_for_localhost.unwrap_or(false),
+    ) {
+        eprintln!("{}", e);
+        std::process::exit(2);
+    };
+    let (runtime, listener, tls_config) = if run_daemonized {
+        daemonize_web_server(
+            web_server_ip,
+            web_server_port,
+            web_server_cert,
+            web_server_key,
+        )
     } else {
         let runtime = Runtime::new().unwrap();
         let listener = runtime.block_on(async move {
-            tokio::net::TcpListener::bind(format!("{}:{}", web_server_ip, web_server_port))
-                .await
+            std::net::TcpListener::bind(format!("{}:{}", web_server_ip, web_server_port))
         });
+        let tls_config = match (web_server_cert, web_server_key) {
+            (Some(web_server_cert), Some(web_server_key)) => {
+                let tls_config = runtime.block_on(async move {
+                    RustlsConfig::from_pem_file(
+                        PathBuf::from(web_server_cert),
+                        PathBuf::from(web_server_key),
+                    )
+                    .await
+                });
+                let tls_config = match tls_config {
+                    Ok(tls_config) => tls_config,
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        std::process::exit(2);
+                    },
+                };
+                Some(tls_config)
+            },
+            (None, None) => None,
+            _ => {
+                eprintln!("Must specify both web_server_cert and web_server_key");
+                std::process::exit(2);
+            },
+        };
+
         match listener {
             Ok(listener) => {
                 println!(
                     "Web Server started on {} port {}",
                     web_server_ip, web_server_port
                 );
-                (runtime, listener)
-            }
+                (runtime, listener, tls_config)
+            },
             Err(e) => {
                 eprintln!("{}", e);
                 std::process::exit(2);
-            }
+            },
         }
     };
+
     runtime.block_on(serve_web_client(
         config,
         config_options,
         listener,
+        tls_config,
     ));
 }
 
@@ -272,23 +380,24 @@ struct AppState {
     connection_table: Arc<Mutex<ConnectionTable>>,
     config: Config,
     config_options: Options,
-    shutdown_signal_tx: tokio::sync::mpsc::UnboundedSender<ShutdownSignal>,
+    server_handle: Handle,
 }
 
 async fn serve_web_client(
     config: Config,
     config_options: Options,
-    listener: tokio::net::TcpListener,
+    listener: std::net::TcpListener,
+    rustls_config: Option<RustlsConfig>,
 ) {
-    let (shutdown_signal_tx, shutdown_signal_rx) = tokio::sync::mpsc::unbounded_channel();
-
     let connection_table = Arc::new(Mutex::new(ConnectionTable::default()));
+
+    let server_handle = Handle::new();
 
     let state = AppState {
         connection_table,
         config,
         config_options,
-        shutdown_signal_tx,
+        server_handle: server_handle.clone(),
     };
 
     let web_server_ip = state
@@ -316,22 +425,21 @@ async fn serve_web_client(
         .layer(CorsLayer::permissive()) // TODO: configure correctly
         .with_state(state);
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal(shutdown_signal_rx))
-        .await
-        .unwrap();
-}
-
-async fn shutdown_signal(
-    mut shutdown_channel_rx: tokio::sync::mpsc::UnboundedReceiver<ShutdownSignal>,
-) {
-    loop {
-        match shutdown_channel_rx.recv().await {
-            Some(ShutdownSignal::Shutdown) => {
-                break;
-            },
-            _ => {},
-        }
+    match rustls_config {
+        Some(rustls_config) => {
+            axum_server::from_tcp_rustls(listener, rustls_config)
+                .handle(server_handle)
+                .serve(app.into_make_service())
+                .await
+                .unwrap();
+        },
+        None => {
+            axum_server::from_tcp(listener)
+                .handle(server_handle)
+                .serve(app.into_make_service())
+                .await
+                .unwrap();
+        },
     }
 }
 
@@ -346,10 +454,7 @@ pub struct SendShutdownSignalResponse {
 }
 
 async fn send_shutdown_signal(State(state): State<AppState>) -> Json<SendShutdownSignalResponse> {
-    state
-        .shutdown_signal_tx
-        .send(ShutdownSignal::Shutdown)
-        .unwrap();
+    state.server_handle.shutdown();
     Json(SendShutdownSignalResponse {
         status: "Ok".to_owned(),
     })
@@ -393,15 +498,18 @@ struct CreateClientIdResponse {
 }
 
 /// Create os_input for new client and return the client id
-async fn create_new_client(State(state): State<AppState>) -> Result<Json<CreateClientIdResponse>, (StatusCode, impl IntoResponse)> {
+async fn create_new_client(
+    State(state): State<AppState>,
+) -> Result<Json<CreateClientIdResponse>, (StatusCode, impl IntoResponse)> {
     let web_client_id = String::from(Uuid::new_v4());
     let os_input = get_client_os_input()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_string())))?;
 
-    state.connection_table.lock().unwrap().add_new_client(
-        web_client_id.to_owned(),
-        Box::new(os_input),
-    );
+    state
+        .connection_table
+        .lock()
+        .unwrap()
+        .add_new_client(web_client_id.to_owned(), Box::new(os_input));
 
     Ok(Json(CreateClientIdResponse { web_client_id }))
 }
@@ -446,14 +554,12 @@ async fn handle_ws_control(socket: WebSocket, state: AppState) {
 
     let (control_socket_tx, mut control_socket_rx) = socket.split();
 
-
     let (control_channel_tx, control_channel_rx) = tokio::sync::mpsc::unbounded_channel();
     send_control_messages_to_client(control_channel_rx, control_socket_tx);
 
-    let _ = control_channel_tx
-        .send(Message::Text(
-            serde_json::to_string(&set_config_msg).unwrap().into(),
-        ));
+    let _ = control_channel_tx.send(Message::Text(
+        serde_json::to_string(&set_config_msg).unwrap().into(),
+    ));
 
     let send_message_to_server = |deserialized_msg: WebClientToWebServerControlMessage| {
         let Some(client_connection) = state
@@ -490,10 +596,14 @@ async fn handle_ws_control(socket: WebSocket, state: AppState) {
                             // on first message, we set the control channel so that
                             // zellij_server_listener has access to it too
                             set_client_control_channel = true;
-                            state.connection_table
+                            state
+                                .connection_table
                                 .lock()
                                 .unwrap()
-                                .add_client_control_tx(&deserialized_msg.web_client_id, control_channel_tx.clone());
+                                .add_client_control_tx(
+                                    &deserialized_msg.web_client_id,
+                                    control_channel_tx.clone(),
+                                );
                         }
                         send_message_to_server(deserialized_msg);
                     },
@@ -537,7 +647,8 @@ async fn handle_ws_terminal(
         session_name
     );
     let (stdout_channel_tx, stdout_channel_rx) = tokio::sync::mpsc::unbounded_channel();
-    state.connection_table
+    state
+        .connection_table
         .lock()
         .unwrap()
         .add_client_terminal_tx(&web_client_id, stdout_channel_tx);
@@ -595,8 +706,7 @@ async fn handle_ws_terminal(
             },
         }
     }
-    os_input
-        .send_to_server(ClientToServerMsg::ClientExited);
+    os_input.send_to_server(ClientToServerMsg::ClientExited);
 }
 
 fn build_initial_connection(
@@ -625,7 +735,6 @@ fn build_initial_connection(
     }
 }
 
-
 // TODO: move elsewhere
 #[derive(Debug)]
 struct ClientConnectionBus {
@@ -643,14 +752,14 @@ impl ClientConnectionBus {
             let connection_table = connection_table.lock().unwrap();
             (
                 connection_table.get_client_terminal_tx(&web_client_id),
-                connection_table.get_client_control_tx(&web_client_id)
+                connection_table.get_client_control_tx(&web_client_id),
             )
         };
         ClientConnectionBus {
             connection_table,
             stdout_channel_tx,
             control_channel_tx,
-            web_client_id
+            web_client_id,
         }
     }
     pub fn send_stdout(&mut self, stdout: String) {
@@ -667,13 +776,11 @@ impl ClientConnectionBus {
                     // likely the client disconnected and/or the state is corrupt
                     log::error!("Failed to send STDOUT message to client");
                 }
-            }
+            },
         }
     }
     pub fn send_control(&mut self, message: WebServerToWebClientControlMessage) {
-        let message = Message::Text(
-            serde_json::to_string(&message).unwrap().into(),
-        );
+        let message = Message::Text(serde_json::to_string(&message).unwrap().into());
         match self.control_channel_tx.as_ref() {
             Some(control_channel_tx) => {
                 let _ = control_channel_tx.send(message);
@@ -687,21 +794,30 @@ impl ClientConnectionBus {
                     // likely the client disconnected and/or the state is corrupt
                     log::error!("Failed to send control message to client");
                 }
-            }
+            },
         }
     }
     fn get_control_channel_tx(&mut self) {
-        if let Some(control_channel_tx) = self.connection_table.lock().unwrap().get_client_control_tx(&self.web_client_id) {
+        if let Some(control_channel_tx) = self
+            .connection_table
+            .lock()
+            .unwrap()
+            .get_client_control_tx(&self.web_client_id)
+        {
             self.control_channel_tx = Some(control_channel_tx);
         }
     }
     fn get_stdout_channel_tx(&mut self) {
-        if let Some(stdout_channel_tx) = self.connection_table.lock().unwrap().get_client_terminal_tx(&self.web_client_id) {
+        if let Some(stdout_channel_tx) = self
+            .connection_table
+            .lock()
+            .unwrap()
+            .get_client_terminal_tx(&self.web_client_id)
+        {
             self.stdout_channel_tx = Some(stdout_channel_tx);
         }
     }
 }
-
 
 fn zellij_server_listener(
     os_input: Box<dyn ClientOsApi>,
@@ -902,11 +1018,7 @@ fn send_control_messages_to_client(
 ) {
     tokio::spawn(async move {
         while let Some(message) = control_channel_rx.recv().await {
-            if socket_channel_tx
-                .send(message)
-                .await
-                .is_err()
-            {
+            if socket_channel_tx.send(message).await.is_err() {
                 break;
             }
         }
@@ -919,7 +1031,13 @@ fn terminal_init_messages() -> Vec<&'static str> {
     let bracketed_paste = "\u{1b}[?2004h";
     let enter_kitty_keyboard_mode = "\u{1b}[>1u";
     let enable_mouse_mode = "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1015h\u{1b}[?1006h";
-    vec![clear_client_terminal_attributes, enter_alternate_screen, bracketed_paste, enter_kitty_keyboard_mode, enable_mouse_mode]
+    vec![
+        clear_client_terminal_attributes,
+        enter_alternate_screen,
+        bracketed_paste,
+        enter_kitty_keyboard_mode,
+        enable_mouse_mode,
+    ]
 }
 
 fn parse_stdin(
@@ -958,11 +1076,7 @@ fn parse_stdin(
     for (i, input_event) in events.into_iter().enumerate() {
         match input_event {
             InputEvent::Key(key_event) => {
-                let key = cast_termwiz_key(
-                    key_event.clone(),
-                    &buf,
-                    None,
-                );
+                let key = cast_termwiz_key(key_event.clone(), &buf, None);
                 os_input.send_to_server(ClientToServerMsg::Key(key.clone(), buf.to_vec(), false));
             },
             InputEvent::Mouse(mouse_event) => {
@@ -1105,8 +1219,10 @@ fn spawn_new_session(
 
     spawn_server(&*zellij_ipc_pipe, debug).unwrap();
 
-    let successfully_written_config =
-        Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &Default::default());
+    let successfully_written_config = Config::write_config_to_disk_if_it_does_not_exist(
+        config.to_string(true),
+        &Default::default(),
+    );
     // if we successfully wrote the config to disk, it means two things:
     // 1. It did not exist beforehand
     // 2. The config folder is writeable
@@ -1158,4 +1274,30 @@ fn ipc_pipe_and_first_message_for_existing_session(
         is_web_client,
     );
     (first_message, zellij_ipc_pipe)
+}
+
+fn should_use_https(
+    ip: IpAddr,
+    has_certificate: bool,
+    enforce_https_for_localhost: bool,
+) -> Result<bool, String> {
+    let is_loopback = match ip {
+        IpAddr::V4(ipv4) => ipv4.is_loopback(),
+        IpAddr::V6(ipv6) => ipv6.is_loopback(),
+    };
+
+    if is_loopback && !enforce_https_for_localhost {
+        // if we have a certificate -> https, otherwise -> http
+        Ok(has_certificate)
+    } else if is_loopback {
+        Err(format!("Cannot bind without an SSL certificate."))
+    } else if has_certificate {
+        // if this is not the loopback and we have a vertificate -> https
+        Ok(true)
+    } else {
+        Err(format!(
+            "Cannot bind to non-loopback IP: {} without an SSL certificate.",
+            ip
+        ))
+    }
 }

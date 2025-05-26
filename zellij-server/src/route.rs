@@ -1231,11 +1231,12 @@ pub(crate) fn route_thread_main(
                                 failed_path,
                             ));
                         },
-                        ClientToServerMsg::WebServerStarted => {
-                            let _ = to_server.send(ServerInstruction::WebServerStarted);
+                        ClientToServerMsg::WebServerStarted(base_url) => {
+                            let _ = to_server.send(ServerInstruction::WebServerStarted(base_url));
                         },
                         ClientToServerMsg::FailedToStartWebServer(error) => {
-                            let _ = to_server.send(ServerInstruction::FailedToStartWebServer(error));
+                            let _ =
+                                to_server.send(ServerInstruction::FailedToStartWebServer(error));
                         },
                     }
                     Ok(should_break)

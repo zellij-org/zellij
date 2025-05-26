@@ -374,9 +374,11 @@ impl TryFrom<ProtobufEvent> for Event {
                 _ => Err("Malformed payload for the BeforeClose Event"),
             },
             Some(ProtobufEventType::FailedToStartWebServer) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::FailedToStartWebServerPayload(failed_to_start_web_server_payload)) => {
-                    Ok(Event::FailedToStartWebServer(failed_to_start_web_server_payload.error))
-                },
+                Some(ProtobufEventPayload::FailedToStartWebServerPayload(
+                    failed_to_start_web_server_payload,
+                )) => Ok(Event::FailedToStartWebServer(
+                    failed_to_start_web_server_payload.error,
+                )),
                 _ => Err("Malformed payload for the FailedToStartWebServer Event"),
             },
             None => Err("Unknown Protobuf Event"),
@@ -766,9 +768,7 @@ impl TryFrom<Event> for ProtobufEvent {
             Event::FailedToStartWebServer(error) => Ok(ProtobufEvent {
                 name: ProtobufEventType::FailedToStartWebServer as i32,
                 payload: Some(event::Payload::FailedToStartWebServerPayload(
-                    FailedToStartWebServerPayload {
-                        error,
-                    }
+                    FailedToStartWebServerPayload { error },
                 )),
             }),
         }
@@ -2178,9 +2178,9 @@ impl TryFrom<WebServerStatus> for ProtobufWebServerStatusPayload {
     type Error = &'static str;
     fn try_from(web_server_status: WebServerStatus) -> Result<Self, &'static str> {
         match web_server_status {
-            WebServerStatus::Online => Ok(ProtobufWebServerStatusPayload {
+            WebServerStatus::Online(url) => Ok(ProtobufWebServerStatusPayload {
                 web_server_status_indication: WebServerStatusIndication::Online as i32,
-                payload: None,
+                payload: Some(url),
             }),
             WebServerStatus::DifferentVersion(version) => Ok(ProtobufWebServerStatusPayload {
                 web_server_status_indication: WebServerStatusIndication::DifferentVersion as i32,
@@ -2202,7 +2202,12 @@ impl TryFrom<ProtobufWebServerStatusPayload> for WebServerStatus {
         match WebServerStatusIndication::from_i32(
             protobuf_web_server_status.web_server_status_indication,
         ) {
-            Some(WebServerStatusIndication::Online) => Ok(WebServerStatus::Online),
+            Some(WebServerStatusIndication::Online) => {
+                let payload = protobuf_web_server_status
+                    .payload
+                    .ok_or("payload_not_found")?;
+                Ok(WebServerStatus::Online(payload))
+            },
             Some(WebServerStatusIndication::DifferentVersion) => {
                 let payload = protobuf_web_server_status
                     .payload

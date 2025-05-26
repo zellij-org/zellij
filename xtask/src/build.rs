@@ -95,7 +95,12 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
         if flags.release {
             base_cmd = base_cmd.arg("--release");
         }
-        if flags.no_web && (crate_name == &"." || crate_name == &"zellij_utils" || crate_name == &"zellij_server" || crate_name == &"zellij_client") {
+        if flags.no_web
+            && (crate_name == &"."
+                || crate_name == &"zellij_utils"
+                || crate_name == &"zellij_server"
+                || crate_name == &"zellij_client")
+        {
             base_cmd = base_cmd.arg("--no-default-features");
             base_cmd = base_cmd.arg("--features");
             // these are the default features without web_server_capability

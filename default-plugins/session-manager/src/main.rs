@@ -464,7 +464,10 @@ impl State {
                 } else if self.new_session_info.name().contains('/') {
                     self.show_error("Session name cannot contain '/'");
                     return;
-                } else if self.sessions.has_forbidden_session(self.new_session_info.name()) {
+                } else if self
+                    .sessions
+                    .has_forbidden_session(self.new_session_info.name())
+                {
                     self.show_error("This session exists and web clients cannot attach to it.");
                     return;
                 }
@@ -582,7 +585,8 @@ impl State {
         if let Some(current_session_name) = current_session_name {
             self.session_name = Some(current_session_name);
         }
-        self.sessions.set_sessions(session_ui_infos, forbidden_sessions);
+        self.sessions
+            .set_sessions(session_ui_infos, forbidden_sessions);
     }
     fn main_menu_size(&self, rows: usize, cols: usize) -> (usize, usize, usize, usize) {
         // x, y, width, height
