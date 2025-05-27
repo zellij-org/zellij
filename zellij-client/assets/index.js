@@ -3,7 +3,16 @@ function is_https () {
 }
 
 document.addEventListener("DOMContentLoaded", async (event) => {
-    const web_client_id = await get_client_id();
+
+    let token;
+    while (!token) {
+        token = prompt("Please enter your access token:");
+        if (!token) {
+            alert("An access token is required. Please enter a token.");
+        }
+    }
+
+    const web_client_id = await get_client_id(token);
 
     var own_web_client_id = "";
     const { term, fitAddon } = initTerminal();
@@ -143,7 +152,7 @@ document.addEventListener("DOMContentLoaded", async (event) => {
             ? `${ws_url_prefix}://${window.web_server_ip}:${window.web_server_port}/ws/terminal?web_client_id=${web_client_id}`
             : `${ws_url_prefix}://${window.web_server_ip}:${window.web_server_port}/ws/terminal/${session_name}?web_client_id=${web_client_id}`;
 
-    let ws_terminal = new WebSocket(ws_terminal_url);
+    let ws_terminal = new WebSocket(ws_terminal_url, token);
     let ws_control;
 
     addEventListener("resize", (event) => {
@@ -276,8 +285,7 @@ document.addEventListener("DOMContentLoaded", async (event) => {
         if (own_web_client_id == "") {
             own_web_client_id = web_client_id;
             const ws_control_url = `${ws_url_prefix}://${window.web_server_ip}:${window.web_server_port}/ws/control`;
-
-            ws_control = new WebSocket(ws_control_url);
+            ws_control = new WebSocket(ws_control_url, token);
             start_ws_control();
         }
         term.write(event.data);
@@ -311,15 +319,22 @@ function initTerminal() {
     return { term, fitAddon };
 }
 
-function get_client_id() {
+function get_client_id(token) {
     let url_prefix = is_https() ? "https" : "http";
     return fetch(`${url_prefix}://${window.web_server_ip}:${window.web_server_port}/session`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
+            "token": token,
         },
         body: JSON.stringify({}),
     })
-        .then((data) => data.json())
+        .then((data) => {
+          if (data.status === 401) {
+            // TODO: render something
+            throw "Unauthorized";
+          }
+          return data.json()
+        })
         .then((data) => data.web_client_id);
 }

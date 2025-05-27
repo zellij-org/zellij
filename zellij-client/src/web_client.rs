@@ -4,7 +4,7 @@
 mod control_message;
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     env, fs,
     net::{IpAddr, Ipv4Addr},
     path::PathBuf,
@@ -23,7 +23,7 @@ use axum::{
         ws::{Message, WebSocket},
         Path as AxumPath, Query, State, WebSocketUpgrade,
     },
-    http::header,
+    http::{header, HeaderMap},
     http::StatusCode,
     response::{Html, IntoResponse},
     routing::{any, get, post},
@@ -33,6 +33,8 @@ use std::io::{prelude::*, BufRead, BufReader};
 
 use axum_server::tls_rustls::RustlsConfig;
 use axum_server::Handle;
+
+use sha2::{Sha256, Digest};
 
 use interprocess::unnamed_pipe::pipe;
 use tower_http::cors::CorsLayer;
@@ -61,6 +63,7 @@ use zellij_utils::{
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     sessions::{generate_unique_session_name, resurrection_layout, session_exists},
     setup::{find_default_config_dir, get_layout_dir},
+    web_authentication_tokens::{validate_token, create_token, delete_db},
 };
 
 use futures::{prelude::stream::SplitSink, SinkExt, StreamExt};
@@ -75,6 +78,59 @@ use tokio::{
     runtime::Runtime,
     sync::mpsc::{UnboundedReceiver, UnboundedSender},
 };
+
+use axum::{
+    http,
+    response::Response,
+    middleware::{self, Next},
+    extract::Request,
+};
+
+async fn auth(
+    State(token_store): State<TokenStore>,
+    // run the `HeaderMap` extractor
+    headers: HeaderMap,
+    // you can also add more extractors here but the last
+    // extractor must implement `FromRequest` which
+    // `Request` does
+    request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    match get_token(&headers) {
+        Some(token) if token_is_valid(&token_store, token) => {
+            log::info!("can has authorized");
+            let response = next.run(request).await;
+            Ok(response)
+        }
+        _ => {
+            log::info!("can has not authorized");
+            Err(StatusCode::UNAUTHORIZED)
+        }
+    }
+}
+
+fn get_token(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get("token")
+        .or_else(|| headers.get("sec-websocket-protocol")) // TODO: better? specifically for
+                                                           // websockets?
+        .and_then(|h| h.to_str().ok())
+}
+
+
+fn token_is_valid(token_store: &TokenStore, token: &str) -> bool {
+    match validate_token(token) {
+        Ok(is_valid) => is_valid,
+        Err(e) => {
+            log::error!("Failed to validate token: {}", e);
+            false
+        }
+    }
+    // validate_token(token).unwrap_or(false)
+//     let hashed_token = Sha256::digest(token);
+//     token_store.contains_token_hash(&hashed_token)
+}
+
 
 const BRACKETED_PASTE_START: [u8; 6] = [27, 91, 50, 48, 48, 126]; // \u{1b}[200~
 const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201~
@@ -383,12 +439,33 @@ struct AppState {
     server_handle: Handle,
 }
 
+#[derive(Clone, Default, Debug)]
+struct TokenStore {
+    hashed_tokens: HashSet<Vec<u8>>,
+}
+
+impl TokenStore {
+    pub fn contains_token_hash(&self, token_hash: &[u8]) -> bool {
+        self.hashed_tokens.contains(token_hash)
+    }
+    pub fn add_hash(&mut self, token_hash: &[u8]) {
+        self.hashed_tokens.insert(token_hash.to_vec());
+    }
+}
+
+
+
 async fn serve_web_client(
     config: Config,
     config_options: Options,
     listener: std::net::TcpListener,
     rustls_config: Option<RustlsConfig>,
 ) {
+    // TODO: DELETE THIS!!!111oneoneone
+    delete_db();
+    log::info!("DEBUG TOKEN: {}", create_token(None).unwrap());
+
+
     let connection_table = Arc::new(Mutex::new(ConnectionTable::default()));
 
     let server_handle = Handle::new();
@@ -412,16 +489,25 @@ async fn serve_web_client(
             .replace("WEB_SERVER_PORT", &format!("{}", web_server_port)),
     );
 
+    let mut token_store = TokenStore::default();
+    
+    let fake_hash_for_testing = Sha256::digest("valid_token"); // TODO: REMOVEME!!!111oneoneone
+
+    token_store.add_hash(&fake_hash_for_testing);
+
     let app = Router::new()
-        .route("/", get(html.clone()))
-        .route("/{session}", get(html.clone()))
-        .route("/assets/{*path}", get(get_static_asset))
         .route("/ws/control", any(ws_handler_control))
         .route("/ws/terminal", any(ws_handler_terminal))
         .route("/ws/terminal/{session}", any(ws_handler_terminal))
         .route("/session", post(create_new_client))
+        .route_layer(middleware::from_fn_with_state(token_store.clone(), auth))
+        .route("/", get(html.clone()))
+        .route("/{session}", get(html.clone()))
+        .route("/assets/{*path}", get(get_static_asset))
+        // TODO: do we want to restrict these somehow?
         .route("/info/version", get(VERSION))
         .route("/command/shutdown", post(send_shutdown_signal))
+
         .layer(CorsLayer::permissive()) // TODO: configure correctly
         .with_state(state);
 

@@ -91,6 +91,8 @@ uuid = { version = "1.4.1", default-features = false, features = ["serde", "v4",
 vte = { version = "0.11.0", default-features = false }
 names = { version = "0.14.0", default-features = false }
 include_dir = { version = "0.7.3", default-features = false }
+rusqlite = { version = "0.30", default-features = false, features = ["bundled"] }
+sha2 = { version = "0.10", default-features = false }
 zellij-utils = { path = "zellij-utils/", version = "0.43.0" }
 
 [profile.dev-opt]

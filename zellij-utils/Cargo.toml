@@ -39,6 +39,7 @@ thiserror = { workspace = true }
 unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
+sha2 = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 async-std = { workspace = true }
@@ -51,6 +52,7 @@ curl-sys = { version = "0.4", default-features = false, features = ["force-syste
 humantime = { workspace = true }
 suggest = { workspace = true }
 names = { workspace = true }
+rusqlite = { workspace = true }
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }

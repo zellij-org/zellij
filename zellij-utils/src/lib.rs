@@ -26,6 +26,8 @@ pub mod ipc; // Requires interprocess
 pub mod logging; // Requires log4rs
 #[cfg(not(target_family = "wasm"))]
 pub mod sessions;
+#[cfg(not(target_family = "wasm"))]
+pub mod web_authentication_tokens;
 
 // TODO(hartan): Remove this re-export for the next minor release.
 pub use ::prost;
