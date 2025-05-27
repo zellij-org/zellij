@@ -17,9 +17,18 @@ pub(super) enum WebClientToWebServerControlMessagePayload {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type")]
 pub(super) enum WebServerToWebClientControlMessage {
-    SetConfig { font: String },
+    SetConfig {
+        font: String,
+        background: Option<String>,
+    },
     QueryTerminalSize,
-    Log { lines: Vec<String> },
-    LogError { lines: Vec<String> },
-    SwitchedSession { new_session_name: String },
+    Log {
+        lines: Vec<String>,
+    },
+    LogError {
+        lines: Vec<String>,
+    },
+    SwitchedSession {
+        new_session_name: String,
+    },
 }

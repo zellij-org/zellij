@@ -1,4 +1,4 @@
-function is_https () {
+function is_https() {
     return document.location.protocol === "https:";
 }
 
@@ -200,8 +200,9 @@ document.addEventListener("DOMContentLoaded", async (event) => {
         ws_control.onmessage = function (event) {
             const msg = JSON.parse(event.data);
             if (msg.type === "SetConfig") {
-                const { font } = msg;
+                const { font, background } = msg;
                 term.options.fontFamily = font;
+                term.options.theme = { ...term.options.theme, background };
 
                 const fit_dimensions = fitAddon.proposeDimensions();
                 if (fit_dimensions === undefined) {
@@ -250,12 +251,12 @@ document.addEventListener("DOMContentLoaded", async (event) => {
             } else if (msg.type === "Log") {
                 const { lines } = msg;
                 for (const line in lines) {
-                  console.log(line);
+                    console.log(line);
                 }
             } else if (msg.type === "LogError") {
                 const { lines } = msg;
                 for (const line in lines) {
-                  console.error(line);
+                    console.error(line);
                 }
             } else if (msg.type === "SwitchedSession") {
                 const { new_session_name } = msg;
@@ -293,6 +294,7 @@ function initTerminal() {
         fontFamily: "Monospace",
         allowProposedApi: true,
     });
+    // window.term = term;
     const fitAddon = new FitAddon.FitAddon();
     const clipboardAddon = new ClipboardAddon.ClipboardAddon();
     const webLinksAddon = new WebLinksAddon.WebLinksAddon();
@@ -313,13 +315,16 @@ function initTerminal() {
 
 function get_client_id() {
     let url_prefix = is_https() ? "https" : "http";
-    return fetch(`${url_prefix}://${window.web_server_ip}:${window.web_server_port}/session`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({}),
-    })
+    return fetch(
+        `${url_prefix}://${window.web_server_ip}:${window.web_server_port}/session`,
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({}),
+        }
+    )
         .then((data) => data.json())
         .then((data) => data.web_client_id);
 }

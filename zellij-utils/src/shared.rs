@@ -5,7 +5,7 @@ use std::{iter, str::from_utf8};
 
 use crate::data::{Palette, PaletteColor, PaletteSource, ThemeHue};
 use crate::envs::get_session_name;
-use colorsys::Rgb;
+use colorsys::{Ansi256, Rgb};
 use strip_ansi_escapes::strip;
 use unicode_width::UnicodeWidthStr;
 
@@ -86,6 +86,10 @@ pub fn _hex_to_rgb(hex: &str) -> (u8, u8, u8) {
     Rgb::from_hex_str(hex)
         .expect("The passed argument must be a valid hex color")
         .into()
+}
+
+pub fn eightbit_to_rgb(c: u8) -> (u8, u8, u8) {
+    Ansi256::new(c).as_rgb().into()
 }
 
 pub fn default_palette() -> Palette {

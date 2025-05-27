@@ -548,8 +548,13 @@ async fn ws_handler_terminal(
 async fn handle_ws_control(socket: WebSocket, state: AppState) {
     info!("New Control WebSocket connection established");
 
+    let palette = state
+        .config
+        .theme_config(state.config_options.theme.as_ref());
+
     let set_config_msg = WebServerToWebClientControlMessage::SetConfig {
         font: state.config.web_client.font.clone(),
+        background: palette.map(|p| p.text_unselected.background.as_rgb_str()),
     };
 
     let (control_socket_tx, mut control_socket_rx) = socket.split();
