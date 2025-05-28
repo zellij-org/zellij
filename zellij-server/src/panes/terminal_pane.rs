@@ -522,7 +522,7 @@ impl Pane for TerminalPane {
         self.geom.y -= count;
         self.reflow_lines();
     }
-    fn dump_screen(&self, full: bool) -> String {
+    fn dump_screen(&self, full: bool, _client_id: Option<ClientId>) -> String {
         self.grid.dump_screen(full)
     }
     fn clear_screen(&mut self) {

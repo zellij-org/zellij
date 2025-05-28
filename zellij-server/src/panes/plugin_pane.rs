@@ -542,6 +542,9 @@ impl Pane for PluginPane {
         self.resize_grids();
         self.set_should_render(true);
     }
+    fn dump_screen(&self, full: bool, client_id: Option<ClientId>) -> String {
+        client_id.and_then(|c| self.grids.get(&c)).map(|g| g.dump_screen(full)).unwrap_or_else(|| "".to_owned())
+    }
     fn scroll_up(&mut self, count: usize, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(vec![(

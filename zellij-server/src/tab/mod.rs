@@ -349,7 +349,7 @@ pub trait Pane {
     fn pull_left(&mut self, count: usize);
     fn pull_up(&mut self, count: usize);
     fn clear_screen(&mut self);
-    fn dump_screen(&self, _full: bool) -> String {
+    fn dump_screen(&self, _full: bool, _client_id: Option<ClientId>) -> String {
         "".to_owned()
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
@@ -3134,7 +3134,7 @@ impl Tab {
             || format!("failed to dump active terminal screen for client {client_id}");
 
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            let dump = active_pane.dump_screen(full);
+            let dump = active_pane.dump_screen(full, Some(client_id));
             self.os_api
                 .write_to_file(dump, file)
                 .with_context(err_context)?;
@@ -3148,7 +3148,7 @@ impl Tab {
         full: bool,
     ) -> Result<()> {
         if let Some(pane) = self.get_pane_with_id(pane_id) {
-            let dump = pane.dump_screen(full);
+            let dump = pane.dump_screen(full, None);
             self.os_api.write_to_file(dump, file).non_fatal()
         }
         Ok(())
@@ -4726,10 +4726,6 @@ impl Tab {
             self.default_shell = default_shell;
         }
     }
-    //     pub fn set_session_is_shared(&mut self, session_is_shared: bool) {
-    //         self.session_is_shared = true;
-    //         self.update_input_modes();
-    //     }
     pub fn update_default_editor(&mut self, mut default_editor: Option<PathBuf>) {
         if let Some(default_editor) = default_editor.take() {
             self.default_editor = Some(default_editor);
