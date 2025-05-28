@@ -41,8 +41,8 @@ use daemonize::{self, Outcome};
 use nix::sys::stat::{umask, Mode};
 
 use control_message::{
-    WebClientToWebServerControlMessage, WebClientToWebServerControlMessagePayload,
-    WebServerToWebClientControlMessage,
+    SetConfigPayload, WebClientToWebServerControlMessage,
+    WebClientToWebServerControlMessagePayload, WebServerToWebClientControlMessage,
 };
 use zellij_utils::{
     cli::CliArgs,
@@ -548,29 +548,9 @@ async fn ws_handler_terminal(
 async fn handle_ws_control(socket: WebSocket, state: AppState) {
     info!("New Control WebSocket connection established");
 
-    let palette = state
-        .config
-        .theme_config(state.config_options.theme.as_ref());
-
-    let web_theme = state.config.web_client.theme.clone();
-
-    log::info!("Web theme: {:?}", web_theme);
-
-    let background = web_theme
-        .clone()
-        .and_then(|theme| theme.background)
-        .or_else(|| palette.map(|p| p.text_unselected.background.as_rgb_str()));
-
-    let foreground = web_theme
-        .clone()
-        .and_then(|theme| theme.foreground)
-        .or_else(|| palette.map(|p| p.text_unselected.base.as_rgb_str()));
-
-    let set_config_msg = WebServerToWebClientControlMessage::SetConfig {
-        font: state.config.web_client.font.clone(),
-        background,
-        foreground,
-    };
+    let config = SetConfigPayload::from((&state.config, &state.config_options));
+    let set_config_msg = WebServerToWebClientControlMessage::SetConfig(config);
+    info!("Sending initial config to client: {:?}", set_config_msg);
 
     let (control_socket_tx, mut control_socket_rx) = socket.split();
 

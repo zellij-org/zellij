@@ -200,6 +200,7 @@ document.addEventListener("DOMContentLoaded", async (event) => {
         ws_control.onmessage = function (event) {
             const msg = JSON.parse(event.data);
             if (msg.type === "SetConfig") {
+                console.log("SetConfig message received", msg);
                 const { font, background, foreground } = msg;
                 term.options.fontFamily = font;
                 term.options.theme = {
