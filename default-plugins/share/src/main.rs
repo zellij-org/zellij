@@ -31,6 +31,19 @@ struct App {
     own_plugin_id: Option<u32>,
     web_server_capability: bool,
     timer_running: bool,
+    current_screen: Screen,
+}
+
+#[derive(Debug)]
+enum Screen {
+    Main,
+    Token,
+}
+
+impl Default for Screen {
+    fn default() -> Self {
+        Screen::Main
+    }
 }
 
 register_plugin!(App);
@@ -109,31 +122,48 @@ impl ZellijPlugin for App {
                 if !self.web_server_capability {
                     return false;
                 }
-                if self.web_server_error.take().is_some() {
-                    // clear the error with any key
-                    return true;
-                }
-                match key.bare_key {
-                    BareKey::Enter if key.has_no_modifiers() && !self.web_server_started => {
-                        start_web_server();
-                    },
-                    BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
-                        stop_web_server();
-                    },
-                    BareKey::Char(' ') if key.has_no_modifiers() => {
-                        match self.web_sharing {
-                            WebSharing::Disabled => {
-                                // no-op
-                            },
-                            WebSharing::On => {
-                                stop_sharing_current_session();
-                            },
-                            WebSharing::Off => {
-                                share_current_session();
-                            },
+                match self.current_screen {
+                    Screen::Main => {
+                        if self.web_server_error.take().is_some() {
+                            // clear the error with any key
+                            return true;
                         }
-                    },
-                    _ => {},
+                        match key.bare_key {
+                            BareKey::Enter if key.has_no_modifiers() && !self.web_server_started => {
+                                start_web_server();
+                            },
+                            BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                                stop_web_server();
+                            },
+                            BareKey::Char(' ') if key.has_no_modifiers() => {
+                                match self.web_sharing {
+                                    WebSharing::Disabled => {
+                                        // no-op
+                                    },
+                                    WebSharing::On => {
+                                        stop_sharing_current_session();
+                                    },
+                                    WebSharing::Off => {
+                                        share_current_session();
+                                    },
+                                }
+                            },
+                            BareKey::Char('t') if key.has_no_modifiers() => {
+                                self.change_to_token_screen();
+                                should_render = true;
+                            },
+                            _ => {},
+                        }
+                    }
+                    Screen::Token => {
+                        match key.bare_key {
+                            BareKey::Esc if key.has_no_modifiers() => {
+                                self.change_to_main_screen();
+                                should_render = true;
+                            },
+                            _ => {}
+                        }
+                    }
                 }
             },
             Event::Mouse(mouse_event) => {
@@ -184,10 +214,128 @@ impl ZellijPlugin for App {
         should_render
     }
     fn render(&mut self, rows: usize, cols: usize) {
+//                   Share Session Locally in the Browser
+// 
+// Web server: RUNNING (<Ctrl c> - Stop)
+// URL: https://127.0.0.1:8082
+// <t> - generate authentication token / manage authentication tokens
+// 
+// Current session: NOT SHARING
+// Press <SPACE> to share
+// 
+// How it works:
+// - Visit base URL to start a new session
+// - Follow base URL with a session name to attach to or create it
+// - By default sessions not started from the web must be explicitly shared
+//
+//
+// *******
+//
+// Generated token: <TOKEN>
+//
+// Press <c> to copy to clipboard (requires a supporting terminal)
+//
+// Or generate the token on the command line with:
+// zellij web --generate-token
+//
+// Only token hashes are stored, tokens cannot be retrieved - only revoked.
+//
+//
+// *******
+//
+//                    Active authentication tokens
+//
+//
         if !self.web_server_capability {
             self.render_no_web_server_capability(rows, cols);
             return;
         }
+        match self.current_screen {
+            Screen::Main => {
+                self.render_main_screen(rows, cols);
+            },
+            Screen::Token => {
+                self.render_token_screen(rows, cols);
+
+            }
+        }
+    }
+}
+
+impl App {
+    pub fn render_link_help(&self, x: usize, y: usize) {
+        let help_text = if self.link_executable.is_some() {
+            let help_text = format!("Help: Click or Shift-Click to open in browser");
+            Text::new(help_text)
+                .color_range(3, 6..=10)
+                .color_range(3, 15..=25)
+        } else {
+            let help_text = format!("Help: Shift-Click to open in browser");
+            Text::new(help_text).color_range(3, 6..=16)
+        };
+        print_text_with_coordinates(help_text, x, y, None, None);
+    }
+    pub fn render_unencrypted_warning(&mut self, x: usize, y: usize) {
+        let warning_text =
+            format!("[*] Connection unencrypted. Consider using an SSL certificate.");
+        let warning_text = Text::new(warning_text).color_range(1, ..3);
+        let more_info_text = "More info: ";
+        let url_text = "https://zellij.dev/documentation/web-server-ssl";
+        let more_info_line = Text::new(format!("{}{}", more_info_text, url_text));
+        let url_x = x + more_info_text.chars().count();
+        let url_y = y + 1;
+        let url_width = url_text.chars().count();
+        self.clickable_urls.insert(
+            CoordinatesInLine::new(url_x, url_y, url_width),
+            url_text.to_owned(),
+        );
+        print_text_with_coordinates(warning_text, x, y, None, None);
+        print_text_with_coordinates(more_info_line, x, y + 1, None, None);
+        if hovering_on_line(url_x, url_y, url_width, self.hover_coordinates) {
+            self.currently_hovering_over_link = true;
+            render_text_with_underline(url_x, url_y, url_text);
+        }
+    }
+    pub fn query_link_executable(&self) {
+        let mut xdg_open_context = BTreeMap::new();
+        xdg_open_context.insert("xdg_open_cli".to_owned(), String::new());
+        run_command(&["xdg-open", "--help"], xdg_open_context);
+        let mut open_context = BTreeMap::new();
+        open_context.insert("open_cli".to_owned(), String::new());
+        run_command(&["open", "--help"], open_context);
+    }
+    pub fn change_own_title(&mut self) {
+        if let Some(own_plugin_id) = self.own_plugin_id {
+            rename_plugin_pane(own_plugin_id, "Share Session");
+        }
+    }
+    pub fn render_no_web_server_capability(&self, rows: usize, cols: usize) {
+        let text_full = "This version of Zellij was compiled without web sharing capabilities";
+        let text_short = "No web server capabilities";
+        let text = if cols >= text_full.chars().count() {
+            text_full
+        } else {
+            text_short
+        };
+        let text_element = Text::new(text).color_range(3, ..);
+        let text_x = cols.saturating_sub(text.chars().count()) / 2;
+        let text_y = rows / 2;
+        print_text_with_coordinates(text_element, text_x, text_y, None, None);
+    }
+    pub fn connection_is_unencrypted(&self) -> bool {
+        Url::parse(&self.web_server_base_url)
+            .ok()
+            .map(|b| b.scheme() == "http")
+            .unwrap_or(false)
+    }
+    pub fn change_to_token_screen(&mut self) {
+        self.current_screen = Screen::Token;
+    }
+    pub fn change_to_main_screen(&mut self) {
+        // TODO: also delete token from state
+        self.current_screen = Screen::Main;
+    }
+    fn render_main_screen(&mut self, rows: usize, cols: usize) {
         // reset rendered state
         self.currently_hovering_over_link = false;
         self.clickable_urls.clear();
@@ -278,73 +426,38 @@ impl ZellijPlugin for App {
             self.render_link_help(base_x, current_y);
         }
     }
-}
+    fn render_token_screen(&mut self, rows: usize, cols: usize) {
 
-impl App {
-    pub fn render_link_help(&self, x: usize, y: usize) {
-        let help_text = if self.link_executable.is_some() {
-            let help_text = format!("Help: Click or Shift-Click to open in browser");
-            Text::new(help_text)
-                .color_range(3, 6..=10)
-                .color_range(3, 15..=25)
-        } else {
-            let help_text = format!("Help: Shift-Click to open in browser");
-            Text::new(help_text).color_range(3, 6..=16)
-        };
-        print_text_with_coordinates(help_text, x, y, None, None);
-    }
-    pub fn render_unencrypted_warning(&mut self, x: usize, y: usize) {
-        let warning_text =
-            format!("[*] Connection unencrypted. Consider using an SSL certificate.");
-        let warning_text = Text::new(warning_text).color_range(1, ..3);
-        let more_info_text = "More info: ";
-        let url_text = "https://zellij.dev/documentation/web-server-ssl";
-        let more_info_line = Text::new(format!("{}{}", more_info_text, url_text));
-        let url_x = x + more_info_text.chars().count();
-        let url_y = y + 1;
-        let url_width = url_text.chars().count();
-        self.clickable_urls.insert(
-            CoordinatesInLine::new(url_x, url_y, url_width),
-            url_text.to_owned(),
-        );
-        print_text_with_coordinates(warning_text, x, y, None, None);
-        print_text_with_coordinates(more_info_line, x, y + 1, None, None);
-        if hovering_on_line(url_x, url_y, url_width, self.hover_coordinates) {
-            self.currently_hovering_over_link = true;
-            render_text_with_underline(url_x, url_y, url_text);
-        }
-    }
-    pub fn query_link_executable(&self) {
-        let mut xdg_open_context = BTreeMap::new();
-        xdg_open_context.insert("xdg_open_cli".to_owned(), String::new());
-        run_command(&["xdg-open", "--help"], xdg_open_context);
-        let mut open_context = BTreeMap::new();
-        open_context.insert("open_cli".to_owned(), String::new());
-        run_command(&["open", "--help"], open_context);
-    }
-    pub fn change_own_title(&mut self) {
-        if let Some(own_plugin_id) = self.own_plugin_id {
-            rename_plugin_pane(own_plugin_id, "Share Session");
-        }
-    }
-    pub fn render_no_web_server_capability(&self, rows: usize, cols: usize) {
-        let text_full = "This version of Zellij was compiled without web sharing capabilities";
-        let text_short = "No web server capabilities";
-        let text = if cols >= text_full.chars().count() {
-            text_full
-        } else {
-            text_short
-        };
-        let text_element = Text::new(text).color_range(3, ..);
-        let text_x = cols.saturating_sub(text.chars().count()) / 2;
-        let text_y = rows / 2;
-        print_text_with_coordinates(text_element, text_x, text_y, None, None);
-    }
-    pub fn connection_is_unencrypted(&self) -> bool {
-        Url::parse(&self.web_server_base_url)
-            .ok()
-            .map(|b| b.scheme() == "http")
-            .unwrap_or(false)
+// Generated token: <TOKEN>
+//
+// Use this token to log-in from the browser.
+// Tokens are not saved, so can't be retrieved - only revoked.
+//
+// <Esc> - go back
+        let mut width = 0;
+        let token_placeholder = "81eeb7cd-ca74-464d-b025-d9e3a57193bf";
+        let generated_token_text = format!("New log-in token: {}", token_placeholder);
+        width = std::cmp::max(width, generated_token_text.chars().count());
+        let generated_token = Text::new(generated_token_text).color_range(2, ..=15);
+        let explanation_text_1 = "Use this token to log-in from the browser.";
+        width = std::cmp::max(width, explanation_text_1.chars().count());
+        let explanation_text_2 = "Copy this token, because it will not be saved and can't be retrieved.";
+        width = std::cmp::max(width, explanation_text_2.chars().count());
+        let explanation_text_3 = "If lost, it can always be revoked and a new one generated.";
+        width = std::cmp::max(width, explanation_text_3.chars().count());
+        let esc_go_back = "<Esc> - go back";
+        width = std::cmp::max(width, esc_go_back.chars().count());
+        let explanation_text_1 = Text::new(explanation_text_1).color_range(0, ..);
+        let explanation_text_2 = Text::new(explanation_text_2);
+        let explanation_text_3 = Text::new(explanation_text_3);
+        let esc_go_back = Text::new(esc_go_back).color_range(3, ..=4);
+        let base_x = cols.saturating_sub(width) / 2;
+        let base_y = rows.saturating_sub(7) / 2;
+        print_text_with_coordinates(generated_token, base_x, base_y, None, None);
+        print_text_with_coordinates(explanation_text_1, base_x, base_y + 2, None, None);
+        print_text_with_coordinates(explanation_text_2, base_x, base_y + 4, None, None);
+        print_text_with_coordinates(explanation_text_3, base_x, base_y + 5, None, None);
+        print_text_with_coordinates(esc_go_back, base_x, base_y + 7, None, None);
     }
 }
 

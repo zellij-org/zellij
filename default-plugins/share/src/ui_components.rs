@@ -7,6 +7,7 @@ use std::collections::HashMap;
 #[derive(Debug)]
 pub struct Usage {
     usage_title: &'static str,
+    bulletin_0: &'static str,
     bulletin_1_full: &'static str,
     bulletin_1_short: &'static str,
     bulletin_2_full: &'static str,
@@ -15,10 +16,16 @@ pub struct Usage {
     bulletin_3_short: &'static str,
 }
 
+//             let generate_token_text = "<t> - generate login token";
+//             let generate_token = Text::new(generate_token_text).color_range(3, ..=3);
+//             print_text_with_coordinates(generate_token, x, y + 2, None, None);
+
+
 impl Usage {
     pub fn new() -> Self {
         Usage {
             usage_title: "How it works:",
+            bulletin_0: "- <t> - generate login token",
             bulletin_1_full: "- Visit base URL to start a new session",
             bulletin_1_short: "- Base URL: new session",
             bulletin_2_full: "- Follow base URL with a session name to attach to or create it",
@@ -31,6 +38,7 @@ impl Usage {
     pub fn usage_width_and_height(&self, max_width: usize) -> (usize, usize) {
         let mut max_len = 0;
         max_len = std::cmp::max(max_len, self.usage_title.chars().count());
+        // TODO: bulletin_0
         let bulletin_1 = if self.bulletin_1_full.chars().count() <= max_width {
             self.bulletin_1_full
         } else {
@@ -70,13 +78,15 @@ impl Usage {
             self.bulletin_3_short
         };
         let usage_title = Text::new(self.usage_title).color_range(2, ..);
+        let bulletin_0 = Text::new(self.bulletin_0).color_range(3, 2..=5);
         let bulletin_1 = Text::new(bulletin_1);
         let bulletin_2 = Text::new(bulletin_2);
         let bulletin_3 = Text::new(bulletin_3);
         print_text_with_coordinates(usage_title, x, y, None, None);
-        print_text_with_coordinates(bulletin_1, x, y + 1, None, None);
-        print_text_with_coordinates(bulletin_2, x, y + 2, None, None);
-        print_text_with_coordinates(bulletin_3, x, y + 3, None, None);
+        print_text_with_coordinates(bulletin_0, x, y + 1, None, None);
+        print_text_with_coordinates(bulletin_1, x, y + 2, None, None);
+        print_text_with_coordinates(bulletin_2, x, y + 3, None, None);
+        print_text_with_coordinates(bulletin_3, x, y + 4, None, None);
     }
 }
 
@@ -176,6 +186,7 @@ impl WebServerStatusSection {
             };
 
             print_text_with_coordinates(info_line, x, y + 1, None, None);
+
             if hovering_on_line(url_x, url_y, url_width, hover_coordinates) {
                 self.currently_hovering_over_link = true;
                 render_text_with_underline(url_x, url_y, server_url);

@@ -213,14 +213,14 @@ impl Pane for TerminalPane {
         key_with_modifier: &Option<KeyWithModifier>,
         raw_input_bytes: Vec<u8>,
         raw_input_bytes_are_kitty: bool,
-        _client_id: Option<ClientId>,
+        client_id: Option<ClientId>,
     ) -> Option<AdjustedInput> {
         // there are some cases in which the terminal state means that input sent to it
         // needs to be adjusted.
         // here we match against those cases - if need be, we adjust the input and if not
         // we send back the original input
 
-        self.reset_selection();
+        self.reset_selection(client_id);
         if !self.grid.bracketed_paste_mode {
             // Zellij itself operates in bracketed paste mode, so the terminal sends these
             // instructions (bracketed paste start and bracketed paste end respectively)
@@ -595,11 +595,11 @@ impl Pane for TerminalPane {
         self.set_should_render(true);
     }
 
-    fn reset_selection(&mut self) {
+    fn reset_selection(&mut self, _client_id: Option<ClientId>) {
         self.grid.reset_selection();
     }
 
-    fn get_selected_text(&self) -> Option<String> {
+    fn get_selected_text(&self, _client_id: ClientId) -> Option<String> {
         self.grid.get_selected_text()
     }
 

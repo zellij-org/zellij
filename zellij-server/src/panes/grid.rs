@@ -2423,6 +2423,9 @@ impl Grid {
     pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
         self.arrow_fonts = should_support_arrow_fonts;
     }
+    pub fn has_selection(&self) -> bool {
+        !self.selection.is_empty()
+    }
 }
 
 impl Perform for Grid {

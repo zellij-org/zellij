@@ -375,8 +375,11 @@ pub trait Pane {
     fn start_selection(&mut self, _start: &Position, _client_id: ClientId) {}
     fn update_selection(&mut self, _position: &Position, _client_id: ClientId) {}
     fn end_selection(&mut self, _end: &Position, _client_id: ClientId) {}
-    fn reset_selection(&mut self) {}
-    fn get_selected_text(&self) -> Option<String> {
+    fn reset_selection(&mut self, _client_id: Option<ClientId>) {}
+    fn supports_mouse_selection(&self) -> bool {
+        true
+    }
+    fn get_selected_text(&self, _client_id: ClientId) -> Option<String> {
         None
     }
 
@@ -3673,10 +3676,10 @@ impl Tab {
                 // start selection for copy/paste
                 let mut leave_clipboard_message = false;
                 pane_at_position.start_selection(&relative_position, client_id);
-                if pane_at_position.get_selected_text().is_some() {
+                if pane_at_position.get_selected_text(client_id).is_some() {
                     leave_clipboard_message = true;
                 }
-                if let PaneId::Terminal(_) = pane_at_position.pid() {
+                if pane_at_position.supports_mouse_selection() {
                     self.selecting_with_mouse_in_pane = Some(pane_at_position.pid());
                 }
                 if leave_clipboard_message {
@@ -3819,9 +3822,9 @@ impl Tab {
             } else {
                 let relative_position = pane_with_selection.relative_position(&event.position);
                 pane_with_selection.end_selection(&relative_position, client_id);
-                if let PaneId::Terminal(_) = pane_with_selection.pid() {
+                if pane_with_selection.supports_mouse_selection() {
                     if copy_on_release {
-                        let selected_text = pane_with_selection.get_selected_text();
+                        let selected_text = pane_with_selection.get_selected_text(client_id);
 
                         if let Some(selected_text) = selected_text {
                             leave_clipboard_message = true;
@@ -4083,7 +4086,7 @@ impl Tab {
     pub fn copy_selection(&self, client_id: ClientId) -> Result<()> {
         let selected_text = self
             .get_active_pane(client_id)
-            .and_then(|p| p.get_selected_text());
+            .and_then(|p| p.get_selected_text(client_id));
         if let Some(selected_text) = selected_text {
             self.write_selection_to_clipboard(&selected_text)
                 .with_context(|| {
