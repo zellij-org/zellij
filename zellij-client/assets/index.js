@@ -300,9 +300,10 @@ function initTerminal() {
     const term = new Terminal({
         fontFamily: "Monospace",
         allowProposedApi: true,
+        scrollback: 0,
     });
     // for debugging
-    // window.term = term;
+    window.term = term;
     const fitAddon = new FitAddon.FitAddon();
     const clipboardAddon = new ClipboardAddon.ClipboardAddon();
     const webLinksAddon = new WebLinksAddon.WebLinksAddon();
