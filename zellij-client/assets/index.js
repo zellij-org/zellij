@@ -208,6 +208,8 @@ document.addEventListener("DOMContentLoaded", async (event) => {
                     background,
                     foreground,
                 };
+                const body = document.querySelector("body");
+                body.style.background = background;
 
                 const fit_dimensions = fitAddon.proposeDimensions();
                 if (fit_dimensions === undefined) {

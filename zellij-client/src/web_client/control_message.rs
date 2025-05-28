@@ -39,16 +39,14 @@ impl From<(&Config, &Options)> for SetConfigPayload {
         let font = config.web_client.font.clone();
 
         let palette = config.theme_config(options.theme.as_ref());
-        let theme = &config.web_client.theme;
+        let theme = config.web_client.theme.as_ref();
 
         let background = theme
-            .clone()
-            .and_then(|theme| theme.background)
+            .and_then(|theme| theme.background.clone())
             .or_else(|| palette.map(|p| p.text_unselected.background.as_rgb_str()));
 
         let foreground = theme
-            .clone()
-            .and_then(|theme| theme.foreground)
+            .and_then(|theme| theme.foreground.clone())
             .or_else(|| palette.map(|p| p.text_unselected.base.as_rgb_str()));
 
         SetConfigPayload {
