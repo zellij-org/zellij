@@ -20,6 +20,7 @@ pub(super) enum WebServerToWebClientControlMessage {
     SetConfig {
         font: String,
         background: Option<String>,
+        foreground: Option<String>,
     },
     QueryTerminalSize,
     Log {

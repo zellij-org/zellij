@@ -552,9 +552,24 @@ async fn handle_ws_control(socket: WebSocket, state: AppState) {
         .config
         .theme_config(state.config_options.theme.as_ref());
 
+    let web_theme = state.config.web_client.theme.clone();
+
+    log::info!("Web theme: {:?}", web_theme);
+
+    let background = web_theme
+        .clone()
+        .and_then(|theme| theme.background)
+        .or_else(|| palette.map(|p| p.text_unselected.background.as_rgb_str()));
+
+    let foreground = web_theme
+        .clone()
+        .and_then(|theme| theme.foreground)
+        .or_else(|| palette.map(|p| p.text_unselected.base.as_rgb_str()));
+
     let set_config_msg = WebServerToWebClientControlMessage::SetConfig {
         font: state.config.web_client.font.clone(),
-        background: palette.map(|p| p.text_unselected.background.as_rgb_str()),
+        background,
+        foreground,
     };
 
     let (control_socket_tx, mut control_socket_rx) = socket.split();
