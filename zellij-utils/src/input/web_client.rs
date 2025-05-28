@@ -1,7 +1,9 @@
 use kdl::{KdlDocument, KdlNode, KdlValue};
 use serde::{Deserialize, Serialize};
 
-use crate::{kdl_get_child, kdl_get_child_entry_string_value};
+use crate::{
+    data::PaletteColor, kdl_children_or_error, kdl_get_child, kdl_get_child_entry_string_value,
+};
 
 use super::config::ConfigError;
 
@@ -14,16 +16,20 @@ pub struct WebClientTheme {
 impl WebClientTheme {
     pub fn from_kdl(kdl: &KdlNode) -> Result<Self, ConfigError> {
         let mut theme = WebClientTheme::default();
+        let colors = kdl_children_or_error!(kdl, "empty theme");
 
-        if let Some(background) = kdl_get_child_entry_string_value!(kdl, "background") {
-            // TODO: color parsing
-            theme.background = Some(background.to_owned());
-        }
+        // Helper function to extract colors
+        let extract_color = |name: &str| -> Result<Option<String>, ConfigError> {
+            if colors.get(name).is_some() {
+                let color = PaletteColor::try_from((name, colors))?;
+                Ok(Some(color.as_rgb_str()))
+            } else {
+                Ok(None)
+            }
+        };
 
-        if let Some(foreground) = kdl_get_child_entry_string_value!(kdl, "foreground") {
-            // TODO: color parsing
-            theme.foreground = Some(foreground.to_owned());
-        }
+        theme.background = extract_color("background")?;
+        theme.foreground = extract_color("foreground")?;
 
         Ok(theme)
     }
