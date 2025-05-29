@@ -6,11 +6,18 @@ use sha2::{Digest, Sha256};
 use crate::consts::ZELLIJ_PROJ_DIR;
 
 #[derive(Debug)]
+pub struct TokenInfo {
+    pub name: String,
+    pub created_at: String,
+}
+
+#[derive(Debug)]
 pub enum TokenError {
     Database(rusqlite::Error),
     Io(std::io::Error),
     InvalidPath,
     DuplicateName(String),
+    TokenNotFound(String),
 }
 
 impl std::fmt::Display for TokenError {
@@ -20,6 +27,7 @@ impl std::fmt::Display for TokenError {
             TokenError::Io(e) => write!(f, "IO error: {}", e),
             TokenError::InvalidPath => write!(f, "Invalid path"),
             TokenError::DuplicateName(name) => write!(f, "Token name '{}' already exists", name),
+            TokenError::TokenNotFound(name) => write!(f, "Token '{}' not found", name),
         }
     }
 }
@@ -111,14 +119,58 @@ pub fn revoke_token(name: &str) -> Result<bool> {
     Ok(rows_affected > 0)
 }
 
-pub fn list_tokens() -> Result<Vec<String>> {
+pub fn revoke_all_tokens() -> Result<usize> {
+    let db_path = get_db_path()?;
+    let conn = Connection::open(db_path)?;
+    init_db(&conn)?;
+    let rows_affected = conn.execute(
+        "DELETE FROM tokens",
+        [],
+    )?;
+    Ok(rows_affected)
+}
+
+pub fn rename_token(old_name: &str, new_name: &str) -> Result<()> {
     let db_path = get_db_path()?;
     let conn = Connection::open(db_path)?;
     init_db(&conn)?;
     
-    let mut stmt = conn.prepare("SELECT name FROM tokens ORDER BY created_at")?;
+    // Check if the old token exists
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM tokens WHERE name = ?1",
+        [&old_name],
+        |row| row.get(0)
+    )?;
+    
+    if count == 0 {
+        return Err(TokenError::TokenNotFound(old_name.to_string()));
+    }
+    
+    // Try to update the token name
+    match conn.execute(
+        "UPDATE tokens SET name = ?1 WHERE name = ?2",
+        [&new_name, &old_name],
+    ) {
+        Err(rusqlite::Error::SqliteFailure(ffi_error, _)) 
+            if ffi_error.code == rusqlite::ErrorCode::ConstraintViolation => {
+            Err(TokenError::DuplicateName(new_name.to_string()))
+        },
+        Err(e) => Err(TokenError::Database(e)),
+        Ok(_) => Ok(()),
+    }
+}
+
+pub fn list_tokens() -> Result<Vec<TokenInfo>> {
+    let db_path = get_db_path()?;
+    let conn = Connection::open(db_path)?;
+    init_db(&conn)?;
+    
+    let mut stmt = conn.prepare("SELECT name, created_at FROM tokens ORDER BY created_at")?;
     let rows = stmt.query_map([], |row| {
-        Ok(row.get::<_, String>(0)?)
+        Ok(TokenInfo {
+            name: row.get::<_, String>(0)?,
+            created_at: row.get::<_, String>(1)?,
+        })
     })?;
     
     let mut tokens = Vec::new();

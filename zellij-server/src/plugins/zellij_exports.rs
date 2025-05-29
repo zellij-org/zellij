@@ -25,7 +25,7 @@ use zellij_utils::data::{
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
-use zellij_utils::web_authentication_tokens::{create_token, revoke_token, list_tokens};
+use zellij_utils::web_authentication_tokens::{create_token, revoke_token, list_tokens, rename_token, revoke_all_tokens};
 
 use crate::{panes::PaneId, screen::ScreenInstruction};
 
@@ -43,7 +43,7 @@ use zellij_utils::{
         layout::{Layout, RunPluginOrAlias},
     },
     plugin_api::{
-        plugin_command::{ProtobufPluginCommand, ProtobufCreateTokenResponse, ProtobufRevokeTokenResponse, ProtobufListTokensResponse},
+        plugin_command::{ProtobufPluginCommand, CreateTokenResponse, RevokeTokenResponse, ListTokensResponse, RevokeAllWebTokensResponse, RenameWebTokenResponse},
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
 };
@@ -472,6 +472,12 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     }
                     PluginCommand::ListWebLoginTokens => {
                         list_web_login_tokens(env);
+                    }
+                    PluginCommand::RevokeAllWebLoginTokens => {
+                        revoke_all_web_login_tokens(env);
+                    }
+                    PluginCommand::RenameWebLoginToken(old_name, new_name) => {
+                        rename_web_login_token(env, old_name, new_name);
                     }
                 },
                 (PermissionStatus::Denied, permission) => {
@@ -2283,14 +2289,14 @@ fn embed_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
 fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>) {
     let serialized = match create_token(token_label) {
         Ok((token, token_label)) => {
-            ProtobufCreateTokenResponse {
+            CreateTokenResponse {
                 token: Some(token),
                 token_label: Some(token_label),
                 error: None,
             }
         },
         Err(e) => {
-            ProtobufCreateTokenResponse {
+            CreateTokenResponse {
                 token: None,
                 token_label: None,
                 error: Some(e.to_string()),
@@ -2303,20 +2309,56 @@ fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>) {
 fn revoke_web_login_token(env: &PluginEnv, token_label: String) {
     let serialized = match revoke_token(&token_label) {
         Ok(true) => {
-            ProtobufRevokeTokenResponse {
+            RevokeTokenResponse {
                 successfully_revoked: true,
                 error: None,
             }
         },
         Ok(false) => {
-            ProtobufRevokeTokenResponse {
+            RevokeTokenResponse {
                 successfully_revoked: false,
                 error: Some(format!("Token with label {} not found", token_label)),
             }
         },
         Err(e) => {
-            ProtobufRevokeTokenResponse {
+            RevokeTokenResponse {
                 successfully_revoked: false,
+                error: Some(e.to_string()),
+            }
+        }
+    };
+    let _ = wasi_write_object(env, &serialized.encode_to_vec());
+}
+
+fn revoke_all_web_login_tokens(env: &PluginEnv) {
+    let serialized = match revoke_all_tokens() {
+        Ok(_) => {
+            RevokeAllWebTokensResponse {
+                successfully_revoked: true,
+                error: None,
+            }
+        },
+        Err(e) => {
+            RevokeAllWebTokensResponse {
+                successfully_revoked: false,
+                error: Some(e.to_string()),
+            }
+        }
+    };
+    let _ = wasi_write_object(env, &serialized.encode_to_vec());
+}
+
+fn rename_web_login_token(env: &PluginEnv, old_name: String, new_name: String) {
+    let serialized = match rename_token(&old_name, &new_name) {
+        Ok(_) => {
+            RenameWebTokenResponse {
+                successfully_renamed: true,
+                error: None,
+            }
+        },
+        Err(e) => {
+            RenameWebTokenResponse {
+                successfully_renamed: false,
                 error: Some(e.to_string()),
             }
         }
@@ -2327,14 +2369,16 @@ fn revoke_web_login_token(env: &PluginEnv, token_label: String) {
 fn list_web_login_tokens(env: &PluginEnv) {
     let serialized = match list_tokens() {
         Ok(token_list) => {
-            ProtobufListTokensResponse {
-                tokens: token_list,
+            ListTokensResponse {
+                tokens: token_list.iter().map(|t| t.name.clone()).collect(),
+                creation_times: token_list.iter().map(|t| t.created_at.clone()).collect(),
                 error: None,
             }
         },
         Err(e) => {
-            ProtobufListTokensResponse {
+            ListTokensResponse {
                 tokens: vec![],
+                creation_times: vec![],
                 error: Some(e.to_string()),
             }
         }
@@ -2543,6 +2587,8 @@ fn check_command_permission(
         | PluginCommand::QueryWebServerStatus
         | PluginCommand::GenerateWebLoginToken(..)
         | PluginCommand::RevokeWebLoginToken(..)
+        | PluginCommand::RevokeAllWebLoginTokens
+        | PluginCommand::RenameWebLoginToken(..)
         | PluginCommand::ListWebLoginTokens
         | PluginCommand::StartWebServer => PermissionType::StartWebServer,
         _ => return (PermissionStatus::Granted, None),

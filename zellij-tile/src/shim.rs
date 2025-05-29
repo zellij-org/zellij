@@ -8,7 +8,7 @@ use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
 pub use zellij_utils::plugin_api;
-use zellij_utils::plugin_api::plugin_command::{ProtobufPluginCommand, CreateTokenResponse, RevokeTokenResponse, ListTokensResponse};
+use zellij_utils::plugin_api::plugin_command::{ProtobufPluginCommand, CreateTokenResponse, RevokeTokenResponse, ListTokensResponse, RevokeAllWebTokensResponse, RenameWebTokenResponse};
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
 pub use super::ui_components::*;
@@ -1373,15 +1373,20 @@ pub fn generate_web_login_token(token_label: Option<String>) -> Result<String, S
     }
 }
 
-pub fn revoke_web_login_token(token_label: &str) -> RevokeTokenResponse {
+pub fn revoke_web_login_token(token_label: &str) -> Result<(), String> {
     let plugin_command = PluginCommand::RevokeWebLoginToken(token_label.to_owned());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
-    RevokeTokenResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap()
+    let revoke_token_response = RevokeTokenResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    if let Some(error) = revoke_token_response.error {
+        Err(error)
+    } else {
+        Ok(())
+    }
 }
 
-pub fn list_web_login_tokens() -> Result<Vec<String>, String>{
+pub fn list_web_login_tokens() -> Result<Vec<(String, String)>, String> { // (name, created_at)
     let plugin_command = PluginCommand::ListWebLoginTokens;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
@@ -1390,7 +1395,34 @@ pub fn list_web_login_tokens() -> Result<Vec<String>, String>{
     if let Some(error) = list_tokens_response.error {
         Err(error)
     } else {
-        Ok(list_tokens_response.tokens)
+        let tokens_and_creation_times = std::iter::zip(list_tokens_response.tokens, list_tokens_response.creation_times).collect();
+        Ok(tokens_and_creation_times)
+    }
+}
+
+pub fn revoke_all_web_tokens() -> Result<(), String> {
+    let plugin_command = PluginCommand::RevokeAllWebLoginTokens;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let revoke_all_web_tokens_response = RevokeAllWebTokensResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    if let Some(error) = revoke_all_web_tokens_response.error {
+        Err(error)
+    } else {
+        Ok(())
+    }
+}
+
+pub fn rename_web_token(old_name: &str, new_name: &str) -> Result<(), String> {
+    let plugin_command = PluginCommand::RenameWebLoginToken(old_name.to_owned(), new_name.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let rename_web_token_response = RenameWebTokenResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    if let Some(error) = rename_web_token_response.error {
+        Err(error)
+    } else {
+        Ok(())
     }
 }
 

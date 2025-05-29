@@ -2426,4 +2426,6 @@ pub enum PluginCommand {
     GenerateWebLoginToken(Option<String>), // String -> optional token label
     RevokeWebLoginToken(String), // String -> token id (provided name or generated id)
     ListWebLoginTokens,
+    RevokeAllWebLoginTokens,
+    RenameWebLoginToken(String, String), // (original_name, new_name)
 }

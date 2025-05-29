@@ -3,7 +3,7 @@
 pub struct PluginCommand {
     #[prost(enumeration="CommandName", tag="1")]
     pub name: i32,
-    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109")]
+    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110")]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
 /// Nested message and enum types in `PluginCommand`.
@@ -209,7 +209,17 @@ pub mod plugin_command {
         GenerateWebLoginTokenPayload(super::GenerateWebLoginTokenPayload),
         #[prost(message, tag="109")]
         RevokeWebLoginTokenPayload(super::RevokeWebLoginTokenPayload),
+        #[prost(message, tag="110")]
+        RenameWebLoginTokenPayload(super::RenameWebLoginTokenPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenameWebLoginTokenPayload {
+    #[prost(string, tag="1")]
+    pub old_name: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub new_name: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -829,8 +839,27 @@ pub struct RevokeTokenResponse {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListTokensResponse {
+    /// tokens/creation_times should be synchronized
     #[prost(string, repeated, tag="1")]
     pub tokens: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="2")]
+    pub creation_times: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="3")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RevokeAllWebTokensResponse {
+    #[prost(bool, tag="1")]
+    pub successfully_revoked: bool,
+    #[prost(string, optional, tag="2")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenameWebTokenResponse {
+    #[prost(bool, tag="1")]
+    pub successfully_renamed: bool,
     #[prost(string, optional, tag="2")]
     pub error: ::core::option::Option<::prost::alloc::string::String>,
 }
@@ -978,6 +1007,8 @@ pub enum CommandName {
     GenerateWebLoginToken = 138,
     RevokeWebLoginToken = 139,
     ListWebLoginTokens = 140,
+    RevokeAllWebLoginTokens = 141,
+    RenameWebLoginToken = 142,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1127,6 +1158,8 @@ impl CommandName {
             CommandName::GenerateWebLoginToken => "GenerateWebLoginToken",
             CommandName::RevokeWebLoginToken => "RevokeWebLoginToken",
             CommandName::ListWebLoginTokens => "ListWebLoginTokens",
+            CommandName::RevokeAllWebLoginTokens => "RevokeAllWebLoginTokens",
+            CommandName::RenameWebLoginToken => "RenameWebLoginToken",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1273,6 +1306,8 @@ impl CommandName {
             "GenerateWebLoginToken" => Some(Self::GenerateWebLoginToken),
             "RevokeWebLoginToken" => Some(Self::RevokeWebLoginToken),
             "ListWebLoginTokens" => Some(Self::ListWebLoginTokens),
+            "RevokeAllWebLoginTokens" => Some(Self::RevokeAllWebLoginTokens),
+            "RenameWebLoginToken" => Some(Self::RenameWebLoginToken),
             _ => None,
         }
     }

@@ -30,7 +30,7 @@ pub use super::generated_api::api::{
         SetTimeoutPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
         SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
         TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload, GenerateWebLoginTokenPayload, RevokeWebLoginTokenPayload, SetSelfMouseSelectionSupportPayload, CreateTokenResponse as ProtobufCreateTokenResponse, RevokeTokenResponse as ProtobufRevokeTokenResponse, ListTokensResponse as ProtobufListTokensResponse, CreateTokenResponse, RevokeTokenResponse, ListTokensResponse
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload, GenerateWebLoginTokenPayload, RevokeWebLoginTokenPayload, SetSelfMouseSelectionSupportPayload, CreateTokenResponse as ProtobufCreateTokenResponse, RevokeTokenResponse, ListTokensResponse, CreateTokenResponse, RenameWebLoginTokenPayload, RevokeAllWebTokensResponse, RenameWebTokenResponse
 
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
@@ -1681,6 +1681,22 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     Ok(PluginCommand::ListWebLoginTokens)
                 }
             },
+            Some(CommandName::RevokeAllWebLoginTokens) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    Err("RevokeAllWebLoginTokens should not have a payload")
+                } else {
+                    Ok(PluginCommand::RevokeAllWebLoginTokens)
+                }
+            },
+            Some(CommandName::RenameWebLoginToken) => match protobuf_plugin_command.payload {
+                Some(Payload::RenameWebLoginTokenPayload(rename_web_login_token_payload)) => {
+                    Ok(PluginCommand::RenameWebLoginToken(
+                        rename_web_login_token_payload.old_name,
+                        rename_web_login_token_payload.new_name,
+                    ))
+                }
+                _ => Err("RenameWebLoginToken requires a payload")
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2798,6 +2814,19 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::ListWebLoginTokens => Ok(ProtobufPluginCommand {
                 name: CommandName::ListWebLoginTokens as i32,
                 payload: None,
+            }),
+            PluginCommand::RevokeAllWebLoginTokens => Ok(ProtobufPluginCommand {
+                name: CommandName::RevokeAllWebLoginTokens as i32,
+                payload: None,
+            }),
+            PluginCommand::RenameWebLoginToken(old_name, new_name) => Ok(ProtobufPluginCommand {
+                name: CommandName::RenameWebLoginToken as i32,
+                payload: Some(Payload::RenameWebLoginTokenPayload(
+                    RenameWebLoginTokenPayload {
+                        old_name,
+                        new_name,
+                    },
+                )),
             }),
         }
     }

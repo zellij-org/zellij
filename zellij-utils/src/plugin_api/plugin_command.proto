@@ -154,6 +154,8 @@ enum CommandName {
   GenerateWebLoginToken = 138;
   RevokeWebLoginToken = 139;
   ListWebLoginTokens = 140;
+  RevokeAllWebLoginTokens = 141;
+  RenameWebLoginToken = 142;
 }
 
 message PluginCommand {
@@ -258,7 +260,13 @@ message PluginCommand {
     SetSelfMouseSelectionSupportPayload set_self_mouse_selection_support_payload = 107;
     GenerateWebLoginTokenPayload generate_web_login_token_payload = 108;
     RevokeWebLoginTokenPayload revoke_web_login_token_payload = 109;
+    RenameWebLoginTokenPayload rename_web_login_token_payload = 110;
   }
+}
+
+message RenameWebLoginTokenPayload {
+  string old_name = 1;
+  string new_name = 2;
 }
 
 message RevokeWebLoginTokenPayload {
@@ -662,6 +670,18 @@ message RevokeTokenResponse {
 }
 
 message ListTokensResponse {
+  // tokens/creation_times should be synchronized
   repeated string tokens = 1;
+  repeated string creation_times = 2;
+  optional string error = 3;
+}
+
+message RevokeAllWebTokensResponse {
+  bool successfully_revoked = 1;
+  optional string error = 2;
+}
+
+message RenameWebTokenResponse {
+  bool successfully_renamed = 1;
   optional string error = 2;
 }
