@@ -2422,4 +2422,8 @@ pub enum PluginCommand {
     FloatMultiplePanes(Vec<PaneId>),
     EmbedMultiplePanes(Vec<PaneId>),
     QueryWebServerStatus,
+    SetSelfMouseSelectionSupport(bool),
+    GenerateWebLoginToken(Option<String>), // String -> optional token label
+    RevokeWebLoginToken(String), // String -> token id (provided name or generated id)
+    ListWebLoginTokens,
 }

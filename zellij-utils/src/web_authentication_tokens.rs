@@ -66,7 +66,7 @@ fn init_db(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-pub fn create_token(name: Option<&str>) -> Result<String> {
+pub fn create_token(name: Option<String>) -> Result<(String, String)> { // (token, token_label)
     let db_path = get_db_path()?;
     let conn = Connection::open(db_path)?;
     init_db(&conn)?;
@@ -96,22 +96,17 @@ pub fn create_token(name: Option<&str>) -> Result<String> {
             Err(TokenError::DuplicateName(token_name))
         },
         Err(e) => Err(TokenError::Database(e)),
-        Ok(_) => Ok(token),
+        Ok(_) => Ok((token, token_name)),
     }
 }
 
-pub fn revoke_token(token: &str) -> Result<bool> {
+pub fn revoke_token(name: &str) -> Result<bool> {
     let db_path = get_db_path()?;
     let conn = Connection::open(db_path)?;
     init_db(&conn)?;
-    
-    let mut hasher = Sha256::new();
-    hasher.update(token.as_bytes());
-    let token_hash = format!("{:x}", hasher.finalize());
-    
     let rows_affected = conn.execute(
-        "DELETE FROM tokens WHERE token_hash = ?1",
-        [&token_hash],
+        "DELETE FROM tokens WHERE name = ?1",
+        [&name],
     )?;
     Ok(rows_affected > 0)
 }

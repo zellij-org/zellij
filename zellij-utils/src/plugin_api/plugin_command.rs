@@ -30,7 +30,8 @@ pub use super::generated_api::api::{
         SetTimeoutPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
         SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
         TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload, GenerateWebLoginTokenPayload, RevokeWebLoginTokenPayload, SetSelfMouseSelectionSupportPayload, CreateTokenResponse as ProtobufCreateTokenResponse, RevokeTokenResponse as ProtobufRevokeTokenResponse, ListTokensResponse as ProtobufListTokensResponse, CreateTokenResponse, RevokeTokenResponse, ListTokensResponse
+
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1649,6 +1650,37 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     Ok(PluginCommand::StopSharingCurrentSession)
                 }
             },
+            Some(CommandName::SetSelfMouseSelectionSupport) => match protobuf_plugin_command.payload {
+                Some(Payload::SetSelfMouseSelectionSupportPayload(set_self_mouse_selection_support_payload)) => {
+                    Ok(PluginCommand::SetSelfMouseSelectionSupport(
+                        set_self_mouse_selection_support_payload.support_mouse_selection
+                    ))
+                }
+                _ => Err("SetSelfMouseSelectionSupport requires a payload")
+            },
+            Some(CommandName::GenerateWebLoginToken) => match protobuf_plugin_command.payload {
+                Some(Payload::GenerateWebLoginTokenPayload(generate_web_login_token_payload)) => {
+                    Ok(PluginCommand::GenerateWebLoginToken(
+                        generate_web_login_token_payload.token_label
+                    ))
+                }
+                _ => Err("GenerateWebLoginToken requires a payload")
+            },
+            Some(CommandName::RevokeWebLoginToken) => match protobuf_plugin_command.payload {
+                Some(Payload::RevokeWebLoginTokenPayload(revoke_web_login_token_payload)) => {
+                    Ok(PluginCommand::RevokeWebLoginToken(
+                        revoke_web_login_token_payload.token_label
+                    ))
+                }
+                _ => Err("RevokeWebLoginToken requires a payload")
+            },
+            Some(CommandName::ListWebLoginTokens) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    Err("ListWebLoginTokens should not have a payload")
+                } else {
+                    Ok(PluginCommand::ListWebLoginTokens)
+                }
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2737,6 +2769,34 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             }),
             PluginCommand::StopSharingCurrentSession => Ok(ProtobufPluginCommand {
                 name: CommandName::StopSharingCurrentSession as i32,
+                payload: None,
+            }),
+            PluginCommand::SetSelfMouseSelectionSupport(support_mouse_selection) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetSelfMouseSelectionSupport as i32,
+                payload: Some(Payload::SetSelfMouseSelectionSupportPayload(
+                    SetSelfMouseSelectionSupportPayload {
+                        support_mouse_selection,
+                    },
+                )),
+            }),
+            PluginCommand::GenerateWebLoginToken(token_label) => Ok(ProtobufPluginCommand {
+                name: CommandName::GenerateWebLoginToken as i32,
+                payload: Some(Payload::GenerateWebLoginTokenPayload(
+                    GenerateWebLoginTokenPayload {
+                        token_label,
+                    },
+                )),
+            }),
+            PluginCommand::RevokeWebLoginToken(token_label) => Ok(ProtobufPluginCommand {
+                name: CommandName::RevokeWebLoginToken as i32,
+                payload: Some(Payload::RevokeWebLoginTokenPayload(
+                    RevokeWebLoginTokenPayload {
+                        token_label,
+                    },
+                )),
+            }),
+            PluginCommand::ListWebLoginTokens => Ok(ProtobufPluginCommand {
+                name: CommandName::ListWebLoginTokens as i32,
                 payload: None,
             }),
         }

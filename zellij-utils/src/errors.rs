@@ -383,6 +383,7 @@ pub enum ScreenContext {
     TogglePaneInGroup,
     ToggleGroupMarking,
     SessionSharingStatusChange,
+    SetMouseSelectionSupport,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

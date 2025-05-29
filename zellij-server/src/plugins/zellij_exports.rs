@@ -25,6 +25,7 @@ use zellij_utils::data::{
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
+use zellij_utils::web_authentication_tokens::{create_token, revoke_token, list_tokens};
 
 use crate::{panes::PaneId, screen::ScreenInstruction};
 
@@ -42,7 +43,7 @@ use zellij_utils::{
         layout::{Layout, RunPluginOrAlias},
     },
     plugin_api::{
-        plugin_command::ProtobufPluginCommand,
+        plugin_command::{ProtobufPluginCommand, ProtobufCreateTokenResponse, ProtobufRevokeTokenResponse, ProtobufListTokensResponse},
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
 };
@@ -460,6 +461,18 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::QueryWebServerStatus => query_web_server_status(env),
                     PluginCommand::ShareCurrentSession => share_current_session(env),
                     PluginCommand::StopSharingCurrentSession => stop_sharing_current_session(env),
+                    PluginCommand::SetSelfMouseSelectionSupport(selection_support) => {
+                        set_self_mouse_selection_support(env, selection_support);
+                    }
+                    PluginCommand::GenerateWebLoginToken(token_label) => {
+                        generate_web_login_token(env, token_label);
+                    }
+                    PluginCommand::RevokeWebLoginToken(label) => {
+                        revoke_web_login_token(env, label);
+                    }
+                    PluginCommand::ListWebLoginTokens => {
+                        list_web_login_tokens(env);
+                    }
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -2266,6 +2279,86 @@ fn embed_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
         ));
 }
 
+
+fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>) {
+    let serialized = match create_token(token_label) {
+        Ok((token, token_label)) => {
+            ProtobufCreateTokenResponse {
+                token: Some(token),
+                token_label: Some(token_label),
+                error: None,
+            }
+        },
+        Err(e) => {
+            ProtobufCreateTokenResponse {
+                token: None,
+                token_label: None,
+                error: Some(e.to_string()),
+            }
+        }
+    };
+    let _ = wasi_write_object(env, &serialized.encode_to_vec());
+}
+
+fn revoke_web_login_token(env: &PluginEnv, token_label: String) {
+    let serialized = match revoke_token(&token_label) {
+        Ok(true) => {
+            ProtobufRevokeTokenResponse {
+                successfully_revoked: true,
+                error: None,
+            }
+        },
+        Ok(false) => {
+            ProtobufRevokeTokenResponse {
+                successfully_revoked: false,
+                error: Some(format!("Token with label {} not found", token_label)),
+            }
+        },
+        Err(e) => {
+            ProtobufRevokeTokenResponse {
+                successfully_revoked: false,
+                error: Some(e.to_string()),
+            }
+        }
+    };
+    let _ = wasi_write_object(env, &serialized.encode_to_vec());
+}
+
+fn list_web_login_tokens(env: &PluginEnv) {
+    let serialized = match list_tokens() {
+        Ok(token_list) => {
+            ProtobufListTokensResponse {
+                tokens: token_list,
+                error: None,
+            }
+        },
+        Err(e) => {
+            ProtobufListTokensResponse {
+                tokens: vec![],
+                error: Some(e.to_string()),
+            }
+        }
+    };
+    let _ = wasi_write_object(env, &serialized.encode_to_vec());
+}
+
+fn set_self_mouse_selection_support(env: &PluginEnv, selection_support: bool) {
+    env.senders
+        .send_to_screen(ScreenInstruction::SetMouseSelectionSupport(
+            PaneId::Plugin(env.plugin_id),
+            selection_support,
+        ))
+        .with_context(|| {
+            format!(
+                "failed to set plugin {} selectable from plugin {}",
+                selection_support,
+                env.name()
+            )
+        })
+        .non_fatal();
+}
+
+
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -2448,6 +2541,9 @@ fn check_command_permission(
         | PluginCommand::StopSharingCurrentSession
         | PluginCommand::StopWebServer
         | PluginCommand::QueryWebServerStatus
+        | PluginCommand::GenerateWebLoginToken(..)
+        | PluginCommand::RevokeWebLoginToken(..)
+        | PluginCommand::ListWebLoginTokens
         | PluginCommand::StartWebServer => PermissionType::StartWebServer,
         _ => return (PermissionStatus::Granted, None),
     };

@@ -623,6 +623,7 @@ pub trait Pane {
     fn toggle_pinned(&mut self) {}
     fn set_pinned(&mut self, _should_be_pinned: bool) {}
     fn reset_logical_position(&mut self) {}
+    fn set_mouse_selection_support(&mut self, _selection_support: bool) {}
 }
 
 #[derive(Clone, Debug)]
@@ -2893,6 +2894,11 @@ impl Tab {
             &mut self.tiled_panes,
             self.draw_pane_frames,
         );
+    }
+    pub fn set_mouse_selection_support(&mut self, pane_id: PaneId, selection_support: bool) {
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.set_mouse_selection_support(selection_support);
+        }
     }
     pub fn close_pane(&mut self, id: PaneId, ignore_suppressed_panes: bool) {
         // we need to ignore suppressed panes when we toggle a pane to be floating/embedded(tiled)

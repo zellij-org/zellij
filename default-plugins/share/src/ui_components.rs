@@ -6,26 +6,24 @@ use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct Usage {
+    has_login_tokens: bool,
+    first_time_usage_title: &'static str,
+    first_time_bulletin_1: &'static str,
     usage_title: &'static str,
-    bulletin_0: &'static str,
     bulletin_1_full: &'static str,
     bulletin_1_short: &'static str,
     bulletin_2_full: &'static str,
     bulletin_2_short: &'static str,
     bulletin_3_full: &'static str,
     bulletin_3_short: &'static str,
+    bulletin_4: &'static str,
 }
 
-//             let generate_token_text = "<t> - generate login token";
-//             let generate_token = Text::new(generate_token_text).color_range(3, ..=3);
-//             print_text_with_coordinates(generate_token, x, y + 2, None, None);
-
-
 impl Usage {
-    pub fn new() -> Self {
+    pub fn new(has_login_tokens: bool) -> Self {
         Usage {
+            has_login_tokens,
             usage_title: "How it works:",
-            bulletin_0: "- <t> - generate login token",
             bulletin_1_full: "- Visit base URL to start a new session",
             bulletin_1_short: "- Base URL: new session",
             bulletin_2_full: "- Follow base URL with a session name to attach to or create it",
@@ -33,12 +31,21 @@ impl Usage {
             bulletin_3_full:
                 "- By default sessions not started from the web must be explicitly shared",
             bulletin_3_short: "- Sessions not started from the web must be explicitly shared",
+            bulletin_4: "- <t> manage login tokens",
+            first_time_usage_title: "Before logging in for the first time:",
+            first_time_bulletin_1: "- Press <t> to generate a login token",
         }
     }
     pub fn usage_width_and_height(&self, max_width: usize) -> (usize, usize) {
+        if self.has_login_tokens {
+            self.full_usage_width_and_height(max_width)
+        } else {
+            self.first_time_usage_width_and_height(max_width)
+        }
+    }
+    pub fn full_usage_width_and_height(&self, max_width: usize) -> (usize, usize) {
         let mut max_len = 0;
         max_len = std::cmp::max(max_len, self.usage_title.chars().count());
-        // TODO: bulletin_0
         let bulletin_1 = if self.bulletin_1_full.chars().count() <= max_width {
             self.bulletin_1_full
         } else {
@@ -57,11 +64,29 @@ impl Usage {
             self.bulletin_3_short
         };
         max_len = std::cmp::max(max_len, bulletin_3.chars().count());
+        let bulletin_4 = self.bulletin_4;
+        max_len = std::cmp::max(max_len, bulletin_4.chars().count());
         let width = max_len;
-        let height = 4;
+        let height = 5;
+        (width, height)
+    }
+    pub fn first_time_usage_width_and_height(&self, _max_width: usize) -> (usize, usize) {
+        let mut max_len = 0;
+        max_len = std::cmp::max(max_len, self.first_time_usage_title.chars().count());
+        let bulletin_1 = self.first_time_bulletin_1;
+        max_len = std::cmp::max(max_len, bulletin_1.chars().count());
+        let width = max_len;
+        let height = 2;
         (width, height)
     }
     pub fn render_usage(&self, x: usize, y: usize, max_width: usize) {
+        if self.has_login_tokens {
+            self.render_full_usage(x, y, max_width)
+        } else {
+            self.render_first_time_usage(x, y, max_width)
+        }
+    }
+    pub fn render_full_usage(&self, x: usize, y: usize, max_width: usize) {
         let bulletin_1 = if self.bulletin_1_full.chars().count() <= max_width {
             self.bulletin_1_full
         } else {
@@ -78,15 +103,23 @@ impl Usage {
             self.bulletin_3_short
         };
         let usage_title = Text::new(self.usage_title).color_range(2, ..);
-        let bulletin_0 = Text::new(self.bulletin_0).color_range(3, 2..=5);
         let bulletin_1 = Text::new(bulletin_1);
         let bulletin_2 = Text::new(bulletin_2);
         let bulletin_3 = Text::new(bulletin_3);
+        let bulletin_4 = Text::new(self.bulletin_4).color_range(3, 2..5);
         print_text_with_coordinates(usage_title, x, y, None, None);
-        print_text_with_coordinates(bulletin_0, x, y + 1, None, None);
-        print_text_with_coordinates(bulletin_1, x, y + 2, None, None);
-        print_text_with_coordinates(bulletin_2, x, y + 3, None, None);
-        print_text_with_coordinates(bulletin_3, x, y + 4, None, None);
+        print_text_with_coordinates(bulletin_1, x, y + 1, None, None);
+        print_text_with_coordinates(bulletin_2, x, y + 2, None, None);
+        print_text_with_coordinates(bulletin_3, x, y + 3, None, None);
+        print_text_with_coordinates(bulletin_4, x, y + 4, None, None);
+    }
+    pub fn render_first_time_usage(&self, x: usize, y: usize, max_width: usize) {
+        // TODO: responsiveness
+        let bulletin_1 = self.first_time_bulletin_1;
+        let usage_title = Text::new(self.first_time_usage_title).color_range(1, ..);
+        let bulletin_1 = Text::new(bulletin_1).color_range(3, 8..11);
+        print_text_with_coordinates(usage_title, x, y, None, None);
+        print_text_with_coordinates(bulletin_1, x, y + 1, None, None);
     }
 }
 

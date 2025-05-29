@@ -32,12 +32,13 @@ struct App {
     web_server_capability: bool,
     timer_running: bool,
     current_screen: Screen,
+    token_list: Vec<String>,
 }
 
 #[derive(Debug)]
 enum Screen {
     Main,
-    Token,
+    Token(String), // String - the newly generated token for display
 }
 
 impl Default for Screen {
@@ -60,6 +61,7 @@ impl ZellijPlugin for App {
             EventType::Timer,
         ]);
         self.own_plugin_id = Some(get_plugin_ids().plugin_id);
+        self.retrieve_token_list();
         self.query_link_executable();
         self.change_own_title();
     }
@@ -149,13 +151,20 @@ impl ZellijPlugin for App {
                                 }
                             },
                             BareKey::Char('t') if key.has_no_modifiers() => {
-                                self.change_to_token_screen();
+                                match generate_web_login_token(None) {
+                                    Ok(token) => {
+                                        self.change_to_token_screen(token);
+                                    },
+                                    Err(e) => {
+                                        self.web_server_error = Some(e);
+                                    }
+                                }
                                 should_render = true;
                             },
                             _ => {},
                         }
                     }
-                    Screen::Token => {
+                    Screen::Token(..) => {
                         match key.bare_key {
                             BareKey::Esc if key.has_no_modifiers() => {
                                 self.change_to_main_screen();
@@ -214,48 +223,19 @@ impl ZellijPlugin for App {
         should_render
     }
     fn render(&mut self, rows: usize, cols: usize) {
-//                   Share Session Locally in the Browser
-// 
-// Web server: RUNNING (<Ctrl c> - Stop)
-// URL: https://127.0.0.1:8082
-// <t> - generate authentication token / manage authentication tokens
-// 
-// Current session: NOT SHARING
-// Press <SPACE> to share
-// 
-// How it works:
-// - Visit base URL to start a new session
-// - Follow base URL with a session name to attach to or create it
-// - By default sessions not started from the web must be explicitly shared
-//
-//
-// *******
-//
-// Generated token: <TOKEN>
-//
-// Press <c> to copy to clipboard (requires a supporting terminal)
-//
-// Or generate the token on the command line with:
-// zellij web --generate-token
-//
-// Only token hashes are stored, tokens cannot be retrieved - only revoked.
-//
-//
-// *******
-//
-//                    Active authentication tokens
-//
-//
         if !self.web_server_capability {
             self.render_no_web_server_capability(rows, cols);
             return;
         }
-        match self.current_screen {
+        // reset rendered state
+        self.currently_hovering_over_link = false;
+        self.clickable_urls.clear();
+        match &self.current_screen {
             Screen::Main => {
                 self.render_main_screen(rows, cols);
             },
-            Screen::Token => {
-                self.render_token_screen(rows, cols);
+            Screen::Token(generated_token) => {
+                self.render_token_screen(rows, cols, generated_token);
 
             }
         }
@@ -328,18 +308,18 @@ impl App {
             .map(|b| b.scheme() == "http")
             .unwrap_or(false)
     }
-    pub fn change_to_token_screen(&mut self) {
-        self.current_screen = Screen::Token;
+    pub fn change_to_token_screen(&mut self, generated_token: String) {
+        self.retrieve_token_list();
+        set_self_mouse_selection_support(true);
+        self.current_screen = Screen::Token(generated_token);
     }
     pub fn change_to_main_screen(&mut self) {
-        // TODO: also delete token from state
+        self.retrieve_token_list();
+        set_self_mouse_selection_support(false);
         self.current_screen = Screen::Main;
     }
     fn render_main_screen(&mut self, rows: usize, cols: usize) {
-        // reset rendered state
-        self.currently_hovering_over_link = false;
-        self.clickable_urls.clear();
-        let usage = Usage::new();
+        let usage = Usage::new(!self.token_list.is_empty());
         let connection_is_unencrypted = self.connection_is_unencrypted();
         let mut web_server_status_section = WebServerStatusSection::new(
             self.web_server_started,
@@ -426,31 +406,53 @@ impl App {
             self.render_link_help(base_x, current_y);
         }
     }
-    fn render_token_screen(&mut self, rows: usize, cols: usize) {
-
-// Generated token: <TOKEN>
-//
-// Use this token to log-in from the browser.
-// Tokens are not saved, so can't be retrieved - only revoked.
-//
-// <Esc> - go back
+    fn render_token_screen(&self, rows: usize, cols: usize, generated_token: &str) {
         let mut width = 0;
-        let token_placeholder = "81eeb7cd-ca74-464d-b025-d9e3a57193bf";
-        let generated_token_text = format!("New log-in token: {}", token_placeholder);
+        let generated_token_text_long = format!("New log-in token: {}", generated_token);
+        let generated_token_text_short = format!("Token: {}", generated_token);
+        let (generated_token, generated_token_text) = if cols >= generated_token_text_long.chars().count() {
+            let generated_token = Text::new(&generated_token_text_long).color_range(2, ..=16);
+            (generated_token, generated_token_text_long)
+        } else {
+            let generated_token = Text::new(&generated_token_text_short).color_range(2, ..=5);
+            (generated_token, generated_token_text_short)
+        };
         width = std::cmp::max(width, generated_token_text.chars().count());
-        let generated_token = Text::new(generated_token_text).color_range(2, ..=15);
-        let explanation_text_1 = "Use this token to log-in from the browser.";
+
+        let explanation_text_1_long = "Use this token to log-in from the browser.";
+        let explanation_text_1_short = "Use to log-in from the browser.";
+        let explanation_text_1 = if cols >= explanation_text_1_long.chars().count() {
+            explanation_text_1_long
+        } else {
+            explanation_text_1_short
+        };
         width = std::cmp::max(width, explanation_text_1.chars().count());
-        let explanation_text_2 = "Copy this token, because it will not be saved and can't be retrieved.";
+        let explanation_text_1 = Text::new(explanation_text_1).color_range(0, ..);
+        
+        let explanation_text_2_long = "Copy this token, because it will not be saved and can't be retrieved.";
+        let explanation_text_2_short = "It will not be saved and can't be retrieved.";
+        let explanation_text_2 = if cols >= explanation_text_2_long.chars().count() {
+            explanation_text_2_long
+        } else {
+            explanation_text_2_short
+        };
         width = std::cmp::max(width, explanation_text_2.chars().count());
-        let explanation_text_3 = "If lost, it can always be revoked and a new one generated.";
+        let explanation_text_2 = Text::new(explanation_text_2);
+
+        let explanation_text_3_long = "If lost, it can always be revoked and a new one generated.";
+        let explanation_text_3_short = "It can always be revoked and a regenerated.";
+        let explanation_text_3 = if cols >= explanation_text_3_long.chars().count() {
+            explanation_text_3_long
+        } else {
+            explanation_text_3_short
+        };
         width = std::cmp::max(width, explanation_text_3.chars().count());
+        let explanation_text_3 = Text::new(explanation_text_3);
+
         let esc_go_back = "<Esc> - go back";
         width = std::cmp::max(width, esc_go_back.chars().count());
-        let explanation_text_1 = Text::new(explanation_text_1).color_range(0, ..);
-        let explanation_text_2 = Text::new(explanation_text_2);
-        let explanation_text_3 = Text::new(explanation_text_3);
         let esc_go_back = Text::new(esc_go_back).color_range(3, ..=4);
+
         let base_x = cols.saturating_sub(width) / 2;
         let base_y = rows.saturating_sub(7) / 2;
         print_text_with_coordinates(generated_token, base_x, base_y, None, None);
@@ -458,6 +460,12 @@ impl App {
         print_text_with_coordinates(explanation_text_2, base_x, base_y + 4, None, None);
         print_text_with_coordinates(explanation_text_3, base_x, base_y + 5, None, None);
         print_text_with_coordinates(esc_go_back, base_x, base_y + 7, None, None);
+    }
+    fn retrieve_token_list(&mut self) {
+        self.token_list = list_web_login_tokens().unwrap_or_else(|e| {
+            self.web_server_error = Some(format!("Failed to retrieve login tokens: {}", e.to_string()));
+            vec![]
+        });
     }
 }
 

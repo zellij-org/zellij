@@ -835,6 +835,15 @@ impl Pane for PluginPane {
         }
         None
     }
+    fn set_mouse_selection_support(&mut self, selection_support: bool) {
+        self.supports_mouse_selection = selection_support;
+        if !selection_support {
+            let client_ids_with_grids: Vec<ClientId> = self.grids.keys().copied().collect();
+            for client_id in client_ids_with_grids {
+                self.reset_selection(Some(client_id));
+            }
+        }
+    }
 }
 
 impl PluginPane {

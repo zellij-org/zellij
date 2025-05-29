@@ -150,6 +150,10 @@ enum CommandName {
   StopSharingCurrentSession = 134;
   StopWebServer = 135;
   QueryWebServerStatus = 136;
+  SetSelfMouseSelectionSupport = 137;
+  GenerateWebLoginToken = 138;
+  RevokeWebLoginToken = 139;
+  ListWebLoginTokens = 140;
 }
 
 message PluginCommand {
@@ -251,7 +255,22 @@ message PluginCommand {
     CloseMultiplePanesPayload close_multiple_panes_payload = 104;
     FloatMultiplePanesPayload float_multiple_panes_payload = 105;
     EmbedMultiplePanesPayload embed_multiple_panes_payload = 106;
+    SetSelfMouseSelectionSupportPayload set_self_mouse_selection_support_payload = 107;
+    GenerateWebLoginTokenPayload generate_web_login_token_payload = 108;
+    RevokeWebLoginTokenPayload revoke_web_login_token_payload = 109;
   }
+}
+
+message RevokeWebLoginTokenPayload {
+  string token_label = 1;
+}
+
+message GenerateWebLoginTokenPayload {
+  optional string token_label = 1;
+}
+
+message SetSelfMouseSelectionSupportPayload {
+  bool support_mouse_selection = 1;
 }
 
 message EmbedMultiplePanesPayload {
@@ -629,4 +648,20 @@ message FixedOrPercentValue {
 enum FixedOrPercent {
   Fixed = 0;
   Percent = 1;
+}
+
+message CreateTokenResponse {
+  optional string token = 1;
+  optional string token_label = 2;
+  optional string error = 3;
+}
+
+message RevokeTokenResponse {
+  bool successfully_revoked = 1;
+  optional string error = 2;
+}
+
+message ListTokensResponse {
+  repeated string tokens = 1;
+  optional string error = 2;
 }

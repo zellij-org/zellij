@@ -418,6 +418,7 @@ pub enum ScreenInstruction {
     TogglePaneInGroup(ClientId),
     ToggleGroupMarking(ClientId),
     SessionSharingStatusChange(bool),
+    SetMouseSelectionSupport(PaneId, bool),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -642,6 +643,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SessionSharingStatusChange(..) => {
                 ScreenContext::SessionSharingStatusChange
             },
+            ScreenInstruction::SetMouseSelectionSupport(..) => ScreenContext::SetMouseSelectionSupport,
         }
     }
 }
@@ -3847,6 +3849,23 @@ pub(crate) fn screen_thread_main(
                 if !found_plugin {
                     pending_events_waiting_for_tab
                         .push(ScreenInstruction::SetSelectable(pid, selectable));
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::SetMouseSelectionSupport(pid, selection_support) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found_plugin = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pid) {
+                        tab.set_mouse_selection_support(pid, selection_support);
+                        found_plugin = true;
+                        break;
+                    }
+                }
+                if !found_plugin {
+                    pending_events_waiting_for_tab
+                        .push(ScreenInstruction::SetMouseSelectionSupport(pid, selection_support));
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
