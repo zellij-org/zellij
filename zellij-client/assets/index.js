@@ -5,16 +5,34 @@ function is_https () {
 document.addEventListener("DOMContentLoaded", async (event) => {
 
     let token;
-    while (!token) {
-        token = prompt("Please enter your access token:");
-        if (!token) {
-            alert("An access token is required. Please enter a token.");
+    let remember; // TODO: implement this
+
+    async function wait_for_security_token() {
+      token = null;
+      remember = null;
+      while (!token) {
+        let result = await getSecurityToken();
+        if (result) {
+          token = result.token;
+          remember = result.remember;
+        } else {
+          await showErrorModal("Error", "Must provide security token in order to log in.");
         }
+      }
     }
 
-    const web_client_id = await get_client_id(token);
+    await wait_for_security_token();
+    let web_client_id;
 
-    var own_web_client_id = "";
+    while (!web_client_id) {
+      web_client_id = await get_client_id(token);
+      if (!web_client_id) {
+        await wait_for_security_token()
+      }
+    }
+
+
+    var own_web_client_id = ""; // TODO: what is this?
     const { term, fitAddon } = initTerminal();
     const session_name = location.pathname.split("/").pop();
     console.log("session_name", session_name);
@@ -319,22 +337,22 @@ function initTerminal() {
     return { term, fitAddon };
 }
 
-function get_client_id(token) {
+async function get_client_id(token) {
     let url_prefix = is_https() ? "https" : "http";
-    return fetch(`${url_prefix}://${window.web_server_ip}:${window.web_server_port}/session`, {
+    let data = await fetch(`${url_prefix}://${window.web_server_ip}:${window.web_server_port}/session`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
             "token": token,
         },
         body: JSON.stringify({}),
-    })
-        .then((data) => {
-          if (data.status === 401) {
-            // TODO: render something
-            throw "Unauthorized";
-          }
-          return data.json()
-        })
-        .then((data) => data.web_client_id);
+    });
+    if (data.status === 401) {
+      await showErrorModal("Error", "Unauthorized or revoked login token.");
+    } else if (!data.ok) {
+      await showErrorModal("Error", `Error ${data.status} connecting to server.`);
+    } else {
+      let body = await data.json();
+      return body.web_client_id;
+    }
 }
