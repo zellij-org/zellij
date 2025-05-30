@@ -1,4 +1,6 @@
+mod token_management_screen;
 mod ui_components;
+
 use std::net::IpAddr;
 use url::Url;
 use zellij_tile::prelude::*;
@@ -9,6 +11,8 @@ use ui_components::{
     hovering_on_line, render_text_with_underline, CurrentSessionSection, Usage,
     WebServerStatusSection,
 };
+
+use token_management_screen::TokenManagementScreen;
 
 static WEB_SERVER_QUERY_DURATION: f64 = 0.4; // Doherty threshold
 
@@ -141,7 +145,9 @@ impl ZellijPlugin for App {
                 match self.current_screen {
                     Screen::Main => {
                         match key.bare_key {
-                            BareKey::Enter if key.has_no_modifiers() && !self.web_server_started => {
+                            BareKey::Enter
+                                if key.has_no_modifiers() && !self.web_server_started =>
+                            {
                                 start_web_server();
                             },
                             BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
@@ -168,7 +174,7 @@ impl ZellijPlugin for App {
                                         },
                                         Err(e) => {
                                             self.web_server_error = Some(e);
-                                        }
+                                        },
                                     }
                                 } else {
                                     self.change_to_manage_tokens_screen();
@@ -177,116 +183,166 @@ impl ZellijPlugin for App {
                             },
                             _ => {},
                         }
-                    }
-                    Screen::Token(..) => {
-                        match key.bare_key {
-                            BareKey::Esc if key.has_no_modifiers() => {
-                                self.change_to_main_screen();
-                                should_render = true;
-                            },
-                            _ => {}
-                        }
-                    }
+                    },
+                    Screen::Token(..) => match key.bare_key {
+                        BareKey::Esc if key.has_no_modifiers() => {
+                            self.change_to_main_screen();
+                            should_render = true;
+                        },
+                        _ => {},
+                    },
                     Screen::ManageTokens => {
                         match key.bare_key {
-                            BareKey::Char(character) if key.has_no_modifiers() && self.entering_new_token_name.is_some() => {
-                                self.entering_new_token_name.as_mut().map(|n| n.push(character));
+                            BareKey::Char(character)
+                                if key.has_no_modifiers()
+                                    && self.entering_new_token_name.is_some() =>
+                            {
+                                self.entering_new_token_name
+                                    .as_mut()
+                                    .map(|n| n.push(character));
                                 should_render = true;
-                            }
-                            BareKey::Char(character) if key.has_no_modifiers() && self.renaming_token.is_some() => {
+                            },
+                            BareKey::Char(character)
+                                if key.has_no_modifiers() && self.renaming_token.is_some() =>
+                            {
                                 self.renaming_token.as_mut().map(|n| n.push(character));
                                 should_render = true;
-                            }
-                            BareKey::Backspace if key.has_no_modifiers() && self.entering_new_token_name.is_some() => {
+                            },
+                            BareKey::Backspace
+                                if key.has_no_modifiers()
+                                    && self.entering_new_token_name.is_some() =>
+                            {
                                 self.entering_new_token_name.as_mut().map(|n| n.pop());
                                 should_render = true;
-                            }
-                            BareKey::Backspace if key.has_no_modifiers() && self.renaming_token.is_some() => {
+                            },
+                            BareKey::Backspace
+                                if key.has_no_modifiers() && self.renaming_token.is_some() =>
+                            {
                                 self.renaming_token.as_mut().map(|n| n.pop());
                                 should_render = true;
-                            }
+                            },
                             BareKey::Esc if key.has_no_modifiers() => {
-                                self.entering_new_token_name = None;
-                                self.change_to_main_screen();
+                                if let Some(new_name) = self.entering_new_token_name.take() {
+                                    // no-op, just cancel the renaming
+                                } else {
+                                    self.change_to_main_screen();
+                                }
                                 should_render = true;
                             },
                             BareKey::Down if key.has_no_modifiers() => {
-                                if let Some(selected_list_index) = self.selected_list_index.as_mut() {
-                                    if *selected_list_index < self.token_list.len().saturating_sub(1) {
+                                if let Some(selected_list_index) = self.selected_list_index.as_mut()
+                                {
+                                    if *selected_list_index
+                                        < self.token_list.len().saturating_sub(1)
+                                    {
                                         *selected_list_index += 1;
                                     } else {
                                         *selected_list_index = 0;
                                     }
                                     should_render = true;
                                 }
-                            }
+                            },
                             BareKey::Up if key.has_no_modifiers() => {
-                                if let Some(selected_list_index) = self.selected_list_index.as_mut() {
+                                if let Some(selected_list_index) = self.selected_list_index.as_mut()
+                                {
                                     if *selected_list_index == 0 {
-                                        *selected_list_index = self.token_list.len().saturating_sub(1)
+                                        *selected_list_index =
+                                            self.token_list.len().saturating_sub(1)
                                     } else {
                                         *selected_list_index -= 1;
                                     }
                                     should_render = true;
                                 }
-                            }
+                            },
                             BareKey::Char('n') if key.has_no_modifiers() => {
                                 self.entering_new_token_name = Some(String::new());
                                 should_render = true;
-                            }
-                            BareKey::Enter if key.has_no_modifiers() && self.entering_new_token_name.is_some() => {
-                                let new_token_name = self.entering_new_token_name.take().and_then(|new_token_name| if new_token_name.is_empty() { None } else { Some(new_token_name)});
+                            },
+                            BareKey::Enter
+                                if key.has_no_modifiers()
+                                    && self.entering_new_token_name.is_some() =>
+                            {
+                                let new_token_name = self.entering_new_token_name.take().and_then(
+                                    |new_token_name| {
+                                        if new_token_name.is_empty() {
+                                            None
+                                        } else {
+                                            Some(new_token_name)
+                                        }
+                                    },
+                                );
                                 match generate_web_login_token(new_token_name) {
                                     Ok(token) => {
                                         self.change_to_token_screen(token);
                                     },
                                     Err(e) => {
                                         self.web_server_error = Some(e);
-                                    }
+                                    },
                                 }
                                 should_render = true;
                             },
                             BareKey::Char('r') if key.has_no_modifiers() => {
                                 self.renaming_token = Some(String::new());
                                 should_render = true;
-                            }
-                            BareKey::Enter if key.has_no_modifiers() && self.renaming_token.is_some() => {
-                                if let Some(currently_selected_token) = self.selected_list_index.and_then(|i| self.token_list.get(i)) {
+                            },
+                            BareKey::Enter
+                                if key.has_no_modifiers() && self.renaming_token.is_some() =>
+                            {
+                                if let Some(currently_selected_token) = self
+                                    .selected_list_index
+                                    .and_then(|i| self.token_list.get(i))
+                                {
                                     if let Some(new_token_name) = self.renaming_token.take() {
-                                        match rename_web_token(&currently_selected_token.0, &new_token_name) {
+                                        match rename_web_token(
+                                            &currently_selected_token.0,
+                                            &new_token_name,
+                                        ) {
                                             Ok(_) => {
                                                 self.retrieve_token_list();
                                                 if self.token_list.is_empty() {
                                                     self.selected_list_index = None;
                                                     self.change_to_main_screen();
-                                                } else if self.selected_list_index >= Some(self.token_list.len()) {
-                                                    self.selected_list_index = Some(self.token_list.len().saturating_sub(1));
+                                                } else if self.selected_list_index
+                                                    >= Some(self.token_list.len())
+                                                {
+                                                    self.selected_list_index = Some(
+                                                        self.token_list.len().saturating_sub(1),
+                                                    );
                                                 }
                                             },
                                             Err(e) => {
                                                 self.web_server_error = Some(e);
-                                            }
+                                            },
                                         }
                                     }
                                 }
                                 should_render = true;
                             },
                             BareKey::Char('x') if key.has_no_modifiers() => {
-                                if let Some(currently_selected_token) = self.selected_list_index.and_then(|i| self.token_list.get(i)) {
+                                if let Some(currently_selected_token) = self
+                                    .selected_list_index
+                                    .and_then(|i| self.token_list.get(i))
+                                {
                                     match revoke_web_login_token(&currently_selected_token.0) {
                                         Ok(_) => {
                                             self.retrieve_token_list();
                                             if self.token_list.is_empty() {
                                                 self.selected_list_index = None;
                                                 self.change_to_main_screen();
-                                            } else if self.selected_list_index >= Some(self.token_list.len()) {
-                                                self.selected_list_index = Some(self.token_list.len().saturating_sub(1));
+                                            } else if self.selected_list_index
+                                                >= Some(self.token_list.len())
+                                            {
+                                                self.selected_list_index =
+                                                    Some(self.token_list.len().saturating_sub(1));
                                             }
-                                            self.info = Some("Revoked. Connected clients not affected.".to_owned());
+                                            self.info = Some(
+                                                "Revoked. Connected clients not affected."
+                                                    .to_owned(),
+                                            );
                                         },
                                         Err(e) => {
                                             self.web_server_error = Some(e);
-                                        }
+                                        },
                                     }
                                 }
                                 should_render = true;
@@ -299,20 +355,24 @@ impl ZellijPlugin for App {
                                         if self.token_list.is_empty() {
                                             self.selected_list_index = None;
                                             self.change_to_main_screen();
-                                        } else if self.selected_list_index >= Some(self.token_list.len()) {
-                                            self.selected_list_index = Some(self.token_list.len().saturating_sub(1));
+                                        } else if self.selected_list_index
+                                            >= Some(self.token_list.len())
+                                        {
+                                            self.selected_list_index =
+                                                Some(self.token_list.len().saturating_sub(1));
                                         }
-                                        self.info = Some("Revoked. Connected clients not affected.".to_owned());
+                                        self.info = Some(
+                                            "Revoked. Connected clients not affected.".to_owned(),
+                                        );
                                     },
                                     Err(e) => {
                                         self.web_server_error = Some(e);
-                                    }
+                                    },
                                 }
-
-                            }
-                            _ => {}
+                            },
+                            _ => {},
                         }
-                    }
+                    },
                 }
             },
             Event::Mouse(mouse_event) => {
@@ -376,10 +436,10 @@ impl ZellijPlugin for App {
             },
             Screen::Token(generated_token) => {
                 self.render_token_screen(rows, cols, generated_token);
-            }
+            },
             Screen::ManageTokens => {
                 self.render_manage_tokens_screen(rows, cols);
-            }
+            },
         }
     }
 }
@@ -556,20 +616,27 @@ impl App {
         }
 
         if let Some(info) = &self.info {
-            print_text_with_coordinates(Text::new(info).color_range(1, ..), base_x, current_y, None, None);
+            print_text_with_coordinates(
+                Text::new(info).color_range(1, ..),
+                base_x,
+                current_y,
+                None,
+                None,
+            );
         }
     }
     fn render_token_screen(&self, rows: usize, cols: usize, generated_token: &str) {
         let mut width = 0;
         let generated_token_text_long = format!("New log-in token: {}", generated_token);
         let generated_token_text_short = format!("Token: {}", generated_token);
-        let (generated_token, generated_token_text) = if cols >= generated_token_text_long.chars().count() {
-            let generated_token = Text::new(&generated_token_text_long).color_range(2, ..=16);
-            (generated_token, generated_token_text_long)
-        } else {
-            let generated_token = Text::new(&generated_token_text_short).color_range(2, ..=5);
-            (generated_token, generated_token_text_short)
-        };
+        let (generated_token, generated_token_text) =
+            if cols >= generated_token_text_long.chars().count() {
+                let generated_token = Text::new(&generated_token_text_long).color_range(2, ..=16);
+                (generated_token, generated_token_text_long)
+            } else {
+                let generated_token = Text::new(&generated_token_text_short).color_range(2, ..=5);
+                (generated_token, generated_token_text_short)
+            };
         width = std::cmp::max(width, generated_token_text.chars().count());
 
         let explanation_text_1_long = "Use this token to log-in from the browser.";
@@ -581,8 +648,9 @@ impl App {
         };
         width = std::cmp::max(width, explanation_text_1.chars().count());
         let explanation_text_1 = Text::new(explanation_text_1).color_range(0, ..);
-        
-        let explanation_text_2_long = "Copy this token, because it will not be saved and can't be retrieved.";
+
+        let explanation_text_2_long =
+            "Copy this token, because it will not be saved and can't be retrieved.";
         let explanation_text_2_short = "It will not be saved and can't be retrieved.";
         let explanation_text_2 = if cols >= explanation_text_2_long.chars().count() {
             explanation_text_2_long
@@ -615,118 +683,35 @@ impl App {
         print_text_with_coordinates(esc_go_back, base_x, base_y + 7, None, None);
 
         if let Some(error) = &self.web_server_error {
-            print_text_with_coordinates(Text::new(error).color_range(3, ..), base_x, base_y + 8, None, None);
+            print_text_with_coordinates(
+                Text::new(error).color_range(3, ..),
+                base_x,
+                base_y + 8,
+                None,
+                None,
+            );
         }
     }
+
     fn render_manage_tokens_screen(&self, rows: usize, cols: usize) {
-        // should include:
-        // 1. a list of tokens (name, created_at)
-        // 2. ability to revoke tokens
-        // 3. ability to create new tokens
-        // 4. ability to revoke all tokens
-        // 5. ability to rename tokens
-        //
-        //                List of Authorized Login Tokens
-        //
-        // > token_1, issued on Jan 5th 2025 <x> - revoke, <n> - rename
-        // > token_2, issued on Feb 17th 2025
-        // > <n> - create new token
-        //
-        // Help: <Ctrl x> - revoke all tokens
-
-        let mut width = 0;
-        let title_text = "List of Login Tokens";
-        let title = Text::new(title_text).color_range(2, ..);
-        width = std::cmp::max(width, title_text.chars().count());
-        let mut items = vec![];
-        for (i, (token, created_at)) in self.token_list.iter().enumerate() {
-            // let hard_coded_date = "Jan 5th 2025";
-            let token_end_index = token.chars().count();
-            let r_key_start_index = token_end_index + 10 + created_at.chars().count() + 3;
-            let r_key_end_index = r_key_start_index + 2;
-            let n_key_start_index = r_key_end_index + 10;
-            let n_key_end_index = n_key_start_index + 2;
-            let is_selected = Some(i) == self.selected_list_index;
-            let (item_text, mut item) = if is_selected {
-                if let Some(new_token_name) = &self.renaming_token {
-                    let token_end_index = new_token_name.chars().count();
-                    let item_text = format!("{}_ issued on {}", new_token_name, created_at);
-                    let item = NestedListItem::new(&item_text)
-                        .color_range(0, ..token_end_index + 1);
-                    (item_text, item)
-                } else {
-                    let item_text = format!("{} issued on {} (<x> revoke, <r> rename)", token, created_at);
-                    let item = NestedListItem::new(&item_text)
-                        .color_range(0, ..token_end_index)
-                        .color_range(3, r_key_start_index..=r_key_end_index)
-                        .color_range(3, n_key_start_index..=n_key_end_index);
-                    (item_text, item)
-                }
-            } else {
-                let item_text = format!("{} issued on {}", token, created_at);
-                let item = NestedListItem::new(&item_text)
-                    .color_range(0, ..token_end_index);
-                (item_text, item)
-            };
-            width = std::cmp::max(width, item_text.chars().count());
-//             let mut item = NestedListItem::new(item_text)
-//                 .color_range(0, ..token_end_index)
-//                 .color_range(3, r_key_start_index..=r_key_end_index)
-//                 .color_range(3, n_key_start_index..=n_key_end_index);
-            if is_selected {
-                item = item.selected();
-            }
-            items.push(item);
-        }
-        let (new_token_line_text, new_token_line) = if let Some(new_token_name) = &self.entering_new_token_name {
-            let new_token_line_text = format!("{}_", new_token_name);
-            let new_token_line = NestedListItem::new(&new_token_line_text).color_range(3, ..);
-            (new_token_line_text, new_token_line)
-        } else {
-            let new_token_line_text = format!("<n> - create new token");
-            let new_token_line = NestedListItem::new(&new_token_line_text).color_range(3, 0..=2);
-            (new_token_line_text, new_token_line)
-        };
-        width = std::cmp::max(width, new_token_line_text.chars().count());
-        items.push(new_token_line);
-        let item_count = items.len();
-
-        let (help_line_text, help_line) = if self.entering_new_token_name.is_some() {
-            let help_line_text = "Help: Enter optional name for new token, <Enter> to submit";
-            let help_line = Text::new(&help_line_text)
-                .color_range(3, 41..=47);
-            (help_line_text, help_line)
-        } else if self.renaming_token.is_some() {
-            let help_line_text = "Help: Enter new name for this token, <Enter> to submit";
-            let help_line = Text::new(&help_line_text)
-                .color_range(3, 39..=45);
-            (help_line_text, help_line)
-        } else {
-            let help_line_text = "Help: <Ctrl x> - revoke all tokens, <Esc> - go back";
-            let help_line = Text::new(&help_line_text)
-                .color_range(3, 6..=13)
-                .color_range(3, 36..=40);
-            (help_line_text, help_line)
-        };
-        width = std::cmp::max(width, help_line_text.chars().count());
-
-        let base_x = cols.saturating_sub(width) / 2;
-        let base_y = rows.saturating_sub(4 + item_count) / 2;
-
-        print_text_with_coordinates(title, cols.saturating_sub(title_text.chars().count()) / 2, base_y, None, None);
-        print_nested_list_with_coordinates(items, base_x, base_y + 2, None, None);
-        print_text_with_coordinates(help_line, base_x, base_y + item_count + 3, None, None);
-
-        if let Some(error) = &self.web_server_error {
-            print_text_with_coordinates(Text::new(error).color_range(3, ..), base_x, base_y + item_count + 5, None, None);
-        } else  if let Some(info) = &self.info {
-            print_text_with_coordinates(Text::new(info).color_range(1, ..), base_x, base_y + item_count + 5, None, None);
-        }
-
+        TokenManagementScreen::new(
+            &self.token_list,
+            self.selected_list_index,
+            &self.renaming_token,
+            &self.entering_new_token_name,
+            &self.web_server_error,
+            &self.info,
+            rows,
+            cols,
+        )
+        .render();
     }
     fn retrieve_token_list(&mut self) {
         self.token_list = list_web_login_tokens().unwrap_or_else(|e| {
-            self.web_server_error = Some(format!("Failed to retrieve login tokens: {}", e.to_string()));
+            self.web_server_error = Some(format!(
+                "Failed to retrieve login tokens: {}",
+                e.to_string()
+            ));
             vec![]
         });
     }
