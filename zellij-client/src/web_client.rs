@@ -4,7 +4,7 @@
 mod control_message;
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     env, fs,
     net::{IpAddr, Ipv4Addr},
     path::PathBuf,
@@ -23,18 +23,20 @@ use axum::{
         ws::{Message, WebSocket},
         Path as AxumPath, Query, State, WebSocketUpgrade,
     },
-    http::{header, HeaderMap},
-    http::StatusCode,
-    response::{Html, IntoResponse},
+    http::{StatusCode, header, HeaderMap, HeaderValue},
+    response::{Response, Html, IntoResponse},
     routing::{any, get, post},
     Json, Router,
+    middleware::{self, Next},
+    extract::Request,
 };
+
+use axum_extra::extract::cookie::{Cookie, SameSite};
+
 use std::io::{prelude::*, BufRead, BufReader};
 
 use axum_server::tls_rustls::RustlsConfig;
 use axum_server::Handle;
-
-use sha2::{Sha256, Digest};
 
 use interprocess::unnamed_pipe::pipe;
 use tower_http::cors::CorsLayer;
@@ -63,7 +65,7 @@ use zellij_utils::{
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     sessions::{generate_unique_session_name, resurrection_layout, session_exists},
     setup::{find_default_config_dir, get_layout_dir},
-    web_authentication_tokens::{validate_token, create_token, delete_db},
+    web_authentication_tokens::validate_token,
 };
 
 use futures::{prelude::stream::SplitSink, SinkExt, StreamExt};
@@ -78,59 +80,6 @@ use tokio::{
     runtime::Runtime,
     sync::mpsc::{UnboundedReceiver, UnboundedSender},
 };
-
-use axum::{
-    http,
-    response::Response,
-    middleware::{self, Next},
-    extract::Request,
-};
-
-async fn auth(
-    State(token_store): State<TokenStore>,
-    // run the `HeaderMap` extractor
-    headers: HeaderMap,
-    // you can also add more extractors here but the last
-    // extractor must implement `FromRequest` which
-    // `Request` does
-    request: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
-    match get_token(&headers) {
-        Some(token) if token_is_valid(&token_store, token) => {
-            log::info!("can has authorized");
-            let response = next.run(request).await;
-            Ok(response)
-        }
-        _ => {
-            log::info!("can has not authorized");
-            Err(StatusCode::UNAUTHORIZED)
-        }
-    }
-}
-
-fn get_token(headers: &HeaderMap) -> Option<&str> {
-    headers
-        .get("token")
-        .or_else(|| headers.get("sec-websocket-protocol")) // TODO: better? specifically for
-                                                           // websockets?
-        .and_then(|h| h.to_str().ok())
-}
-
-
-fn token_is_valid(token_store: &TokenStore, token: &str) -> bool {
-    match validate_token(token) {
-        Ok(is_valid) => is_valid,
-        Err(e) => {
-            log::error!("Failed to validate token: {}", e);
-            false
-        }
-    }
-    // validate_token(token).unwrap_or(false)
-//     let hashed_token = Sha256::digest(token);
-//     token_store.contains_token_hash(&hashed_token)
-}
-
 
 const BRACKETED_PASTE_START: [u8; 6] = [27, 91, 50, 48, 48, 126]; // \u{1b}[200~
 const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201~
@@ -439,21 +388,16 @@ struct AppState {
     server_handle: Handle,
 }
 
-#[derive(Clone, Default, Debug)]
-struct TokenStore {
-    hashed_tokens: HashSet<Vec<u8>>,
+async fn serve_html(request: Request) -> Html<String> {
+    let cookies = parse_cookies(&request);
+    let is_authenticated = cookies.get("auth_token").is_some();
+    let auth_value = if is_authenticated { "true" } else { "false" };
+    let html = Html(
+        WEB_CLIENT_PAGE
+            .replace("IS_AUTHENTICATED", &format!("{}", auth_value))
+    );
+    html
 }
-
-impl TokenStore {
-    pub fn contains_token_hash(&self, token_hash: &[u8]) -> bool {
-        self.hashed_tokens.contains(token_hash)
-    }
-    pub fn add_hash(&mut self, token_hash: &[u8]) {
-        self.hashed_tokens.insert(token_hash.to_vec());
-    }
-}
-
-
 
 async fn serve_web_client(
     config: Config,
@@ -461,53 +405,26 @@ async fn serve_web_client(
     listener: std::net::TcpListener,
     rustls_config: Option<RustlsConfig>,
 ) {
-    // TODO: DELETE THIS!!!111oneoneone
-    delete_db();
-    log::info!("DEBUG TOKEN: {}", create_token(None).unwrap());
-
-
     let connection_table = Arc::new(Mutex::new(ConnectionTable::default()));
-
     let server_handle = Handle::new();
-
     let state = AppState {
         connection_table,
         config,
         config_options,
         server_handle: server_handle.clone(),
     };
-
-    let web_server_ip = state
-        .config_options
-        .web_server_ip
-        .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
-    let web_server_port = state.config_options.web_server_port.unwrap_or_else(|| 8082);
-
-    let html = Html(
-        WEB_CLIENT_PAGE
-            .replace("WEB_SERVER_IP", &format!("{}", web_server_ip))
-            .replace("WEB_SERVER_PORT", &format!("{}", web_server_port)),
-    );
-
-    let mut token_store = TokenStore::default();
-    
-    let fake_hash_for_testing = Sha256::digest("valid_token"); // TODO: REMOVEME!!!111oneoneone
-
-    token_store.add_hash(&fake_hash_for_testing);
-
     let app = Router::new()
         .route("/ws/control", any(ws_handler_control))
         .route("/ws/terminal", any(ws_handler_terminal))
         .route("/ws/terminal/{session}", any(ws_handler_terminal))
         .route("/session", post(create_new_client))
-        .route_layer(middleware::from_fn_with_state(token_store.clone(), auth))
-        .route("/", get(html.clone()))
-        .route("/{session}", get(html.clone()))
+        .route_layer(middleware::from_fn(auth_middleware))
+        .route("/", get(serve_html))
+        .route("/{session}", get(serve_html))
         .route("/assets/{*path}", get(get_static_asset))
         // TODO: do we want to restrict these somehow?
         .route("/info/version", get(VERSION))
         .route("/command/shutdown", post(send_shutdown_signal))
-
         .layer(CorsLayer::permissive()) // TODO: configure correctly
         .with_state(state);
 
@@ -1387,3 +1304,83 @@ fn should_use_https(
         ))
     }
 }
+
+fn parse_cookies(request: &Request) -> HashMap<String, String> {
+    let mut cookies = HashMap::new();
+    
+    if let Some(cookie_header) = request.headers().get("cookie") {
+        if let Ok(cookie_str) = cookie_header.to_str() {
+            for cookie_part in cookie_str.split(';') {
+                if let Ok(cookie) = Cookie::parse(cookie_part.trim()) {
+                    cookies.insert(cookie.name().to_string(), cookie.value().to_string());
+                }
+            }
+        }
+    }
+    
+    cookies
+}
+
+async fn auth_middleware(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    log::info!("auth_middleware");
+    let cookies = parse_cookies(&request);
+    let header_token = headers
+        .get("authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "))
+        .or_else(|| params.get("token").map(|s| s.as_str()));
+    let cookie_token = cookies.get("auth_token").cloned();
+    let (token, should_set_cookie) = match (header_token, &cookie_token) {
+        (Some(header_tok), _) => {
+            // New login with header token - check for remember_me preference
+            let remember_me = headers
+                .get("x-remember-me")
+                .and_then(|h| h.to_str().ok())
+                .map(|s| s == "true")
+                .unwrap_or(false);
+            (header_tok.to_owned(), remember_me)
+        },
+        (None, Some(cookie_tok)) => {
+            // Existing session with cookie
+            (cookie_tok.to_owned(), false)
+        },
+        (None, None) => return Err(StatusCode::UNAUTHORIZED),
+    };
+    if !token_is_valid(&token) {
+        return Err(StatusCode::UNAUTHORIZED)
+    };
+
+    let mut response = next.run(request).await;
+
+    if should_set_cookie {
+        let cookie = Cookie::build(("auth_token", token))
+            .http_only(true)
+            .secure(true)
+            .same_site(SameSite::Strict)
+            .max_age(time::Duration::hours(24 * 30)) // 30 days = 720 hours
+            .path("/")
+            .build();
+        if let Ok(cookie_header) = HeaderValue::from_str(&cookie.to_string()) {
+            response.headers_mut().insert("set-cookie", cookie_header);
+        }
+    }
+    
+    Ok(response)
+}
+
+fn token_is_valid(token: &str) -> bool {
+    match validate_token(token) {
+        Ok(is_valid) => is_valid,
+        Err(e) => {
+            log::error!("Failed to validate token: {}", e);
+            false
+        }
+    }
+}
+
+

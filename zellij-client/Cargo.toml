@@ -14,13 +14,10 @@ license = "MIT"
 # so let's see how that works out before rocking the boat
 tokio = { version = "1.38.1", features = ["full"], optional = true }
 futures = { version = "0.3.30", optional = true }
-#axum = { version = "0.8.1", features = ["ws"], optional = true }
 axum = { version = "0.8.4", features = ["ws"], optional = true }
+axum-extra = { version = "0.9", features = ["cookie"] }
+time = "0.3"
 axum-server = { version = "0.7", features = ["tls-rustls"] }
-sha2 = "0.10"
-axum-login = { version = "0.17.0" }
-async-trait = { version = "*" } #TODO: version
-serde_urlencoded = {version = "*" } #TODO: version
 
 anyhow = { workspace = true }
 daemonize = { workspace = true }

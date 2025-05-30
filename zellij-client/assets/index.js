@@ -5,7 +5,8 @@ function is_https () {
 document.addEventListener("DOMContentLoaded", async (event) => {
 
     let token;
-    let remember; // TODO: implement this
+    let remember;
+    let has_authentication_cookie = window.is_authenticated;
 
     async function wait_for_security_token() {
       token = null;
@@ -21,12 +22,15 @@ document.addEventListener("DOMContentLoaded", async (event) => {
       }
     }
 
-    await wait_for_security_token();
+    if (!has_authentication_cookie) {
+      await wait_for_security_token();
+    }
     let web_client_id;
 
     while (!web_client_id) {
-      web_client_id = await get_client_id(token);
+      web_client_id = await get_client_id(token, remember, has_authentication_cookie);
       if (!web_client_id) {
+        has_authentication_cookie = false;
         await wait_for_security_token()
       }
     }
@@ -165,12 +169,16 @@ document.addEventListener("DOMContentLoaded", async (event) => {
     });
 
     let ws_url_prefix = is_https() ? "wss" : "ws";
-    const ws_terminal_url =
-        session_name === ""
-            ? `${ws_url_prefix}://${window.web_server_ip}:${window.web_server_port}/ws/terminal?web_client_id=${web_client_id}`
-            : `${ws_url_prefix}://${window.web_server_ip}:${window.web_server_port}/ws/terminal/${session_name}?web_client_id=${web_client_id}`;
+    let url = session_name === ""
+      ? `${ws_url_prefix}://${window.location.host}/ws/terminal`
+      : `${ws_url_prefix}://${window.location.host}/ws/terminal/${session_name}`;
 
-    let ws_terminal = new WebSocket(ws_terminal_url, token);
+    let query_string = has_authentication_cookie
+      ? `?web_client_id=${encodeURIComponent(web_client_id)}`
+      : `?web_client_id=${encodeURIComponent(web_client_id)}&token=${encodeURIComponent(token)}`;
+    const ws_terminal_url = `${url}${query_string}`;
+
+    let ws_terminal = new WebSocket(ws_terminal_url);
     let ws_control;
 
     addEventListener("resize", (event) => {
@@ -302,8 +310,10 @@ document.addEventListener("DOMContentLoaded", async (event) => {
         //         );
         if (own_web_client_id == "") {
             own_web_client_id = web_client_id;
-            const ws_control_url = `${ws_url_prefix}://${window.web_server_ip}:${window.web_server_port}/ws/control`;
-            ws_control = new WebSocket(ws_control_url, token);
+            const ws_control_url = has_authentication_cookie
+              ? `${ws_url_prefix}://${window.location.host}/ws/control`
+              : `${ws_url_prefix}://${window.location.host}/ws/control?token=${encodeURIComponent(token)}`;
+            ws_control = new WebSocket(ws_control_url);
             start_ws_control();
         }
         term.write(event.data);
@@ -337,14 +347,18 @@ function initTerminal() {
     return { term, fitAddon };
 }
 
-async function get_client_id(token) {
+async function get_client_id(token, rememberMe, has_authentication_cookie) {
     let url_prefix = is_https() ? "https" : "http";
-    let data = await fetch(`${url_prefix}://${window.web_server_ip}:${window.web_server_port}/session`, {
+    let headers = has_authentication_cookie 
+      ? { "Content-Type": "application/json" }
+      : {
+        "Content-Type": "application/json",
+        'Authorization': `Bearer ${token}`,
+        'X-Remember-Me': rememberMe ? 'true' : 'false'
+      };
+    let data = await fetch(`${url_prefix}://${window.location.host}/session`, {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "token": token,
-        },
+        headers,
         body: JSON.stringify({}),
     });
     if (data.status === 401) {

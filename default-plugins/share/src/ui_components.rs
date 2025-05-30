@@ -447,8 +447,14 @@ impl CurrentSessionSection {
             .web_server_port
             .map(|p| format!("{}", p))
             .unwrap_or("UNDEFINED".to_owned());
+        let prefix = if self.connection_is_unencrypted {
+            "http"
+        } else {
+            "https"
+        };
         format!(
-            "http://{}:{}/{}",
+            "{}://{}:{}/{}",
+            prefix,
             web_server_ip,
             web_server_port,
             self.session_name.clone().unwrap_or_else(|| "".to_owned())
