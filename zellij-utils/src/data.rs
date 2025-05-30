@@ -2,7 +2,7 @@ use crate::input::actions::Action;
 use crate::input::config::ConversionError;
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{RunPlugin, SplitSize};
-use crate::shared::colors as default_colors;
+use crate::shared::{colors as default_colors, eightbit_to_rgb};
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -1108,6 +1108,16 @@ pub enum PaletteColor {
 impl Default for PaletteColor {
     fn default() -> PaletteColor {
         PaletteColor::EightBit(0)
+    }
+}
+
+impl PaletteColor {
+    pub fn as_rgb_str(&self) -> String {
+        let (r, g, b) = match *self {
+            Self::Rgb((r, g, b)) => (r, g, b),
+            Self::EightBit(c) => eightbit_to_rgb(c),
+        };
+        format!("rgb({}, {}, {})", r, g, b)
     }
 }
 

@@ -1,19 +1,71 @@
 use kdl::{KdlDocument, KdlNode, KdlValue};
 use serde::{Deserialize, Serialize};
 
-use crate::kdl_get_child_entry_string_value;
+use crate::{
+    data::PaletteColor, kdl_children_or_error, kdl_get_child, kdl_get_child_entry_string_value,
+};
 
 use super::config::ConfigError;
+
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebClientTheme {
+    pub background: Option<String>,
+    pub foreground: Option<String>,
+}
+
+impl WebClientTheme {
+    pub fn from_kdl(kdl: &KdlNode) -> Result<Self, ConfigError> {
+        let mut theme = WebClientTheme::default();
+        let colors = kdl_children_or_error!(kdl, "empty theme");
+
+        // Helper function to extract colors
+        let extract_color = |name: &str| -> Result<Option<String>, ConfigError> {
+            if colors.get(name).is_some() {
+                let color = PaletteColor::try_from((name, colors))?;
+                Ok(Some(color.as_rgb_str()))
+            } else {
+                Ok(None)
+            }
+        };
+
+        theme.background = extract_color("background")?;
+        theme.foreground = extract_color("foreground")?;
+
+        Ok(theme)
+    }
+
+    pub fn to_kdl(&self) -> KdlNode {
+        let mut theme_node = KdlNode::new("theme");
+        let mut theme_children = KdlDocument::new();
+
+        if let Some(background) = &self.background {
+            let mut background_node = KdlNode::new("background");
+            background_node.push(KdlValue::String(background.clone()));
+            theme_children.nodes_mut().push(background_node);
+        }
+
+        if let Some(foreground) = &self.foreground {
+            let mut foreground_node = KdlNode::new("foreground");
+            foreground_node.push(KdlValue::String(foreground.clone()));
+            theme_children.nodes_mut().push(foreground_node);
+        }
+
+        theme_node.set_children(theme_children);
+        theme_node
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WebClientConfig {
     pub font: String,
+    pub theme: Option<WebClientTheme>,
 }
 
 impl Default for WebClientConfig {
     fn default() -> Self {
         WebClientConfig {
             font: "monospace".to_string(),
+            theme: None,
         }
     }
 }
@@ -24,6 +76,10 @@ impl WebClientConfig {
 
         if let Some(font) = kdl_get_child_entry_string_value!(kdl, "font") {
             web_client_config.font = font.to_owned();
+        }
+
+        if let Some(theme_node) = kdl_get_child!(kdl, "theme") {
+            web_client_config.theme = Some(WebClientTheme::from_kdl(theme_node)?);
         }
 
         Ok(web_client_config)
@@ -42,6 +98,7 @@ impl WebClientConfig {
     pub fn merge(&self, other: WebClientConfig) -> Self {
         let mut merged = self.clone();
         merged.font = other.font;
+        merged.theme = other.theme;
         merged
     }
 }

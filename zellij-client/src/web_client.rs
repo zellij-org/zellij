@@ -45,8 +45,8 @@ use daemonize::{self, Outcome};
 use nix::sys::stat::{umask, Mode};
 
 use control_message::{
-    WebClientToWebServerControlMessage, WebClientToWebServerControlMessagePayload,
-    WebServerToWebClientControlMessage,
+    SetConfigPayload, WebClientToWebServerControlMessage,
+    WebClientToWebServerControlMessagePayload, WebServerToWebClientControlMessage,
 };
 use zellij_utils::{
     cli::CliArgs,
@@ -551,9 +551,9 @@ async fn ws_handler_terminal(
 async fn handle_ws_control(socket: WebSocket, state: AppState) {
     info!("New Control WebSocket connection established");
 
-    let set_config_msg = WebServerToWebClientControlMessage::SetConfig {
-        font: state.config.web_client.font.clone(),
-    };
+    let config = SetConfigPayload::from((&state.config, &state.config_options));
+    let set_config_msg = WebServerToWebClientControlMessage::SetConfig(config);
+    info!("Sending initial config to client: {:?}", set_config_msg);
 
     let (control_socket_tx, mut control_socket_rx) = socket.split();
 

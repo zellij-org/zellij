@@ -1,4 +1,4 @@
-function is_https () {
+function is_https() {
     return document.location.protocol === "https:";
 }
 
@@ -235,8 +235,16 @@ document.addEventListener("DOMContentLoaded", async (event) => {
         ws_control.onmessage = function (event) {
             const msg = JSON.parse(event.data);
             if (msg.type === "SetConfig") {
-                const { font } = msg;
+                console.log("SetConfig message received", msg);
+                const { font, background, foreground } = msg;
                 term.options.fontFamily = font;
+                term.options.theme = {
+                    ...term.options.theme,
+                    background,
+                    foreground,
+                };
+                const body = document.querySelector("body");
+                body.style.background = background;
 
                 const fit_dimensions = fitAddon.proposeDimensions();
                 if (fit_dimensions === undefined) {
@@ -285,12 +293,12 @@ document.addEventListener("DOMContentLoaded", async (event) => {
             } else if (msg.type === "Log") {
                 const { lines } = msg;
                 for (const line in lines) {
-                  console.log(line);
+                    console.log(line);
                 }
             } else if (msg.type === "LogError") {
                 const { lines } = msg;
                 for (const line in lines) {
-                  console.error(line);
+                    console.error(line);
                 }
             } else if (msg.type === "SwitchedSession") {
                 const { new_session_name } = msg;
@@ -328,7 +336,10 @@ function initTerminal() {
     const term = new Terminal({
         fontFamily: "Monospace",
         allowProposedApi: true,
+        scrollback: 0,
     });
+    // for debugging
+    window.term = term;
     const fitAddon = new FitAddon.FitAddon();
     const clipboardAddon = new ClipboardAddon.ClipboardAddon();
     const webLinksAddon = new WebLinksAddon.WebLinksAddon();
