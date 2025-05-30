@@ -6,15 +6,17 @@ pub use super::generated_api::api::{
         plugin_command::Payload, BreakPanesToNewTabPayload, BreakPanesToTabWithIndexPayload,
         ChangeFloatingPanesCoordinatesPayload, ChangeHostFolderPayload,
         ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseMultiplePanesPayload,
-        CloseTabWithIndexPayload, CommandName, ContextItem, EditScrollbackForPaneWithIdPayload,
-        EmbedMultiplePanesPayload, EnvVariable, ExecCmdPayload,
+        CloseTabWithIndexPayload, CommandName, ContextItem,
+        CreateTokenResponse as ProtobufCreateTokenResponse, CreateTokenResponse,
+        EditScrollbackForPaneWithIdPayload, EmbedMultiplePanesPayload, EnvVariable, ExecCmdPayload,
         FixedOrPercent as ProtobufFixedOrPercent,
         FixedOrPercentValue as ProtobufFixedOrPercentValue, FloatMultiplePanesPayload,
-        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, GroupAndUngroupPanesPayload,
-        HidePaneWithIdPayload, HighlightAndUnhighlightPanesPayload, HttpVerb as ProtobufHttpVerb,
-        IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload, LoadNewPluginPayload,
-        MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload,
-        MovePayload, NewPluginArgs as ProtobufNewPluginArgs, NewTabsWithLayoutInfoPayload,
+        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, GenerateWebLoginTokenPayload,
+        GroupAndUngroupPanesPayload, HidePaneWithIdPayload, HighlightAndUnhighlightPanesPayload,
+        HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
+        ListTokensResponse, LoadNewPluginPayload, MessageToPluginPayload,
+        MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload, MovePayload,
+        NewPluginArgs as ProtobufNewPluginArgs, NewTabsWithLayoutInfoPayload,
         OpenCommandPaneFloatingNearPluginPayload, OpenCommandPaneInPlaceOfPluginPayload,
         OpenCommandPaneNearPluginPayload, OpenCommandPanePayload,
         OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
@@ -23,15 +25,16 @@ pub use super::generated_api::api::{
         PageScrollDownInPaneIdPayload, PageScrollUpInPaneIdPayload, PaneId as ProtobufPaneId,
         PaneIdAndFloatingPaneCoordinates, PaneType as ProtobufPaneType,
         PluginCommand as ProtobufPluginCommand, PluginMessagePayload, RebindKeysPayload,
-        ReconfigurePayload, ReloadPluginPayload, RequestPluginPermissionPayload,
-        RerunCommandPanePayload, ResizePaneIdWithDirectionPayload, ResizePayload,
-        RunCommandPayload, ScrollDownInPaneIdPayload, ScrollToBottomInPaneIdPayload,
-        ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetFloatingPanePinnedPayload,
+        ReconfigurePayload, ReloadPluginPayload, RenameWebLoginTokenPayload,
+        RenameWebTokenResponse, RequestPluginPermissionPayload, RerunCommandPanePayload,
+        ResizePaneIdWithDirectionPayload, ResizePayload, RevokeAllWebTokensResponse,
+        RevokeTokenResponse, RevokeWebLoginTokenPayload, RunCommandPayload,
+        ScrollDownInPaneIdPayload, ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload,
+        ScrollUpInPaneIdPayload, SetFloatingPanePinnedPayload, SetSelfMouseSelectionSupportPayload,
         SetTimeoutPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
         SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
         TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload, GenerateWebLoginTokenPayload, RevokeWebLoginTokenPayload, SetSelfMouseSelectionSupportPayload, CreateTokenResponse as ProtobufCreateTokenResponse, RevokeTokenResponse, ListTokensResponse, CreateTokenResponse, RenameWebLoginTokenPayload, RevokeAllWebTokensResponse, RenameWebTokenResponse
-
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1650,29 +1653,29 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     Ok(PluginCommand::StopSharingCurrentSession)
                 }
             },
-            Some(CommandName::SetSelfMouseSelectionSupport) => match protobuf_plugin_command.payload {
-                Some(Payload::SetSelfMouseSelectionSupportPayload(set_self_mouse_selection_support_payload)) => {
-                    Ok(PluginCommand::SetSelfMouseSelectionSupport(
-                        set_self_mouse_selection_support_payload.support_mouse_selection
-                    ))
+            Some(CommandName::SetSelfMouseSelectionSupport) => {
+                match protobuf_plugin_command.payload {
+                    Some(Payload::SetSelfMouseSelectionSupportPayload(
+                        set_self_mouse_selection_support_payload,
+                    )) => Ok(PluginCommand::SetSelfMouseSelectionSupport(
+                        set_self_mouse_selection_support_payload.support_mouse_selection,
+                    )),
+                    _ => Err("SetSelfMouseSelectionSupport requires a payload"),
                 }
-                _ => Err("SetSelfMouseSelectionSupport requires a payload")
             },
             Some(CommandName::GenerateWebLoginToken) => match protobuf_plugin_command.payload {
                 Some(Payload::GenerateWebLoginTokenPayload(generate_web_login_token_payload)) => {
                     Ok(PluginCommand::GenerateWebLoginToken(
-                        generate_web_login_token_payload.token_label
+                        generate_web_login_token_payload.token_label,
                     ))
-                }
-                _ => Err("GenerateWebLoginToken requires a payload")
+                },
+                _ => Err("GenerateWebLoginToken requires a payload"),
             },
             Some(CommandName::RevokeWebLoginToken) => match protobuf_plugin_command.payload {
-                Some(Payload::RevokeWebLoginTokenPayload(revoke_web_login_token_payload)) => {
-                    Ok(PluginCommand::RevokeWebLoginToken(
-                        revoke_web_login_token_payload.token_label
-                    ))
-                }
-                _ => Err("RevokeWebLoginToken requires a payload")
+                Some(Payload::RevokeWebLoginTokenPayload(revoke_web_login_token_payload)) => Ok(
+                    PluginCommand::RevokeWebLoginToken(revoke_web_login_token_payload.token_label),
+                ),
+                _ => Err("RevokeWebLoginToken requires a payload"),
             },
             Some(CommandName::ListWebLoginTokens) => {
                 if protobuf_plugin_command.payload.is_some() {
@@ -1694,8 +1697,8 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         rename_web_login_token_payload.old_name,
                         rename_web_login_token_payload.new_name,
                     ))
-                }
-                _ => Err("RenameWebLoginToken requires a payload")
+                },
+                _ => Err("RenameWebLoginToken requires a payload"),
             },
             None => Err("Unrecognized plugin command"),
         }
@@ -2787,28 +2790,26 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::StopSharingCurrentSession as i32,
                 payload: None,
             }),
-            PluginCommand::SetSelfMouseSelectionSupport(support_mouse_selection) => Ok(ProtobufPluginCommand {
-                name: CommandName::SetSelfMouseSelectionSupport as i32,
-                payload: Some(Payload::SetSelfMouseSelectionSupportPayload(
-                    SetSelfMouseSelectionSupportPayload {
-                        support_mouse_selection,
-                    },
-                )),
-            }),
+            PluginCommand::SetSelfMouseSelectionSupport(support_mouse_selection) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::SetSelfMouseSelectionSupport as i32,
+                    payload: Some(Payload::SetSelfMouseSelectionSupportPayload(
+                        SetSelfMouseSelectionSupportPayload {
+                            support_mouse_selection,
+                        },
+                    )),
+                })
+            },
             PluginCommand::GenerateWebLoginToken(token_label) => Ok(ProtobufPluginCommand {
                 name: CommandName::GenerateWebLoginToken as i32,
                 payload: Some(Payload::GenerateWebLoginTokenPayload(
-                    GenerateWebLoginTokenPayload {
-                        token_label,
-                    },
+                    GenerateWebLoginTokenPayload { token_label },
                 )),
             }),
             PluginCommand::RevokeWebLoginToken(token_label) => Ok(ProtobufPluginCommand {
                 name: CommandName::RevokeWebLoginToken as i32,
                 payload: Some(Payload::RevokeWebLoginTokenPayload(
-                    RevokeWebLoginTokenPayload {
-                        token_label,
-                    },
+                    RevokeWebLoginTokenPayload { token_label },
                 )),
             }),
             PluginCommand::ListWebLoginTokens => Ok(ProtobufPluginCommand {
@@ -2822,10 +2823,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::RenameWebLoginToken(old_name, new_name) => Ok(ProtobufPluginCommand {
                 name: CommandName::RenameWebLoginToken as i32,
                 payload: Some(Payload::RenameWebLoginTokenPayload(
-                    RenameWebLoginTokenPayload {
-                        old_name,
-                        new_name,
-                    },
+                    RenameWebLoginTokenPayload { old_name, new_name },
                 )),
             }),
         }

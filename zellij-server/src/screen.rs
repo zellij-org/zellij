@@ -643,7 +643,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SessionSharingStatusChange(..) => {
                 ScreenContext::SessionSharingStatusChange
             },
-            ScreenInstruction::SetMouseSelectionSupport(..) => ScreenContext::SetMouseSelectionSupport,
+            ScreenInstruction::SetMouseSelectionSupport(..) => {
+                ScreenContext::SetMouseSelectionSupport
+            },
         }
     }
 }
@@ -3864,8 +3866,9 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 if !found_plugin {
-                    pending_events_waiting_for_tab
-                        .push(ScreenInstruction::SetMouseSelectionSupport(pid, selection_support));
+                    pending_events_waiting_for_tab.push(
+                        ScreenInstruction::SetMouseSelectionSupport(pid, selection_support),
+                    );
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;

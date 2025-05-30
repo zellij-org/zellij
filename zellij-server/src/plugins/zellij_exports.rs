@@ -25,7 +25,9 @@ use zellij_utils::data::{
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
-use zellij_utils::web_authentication_tokens::{create_token, revoke_token, list_tokens, rename_token, revoke_all_tokens};
+use zellij_utils::web_authentication_tokens::{
+    create_token, list_tokens, rename_token, revoke_all_tokens, revoke_token,
+};
 
 use crate::{panes::PaneId, screen::ScreenInstruction};
 
@@ -43,7 +45,10 @@ use zellij_utils::{
         layout::{Layout, RunPluginOrAlias},
     },
     plugin_api::{
-        plugin_command::{ProtobufPluginCommand, CreateTokenResponse, RevokeTokenResponse, ListTokensResponse, RevokeAllWebTokensResponse, RenameWebTokenResponse},
+        plugin_command::{
+            CreateTokenResponse, ListTokensResponse, ProtobufPluginCommand, RenameWebTokenResponse,
+            RevokeAllWebTokensResponse, RevokeTokenResponse,
+        },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
 };
@@ -463,22 +468,22 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::StopSharingCurrentSession => stop_sharing_current_session(env),
                     PluginCommand::SetSelfMouseSelectionSupport(selection_support) => {
                         set_self_mouse_selection_support(env, selection_support);
-                    }
+                    },
                     PluginCommand::GenerateWebLoginToken(token_label) => {
                         generate_web_login_token(env, token_label);
-                    }
+                    },
                     PluginCommand::RevokeWebLoginToken(label) => {
                         revoke_web_login_token(env, label);
-                    }
+                    },
                     PluginCommand::ListWebLoginTokens => {
                         list_web_login_tokens(env);
-                    }
+                    },
                     PluginCommand::RevokeAllWebLoginTokens => {
                         revoke_all_web_login_tokens(env);
-                    }
+                    },
                     PluginCommand::RenameWebLoginToken(old_name, new_name) => {
                         rename_web_login_token(env, old_name, new_name);
-                    }
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -2285,103 +2290,80 @@ fn embed_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
         ));
 }
 
-
 fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>) {
     let serialized = match create_token(token_label) {
-        Ok((token, token_label)) => {
-            CreateTokenResponse {
-                token: Some(token),
-                token_label: Some(token_label),
-                error: None,
-            }
+        Ok((token, token_label)) => CreateTokenResponse {
+            token: Some(token),
+            token_label: Some(token_label),
+            error: None,
         },
-        Err(e) => {
-            CreateTokenResponse {
-                token: None,
-                token_label: None,
-                error: Some(e.to_string()),
-            }
-        }
+        Err(e) => CreateTokenResponse {
+            token: None,
+            token_label: None,
+            error: Some(e.to_string()),
+        },
     };
     let _ = wasi_write_object(env, &serialized.encode_to_vec());
 }
 
 fn revoke_web_login_token(env: &PluginEnv, token_label: String) {
     let serialized = match revoke_token(&token_label) {
-        Ok(true) => {
-            RevokeTokenResponse {
-                successfully_revoked: true,
-                error: None,
-            }
+        Ok(true) => RevokeTokenResponse {
+            successfully_revoked: true,
+            error: None,
         },
-        Ok(false) => {
-            RevokeTokenResponse {
-                successfully_revoked: false,
-                error: Some(format!("Token with label {} not found", token_label)),
-            }
+        Ok(false) => RevokeTokenResponse {
+            successfully_revoked: false,
+            error: Some(format!("Token with label {} not found", token_label)),
         },
-        Err(e) => {
-            RevokeTokenResponse {
-                successfully_revoked: false,
-                error: Some(e.to_string()),
-            }
-        }
+        Err(e) => RevokeTokenResponse {
+            successfully_revoked: false,
+            error: Some(e.to_string()),
+        },
     };
     let _ = wasi_write_object(env, &serialized.encode_to_vec());
 }
 
 fn revoke_all_web_login_tokens(env: &PluginEnv) {
     let serialized = match revoke_all_tokens() {
-        Ok(_) => {
-            RevokeAllWebTokensResponse {
-                successfully_revoked: true,
-                error: None,
-            }
+        Ok(_) => RevokeAllWebTokensResponse {
+            successfully_revoked: true,
+            error: None,
         },
-        Err(e) => {
-            RevokeAllWebTokensResponse {
-                successfully_revoked: false,
-                error: Some(e.to_string()),
-            }
-        }
+        Err(e) => RevokeAllWebTokensResponse {
+            successfully_revoked: false,
+            error: Some(e.to_string()),
+        },
     };
     let _ = wasi_write_object(env, &serialized.encode_to_vec());
 }
 
 fn rename_web_login_token(env: &PluginEnv, old_name: String, new_name: String) {
     let serialized = match rename_token(&old_name, &new_name) {
-        Ok(_) => {
-            RenameWebTokenResponse {
-                successfully_renamed: true,
-                error: None,
-            }
+        Ok(_) => RenameWebTokenResponse {
+            successfully_renamed: true,
+            error: None,
         },
-        Err(e) => {
-            RenameWebTokenResponse {
-                successfully_renamed: false,
-                error: Some(e.to_string()),
-            }
-        }
+        Err(e) => RenameWebTokenResponse {
+            successfully_renamed: false,
+            error: Some(e.to_string()),
+        },
     };
     let _ = wasi_write_object(env, &serialized.encode_to_vec());
 }
 
 fn list_web_login_tokens(env: &PluginEnv) {
     let serialized = match list_tokens() {
-        Ok(token_list) => {
-            ListTokensResponse {
-                tokens: token_list.iter().map(|t| t.name.clone()).collect(),
-                creation_times: token_list.iter().map(|t| t.created_at.clone()).collect(),
-                error: None,
-            }
+        Ok(token_list) => ListTokensResponse {
+            tokens: token_list.iter().map(|t| t.name.clone()).collect(),
+            creation_times: token_list.iter().map(|t| t.created_at.clone()).collect(),
+            error: None,
         },
-        Err(e) => {
-            ListTokensResponse {
-                tokens: vec![],
-                creation_times: vec![],
-                error: Some(e.to_string()),
-            }
-        }
+        Err(e) => ListTokensResponse {
+            tokens: vec![],
+            creation_times: vec![],
+            error: Some(e.to_string()),
+        },
     };
     let _ = wasi_write_object(env, &serialized.encode_to_vec());
 }
@@ -2401,7 +2383,6 @@ fn set_self_mouse_selection_support(env: &PluginEnv, selection_support: bool) {
         })
         .non_fatal();
 }
-
 
 // Custom panic handler for plugins.
 //

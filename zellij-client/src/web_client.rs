@@ -19,16 +19,16 @@ use crate::{
     report_changes_in_config_file, spawn_server,
 };
 use axum::{
+    extract::Request,
     extract::{
         ws::{Message, WebSocket},
         Path as AxumPath, Query, State, WebSocketUpgrade,
     },
-    http::{StatusCode, header, HeaderMap, HeaderValue},
-    response::{Response, Html, IntoResponse},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    middleware::{self, Next},
+    response::{Html, IntoResponse, Response},
     routing::{any, get, post},
     Json, Router,
-    middleware::{self, Next},
-    extract::Request,
 };
 
 use axum_extra::extract::cookie::{Cookie, SameSite};
@@ -392,10 +392,7 @@ async fn serve_html(request: Request) -> Html<String> {
     let cookies = parse_cookies(&request);
     let is_authenticated = cookies.get("auth_token").is_some();
     let auth_value = if is_authenticated { "true" } else { "false" };
-    let html = Html(
-        WEB_CLIENT_PAGE
-            .replace("IS_AUTHENTICATED", &format!("{}", auth_value))
-    );
+    let html = Html(WEB_CLIENT_PAGE.replace("IS_AUTHENTICATED", &format!("{}", auth_value)));
     html
 }
 
@@ -1307,7 +1304,7 @@ fn should_use_https(
 
 fn parse_cookies(request: &Request) -> HashMap<String, String> {
     let mut cookies = HashMap::new();
-    
+
     if let Some(cookie_header) = request.headers().get("cookie") {
         if let Ok(cookie_str) = cookie_header.to_str() {
             for cookie_part in cookie_str.split(';') {
@@ -1317,7 +1314,7 @@ fn parse_cookies(request: &Request) -> HashMap<String, String> {
             }
         }
     }
-    
+
     cookies
 }
 
@@ -1352,7 +1349,7 @@ async fn auth_middleware(
         (None, None) => return Err(StatusCode::UNAUTHORIZED),
     };
     if !token_is_valid(&token) {
-        return Err(StatusCode::UNAUTHORIZED)
+        return Err(StatusCode::UNAUTHORIZED);
     };
 
     let mut response = next.run(request).await;
@@ -1369,7 +1366,7 @@ async fn auth_middleware(
             response.headers_mut().insert("set-cookie", cookie_header);
         }
     }
-    
+
     Ok(response)
 }
 
@@ -1379,8 +1376,6 @@ fn token_is_valid(token: &str) -> bool {
         Err(e) => {
             log::error!("Failed to validate token: {}", e);
             false
-        }
+        },
     }
 }
-
-

@@ -1,9 +1,9 @@
 // TODO: GATE THIS WHOLE FILE AND RELEVANT DEPS BEHIND web_server_capability
+use crate::consts::ZELLIJ_PROJ_DIR;
 use rusqlite::Connection;
+use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use uuid::Uuid;
-use sha2::{Digest, Sha256};
-use crate::consts::ZELLIJ_PROJ_DIR;
 
 #[derive(Debug)]
 pub struct TokenInfo {
@@ -37,8 +37,9 @@ impl std::error::Error for TokenError {}
 impl From<rusqlite::Error> for TokenError {
     fn from(error: rusqlite::Error) -> Self {
         match error {
-            rusqlite::Error::SqliteFailure(ffi_error, _) 
-                if ffi_error.code == rusqlite::ErrorCode::ConstraintViolation => {
+            rusqlite::Error::SqliteFailure(ffi_error, _)
+                if ffi_error.code == rusqlite::ErrorCode::ConstraintViolation =>
+            {
                 TokenError::DuplicateName("unknown".to_string())
             },
             _ => TokenError::Database(error),
@@ -57,7 +58,7 @@ type Result<T> = std::result::Result<T, TokenError>;
 fn get_db_path() -> Result<PathBuf> {
     let data_dir = ZELLIJ_PROJ_DIR.data_dir();
     std::fs::create_dir_all(data_dir)?;
-    
+
     Ok(data_dir.join("tokens.db"))
 }
 
@@ -74,33 +75,31 @@ fn init_db(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-pub fn create_token(name: Option<String>) -> Result<(String, String)> { // (token, token_label)
+pub fn create_token(name: Option<String>) -> Result<(String, String)> {
+    // (token, token_label)
     let db_path = get_db_path()?;
     let conn = Connection::open(db_path)?;
     init_db(&conn)?;
-    
+
     let token = Uuid::new_v4().to_string();
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
     let token_hash = format!("{:x}", hasher.finalize());
-    
+
     let token_name = if let Some(n) = name {
         n.to_string()
     } else {
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM tokens",
-            [],
-            |row| row.get(0)
-        )?;
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM tokens", [], |row| row.get(0))?;
         format!("token_{}", count + 1)
     };
-    
+
     match conn.execute(
         "INSERT INTO tokens (token_hash, name) VALUES (?1, ?2)",
         [&token_hash, &token_name],
     ) {
-        Err(rusqlite::Error::SqliteFailure(ffi_error, _)) 
-            if ffi_error.code == rusqlite::ErrorCode::ConstraintViolation => {
+        Err(rusqlite::Error::SqliteFailure(ffi_error, _))
+            if ffi_error.code == rusqlite::ErrorCode::ConstraintViolation =>
+        {
             Err(TokenError::DuplicateName(token_name))
         },
         Err(e) => Err(TokenError::Database(e)),
@@ -112,10 +111,7 @@ pub fn revoke_token(name: &str) -> Result<bool> {
     let db_path = get_db_path()?;
     let conn = Connection::open(db_path)?;
     init_db(&conn)?;
-    let rows_affected = conn.execute(
-        "DELETE FROM tokens WHERE name = ?1",
-        [&name],
-    )?;
+    let rows_affected = conn.execute("DELETE FROM tokens WHERE name = ?1", [&name])?;
     Ok(rows_affected > 0)
 }
 
@@ -123,10 +119,7 @@ pub fn revoke_all_tokens() -> Result<usize> {
     let db_path = get_db_path()?;
     let conn = Connection::open(db_path)?;
     init_db(&conn)?;
-    let rows_affected = conn.execute(
-        "DELETE FROM tokens",
-        [],
-    )?;
+    let rows_affected = conn.execute("DELETE FROM tokens", [])?;
     Ok(rows_affected)
 }
 
@@ -134,25 +127,26 @@ pub fn rename_token(old_name: &str, new_name: &str) -> Result<()> {
     let db_path = get_db_path()?;
     let conn = Connection::open(db_path)?;
     init_db(&conn)?;
-    
+
     // Check if the old token exists
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM tokens WHERE name = ?1",
         [&old_name],
-        |row| row.get(0)
+        |row| row.get(0),
     )?;
-    
+
     if count == 0 {
         return Err(TokenError::TokenNotFound(old_name.to_string()));
     }
-    
+
     // Try to update the token name
     match conn.execute(
         "UPDATE tokens SET name = ?1 WHERE name = ?2",
         [&new_name, &old_name],
     ) {
-        Err(rusqlite::Error::SqliteFailure(ffi_error, _)) 
-            if ffi_error.code == rusqlite::ErrorCode::ConstraintViolation => {
+        Err(rusqlite::Error::SqliteFailure(ffi_error, _))
+            if ffi_error.code == rusqlite::ErrorCode::ConstraintViolation =>
+        {
             Err(TokenError::DuplicateName(new_name.to_string()))
         },
         Err(e) => Err(TokenError::Database(e)),
@@ -164,7 +158,7 @@ pub fn list_tokens() -> Result<Vec<TokenInfo>> {
     let db_path = get_db_path()?;
     let conn = Connection::open(db_path)?;
     init_db(&conn)?;
-    
+
     let mut stmt = conn.prepare("SELECT name, created_at FROM tokens ORDER BY created_at")?;
     let rows = stmt.query_map([], |row| {
         Ok(TokenInfo {
@@ -172,7 +166,7 @@ pub fn list_tokens() -> Result<Vec<TokenInfo>> {
             created_at: row.get::<_, String>(1)?,
         })
     })?;
-    
+
     let mut tokens = Vec::new();
     for token in rows {
         tokens.push(token?);
@@ -192,15 +186,15 @@ pub fn validate_token(token: &str) -> Result<bool> {
     let db_path = get_db_path()?;
     let conn = Connection::open(db_path)?;
     init_db(&conn)?;
-    
+
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
     let token_hash = format!("{:x}", hasher.finalize());
-    
+
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM tokens WHERE token_hash = ?1",
         [&token_hash],
-        |row| row.get(0)
+        |row| row.get(0),
     )?;
     Ok(count > 0)
 }
