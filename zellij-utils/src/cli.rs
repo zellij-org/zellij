@@ -12,15 +12,15 @@ use url::Url;
 fn validate_session(name: &str) -> Result<String, String> {
     #[cfg(unix)]
     {
-        use crate::consts::ZELLIJ_SOCK_MAX_LENGTH;
+        use crate::consts::{ZELLIJ_SOCK_DIR, ZELLIJ_SOCK_MAX_LENGTH};
 
-        let mut socket_path = crate::consts::ZELLIJ_SOCK_DIR.clone();
+        let mut socket_path = ZELLIJ_SOCK_DIR.clone();
         socket_path.push(name);
 
         if socket_path.as_os_str().len() >= ZELLIJ_SOCK_MAX_LENGTH {
             // socket path must be less than 108 bytes
             let available_length = ZELLIJ_SOCK_MAX_LENGTH
-                .saturating_sub(socket_path.as_os_str().len())
+                .saturating_sub(ZELLIJ_SOCK_DIR.as_os_str().len())
                 .saturating_sub(1);
 
             return Err(format!(
