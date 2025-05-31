@@ -41,9 +41,10 @@ struct App {
     entering_new_token_name: Option<String>,
     renaming_token: Option<String>,
     info: Option<String>,
+    previous_screen: Option<Screen>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Screen {
     Main,
     Token(String), // String - the newly generated token for display
@@ -181,12 +182,15 @@ impl ZellijPlugin for App {
                                 }
                                 should_render = true;
                             },
+                            BareKey::Esc if key.has_no_modifiers() => {
+                                close_self();
+                            }
                             _ => {},
                         }
                     },
                     Screen::Token(..) => match key.bare_key {
                         BareKey::Esc if key.has_no_modifiers() => {
-                            self.change_to_main_screen();
+                            self.change_to_previous_screen();
                             should_render = true;
                         },
                         _ => {},
@@ -222,9 +226,10 @@ impl ZellijPlugin for App {
                                 should_render = true;
                             },
                             BareKey::Esc if key.has_no_modifiers() => {
-                                if let Some(new_name) = self.entering_new_token_name.take() {
-                                    // no-op, just cancel the renaming
-                                } else {
+                                let entering_new_token_name = self.entering_new_token_name.take().is_some();
+                                let renaming_token = self.renaming_token.take().is_some();
+                                let editing_action_was_cancelled = entering_new_token_name || renaming_token;
+                                if !editing_action_was_cancelled {
                                     self.change_to_main_screen();
                                 }
                                 should_render = true;
@@ -478,6 +483,14 @@ impl App {
             render_text_with_underline(url_x, url_y, url_text);
         }
     }
+    pub fn unencrypted_warning_width(&self) -> usize {
+        let warning_text =
+            format!("[*] Connection unencrypted. Consider using an SSL certificate.");
+        let more_info_text = "More info: ";
+        let url_text = "https://zellij.dev/documentation/web-server-ssl";
+        let more_info_line_text = format!("{}{}", more_info_text, url_text);
+        std::cmp::max(warning_text.chars().count(), more_info_line_text.chars().count())
+    }
     pub fn query_link_executable(&self) {
         let mut xdg_open_context = BTreeMap::new();
         xdg_open_context.insert("xdg_open_cli".to_owned(), String::new());
@@ -513,18 +526,34 @@ impl App {
     pub fn change_to_token_screen(&mut self, generated_token: String) {
         self.retrieve_token_list();
         set_self_mouse_selection_support(true);
+        self.previous_screen = Some(self.current_screen.clone()); // so we can get back to it once
+                                                                  // we've viewed the token
         self.current_screen = Screen::Token(generated_token);
     }
     pub fn change_to_manage_tokens_screen(&mut self) {
         self.retrieve_token_list();
         set_self_mouse_selection_support(false);
         self.selected_list_index = Some(0);
+        self.previous_screen = None; // we don't want to go back to this screen
         self.current_screen = Screen::ManageTokens;
     }
     pub fn change_to_main_screen(&mut self) {
         self.retrieve_token_list();
         set_self_mouse_selection_support(false);
+        self.previous_screen = None; // we don't want to go back to this screen
         self.current_screen = Screen::Main;
+    }
+    pub fn change_to_previous_screen(&mut self) {
+        self.retrieve_token_list();
+        match self.previous_screen.take() {
+            Some(Screen::ManageTokens) => {
+                self.change_to_manage_tokens_screen();
+            },
+            _ => {
+                self.change_to_main_screen();
+            }
+        }
+
     }
     fn render_main_screen(&mut self, rows: usize, cols: usize) {
         let usage = Usage::new(!self.token_list.is_empty());
@@ -561,6 +590,8 @@ impl App {
             2 + web_server_items_height + 1 + current_session_items_height + 1 + usage_height;
 
         if connection_is_unencrypted {
+            let unencrypted_warning_width = self.unencrypted_warning_width();
+            max_item_width = std::cmp::max(max_item_width, unencrypted_warning_width);
             line_count += 3; // space for the warning
         }
 
