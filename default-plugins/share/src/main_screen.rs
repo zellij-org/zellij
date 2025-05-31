@@ -124,6 +124,7 @@ impl<'a> MainScreen<'a> {
             title_text: Self::TITLE_TEXT,
             web_server_height,
             usage_height,
+            usage_width,
         }
     }
 
@@ -198,7 +199,7 @@ impl<'a> MainScreen<'a> {
 
     fn render_usage_section(&self, layout: &Layout, y: usize) -> usize {
         let usage = Usage::new(!self.token_list_is_empty);
-        usage.render_usage(layout.base_x, y, layout.usage_height);
+        usage.render_usage(layout.base_x, y, layout.usage_width);
         y + layout.usage_height + 1
     }
 
@@ -275,4 +276,5 @@ struct Layout<'a> {
     title_text: &'a str,
     web_server_height: usize,
     usage_height: usize,
+    usage_width: usize,
 }
