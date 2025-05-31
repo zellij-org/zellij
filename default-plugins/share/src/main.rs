@@ -1,4 +1,5 @@
 mod main_screen;
+mod token_screen;
 mod token_management_screen;
 mod ui_components;
 
@@ -9,6 +10,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use token_management_screen::TokenManagementScreen;
 use main_screen::MainScreen;
+use token_screen::TokenScreen;
 
 static WEB_SERVER_QUERY_DURATION: f64 = 0.4; // Doherty threshold
 
@@ -525,71 +527,13 @@ impl App {
         self.clickable_urls = main_screen_state_changes.clickable_urls;
     }
     fn render_token_screen(&self, rows: usize, cols: usize, generated_token: &str) {
-        let mut width = 0;
-        let generated_token_text_long = format!("New log-in token: {}", generated_token);
-        let generated_token_text_short = format!("Token: {}", generated_token);
-        let (generated_token, generated_token_text) =
-            if cols >= generated_token_text_long.chars().count() {
-                let generated_token = Text::new(&generated_token_text_long).color_range(2, ..=16);
-                (generated_token, generated_token_text_long)
-            } else {
-                let generated_token = Text::new(&generated_token_text_short).color_range(2, ..=5);
-                (generated_token, generated_token_text_short)
-            };
-        width = std::cmp::max(width, generated_token_text.chars().count());
-
-        let explanation_text_1_long = "Use this token to log-in from the browser.";
-        let explanation_text_1_short = "Use to log-in from the browser.";
-        let explanation_text_1 = if cols >= explanation_text_1_long.chars().count() {
-            explanation_text_1_long
-        } else {
-            explanation_text_1_short
-        };
-        width = std::cmp::max(width, explanation_text_1.chars().count());
-        let explanation_text_1 = Text::new(explanation_text_1).color_range(0, ..);
-
-        let explanation_text_2_long =
-            "Copy this token, because it will not be saved and can't be retrieved.";
-        let explanation_text_2_short = "It will not be saved and can't be retrieved.";
-        let explanation_text_2 = if cols >= explanation_text_2_long.chars().count() {
-            explanation_text_2_long
-        } else {
-            explanation_text_2_short
-        };
-        width = std::cmp::max(width, explanation_text_2.chars().count());
-        let explanation_text_2 = Text::new(explanation_text_2);
-
-        let explanation_text_3_long = "If lost, it can always be revoked and a new one generated.";
-        let explanation_text_3_short = "It can always be revoked and a regenerated.";
-        let explanation_text_3 = if cols >= explanation_text_3_long.chars().count() {
-            explanation_text_3_long
-        } else {
-            explanation_text_3_short
-        };
-        width = std::cmp::max(width, explanation_text_3.chars().count());
-        let explanation_text_3 = Text::new(explanation_text_3);
-
-        let esc_go_back = "<Esc> - go back";
-        width = std::cmp::max(width, esc_go_back.chars().count());
-        let esc_go_back = Text::new(esc_go_back).color_range(3, ..=4);
-
-        let base_x = cols.saturating_sub(width) / 2;
-        let base_y = rows.saturating_sub(7) / 2;
-        print_text_with_coordinates(generated_token, base_x, base_y, None, None);
-        print_text_with_coordinates(explanation_text_1, base_x, base_y + 2, None, None);
-        print_text_with_coordinates(explanation_text_2, base_x, base_y + 4, None, None);
-        print_text_with_coordinates(explanation_text_3, base_x, base_y + 5, None, None);
-        print_text_with_coordinates(esc_go_back, base_x, base_y + 7, None, None);
-
-        if let Some(error) = &self.web_server_error {
-            print_text_with_coordinates(
-                Text::new(error).color_range(3, ..),
-                base_x,
-                base_y + 8,
-                None,
-                None,
-            );
-        }
+        let token_screen = TokenScreen::new(
+            generated_token.to_string(),
+            self.web_server_error.clone(),
+            rows,
+            cols
+        );
+        token_screen.render();
     }
 
     fn render_manage_tokens_screen(&self, rows: usize, cols: usize) {
