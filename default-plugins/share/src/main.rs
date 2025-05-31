@@ -1,18 +1,14 @@
+mod main_screen;
 mod token_management_screen;
 mod ui_components;
 
 use std::net::IpAddr;
-use url::Url;
 use zellij_tile::prelude::*;
 
 use std::collections::{BTreeMap, HashMap};
 
-use ui_components::{
-    hovering_on_line, render_text_with_underline, CurrentSessionSection, Usage,
-    WebServerStatusSection,
-};
-
 use token_management_screen::TokenManagementScreen;
+use main_screen::MainScreen;
 
 static WEB_SERVER_QUERY_DURATION: f64 = 0.4; // Doherty threshold
 
@@ -450,47 +446,6 @@ impl ZellijPlugin for App {
 }
 
 impl App {
-    pub fn render_link_help(&self, x: usize, y: usize) {
-        let help_text = if self.link_executable.is_some() {
-            let help_text = format!("Help: Click or Shift-Click to open in browser");
-            Text::new(help_text)
-                .color_range(3, 6..=10)
-                .color_range(3, 15..=25)
-        } else {
-            let help_text = format!("Help: Shift-Click to open in browser");
-            Text::new(help_text).color_range(3, 6..=16)
-        };
-        print_text_with_coordinates(help_text, x, y, None, None);
-    }
-    pub fn render_unencrypted_warning(&mut self, x: usize, y: usize) {
-        let warning_text =
-            format!("[*] Connection unencrypted. Consider using an SSL certificate.");
-        let warning_text = Text::new(warning_text).color_range(1, ..3);
-        let more_info_text = "More info: ";
-        let url_text = "https://zellij.dev/documentation/web-server-ssl";
-        let more_info_line = Text::new(format!("{}{}", more_info_text, url_text));
-        let url_x = x + more_info_text.chars().count();
-        let url_y = y + 1;
-        let url_width = url_text.chars().count();
-        self.clickable_urls.insert(
-            CoordinatesInLine::new(url_x, url_y, url_width),
-            url_text.to_owned(),
-        );
-        print_text_with_coordinates(warning_text, x, y, None, None);
-        print_text_with_coordinates(more_info_line, x, y + 1, None, None);
-        if hovering_on_line(url_x, url_y, url_width, self.hover_coordinates) {
-            self.currently_hovering_over_link = true;
-            render_text_with_underline(url_x, url_y, url_text);
-        }
-    }
-    pub fn unencrypted_warning_width(&self) -> usize {
-        let warning_text =
-            format!("[*] Connection unencrypted. Consider using an SSL certificate.");
-        let more_info_text = "More info: ";
-        let url_text = "https://zellij.dev/documentation/web-server-ssl";
-        let more_info_line_text = format!("{}{}", more_info_text, url_text);
-        std::cmp::max(warning_text.chars().count(), more_info_line_text.chars().count())
-    }
     pub fn query_link_executable(&self) {
         let mut xdg_open_context = BTreeMap::new();
         xdg_open_context.insert("xdg_open_cli".to_owned(), String::new());
@@ -516,12 +471,6 @@ impl App {
         let text_x = cols.saturating_sub(text.chars().count()) / 2;
         let text_y = rows / 2;
         print_text_with_coordinates(text_element, text_x, text_y, None, None);
-    }
-    pub fn connection_is_unencrypted(&self) -> bool {
-        Url::parse(&self.web_server_base_url)
-            .ok()
-            .map(|b| b.scheme() == "http")
-            .unwrap_or(false)
     }
     pub fn change_to_token_screen(&mut self, generated_token: String) {
         self.retrieve_token_list();
@@ -556,105 +505,24 @@ impl App {
 
     }
     fn render_main_screen(&mut self, rows: usize, cols: usize) {
-        let usage = Usage::new(!self.token_list.is_empty());
-        let connection_is_unencrypted = self.connection_is_unencrypted();
-        let mut web_server_status_section = WebServerStatusSection::new(
+        let main_screen_state_changes = MainScreen::new(
+            self.token_list.is_empty(),
             self.web_server_started,
-            self.web_server_error.clone(),
-            self.web_server_different_version_error.clone(),
-            self.web_server_base_url.clone(),
-            connection_is_unencrypted,
-        );
-        let mut current_session_section = CurrentSessionSection::new(
-            self.web_server_started,
+            &self.web_server_error,
+            &self.web_server_different_version_error,
+            &self.web_server_base_url,
             self.web_server_ip,
             self.web_server_port,
-            self.session_name.clone(),
+            &self.session_name,
             self.web_sharing,
-            connection_is_unencrypted,
-        );
-
-        let mut max_item_width = 0;
-        let title_text = "Share Session Locally in the Browser";
-        max_item_width = std::cmp::max(max_item_width, title_text.chars().count());
-
-        let (web_server_items_width, web_server_items_height) =
-            web_server_status_section.web_server_status_width_and_height();
-        max_item_width = std::cmp::max(max_item_width, web_server_items_width);
-        let (current_session_items_width, current_session_items_height) =
-            current_session_section.current_session_status_width_and_height();
-        max_item_width = std::cmp::max(max_item_width, current_session_items_width);
-        let (usage_width, usage_height) = usage.usage_width_and_height(cols);
-        max_item_width = std::cmp::max(max_item_width, usage_width);
-        let mut line_count =
-            2 + web_server_items_height + 1 + current_session_items_height + 1 + usage_height;
-
-        if connection_is_unencrypted {
-            let unencrypted_warning_width = self.unencrypted_warning_width();
-            max_item_width = std::cmp::max(max_item_width, unencrypted_warning_width);
-            line_count += 3; // space for the warning
-        }
-
-        let base_x = cols.saturating_sub(max_item_width) / 2;
-        let base_y = rows.saturating_sub(line_count) / 2; // the + 2 are the line spaces
-
-        let mut current_y = base_y;
-        let title = Text::new(title_text).color_range(2, ..);
-        print_text_with_coordinates(
-            title,
-            cols.saturating_sub(title_text.chars().count()) / 2,
-            current_y,
-            None,
-            None,
-        );
-        current_y += 2;
-        web_server_status_section.render_web_server_status(
-            base_x,
-            current_y,
             self.hover_coordinates,
-        );
-        self.currently_hovering_over_link = web_server_status_section.currently_hovering_over_link;
-        self.currently_hovering_over_unencrypted = self.currently_hovering_over_unencrypted
-            || web_server_status_section.currently_hovering_over_unencrypted;
-        for (coordinates, url) in web_server_status_section.clickable_urls {
-            self.clickable_urls.insert(coordinates, url);
-        }
-        current_y += web_server_items_height + 1;
+            &self.info,
+            &self.link_executable,
+        ).render(rows, cols);
 
-        current_session_section.render_current_session_status(
-            base_x,
-            current_y,
-            self.hover_coordinates,
-        );
-        self.currently_hovering_over_link = self.currently_hovering_over_link
-            || current_session_section.currently_hovering_over_link;
-        for (coordinates, url) in current_session_section.clickable_urls {
-            self.clickable_urls.insert(coordinates, url);
-        }
-
-        current_y += web_server_items_height + 1;
-        usage.render_usage(base_x, current_y, cols);
-        current_y += usage_height + 1;
-
-        if connection_is_unencrypted && self.web_server_started {
-            self.render_unencrypted_warning(base_x, current_y);
-            current_y += 3;
-        }
-
-        if self.currently_hovering_over_link {
-            self.render_link_help(base_x, current_y);
-            current_y += 3;
-        }
-
-        if let Some(info) = &self.info {
-            print_text_with_coordinates(
-                Text::new(info).color_range(1, ..),
-                base_x,
-                current_y,
-                None,
-                None,
-            );
-        }
+        self.currently_hovering_over_link = main_screen_state_changes.currently_hovering_over_link;
+        self.currently_hovering_over_unencrypted = main_screen_state_changes.currently_hovering_over_unencrypted;
+        self.clickable_urls = main_screen_state_changes.clickable_urls;
     }
     fn render_token_screen(&self, rows: usize, cols: usize, generated_token: &str) {
         let mut width = 0;
