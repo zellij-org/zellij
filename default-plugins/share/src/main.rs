@@ -16,49 +16,63 @@ static WEB_SERVER_QUERY_DURATION: f64 = 0.4; // Doherty threshold
 
 #[derive(Debug, Default)]
 struct App {
-    web_server_started: bool,
-    web_sharing: WebSharing,
-    web_clients_allowed: bool,
-    session_name: Option<String>,
-    web_server_error: Option<String>,
-    web_server_different_version_error: Option<String>,
-    web_server_ip: Option<IpAddr>,
-    web_server_port: Option<u16>,
-    web_server_base_url: String,
-    hover_coordinates: Option<(usize, usize)>, // x, y
-    clickable_urls: HashMap<CoordinatesInLine, String>,
-    link_executable: Option<&'static str>,
-    currently_hovering_over_link: bool,
-    currently_hovering_over_unencrypted: bool,
-    own_plugin_id: Option<u32>,
-    web_server_capability: bool,
-    timer_running: bool,
-    current_screen: Screen,
-    token_list: Vec<(String, String)>, // (name, created_at)
-    selected_list_index: Option<usize>,
-    entering_new_token_name: Option<String>,
-    renaming_token: Option<String>,
-    info: Option<String>,
-    previous_screen: Option<Screen>,
-}
-
-#[derive(Debug, Clone)]
-enum Screen {
-    Main,
-    Token(String), // String - the newly generated token for display
-    ManageTokens,
-}
-
-impl Default for Screen {
-    fn default() -> Self {
-        Screen::Main
-    }
+    web_server: WebServerState,
+    ui: UIState,
+    tokens: TokenManager,
+    state: AppState,
 }
 
 register_plugin!(App);
 
 impl ZellijPlugin for App {
     fn load(&mut self, _configuration: BTreeMap<String, String>) {
+        self.initialize();
+    }
+
+    fn update(&mut self, event: Event) -> bool {
+        if !self.web_server.capability && !matches!(event, Event::ModeUpdate(_)) {
+            return false;
+        }
+
+        match event {
+            Event::Timer(_) => self.handle_timer(),
+            Event::ModeUpdate(mode_info) => self.handle_mode_update(mode_info),
+            Event::WebServerStatus(status) => self.handle_web_server_status(status),
+            Event::Key(key) => self.handle_key_input(key),
+            Event::Mouse(mouse_event) => self.handle_mouse_event(mouse_event),
+            Event::RunCommandResult(exit_code, _stdout, _stderr, context) => {
+                self.handle_command_result(exit_code, context)
+            }
+            Event::FailedToStartWebServer(error) => self.handle_web_server_error(error),
+            _ => false,
+        }
+    }
+
+    fn render(&mut self, rows: usize, cols: usize) {
+        if !self.web_server.capability {
+            self.render_no_capability_message(rows, cols);
+            return;
+        }
+
+        self.ui.reset_render_state();
+        match &self.state.current_screen {
+            Screen::Main => self.render_main_screen(rows, cols),
+            Screen::Token(token) => self.render_token_screen(rows, cols, token),
+            Screen::ManageTokens => self.render_manage_tokens_screen(rows, cols),
+        }
+    }
+}
+
+impl App {
+    fn initialize(&mut self) {
+        self.subscribe_to_events();
+        self.state.own_plugin_id = Some(get_plugin_ids().plugin_id);
+        self.retrieve_token_list();
+        self.query_link_executable();
+        self.set_plugin_title();
+    }
+
+    fn subscribe_to_events(&self) {
         subscribe(&[
             EventType::Key,
             EventType::ModeUpdate,
@@ -68,497 +82,546 @@ impl ZellijPlugin for App {
             EventType::FailedToStartWebServer,
             EventType::Timer,
         ]);
-        self.own_plugin_id = Some(get_plugin_ids().plugin_id);
-        self.retrieve_token_list();
-        self.query_link_executable();
-        self.change_own_title();
     }
-    fn update(&mut self, event: Event) -> bool {
-        let mut should_render = false;
-        match event {
-            Event::Timer(_) => {
-                query_web_server_status();
-                self.retrieve_token_list();
-                set_timeout(WEB_SERVER_QUERY_DURATION);
-            },
-            Event::ModeUpdate(mode_info) => {
-                self.session_name = mode_info.session_name;
-                if let Some(web_clients_allowed) = mode_info.web_clients_allowed {
-                    self.web_clients_allowed = web_clients_allowed;
-                    should_render = true;
-                }
-                if let Some(web_sharing) = mode_info.web_sharing {
-                    self.web_sharing = web_sharing;
-                    should_render = true;
-                }
-                if let Some(web_server_ip) = mode_info.web_server_ip {
-                    self.web_server_ip = Some(web_server_ip);
-                    should_render = true;
-                }
-                if let Some(web_server_port) = mode_info.web_server_port {
-                    self.web_server_port = Some(web_server_port);
-                    should_render = true;
-                }
-                if let Some(web_server_capability) = mode_info.web_server_capability {
-                    self.web_server_capability = web_server_capability;
-                    if self.web_server_capability && !self.timer_running {
-                        self.timer_running = true;
-                        set_timeout(WEB_SERVER_QUERY_DURATION);
-                    }
-                    should_render = true;
-                }
-            },
-            Event::WebServerStatus(web_server_status) => {
-                if !self.web_server_capability {
-                    return false;
-                }
-                match web_server_status {
-                    WebServerStatus::Online(base_url) => {
-                        self.web_server_base_url = base_url;
-                        self.web_server_started = true;
-                        self.web_server_different_version_error = None;
-                    },
-                    WebServerStatus::Offline => {
-                        self.web_server_started = false;
-                        self.web_server_different_version_error = None;
-                    },
-                    WebServerStatus::DifferentVersion(different_version) => {
-                        self.web_server_started = false;
-                        self.web_server_different_version_error = Some(different_version);
-                    },
-                }
-                should_render = true;
-            },
-            Event::Key(key) => {
-                if !self.web_server_capability {
-                    return false;
-                }
-                if self.web_server_error.take().is_some() {
-                    // clear the error with any key
-                    return true;
-                }
-                if self.info.take().is_some() {
-                    // clear info message with any key
-                    return true;
-                }
-                match self.current_screen {
-                    Screen::Main => {
-                        match key.bare_key {
-                            BareKey::Enter
-                                if key.has_no_modifiers() && !self.web_server_started =>
-                            {
-                                start_web_server();
-                            },
-                            BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
-                                stop_web_server();
-                            },
-                            BareKey::Char(' ') if key.has_no_modifiers() => {
-                                match self.web_sharing {
-                                    WebSharing::Disabled => {
-                                        // no-op
-                                    },
-                                    WebSharing::On => {
-                                        stop_sharing_current_session();
-                                    },
-                                    WebSharing::Off => {
-                                        share_current_session();
-                                    },
-                                }
-                            },
-                            BareKey::Char('t') if key.has_no_modifiers() => {
-                                if self.token_list.is_empty() {
-                                    match generate_web_login_token(None) {
-                                        Ok(token) => {
-                                            self.change_to_token_screen(token);
-                                        },
-                                        Err(e) => {
-                                            self.web_server_error = Some(e);
-                                        },
-                                    }
-                                } else {
-                                    self.change_to_manage_tokens_screen();
-                                }
-                                should_render = true;
-                            },
-                            BareKey::Esc if key.has_no_modifiers() => {
-                                close_self();
-                            }
-                            _ => {},
-                        }
-                    },
-                    Screen::Token(..) => match key.bare_key {
-                        BareKey::Esc if key.has_no_modifiers() => {
-                            self.change_to_previous_screen();
-                            should_render = true;
-                        },
-                        _ => {},
-                    },
-                    Screen::ManageTokens => {
-                        match key.bare_key {
-                            BareKey::Char(character)
-                                if key.has_no_modifiers()
-                                    && self.entering_new_token_name.is_some() =>
-                            {
-                                self.entering_new_token_name
-                                    .as_mut()
-                                    .map(|n| n.push(character));
-                                should_render = true;
-                            },
-                            BareKey::Char(character)
-                                if key.has_no_modifiers() && self.renaming_token.is_some() =>
-                            {
-                                self.renaming_token.as_mut().map(|n| n.push(character));
-                                should_render = true;
-                            },
-                            BareKey::Backspace
-                                if key.has_no_modifiers()
-                                    && self.entering_new_token_name.is_some() =>
-                            {
-                                self.entering_new_token_name.as_mut().map(|n| n.pop());
-                                should_render = true;
-                            },
-                            BareKey::Backspace
-                                if key.has_no_modifiers() && self.renaming_token.is_some() =>
-                            {
-                                self.renaming_token.as_mut().map(|n| n.pop());
-                                should_render = true;
-                            },
-                            BareKey::Esc if key.has_no_modifiers() => {
-                                let entering_new_token_name = self.entering_new_token_name.take().is_some();
-                                let renaming_token = self.renaming_token.take().is_some();
-                                let editing_action_was_cancelled = entering_new_token_name || renaming_token;
-                                if !editing_action_was_cancelled {
-                                    self.change_to_main_screen();
-                                }
-                                should_render = true;
-                            },
-                            BareKey::Down if key.has_no_modifiers() => {
-                                if let Some(selected_list_index) = self.selected_list_index.as_mut()
-                                {
-                                    if *selected_list_index
-                                        < self.token_list.len().saturating_sub(1)
-                                    {
-                                        *selected_list_index += 1;
-                                    } else {
-                                        *selected_list_index = 0;
-                                    }
-                                    should_render = true;
-                                }
-                            },
-                            BareKey::Up if key.has_no_modifiers() => {
-                                if let Some(selected_list_index) = self.selected_list_index.as_mut()
-                                {
-                                    if *selected_list_index == 0 {
-                                        *selected_list_index =
-                                            self.token_list.len().saturating_sub(1)
-                                    } else {
-                                        *selected_list_index -= 1;
-                                    }
-                                    should_render = true;
-                                }
-                            },
-                            BareKey::Char('n') if key.has_no_modifiers() => {
-                                self.entering_new_token_name = Some(String::new());
-                                should_render = true;
-                            },
-                            BareKey::Enter
-                                if key.has_no_modifiers()
-                                    && self.entering_new_token_name.is_some() =>
-                            {
-                                let new_token_name = self.entering_new_token_name.take().and_then(
-                                    |new_token_name| {
-                                        if new_token_name.is_empty() {
-                                            None
-                                        } else {
-                                            Some(new_token_name)
-                                        }
-                                    },
-                                );
-                                match generate_web_login_token(new_token_name) {
-                                    Ok(token) => {
-                                        self.change_to_token_screen(token);
-                                    },
-                                    Err(e) => {
-                                        self.web_server_error = Some(e);
-                                    },
-                                }
-                                should_render = true;
-                            },
-                            BareKey::Char('r') if key.has_no_modifiers() => {
-                                self.renaming_token = Some(String::new());
-                                should_render = true;
-                            },
-                            BareKey::Enter
-                                if key.has_no_modifiers() && self.renaming_token.is_some() =>
-                            {
-                                if let Some(currently_selected_token) = self
-                                    .selected_list_index
-                                    .and_then(|i| self.token_list.get(i))
-                                {
-                                    if let Some(new_token_name) = self.renaming_token.take() {
-                                        match rename_web_token(
-                                            &currently_selected_token.0,
-                                            &new_token_name,
-                                        ) {
-                                            Ok(_) => {
-                                                self.retrieve_token_list();
-                                                if self.token_list.is_empty() {
-                                                    self.selected_list_index = None;
-                                                    self.change_to_main_screen();
-                                                } else if self.selected_list_index
-                                                    >= Some(self.token_list.len())
-                                                {
-                                                    self.selected_list_index = Some(
-                                                        self.token_list.len().saturating_sub(1),
-                                                    );
-                                                }
-                                            },
-                                            Err(e) => {
-                                                self.web_server_error = Some(e);
-                                            },
-                                        }
-                                    }
-                                }
-                                should_render = true;
-                            },
-                            BareKey::Char('x') if key.has_no_modifiers() => {
-                                if let Some(currently_selected_token) = self
-                                    .selected_list_index
-                                    .and_then(|i| self.token_list.get(i))
-                                {
-                                    match revoke_web_login_token(&currently_selected_token.0) {
-                                        Ok(_) => {
-                                            self.retrieve_token_list();
-                                            if self.token_list.is_empty() {
-                                                self.selected_list_index = None;
-                                                self.change_to_main_screen();
-                                            } else if self.selected_list_index
-                                                >= Some(self.token_list.len())
-                                            {
-                                                self.selected_list_index =
-                                                    Some(self.token_list.len().saturating_sub(1));
-                                            }
-                                            self.info = Some(
-                                                "Revoked. Connected clients not affected."
-                                                    .to_owned(),
-                                            );
-                                        },
-                                        Err(e) => {
-                                            self.web_server_error = Some(e);
-                                        },
-                                    }
-                                }
-                                should_render = true;
-                            },
-                            BareKey::Char('x') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
-                                match revoke_all_web_tokens() {
-                                    Ok(_) => {
-                                        self.retrieve_token_list();
-                                        // TODO: move this outside to reduce duplication
-                                        if self.token_list.is_empty() {
-                                            self.selected_list_index = None;
-                                            self.change_to_main_screen();
-                                        } else if self.selected_list_index
-                                            >= Some(self.token_list.len())
-                                        {
-                                            self.selected_list_index =
-                                                Some(self.token_list.len().saturating_sub(1));
-                                        }
-                                        self.info = Some(
-                                            "Revoked. Connected clients not affected.".to_owned(),
-                                        );
-                                    },
-                                    Err(e) => {
-                                        self.web_server_error = Some(e);
-                                    },
-                                }
-                            },
-                            _ => {},
-                        }
-                    },
-                }
-            },
-            Event::Mouse(mouse_event) => {
-                if !self.web_server_capability {
-                    return false;
-                }
-                match mouse_event {
-                    Mouse::LeftClick(line, column) => {
-                        for (coordinates, url) in &self.clickable_urls {
-                            if coordinates.contains(column, line as usize) {
-                                if let Some(executable) = self.link_executable {
-                                    run_command(&[&executable, &url], Default::default());
-                                }
-                                should_render = true;
-                                break;
-                            }
-                        }
-                    },
-                    Mouse::Hover(line, column) => {
-                        self.hover_coordinates = Some((column, line as usize));
-                        should_render = true;
-                    },
-                    _ => {},
-                }
-            },
-            Event::RunCommandResult(exit_code, _stdout, _stderr, context) => {
-                if !self.web_server_capability {
-                    return false;
-                }
-                let is_xdg_open = context.get("xdg_open_cli").is_some();
-                let is_open = context.get("open_cli").is_some();
-                if is_xdg_open {
-                    if exit_code == Some(0) {
-                        self.link_executable = Some("xdg-open");
-                    }
-                } else if is_open {
-                    if exit_code == Some(0) {
-                        self.link_executable = Some("open");
-                    }
-                }
-            },
-            Event::FailedToStartWebServer(error) => {
-                self.web_server_error = Some(error);
-                should_render = true;
-            },
-            _ => {},
+
+    fn set_plugin_title(&self) {
+        if let Some(plugin_id) = self.state.own_plugin_id {
+            rename_plugin_pane(plugin_id, "Share Session");
         }
+    }
+
+    fn handle_timer(&mut self) -> bool {
+        query_web_server_status();
+        self.retrieve_token_list();
+        set_timeout(WEB_SERVER_QUERY_DURATION);
+        false
+    }
+
+    fn handle_mode_update(&mut self, mode_info: ModeInfo) -> bool {
+        let mut should_render = false;
+        
+        self.state.session_name = mode_info.session_name;
+        
+        if let Some(web_clients_allowed) = mode_info.web_clients_allowed {
+            self.web_server.clients_allowed = web_clients_allowed;
+            should_render = true;
+        }
+        
+        if let Some(web_sharing) = mode_info.web_sharing {
+            self.web_server.sharing = web_sharing;
+            should_render = true;
+        }
+        
+        if let Some(web_server_ip) = mode_info.web_server_ip {
+            self.web_server.ip = Some(web_server_ip);
+            should_render = true;
+        }
+        
+        if let Some(web_server_port) = mode_info.web_server_port {
+            self.web_server.port = Some(web_server_port);
+            should_render = true;
+        }
+        
+        if let Some(web_server_capability) = mode_info.web_server_capability {
+            self.web_server.capability = web_server_capability;
+            if self.web_server.capability && !self.state.timer_running {
+                self.state.timer_running = true;
+                set_timeout(WEB_SERVER_QUERY_DURATION);
+            }
+            should_render = true;
+        }
+        
         should_render
     }
-    fn render(&mut self, rows: usize, cols: usize) {
-        if !self.web_server_capability {
-            self.render_no_web_server_capability(rows, cols);
-            return;
+
+    fn handle_web_server_status(&mut self, status: WebServerStatus) -> bool {
+        match status {
+            WebServerStatus::Online(base_url) => {
+                self.web_server.base_url = base_url;
+                self.web_server.started = true;
+                self.web_server.different_version_error = None;
+            }
+            WebServerStatus::Offline => {
+                self.web_server.started = false;
+                self.web_server.different_version_error = None;
+            }
+            WebServerStatus::DifferentVersion(version) => {
+                self.web_server.started = false;
+                self.web_server.different_version_error = Some(version);
+            }
         }
-        // reset rendered state
-        self.currently_hovering_over_link = false;
-        self.clickable_urls.clear();
-        match &self.current_screen {
-            Screen::Main => {
-                self.render_main_screen(rows, cols);
-            },
-            Screen::Token(generated_token) => {
-                self.render_token_screen(rows, cols, generated_token);
-            },
-            Screen::ManageTokens => {
-                self.render_manage_tokens_screen(rows, cols);
-            },
+        true
+    }
+
+    fn handle_key_input(&mut self, key: KeyWithModifier) -> bool {
+        if self.clear_error_or_info() {
+            return true;
+        }
+
+        match self.state.current_screen {
+            Screen::Main => self.handle_main_screen_keys(key),
+            Screen::Token(_) => self.handle_token_screen_keys(key),
+            Screen::ManageTokens => self.handle_manage_tokens_keys(key),
         }
     }
-}
 
-impl App {
-    pub fn query_link_executable(&self) {
-        let mut xdg_open_context = BTreeMap::new();
-        xdg_open_context.insert("xdg_open_cli".to_owned(), String::new());
-        run_command(&["xdg-open", "--help"], xdg_open_context);
+    fn clear_error_or_info(&mut self) -> bool {
+        self.web_server.error.take().is_some() || self.state.info.take().is_some()
+    }
+
+    fn handle_main_screen_keys(&mut self, key: KeyWithModifier) -> bool {
+        match key.bare_key {
+            BareKey::Enter if key.has_no_modifiers() && !self.web_server.started => {
+                start_web_server();
+                false
+            }
+            BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                stop_web_server();
+                false
+            }
+            BareKey::Char(' ') if key.has_no_modifiers() => {
+                self.toggle_session_sharing();
+                false
+            }
+            BareKey::Char('t') if key.has_no_modifiers() => {
+                self.handle_token_action();
+                true
+            }
+            BareKey::Esc if key.has_no_modifiers() => {
+                close_self();
+                false
+            }
+            _ => false,
+        }
+    }
+
+    fn toggle_session_sharing(&self) {
+        match self.web_server.sharing {
+            WebSharing::Disabled => {}
+            WebSharing::On => stop_sharing_current_session(),
+            WebSharing::Off => share_current_session(),
+        }
+    }
+
+    fn handle_token_action(&mut self) {
+        if self.tokens.list.is_empty() {
+            self.generate_new_token(None);
+        } else {
+            self.change_to_manage_tokens_screen();
+        }
+    }
+
+    fn handle_token_screen_keys(&mut self, key: KeyWithModifier) -> bool {
+        match key.bare_key {
+            BareKey::Esc if key.has_no_modifiers() => {
+                self.change_to_previous_screen();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn handle_manage_tokens_keys(&mut self, key: KeyWithModifier) -> bool {
+        if self.tokens.handle_text_input(&key) {
+            return true;
+        }
+
+        match key.bare_key {
+            BareKey::Esc if key.has_no_modifiers() => self.handle_escape_key(),
+            BareKey::Down if key.has_no_modifiers() => self.tokens.navigate_down(),
+            BareKey::Up if key.has_no_modifiers() => self.tokens.navigate_up(),
+            BareKey::Char('n') if key.has_no_modifiers() => {
+                self.tokens.start_new_token_input();
+                true
+            }
+            BareKey::Enter if key.has_no_modifiers() => self.handle_enter_key(),
+            BareKey::Char('r') if key.has_no_modifiers() => {
+                self.tokens.start_rename_input();
+                true
+            }
+            BareKey::Char('x') if key.has_no_modifiers() => self.revoke_selected_token(),
+            BareKey::Char('x') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                self.revoke_all_tokens();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn handle_escape_key(&mut self) -> bool {
+        let was_editing = self.tokens.cancel_input();
+        
+        if !was_editing {
+            self.change_to_main_screen();
+        }
+        true
+    }
+
+    fn handle_enter_key(&mut self) -> bool {
+        if let Some(token_name) = self.tokens.finish_new_token_input() {
+            self.generate_new_token(token_name);
+            return true;
+        }
+
+        if let Some(new_name) = self.tokens.finish_rename_input() {
+            self.rename_current_token(new_name);
+            return true;
+        }
+
+        false
+    }
+
+    fn generate_new_token(&mut self, name: Option<String>) {
+        match generate_web_login_token(name) {
+            Ok(token) => self.change_to_token_screen(token),
+            Err(e) => self.web_server.error = Some(e),
+        }
+    }
+
+    fn rename_current_token(&mut self, new_name: String) {
+        if let Some(current_token) = self.tokens.get_selected_token() {
+            match rename_web_token(&current_token.0, &new_name) {
+                Ok(_) => {
+                    self.retrieve_token_list();
+                    if self.tokens.adjust_selection_after_list_change() {
+                        self.change_to_main_screen();
+                    }
+                }
+                Err(e) => self.web_server.error = Some(e),
+            }
+        }
+    }
+
+    fn revoke_selected_token(&mut self) -> bool {
+        if let Some(token) = self.tokens.get_selected_token() {
+            match revoke_web_login_token(&token.0) {
+                Ok(_) => {
+                    self.retrieve_token_list();
+                    if self.tokens.adjust_selection_after_list_change() {
+                        self.change_to_main_screen();
+                    }
+                    self.state.info = Some("Revoked. Connected clients not affected.".to_owned());
+                }
+                Err(e) => self.web_server.error = Some(e),
+            }
+            return true;
+        }
+        false
+    }
+
+    fn revoke_all_tokens(&mut self) {
+        match revoke_all_web_tokens() {
+            Ok(_) => {
+                self.retrieve_token_list();
+                if self.tokens.adjust_selection_after_list_change() {
+                    self.change_to_main_screen();
+                }
+                self.state.info = Some("Revoked. Connected clients not affected.".to_owned());
+            }
+            Err(e) => self.web_server.error = Some(e),
+        }
+    }
+
+    fn handle_mouse_event(&mut self, event: Mouse) -> bool {
+        match event {
+            Mouse::LeftClick(line, column) => self.handle_link_click(line, column),
+            Mouse::Hover(line, column) => {
+                self.ui.hover_coordinates = Some((column, line as usize));
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn handle_link_click(&mut self, line: isize, column: usize) -> bool {
+        for (coordinates, url) in &self.ui.clickable_urls {
+            if coordinates.contains(column, line as usize) {
+                if let Some(executable) = self.ui.link_executable {
+                    run_command(&[executable, url], Default::default());
+                }
+                return true;
+            }
+        }
+        false
+    }
+
+    fn handle_command_result(&mut self, exit_code: Option<i32>, context: BTreeMap<String, String>) -> bool {
+        if context.contains_key("xdg_open_cli") && exit_code == Some(0) {
+            self.ui.link_executable = Some("xdg-open");
+        } else if context.contains_key("open_cli") && exit_code == Some(0) {
+            self.ui.link_executable = Some("open");
+        }
+        false
+    }
+
+    fn handle_web_server_error(&mut self, error: String) -> bool {
+        self.web_server.error = Some(error);
+        true
+    }
+
+    fn query_link_executable(&self) {
+        let mut xdg_context = BTreeMap::new();
+        xdg_context.insert("xdg_open_cli".to_owned(), String::new());
+        run_command(&["xdg-open", "--help"], xdg_context);
+
         let mut open_context = BTreeMap::new();
         open_context.insert("open_cli".to_owned(), String::new());
         run_command(&["open", "--help"], open_context);
     }
-    pub fn change_own_title(&mut self) {
-        if let Some(own_plugin_id) = self.own_plugin_id {
-            rename_plugin_pane(own_plugin_id, "Share Session");
-        }
-    }
-    pub fn render_no_web_server_capability(&self, rows: usize, cols: usize) {
-        let text_full = "This version of Zellij was compiled without web sharing capabilities";
-        let text_short = "No web server capabilities";
-        let text = if cols >= text_full.chars().count() {
-            text_full
-        } else {
-            text_short
-        };
+
+    fn render_no_capability_message(&self, rows: usize, cols: usize) {
+        let full_text = "This version of Zellij was compiled without web sharing capabilities";
+        let short_text = "No web server capabilities";
+        let text = if cols >= full_text.chars().count() { full_text } else { short_text };
+        
         let text_element = Text::new(text).color_range(3, ..);
         let text_x = cols.saturating_sub(text.chars().count()) / 2;
         let text_y = rows / 2;
         print_text_with_coordinates(text_element, text_x, text_y, None, None);
     }
-    pub fn change_to_token_screen(&mut self, generated_token: String) {
+
+    fn change_to_token_screen(&mut self, token: String) {
         self.retrieve_token_list();
         set_self_mouse_selection_support(true);
-        self.previous_screen = Some(self.current_screen.clone()); // so we can get back to it once
-                                                                  // we've viewed the token
-        self.current_screen = Screen::Token(generated_token);
+        self.state.previous_screen = Some(self.state.current_screen.clone());
+        self.state.current_screen = Screen::Token(token);
     }
-    pub fn change_to_manage_tokens_screen(&mut self) {
-        self.retrieve_token_list();
-        set_self_mouse_selection_support(false);
-        self.selected_list_index = Some(0);
-        self.previous_screen = None; // we don't want to go back to this screen
-        self.current_screen = Screen::ManageTokens;
-    }
-    pub fn change_to_main_screen(&mut self) {
-        self.retrieve_token_list();
-        set_self_mouse_selection_support(false);
-        self.previous_screen = None; // we don't want to go back to this screen
-        self.current_screen = Screen::Main;
-    }
-    pub fn change_to_previous_screen(&mut self) {
-        self.retrieve_token_list();
-        match self.previous_screen.take() {
-            Some(Screen::ManageTokens) => {
-                self.change_to_manage_tokens_screen();
-            },
-            _ => {
-                self.change_to_main_screen();
-            }
-        }
 
+    fn change_to_manage_tokens_screen(&mut self) {
+        self.retrieve_token_list();
+        set_self_mouse_selection_support(false);
+        self.tokens.selected_index = Some(0);
+        self.state.previous_screen = None;
+        self.state.current_screen = Screen::ManageTokens;
     }
+
+    fn change_to_main_screen(&mut self) {
+        self.retrieve_token_list();
+        set_self_mouse_selection_support(false);
+        self.state.previous_screen = None;
+        self.state.current_screen = Screen::Main;
+    }
+
+    fn change_to_previous_screen(&mut self) {
+        self.retrieve_token_list();
+        match self.state.previous_screen.take() {
+            Some(Screen::ManageTokens) => self.change_to_manage_tokens_screen(),
+            _ => self.change_to_main_screen(),
+        }
+    }
+
     fn render_main_screen(&mut self, rows: usize, cols: usize) {
-        let main_screen_state_changes = MainScreen::new(
-            self.token_list.is_empty(),
-            self.web_server_started,
-            &self.web_server_error,
-            &self.web_server_different_version_error,
-            &self.web_server_base_url,
-            self.web_server_ip,
-            self.web_server_port,
-            &self.session_name,
-            self.web_sharing,
-            self.hover_coordinates,
-            &self.info,
-            &self.link_executable,
+        let state_changes = MainScreen::new(
+            self.tokens.list.is_empty(),
+            self.web_server.started,
+            &self.web_server.error,
+            &self.web_server.different_version_error,
+            &self.web_server.base_url,
+            self.web_server.ip,
+            self.web_server.port,
+            &self.state.session_name,
+            self.web_server.sharing,
+            self.ui.hover_coordinates,
+            &self.state.info,
+            &self.ui.link_executable,
         ).render(rows, cols);
 
-        self.currently_hovering_over_link = main_screen_state_changes.currently_hovering_over_link;
-        self.currently_hovering_over_unencrypted = main_screen_state_changes.currently_hovering_over_unencrypted;
-        self.clickable_urls = main_screen_state_changes.clickable_urls;
+        self.ui.currently_hovering_over_link = state_changes.currently_hovering_over_link;
+        self.ui.currently_hovering_over_unencrypted = state_changes.currently_hovering_over_unencrypted;
+        self.ui.clickable_urls = state_changes.clickable_urls;
     }
-    fn render_token_screen(&self, rows: usize, cols: usize, generated_token: &str) {
+
+    fn render_token_screen(&self, rows: usize, cols: usize, token: &str) {
         let token_screen = TokenScreen::new(
-            generated_token.to_string(),
-            self.web_server_error.clone(),
+            token.to_string(),
+            self.web_server.error.clone(),
             rows,
-            cols
+            cols,
         );
         token_screen.render();
     }
 
     fn render_manage_tokens_screen(&self, rows: usize, cols: usize) {
         TokenManagementScreen::new(
-            &self.token_list,
-            self.selected_list_index,
-            &self.renaming_token,
-            &self.entering_new_token_name,
-            &self.web_server_error,
-            &self.info,
+            &self.tokens.list,
+            self.tokens.selected_index,
+            &self.tokens.renaming_token,
+            &self.tokens.entering_new_name,
+            &self.web_server.error,
+            &self.state.info,
             rows,
             cols,
-        )
-        .render();
+        ).render();
     }
+
     fn retrieve_token_list(&mut self) {
-        self.token_list = list_web_login_tokens().unwrap_or_else(|e| {
-            self.web_server_error = Some(format!(
-                "Failed to retrieve login tokens: {}",
-                e.to_string()
-            ));
-            vec![]
-        });
+        if let Err(e) = self.tokens.retrieve_list() {
+            self.web_server.error = Some(e);
+        }
     }
 }
+
+#[derive(Debug, Default)]
+struct WebServerState {
+    started: bool,
+    sharing: WebSharing,
+    clients_allowed: bool,
+    error: Option<String>,
+    different_version_error: Option<String>,
+    ip: Option<IpAddr>,
+    port: Option<u16>,
+    base_url: String,
+    capability: bool,
+}
+
+#[derive(Debug, Default)]
+struct UIState {
+    hover_coordinates: Option<(usize, usize)>,
+    clickable_urls: HashMap<CoordinatesInLine, String>,
+    link_executable: Option<&'static str>,
+    currently_hovering_over_link: bool,
+    currently_hovering_over_unencrypted: bool,
+}
+
+impl UIState {
+    fn reset_render_state(&mut self) {
+        self.currently_hovering_over_link = false;
+        self.clickable_urls.clear();
+    }
+}
+
+#[derive(Debug, Default)]
+struct TokenManager {
+    list: Vec<(String, String)>,
+    selected_index: Option<usize>,
+    entering_new_name: Option<String>,
+    renaming_token: Option<String>,
+}
+
+impl TokenManager {
+    fn retrieve_list(&mut self) -> Result<(), String> {
+        match list_web_login_tokens() {
+            Ok(tokens) => {
+                self.list = tokens;
+                Ok(())
+            }
+            Err(e) => Err(format!("Failed to retrieve login tokens: {}", e))
+        }
+    }
+
+    fn get_selected_token(&self) -> Option<&(String, String)> {
+        self.selected_index.and_then(|i| self.list.get(i))
+    }
+
+    fn adjust_selection_after_list_change(&mut self) -> bool {
+        if self.list.is_empty() {
+            self.selected_index = None;
+            true // indicates should change to main screen
+        } else if self.selected_index >= Some(self.list.len()) {
+            self.selected_index = Some(self.list.len().saturating_sub(1));
+            false
+        } else {
+            false
+        }
+    }
+
+    fn navigate_down(&mut self) -> bool {
+        if let Some(ref mut index) = self.selected_index {
+            *index = if *index < self.list.len().saturating_sub(1) {
+                *index + 1
+            } else {
+                0
+            };
+            return true;
+        }
+        false
+    }
+
+    fn navigate_up(&mut self) -> bool {
+        if let Some(ref mut index) = self.selected_index {
+            *index = if *index == 0 {
+                self.list.len().saturating_sub(1)
+            } else {
+                *index - 1
+            };
+            return true;
+        }
+        false
+    }
+
+    fn start_new_token_input(&mut self) {
+        self.entering_new_name = Some(String::new());
+    }
+
+    fn start_rename_input(&mut self) {
+        self.renaming_token = Some(String::new());
+    }
+
+    fn handle_text_input(&mut self, key: &KeyWithModifier) -> bool {
+        match key.bare_key {
+            BareKey::Char(c) if key.has_no_modifiers() => {
+                if let Some(ref mut name) = self.entering_new_name {
+                    name.push(c);
+                    return true;
+                }
+                if let Some(ref mut name) = self.renaming_token {
+                    name.push(c);
+                    return true;
+                }
+            }
+            BareKey::Backspace if key.has_no_modifiers() => {
+                if let Some(ref mut name) = self.entering_new_name {
+                    name.pop();
+                    return true;
+                }
+                if let Some(ref mut name) = self.renaming_token {
+                    name.pop();
+                    return true;
+                }
+            }
+            _ => {}
+        }
+        false
+    }
+
+    fn finish_new_token_input(&mut self) -> Option<Option<String>> {
+        self.entering_new_name.take().map(|name| {
+            if name.is_empty() { None } else { Some(name) }
+        })
+    }
+
+    fn finish_rename_input(&mut self) -> Option<String> {
+        self.renaming_token.take()
+    }
+
+    fn cancel_input(&mut self) -> bool {
+        self.entering_new_name.take().is_some() || self.renaming_token.take().is_some()
+    }
+}
+
+#[derive(Debug, Default)]
+struct AppState {
+    session_name: Option<String>,
+    own_plugin_id: Option<u32>,
+    timer_running: bool,
+    current_screen: Screen,
+    previous_screen: Option<Screen>,
+    info: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+enum Screen {
+    Main,
+    Token(String),
+    ManageTokens,
+}
+
+impl Default for Screen {
+    fn default() -> Self {
+        Screen::Main
+    }
+}
+
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct CoordinatesInLine {
@@ -571,6 +634,7 @@ impl CoordinatesInLine {
     pub fn new(x: usize, y: usize, width: usize) -> Self {
         CoordinatesInLine { x, y, width }
     }
+
     pub fn contains(&self, x: usize, y: usize) -> bool {
         x >= self.x && x <= self.x + self.width && self.y == y
     }
