@@ -455,6 +455,14 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::EmbedMultiplePanes(pane_ids) => {
                         embed_multiple_panes(env, pane_ids.into_iter().map(|p| p.into()).collect())
                     },
+                    // TODO !!!!!: add this behind a new "intercept keypresses" permission :!!!!!!
+                    PluginCommand::InterceptKeyPresses => {
+                        intercept_key_presses(env)
+                    },
+                    // TODO !!!!!: add this behind a new "intercept keypresses" permission :!!!!!!
+                    PluginCommand::ClearKeyPressesIntercepts => {
+                        clear_key_presses_intercepts(env)
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -2227,6 +2235,23 @@ fn embed_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
         .senders
         .send_to_screen(ScreenInstruction::EmbedMultiplePanes(
             pane_ids,
+            env.client_id,
+        ));
+}
+
+fn intercept_key_presses(env: &PluginEnv) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::InterceptKeyPresses(
+            env.plugin_id,
+            env.client_id,
+        ));
+}
+
+fn clear_key_presses_intercepts(env: &PluginEnv) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
             env.client_id,
         ));
 }

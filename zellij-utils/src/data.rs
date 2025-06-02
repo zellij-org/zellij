@@ -938,6 +938,7 @@ pub enum Event {
     PastedText(String),
     ConfigWasWrittenToDisk,
     BeforeClose,
+    InterceptedKeyPress(KeyWithModifier),
 }
 
 #[derive(
@@ -2323,4 +2324,6 @@ pub enum PluginCommand {
     CloseMultiplePanes(Vec<PaneId>),
     FloatMultiplePanes(Vec<PaneId>),
     EmbedMultiplePanes(Vec<PaneId>),
+    InterceptKeyPresses,
+    ClearKeyPressesIntercepts,
 }

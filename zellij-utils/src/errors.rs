@@ -382,6 +382,8 @@ pub enum ScreenContext {
     EmbedMultiplePanes,
     TogglePaneInGroup,
     ToggleGroupMarking,
+    InterceptKeyPresses,
+    ClearKeyPressesIntercepts,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

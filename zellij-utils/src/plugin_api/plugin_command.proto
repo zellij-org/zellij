@@ -145,6 +145,8 @@ enum CommandName {
   CloseMultiplePanes = 129;
   FloatMultiplePanes = 130;
   EmbedMultiplePanes = 131;
+  InterceptKeyPresses = 132;
+  ClearKeyPressesIntercepts = 133;
 }
 
 message PluginCommand {

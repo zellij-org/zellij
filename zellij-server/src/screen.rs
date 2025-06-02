@@ -415,6 +415,8 @@ pub enum ScreenInstruction {
     EmbedMultiplePanes(Vec<PaneId>, ClientId),
     TogglePaneInGroup(ClientId),
     ToggleGroupMarking(ClientId),
+    InterceptKeyPresses(PluginId, ClientId),
+    ClearKeyPressesIntercepts(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -636,6 +638,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::EmbedMultiplePanes(..) => ScreenContext::EmbedMultiplePanes,
             ScreenInstruction::TogglePaneInGroup(..) => ScreenContext::TogglePaneInGroup,
             ScreenInstruction::ToggleGroupMarking(..) => ScreenContext::ToggleGroupMarking,
+            ScreenInstruction::InterceptKeyPresses(..) => ScreenContext::InterceptKeyPresses,
+            ScreenInstruction::ClearKeyPressesIntercepts(..) => ScreenContext::ClearKeyPressesIntercepts,
         }
     }
 }
@@ -3114,6 +3118,7 @@ pub(crate) fn screen_thread_main(
     let mut pending_events_waiting_for_tab: Vec<ScreenInstruction> = vec![];
     let mut pending_events_waiting_for_client: Vec<ScreenInstruction> = vec![];
     let mut plugin_loading_message_cache = HashMap::new();
+    let mut keybind_intercepts = HashMap::new();
     loop {
         let (event, mut err_ctx) = screen
             .bus
@@ -3361,6 +3366,14 @@ pub(crate) fn screen_thread_main(
                 is_kitty_keyboard_protocol,
                 client_id,
             ) => {
+                if let Some(plugin_id) = keybind_intercepts.get(&client_id) {
+                    if let Some(key_with_modifier) = key_with_modifier {
+                        let _ = screen.bus.senders.send_to_plugin(PluginInstruction::Update(
+                            vec![(Some(*plugin_id), Some(client_id), Event::InterceptedKeyPress(key_with_modifier))]
+                        ));
+                        continue;
+                    }
+                }
                 let mut state_changed = false;
                 active_tab_and_connected_client_id!(
                     screen,
@@ -5271,6 +5284,12 @@ pub(crate) fn screen_thread_main(
                 }
                 let _ = screen.log_and_report_session_state();
             },
+            ScreenInstruction::InterceptKeyPresses(plugin_id, client_id) => {
+                keybind_intercepts.insert(client_id, plugin_id);
+            },
+            ScreenInstruction::ClearKeyPressesIntercepts(client_id) => {
+                keybind_intercepts.remove(&client_id);
+            }
         }
     }
     Ok(())

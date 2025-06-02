@@ -919,6 +919,8 @@ pub enum CommandName {
     CloseMultiplePanes = 129,
     FloatMultiplePanes = 130,
     EmbedMultiplePanes = 131,
+    InterceptKeyPresses = 132,
+    ClearKeyPressesIntercepts = 133,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1059,6 +1061,8 @@ impl CommandName {
             CommandName::CloseMultiplePanes => "CloseMultiplePanes",
             CommandName::FloatMultiplePanes => "FloatMultiplePanes",
             CommandName::EmbedMultiplePanes => "EmbedMultiplePanes",
+            CommandName::InterceptKeyPresses => "InterceptKeyPresses",
+            CommandName::ClearKeyPressesIntercepts => "ClearKeyPressesIntercepts",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1196,6 +1200,8 @@ impl CommandName {
             "CloseMultiplePanes" => Some(Self::CloseMultiplePanes),
             "FloatMultiplePanes" => Some(Self::FloatMultiplePanes),
             "EmbedMultiplePanes" => Some(Self::EmbedMultiplePanes),
+            "InterceptKeyPresses" => Some(Self::InterceptKeyPresses),
+            "ClearKeyPressesIntercepts" => Some(Self::ClearKeyPressesIntercepts),
             _ => None,
         }
     }

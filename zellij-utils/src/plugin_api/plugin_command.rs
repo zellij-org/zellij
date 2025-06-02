@@ -1614,6 +1614,14 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for EmbedMultiplePanes"),
             },
+            Some(CommandName::InterceptKeyPresses) => match protobuf_plugin_command.payload {
+                Some(_) => Err("InterceptKeyPresses should have no payload, found a payload"),
+                None => Ok(PluginCommand::InterceptKeyPresses),
+            },
+            Some(CommandName::ClearKeyPressesIntercepts) => match protobuf_plugin_command.payload {
+                Some(_) => Err("ClearKeyPressesIntercepts should have no payload, found a payload"),
+                None => Ok(PluginCommand::ClearKeyPressesIntercepts),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2683,6 +2691,14 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                         pane_ids: pane_ids.iter().filter_map(|&p| p.try_into().ok()).collect(),
                     },
                 )),
+            }),
+            PluginCommand::InterceptKeyPresses => Ok(ProtobufPluginCommand {
+                name: CommandName::InterceptKeyPresses as i32,
+                payload: None,
+            }),
+            PluginCommand::ClearKeyPressesIntercepts => Ok(ProtobufPluginCommand {
+                name: CommandName::ClearKeyPressesIntercepts as i32,
+                payload: None,
             }),
         }
     }
