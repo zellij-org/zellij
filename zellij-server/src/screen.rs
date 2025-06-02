@@ -2920,14 +2920,14 @@ impl Screen {
     fn toggle_pane_id_in_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
         {
             let mut pane_groups = self.current_pane_group.borrow_mut();
-            pane_groups.toggle_pane_id_in_group(pane_id, client_id);
+            pane_groups.toggle_pane_id_in_group(pane_id, self.size, client_id);
         }
         self.retain_only_existing_panes_in_pane_groups();
     }
     fn add_pane_id_to_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
         {
             let mut pane_groups = self.current_pane_group.borrow_mut();
-            pane_groups.add_pane_id_to_group(pane_id, client_id);
+            pane_groups.add_pane_id_to_group(pane_id, self.size, client_id);
         }
         self.retain_only_existing_panes_in_pane_groups();
     }
@@ -2961,7 +2961,7 @@ impl Screen {
     ) {
         {
             let mut current_pane_group = self.current_pane_group.borrow_mut();
-            current_pane_group.group_and_ungroup_panes(pane_ids_to_group, pane_ids_to_ungroup, &client_id);
+            current_pane_group.group_and_ungroup_panes(pane_ids_to_group, pane_ids_to_ungroup, self.size, &client_id);
         }
         self.retain_only_existing_panes_in_pane_groups();
         let _ = self.log_and_report_session_state();

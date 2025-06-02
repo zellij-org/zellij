@@ -150,7 +150,7 @@ impl App {
     fn render_shortcuts(&self, base_x: usize, base_y: usize) {
         let mut running_y = base_y;
         print_text_with_coordinates(
-            Text::new("GROUP ACTIONS").color_all(1),
+            Text::new("GROUP ACTIONS").color_all(2),
             base_x, running_y, None, None
         );
         running_y += 1;
