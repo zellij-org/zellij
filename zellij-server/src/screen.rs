@@ -795,7 +795,7 @@ impl PaneGroups {
         let mut should_launch_plugin = false;
         for (client_id, previous_panes) in &previous_groups {
             let previous_panes_has_panes = !previous_panes.is_empty();
-            let current_panes_has_panes = !self.panes_in_group.get(&client_id).is_some();
+            let current_panes_has_panes = self.panes_in_group.get(&client_id).map(|g| !g.is_empty()).unwrap_or(false);
             if !previous_panes_has_panes && current_panes_has_panes {
                 should_launch_plugin = true;
             }

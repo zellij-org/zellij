@@ -54,6 +54,39 @@ impl Text {
             .map(|i| i.append(&mut indices.into_iter().collect()));
         self
     }
+        pub fn color_substring<S: AsRef<str>>(mut self, index_level: usize, substr: S) -> Self {
+        let substr = substr.as_ref();
+        let mut start = 0;
+        
+        while let Some(pos) = self.text[start..].find(substr) {
+            let abs_pos = start + pos;
+            self = self.color_range(index_level, abs_pos..abs_pos + substr.len());
+            start = abs_pos + substr.len();
+        }
+        
+        self
+    }
+    
+    pub fn color_all(self, index_level: usize) -> Self {
+        self.color_range(index_level, ..)
+    }
+    
+    pub fn color_nth_substring<S: AsRef<str>>(self, index_level: usize, substr: S, occurrence_index: usize) -> Self {
+        let substr = substr.as_ref();
+        let mut start = 0;
+        let mut count = 0;
+        
+        while let Some(pos) = self.text[start..].find(substr) {
+            if count == occurrence_index {
+                let abs_pos = start + pos;
+                return self.color_range(index_level, abs_pos..abs_pos + substr.len());
+            }
+            count += 1;
+            start = start + pos + substr.len();
+        }
+        
+        self
+    }
     fn pad_indices(&mut self, index_level: usize) {
         if self.indices.get(index_level).is_none() {
             for _ in self.indices.len()..=index_level {
