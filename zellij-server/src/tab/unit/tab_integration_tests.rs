@@ -9,6 +9,7 @@ use crate::{
     plugins::PluginInstruction,
     thread_bus::ThreadSenders,
     ClientId,
+    pane_groups::PaneGroups,
 };
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -224,7 +225,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
-    let current_group = Rc::new(RefCell::new(HashMap::new()));
+    let current_group = Rc::new(RefCell::new(PaneGroups::new(ThreadSenders::default())));
     let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
@@ -298,7 +299,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
-    let current_group = Rc::new(RefCell::new(HashMap::new()));
+    let current_group = Rc::new(RefCell::new(PaneGroups::new(ThreadSenders::default())));
     let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
@@ -387,7 +388,7 @@ fn create_new_tab_with_swap_layouts(
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
-    let current_group = Rc::new(RefCell::new(HashMap::new()));
+    let current_group = Rc::new(RefCell::new(PaneGroups::new(ThreadSenders::default())));
     let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
@@ -477,7 +478,7 @@ fn create_new_tab_with_os_api(
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
-    let current_group = Rc::new(RefCell::new(HashMap::new()));
+    let current_group = Rc::new(RefCell::new(PaneGroups::new(ThreadSenders::default())));
     let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
@@ -553,7 +554,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let layout = Layout::from_str(layout, "layout_file_name".into(), None, None).unwrap();
     let (tab_layout, floating_panes_layout) = layout.new_tab();
-    let current_group = Rc::new(RefCell::new(HashMap::new()));
+    let current_group = Rc::new(RefCell::new(PaneGroups::new(ThreadSenders::default())));
     let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
@@ -643,7 +644,7 @@ fn create_new_tab_with_mock_pty_writer(
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
-    let current_group = Rc::new(RefCell::new(HashMap::new()));
+    let current_group = Rc::new(RefCell::new(PaneGroups::new(ThreadSenders::default())));
     let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
@@ -724,7 +725,7 @@ fn create_new_tab_with_sixel_support(
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let current_group = Rc::new(RefCell::new(HashMap::new()));
+    let current_group = Rc::new(RefCell::new(PaneGroups::new(ThreadSenders::default())));
     let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
@@ -912,6 +913,7 @@ fn increase_tiled_pane_sizes_with_stacked_resizes() {
             None,
             None,
             false,
+            true,
             Some(client_id),
         )
         .unwrap();
@@ -965,6 +967,7 @@ fn increase_tiled_pane_sizes_with_stacked_resizes_into_uneven_panes() {
             None,
             None,
             false,
+            true,
             Some(client_id),
         )
         .unwrap();
@@ -1027,6 +1030,7 @@ fn split_stack_vertically() {
             None,
             None,
             false,
+            true,
             Some(client_id),
         )
         .unwrap();
@@ -1067,6 +1071,7 @@ fn split_stack_horizontally() {
             None,
             None,
             false,
+            true,
             Some(client_id),
         )
         .unwrap();
@@ -1109,6 +1114,7 @@ fn render_stacks_without_pane_frames() {
             None,
             None,
             false,
+            true,
             Some(client_id),
         )
         .unwrap();
@@ -1129,6 +1135,7 @@ fn render_stacks_without_pane_frames() {
             None,
             None,
             false,
+            true,
             Some(client_id),
         )
         .unwrap();
@@ -1143,6 +1150,7 @@ fn render_stacks_without_pane_frames() {
             None,
             None,
             false,
+            true,
             Some(client_id),
         )
         .unwrap();
@@ -1157,6 +1165,7 @@ fn render_stacks_without_pane_frames() {
             None,
             None,
             false,
+            true,
             Some(client_id),
         )
         .unwrap();
@@ -1193,7 +1202,7 @@ fn dump_screen() {
         ..Default::default()
     });
     let new_pane_id = PaneId::Terminal(2);
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
     tab.handle_pty_bytes(2, Vec::from("scratch".as_bytes()))
         .unwrap();
@@ -1221,7 +1230,7 @@ fn clear_screen() {
         ..Default::default()
     });
     let new_pane_id = PaneId::Terminal(2);
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
     tab.handle_pty_bytes(2, Vec::from("scratch".as_bytes()))
         .unwrap();
@@ -1247,7 +1256,7 @@ fn new_floating_pane() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
     tab.handle_pty_bytes(
         2,
@@ -1275,7 +1284,7 @@ fn floating_panes_persist_across_toggles() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
     // here we send bytes to the pane when it's not visible to make sure they're still handled and
@@ -1307,7 +1316,7 @@ fn toggle_floating_panes_off() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
     tab.handle_pty_bytes(
         2,
@@ -1336,7 +1345,7 @@ fn toggle_floating_panes_on() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
     tab.handle_pty_bytes(
         2,
@@ -1377,6 +1386,7 @@ fn five_new_floating_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1387,6 +1397,7 @@ fn five_new_floating_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1397,6 +1408,7 @@ fn five_new_floating_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1407,6 +1419,7 @@ fn five_new_floating_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1417,6 +1430,7 @@ fn five_new_floating_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1461,6 +1475,7 @@ fn increase_floating_pane_size() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1499,6 +1514,7 @@ fn decrease_floating_pane_size() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1537,6 +1553,7 @@ fn resize_floating_pane_left() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1578,6 +1595,7 @@ fn resize_floating_pane_right() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1619,6 +1637,7 @@ fn resize_floating_pane_up() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1660,6 +1679,7 @@ fn resize_floating_pane_down() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1705,6 +1725,7 @@ fn move_floating_pane_focus_left() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1715,6 +1736,7 @@ fn move_floating_pane_focus_left() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1725,6 +1747,7 @@ fn move_floating_pane_focus_left() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1735,6 +1758,7 @@ fn move_floating_pane_focus_left() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1745,6 +1769,7 @@ fn move_floating_pane_focus_left() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1800,6 +1825,7 @@ fn move_floating_pane_focus_right() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1810,6 +1836,7 @@ fn move_floating_pane_focus_right() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1820,6 +1847,7 @@ fn move_floating_pane_focus_right() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1830,6 +1858,7 @@ fn move_floating_pane_focus_right() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1840,6 +1869,7 @@ fn move_floating_pane_focus_right() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1896,6 +1926,7 @@ fn move_floating_pane_focus_up() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1906,6 +1937,7 @@ fn move_floating_pane_focus_up() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1916,6 +1948,7 @@ fn move_floating_pane_focus_up() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1926,6 +1959,7 @@ fn move_floating_pane_focus_up() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1936,6 +1970,7 @@ fn move_floating_pane_focus_up() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -1991,6 +2026,7 @@ fn move_floating_pane_focus_down() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2001,6 +2037,7 @@ fn move_floating_pane_focus_down() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2011,6 +2048,7 @@ fn move_floating_pane_focus_down() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2021,6 +2059,7 @@ fn move_floating_pane_focus_down() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2031,6 +2070,7 @@ fn move_floating_pane_focus_down() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2087,6 +2127,7 @@ fn move_floating_pane_focus_with_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2097,6 +2138,7 @@ fn move_floating_pane_focus_with_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2107,6 +2149,7 @@ fn move_floating_pane_focus_with_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2117,6 +2160,7 @@ fn move_floating_pane_focus_with_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2127,6 +2171,7 @@ fn move_floating_pane_focus_with_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2191,6 +2236,7 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2201,6 +2247,7 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2211,6 +2258,7 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2221,6 +2269,7 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2231,6 +2280,7 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2295,6 +2345,7 @@ fn drag_pane_with_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2305,6 +2356,7 @@ fn drag_pane_with_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2315,6 +2367,7 @@ fn drag_pane_with_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2325,6 +2378,7 @@ fn drag_pane_with_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2335,6 +2389,7 @@ fn drag_pane_with_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2399,6 +2454,7 @@ fn mark_text_inside_floating_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2409,6 +2465,7 @@ fn mark_text_inside_floating_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2419,6 +2476,7 @@ fn mark_text_inside_floating_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2429,6 +2487,7 @@ fn mark_text_inside_floating_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2439,6 +2498,7 @@ fn mark_text_inside_floating_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2511,6 +2571,7 @@ fn resize_tab_with_floating_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2521,6 +2582,7 @@ fn resize_tab_with_floating_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2531,6 +2593,7 @@ fn resize_tab_with_floating_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2541,6 +2604,7 @@ fn resize_tab_with_floating_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2551,6 +2615,7 @@ fn resize_tab_with_floating_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2605,6 +2670,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2615,6 +2681,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2625,6 +2692,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2635,6 +2703,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2645,6 +2714,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2695,6 +2765,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically_and_expand_b
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2705,6 +2776,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically_and_expand_b
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2715,6 +2787,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically_and_expand_b
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2725,6 +2798,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically_and_expand_b
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2735,6 +2809,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically_and_expand_b
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -2779,7 +2854,7 @@ fn embed_floating_pane() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
     tab.handle_pty_bytes(
         2,
@@ -2807,7 +2882,7 @@ fn float_embedded_pane() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
     tab.handle_pty_bytes(
         2,
@@ -2837,7 +2912,7 @@ fn embed_floating_pane_without_pane_frames() {
     let mut output = Output::default();
     tab.set_pane_frames(false);
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
     tab.handle_pty_bytes(
         2,
@@ -2866,7 +2941,7 @@ fn float_embedded_pane_without_pane_frames() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.set_pane_frames(false);
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
     tab.handle_pty_bytes(
         2,
@@ -2969,7 +3044,7 @@ fn rename_floating_pane() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
     tab.handle_pty_bytes(
         2,
@@ -3065,7 +3140,7 @@ fn move_floating_pane_with_sixel_image() {
     let mut output = Output::new(sixel_image_store.clone(), character_cell_size, true);
 
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
     let fixture = read_fixture("sixel-image-500px.six");
     tab.handle_pty_bytes(2, fixture).unwrap();
@@ -3109,7 +3184,7 @@ fn floating_pane_above_sixel_image() {
     let mut output = Output::new(sixel_image_store.clone(), character_cell_size, true);
 
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
     let fixture = read_fixture("sixel-image-500px.six");
     tab.handle_pty_bytes(1, fixture).unwrap();
@@ -3173,7 +3248,7 @@ fn suppress_floating_pane() {
     let mut output = Output::default();
 
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
     tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
         .unwrap();
@@ -3229,7 +3304,7 @@ fn close_suppressing_floating_pane() {
     let mut output = Output::default();
 
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
     tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
         .unwrap();
@@ -3289,7 +3364,7 @@ fn suppress_floating_pane_embed_it_and_close_it() {
     let mut output = Output::default();
 
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
     tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
         .unwrap();
@@ -3351,7 +3426,7 @@ fn resize_whole_tab_while_floting_pane_is_suppressed() {
     let mut output = Output::default();
 
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
     tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
         .unwrap();
@@ -3453,7 +3528,7 @@ fn enter_search_floating_pane() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
-    tab.new_pane(new_pane_id, None, None, None, None, false, Some(client_id))
+    tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(client_id))
         .unwrap();
 
     let pane_content = read_fixture("grid_copy");
@@ -4227,6 +4302,7 @@ fn move_pane_focus_sends_tty_csi_event() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4270,6 +4346,7 @@ fn move_floating_pane_focus_sends_tty_csi_event() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4280,6 +4357,7 @@ fn move_floating_pane_focus_sends_tty_csi_event() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4329,6 +4407,7 @@ fn toggle_floating_panes_on_sends_tty_csi_event() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4339,6 +4418,7 @@ fn toggle_floating_panes_on_sends_tty_csi_event() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4389,6 +4469,7 @@ fn toggle_floating_panes_off_sends_tty_csi_event() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4399,6 +4480,7 @@ fn toggle_floating_panes_off_sends_tty_csi_event() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4469,6 +4551,7 @@ fn can_swap_tiled_layout_at_runtime() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4534,6 +4617,7 @@ fn can_swap_floating_layout_at_runtime() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4544,6 +4628,7 @@ fn can_swap_floating_layout_at_runtime() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4605,6 +4690,7 @@ fn swapping_layouts_after_resize_snaps_to_current_layout() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4665,6 +4751,7 @@ fn swap_tiled_layout_with_stacked_children() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4675,6 +4762,7 @@ fn swap_tiled_layout_with_stacked_children() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4685,6 +4773,7 @@ fn swap_tiled_layout_with_stacked_children() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4738,6 +4827,7 @@ fn swap_tiled_layout_with_only_stacked_children() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4748,6 +4838,7 @@ fn swap_tiled_layout_with_only_stacked_children() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4758,6 +4849,7 @@ fn swap_tiled_layout_with_only_stacked_children() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4814,6 +4906,7 @@ fn swap_tiled_layout_with_stacked_children_and_no_pane_frames() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4824,6 +4917,7 @@ fn swap_tiled_layout_with_stacked_children_and_no_pane_frames() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4834,6 +4928,7 @@ fn swap_tiled_layout_with_stacked_children_and_no_pane_frames() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4890,6 +4985,7 @@ fn move_focus_up_with_stacked_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4900,6 +4996,7 @@ fn move_focus_up_with_stacked_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4910,6 +5007,7 @@ fn move_focus_up_with_stacked_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4968,6 +5066,7 @@ fn move_focus_down_with_stacked_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4978,6 +5077,7 @@ fn move_focus_down_with_stacked_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -4988,6 +5088,7 @@ fn move_focus_down_with_stacked_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5048,6 +5149,7 @@ fn move_focus_right_into_stacked_panes() {
             None,
             None,
             false,
+            true,
             Some(client_id),
         )
         .unwrap();
@@ -5119,6 +5221,7 @@ fn move_focus_left_into_stacked_panes() {
             None,
             None,
             false,
+            true,
             Some(client_id),
         )
         .unwrap();
@@ -5192,6 +5295,7 @@ fn move_focus_up_into_stacked_panes() {
             None,
             None,
             false,
+            true,
             Some(client_id),
         )
         .unwrap();
@@ -5266,6 +5370,7 @@ fn move_focus_down_into_stacked_panes() {
             None,
             None,
             false,
+            true,
             Some(client_id),
         )
         .unwrap();
@@ -5336,6 +5441,7 @@ fn close_main_stacked_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5346,6 +5452,7 @@ fn close_main_stacked_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5356,6 +5463,7 @@ fn close_main_stacked_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5415,6 +5523,7 @@ fn close_main_stacked_pane_in_mid_stack() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5425,6 +5534,7 @@ fn close_main_stacked_pane_in_mid_stack() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5435,6 +5545,7 @@ fn close_main_stacked_pane_in_mid_stack() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5445,6 +5556,7 @@ fn close_main_stacked_pane_in_mid_stack() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5455,6 +5567,7 @@ fn close_main_stacked_pane_in_mid_stack() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5517,6 +5630,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5527,6 +5641,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5537,6 +5652,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5547,6 +5663,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5557,6 +5674,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5620,6 +5738,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5630,6 +5749,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5640,6 +5760,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5650,6 +5771,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5660,6 +5782,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5722,6 +5845,7 @@ fn can_increase_size_of_main_pane_in_stack_horizontally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5732,6 +5856,7 @@ fn can_increase_size_of_main_pane_in_stack_horizontally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5742,6 +5867,7 @@ fn can_increase_size_of_main_pane_in_stack_horizontally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5752,6 +5878,7 @@ fn can_increase_size_of_main_pane_in_stack_horizontally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5762,6 +5889,7 @@ fn can_increase_size_of_main_pane_in_stack_horizontally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5828,6 +5956,7 @@ fn can_increase_size_of_main_pane_in_stack_vertically() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5838,6 +5967,7 @@ fn can_increase_size_of_main_pane_in_stack_vertically() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5848,6 +5978,7 @@ fn can_increase_size_of_main_pane_in_stack_vertically() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5858,6 +5989,7 @@ fn can_increase_size_of_main_pane_in_stack_vertically() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5868,6 +6000,7 @@ fn can_increase_size_of_main_pane_in_stack_vertically() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5934,6 +6067,7 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5944,6 +6078,7 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5954,6 +6089,7 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5964,6 +6100,7 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -5974,6 +6111,7 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6035,6 +6173,7 @@ fn can_increase_size_into_pane_stack_horizontally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6045,6 +6184,7 @@ fn can_increase_size_into_pane_stack_horizontally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6055,6 +6195,7 @@ fn can_increase_size_into_pane_stack_horizontally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6065,6 +6206,7 @@ fn can_increase_size_into_pane_stack_horizontally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6075,6 +6217,7 @@ fn can_increase_size_into_pane_stack_horizontally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6140,6 +6283,7 @@ fn can_increase_size_into_pane_stack_vertically() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6150,6 +6294,7 @@ fn can_increase_size_into_pane_stack_vertically() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6160,6 +6305,7 @@ fn can_increase_size_into_pane_stack_vertically() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6170,6 +6316,7 @@ fn can_increase_size_into_pane_stack_vertically() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6180,6 +6327,7 @@ fn can_increase_size_into_pane_stack_vertically() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6248,6 +6396,7 @@ fn can_increase_size_into_pane_stack_non_directionally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6258,6 +6407,7 @@ fn can_increase_size_into_pane_stack_non_directionally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6268,6 +6418,7 @@ fn can_increase_size_into_pane_stack_non_directionally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6278,6 +6429,7 @@ fn can_increase_size_into_pane_stack_non_directionally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6288,6 +6440,7 @@ fn can_increase_size_into_pane_stack_non_directionally() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6348,6 +6501,7 @@ fn decreasing_size_of_whole_tab_treats_stacked_panes_properly() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6358,6 +6512,7 @@ fn decreasing_size_of_whole_tab_treats_stacked_panes_properly() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6368,6 +6523,7 @@ fn decreasing_size_of_whole_tab_treats_stacked_panes_properly() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6378,6 +6534,7 @@ fn decreasing_size_of_whole_tab_treats_stacked_panes_properly() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6388,6 +6545,7 @@ fn decreasing_size_of_whole_tab_treats_stacked_panes_properly() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6450,6 +6608,7 @@ fn increasing_size_of_whole_tab_treats_stacked_panes_properly() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6460,6 +6619,7 @@ fn increasing_size_of_whole_tab_treats_stacked_panes_properly() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6470,6 +6630,7 @@ fn increasing_size_of_whole_tab_treats_stacked_panes_properly() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6480,6 +6641,7 @@ fn increasing_size_of_whole_tab_treats_stacked_panes_properly() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6490,6 +6652,7 @@ fn increasing_size_of_whole_tab_treats_stacked_panes_properly() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6557,6 +6720,7 @@ fn cannot_decrease_stack_size_beyond_minimum_height() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6567,6 +6731,7 @@ fn cannot_decrease_stack_size_beyond_minimum_height() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6577,6 +6742,7 @@ fn cannot_decrease_stack_size_beyond_minimum_height() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6587,6 +6753,7 @@ fn cannot_decrease_stack_size_beyond_minimum_height() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6597,6 +6764,7 @@ fn cannot_decrease_stack_size_beyond_minimum_height() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6664,6 +6832,7 @@ fn focus_stacked_pane_over_flexible_pane_with_the_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6674,6 +6843,7 @@ fn focus_stacked_pane_over_flexible_pane_with_the_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6684,6 +6854,7 @@ fn focus_stacked_pane_over_flexible_pane_with_the_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6694,6 +6865,7 @@ fn focus_stacked_pane_over_flexible_pane_with_the_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6704,6 +6876,7 @@ fn focus_stacked_pane_over_flexible_pane_with_the_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6768,6 +6941,7 @@ fn focus_stacked_pane_under_flexible_pane_with_the_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6778,6 +6952,7 @@ fn focus_stacked_pane_under_flexible_pane_with_the_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6788,6 +6963,7 @@ fn focus_stacked_pane_under_flexible_pane_with_the_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6798,6 +6974,7 @@ fn focus_stacked_pane_under_flexible_pane_with_the_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6808,6 +6985,7 @@ fn focus_stacked_pane_under_flexible_pane_with_the_mouse() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6877,6 +7055,7 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6887,6 +7066,7 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6897,6 +7077,7 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6907,6 +7088,7 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6917,6 +7099,7 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -6992,6 +7175,7 @@ fn close_pane_near_stacked_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -7002,6 +7186,7 @@ fn close_pane_near_stacked_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -7012,6 +7197,7 @@ fn close_pane_near_stacked_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -7022,6 +7208,7 @@ fn close_pane_near_stacked_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -7032,6 +7219,7 @@ fn close_pane_near_stacked_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -7098,6 +7286,7 @@ fn focus_next_pane_expands_stacked_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -7108,6 +7297,7 @@ fn focus_next_pane_expands_stacked_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -7118,6 +7308,7 @@ fn focus_next_pane_expands_stacked_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -7128,6 +7319,7 @@ fn focus_next_pane_expands_stacked_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -7138,6 +7330,7 @@ fn focus_next_pane_expands_stacked_panes() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -7200,6 +7393,7 @@ fn stacked_panes_can_become_fullscreen() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -7210,6 +7404,7 @@ fn stacked_panes_can_become_fullscreen() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -7220,6 +7415,7 @@ fn stacked_panes_can_become_fullscreen() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -7230,6 +7426,7 @@ fn stacked_panes_can_become_fullscreen() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -7240,6 +7437,7 @@ fn stacked_panes_can_become_fullscreen() {
         None,
         None,
         false,
+        true,
         Some(client_id),
     )
     .unwrap();
@@ -7898,6 +8096,7 @@ fn new_pane_in_auto_layout() {
             None,
             None,
             false,
+            true,
             Some(client_id),
         )
         .unwrap();
@@ -7968,6 +8167,7 @@ fn new_pane_in_stacked_resizes() {
             None,
             None,
             false,
+            true,
             Some(client_id),
         )
         .unwrap();
@@ -8919,6 +9119,7 @@ fn new_floating_pane_in_auto_layout() {
             None,
             None,
             false,
+            true,
             Some(client_id),
         )
         .unwrap();

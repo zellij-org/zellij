@@ -23,7 +23,8 @@ use zellij_utils::position::{Column, Line};
 
 use crate::background_jobs::BackgroundJob;
 use crate::pty_writer::PtyWriteInstruction;
-use crate::screen::{CopyOptions, PaneGroups};
+use crate::screen::CopyOptions;
+use crate::pane_groups::PaneGroups;
 use crate::ui::{loading_indication::LoadingIndication, pane_boundaries_frame::FrameParams};
 use layout_applier::LayoutApplier;
 use swap_layouts::SwapLayouts;

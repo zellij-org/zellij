@@ -1194,7 +1194,7 @@ fn switch_to_tab_with_fullscreen() {
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
         active_tab
-            .new_pane(PaneId::Terminal(2), None, None, None, None, false, Some(1))
+            .new_pane(PaneId::Terminal(2), None, None, None, None, false, true, Some(1))
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
@@ -1309,7 +1309,7 @@ fn attach_after_first_tab_closed() {
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
         active_tab
-            .new_pane(PaneId::Terminal(2), None, None, None, None, false, Some(1))
+            .new_pane(PaneId::Terminal(2), None, None, None, None, false, true, Some(1))
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
@@ -1345,6 +1345,7 @@ fn open_new_floating_pane_with_custom_coordinates() {
                 pinned: None,
             }),
             false,
+            true,
             Some(1),
         )
         .unwrap();
@@ -1380,6 +1381,7 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
                 pinned: None,
             }),
             false,
+            true,
             Some(1),
         )
         .unwrap();
@@ -1478,7 +1480,7 @@ fn group_panes_with_mouse() {
     );
 
     assert_eq!(
-        screen.current_pane_group.borrow().get(&client_id),
+        screen.current_pane_group.borrow().clone_inner().get(&client_id),
         Some(&vec![PaneId::Terminal(2)]),
         "Pane Id added to client's pane group"
     );
@@ -1489,7 +1491,7 @@ fn group_panes_with_mouse() {
     );
 
     assert_eq!(
-        screen.current_pane_group.borrow().get(&client_id),
+        screen.current_pane_group.borrow().clone_inner().get(&client_id),
         Some(&vec![]),
         "Pane Id removed from client's pane group"
     );
@@ -1509,7 +1511,7 @@ fn group_panes_with_keyboard() {
     let _ = screen.toggle_pane_in_group(client_id);
 
     assert_eq!(
-        screen.current_pane_group.borrow().get(&client_id),
+        screen.current_pane_group.borrow().clone_inner().get(&client_id),
         Some(&vec![PaneId::Terminal(2)]),
         "Pane Id added to client's pane group"
     );
@@ -1517,7 +1519,7 @@ fn group_panes_with_keyboard() {
     let _ = screen.toggle_pane_in_group(client_id);
 
     assert_eq!(
-        screen.current_pane_group.borrow().get(&client_id),
+        screen.current_pane_group.borrow().clone_inner().get(&client_id),
         Some(&vec![]),
         "Pane Id removed from client's pane group"
     );
@@ -1546,6 +1548,7 @@ fn group_panes_following_focus() {
                     None,
                     None,
                     false,
+                    true,
                     Some(client_id),
                 )
                 .unwrap();
@@ -1560,7 +1563,7 @@ fn group_panes_following_focus() {
             .unwrap();
         screen.add_active_pane_to_group_if_marking(&client_id);
         assert_eq!(
-            screen.current_pane_group.borrow().get(&client_id),
+            screen.current_pane_group.borrow().clone_inner().get(&client_id),
             Some(&vec![PaneId::Terminal(4), PaneId::Terminal(3)]),
             "Pane Id of focused pane and newly focused pane above added to pane group"
         );
@@ -1573,7 +1576,7 @@ fn group_panes_following_focus() {
             .move_focus_up(client_id)
             .unwrap();
         let _ = screen.add_active_pane_to_group_if_marking(&client_id);
-        assert_eq!(screen.current_pane_group.borrow().get(&client_id), Some(&vec![PaneId::Terminal(4), PaneId::Terminal(3)]), "Pane Id of newly focused pane not added to group after the group marking was toggled off");
+        assert_eq!(screen.current_pane_group.borrow().clone_inner().get(&client_id), Some(&vec![PaneId::Terminal(4), PaneId::Terminal(3)]), "Pane Id of newly focused pane not added to group after the group marking was toggled off");
     }
 }
 
@@ -1600,6 +1603,7 @@ fn break_group_with_mouse() {
                     None,
                     None,
                     false,
+                    true,
                     Some(client_id),
                 )
                 .unwrap();
@@ -1620,7 +1624,7 @@ fn break_group_with_mouse() {
             .unwrap();
         screen.add_active_pane_to_group_if_marking(&client_id);
         assert_eq!(
-            screen.current_pane_group.borrow().get(&client_id),
+            screen.current_pane_group.borrow().clone_inner().get(&client_id),
             Some(&vec![
                 PaneId::Terminal(4),
                 PaneId::Terminal(3),
@@ -1635,7 +1639,7 @@ fn break_group_with_mouse() {
         client_id,
     );
     assert_eq!(
-        screen.current_pane_group.borrow().get(&client_id),
+        screen.current_pane_group.borrow().clone_inner().get(&client_id),
         Some(&vec![]),
         "Group cleared by mouse event"
     );

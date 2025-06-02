@@ -31,7 +31,7 @@ impl ZellijPlugin for App {
         
         rename_plugin_pane(plugin_ids.plugin_id, "Multiple Select");
         intercept_key_presses();
-        // set_selectable(false);
+        set_selectable(false);
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -366,10 +366,10 @@ fn render_toggle_group_ribbon(
     };
     
     let toggle_text = format!("<{}> Toggle", pane_group_key);
-    let key_highlight = format!("<{}>", pane_group_key);
+    let key_highlight = format!("{}", pane_group_key);
     
     print_ribbon_with_coordinates(
-        Text::new(&toggle_text).color_substring(3, &key_highlight),
+        Text::new(&toggle_text).color_substring(0, &key_highlight),
         base_x + modifiers_width,
         base_y,
         None,
@@ -393,9 +393,9 @@ fn render_follow_focus_ribbon(
     mode_info: &ModeInfo,
 ) {
     let follow_text = format!("<{}> Follow Focus", group_mark_key);
-    let key_highlight = format!("<{}>", group_mark_key);
+    let key_highlight = format!("{}", group_mark_key);
     
-    let mut ribbon = Text::new(&follow_text).color_substring(3, &key_highlight);
+    let mut ribbon = Text::new(&follow_text).color_substring(0, &key_highlight);
     
     if mode_info.currently_marking_pane_group.unwrap_or(false) {
         ribbon = ribbon.selected();

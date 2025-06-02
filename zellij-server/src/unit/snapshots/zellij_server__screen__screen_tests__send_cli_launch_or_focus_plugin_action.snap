@@ -1,6 +1,5 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2983
 expression: "format!(\"{:#?}\", pty_fill_plugin_cwd_instruction)"
 ---
 Some(
@@ -30,6 +29,7 @@ Some(
             cols: 0,
         },
         false,
+        None,
         None,
         None,
     ),

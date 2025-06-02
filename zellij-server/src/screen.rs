@@ -25,7 +25,7 @@ use zellij_utils::{
     input::command::TerminalAction,
     input::layout::{
         FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
-        TiledPaneLayout, SplitSize
+        TiledPaneLayout
     },
     position::Position,
 };
@@ -35,6 +35,7 @@ use crate::os_input_output::ResizeCache;
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
 use crate::session_layout_metadata::{PaneLayoutMetadata, SessionLayoutMetadata};
+use crate::pane_groups::PaneGroups;
 
 use crate::{
     output::Output,
@@ -43,7 +44,7 @@ use crate::{
     plugins::{PluginId, PluginInstruction, PluginRenderAsset},
     pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     tab::{SuppressedPanes, Tab},
-    thread_bus::{Bus, ThreadSenders},
+    thread_bus::Bus,
     ui::{
         loading_indication::LoadingIndication,
         overlay::{Overlay, OverlayWindow},
@@ -727,116 +728,6 @@ pub(crate) struct Screen {
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
-}
-
-// TODO: debug impl
-pub struct PaneGroups {
-    panes_in_group: HashMap<ClientId, Vec<PaneId>>,
-    senders: ThreadSenders,
-}
-
-impl PaneGroups {
-    pub fn new(senders: ThreadSenders) -> Self {
-        PaneGroups {
-            panes_in_group: HashMap::new(),
-            senders,
-        }
-    }
-    pub fn clone_inner(&self) -> HashMap<ClientId, Vec<PaneId>> {
-        self.panes_in_group.clone()
-    }
-    fn get_client_pane_group(&self, client_id: &ClientId) -> HashSet<PaneId> {
-        self.panes_in_group
-            .get(client_id)
-            .map(|p| p.iter().copied().collect())
-            .unwrap_or_else(|| HashSet::new())
-    }
-    fn clear_pane_group(&mut self, client_id: &ClientId) {
-        self.panes_in_group
-            .get_mut(client_id)
-            .map(|p| p.clear());
-    }
-    fn toggle_pane_id_in_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
-        let previous_groups = self.clone_inner();
-        let client_pane_group = self.panes_in_group.entry(*client_id).or_insert_with(|| vec![]);
-        if client_pane_group.contains(&pane_id) {
-            client_pane_group.retain(|p| p != &pane_id);
-        } else {
-            client_pane_group.push(pane_id);
-        };
-        self.launch_or_close_plugin_as_needed(previous_groups, client_id);
-    }
-    fn add_pane_id_to_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
-        let previous_groups = self.clone_inner();
-        let client_pane_group = self.panes_in_group.entry(*client_id).or_insert_with(|| vec![]);
-        if !client_pane_group.contains(&pane_id) {
-            client_pane_group.push(pane_id);
-        }
-        self.launch_or_close_plugin_as_needed(previous_groups, client_id);
-    }
-    fn group_and_ungroup_panes(
-        &mut self,
-        mut pane_ids_to_group: Vec<PaneId>,
-        pane_ids_to_ungroup: Vec<PaneId>,
-        client_id: &ClientId
-    ) {
-        let previous_groups = self.clone_inner();
-        let client_pane_group = self.panes_in_group
-            .entry(*client_id)
-            .or_insert_with(|| vec![]);
-        client_pane_group.append(&mut pane_ids_to_group);
-        client_pane_group.retain(|p| !pane_ids_to_ungroup.contains(p));
-        self.launch_or_close_plugin_as_needed(previous_groups, client_id);
-    }
-    fn override_groups_with(&mut self, new_pane_groups: HashMap<ClientId, Vec<PaneId>>) {
-        self.panes_in_group = new_pane_groups;
-    }
-    fn launch_or_close_plugin_as_needed(&self, previous_groups: HashMap<ClientId, Vec<PaneId>>, client_id: &ClientId) {
-        let mut should_launch_plugin = false;
-        for (client_id, previous_panes) in &previous_groups {
-            let previous_panes_has_panes = !previous_panes.is_empty();
-            let current_panes_has_panes = self.panes_in_group.get(&client_id).map(|g| !g.is_empty()).unwrap_or(false);
-            if !previous_panes_has_panes && current_panes_has_panes {
-                should_launch_plugin = true;
-            }
-        }
-        should_launch_plugin = should_launch_plugin || previous_groups.get(&client_id).is_none();
-        if should_launch_plugin {
-            if let Ok(run_plugin) = RunPluginOrAlias::from_url("zellij:multiple-select", &None, None, None) {
-                let tab_index = 1; // not relevant since this will be opened in the client's active tab
-                let size = Size::default();
-                let should_float = Some(true);
-                let should_be_opened_in_place = false;
-                let pane_title = None;
-                let skip_cache = false;
-                let cwd = None;
-                let should_focus_plugin = Some(false);
-                let floating_pane_coordinates = FloatingPaneCoordinates {
-                    x: Some(SplitSize::Percent(0)),
-                    y: Some(SplitSize::Percent(70)),
-                    width: Some(SplitSize::Percent(30)),
-                    height: Some(SplitSize::Percent(30)),
-                    pinned: Some(true),
-                };
-                let _ = self
-                    .senders
-                    .send_to_pty(PtyInstruction::FillPluginCwd(
-                        should_float,
-                        should_be_opened_in_place,
-                        pane_title,
-                        run_plugin,
-                        tab_index,
-                        None,
-                        *client_id,
-                        size,
-                        skip_cache,
-                        cwd,
-                        should_focus_plugin,
-                        Some(floating_pane_coordinates),
-                    ));
-            }
-        }
-    }
 }
 
 impl Screen {

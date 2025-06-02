@@ -14,6 +14,7 @@ mod session_layout_metadata;
 mod terminal_bytes;
 mod thread_bus;
 mod ui;
+mod pane_groups;
 
 use background_jobs::{background_jobs_main, BackgroundJob};
 use log::info;
