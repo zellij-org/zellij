@@ -10,7 +10,7 @@ use std::time::Duration;
 use log::{debug, warn};
 use zellij_utils::data::{
     Direction, KeyWithModifier, PaneManifest, PluginPermission, Resize, ResizeStrategy,
-    SessionInfo, Styling,
+    SessionInfo, Styling, FloatingPaneCoordinates
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -25,7 +25,7 @@ use zellij_utils::{
     input::command::TerminalAction,
     input::layout::{
         FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
-        TiledPaneLayout,
+        TiledPaneLayout, SplitSize
     },
     position::Position,
 };
@@ -43,7 +43,7 @@ use crate::{
     plugins::{PluginId, PluginInstruction, PluginRenderAsset},
     pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     tab::{SuppressedPanes, Tab},
-    thread_bus::Bus,
+    thread_bus::{Bus, ThreadSenders},
     ui::{
         loading_indication::LoadingIndication,
         overlay::{Overlay, OverlayWindow},
@@ -52,7 +52,7 @@ use crate::{
 };
 use zellij_utils::{
     data::{
-        Event, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PaletteColor,
+        Event, InputMode, ModeInfo, Palette, PaletteColor,
         PluginCapabilities, Style, TabInfo,
     },
     errors::{ContextType, ScreenContext},
@@ -305,6 +305,8 @@ pub enum ScreenInstruction {
         Option<PaneId>,
         Option<PathBuf>, // cwd
         bool,            // start suppressed
+        Option<FloatingPaneCoordinates>,
+        Option<bool>, // should focus plugin
         Option<ClientId>,
     ),
     UpdatePluginLoadingStage(u32, LoadingIndication), // u32 - plugin_id
@@ -721,9 +723,120 @@ pub(crate) struct Screen {
     default_layout_name: Option<String>,
     explicitly_disable_kitty_keyboard_protocol: bool,
     default_editor: Option<PathBuf>,
-    current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
+    // current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
+    current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
+}
+
+// TODO: debug impl
+pub struct PaneGroups {
+    panes_in_group: HashMap<ClientId, Vec<PaneId>>,
+    senders: ThreadSenders,
+}
+
+impl PaneGroups {
+    pub fn new(senders: ThreadSenders) -> Self {
+        PaneGroups {
+            panes_in_group: HashMap::new(),
+            senders,
+        }
+    }
+    pub fn clone_inner(&self) -> HashMap<ClientId, Vec<PaneId>> {
+        self.panes_in_group.clone()
+    }
+    fn get_client_pane_group(&self, client_id: &ClientId) -> HashSet<PaneId> {
+        self.panes_in_group
+            .get(client_id)
+            .map(|p| p.iter().copied().collect())
+            .unwrap_or_else(|| HashSet::new())
+    }
+    fn clear_pane_group(&mut self, client_id: &ClientId) {
+        self.panes_in_group
+            .get_mut(client_id)
+            .map(|p| p.clear());
+    }
+    fn toggle_pane_id_in_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
+        let previous_groups = self.clone_inner();
+        let client_pane_group = self.panes_in_group.entry(*client_id).or_insert_with(|| vec![]);
+        if client_pane_group.contains(&pane_id) {
+            client_pane_group.retain(|p| p != &pane_id);
+        } else {
+            client_pane_group.push(pane_id);
+        };
+        self.launch_or_close_plugin_as_needed(previous_groups, client_id);
+    }
+    fn add_pane_id_to_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
+        let previous_groups = self.clone_inner();
+        let client_pane_group = self.panes_in_group.entry(*client_id).or_insert_with(|| vec![]);
+        if !client_pane_group.contains(&pane_id) {
+            client_pane_group.push(pane_id);
+        }
+        self.launch_or_close_plugin_as_needed(previous_groups, client_id);
+    }
+    fn group_and_ungroup_panes(
+        &mut self,
+        mut pane_ids_to_group: Vec<PaneId>,
+        pane_ids_to_ungroup: Vec<PaneId>,
+        client_id: &ClientId
+    ) {
+        let previous_groups = self.clone_inner();
+        let client_pane_group = self.panes_in_group
+            .entry(*client_id)
+            .or_insert_with(|| vec![]);
+        client_pane_group.append(&mut pane_ids_to_group);
+        client_pane_group.retain(|p| !pane_ids_to_ungroup.contains(p));
+        self.launch_or_close_plugin_as_needed(previous_groups, client_id);
+    }
+    fn override_groups_with(&mut self, new_pane_groups: HashMap<ClientId, Vec<PaneId>>) {
+        self.panes_in_group = new_pane_groups;
+    }
+    fn launch_or_close_plugin_as_needed(&self, previous_groups: HashMap<ClientId, Vec<PaneId>>, client_id: &ClientId) {
+        let mut should_launch_plugin = false;
+        for (client_id, previous_panes) in &previous_groups {
+            let previous_panes_has_panes = !previous_panes.is_empty();
+            let current_panes_has_panes = !self.panes_in_group.get(&client_id).is_some();
+            if !previous_panes_has_panes && current_panes_has_panes {
+                should_launch_plugin = true;
+            }
+        }
+        should_launch_plugin = should_launch_plugin || previous_groups.get(&client_id).is_none();
+        if should_launch_plugin {
+            if let Ok(run_plugin) = RunPluginOrAlias::from_url("zellij:multiple-select", &None, None, None) {
+                let tab_index = 1; // not relevant since this will be opened in the client's active tab
+                let size = Size::default();
+                let should_float = Some(true);
+                let should_be_opened_in_place = false;
+                let pane_title = None;
+                let skip_cache = false;
+                let cwd = None;
+                let should_focus_plugin = Some(false);
+                let floating_pane_coordinates = FloatingPaneCoordinates {
+                    x: Some(SplitSize::Percent(0)),
+                    y: Some(SplitSize::Percent(70)),
+                    width: Some(SplitSize::Percent(30)),
+                    height: Some(SplitSize::Percent(30)),
+                    pinned: Some(true),
+                };
+                let _ = self
+                    .senders
+                    .send_to_pty(PtyInstruction::FillPluginCwd(
+                        should_float,
+                        should_be_opened_in_place,
+                        pane_title,
+                        run_plugin,
+                        tab_index,
+                        None,
+                        *client_id,
+                        size,
+                        skip_cache,
+                        cwd,
+                        should_focus_plugin,
+                        Some(floating_pane_coordinates),
+                    ));
+            }
+        }
+    }
 }
 
 impl Screen {
@@ -757,6 +870,7 @@ impl Screen {
         let mut session_infos_on_machine = BTreeMap::new();
         let resurrectable_sessions = BTreeMap::new();
         session_infos_on_machine.insert(session_name.clone(), session_info);
+        let current_pane_group = PaneGroups::new(bus.senders.clone());
         Screen {
             bus,
             max_panes,
@@ -794,7 +908,8 @@ impl Screen {
             layout_dir,
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
-            current_pane_group: Rc::new(RefCell::new(HashMap::new())),
+            // current_pane_group: Rc::new(RefCell::new(HashMap::new())),
+            current_pane_group: Rc::new(RefCell::new(current_pane_group)),
             currently_marking_pane_group: Rc::new(RefCell::new(HashMap::new())),
             advanced_mouse_actions,
         }
@@ -2901,15 +3016,12 @@ impl Screen {
     fn get_client_pane_group(&self, client_id: &ClientId) -> HashSet<PaneId> {
         self.current_pane_group
             .borrow()
-            .get(client_id)
-            .map(|p| p.iter().copied().collect())
-            .unwrap_or_else(|| HashSet::new())
+            .get_client_pane_group(client_id)
     }
     fn clear_pane_group(&mut self, client_id: &ClientId) {
         self.current_pane_group
             .borrow_mut()
-            .get_mut(client_id)
-            .map(|p| p.clear());
+            .clear_pane_group(client_id);
         self.currently_marking_pane_group
             .borrow_mut()
             .remove(client_id);
@@ -2917,22 +3029,14 @@ impl Screen {
     fn toggle_pane_id_in_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
         {
             let mut pane_groups = self.current_pane_group.borrow_mut();
-            let client_pane_group = pane_groups.entry(*client_id).or_insert_with(|| vec![]);
-            if client_pane_group.contains(&pane_id) {
-                client_pane_group.retain(|p| p != &pane_id);
-            } else {
-                client_pane_group.push(pane_id);
-            };
+            pane_groups.toggle_pane_id_in_group(pane_id, client_id);
         }
         self.retain_only_existing_panes_in_pane_groups();
     }
     fn add_pane_id_to_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
         {
             let mut pane_groups = self.current_pane_group.borrow_mut();
-            let client_pane_group = pane_groups.entry(*client_id).or_insert_with(|| vec![]);
-            if !client_pane_group.contains(&pane_id) {
-                client_pane_group.push(pane_id);
-            }
+            pane_groups.add_pane_id_to_group(pane_id, client_id);
         }
         self.retain_only_existing_panes_in_pane_groups();
     }
@@ -2960,17 +3064,13 @@ impl Screen {
 
     fn group_and_ungroup_panes(
         &mut self,
-        mut pane_ids_to_group: Vec<PaneId>,
+        pane_ids_to_group: Vec<PaneId>,
         pane_ids_to_ungroup: Vec<PaneId>,
         client_id: ClientId,
     ) {
         {
             let mut current_pane_group = self.current_pane_group.borrow_mut();
-            let client_pane_group = current_pane_group
-                .entry(client_id)
-                .or_insert_with(|| vec![]);
-            client_pane_group.append(&mut pane_ids_to_group);
-            client_pane_group.retain(|p| !pane_ids_to_ungroup.contains(p));
+            current_pane_group.group_and_ungroup_panes(pane_ids_to_group, pane_ids_to_ungroup, &client_id);
         }
         self.retain_only_existing_panes_in_pane_groups();
         let _ = self.log_and_report_session_state();
@@ -2978,7 +3078,8 @@ impl Screen {
     fn retain_only_existing_panes_in_pane_groups(&mut self) {
         let clients_with_empty_group = {
             let mut clients_with_empty_group = vec![];
-            let mut current_pane_group = self.current_pane_group.borrow_mut();
+            // let mut current_pane_group = self.current_pane_group.borrow_mut();
+            let mut current_pane_group = { self.current_pane_group.borrow().clone_inner() };
             for (client_id, panes_in_group) in current_pane_group.iter_mut() {
                 let all_tabs = self.get_tabs();
                 panes_in_group.retain(|p_id| {
@@ -2995,6 +3096,7 @@ impl Screen {
                     clients_with_empty_group.push(*client_id)
                 }
             }
+            self.current_pane_group.borrow_mut().override_groups_with(current_pane_group);
             clients_with_empty_group
         };
         for client_id in &clients_with_empty_group {
@@ -3183,6 +3285,7 @@ pub(crate) fn screen_thread_main(
                                invoked_with,
                                floating_pane_coordinates,
                                start_suppressed,
+                               true,
                                Some(client_id)
                            )
                         }, ?);
@@ -3209,6 +3312,7 @@ pub(crate) fn screen_thread_main(
                                 invoked_with,
                                 floating_pane_coordinates,
                                 start_suppressed,
+                                true,
                                 None,
                             )?;
                             if let Some(hold_for_command) = hold_for_command {
@@ -3231,6 +3335,7 @@ pub(crate) fn screen_thread_main(
                                     invoked_with,
                                     floating_pane_coordinates,
                                     start_suppressed,
+                                    true,
                                     None,
                                 )?;
                                 if let Some(hold_for_command) = hold_for_command {
@@ -4335,6 +4440,7 @@ pub(crate) fn screen_thread_main(
                         skip_cache,
                         cwd,
                         None,
+                        None,
                     ))?;
             },
             ScreenInstruction::NewFloatingPluginPane(
@@ -4363,6 +4469,7 @@ pub(crate) fn screen_thread_main(
                             size,
                             skip_cache,
                             cwd,
+                            None,
                             floating_pane_coordinates,
                         ))?;
                 },
@@ -4396,6 +4503,7 @@ pub(crate) fn screen_thread_main(
                             client_id,
                             size,
                             skip_cache,
+                            None,
                             None,
                             None,
                         ))?;
@@ -4432,6 +4540,8 @@ pub(crate) fn screen_thread_main(
                 pane_id_to_replace,
                 cwd,
                 start_suppressed,
+                floating_pane_coordinates,
+                should_focus_plugin,
                 client_id,
             ) => {
                 if screen.active_tab_indices.is_empty() && tab_index.is_none() {
@@ -4445,6 +4555,8 @@ pub(crate) fn screen_thread_main(
                         pane_id_to_replace,
                         cwd,
                         start_suppressed,
+                        floating_pane_coordinates,
+                        should_focus_plugin,
                         client_id,
                     ));
                     continue;
@@ -4493,8 +4605,9 @@ pub(crate) fn screen_thread_main(
                             Some(pane_title),
                             should_float,
                             Some(run_plugin),
-                            None,
+                            floating_pane_coordinates,
                             start_suppressed,
+                            should_focus_plugin.unwrap_or(true),
                             Some(client_id),
                         )
                     }, ?);
@@ -4508,6 +4621,7 @@ pub(crate) fn screen_thread_main(
                         Some(run_plugin),
                         None,
                         start_suppressed,
+                        should_focus_plugin.unwrap_or(true),
                         None,
                     )?;
                 } else {
@@ -4584,6 +4698,7 @@ pub(crate) fn screen_thread_main(
                                     skip_cache,
                                     None,
                                     None,
+                                    None,
                                 ))?;
                         },
                         None => {
@@ -4631,6 +4746,7 @@ pub(crate) fn screen_thread_main(
                                         skip_cache,
                                         None,
                                         None,
+                                        None,
                                     ))?;
                             }
                         },
@@ -4666,6 +4782,7 @@ pub(crate) fn screen_thread_main(
                                 size,
                                 skip_cache,
                                 cwd,
+                                None,
                                 None,
                             ))?;
                     },
@@ -4703,6 +4820,7 @@ pub(crate) fn screen_thread_main(
                                     Size::default(),
                                     skip_cache,
                                     cwd,
+                                    None,
                                     None,
                                 ))?;
                         },

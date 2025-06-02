@@ -1436,6 +1436,8 @@ impl WasmBridge {
                                 pane_id_to_replace,
                                 cwd,
                                 start_suppressed,
+                                None,
+                                None,
                                 Some(client_id),
                             )));
                             vec![(plugin_id, Some(client_id))]

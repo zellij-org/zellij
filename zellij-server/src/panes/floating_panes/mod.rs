@@ -316,6 +316,22 @@ impl FloatingPanes {
     pub fn last_floating_pane_id(&self) -> Option<PaneId> {
         self.panes.keys().last().copied()
     }
+    pub fn last_selectable_floating_pane_id(&self) -> Option<PaneId> {
+        self
+            .panes
+            .iter()
+            .filter(|(_p_id, p)| p.selectable())
+            .last()
+            .map(|(p_id, _p)| *p_id)
+    }
+    pub fn has_selectable_panes(&self) -> bool {
+        self
+            .panes
+            .iter()
+            .filter(|(_p_id, p)| p.selectable())
+            .last()
+            .is_some()
+    }
     pub fn first_active_floating_pane_id(&self) -> Option<PaneId> {
         self.active_panes.values().next().copied()
     }

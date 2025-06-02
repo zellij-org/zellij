@@ -23,7 +23,7 @@ use zellij_utils::position::{Column, Line};
 
 use crate::background_jobs::BackgroundJob;
 use crate::pty_writer::PtyWriteInstruction;
-use crate::screen::CopyOptions;
+use crate::screen::{CopyOptions, PaneGroups};
 use crate::ui::{loading_indication::LoadingIndication, pane_boundaries_frame::FrameParams};
 use layout_applier::LayoutApplier;
 use swap_layouts::SwapLayouts;
@@ -262,7 +262,8 @@ pub(crate) struct Tab {
     styled_underlines: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
-    current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
+    // current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
+    current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
 }
@@ -675,7 +676,8 @@ impl Tab {
         styled_underlines: bool,
         explicitly_disable_kitty_keyboard_protocol: bool,
         default_editor: Option<PathBuf>,
-        current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
+        // current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
+        current_pane_group: Rc<RefCell<PaneGroups>>,
         currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
         advanced_mouse_actions: bool,
     ) -> Self {
@@ -1187,17 +1189,18 @@ impl Tab {
             self.set_force_render();
         } else {
             self.show_floating_panes();
-            match self.floating_panes.last_floating_pane_id() {
-                Some(first_floating_pane_id) => match client_id {
+            // match self.floating_panes.last_floating_pane_id() {
+            match self.floating_panes.last_selectable_floating_pane_id() {
+                Some(last_selectable_floating_pane_id) => match client_id {
                     Some(client_id) => {
                         if !self.floating_panes.active_panes_contain(&client_id) {
                             self.floating_panes
-                                .focus_pane(first_floating_pane_id, client_id);
+                                .focus_pane(last_selectable_floating_pane_id, client_id);
                         }
                     },
                     None => {
                         self.floating_panes
-                            .focus_pane_for_all_clients(first_floating_pane_id);
+                            .focus_pane_for_all_clients(last_selectable_floating_pane_id);
                     },
                 },
                 None => {
@@ -1234,14 +1237,19 @@ impl Tab {
         invoked_with: Option<Run>,
         floating_pane_coordinates: Option<FloatingPaneCoordinates>,
         start_suppressed: bool,
+        should_focus_pane: bool,
         client_id: Option<ClientId>,
     ) -> Result<()> {
+        // TODO: if should float is some, floating_pane_coordinates has pinned and floating panes are not shown, make
+        // sure they remain not shown and that the pane is not focused when doing add_floating_pane
         let err_context = || format!("failed to create new pane with id {pid:?}");
-        match should_float {
-            Some(true) => self.show_floating_panes(),
-            Some(false) => self.hide_floating_panes(),
-            None => {},
-        };
+        if should_focus_pane {
+            match should_float {
+                Some(true) => self.show_floating_panes(),
+                Some(false) => self.hide_floating_panes(),
+                None => {},
+            };
+        }
         self.close_down_to_max_terminals()
             .with_context(err_context)?;
         let mut new_pane = match pid {
@@ -1316,10 +1324,28 @@ impl Tab {
             self.suppressed_panes
                 .insert(pid, (is_scrollback_editor, new_pane));
             Ok(())
-        } else if self.floating_panes.panes_are_visible() {
-            self.add_floating_pane(new_pane, pid, floating_pane_coordinates, true)
+        } else if should_focus_pane {
+            if self.floating_panes.panes_are_visible() {
+                self.add_floating_pane(new_pane, pid, floating_pane_coordinates, true)
+            } else {
+                self.add_tiled_pane(new_pane, pid, client_id)
+            }
         } else {
-            self.add_tiled_pane(new_pane, pid, client_id)
+            match should_float {
+                Some(true) => {
+                    self.add_floating_pane(new_pane, pid, floating_pane_coordinates, false)
+                },
+                Some(false) => {
+                    self.add_tiled_pane(new_pane, pid, client_id)
+                },
+                None => {
+                    if self.floating_panes.panes_are_visible() {
+                        self.add_floating_pane(new_pane, pid, floating_pane_coordinates, false)
+                    } else {
+                        self.add_tiled_pane(new_pane, pid, client_id)
+                    }
+                }
+            }
         }
     }
     pub fn replace_active_pane_with_editor_pane(
@@ -2277,7 +2303,7 @@ impl Tab {
         );
 
         let current_pane_group: HashMap<ClientId, Vec<PaneId>> =
-            { self.current_pane_group.borrow().clone() };
+            { self.current_pane_group.borrow().clone_inner() };
         self.tiled_panes
             .render(
                 output,
@@ -2851,6 +2877,8 @@ impl Tab {
                 // is opened
                 self.tiled_panes.move_clients_out_of_pane(id);
             }
+        } else if let Some(pane) = self.floating_panes.get_pane_mut(id) {
+            pane.set_selectable(selectable);
         }
         // we do this here because if there is a non-selectable pane on the edge, we consider it
         // outside the viewport (a ui-pane, eg. the status-bar and tab-bar) and need to adjust for it
@@ -2877,7 +2905,8 @@ impl Tab {
         if self.floating_panes.panes_contain(&id) {
             let _closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
-            if !self.floating_panes.has_panes() {
+            // if !self.floating_panes.has_panes() {
+            if !self.floating_panes.has_selectable_panes() {
                 self.swap_layouts.reset_floating_damage();
                 self.hide_floating_panes();
             }
@@ -4467,7 +4496,8 @@ impl Tab {
     }
     pub fn pane_infos(&self) -> Vec<PaneInfo> {
         let mut pane_info = vec![];
-        let current_pane_group = { self.current_pane_group.borrow().clone() };
+        // let current_pane_group = { self.current_pane_group.borrow().clone() };
+        let current_pane_group = { self.current_pane_group.borrow().clone_inner() };
         let mut tiled_pane_info = self.tiled_panes.pane_info(&current_pane_group);
         let mut floating_pane_info = self.floating_panes.pane_info(&current_pane_group);
         pane_info.append(&mut tiled_pane_info);

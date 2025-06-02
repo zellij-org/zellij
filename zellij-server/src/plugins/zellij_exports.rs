@@ -2171,6 +2171,8 @@ fn load_new_plugin(
                     size,
                     cwd,
                     skip_cache,
+                    None,
+                    None,
                 ));
             },
             Err(e) => {
