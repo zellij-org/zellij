@@ -2433,8 +2433,9 @@ fn check_command_permission(
             PermissionType::Reconfigure
         },
         PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,
-        PluginCommand::InterceptKeyPresses |
-        PluginCommand::ClearKeyPressesIntercepts => PermissionType::InterceptInput,
+        PluginCommand::InterceptKeyPresses | PluginCommand::ClearKeyPressesIntercepts => {
+            PermissionType::InterceptInput
+        },
         _ => return (PermissionStatus::Granted, None),
     };
 
