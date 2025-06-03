@@ -73,9 +73,10 @@ pub fn zellij_exports(linker: &mut Linker<PluginEnv>) {
         .unwrap();
 }
 
-fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
-    let env = caller.data();
-    let err_context = || format!("failed to run plugin command {}", env.name());
+fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
+    let mut env = caller.data_mut();
+    let plugin_command = env.name();
+    let err_context = || format!("failed to run plugin command {}", plugin_command);
     wasi_read_bytes(env)
         .and_then(|bytes| {
             let command: ProtobufPluginCommand = ProtobufPluginCommand::decode(bytes.as_slice())?;
@@ -457,11 +458,11 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     },
                     // TODO !!!!!: add this behind a new "intercept keypresses" permission :!!!!!!
                     PluginCommand::InterceptKeyPresses => {
-                        intercept_key_presses(env)
+                        intercept_key_presses(&mut env)
                     },
                     // TODO !!!!!: add this behind a new "intercept keypresses" permission :!!!!!!
                     PluginCommand::ClearKeyPressesIntercepts => {
-                        clear_key_presses_intercepts(env)
+                        clear_key_presses_intercepts(&mut env)
                     },
                 },
                 (PermissionStatus::Denied, permission) => {
@@ -2241,7 +2242,8 @@ fn embed_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
         ));
 }
 
-fn intercept_key_presses(env: &PluginEnv) {
+fn intercept_key_presses(env: &mut PluginEnv) {
+    env.intercepting_key_presses = true;
     let _ = env
         .senders
         .send_to_screen(ScreenInstruction::InterceptKeyPresses(
@@ -2250,7 +2252,8 @@ fn intercept_key_presses(env: &PluginEnv) {
         ));
 }
 
-fn clear_key_presses_intercepts(env: &PluginEnv) {
+fn clear_key_presses_intercepts(env: &mut PluginEnv) {
+    env.intercepting_key_presses = false;
     let _ = env
         .senders
         .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
@@ -2436,6 +2439,7 @@ fn check_command_permission(
             PermissionType::Reconfigure
         },
         PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,
+        PluginCommand::InterceptKeyPresses => PermissionType::InterceptInput,
         _ => return (PermissionStatus::Granted, None),
     };
 

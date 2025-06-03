@@ -724,7 +724,6 @@ pub(crate) struct Screen {
     default_layout_name: Option<String>,
     explicitly_disable_kitty_keyboard_protocol: bool,
     default_editor: Option<PathBuf>,
-    // current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
@@ -799,7 +798,6 @@ impl Screen {
             layout_dir,
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
-            // current_pane_group: Rc::new(RefCell::new(HashMap::new())),
             current_pane_group: Rc::new(RefCell::new(current_pane_group)),
             currently_marking_pane_group: Rc::new(RefCell::new(HashMap::new())),
             advanced_mouse_actions,
@@ -2969,7 +2967,6 @@ impl Screen {
     fn retain_only_existing_panes_in_pane_groups(&mut self) {
         let clients_with_empty_group = {
             let mut clients_with_empty_group = vec![];
-            // let mut current_pane_group = self.current_pane_group.borrow_mut();
             let mut current_pane_group = { self.current_pane_group.borrow().clone_inner() };
             for (client_id, panes_in_group) in current_pane_group.iter_mut() {
                 let all_tabs = self.get_tabs();

@@ -868,6 +868,7 @@ impl<'a> PluginLoader<'a> {
             default_mode: self.default_mode.clone(),
             subscriptions: Arc::new(Mutex::new(HashSet::new())),
             keybinds: self.keybinds.clone(),
+            intercepting_key_presses: false,
             stdin_pipe,
             stdout_pipe,
         };

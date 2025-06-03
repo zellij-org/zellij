@@ -324,6 +324,17 @@ impl WasmBridge {
             for (_worker_name, worker_sender) in workers {
                 drop(worker_sender.send(MessageToWorker::Exit));
             }
+            {
+                // if the plugin was intercepting key presses and for some reason did not clear
+                // this state, we make sure to do it ourselves so that the user will not get stuck
+                if running_plugin.lock().unwrap().intercepting_key_presses() {
+                    let _ = self
+                        .senders
+                        .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
+                            client_id,
+                        ));
+                }
+            }
             let subscriptions = subscriptions.lock().unwrap();
             if subscriptions.contains(&EventType::BeforeClose) {
                 let mut running_plugin = running_plugin.lock().unwrap();

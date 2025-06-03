@@ -313,6 +313,7 @@ pub struct PluginEnv {
     pub stdin_pipe: Arc<Mutex<VecDeque<u8>>>,
     pub stdout_pipe: Arc<Mutex<VecDeque<u8>>>,
     pub keybinds: Keybinds,
+    pub intercepting_key_presses: bool,
 }
 
 #[derive(Clone)]
@@ -456,5 +457,8 @@ impl RunningPlugin {
     }
     pub fn update_default_shell(&mut self, default_shell: Option<TerminalAction>) {
         self.store.data_mut().default_shell = default_shell;
+    }
+    pub fn intercepting_key_presses(&self) -> bool {
+        self.store.data().intercepting_key_presses
     }
 }
