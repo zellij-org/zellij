@@ -11,6 +11,25 @@ use super::config::ConfigError;
 pub struct WebClientTheme {
     pub background: Option<String>,
     pub foreground: Option<String>,
+    pub black: Option<String>,
+    pub blue: Option<String>,
+    pub bright_black: Option<String>,
+    pub bright_blue: Option<String>,
+    pub bright_cyan: Option<String>,
+    pub bright_green: Option<String>,
+    pub bright_magenta: Option<String>,
+    pub bright_red: Option<String>,
+    pub bright_white: Option<String>,
+    pub bright_yellow: Option<String>,
+    pub cyan: Option<String>,
+    pub green: Option<String>,
+    pub magenta: Option<String>,
+    pub red: Option<String>,
+    pub selection_background: Option<String>,
+    pub selection_foreground: Option<String>,
+    pub selection_inactive_background: Option<String>,
+    pub white: Option<String>,
+    pub yellow: Option<String>,
 }
 
 impl WebClientTheme {
@@ -30,6 +49,25 @@ impl WebClientTheme {
 
         theme.background = extract_color("background")?;
         theme.foreground = extract_color("foreground")?;
+        theme.black = extract_color("black")?;
+        theme.blue = extract_color("blue")?;
+        theme.bright_black = extract_color("bright_black")?;
+        theme.bright_blue = extract_color("bright_blue")?;
+        theme.bright_cyan = extract_color("bright_cyan")?;
+        theme.bright_green = extract_color("bright_green")?;
+        theme.bright_magenta = extract_color("bright_magenta")?;
+        theme.bright_red = extract_color("bright_red")?;
+        theme.bright_white = extract_color("bright_white")?;
+        theme.bright_yellow = extract_color("bright_yellow")?;
+        theme.cyan = extract_color("cyan")?;
+        theme.green = extract_color("green")?;
+        theme.magenta = extract_color("magenta")?;
+        theme.red = extract_color("red")?;
+        theme.selection_background = extract_color("selection_background")?;
+        theme.selection_foreground = extract_color("selection_foreground")?;
+        theme.selection_inactive_background = extract_color("selection_inactive_background")?;
+        theme.white = extract_color("white")?;
+        theme.yellow = extract_color("yellow")?;
 
         Ok(theme)
     }

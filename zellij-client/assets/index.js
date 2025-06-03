@@ -236,15 +236,11 @@ document.addEventListener("DOMContentLoaded", async (event) => {
             const msg = JSON.parse(event.data);
             if (msg.type === "SetConfig") {
                 console.log("SetConfig message received", msg);
-                const { font, background, foreground } = msg;
+                const { font, theme } = msg;
                 term.options.fontFamily = font;
-                term.options.theme = {
-                    ...term.options.theme,
-                    background,
-                    foreground,
-                };
+                term.options.theme = theme;
                 const body = document.querySelector("body");
-                body.style.background = background;
+                body.style.background = theme.background;
 
                 const fit_dimensions = fitAddon.proposeDimensions();
                 if (fit_dimensions === undefined) {
@@ -360,7 +356,7 @@ function initTerminal() {
 
 async function get_client_id(token, rememberMe, has_authentication_cookie) {
     let url_prefix = is_https() ? "https" : "http";
-    let headers = has_authentication_cookie 
+    let headers = has_authentication_cookie
       ? { "Content-Type": "application/json" }
       : {
         "Content-Type": "application/json",
