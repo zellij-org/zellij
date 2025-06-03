@@ -3693,10 +3693,9 @@ impl Tab {
         let err_context =
             || format!("failed to handle mouse event {event:?} for client {client_id}");
         if !self.floating_panes.panes_are_visible() {
-            let search_selectable = false;
             if let Ok(Some(pane_id)) = self
                 .floating_panes
-                .get_pinned_pane_id_at(&event.position, search_selectable)
+                .get_pinned_pane_id_at(&event.position, true)
             {
                 // here, the floating panes are not visible, but there is a pinned pane (always
                 // visible) that has been clicked on - so we make the entire surface visible and
@@ -3704,6 +3703,15 @@ impl Tab {
                 self.show_floating_panes();
                 self.floating_panes.focus_pane(pane_id, client_id);
                 return Ok(MouseEffect::state_changed());
+            } else if let Ok(Some(_pane_id)) = self
+                .floating_panes
+                .get_pinned_pane_id_at(&event.position, false)
+            {
+                // here, the floating panes are not visible, but there is a pinned pane (always
+                // visible) that has been clicked on - this pane however is not selectable
+                // (we know this because we passed "false" to get_pinned_pane_id_at)
+                // so we don't do anything
+                return Ok(MouseEffect::default());
             }
         }
         let active_pane_id_before_click = self
@@ -3954,8 +3962,13 @@ impl Tab {
                 self.mouse_hover_pane_id.remove(&client_id);
             } else {
                 let pane_id = pane.pid();
-                if self.advanced_mouse_actions {
+                // if the pane is not selectable, we don't want to create a hover effect over it
+                // we do however want to remove the hover effect from other panes
+                let pane_is_selectable = pane.selectable();
+                if self.advanced_mouse_actions && pane_is_selectable {
                     self.mouse_hover_pane_id.insert(client_id, pane_id);
+                } else if self.advanced_mouse_actions {
+                    self.mouse_hover_pane_id.remove(&client_id);
                 }
             }
         };

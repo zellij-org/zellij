@@ -404,6 +404,7 @@ impl FloatingPanes {
             let multiple_users_exist_in_session =
                 { self.connected_clients_in_app.borrow().len() > 1 };
             active_panes.retain(|c_id, _| self.connected_clients.borrow().contains(c_id));
+            let pane_is_selectable = pane.selectable();
             let mut pane_contents_and_ui = PaneContentsAndUi::new(
                 pane,
                 output,
@@ -431,6 +432,7 @@ impl FloatingPanes {
                         client_mode,
                         self.session_is_mirrored,
                         is_floating,
+                        pane_is_selectable,
                     )
                     .with_context(err_context)?;
                 if let PaneId::Plugin(..) = kind {
