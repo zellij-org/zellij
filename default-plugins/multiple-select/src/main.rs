@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use zellij_tile::prelude::*;
 use zellij_tile::prelude::actions::Action;
+use std::time::Instant;
 
 #[derive(Debug, Default)]
 pub struct App {
@@ -11,6 +12,11 @@ pub struct App {
     grouped_panes: Vec<PaneId>,
     grouped_panes_count: usize,
     mode_info: ModeInfo,
+    closing: bool,
+    highlighted_at: Option<Instant>,
+    baseline_ui_width: usize,
+    current_rows: usize,
+    current_cols: usize,
 }
 
 register_plugin!(App);
@@ -22,33 +28,35 @@ impl ZellijPlugin for App {
             EventType::InterceptedKeyPress,
             EventType::ModeUpdate,
             EventType::PaneUpdate,
-            EventType::BeforeClose,
+            EventType::Timer,
         ]);
         
         let plugin_ids = get_plugin_ids();
         self.own_plugin_id = Some(plugin_ids.plugin_id);
         self.own_client_id = Some(plugin_ids.client_id);
         
-        rename_plugin_pane(plugin_ids.plugin_id, "Multiple Select");
         intercept_key_presses();
         set_selectable(false);
     }
 
     fn update(&mut self, event: Event) -> bool {
+        if self.closing {
+            return false;
+        }
         match event {
             Event::ModeUpdate(mode_info) => self.handle_mode_update(mode_info),
             Event::PaneUpdate(pane_manifest) => self.handle_pane_update(pane_manifest),
             Event::InterceptedKeyPress(key) => self.handle_key_press(key),
-            Event::BeforeClose => {
-                clear_key_presses_intercepts();
-                false
-            }
+            Event::Timer(_) => self.handle_timer(),
             _ => false,
         }
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        let base_x = cols.saturating_sub(group_controls_length(&self.mode_info)) / 2;
+        self.update_current_size(rows, cols);
+        let ui_width = self.calculate_ui_width();
+        self.update_baseline_ui_width(ui_width);
+        let base_x = cols.saturating_sub(self.baseline_ui_width) / 2;
         let base_y = rows.saturating_sub(8) / 2;
         self.render_header(base_x, base_y);
         self.render_shortcuts(base_x, base_y + 2);
@@ -57,9 +65,84 @@ impl ZellijPlugin for App {
 }
 
 impl App {
+    fn update_current_size(&mut self, new_rows: usize, new_cols: usize) {
+        let size_changed = new_rows != self.current_rows || new_cols != self.current_cols;
+        self.current_rows = new_rows;
+        self.current_cols = new_cols;
+        if size_changed {
+            self.baseline_ui_width = 0;
+        }
+    }
+    fn update_baseline_ui_width(&mut self, current_ui_width: usize) {
+        if current_ui_width > self.baseline_ui_width {
+            self.baseline_ui_width = current_ui_width;
+        }
+    }
+
+    fn calculate_ui_width(&self) -> usize {
+        let controls_width = group_controls_length(&self.mode_info);
+        
+        let header_width = Self::header_text().0.len();
+        let shortcuts_max_width = Self::shortcuts_max_width();
+        
+        std::cmp::max(controls_width, std::cmp::max(header_width, shortcuts_max_width))
+    }
+
+    fn header_text() -> (&'static str, Text) {
+        let header_text = "<ESC> - cancel";
+        let header_text_component = Text::new(header_text).color_substring(3, "<ESC>");
+        (header_text, header_text_component)
+    }
+
+    fn shortcuts_max_width() -> usize {
+        std::cmp::max(
+            std::cmp::max(
+                Self::group_actions_text().0.len(),
+                Self::shortcuts_line1_text().0.len()
+            ),
+            std::cmp::max(
+                Self::shortcuts_line2_text().0.len(),
+                Self::shortcuts_line3_text().0.len()
+            )
+        )
+    }
+
+    fn group_actions_text() -> (&'static str, Text) {
+        let text = "GROUP ACTIONS";
+        let component = Text::new(text).color_all(2);
+        (text, component)
+    }
+
+    fn shortcuts_line1_text() -> (&'static str, Text) {
+        let text = "<b> - break out, <s> - stack, <c> - close";
+        let component = Text::new(text)
+            .color_substring(3, "<b>")
+            .color_substring(3, "<s>")
+            .color_substring(3, "<c>");
+        (text, component)
+    }
+
+    fn shortcuts_line2_text() -> (&'static str, Text) {
+        let text = "<r> - break right, <l> - break left";
+        let component = Text::new(text)
+            .color_substring(3, "<r>")
+            .color_substring(3, "<l>");
+        (text, component)
+    }
+
+    fn shortcuts_line3_text() -> (&'static str, Text) {
+        let text = "<e> - embed, <f> - float";
+        let component = Text::new(text)
+            .color_substring(3, "<e>")
+            .color_substring(3, "<f>");
+        (text, component)
+    }
+
     fn handle_mode_update(&mut self, mode_info: ModeInfo) -> bool {
         if self.mode_info != mode_info {
             self.mode_info = mode_info;
+            let ui_width = self.calculate_ui_width();
+            self.update_baseline_ui_width(ui_width);
             true
         } else {
             false
@@ -96,10 +179,30 @@ impl App {
             }
         }
         if count == 0 {
-            close_self();
+            self.close_self();
         }
         
+        let previous_count = self.grouped_panes_count;
         self.grouped_panes_count = count;
+        if let Some(own_plugin_id) = self.own_plugin_id {
+            let title = if count == 1 {
+                "SELECTED PANE"
+            } else {
+                "SELECTED PANES"
+            };
+            rename_plugin_pane(own_plugin_id, format!("{} {}", count, title));
+            if previous_count != 0 && count != 0 && previous_count != count {
+                if self.doherty_threshold_elapsed_since_highlight() {
+                    self.highlighted_at = Some(Instant::now());
+                    highlight_and_unhighlight_panes(vec![PaneId::Plugin(own_plugin_id)], vec![]);
+                    set_timeout(0.4);
+                }
+            }
+        }
+    }
+
+    fn doherty_threshold_elapsed_since_highlight(&self) -> bool {
+        self.highlighted_at.map(|h| h.elapsed() >= std::time::Duration::from_millis(400)).unwrap_or(true)
     }
 
     fn update_tab_info(&mut self, pane_manifest: &PaneManifest) {
@@ -128,21 +231,26 @@ impl App {
             BareKey::Char('c') => self.close_grouped_panes(),
             BareKey::Esc => {
                 self.ungroup_panes_in_zellij(&self.grouped_panes.clone());
-                close_self();
+                self.close_self();
             }
             _ => return false,
         }
         false
     }
+    fn handle_timer(&mut self) -> bool {
+        if let Some(own_plugin_id) = self.own_plugin_id {
+            if self.doherty_threshold_elapsed_since_highlight() {
+                highlight_and_unhighlight_panes(vec![], vec![PaneId::Plugin(own_plugin_id)]);
+            }
+        }
+        false
+    }
 
     fn render_header(&self, base_x: usize, base_y: usize) {
-        let header_text = format!(
-            "{} SELECTED PANES (<ESC> - cancel)", 
-            self.grouped_panes_count
-        );
+        let header_text = Self::header_text();
         
         print_text_with_coordinates(
-            Text::new(header_text).color_all(0).color_substring(3, "<ESC>"),
+            header_text.1,
             base_x, base_y, None, None
         );
     }
@@ -150,16 +258,13 @@ impl App {
     fn render_shortcuts(&self, base_x: usize, base_y: usize) {
         let mut running_y = base_y;
         print_text_with_coordinates(
-            Text::new("GROUP ACTIONS").color_all(2),
+            Self::group_actions_text().1,
             base_x, running_y, None, None
         );
         running_y += 1;
 
         print_text_with_coordinates(
-            Text::new("<b> - break out, <s> - stack, <c> - close")
-            .color_substring(3, "<b>")
-            .color_substring(3, "<s>")
-            .color_substring(3, "<c>"),
+            Self::shortcuts_line1_text().1,
             base_x,
             running_y,
             None,
@@ -168,9 +273,7 @@ impl App {
         running_y += 1;
 
         print_text_with_coordinates(
-            Text::new("<r> - break right, <l> - break left")
-            .color_substring(3, "<r>")
-            .color_substring(3, "<l>"),
+            Self::shortcuts_line2_text().1,
             base_x,
             running_y,
             None,
@@ -179,9 +282,7 @@ impl App {
         running_y += 1;
 
         print_text_with_coordinates(
-            Text::new("<e> - embed, <f> - float")
-            .color_substring(3, "<e>")
-            .color_substring(3, "<f>"),
+            Self::shortcuts_line3_text().1,
             base_x,
             running_y,
             None,
@@ -199,7 +300,7 @@ impl App {
     {
         let pane_ids = self.grouped_panes.clone();
         action(&pane_ids);
-        close_self();
+        self.close_self();
     }
 
     pub fn break_grouped_panes_to_new_tab(&mut self) {
@@ -243,7 +344,7 @@ impl App {
             break_panes_to_new_tab(&pane_ids, None, true);
         }
         
-        close_self();
+        self.close_self();
     }
 
     pub fn break_grouped_panes_left(&mut self) {
@@ -259,7 +360,7 @@ impl App {
             break_panes_to_new_tab(&pane_ids, None, true);
         }
         
-        close_self();
+        self.close_self();
     }
 
     pub fn close_grouped_panes(&mut self) {
@@ -271,6 +372,10 @@ impl App {
     pub fn ungroup_panes_in_zellij(&mut self, pane_ids: &[PaneId]) {
         group_and_ungroup_panes(vec![], pane_ids.to_vec());
     }
+    pub fn close_self(&mut self) {
+        self.closing = true;
+        close_self();
+    }
 }
 
 fn render_group_controls(
@@ -281,9 +386,24 @@ fn render_group_controls(
     let keymap = mode_info.get_mode_keybinds();
     let (common_modifiers, pane_group_key, group_mark_key) = extract_key_bindings(&keymap);
     
+    let pane_group_bound = pane_group_key != "UNBOUND";
+    let group_mark_bound = group_mark_key != "UNBOUND";
+    
+    if !pane_group_bound && !group_mark_bound {
+        return;
+    }
+    
     render_common_modifiers(&common_modifiers, base_x, base_y);
-    let next_x = render_toggle_group_ribbon(&pane_group_key, base_x, base_y, &common_modifiers);
-    render_follow_focus_ribbon(&group_mark_key, next_x, base_y, mode_info);
+    
+    let mut next_x = base_x + render_common_modifiers(&common_modifiers, base_x, base_y);
+    
+    if pane_group_bound {
+        next_x = render_toggle_group_ribbon(&pane_group_key, next_x, base_y);
+    }
+    
+    if group_mark_bound {
+        render_follow_focus_ribbon(&group_mark_key, next_x, base_y, mode_info);
+    }
 }
 
 fn group_controls_length(
@@ -291,9 +411,34 @@ fn group_controls_length(
 ) -> usize {
     let keymap = mode_info.get_mode_keybinds();
     let (common_modifiers, pane_group_key, group_mark_key) = extract_key_bindings(&keymap);
-    common_modifiers_length(&common_modifiers) +
-    toggle_group_ribbon_length(&pane_group_key) +
-    follow_focus_length(&group_mark_key)
+    
+    let pane_group_bound = pane_group_key != "UNBOUND";
+    let group_mark_bound = group_mark_key != "UNBOUND";
+    
+    let mut length = 0;
+    
+    if !common_modifiers.is_empty() {
+        let modifiers_text = format!(
+            "{} + ", 
+            common_modifiers.iter()
+                .map(|m| m.to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        length += modifiers_text.chars().count();
+    }
+    
+    if pane_group_bound {
+        let toggle_text = format!("<{}> Toggle", pane_group_key);
+        length += toggle_text.chars().count() + 4;
+    }
+    
+    if group_mark_bound {
+        let follow_text = format!("<{}> Follow Focus", group_mark_key);
+        length += follow_text.chars().count() + 4;
+    }
+    
+    length
 }
 
 fn extract_key_bindings(keymap: &[(KeyWithModifier, Vec<Action>)]) -> (Vec<KeyModifier>, String, String) {
@@ -319,10 +464,10 @@ fn format_key_without_modifiers(keys: &[KeyWithModifier], common_modifiers: &[Ke
         .unwrap_or_else(|| "UNBOUND".to_string())
 }
 
-fn render_common_modifiers(common_modifiers: &[KeyModifier], base_x: usize, base_y: usize) {
+fn render_common_modifiers(common_modifiers: &[KeyModifier], base_x: usize, base_y: usize) -> usize {
     if !common_modifiers.is_empty() {
         let modifiers_text = format!(
-            "{} +", 
+            "{} + ", 
             common_modifiers.iter()
                 .map(|m| m.to_string())
                 .collect::<Vec<_>>()
@@ -333,82 +478,11 @@ fn render_common_modifiers(common_modifiers: &[KeyModifier], base_x: usize, base
             Text::new(&modifiers_text).color_all(0),
             base_x, base_y, None, None
         );
-    }
-}
-
-fn common_modifiers_length(common_modifiers: &[KeyModifier]) -> usize {
-    if !common_modifiers.is_empty() {
-        let modifiers_text = format!(
-            "{} +", 
-            common_modifiers.iter()
-                .map(|m| m.to_string())
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
+        
         modifiers_text.chars().count()
     } else {
         0
     }
-}
-
-fn render_toggle_group_ribbon(
-    pane_group_key: &str, 
-    base_x: usize, 
-    base_y: usize, 
-    common_modifiers: &[KeyModifier]
-) -> usize {
-    let modifiers_width = if common_modifiers.is_empty() {
-        0
-    } else {
-        common_modifiers.iter()
-            .map(|m| m.to_string().len())
-            .sum::<usize>() + common_modifiers.len() + 2 // spaces and " +"
-    };
-    
-    let toggle_text = format!("<{}> Toggle", pane_group_key);
-    let key_highlight = format!("{}", pane_group_key);
-    
-    print_ribbon_with_coordinates(
-        Text::new(&toggle_text).color_substring(0, &key_highlight),
-        base_x + modifiers_width,
-        base_y,
-        None,
-        None
-    );
-    
-    base_x + modifiers_width + toggle_text.len() + 4
-}
-
-fn toggle_group_ribbon_length(
-    pane_group_key: &str, 
-) -> usize {
-    let toggle_text = format!("<{}> Toggle", pane_group_key);
-    toggle_text.chars().count() + 4
-}
-
-fn render_follow_focus_ribbon(
-    group_mark_key: &str,
-    x_position: usize,
-    base_y: usize,
-    mode_info: &ModeInfo,
-) {
-    let follow_text = format!("<{}> Follow Focus", group_mark_key);
-    let key_highlight = format!("{}", group_mark_key);
-    
-    let mut ribbon = Text::new(&follow_text).color_substring(0, &key_highlight);
-    
-    if mode_info.currently_marking_pane_group.unwrap_or(false) {
-        ribbon = ribbon.selected();
-    }
-    
-    print_ribbon_with_coordinates(ribbon, x_position, base_y, None, None);
-}
-
-fn follow_focus_length(
-    group_mark_key: &str,
-) -> usize {
-    let follow_text = format!("<{}> Follow Focus", group_mark_key);
-    follow_text.chars().count() + 4
 }
 
 fn get_key_for_action(keymap: &[(KeyWithModifier, Vec<Action>)], target_action: &[Action]) -> Vec<KeyWithModifier> {
@@ -436,4 +510,41 @@ fn get_common_modifiers(keys: Vec<&KeyWithModifier>) -> Vec<KeyModifier> {
     }
     
     common.into_iter().collect()
+}
+
+fn render_follow_focus_ribbon(
+    group_mark_key: &str,
+    x_position: usize,
+    base_y: usize,
+    mode_info: &ModeInfo,
+) {
+    let follow_text = format!("<{}> Follow Focus", group_mark_key);
+    let key_highlight = format!("{}", group_mark_key);
+    
+    let mut ribbon = Text::new(&follow_text).color_substring(0, &key_highlight);
+    
+    if mode_info.currently_marking_pane_group.unwrap_or(false) {
+        ribbon = ribbon.selected();
+    }
+    
+    print_ribbon_with_coordinates(ribbon, x_position, base_y, None, None);
+}
+
+fn render_toggle_group_ribbon(
+    pane_group_key: &str, 
+    base_x: usize, 
+    base_y: usize, 
+) -> usize {
+    let toggle_text = format!("<{}> Toggle", pane_group_key);
+    let key_highlight = format!("{}", pane_group_key);
+    
+    print_ribbon_with_coordinates(
+        Text::new(&toggle_text).color_substring(0, &key_highlight),
+        base_x,
+        base_y,
+        None,
+        None
+    );
+    
+    base_x + toggle_text.len() + 4
 }
