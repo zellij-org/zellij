@@ -22,7 +22,6 @@ pub fn one_line_ui(
     base_mode_is_locked: bool,
     text_copied_to_clipboard_destination: Option<CopyDestination>,
     clipboard_failure: bool,
-    grouped_pane_count: Option<usize>,
 ) -> LinePart {
     if let Some(text_copied_to_clipboard_destination) = text_copied_to_clipboard_destination {
         return text_copied_hint(text_copied_to_clipboard_destination);
@@ -36,18 +35,11 @@ pub fn one_line_ui(
         *max_len = max_len.saturating_sub(line_part.len);
     };
 
-    let currently_marking_pane_group = help.currently_marking_pane_group.unwrap_or(false);
     render_mode_key_indicators(help, max_len, separator, base_mode_is_locked)
         .map(|mode_key_indicators| append(&mode_key_indicators, &mut max_len))
         .and_then(|_| match help.mode {
-            InputMode::Normal | InputMode::Locked => match grouped_pane_count {
-                Some(grouped_pane_count) => {
-                    render_group_controls(help, grouped_pane_count, max_len)
-                },
-                None if currently_marking_pane_group => render_group_controls(help, 0, max_len),
-                None => render_secondary_info(help, tab_info, max_len),
-            }
-            .map(|secondary_info| append(&secondary_info, &mut max_len)),
+            InputMode::Normal | InputMode::Locked => render_secondary_info(help, tab_info, max_len)
+                .map(|secondary_info| append(&secondary_info, &mut max_len)),
             _ => add_keygroup_separator(help, max_len)
                 .map(|key_group_separator| append(&key_group_separator, &mut max_len))
                 .and_then(|_| keybinds(help, max_len))

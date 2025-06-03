@@ -252,8 +252,6 @@ pub fn tab_line(
     mode: InputMode,
     active_swap_layout_name: &Option<String>,
     is_swap_layout_dirty: bool,
-    mode_info: &ModeInfo,
-    grouped_pane_count: Option<usize>,
 ) -> Vec<LinePart> {
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
     let mut tabs_before_active = all_tabs;
@@ -289,21 +287,15 @@ pub fn tab_line(
     if current_title_len < cols {
         let mut remaining_space = cols - current_title_len;
         let remaining_bg = palette.text_unselected.background;
-        let right_side_component = match grouped_pane_count {
-            Some(grouped_pane_count) => {
-                render_group_controls(mode_info, grouped_pane_count, remaining_space)
-            },
-            None => swap_layout_status(
-                remaining_space,
-                active_swap_layout_name,
-                is_swap_layout_dirty,
-                mode,
-                &palette,
-                tab_separator(capabilities),
-            ),
-        };
-        if let Some(right_side_component) = right_side_component {
-            remaining_space -= right_side_component.len;
+        if let Some(swap_layout_status) = swap_layout_status(
+            remaining_space,
+            active_swap_layout_name,
+            is_swap_layout_dirty,
+            mode,
+            &palette,
+            tab_separator(capabilities),
+        ) {
+            remaining_space -= swap_layout_status.len;
             let mut buffer = String::new();
             for _ in 0..remaining_space {
                 buffer.push_str(&style!(remaining_bg, remaining_bg).paint(" ").to_string());
@@ -313,7 +305,7 @@ pub fn tab_line(
                 len: remaining_space,
                 tab_index: None,
             });
-            prefix.push(right_side_component);
+            prefix.push(swap_layout_status);
         }
     }
 
