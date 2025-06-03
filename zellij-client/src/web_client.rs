@@ -454,7 +454,11 @@ pub struct SendShutdownSignalResponse {
 }
 
 async fn send_shutdown_signal(State(state): State<AppState>) -> Json<SendShutdownSignalResponse> {
-    state.server_handle.shutdown();
+    tokio::spawn(async move {
+        // wait so that we have time to send a response to this request
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        state.server_handle.shutdown();
+    });
     Json(SendShutdownSignalResponse {
         status: "Ok".to_owned(),
     })

@@ -41,6 +41,7 @@ use zellij_utils::{
         options::Options,
     },
     setup::{find_default_config_dir, get_layout_dir, Setup},
+    shared::web_server_base_url,
 };
 
 pub(crate) use zellij_utils::sessions::list_sessions;
@@ -197,15 +198,22 @@ pub(crate) fn stop_web_server(opts: CliArgs) -> Result<(), String> {
         .web_server_ip
         .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
     let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
-
+    let has_certificate = config_options.web_server_cert.is_some() && config_options.web_server_key.is_some();
+    let enforce_https_for_localhost = config_options.enforce_https_for_localhost.unwrap_or(false);
+    let web_server_base_url = web_server_base_url(
+        web_server_ip,
+        web_server_port,
+        has_certificate,
+        enforce_https_for_localhost,
+    );
     let http_client = HttpClient::builder()
         // TODO: timeout?
         .redirect_policy(RedirectPolicy::Follow)
         .build()
         .map_err(|e| e.to_string())?;
     let request = Request::post(format!(
-        "http://{}:{}/command/shutdown",
-        web_server_ip, web_server_port
+        "{}/command/shutdown",
+        web_server_base_url
     ));
     let req = request.body(()).map_err(|e| e.to_string())?;
     let res = http_client.send(req).map_err(|e| e.to_string())?;
@@ -232,20 +240,15 @@ pub(crate) fn stop_web_server(_opts: CliArgs) -> Result<(), String> {
 }
 
 #[cfg(feature = "web_server_capability")]
-pub(crate) fn web_server_status(opts: CliArgs) -> Result<String, String> {
-    let config_options = get_config_options_from_cli_args(&opts)?;
-    let web_server_ip = config_options
-        .web_server_ip
-        .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
-    let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
+pub(crate) fn web_server_status(web_server_base_url: &str) -> Result<String, String> {
     let http_client = HttpClient::builder()
         // TODO: timeout?
         .redirect_policy(RedirectPolicy::Follow)
         .build()
         .map_err(|e| e.to_string())?;
     let request = Request::get(format!(
-        "http://{}:{}/info/version",
-        web_server_ip, web_server_port
+        "{}/info/version",
+        web_server_base_url,
     ));
     let req = request.body(()).map_err(|e| e.to_string())?;
     let mut res = http_client.send(req).map_err(|e| e.to_string())?;
@@ -850,7 +853,7 @@ fn reload_config_from_disk(
     };
 }
 
-fn get_config_options_from_cli_args(opts: &CliArgs) -> Result<Options, String> {
+pub fn get_config_options_from_cli_args(opts: &CliArgs) -> Result<Options, String> {
     Setup::from_cli_args(&opts)
         .map(|(_, _, config_options, _, _)| config_options)
         .map_err(|e| e.to_string())

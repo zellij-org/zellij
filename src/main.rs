@@ -10,6 +10,7 @@ use zellij_utils::{
     input::config::Config,
     logging::*,
     setup::Setup,
+    shared::web_server_base_url_from_config,
 };
 
 fn main() {
@@ -239,10 +240,12 @@ fn main() {
                 },
             }
         } else if web_opts.status {
-            match commands::web_server_status(opts) {
+            let config_options = commands::get_config_options_from_cli_args(&opts).expect("Can't find config options");
+            let web_server_base_url = web_server_base_url_from_config(config_options);
+            match commands::web_server_status(&web_server_base_url) {
                 Ok(version) => {
                     let version = version.trim();
-                    println!("Web server online with version: {}.", version);
+                    println!("Web server online with version: {}. Checked: {}", version, web_server_base_url);
                     if version != VERSION {
                         println!("");
                         println!(
@@ -254,7 +257,7 @@ fn main() {
                     }
                 },
                 Err(_e) => {
-                    println!("Web server is offline.")
+                    println!("Web server is offline, checked: {}", web_server_base_url);
                 },
             }
         }
