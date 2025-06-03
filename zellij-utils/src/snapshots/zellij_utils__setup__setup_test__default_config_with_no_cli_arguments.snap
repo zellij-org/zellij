@@ -212,35 +212,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'm',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                LaunchOrFocusPlugin(
-                    RunPlugin(
-                        RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: Zellij(
-                                PluginTag(
-                                    "multiple-select",
-                                ),
-                            ),
-                            configuration: PluginUserConfiguration(
-                                {},
-                            ),
-                            initial_cwd: None,
-                        },
-                    ),
-                    true,
-                    true,
-                    false,
-                    false,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {
@@ -760,35 +731,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'm',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                LaunchOrFocusPlugin(
-                    RunPlugin(
-                        RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: Zellij(
-                                PluginTag(
-                                    "multiple-select",
-                                ),
-                            ),
-                            configuration: PluginUserConfiguration(
-                                {},
-                            ),
-                            initial_cwd: None,
-                        },
-                    ),
-                    true,
-                    true,
-                    false,
-                    false,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {
@@ -1262,35 +1204,6 @@ Config {
             }: [
                 MoveFocusOrTab(
                     Right,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'm',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                LaunchOrFocusPlugin(
-                    RunPlugin(
-                        RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: Zellij(
-                                PluginTag(
-                                    "multiple-select",
-                                ),
-                            ),
-                            configuration: PluginUserConfiguration(
-                                {},
-                            ),
-                            initial_cwd: None,
-                        },
-                    ),
-                    true,
-                    true,
-                    false,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -1914,35 +1827,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'm',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                LaunchOrFocusPlugin(
-                    RunPlugin(
-                        RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: Zellij(
-                                PluginTag(
-                                    "multiple-select",
-                                ),
-                            ),
-                            configuration: PluginUserConfiguration(
-                                {},
-                            ),
-                            initial_cwd: None,
-                        },
-                    ),
-                    true,
-                    true,
-                    false,
-                    false,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {},
@@ -2452,35 +2336,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'm',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                LaunchOrFocusPlugin(
-                    RunPlugin(
-                        RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: Zellij(
-                                PluginTag(
-                                    "multiple-select",
-                                ),
-                            ),
-                            configuration: PluginUserConfiguration(
-                                {},
-                            ),
-                            initial_cwd: None,
-                        },
-                    ),
-                    true,
-                    true,
-                    false,
-                    false,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {
@@ -2852,35 +2707,6 @@ Config {
             }: [
                 MoveFocusOrTab(
                     Right,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'm',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                LaunchOrFocusPlugin(
-                    RunPlugin(
-                        RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: Zellij(
-                                PluginTag(
-                                    "multiple-select",
-                                ),
-                            ),
-                            configuration: PluginUserConfiguration(
-                                {},
-                            ),
-                            initial_cwd: None,
-                        },
-                    ),
-                    true,
-                    true,
-                    false,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -3332,35 +3158,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'm',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                LaunchOrFocusPlugin(
-                    RunPlugin(
-                        RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: Zellij(
-                                PluginTag(
-                                    "multiple-select",
-                                ),
-                            ),
-                            configuration: PluginUserConfiguration(
-                                {},
-                            ),
-                            initial_cwd: None,
-                        },
-                    ),
-                    true,
-                    true,
-                    false,
-                    false,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {},
@@ -3761,35 +3558,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'm',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                LaunchOrFocusPlugin(
-                    RunPlugin(
-                        RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: Zellij(
-                                PluginTag(
-                                    "multiple-select",
-                                ),
-                            ),
-                            configuration: PluginUserConfiguration(
-                                {},
-                            ),
-                            initial_cwd: None,
-                        },
-                    ),
-                    true,
-                    true,
-                    false,
-                    false,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {
@@ -4139,35 +3907,6 @@ Config {
             }: [
                 MoveFocusOrTab(
                     Right,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'm',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                LaunchOrFocusPlugin(
-                    RunPlugin(
-                        RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: Zellij(
-                                PluginTag(
-                                    "multiple-select",
-                                ),
-                            ),
-                            configuration: PluginUserConfiguration(
-                                {},
-                            ),
-                            initial_cwd: None,
-                        },
-                    ),
-                    true,
-                    true,
-                    false,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -4575,35 +4314,6 @@ Config {
             }: [
                 MoveFocusOrTab(
                     Right,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'm',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                LaunchOrFocusPlugin(
-                    RunPlugin(
-                        RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: Zellij(
-                                PluginTag(
-                                    "multiple-select",
-                                ),
-                            ),
-                            configuration: PluginUserConfiguration(
-                                {},
-                            ),
-                            initial_cwd: None,
-                        },
-                    ),
-                    true,
-                    true,
-                    false,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -5092,35 +4802,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'm',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                LaunchOrFocusPlugin(
-                    RunPlugin(
-                        RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: Zellij(
-                                PluginTag(
-                                    "multiple-select",
-                                ),
-                            ),
-                            configuration: PluginUserConfiguration(
-                                {},
-                            ),
-                            initial_cwd: None,
-                        },
-                    ),
-                    true,
-                    true,
-                    false,
-                    false,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'n',
                 ),
                 key_modifiers: {},
@@ -5483,35 +5164,6 @@ Config {
             }: [
                 MoveFocusOrTab(
                     Right,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'm',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                LaunchOrFocusPlugin(
-                    RunPlugin(
-                        RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: Zellij(
-                                PluginTag(
-                                    "multiple-select",
-                                ),
-                            ),
-                            configuration: PluginUserConfiguration(
-                                {},
-                            ),
-                            initial_cwd: None,
-                        },
-                    ),
-                    true,
-                    true,
-                    false,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -6043,35 +5695,6 @@ Config {
             }: [
                 MoveFocusOrTab(
                     Right,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'm',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                LaunchOrFocusPlugin(
-                    RunPlugin(
-                        RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: Zellij(
-                                PluginTag(
-                                    "multiple-select",
-                                ),
-                            ),
-                            configuration: PluginUserConfiguration(
-                                {},
-                            ),
-                            initial_cwd: None,
-                        },
-                    ),
-                    true,
-                    true,
-                    false,
-                    false,
                 ),
             ],
             KeyWithModifier {

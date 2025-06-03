@@ -363,6 +363,12 @@ impl TryFrom<ProtobufEvent> for Event {
                 None => Ok(Event::BeforeClose),
                 _ => Err("Malformed payload for the BeforeClose Event"),
             },
+            Some(ProtobufEventType::InterceptedKeyPress) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::KeyPayload(protobuf_key)) => {
+                    Ok(Event::InterceptedKeyPress(protobuf_key.try_into()?))
+                },
+                _ => Err("Malformed payload for the InterceptedKeyPress Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -740,6 +746,10 @@ impl TryFrom<Event> for ProtobufEvent {
             Event::BeforeClose => Ok(ProtobufEvent {
                 name: ProtobufEventType::BeforeClose as i32,
                 payload: None,
+            }),
+            Event::InterceptedKeyPress(key) => Ok(ProtobufEvent {
+                name: ProtobufEventType::InterceptedKeyPress as i32,
+                payload: Some(event::Payload::KeyPayload(key.try_into()?)),
             }),
         }
     }
@@ -1376,6 +1386,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::PastedText => EventType::PastedText,
             ProtobufEventType::ConfigWasWrittenToDisk => EventType::ConfigWasWrittenToDisk,
             ProtobufEventType::BeforeClose => EventType::BeforeClose,
+            ProtobufEventType::InterceptedKeyPress => EventType::InterceptedKeyPress,
         })
     }
 }
@@ -1416,6 +1427,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::PastedText => ProtobufEventType::PastedText,
             EventType::ConfigWasWrittenToDisk => ProtobufEventType::ConfigWasWrittenToDisk,
             EventType::BeforeClose => ProtobufEventType::BeforeClose,
+            EventType::InterceptedKeyPress => ProtobufEventType::InterceptedKeyPress,
         })
     }
 }

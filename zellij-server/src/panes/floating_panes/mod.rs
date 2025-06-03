@@ -316,6 +316,20 @@ impl FloatingPanes {
     pub fn last_floating_pane_id(&self) -> Option<PaneId> {
         self.panes.keys().last().copied()
     }
+    pub fn last_selectable_floating_pane_id(&self) -> Option<PaneId> {
+        self.panes
+            .iter()
+            .filter(|(_p_id, p)| p.selectable())
+            .last()
+            .map(|(p_id, _p)| *p_id)
+    }
+    pub fn has_selectable_panes(&self) -> bool {
+        self.panes
+            .iter()
+            .filter(|(_p_id, p)| p.selectable())
+            .last()
+            .is_some()
+    }
     pub fn first_active_floating_pane_id(&self) -> Option<PaneId> {
         self.active_panes.values().next().copied()
     }
@@ -388,6 +402,7 @@ impl FloatingPanes {
             let multiple_users_exist_in_session =
                 { self.connected_clients_in_app.borrow().len() > 1 };
             active_panes.retain(|c_id, _| self.connected_clients.borrow().contains(c_id));
+            let pane_is_selectable = pane.selectable();
             let mut pane_contents_and_ui = PaneContentsAndUi::new(
                 pane,
                 output,
@@ -415,6 +430,7 @@ impl FloatingPanes {
                         client_mode,
                         self.session_is_mirrored,
                         is_floating,
+                        pane_is_selectable,
                     )
                     .with_context(err_context)?;
                 if let PaneId::Plugin(..) = kind {

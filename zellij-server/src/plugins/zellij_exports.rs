@@ -73,9 +73,10 @@ pub fn zellij_exports(linker: &mut Linker<PluginEnv>) {
         .unwrap();
 }
 
-fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
-    let env = caller.data();
-    let err_context = || format!("failed to run plugin command {}", env.name());
+fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
+    let mut env = caller.data_mut();
+    let plugin_command = env.name();
+    let err_context = || format!("failed to run plugin command {}", plugin_command);
     wasi_read_bytes(env)
         .and_then(|bytes| {
             let command: ProtobufPluginCommand = ProtobufPluginCommand::decode(bytes.as_slice())?;
@@ -454,6 +455,10 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     },
                     PluginCommand::EmbedMultiplePanes(pane_ids) => {
                         embed_multiple_panes(env, pane_ids.into_iter().map(|p| p.into()).collect())
+                    },
+                    PluginCommand::InterceptKeyPresses => intercept_key_presses(&mut env),
+                    PluginCommand::ClearKeyPressesIntercepts => {
+                        clear_key_presses_intercepts(&mut env)
                     },
                 },
                 (PermissionStatus::Denied, permission) => {
@@ -2163,6 +2168,8 @@ fn load_new_plugin(
                     size,
                     cwd,
                     skip_cache,
+                    None,
+                    None,
                 ));
             },
             Err(e) => {
@@ -2229,6 +2236,23 @@ fn embed_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
             pane_ids,
             env.client_id,
         ));
+}
+
+fn intercept_key_presses(env: &mut PluginEnv) {
+    env.intercepting_key_presses = true;
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::InterceptKeyPresses(
+            env.plugin_id,
+            env.client_id,
+        ));
+}
+
+fn clear_key_presses_intercepts(env: &mut PluginEnv) {
+    env.intercepting_key_presses = false;
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(env.client_id));
 }
 
 // Custom panic handler for plugins.
@@ -2409,6 +2433,9 @@ fn check_command_permission(
             PermissionType::Reconfigure
         },
         PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,
+        PluginCommand::InterceptKeyPresses | PluginCommand::ClearKeyPressesIntercepts => {
+            PermissionType::InterceptInput
+        },
         _ => return (PermissionStatus::Granted, None),
     };
 

@@ -1313,6 +1313,20 @@ pub fn embed_multiple_panes(pane_ids: Vec<PaneId>) {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn intercept_key_presses() {
+    let plugin_command = PluginCommand::InterceptKeyPresses;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn clear_key_presses_intercepts() {
+    let plugin_command = PluginCommand::ClearKeyPressesIntercepts;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 #[allow(unused)]

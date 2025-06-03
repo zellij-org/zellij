@@ -9,7 +9,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -67,6 +67,8 @@ pub mod event {
         FailedToChangeHostFolderPayload(super::FailedToChangeHostFolderPayload),
         #[prost(message, tag="26")]
         PastedTextPayload(super::PastedTextPayload),
+        #[prost(message, tag="27")]
+        InterceptedKeyPayload(super::super::key::Key),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -530,6 +532,7 @@ pub enum EventType {
     PastedText = 29,
     ConfigWasWrittenToDisk = 30,
     BeforeClose = 31,
+    InterceptedKeyPress = 32,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -570,6 +573,7 @@ impl EventType {
             EventType::PastedText => "PastedText",
             EventType::ConfigWasWrittenToDisk => "ConfigWasWrittenToDisk",
             EventType::BeforeClose => "BeforeClose",
+            EventType::InterceptedKeyPress => "InterceptedKeyPress",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -607,6 +611,7 @@ impl EventType {
             "PastedText" => Some(Self::PastedText),
             "ConfigWasWrittenToDisk" => Some(Self::ConfigWasWrittenToDisk),
             "BeforeClose" => Some(Self::BeforeClose),
+            "InterceptedKeyPress" => Some(Self::InterceptedKeyPress),
             _ => None,
         }
     }

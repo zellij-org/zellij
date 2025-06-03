@@ -5,6 +5,7 @@ pub mod tab;
 
 mod background_jobs;
 mod logging_pipe;
+mod pane_groups;
 mod plugins;
 mod pty;
 mod pty_writer;

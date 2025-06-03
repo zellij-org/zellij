@@ -938,6 +938,7 @@ pub enum Event {
     PastedText(String),
     ConfigWasWrittenToDisk,
     BeforeClose,
+    InterceptedKeyPress(KeyWithModifier),
 }
 
 #[derive(
@@ -969,6 +970,7 @@ pub enum Permission {
     MessageAndLaunchOtherPlugins,
     Reconfigure,
     FullHdAccess,
+    InterceptInput,
 }
 
 impl PermissionType {
@@ -991,6 +993,7 @@ impl PermissionType {
             },
             PermissionType::Reconfigure => "Change Zellij runtime configuration".to_owned(),
             PermissionType::FullHdAccess => "Full access to the hard-drive".to_owned(),
+            PermissionType::InterceptInput => "Intercept Input (keyboard & mouse)".to_owned(),
         }
     }
 }
@@ -2323,4 +2326,6 @@ pub enum PluginCommand {
     CloseMultiplePanes(Vec<PaneId>),
     FloatMultiplePanes(Vec<PaneId>),
     EmbedMultiplePanes(Vec<PaneId>),
+    InterceptKeyPresses,
+    ClearKeyPressesIntercepts,
 }

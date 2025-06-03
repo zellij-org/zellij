@@ -25,8 +25,8 @@ use wasm_bridge::WasmBridge;
 use async_std::{channel, future::timeout, task};
 use zellij_utils::{
     data::{
-        ClientInfo, Event, EventType, InputMode, MessageToPlugin, PermissionStatus, PermissionType,
-        PipeMessage, PipeSource, PluginCapabilities,
+        ClientInfo, Event, EventType, FloatingPaneCoordinates, InputMode, MessageToPlugin,
+        PermissionStatus, PermissionType, PipeMessage, PipeSource, PluginCapabilities,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -55,6 +55,8 @@ pub enum PluginInstruction {
         Size,
         Option<PathBuf>, // cwd
         bool,            // skip cache
+        Option<bool>,    // should focus plugin
+        Option<FloatingPaneCoordinates>,
     ),
     LoadBackgroundPlugin(RunPluginOrAlias, ClientId),
     Update(Vec<(Option<PluginId>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
@@ -281,6 +283,8 @@ pub(crate) fn plugin_thread_main(
                 size,
                 cwd,
                 skip_cache,
+                should_focus_plugin,
+                floating_pane_coordinates,
             ) => {
                 run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
                 let cwd = run_plugin_or_alias.get_initial_cwd().or(cwd);
@@ -306,6 +310,8 @@ pub(crate) fn plugin_thread_main(
                             pane_id_to_replace,
                             cwd,
                             start_suppressed,
+                            floating_pane_coordinates,
+                            should_focus_plugin,
                             Some(client_id),
                         )));
                     },
@@ -377,6 +383,8 @@ pub(crate) fn plugin_thread_main(
                                                     None,
                                                     None,
                                                     start_suppressed,
+                                                    None,
+                                                    None,
                                                     None,
                                                 ),
                                             ));
@@ -1070,7 +1078,8 @@ fn load_background_plugin(
                 pane_id_to_replace,
                 cwd,
                 start_suppressed,
-                // None,
+                None,
+                None,
                 Some(client_id),
             )));
         },

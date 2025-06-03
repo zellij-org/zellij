@@ -207,6 +207,7 @@ impl<'a> PaneContentsAndUi<'a> {
         client_mode: InputMode,
         session_is_mirrored: bool,
         pane_is_floating: bool,
+        pane_is_selectable: bool,
     ) -> Result<()> {
         let err_context = || format!("failed to render pane frame for client {client_id}");
 
@@ -243,6 +244,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 mouse_is_hovering_over_pane: self
                     .mouse_is_hovering_over_pane_for_clients
                     .contains(&client_id),
+                pane_is_selectable,
             }
         } else {
             FrameParams {
@@ -260,6 +262,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 mouse_is_hovering_over_pane: self
                     .mouse_is_hovering_over_pane_for_clients
                     .contains(&client_id),
+                pane_is_selectable,
             }
         };
 
