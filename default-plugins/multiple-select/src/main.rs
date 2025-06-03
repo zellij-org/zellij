@@ -212,7 +212,9 @@ impl App {
             } else {
                 "SELECTED PANES"
             };
-            rename_plugin_pane(own_plugin_id, format!("{} {}", count, title));
+            if previous_count != count {
+                rename_plugin_pane(own_plugin_id, format!("{} {}", count, title));
+            }
             if previous_count != 0 && count != 0 && previous_count != count {
                 if self.doherty_threshold_elapsed_since_highlight() {
                     self.highlighted_at = Some(Instant::now());
