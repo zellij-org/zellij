@@ -1190,7 +1190,6 @@ impl Tab {
             self.set_force_render();
         } else {
             self.show_floating_panes();
-            // match self.floating_panes.last_floating_pane_id() {
             match self.floating_panes.last_selectable_floating_pane_id() {
                 Some(last_selectable_floating_pane_id) => match client_id {
                     Some(client_id) => {
@@ -1241,8 +1240,6 @@ impl Tab {
         should_focus_pane: bool,
         client_id: Option<ClientId>,
     ) -> Result<()> {
-        // TODO: if should float is some, floating_pane_coordinates has pinned and floating panes are not shown, make
-        // sure they remain not shown and that the pane is not focused when doing add_floating_pane
         let err_context = || format!("failed to create new pane with id {pid:?}");
         if should_focus_pane {
             match should_float {
@@ -4508,7 +4505,6 @@ impl Tab {
     }
     pub fn pane_infos(&self) -> Vec<PaneInfo> {
         let mut pane_info = vec![];
-        // let current_pane_group = { self.current_pane_group.borrow().clone() };
         let current_pane_group = { self.current_pane_group.borrow().clone_inner() };
         let mut tiled_pane_info = self.tiled_panes.pane_info(&current_pane_group);
         let mut floating_pane_info = self.floating_panes.pane_info(&current_pane_group);
