@@ -17,6 +17,9 @@ pub struct App {
     baseline_ui_width: usize,
     current_rows: usize,
     current_cols: usize,
+    display_area_rows: usize,
+    display_area_cols: usize,
+    alternate_coordinates: bool,
 }
 
 register_plugin!(App);
@@ -28,6 +31,7 @@ impl ZellijPlugin for App {
             EventType::InterceptedKeyPress,
             EventType::ModeUpdate,
             EventType::PaneUpdate,
+            EventType::TabUpdate,
             EventType::Timer,
         ]);
         
@@ -46,6 +50,7 @@ impl ZellijPlugin for App {
         match event {
             Event::ModeUpdate(mode_info) => self.handle_mode_update(mode_info),
             Event::PaneUpdate(pane_manifest) => self.handle_pane_update(pane_manifest),
+            Event::TabUpdate(tab_infos) => self.handle_tab_update(tab_infos),
             Event::InterceptedKeyPress(key) => self.handle_key_press(key),
             Event::Timer(_) => self.handle_timer(),
             _ => false,
@@ -89,8 +94,10 @@ impl App {
     }
 
     fn header_text() -> (&'static str, Text) {
-        let header_text = "<ESC> - cancel";
-        let header_text_component = Text::new(header_text).color_substring(3, "<ESC>");
+        let header_text = "<ESC> - cancel, <TAB> - move";
+        let header_text_component = Text::new(header_text)
+            .color_substring(3, "<ESC>")
+            .color_substring(3, "<TAB>");
         (header_text, header_text_component)
     }
 
@@ -161,6 +168,18 @@ impl App {
         true
     }
 
+    fn handle_tab_update(&mut self, tab_infos: Vec<TabInfo>) -> bool {
+        for tab in tab_infos {
+            if tab.active {
+                self.display_area_rows = tab.display_area_rows;
+                self.display_area_cols = tab.display_area_columns;
+                break;
+            }
+        }
+        
+        false
+    }
+
     fn update_grouped_panes(&mut self, pane_manifest: &PaneManifest, own_client_id: ClientId) {
         self.grouped_panes.clear();
         let mut count = 0;
@@ -229,6 +248,7 @@ impl App {
             BareKey::Char('r') => self.break_grouped_panes_right(),
             BareKey::Char('l') => self.break_grouped_panes_left(),
             BareKey::Char('c') => self.close_grouped_panes(),
+            BareKey::Tab => self.next_coordinates(),
             BareKey::Esc => {
                 self.ungroup_panes_in_zellij(&self.grouped_panes.clone());
                 self.close_self();
@@ -375,6 +395,42 @@ impl App {
     pub fn close_self(&mut self) {
         self.closing = true;
         close_self();
+    }
+    pub fn next_coordinates(&mut self) {
+        let width_30_percent = (self.display_area_cols as f64 * 0.3) as usize;
+        let height_30_percent = (self.display_area_rows as f64 * 0.3) as usize;
+        let width = std::cmp::max(width_30_percent, 48);
+        let height = std::cmp::max(height_30_percent, 10);
+        let y_position = self.display_area_rows.saturating_sub(height + 2);
+        if let Some(own_plugin_id) = self.own_plugin_id {
+            if self.alternate_coordinates {
+                let x_position = 2;
+                let Some(next_coordinates) = FloatingPaneCoordinates::new(
+                    Some(format!("{}", x_position)),
+                    Some(format!("{}", y_position)),
+                    Some(format!("{}", width)),
+                    Some(format!("{}", height)),
+                    Some(true),
+                ) else {
+                    return;
+                };
+                change_floating_panes_coordinates(vec![(PaneId::Plugin(own_plugin_id), next_coordinates)]);
+                self.alternate_coordinates = false;
+            } else {
+                let x_position = self.display_area_cols.saturating_sub(width).saturating_sub(2);
+                let Some(next_coordinates) = FloatingPaneCoordinates::new(
+                    Some(format!("{}", x_position)),
+                    Some(format!("{}", y_position)),
+                    Some(format!("{}", width)),
+                    Some(format!("{}", height)),
+                    Some(true),
+                ) else {
+                    return;
+                };
+                change_floating_panes_coordinates(vec![(PaneId::Plugin(own_plugin_id), next_coordinates)]);
+                self.alternate_coordinates = true;
+            }
+        }
     }
 }
 
