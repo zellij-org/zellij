@@ -584,20 +584,37 @@ impl Boundaries {
     ) -> Result<Vec<CharacterChunk>> {
         let mut character_chunks = vec![];
         for (coordinates, boundary_character) in &self.boundary_characters {
-            let already_on_screen = existing_boundaries_on_screen
-                .and_then(|e| e.boundary_characters.get(coordinates))
-                .map(|e| e == boundary_character)
-                .unwrap_or(false);
-            if already_on_screen {
-                continue;
+            let should_render = if let Some(existing) = existing_boundaries_on_screen {
+                existing
+                    .boundary_characters
+                    .get(coordinates)
+                    .map(|existing_boundary| existing_boundary != boundary_character)
+                    .unwrap_or(true)
+            } else {
+                true
+            };
+
+            if should_render {
+                character_chunks.push(CharacterChunk::new(
+                    vec![boundary_character
+                        .as_terminal_character()
+                        .context("failed to render as terminal character")?],
+                    coordinates.x,
+                    coordinates.y,
+                ));
             }
-            character_chunks.push(CharacterChunk::new(
-                vec![boundary_character
-                    .as_terminal_character()
-                    .context("failed to render as terminal character")?],
-                coordinates.x,
-                coordinates.y,
-            ));
+        }
+        // clear boundaries that no longer exist
+        if let Some(existing) = existing_boundaries_on_screen {
+            for (coordinates, _) in &existing.boundary_characters {
+                if !self.boundary_characters.contains_key(coordinates) {
+                    character_chunks.push(CharacterChunk::new(
+                        vec![EMPTY_TERMINAL_CHARACTER],
+                        coordinates.x,
+                        coordinates.y,
+                    ));
+                }
+            }
         }
         Ok(character_chunks)
     }
