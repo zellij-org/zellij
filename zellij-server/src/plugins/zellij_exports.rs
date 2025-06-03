@@ -457,9 +457,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         embed_multiple_panes(env, pane_ids.into_iter().map(|p| p.into()).collect())
                     },
                     // TODO !!!!!: add this behind a new "intercept keypresses" permission :!!!!!!
-                    PluginCommand::InterceptKeyPresses => {
-                        intercept_key_presses(&mut env)
-                    },
+                    PluginCommand::InterceptKeyPresses => intercept_key_presses(&mut env),
                     // TODO !!!!!: add this behind a new "intercept keypresses" permission :!!!!!!
                     PluginCommand::ClearKeyPressesIntercepts => {
                         clear_key_presses_intercepts(&mut env)
@@ -2256,9 +2254,7 @@ fn clear_key_presses_intercepts(env: &mut PluginEnv) {
     env.intercepting_key_presses = false;
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
-            env.client_id,
-        ));
+        .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(env.client_id));
 }
 
 // Custom panic handler for plugins.

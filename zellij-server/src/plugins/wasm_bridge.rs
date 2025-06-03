@@ -330,9 +330,7 @@ impl WasmBridge {
                 if running_plugin.lock().unwrap().intercepting_key_presses() {
                     let _ = self
                         .senders
-                        .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
-                            client_id,
-                        ));
+                        .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(client_id));
                 }
             }
             let subscriptions = subscriptions.lock().unwrap();

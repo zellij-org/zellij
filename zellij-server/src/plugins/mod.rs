@@ -25,8 +25,8 @@ use wasm_bridge::WasmBridge;
 use async_std::{channel, future::timeout, task};
 use zellij_utils::{
     data::{
-        ClientInfo, Event, EventType, InputMode, MessageToPlugin, PermissionStatus, PermissionType,
-        PipeMessage, PipeSource, PluginCapabilities, FloatingPaneCoordinates
+        ClientInfo, Event, EventType, FloatingPaneCoordinates, InputMode, MessageToPlugin,
+        PermissionStatus, PermissionType, PipeMessage, PipeSource, PluginCapabilities,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -55,7 +55,7 @@ pub enum PluginInstruction {
         Size,
         Option<PathBuf>, // cwd
         bool,            // skip cache
-        Option<bool>, // should focus plugin
+        Option<bool>,    // should focus plugin
         Option<FloatingPaneCoordinates>,
     ),
     LoadBackgroundPlugin(RunPluginOrAlias, ClientId),

@@ -9,8 +9,8 @@ use std::time::Duration;
 
 use log::{debug, warn};
 use zellij_utils::data::{
-    Direction, KeyWithModifier, PaneManifest, PluginPermission, Resize, ResizeStrategy,
-    SessionInfo, Styling, FloatingPaneCoordinates
+    Direction, FloatingPaneCoordinates, KeyWithModifier, PaneManifest, PluginPermission, Resize,
+    ResizeStrategy, SessionInfo, Styling,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -25,17 +25,17 @@ use zellij_utils::{
     input::command::TerminalAction,
     input::layout::{
         FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
-        TiledPaneLayout
+        TiledPaneLayout,
     },
     position::Position,
 };
 
 use crate::background_jobs::BackgroundJob;
 use crate::os_input_output::ResizeCache;
+use crate::pane_groups::PaneGroups;
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
 use crate::session_layout_metadata::{PaneLayoutMetadata, SessionLayoutMetadata};
-use crate::pane_groups::PaneGroups;
 
 use crate::{
     output::Output,
@@ -52,10 +52,7 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use zellij_utils::{
-    data::{
-        Event, InputMode, ModeInfo, Palette, PaletteColor,
-        PluginCapabilities, Style, TabInfo,
-    },
+    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, PluginCapabilities, Style, TabInfo},
     errors::{ContextType, ScreenContext},
     input::get_mode_info,
     ipc::{ClientAttributes, PixelDimensions, ServerToClientMsg},
@@ -642,7 +639,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TogglePaneInGroup(..) => ScreenContext::TogglePaneInGroup,
             ScreenInstruction::ToggleGroupMarking(..) => ScreenContext::ToggleGroupMarking,
             ScreenInstruction::InterceptKeyPresses(..) => ScreenContext::InterceptKeyPresses,
-            ScreenInstruction::ClearKeyPressesIntercepts(..) => ScreenContext::ClearKeyPressesIntercepts,
+            ScreenInstruction::ClearKeyPressesIntercepts(..) => {
+                ScreenContext::ClearKeyPressesIntercepts
+            },
         }
     }
 }
@@ -2959,7 +2958,12 @@ impl Screen {
     ) {
         {
             let mut current_pane_group = self.current_pane_group.borrow_mut();
-            current_pane_group.group_and_ungroup_panes(pane_ids_to_group, pane_ids_to_ungroup, self.size, &client_id);
+            current_pane_group.group_and_ungroup_panes(
+                pane_ids_to_group,
+                pane_ids_to_ungroup,
+                self.size,
+                &client_id,
+            );
         }
         self.retain_only_existing_panes_in_pane_groups();
         let _ = self.log_and_report_session_state();
@@ -2984,7 +2988,9 @@ impl Screen {
                     clients_with_empty_group.push(*client_id)
                 }
             }
-            self.current_pane_group.borrow_mut().override_groups_with(current_pane_group);
+            self.current_pane_group
+                .borrow_mut()
+                .override_groups_with(current_pane_group);
             clients_with_empty_group
         };
         for client_id in &clients_with_empty_group {
@@ -3361,9 +3367,14 @@ pub(crate) fn screen_thread_main(
             ) => {
                 if let Some(plugin_id) = keybind_intercepts.get(&client_id) {
                     if let Some(key_with_modifier) = key_with_modifier {
-                        let _ = screen.bus.senders.send_to_plugin(PluginInstruction::Update(
-                            vec![(Some(*plugin_id), Some(client_id), Event::InterceptedKeyPress(key_with_modifier))]
-                        ));
+                        let _ = screen
+                            .bus
+                            .senders
+                            .send_to_plugin(PluginInstruction::Update(vec![(
+                                Some(*plugin_id),
+                                Some(client_id),
+                                Event::InterceptedKeyPress(key_with_modifier),
+                            )]));
                         continue;
                     }
                 }
@@ -5295,7 +5306,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ClearKeyPressesIntercepts(client_id) => {
                 keybind_intercepts.remove(&client_id);
-            }
+            },
         }
     }
     Ok(())

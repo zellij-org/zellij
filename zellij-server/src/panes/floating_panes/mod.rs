@@ -317,16 +317,14 @@ impl FloatingPanes {
         self.panes.keys().last().copied()
     }
     pub fn last_selectable_floating_pane_id(&self) -> Option<PaneId> {
-        self
-            .panes
+        self.panes
             .iter()
             .filter(|(_p_id, p)| p.selectable())
             .last()
             .map(|(p_id, _p)| *p_id)
     }
     pub fn has_selectable_panes(&self) -> bool {
-        self
-            .panes
+        self.panes
             .iter()
             .filter(|(_p_id, p)| p.selectable())
             .last()

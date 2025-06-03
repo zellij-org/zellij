@@ -22,9 +22,9 @@ use zellij_utils::position::Position;
 use zellij_utils::position::{Column, Line};
 
 use crate::background_jobs::BackgroundJob;
+use crate::pane_groups::PaneGroups;
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::CopyOptions;
-use crate::pane_groups::PaneGroups;
 use crate::ui::{loading_indication::LoadingIndication, pane_boundaries_frame::FrameParams};
 use layout_applier::LayoutApplier;
 use swap_layouts::SwapLayouts;
@@ -1336,16 +1336,14 @@ impl Tab {
                 Some(true) => {
                     self.add_floating_pane(new_pane, pid, floating_pane_coordinates, false)
                 },
-                Some(false) => {
-                    self.add_tiled_pane(new_pane, pid, client_id)
-                },
+                Some(false) => self.add_tiled_pane(new_pane, pid, client_id),
                 None => {
                     if self.floating_panes.panes_are_visible() {
                         self.add_floating_pane(new_pane, pid, floating_pane_coordinates, false)
                     } else {
                         self.add_tiled_pane(new_pane, pid, client_id)
                     }
-                }
+                },
             }
         }
     }

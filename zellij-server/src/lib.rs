@@ -5,6 +5,7 @@ pub mod tab;
 
 mod background_jobs;
 mod logging_pipe;
+mod pane_groups;
 mod plugins;
 mod pty;
 mod pty_writer;
@@ -14,7 +15,6 @@ mod session_layout_metadata;
 mod terminal_bytes;
 mod thread_bus;
 mod ui;
-mod pane_groups;
 
 use background_jobs::{background_jobs_main, BackgroundJob};
 use log::info;

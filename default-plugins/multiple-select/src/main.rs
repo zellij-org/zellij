@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
-use zellij_tile::prelude::*;
-use zellij_tile::prelude::actions::Action;
 use std::time::Instant;
+use zellij_tile::prelude::actions::Action;
+use zellij_tile::prelude::*;
 
 #[derive(Debug, Default)]
 pub struct App {
@@ -34,11 +34,11 @@ impl ZellijPlugin for App {
             EventType::TabUpdate,
             EventType::Timer,
         ]);
-        
+
         let plugin_ids = get_plugin_ids();
         self.own_plugin_id = Some(plugin_ids.plugin_id);
         self.own_client_id = Some(plugin_ids.client_id);
-        
+
         intercept_key_presses();
         set_selectable(false);
     }
@@ -86,11 +86,14 @@ impl App {
 
     fn calculate_ui_width(&self) -> usize {
         let controls_width = group_controls_length(&self.mode_info);
-        
+
         let header_width = Self::header_text().0.len();
         let shortcuts_max_width = Self::shortcuts_max_width();
-        
-        std::cmp::max(controls_width, std::cmp::max(header_width, shortcuts_max_width))
+
+        std::cmp::max(
+            controls_width,
+            std::cmp::max(header_width, shortcuts_max_width),
+        )
     }
 
     fn header_text() -> (&'static str, Text) {
@@ -105,12 +108,12 @@ impl App {
         std::cmp::max(
             std::cmp::max(
                 Self::group_actions_text().0.len(),
-                Self::shortcuts_line1_text().0.len()
+                Self::shortcuts_line1_text().0.len(),
             ),
             std::cmp::max(
                 Self::shortcuts_line2_text().0.len(),
-                Self::shortcuts_line3_text().0.len()
-            )
+                Self::shortcuts_line3_text().0.len(),
+            ),
         )
     }
 
@@ -164,7 +167,7 @@ impl App {
         self.update_grouped_panes(&pane_manifest, own_client_id);
         self.update_tab_info(&pane_manifest);
         self.total_tabs_in_session = Some(pane_manifest.panes.keys().count());
-        
+
         true
     }
 
@@ -176,7 +179,7 @@ impl App {
                 break;
             }
         }
-        
+
         false
     }
 
@@ -200,7 +203,7 @@ impl App {
         if count == 0 {
             self.close_self();
         }
-        
+
         let previous_count = self.grouped_panes_count;
         self.grouped_panes_count = count;
         if let Some(own_plugin_id) = self.own_plugin_id {
@@ -221,7 +224,9 @@ impl App {
     }
 
     fn doherty_threshold_elapsed_since_highlight(&self) -> bool {
-        self.highlighted_at.map(|h| h.elapsed() >= std::time::Duration::from_millis(400)).unwrap_or(true)
+        self.highlighted_at
+            .map(|h| h.elapsed() >= std::time::Duration::from_millis(400))
+            .unwrap_or(true)
     }
 
     fn update_tab_info(&mut self, pane_manifest: &PaneManifest) {
@@ -252,7 +257,7 @@ impl App {
             BareKey::Esc => {
                 self.ungroup_panes_in_zellij(&self.grouped_panes.clone());
                 self.close_self();
-            }
+            },
             _ => return false,
         }
         false
@@ -268,19 +273,13 @@ impl App {
 
     fn render_header(&self, base_x: usize, base_y: usize) {
         let header_text = Self::header_text();
-        
-        print_text_with_coordinates(
-            header_text.1,
-            base_x, base_y, None, None
-        );
+
+        print_text_with_coordinates(header_text.1, base_x, base_y, None, None);
     }
 
     fn render_shortcuts(&self, base_x: usize, base_y: usize) {
         let mut running_y = base_y;
-        print_text_with_coordinates(
-            Self::group_actions_text().1,
-            base_x, running_y, None, None
-        );
+        print_text_with_coordinates(Self::group_actions_text().1, base_x, running_y, None, None);
         running_y += 1;
 
         print_text_with_coordinates(
@@ -314,9 +313,9 @@ impl App {
         render_group_controls(&self.mode_info, base_x, base_y);
     }
 
-    fn execute_action_and_close<F>(&mut self, action: F) 
-    where 
-        F: FnOnce(&[PaneId])
+    fn execute_action_and_close<F>(&mut self, action: F)
+    where
+        F: FnOnce(&[PaneId]),
     {
         let pane_ids = self.grouped_panes.clone();
         action(&pane_ids);
@@ -357,13 +356,13 @@ impl App {
         };
 
         let pane_ids = self.grouped_panes.clone();
-        
+
         if Some(own_tab_index + 1) < self.total_tabs_in_session {
             break_panes_to_tab_with_index(&pane_ids, own_tab_index + 1, true);
         } else {
             break_panes_to_new_tab(&pane_ids, None, true);
         }
-        
+
         self.close_self();
     }
 
@@ -373,13 +372,13 @@ impl App {
         };
 
         let pane_ids = self.grouped_panes.clone();
-        
+
         if own_tab_index > 0 {
             break_panes_to_tab_with_index(&pane_ids, own_tab_index - 1, true);
         } else {
             break_panes_to_new_tab(&pane_ids, None, true);
         }
-        
+
         self.close_self();
     }
 
@@ -414,10 +413,16 @@ impl App {
                 ) else {
                     return;
                 };
-                change_floating_panes_coordinates(vec![(PaneId::Plugin(own_plugin_id), next_coordinates)]);
+                change_floating_panes_coordinates(vec![(
+                    PaneId::Plugin(own_plugin_id),
+                    next_coordinates,
+                )]);
                 self.alternate_coordinates = false;
             } else {
-                let x_position = self.display_area_cols.saturating_sub(width).saturating_sub(2);
+                let x_position = self
+                    .display_area_cols
+                    .saturating_sub(width)
+                    .saturating_sub(2);
                 let Some(next_coordinates) = FloatingPaneCoordinates::new(
                     Some(format!("{}", x_position)),
                     Some(format!("{}", y_position)),
@@ -427,122 +432,137 @@ impl App {
                 ) else {
                     return;
                 };
-                change_floating_panes_coordinates(vec![(PaneId::Plugin(own_plugin_id), next_coordinates)]);
+                change_floating_panes_coordinates(vec![(
+                    PaneId::Plugin(own_plugin_id),
+                    next_coordinates,
+                )]);
                 self.alternate_coordinates = true;
             }
         }
     }
 }
 
-fn render_group_controls(
-    mode_info: &ModeInfo,
-    base_x: usize,
-    base_y: usize,
-) {
+fn render_group_controls(mode_info: &ModeInfo, base_x: usize, base_y: usize) {
     let keymap = mode_info.get_mode_keybinds();
     let (common_modifiers, pane_group_key, group_mark_key) = extract_key_bindings(&keymap);
-    
+
     let pane_group_bound = pane_group_key != "UNBOUND";
     let group_mark_bound = group_mark_key != "UNBOUND";
-    
+
     if !pane_group_bound && !group_mark_bound {
         return;
     }
-    
+
     render_common_modifiers(&common_modifiers, base_x, base_y);
-    
+
     let mut next_x = base_x + render_common_modifiers(&common_modifiers, base_x, base_y);
-    
+
     if pane_group_bound {
         next_x = render_toggle_group_ribbon(&pane_group_key, next_x, base_y);
     }
-    
+
     if group_mark_bound {
         render_follow_focus_ribbon(&group_mark_key, next_x, base_y, mode_info);
     }
 }
 
-fn group_controls_length(
-    mode_info: &ModeInfo,
-) -> usize {
+fn group_controls_length(mode_info: &ModeInfo) -> usize {
     let keymap = mode_info.get_mode_keybinds();
     let (common_modifiers, pane_group_key, group_mark_key) = extract_key_bindings(&keymap);
-    
+
     let pane_group_bound = pane_group_key != "UNBOUND";
     let group_mark_bound = group_mark_key != "UNBOUND";
-    
+
     let mut length = 0;
-    
+
     if !common_modifiers.is_empty() {
         let modifiers_text = format!(
-            "{} + ", 
-            common_modifiers.iter()
+            "{} + ",
+            common_modifiers
+                .iter()
                 .map(|m| m.to_string())
                 .collect::<Vec<_>>()
                 .join(" ")
         );
         length += modifiers_text.chars().count();
     }
-    
+
     if pane_group_bound {
         let toggle_text = format!("<{}> Toggle", pane_group_key);
         length += toggle_text.chars().count() + 4;
     }
-    
+
     if group_mark_bound {
         let follow_text = format!("<{}> Follow Focus", group_mark_key);
         length += follow_text.chars().count() + 4;
     }
-    
+
     length
 }
 
-fn extract_key_bindings(keymap: &[(KeyWithModifier, Vec<Action>)]) -> (Vec<KeyModifier>, String, String) {
+fn extract_key_bindings(
+    keymap: &[(KeyWithModifier, Vec<Action>)],
+) -> (Vec<KeyModifier>, String, String) {
     let pane_group_keys = get_key_for_action(keymap, &[Action::TogglePaneInGroup]);
     let group_mark_keys = get_key_for_action(keymap, &[Action::ToggleGroupMarking]);
-    
+
     let key_refs: Vec<&KeyWithModifier> = [pane_group_keys.first(), group_mark_keys.first()]
         .into_iter()
         .flatten()
         .collect();
-    
+
     let common_modifiers = get_common_modifiers(key_refs);
-    
+
     let pane_group_key = format_key_without_modifiers(&pane_group_keys, &common_modifiers);
     let group_mark_key = format_key_without_modifiers(&group_mark_keys, &common_modifiers);
-    
+
     (common_modifiers, pane_group_key, group_mark_key)
 }
 
-fn format_key_without_modifiers(keys: &[KeyWithModifier], common_modifiers: &[KeyModifier]) -> String {
+fn format_key_without_modifiers(
+    keys: &[KeyWithModifier],
+    common_modifiers: &[KeyModifier],
+) -> String {
     keys.first()
         .map(|key| format!("{}", key.strip_common_modifiers(&common_modifiers.to_vec())))
         .unwrap_or_else(|| "UNBOUND".to_string())
 }
 
-fn render_common_modifiers(common_modifiers: &[KeyModifier], base_x: usize, base_y: usize) -> usize {
+fn render_common_modifiers(
+    common_modifiers: &[KeyModifier],
+    base_x: usize,
+    base_y: usize,
+) -> usize {
     if !common_modifiers.is_empty() {
         let modifiers_text = format!(
-            "{} + ", 
-            common_modifiers.iter()
+            "{} + ",
+            common_modifiers
+                .iter()
                 .map(|m| m.to_string())
                 .collect::<Vec<_>>()
                 .join(" ")
         );
-        
+
         print_text_with_coordinates(
             Text::new(&modifiers_text).color_all(0),
-            base_x, base_y, None, None
+            base_x,
+            base_y,
+            None,
+            None,
         );
-        
+
         modifiers_text.chars().count()
     } else {
         0
     }
 }
 
-fn get_key_for_action(keymap: &[(KeyWithModifier, Vec<Action>)], target_action: &[Action]) -> Vec<KeyWithModifier> {
-    keymap.iter()
+fn get_key_for_action(
+    keymap: &[(KeyWithModifier, Vec<Action>)],
+    target_action: &[Action],
+) -> Vec<KeyWithModifier> {
+    keymap
+        .iter()
         .find_map(|(key, actions)| {
             if actions.first() == target_action.first() {
                 Some(key.clone())
@@ -558,13 +578,13 @@ fn get_common_modifiers(keys: Vec<&KeyWithModifier>) -> Vec<KeyModifier> {
     if keys.is_empty() {
         return vec![];
     }
-    
+
     let mut common = keys[0].key_modifiers.clone();
-    
+
     for key in keys.iter().skip(1) {
         common = common.intersection(&key.key_modifiers).cloned().collect();
     }
-    
+
     common.into_iter().collect()
 }
 
@@ -576,31 +596,27 @@ fn render_follow_focus_ribbon(
 ) {
     let follow_text = format!("<{}> Follow Focus", group_mark_key);
     let key_highlight = format!("{}", group_mark_key);
-    
+
     let mut ribbon = Text::new(&follow_text).color_substring(0, &key_highlight);
-    
+
     if mode_info.currently_marking_pane_group.unwrap_or(false) {
         ribbon = ribbon.selected();
     }
-    
+
     print_ribbon_with_coordinates(ribbon, x_position, base_y, None, None);
 }
 
-fn render_toggle_group_ribbon(
-    pane_group_key: &str, 
-    base_x: usize, 
-    base_y: usize, 
-) -> usize {
+fn render_toggle_group_ribbon(pane_group_key: &str, base_x: usize, base_y: usize) -> usize {
     let toggle_text = format!("<{}> Toggle", pane_group_key);
     let key_highlight = format!("{}", pane_group_key);
-    
+
     print_ribbon_with_coordinates(
         Text::new(&toggle_text).color_substring(0, &key_highlight),
         base_x,
         base_y,
         None,
-        None
+        None,
     );
-    
+
     base_x + toggle_text.len() + 4
 }

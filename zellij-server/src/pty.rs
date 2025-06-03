@@ -97,7 +97,7 @@ pub enum PtyInstruction {
         Size,
         bool,            // skip cache
         Option<PathBuf>, // if Some, will not fill cwd but just forward the message
-        Option<bool>, // should focus plugin
+        Option<bool>,    // should focus plugin
         Option<FloatingPaneCoordinates>,
     ),
     ListClientsMetadata(SessionLayoutMetadata, ClientId),
