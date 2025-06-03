@@ -456,9 +456,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::EmbedMultiplePanes(pane_ids) => {
                         embed_multiple_panes(env, pane_ids.into_iter().map(|p| p.into()).collect())
                     },
-                    // TODO !!!!!: add this behind a new "intercept keypresses" permission :!!!!!!
                     PluginCommand::InterceptKeyPresses => intercept_key_presses(&mut env),
-                    // TODO !!!!!: add this behind a new "intercept keypresses" permission :!!!!!!
                     PluginCommand::ClearKeyPressesIntercepts => {
                         clear_key_presses_intercepts(&mut env)
                     },
@@ -2435,7 +2433,8 @@ fn check_command_permission(
             PermissionType::Reconfigure
         },
         PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,
-        PluginCommand::InterceptKeyPresses => PermissionType::InterceptInput,
+        PluginCommand::InterceptKeyPresses |
+        PluginCommand::ClearKeyPressesIntercepts => PermissionType::InterceptInput,
         _ => return (PermissionStatus::Granted, None),
     };
 

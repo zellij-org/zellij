@@ -263,7 +263,6 @@ pub(crate) struct Tab {
     styled_underlines: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
-    // current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
@@ -677,7 +676,6 @@ impl Tab {
         styled_underlines: bool,
         explicitly_disable_kitty_keyboard_protocol: bool,
         default_editor: Option<PathBuf>,
-        // current_pane_group: Rc<RefCell<HashMap<ClientId, Vec<PaneId>>>>,
         current_pane_group: Rc<RefCell<PaneGroups>>,
         currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
         advanced_mouse_actions: bool,
@@ -2901,7 +2899,6 @@ impl Tab {
         if self.floating_panes.panes_contain(&id) {
             let _closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
-            // if !self.floating_panes.has_panes() {
             if !self.floating_panes.has_selectable_panes() {
                 self.swap_layouts.reset_floating_damage();
                 self.hide_floating_panes();
