@@ -963,7 +963,8 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                             })
                         }),
                         destination_plugin_id,
-                        floating_pane_coordinates: floating_pane_coordinates.and_then(|f| f.try_into().ok()),
+                        floating_pane_coordinates: floating_pane_coordinates
+                            .and_then(|f| f.try_into().ok()),
                     }))
                 },
                 _ => Err("Mismatched payload for MessageToPlugin"),
@@ -2153,7 +2154,9 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                             }
                         }),
                         destination_plugin_id: message_to_plugin.destination_plugin_id,
-                        floating_pane_coordinates: message_to_plugin.floating_pane_coordinates.and_then(|f| f.try_into().ok())
+                        floating_pane_coordinates: message_to_plugin
+                            .floating_pane_coordinates
+                            .and_then(|f| f.try_into().ok()),
                     })),
                 })
             },

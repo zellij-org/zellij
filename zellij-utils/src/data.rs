@@ -1948,7 +1948,10 @@ impl MessageToPlugin {
         self.message_args = args;
         self
     }
-    pub fn with_floating_pane_coordinates(mut self, floating_pane_coordinates: FloatingPaneCoordinates) -> Self {
+    pub fn with_floating_pane_coordinates(
+        mut self,
+        floating_pane_coordinates: FloatingPaneCoordinates,
+    ) -> Self {
         self.floating_pane_coordinates = Some(floating_pane_coordinates);
         self
     }

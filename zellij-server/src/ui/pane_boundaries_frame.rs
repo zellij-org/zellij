@@ -169,7 +169,8 @@ impl PaneFrame {
     ) -> Option<(Vec<TerminalCharacter>, usize)> {
         // string and length because of color
         let has_scroll = self.scroll_position.0 > 0 || self.scroll_position.1 > 0;
-        if has_scroll && self.is_selectable { // TODO: don't show SCROLL at all for plugins
+        if has_scroll && self.is_selectable {
+            // TODO: don't show SCROLL at all for plugins
             let pin_indication = if self.is_floating && self.is_selectable {
                 self.render_pinned_indication(max_length)
             } else {

@@ -21,7 +21,9 @@ use std::{
 };
 use wasmtime::{Engine, Module};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR};
-use zellij_utils::data::{InputMode, PermissionStatus, PermissionType, PipeMessage, PipeSource, FloatingPaneCoordinates};
+use zellij_utils::data::{
+    FloatingPaneCoordinates, InputMode, PermissionStatus, PermissionType, PipeMessage, PipeSource,
+};
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::permission::PermissionCache;
