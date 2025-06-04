@@ -1183,7 +1183,7 @@ pub fn break_panes_to_new_tab(
     unsafe { host_run_plugin_command() };
 }
 
-/// Create a new tab that includes the specified pane ids
+/// Move the pane ids to the tab with the specified index
 pub fn break_panes_to_tab_with_index(
     pane_ids: &[PaneId],
     tab_index: usize,

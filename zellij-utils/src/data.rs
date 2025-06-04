@@ -3,6 +3,7 @@ use crate::input::config::ConversionError;
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{RunPlugin, SplitSize};
 use crate::shared::colors as default_colors;
+use crate::pane_size::PaneGeom;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -1884,7 +1885,6 @@ pub struct MessageToPlugin {
     /// since none are running
     pub new_plugin_args: Option<NewPluginArgs>,
     pub floating_pane_coordinates: Option<FloatingPaneCoordinates>,
-    // TODO: CONTINUE HERE - add a should_focus thing
 }
 
 #[derive(Debug, Default, Clone)]
@@ -2150,6 +2150,18 @@ impl FloatingPaneCoordinates {
         }
         self.height = Some(SplitSize::Percent(height));
         self
+    }
+}
+
+impl From<PaneGeom> for FloatingPaneCoordinates {
+    fn from(pane_geom: PaneGeom) -> Self {
+        FloatingPaneCoordinates {
+            x: Some(SplitSize::Fixed(pane_geom.x)),
+            y: Some(SplitSize::Fixed(pane_geom.y)),
+            width: Some(SplitSize::Fixed(pane_geom.cols.as_usize())),
+            height: Some(SplitSize::Fixed(pane_geom.rows.as_usize())),
+            pinned: Some(pane_geom.is_pinned),
+        }
     }
 }
 

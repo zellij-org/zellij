@@ -25,7 +25,7 @@ use zellij_utils::{
     input::command::TerminalAction,
     input::layout::{
         FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
-        TiledPaneLayout,
+        TiledPaneLayout, SplitSize
     },
     position::Position,
 };
@@ -2407,8 +2407,9 @@ impl Screen {
                 }
                 // here we pass None instead of the client_id we have because we do not need to
                 // necessarily trigger a relayout for this tab
+                let pane_was_floating = tab.pane_id_is_floating(&pane_id);
                 if let Some(pane) = tab.extract_pane(pane_id, true).take() {
-                    extracted_panes.push(pane);
+                    extracted_panes.push((pane_was_floating, pane));
                     break;
                 }
             }
@@ -2422,11 +2423,22 @@ impl Screen {
             return Ok(());
         }
         if let Some(new_active_tab) = self.get_indexed_tab_mut(tab_index) {
-            for pane in extracted_panes {
+            for (pane_was_floating, pane) in extracted_panes {
                 let pane_id = pane.pid();
-                // here we pass None instead of the ClientId, because we do not want this pane to be
-                // necessarily focused
-                new_active_tab.add_tiled_pane(pane, pane_id, None)?;
+                if pane_was_floating {
+                    let floating_pane_coordinates = FloatingPaneCoordinates {
+                        x: Some(SplitSize::Fixed(pane.x())),
+                        y: Some(SplitSize::Fixed(pane.y())),
+                        width: Some(SplitSize::Fixed(pane.cols())),
+                        height: Some(SplitSize::Fixed(pane.rows())),
+                        pinned: Some(pane.current_geom().is_pinned),
+                    };
+                    new_active_tab.add_floating_pane(pane, pane_id, Some(floating_pane_coordinates), false)?;
+                } else {
+                    // here we pass None instead of the ClientId, because we do not want this pane to be
+                    // necessarily focused
+                    new_active_tab.add_tiled_pane(pane, pane_id, None)?;
+                }
             }
         } else {
             log::error!("Could not find tab with index: {:?}", tab_index);
