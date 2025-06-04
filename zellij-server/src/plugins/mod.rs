@@ -675,6 +675,7 @@ pub(crate) fn plugin_thread_main(
             } => {
                 let should_float = floating.unwrap_or(true);
                 let mut pipe_messages = vec![];
+                let floating_pane_coordinates = None; // TODO: do we want to allow this?
                 match plugin {
                     Some(plugin_url) => {
                         // send to specific plugin(s)
@@ -695,6 +696,7 @@ pub(crate) fn plugin_thread_main(
                             &bus,
                             &mut wasm_bridge,
                             &plugin_aliases,
+                            floating_pane_coordinates,
                         );
                     },
                     None => {
@@ -727,6 +729,7 @@ pub(crate) fn plugin_thread_main(
             } => {
                 let should_float = floating.unwrap_or(true);
                 let mut pipe_messages = vec![];
+                let floating_pane_coordinates = None; // TODO: do we want to allow this?
                 if let Some((plugin_id, client_id)) = plugin_and_client_id {
                     let is_private = true;
                     pipe_messages.push((
@@ -755,6 +758,7 @@ pub(crate) fn plugin_thread_main(
                                 &bus,
                                 &mut wasm_bridge,
                                 &plugin_aliases,
+                                floating_pane_coordinates,
                             );
                         },
                         None => {
@@ -798,6 +802,7 @@ pub(crate) fn plugin_thread_main(
                     .new_plugin_args
                     .as_ref()
                     .and_then(|n| n.pane_id_to_replace);
+                let floating_pane_coordinates = message.floating_pane_coordinates;
                 match (message.plugin_url, message.destination_plugin_id) {
                     (Some(plugin_url), None) => {
                         // send to specific plugin(s)
@@ -818,6 +823,7 @@ pub(crate) fn plugin_thread_main(
                             &bus,
                             &mut wasm_bridge,
                             &plugin_aliases,
+                            floating_pane_coordinates,
                         );
                     },
                     (None, Some(destination_plugin_id)) => {
@@ -997,6 +1003,7 @@ fn pipe_to_specific_plugins(
     bus: &Bus<PluginInstruction>,
     wasm_bridge: &mut WasmBridge,
     plugin_aliases: &PluginAliases,
+    floating_pane_coordinates: Option<FloatingPaneCoordinates>,
 ) {
     let is_private = true;
     let size = Size::default();
@@ -1018,6 +1025,7 @@ fn pipe_to_specific_plugins(
                 pane_title.clone(),
                 pane_id_to_replace.clone(),
                 cli_client_id,
+                floating_pane_coordinates,
             );
             for (plugin_id, client_id) in all_plugin_ids {
                 pipe_messages.push((

@@ -1883,6 +1883,8 @@ pub struct MessageToPlugin {
     /// these will only be used in case we need to launch a new plugin to send this message to,
     /// since none are running
     pub new_plugin_args: Option<NewPluginArgs>,
+    pub floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+    // TODO: CONTINUE HERE - add a should_focus thing
 }
 
 #[derive(Debug, Default, Clone)]
@@ -1944,6 +1946,10 @@ impl MessageToPlugin {
     }
     pub fn with_args(mut self, args: BTreeMap<String, String>) -> Self {
         self.message_args = args;
+        self
+    }
+    pub fn with_floating_pane_coordinates(mut self, floating_pane_coordinates: FloatingPaneCoordinates) -> Self {
+        self.floating_pane_coordinates = Some(floating_pane_coordinates);
         self
     }
     pub fn new_plugin_instance_should_float(mut self, should_float: bool) -> Self {

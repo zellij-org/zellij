@@ -21,7 +21,7 @@ use std::{
 };
 use wasmtime::{Engine, Module};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR};
-use zellij_utils::data::{InputMode, PermissionStatus, PermissionType, PipeMessage, PipeSource};
+use zellij_utils::data::{InputMode, PermissionStatus, PermissionType, PipeMessage, PipeSource, FloatingPaneCoordinates};
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::permission::PermissionCache;
@@ -1409,6 +1409,7 @@ impl WasmBridge {
         pane_title: Option<String>,
         pane_id_to_replace: Option<PaneId>,
         cli_client_id: Option<ClientId>,
+        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
     ) -> Vec<(PluginId, Option<ClientId>)> {
         let run_plugin = run_plugin_or_alias.get_run_plugin();
         match run_plugin {
@@ -1435,6 +1436,8 @@ impl WasmBridge {
                     ) {
                         Ok((plugin_id, client_id)) => {
                             let start_suppressed = false;
+                            let should_focus = Some(false); // we should not focus plugins that
+                                                            // were started from another plugin
                             drop(self.senders.send_to_screen(ScreenInstruction::AddPlugin(
                                 Some(should_float),
                                 should_be_open_in_place,
@@ -1445,8 +1448,8 @@ impl WasmBridge {
                                 pane_id_to_replace,
                                 cwd,
                                 start_suppressed,
-                                None,
-                                None,
+                                floating_pane_coordinates,
+                                should_focus,
                                 Some(client_id),
                             )));
                             vec![(plugin_id, Some(client_id))]

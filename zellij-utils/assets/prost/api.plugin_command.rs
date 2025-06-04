@@ -590,6 +590,8 @@ pub struct MessageToPluginPayload {
     pub new_plugin_args: ::core::option::Option<NewPluginArgs>,
     #[prost(uint32, optional, tag="7")]
     pub destination_plugin_id: ::core::option::Option<u32>,
+    #[prost(message, optional, tag="8")]
+    pub floating_pane_coordinates: ::core::option::Option<FloatingPaneCoordinates>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
