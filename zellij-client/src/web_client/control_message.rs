@@ -61,6 +61,10 @@ pub(super) struct SetConfigPayloadTheme {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bright_yellow: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor_accent: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cyan: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub green: Option<String>,
@@ -105,6 +109,8 @@ impl From<(&Config, &Options)> for SetConfigPayload {
         theme.bright_red = theme_from_config.and_then(|theme| theme.bright_red.clone());
         theme.bright_white = theme_from_config.and_then(|theme| theme.bright_white.clone());
         theme.bright_yellow = theme_from_config.and_then(|theme| theme.bright_yellow.clone());
+        theme.cursor = theme_from_config.and_then(|theme| theme.cursor.clone());
+        theme.cursor_accent = theme_from_config.and_then(|theme| theme.cursor_accent.clone());
         theme.cyan = theme_from_config.and_then(|theme| theme.cyan.clone());
         theme.green = theme_from_config.and_then(|theme| theme.green.clone());
         theme.magenta = theme_from_config.and_then(|theme| theme.magenta.clone());

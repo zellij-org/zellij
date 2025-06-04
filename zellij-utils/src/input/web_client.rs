@@ -21,6 +21,8 @@ pub struct WebClientTheme {
     pub bright_red: Option<String>,
     pub bright_white: Option<String>,
     pub bright_yellow: Option<String>,
+    pub cursor: Option<String>,
+    pub cursor_accent: Option<String>,
     pub cyan: Option<String>,
     pub green: Option<String>,
     pub magenta: Option<String>,
@@ -59,6 +61,8 @@ impl WebClientTheme {
         theme.bright_red = extract_color("bright_red")?;
         theme.bright_white = extract_color("bright_white")?;
         theme.bright_yellow = extract_color("bright_yellow")?;
+        theme.cursor = extract_color("cursor")?;
+        theme.cursor_accent = extract_color("cursor_accent")?;
         theme.cyan = extract_color("cyan")?;
         theme.green = extract_color("green")?;
         theme.magenta = extract_color("magenta")?;
