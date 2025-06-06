@@ -37,22 +37,22 @@ struct State {
     // Tab state
     tabs: Vec<TabInfo>,
     active_tab_idx: usize,
-    
+
     // Display state
     mode_info: ModeInfo,
     tab_line: Vec<LinePart>,
     display_area_rows: usize,
     display_area_cols: usize,
-    
+
     // Clipboard state
     text_copy_destination: Option<CopyDestination>,
     display_system_clipboard_failure: bool,
-    
+
     // Plugin configuration
     config: BTreeMap<String, String>,
     own_plugin_id: Option<u32>,
     toggle_tooltip_key: Option<String>,
-    
+
     // Tooltip state
     is_tooltip: bool,
     tooltip_is_active: bool,
@@ -79,7 +79,7 @@ impl ZellijPlugin for State {
 
     fn update(&mut self, event: Event) -> bool {
         self.is_first_run = false;
-        
+
         match event {
             Event::ModeUpdate(mode_info) => self.handle_mode_update(mode_info),
             Event::TabUpdate(tabs) => self.handle_tab_update(tabs),
@@ -100,7 +100,10 @@ impl ZellijPlugin for State {
     fn pipe(&mut self, message: PipeMessage) -> bool {
         if self.is_tooltip && message.is_private {
             self.handle_tooltip_pipe(message);
-        } else if message.name == MSG_TOGGLE_TOOLTIP && message.is_private {
+        } else if message.name == MSG_TOGGLE_TOOLTIP
+            && message.is_private
+            && self.toggle_tooltip_key.is_some()
+        {
             self.toggle_persisted_tooltip(self.mode_info.mode);
         }
         false
@@ -119,13 +122,13 @@ impl State {
     fn initialize_configuration(&mut self, configuration: BTreeMap<String, String>) {
         self.config = configuration.clone();
         self.is_tooltip = self.parse_bool_config(CONFIG_IS_TOOLTIP, false);
-        
+
         if !self.is_tooltip {
             if let Some(tooltip_toggle_key) = configuration.get(CONFIG_TOGGLE_TOOLTIP_KEY) {
                 self.toggle_tooltip_key = Some(tooltip_toggle_key.clone());
             }
         }
-        
+
         if self.is_tooltip {
             self.is_first_run = true;
         }
@@ -133,7 +136,7 @@ impl State {
 
     fn setup_subscriptions(&self) {
         set_selectable(false);
-        
+
         let events = if self.is_tooltip {
             vec![EventType::ModeUpdate, EventType::TabUpdate]
         } else {
@@ -147,12 +150,12 @@ impl State {
                 EventType::SystemClipboardFailure,
             ]
         };
-        
+
         subscribe(&events);
     }
 
     fn configure_keybinds(&self) {
-        if !self.is_tooltip {
+        if !self.is_tooltip && self.toggle_tooltip_key.is_some() {
             if let Some(toggle_key) = &self.toggle_tooltip_key {
                 reconfigure(bind_toggle_key_config(toggle_key), false);
             }
@@ -185,12 +188,20 @@ impl State {
     }
 
     fn handle_main_mode_update(&self, new_mode: InputMode, base_mode: InputMode) {
-        if new_mode != base_mode && !self.is_restricted_mode(new_mode) {
+        if self.toggle_tooltip_key.is_some()
+            && new_mode != base_mode
+            && !self.is_restricted_mode(new_mode)
+        {
             self.launch_tooltip_if_not_launched(new_mode);
         }
     }
 
-    fn handle_tooltip_mode_update(&mut self, old_mode: InputMode, new_mode: InputMode, base_mode: InputMode) {
+    fn handle_tooltip_mode_update(
+        &mut self,
+        old_mode: InputMode,
+        new_mode: InputMode,
+        base_mode: InputMode,
+    ) {
         if !self.persist && (new_mode == base_mode || self.is_restricted_mode(new_mode)) {
             close_self();
         } else if new_mode != old_mode || self.persist {
@@ -200,7 +211,7 @@ impl State {
 
     fn handle_tab_update(&mut self, tabs: Vec<TabInfo>) -> bool {
         self.update_display_area(&tabs);
-        
+
         if let Some(active_tab_index) = tabs.iter().position(|t| t.active) {
             let active_tab_idx = active_tab_index + 1; // Convert to 1-based indexing
             let should_render = self.active_tab_idx != active_tab_idx || self.tabs != tabs;
@@ -219,9 +230,13 @@ impl State {
     }
 
     fn handle_pane_update(&mut self, pane_manifest: PaneManifest) -> bool {
-        let previous_tooltip_state = self.tooltip_is_active;
-        self.tooltip_is_active = self.detect_tooltip_presence(&pane_manifest);
-        previous_tooltip_state != self.tooltip_is_active
+        if self.toggle_tooltip_key.is_some() {
+            let previous_tooltip_state = self.tooltip_is_active;
+            self.tooltip_is_active = self.detect_tooltip_presence(&pane_manifest);
+            previous_tooltip_state != self.tooltip_is_active
+        } else {
+            false
+        }
     }
 
     fn handle_mouse_event(&mut self, mouse_event: Mouse) {
@@ -246,7 +261,7 @@ impl State {
             Some(current) => current != copy_destination,
             None => true,
         };
-        
+
         self.text_copy_destination = Some(copy_destination);
         should_render
     }
@@ -255,7 +270,7 @@ impl State {
         if self.is_tooltip {
             return false;
         }
-        
+
         self.display_system_clipboard_failure = true;
         true
     }
@@ -265,7 +280,8 @@ impl State {
             return false;
         }
 
-        let should_render = self.text_copy_destination.is_some() || self.display_system_clipboard_failure;
+        let should_render =
+            self.text_copy_destination.is_some() || self.display_system_clipboard_failure;
         self.clear_clipboard_state();
         should_render
     }
@@ -339,9 +355,10 @@ impl State {
 
     // Tooltip operations
     fn toggle_persisted_tooltip(&self, new_mode: InputMode) {
-        let message = self.create_tooltip_message(MSG_TOGGLE_PERSISTED_TOOLTIP, new_mode)
+        let message = self
+            .create_tooltip_message(MSG_TOGGLE_PERSISTED_TOOLTIP, new_mode)
             .with_args(self.create_persist_args());
-        
+
         pipe_message_to_plugin(message);
     }
 
@@ -387,7 +404,8 @@ impl State {
 
     fn calculate_tooltip_coordinates(&self) -> FloatingPaneCoordinates {
         let tooltip_renderer = TooltipRenderer::new(&self.mode_info);
-        let (tooltip_rows, tooltip_cols) = tooltip_renderer.calculate_dimensions(self.mode_info.mode);
+        let (tooltip_rows, tooltip_cols) =
+            tooltip_renderer.calculate_dimensions(self.mode_info.mode);
 
         let width = tooltip_cols + 4; // 2 for borders, 2 for padding
         let height = tooltip_rows + 2; // 2 for borders
@@ -451,12 +469,13 @@ impl State {
         self.tab_line = tab_line(
             &self.mode_info,
             tab_data,
-            cols.saturating_sub(1),
+            cols,
             self.toggle_tooltip_key.clone(),
             self.tooltip_is_active,
         );
 
-        let output = self.tab_line
+        let output = self
+            .tab_line
             .iter()
             .fold(String::new(), |acc, part| acc + &part.part);
 
@@ -488,7 +507,7 @@ impl State {
                 self.mode_info.style.colors,
                 self.mode_info.capabilities,
             );
-            
+
             is_alternate_tab = !is_alternate_tab;
             all_tabs.push(styled_tab);
         }

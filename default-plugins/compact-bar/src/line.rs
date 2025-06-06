@@ -1,7 +1,7 @@
 use ansi_term::ANSIStrings;
 use unicode_width::UnicodeWidthStr;
 
-use crate::{LinePart, ARROW_SEPARATOR, TabRenderData};
+use crate::{LinePart, TabRenderData, ARROW_SEPARATOR};
 use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
@@ -70,13 +70,11 @@ impl TabLinePopulator {
             let left_count = tabs_before_active.len();
             let right_count = tabs_after_active.len();
 
-            let collapsed_indicators = self.create_collapsed_indicators(
-                left_count,
-                right_count,
-                tabs_to_render.len(),
-            );
+            let collapsed_indicators =
+                self.create_collapsed_indicators(left_count, right_count, tabs_to_render.len());
 
-            let total_size = collapsed_indicators.left.len + middle_size + collapsed_indicators.right.len;
+            let total_size =
+                collapsed_indicators.left.len + middle_size + collapsed_indicators.right.len;
 
             if total_size > self.cols {
                 break;
@@ -102,7 +100,7 @@ impl TabLinePopulator {
                         total_left += tab.len;
                         tabs_to_render.insert(0, tab);
                     }
-                }
+                },
                 TabAction::AddRight => {
                     if !tabs_after_active.is_empty() {
                         let tab = tabs_after_active.remove(0);
@@ -110,12 +108,12 @@ impl TabLinePopulator {
                         total_right += tab.len;
                         tabs_to_render.push(tab);
                     }
-                }
+                },
                 TabAction::Finish => {
                     tabs_to_render.insert(0, collapsed_indicators.left);
                     tabs_to_render.push(collapsed_indicators.right);
                     break;
-                }
+                },
             }
         }
     }
@@ -143,21 +141,25 @@ impl TabLinePopulator {
         right_count: usize,
         collapsed_indicators: &CollapsedIndicators,
     ) -> TabFitAnalysis {
-        let size_by_adding_left = tab_sizes.left.saturating_add(total_size).saturating_sub(
-            if left_count == 1 {
-                collapsed_indicators.left.len
-            } else {
-                0
-            },
-        );
+        let size_by_adding_left =
+            tab_sizes
+                .left
+                .saturating_add(total_size)
+                .saturating_sub(if left_count == 1 {
+                    collapsed_indicators.left.len
+                } else {
+                    0
+                });
 
-        let size_by_adding_right = tab_sizes.right.saturating_add(total_size).saturating_sub(
-            if right_count == 1 {
-                collapsed_indicators.right.len
-            } else {
-                0
-            },
-        );
+        let size_by_adding_right =
+            tab_sizes
+                .right
+                .saturating_add(total_size)
+                .saturating_sub(if right_count == 1 {
+                    collapsed_indicators.right.len
+                } else {
+                    0
+                });
 
         TabFitAnalysis {
             left_fits: size_by_adding_left <= self.cols,
@@ -293,7 +295,7 @@ impl TabLinePrefixBuilder {
     fn create_zellij_part(&self) -> LinePart {
         let prefix_text = " Zellij ";
         let colors = self.get_text_colors();
-        
+
         LinePart {
             part: style!(colors.text, colors.background)
                 .bold()
@@ -307,7 +309,7 @@ impl TabLinePrefixBuilder {
     fn create_session_name_part(&self, name: &str, used_len: usize) -> Option<LinePart> {
         let name_part = format!("({})", name);
         let name_part_len = name_part.width();
-        
+
         if self.cols.saturating_sub(used_len) >= name_part_len {
             let colors = self.get_text_colors();
             Some(LinePart {
@@ -330,8 +332,12 @@ impl TabLinePrefixBuilder {
         if self.cols.saturating_sub(used_len) >= mode_len {
             let colors = self.get_text_colors();
             let style = match mode {
-                InputMode::Locked => style!(self.palette.text_unselected.emphasis_3, colors.background),
-                InputMode::Normal => style!(self.palette.text_unselected.emphasis_2, colors.background),
+                InputMode::Locked => {
+                    style!(self.palette.text_unselected.emphasis_3, colors.background)
+                },
+                InputMode::Normal => {
+                    style!(self.palette.text_unselected.emphasis_2, colors.background)
+                },
                 _ => style!(self.palette.text_unselected.emphasis_0, colors.background),
             };
 
@@ -361,7 +367,10 @@ struct RightSideElementsBuilder {
 
 impl RightSideElementsBuilder {
     fn new(palette: Styling, capabilities: PluginCapabilities) -> Self {
-        Self { palette, capabilities }
+        Self {
+            palette,
+            capabilities,
+        }
     }
 
     fn build(&self, config: &TabLineConfig, available_space: usize) -> Vec<LinePart> {
@@ -383,7 +392,7 @@ impl RightSideElementsBuilder {
         let key = Text::new(key_text).color_all(3);
         let ribbon_text = "Tooltip";
         let mut ribbon = Text::new(ribbon_text);
-        
+
         if is_active {
             ribbon = ribbon.selected();
         }
@@ -395,9 +404,13 @@ impl RightSideElementsBuilder {
         }
     }
 
-    fn create_swap_layout_status(&self, config: &TabLineConfig, max_len: usize) -> Option<LinePart> {
+    fn create_swap_layout_status(
+        &self,
+        config: &TabLineConfig,
+        max_len: usize,
+    ) -> Option<LinePart> {
         let swap_layout_name = config.active_swap_layout_name.as_ref()?;
-        
+
         let mut layout_name = format!(" {} ", swap_layout_name);
         layout_name.make_ascii_uppercase();
         let layout_name_len = layout_name.len() + 3;
@@ -449,17 +462,26 @@ impl RightSideElementsBuilder {
         match mode {
             InputMode::Locked => (
                 style!(colors.bg, colors.fg).paint(separator).to_string(),
-                style!(colors.bg, colors.fg).italic().paint(layout_name).to_string(),
+                style!(colors.bg, colors.fg)
+                    .italic()
+                    .paint(layout_name)
+                    .to_string(),
                 style!(colors.fg, colors.bg).paint(separator).to_string(),
             ),
             _ if is_dirty => (
                 style!(colors.bg, colors.fg).paint(separator).to_string(),
-                style!(colors.bg, colors.fg).bold().paint(layout_name).to_string(),
+                style!(colors.bg, colors.fg)
+                    .bold()
+                    .paint(layout_name)
+                    .to_string(),
                 style!(colors.fg, colors.bg).paint(separator).to_string(),
             ),
             _ => (
                 style!(colors.bg, colors.green).paint(separator).to_string(),
-                style!(colors.bg, colors.green).bold().paint(layout_name).to_string(),
+                style!(colors.bg, colors.green)
+                    .bold()
+                    .paint(layout_name)
+                    .to_string(),
                 style!(colors.green, colors.bg).paint(separator).to_string(),
             ),
         }
@@ -496,7 +518,7 @@ impl TabLineBuilder {
     }
 
     pub fn build(self, all_tabs: Vec<LinePart>, active_tab_index: usize) -> Vec<LinePart> {
-        let (tabs_before_active, active_tab, tabs_after_active) = 
+        let (tabs_before_active, active_tab, tabs_after_active) =
             self.split_tabs(all_tabs, active_tab_index);
 
         let prefix_builder = TabLinePrefixBuilder::new(self.palette, self.cols);
@@ -505,7 +527,7 @@ impl TabLineBuilder {
         } else {
             self.config.session_name.as_deref()
         };
-        
+
         let mut prefix = prefix_builder.build(session_name, self.config.mode);
         let prefix_len = calculate_total_length(&prefix);
 
@@ -523,9 +545,9 @@ impl TabLineBuilder {
         let mut tabs_before = tabs_before_active;
         let mut tabs_after = tabs_after_active;
         populator.populate_tabs(&mut tabs_before, &mut tabs_after, &mut tabs_to_render);
-        
+
         prefix.append(&mut tabs_to_render);
-        
+
         self.add_right_side_elements(&mut prefix);
         prefix
     }
@@ -537,33 +559,36 @@ impl TabLineBuilder {
     ) -> (Vec<LinePart>, LinePart, Vec<LinePart>) {
         let mut tabs_after_active = all_tabs.split_off(active_tab_index);
         let mut tabs_before_active = all_tabs;
-        
+
         let active_tab = if !tabs_after_active.is_empty() {
             tabs_after_active.remove(0)
         } else {
             tabs_before_active.pop().unwrap_or_default()
         };
-        
+
         (tabs_before_active, active_tab, tabs_after_active)
     }
 
     fn add_right_side_elements(&self, prefix: &mut Vec<LinePart>) {
         let current_len = calculate_total_length(prefix);
-        
+
         if current_len < self.cols {
             let right_builder = RightSideElementsBuilder::new(self.palette, self.capabilities);
             let available_space = self.cols.saturating_sub(current_len);
             let mut right_elements = right_builder.build(&self.config, available_space);
-            
+
             let right_len = calculate_total_length(&right_elements);
-            
+
             if current_len + right_len <= self.cols {
-                let remaining_space = self.cols.saturating_sub(current_len).saturating_sub(right_len);
-                
+                let remaining_space = self
+                    .cols
+                    .saturating_sub(current_len)
+                    .saturating_sub(right_len);
+
                 if remaining_space > 0 {
                     prefix.push(self.create_spacer(remaining_space));
                 }
-                
+
                 prefix.append(&mut right_elements);
             }
         }
