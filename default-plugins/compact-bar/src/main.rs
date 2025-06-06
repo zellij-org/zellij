@@ -291,6 +291,7 @@ impl State {
             if self.is_first_run {
                 self.persist = true;
             } else {
+                #[cfg(target_family = "wasm")]
                 close_self();
             }
         }
@@ -359,6 +360,7 @@ impl State {
             .create_tooltip_message(MSG_TOGGLE_PERSISTED_TOOLTIP, new_mode)
             .with_args(self.create_persist_args());
 
+        #[cfg(target_family = "wasm")]
         pipe_message_to_plugin(message);
     }
 
