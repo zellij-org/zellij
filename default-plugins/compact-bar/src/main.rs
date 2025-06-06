@@ -20,7 +20,7 @@ use crate::tooltip::TooltipRenderer;
 static ARROW_SEPARATOR: &str = "";
 
 const CONFIG_IS_TOOLTIP: &str = "is_tooltip";
-const CONFIG_TOGGLE_TOOLTIP_KEY: &str = "toggle_tooltip_key";
+const CONFIG_TOGGLE_TOOLTIP_KEY: &str = "tooltip";
 const MSG_TOGGLE_TOOLTIP: &str = "toggle_tooltip";
 const MSG_TOGGLE_PERSISTED_TOOLTIP: &str = "toggle_persisted_tooltip";
 const MSG_LAUNCH_TOOLTIP: &str = "launch_tooltip_if_not_launched";
