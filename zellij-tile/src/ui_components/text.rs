@@ -60,7 +60,6 @@ impl Text {
 
         while let Some(pos) = self.text[start..].find(substr) {
             let abs_pos = start + pos;
-            // eprintln!("full: '{}', substr: '{}' {}->{}", self.text, substr.as_ref(), abs_pos, abs_pos + substr.len());
             self = self.color_range(index_level, abs_pos..abs_pos + substr.chars().count());
             start = abs_pos + substr.len();
         }
