@@ -48,7 +48,12 @@ impl KeybindProcessor {
                         if !matching_keys.is_empty() {
                             let description = action_type.description();
                             let should_add_brackets_to_keys = mode != InputMode::Normal;
-                            let grouped_keys = Self::group_key_sets(&matching_keys, should_add_brackets_to_keys);
+                            
+                            // Check if this is switching to normal mode
+                            // let is_switching_to_locked = matches!(first_action, Action::SwitchToMode(InputMode::Normal));
+                            let is_switching_to_locked = matches!(first_action, Action::SwitchToMode(InputMode::Locked));
+                            
+                            let grouped_keys = Self::group_key_sets(&matching_keys, should_add_brackets_to_keys, is_switching_to_locked);
                             result.push((grouped_keys, description));
                             processed_action_types.insert(action_type);
                         }
@@ -69,16 +74,34 @@ impl KeybindProcessor {
     }
 
     /// Group keys into sets and separate different key types with '|'
-    fn group_key_sets(keys: &[String], should_add_brackets_to_keys: bool) -> String {
+    fn group_key_sets(keys: &[String], should_add_brackets_to_keys: bool, is_switching_to_locked: bool) -> String {
         if keys.is_empty() {
             return String::new();
         }
         
-        if keys.len() == 1 {
-            return if should_add_brackets_to_keys {
-                format!("<{}>", keys[0])
+        // Filter out Esc and Enter keys when switching to normal mode, but only if other keys exist
+        let filtered_keys: Vec<String> = if is_switching_to_locked {
+            let non_esc_enter_keys: Vec<String> = keys.iter()
+                .filter(|k| k.as_str() != "ESC" && k.as_str() != "ENTER")
+                .cloned()
+                .collect();
+            
+            if non_esc_enter_keys.is_empty() {
+                // If no other keys exist, keep the original keys
+                keys.to_vec()
             } else {
-                keys[0].clone()
+                // Use filtered keys (without Esc/Enter)
+                non_esc_enter_keys
+            }
+        } else {
+            keys.to_vec()
+        };
+        
+        if filtered_keys.len() == 1 {
+            return if should_add_brackets_to_keys {
+                format!("<{}>", filtered_keys[0])
+            } else {
+                filtered_keys[0].clone()
             };
         }
         
@@ -91,7 +114,7 @@ impl KeybindProcessor {
         let mut pgup_pgdown = Vec::new();
         let mut other_keys = Vec::new();
         
-        for key in keys {
+        for key in &filtered_keys {
             match key.as_str() {
                 "Left" | "←" => arrow_keys.push("←"),
                 "Down" | "↓" => arrow_keys.push("↓"),
@@ -239,8 +262,15 @@ impl KeybindProcessor {
     /// Get predetermined actions for a specific mode
     pub fn get_predetermined_actions(mode_info: &ModeInfo, mode: InputMode) -> Vec<(String, String)> {
         match mode {
+            InputMode::Locked => {
+                let ordered_predicates = vec![
+                    |action: &Action| matches!(action, Action::SwitchToMode(InputMode::Normal)),
+                ];
+                Self::find_predetermined_actions(mode_info, mode, ordered_predicates)
+            }
             InputMode::Normal => {
                 let ordered_predicates = vec![
+                    |action: &Action| matches!(action, Action::SwitchToMode(InputMode::Locked)),
                     |action: &Action| matches!(action, Action::SwitchToMode(InputMode::Pane)),
                     |action: &Action| matches!(action, Action::SwitchToMode(InputMode::Tab)),
                     |action: &Action| matches!(action, Action::SwitchToMode(InputMode::Resize)),
@@ -349,7 +379,7 @@ impl KeybindProcessor {
                 ];
                 Self::find_predetermined_actions(mode_info, mode, ordered_predicates)
             },
-            InputMode::Locked | InputMode::EnterSearch | InputMode::RenameTab | 
+            InputMode::EnterSearch | InputMode::RenameTab | 
             InputMode::RenamePane | InputMode::Prompt | InputMode::Tmux => Vec::new(),
         }
     }

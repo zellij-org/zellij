@@ -37,11 +37,28 @@ struct State {
     display_area_rows: usize,
     display_area_cols: usize,
     own_plugin_id: Option<u32>,
+    persist: bool,
+    is_first_run: bool,
 }
 
 static ARROW_SEPARATOR: &str = "";
 
 register_plugin!(State);
+
+fn bind_toggle_key_config(toggle_key: &str) -> String {
+    format!(r#"
+        keybinds {{
+            shared {{
+                bind "{}" {{
+                  MessagePlugin "compact-bar" {{
+                      name "toggle_tooltip"
+                      toggle_tooltip_key "{}"
+                  }}
+                }}
+            }}
+        }}
+    "#, toggle_key, toggle_key)
+}
 
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
@@ -50,6 +67,21 @@ impl ZellijPlugin for State {
             .get("is_tooltip")
             .and_then(|v| v.parse().ok())
             .unwrap_or(false);
+        if !self.is_tooltip {
+            if let Some(tooltip_toggle_key) = configuration.get("toggle_tooltip_key") {
+                reconfigure(bind_toggle_key_config(tooltip_toggle_key), false);
+            }
+        }
+
+        if self.is_tooltip {
+            // we need this for properly toggling the tooltip on/off
+            // if this plugin was run through a pipe, the pipe function will be called right after
+            // this function and then check this attribute to know that this is a "toggle on" and
+            // not a "toggle off"
+            // 
+            // the attribute will then be stripped off by the update function
+            self.is_first_run = true;
+        }
         
         set_selectable(false);
         subscribe(&[
@@ -64,6 +96,7 @@ impl ZellijPlugin for State {
     }
 
     fn update(&mut self, event: Event) -> bool {
+        self.is_first_run = false;
         let mut should_render = false;
         match event {
             Event::ModeUpdate(mode_info) => {
@@ -84,11 +117,20 @@ impl ZellijPlugin for State {
             Event::InputReceived => {
                 should_render = self.handle_input_received();
             },
-            _ => {
-                eprintln!("Got unrecognized event: {:?}", event);
-            },
+            _ => {},
         };
         should_render
+    }
+
+    fn pipe(&mut self, message: PipeMessage) -> bool {
+        if self.is_tooltip {
+            self.handle_tooltip_pipe(message);
+        } else {
+          if message.name == "toggle_tooltip" && message.is_private {
+            self.toggle_persisted_tooltip(self.mode_info.mode);
+          }
+        }
+        false
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
@@ -110,14 +152,8 @@ impl State {
         let should_render = self.mode_info != mode_info;
         self.mode_info = mode_info;
         
-        // Handle tooltip logic
         if !self.is_tooltip {
-            // If not tooltip and mode changed from base mode to another mode, launch tooltip
-            if old_mode == base_mode && new_mode != base_mode {
-                self.launch_tooltip(new_mode);
-            }
-        } else {
-            let modes_with_no_tooltip = vec![
+            let modes_with_no_tooltip_unless_persisting = vec![
                 InputMode::Locked,
                 InputMode::EnterSearch,
                 InputMode::RenameTab,
@@ -125,9 +161,24 @@ impl State {
                 InputMode::Prompt,
                 InputMode::Tmux
             ];
-            if new_mode == base_mode || modes_with_no_tooltip.contains(&new_mode) {
+            // If not tooltip and mode changed from base mode to another mode, launch tooltip
+            if new_mode != base_mode && !modes_with_no_tooltip_unless_persisting.contains(&new_mode) {
+                self.launch_tooltip_if_not_launched(new_mode);
+            }
+        } else {
+            let modes_with_no_tooltip_unless_persisting = vec![
+                InputMode::Locked,
+                InputMode::EnterSearch,
+                InputMode::RenameTab,
+                InputMode::RenamePane,
+                InputMode::Prompt,
+                InputMode::Tmux
+            ];
+            if !self.persist && (new_mode == base_mode || modes_with_no_tooltip_unless_persisting.contains(&new_mode)) {
                 close_self();
             } else if new_mode != old_mode {
+                self.update_tooltip_for_mode_change(new_mode);
+            } else if self.persist {
                 self.update_tooltip_for_mode_change(new_mode);
             }
         }
@@ -223,16 +274,33 @@ impl State {
         should_render
     }
 
-    fn launch_tooltip(&self, new_mode: InputMode) {
+    fn toggle_persisted_tooltip(&self, new_mode: InputMode) {
+        let mut tooltip_config = self.config.clone();
+        tooltip_config.insert("is_tooltip".to_string(), "true".to_string());
+        let mut args = BTreeMap::new();
+        args.insert("persist".to_string(), "".to_string());
+        pipe_message_to_plugin(
+            MessageToPlugin::new("toggle_persisted_tooltip")
+                .with_plugin_url("zellij:OWN_URL")
+                .with_plugin_config(tooltip_config)
+                .with_args(args)
+                .with_floating_pane_coordinates(self.calculate_tooltip_coordinates())
+                .new_plugin_instance_should_have_pane_title(format!("{:?}", new_mode))
+        );
+    }
+
+    fn launch_tooltip_if_not_launched(&self, new_mode: InputMode) {
+        // this is atomic because it's done through a pipe - if the tooltip is already running, it
+        // will keep running and discard this message
         let mut tooltip_config = self.config.clone();
         tooltip_config.insert("is_tooltip".to_string(), "true".to_string());
         
         pipe_message_to_plugin(
-            MessageToPlugin::new("launch_tooltip")
+            MessageToPlugin::new("launch_tooltip_if_not_launched")
                 .with_plugin_url("zellij:OWN_URL")
                 .with_plugin_config(tooltip_config)
                 .with_floating_pane_coordinates(self.calculate_tooltip_coordinates())
-                .new_plugin_instance_should_have_pane_title(format!("{:?} mode keys", new_mode))
+                .new_plugin_instance_should_have_pane_title(format!("{:?}", new_mode))
         );
     }
 
@@ -243,7 +311,7 @@ impl State {
                 PaneId::Plugin(own_plugin_id),
                 tooltip_coordinates
             )]);
-            rename_plugin_pane(own_plugin_id, format!("{:?} keys", new_mode));
+            rename_plugin_pane(own_plugin_id, format!("{:?}", new_mode));
         }
     }
 
@@ -379,6 +447,18 @@ impl State {
             tabname = String::from("Enter name...");
         }
         tabname
+    }
+    fn handle_tooltip_pipe(&mut self, message: PipeMessage) {
+      if message.name == "toggle_persisted_tooltip" && message.is_private {
+          if !self.is_first_run {
+              // this means we got the message while already running, so we need to close_self
+            close_self();
+          } else {
+              // this means we were started by this pipe message, so we just need to set
+              // ourself to persist
+              self.persist = true;
+          }
+      }
     }
 }
 

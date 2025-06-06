@@ -71,22 +71,48 @@ impl<'a> TooltipRenderer<'a> {
         let actions_vec: Vec<_> = actions.into_iter().collect();
         
         let mut table = Table::new().add_row(vec![" ".to_owned(); 2]);
-        let mut key_width = 0;
-        let mut action_width = 0;
         let mut row_count = 1; // Start with header row
-        
-        for (key, description) in actions_vec.into_iter() {
-            let description_formatted = format!("- {}", description);
-            key_width = key_width.max(key.chars().count());
-            action_width = action_width.max(description_formatted.chars().count());
+
+        if actions_vec.is_empty() {
+            let tooltip_text = match self.mode_info.mode {
+                InputMode::EnterSearch => {
+                    "Entering search term...".to_owned()
+                }
+                InputMode::RenameTab => {
+                    "Renaming tab...".to_owned()
+                }
+                InputMode::RenamePane => {
+                    "Renaming pane...".to_owned()
+                }
+//                 InputMode::RenamePane,
+//                 InputMode::Prompt,
+//                 InputMode::Tmux,
+                _ => { format!("{:?}", self.mode_info.mode) }
+
+
+            };
+            let total_width = tooltip_text.chars().count();
             table = table.add_styled_row(vec![
-                Text::new(&key).color_all(3),
-                Text::new(description_formatted)
+                Text::new(tooltip_text).color_all(0),
             ]);
             row_count += 1;
+            (table, row_count, total_width)
+        } else {
+            let mut key_width = 0;
+            let mut action_width = 0;
+            for (key, description) in actions_vec.into_iter() {
+                let description_formatted = format!("- {}", description);
+                key_width = key_width.max(key.chars().count());
+                action_width = action_width.max(description_formatted.chars().count());
+                table = table.add_styled_row(vec![
+                    Text::new(&key).color_all(3),
+                    Text::new(description_formatted)
+                ]);
+                row_count += 1;
+            }
+            
+            let total_width = key_width + action_width + 1; // +1 for separator
+            (table, row_count, total_width)
         }
-        
-        let total_width = key_width + action_width + 1; // +1 for separator
-        (table, row_count, total_width)
     }
 }

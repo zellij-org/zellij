@@ -62,6 +62,8 @@ impl ActionType {
             ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::RenamePane => "Rename pane".to_string(),
             ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::RenameTab => "Rename tab".to_string(),
             ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::EnterSearch => "Search".to_string(),
+            ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::Locked => "Lock".to_string(),
+            ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::Normal => "Unlock".to_string(),
             ActionType::SwitchToMode(input_mode) => format!("{:?}", input_mode),
             ActionType::TogglePaneEmbedOrFloating => "Float or embed".to_string(),
             ActionType::ToggleFocusFullscreen => "Toggle fullscreen".to_string(),
