@@ -1,235 +1,586 @@
 use ansi_term::ANSIStrings;
 use unicode_width::UnicodeWidthStr;
 
-use crate::{LinePart, ARROW_SEPARATOR};
+use crate::{LinePart, ARROW_SEPARATOR, TabRenderData};
 use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
-fn get_current_title_len(current_title: &[LinePart]) -> usize {
-    current_title.iter().map(|p| p.len).sum()
+pub fn tab_line(
+    mode_info: &ModeInfo,
+    tab_data: TabRenderData,
+    cols: usize,
+    toggle_tooltip_key: Option<String>,
+    tooltip_is_active: bool,
+) -> Vec<LinePart> {
+    let config = TabLineConfig {
+        session_name: mode_info.session_name.to_owned(),
+        hide_session_name: mode_info.style.hide_session_name,
+        mode: mode_info.mode,
+        active_swap_layout_name: tab_data.active_swap_layout_name,
+        is_swap_layout_dirty: tab_data.is_swap_layout_dirty,
+        toggle_tooltip_key,
+        tooltip_is_active,
+    };
+
+    let builder = TabLineBuilder::new(config, mode_info.style.colors, mode_info.capabilities, cols);
+    builder.build(tab_data.tabs, tab_data.active_tab_index)
 }
 
-// move elements from before_active and after_active into tabs_to_render while they fit in cols
-// adds collapsed_tabs to the left and right if there's left over tabs that don't fit
-fn populate_tabs_in_tab_line(
-    tabs_before_active: &mut Vec<LinePart>,
-    tabs_after_active: &mut Vec<LinePart>,
-    tabs_to_render: &mut Vec<LinePart>,
+#[derive(Debug, Clone)]
+pub struct TabLineConfig {
+    pub session_name: Option<String>,
+    pub hide_session_name: bool,
+    pub mode: InputMode,
+    pub active_swap_layout_name: Option<String>,
+    pub is_swap_layout_dirty: bool,
+    pub toggle_tooltip_key: Option<String>,
+    pub tooltip_is_active: bool,
+}
+
+fn calculate_total_length(parts: &[LinePart]) -> usize {
+    parts.iter().map(|p| p.len).sum()
+}
+
+struct TabLinePopulator {
     cols: usize,
     palette: Styling,
     capabilities: PluginCapabilities,
-) {
-    let mut middle_size = get_current_title_len(tabs_to_render);
+}
 
-    let mut total_left = 0;
-    let mut total_right = 0;
-    loop {
-        let left_count = tabs_before_active.len();
-        let right_count = tabs_after_active.len();
+impl TabLinePopulator {
+    fn new(cols: usize, palette: Styling, capabilities: PluginCapabilities) -> Self {
+        Self {
+            cols,
+            palette,
+            capabilities,
+        }
+    }
 
-        // left_more_tab_index is the tab to the left of the leftmost visible tab
+    fn populate_tabs(
+        &self,
+        tabs_before_active: &mut Vec<LinePart>,
+        tabs_after_active: &mut Vec<LinePart>,
+        tabs_to_render: &mut Vec<LinePart>,
+    ) {
+        let mut middle_size = calculate_total_length(tabs_to_render);
+        let mut total_left = 0;
+        let mut total_right = 0;
+
+        loop {
+            let left_count = tabs_before_active.len();
+            let right_count = tabs_after_active.len();
+
+            let collapsed_indicators = self.create_collapsed_indicators(
+                left_count,
+                right_count,
+                tabs_to_render.len(),
+            );
+
+            let total_size = collapsed_indicators.left.len + middle_size + collapsed_indicators.right.len;
+
+            if total_size > self.cols {
+                break;
+            }
+
+            let tab_sizes = TabSizes {
+                left: tabs_before_active.last().map_or(usize::MAX, |tab| tab.len),
+                right: tabs_after_active.get(0).map_or(usize::MAX, |tab| tab.len),
+            };
+
+            let fit_analysis = self.analyze_tab_fit(
+                &tab_sizes,
+                total_size,
+                left_count,
+                right_count,
+                &collapsed_indicators,
+            );
+
+            match self.decide_next_action(&fit_analysis, total_left, total_right) {
+                TabAction::AddLeft => {
+                    if let Some(tab) = tabs_before_active.pop() {
+                        middle_size += tab.len;
+                        total_left += tab.len;
+                        tabs_to_render.insert(0, tab);
+                    }
+                }
+                TabAction::AddRight => {
+                    if !tabs_after_active.is_empty() {
+                        let tab = tabs_after_active.remove(0);
+                        middle_size += tab.len;
+                        total_right += tab.len;
+                        tabs_to_render.push(tab);
+                    }
+                }
+                TabAction::Finish => {
+                    tabs_to_render.insert(0, collapsed_indicators.left);
+                    tabs_to_render.push(collapsed_indicators.right);
+                    break;
+                }
+            }
+        }
+    }
+
+    fn create_collapsed_indicators(
+        &self,
+        left_count: usize,
+        right_count: usize,
+        rendered_count: usize,
+    ) -> CollapsedIndicators {
         let left_more_tab_index = left_count.saturating_sub(1);
-        let collapsed_left = left_more_message(
-            left_count,
-            palette,
-            tab_separator(capabilities),
-            left_more_tab_index,
-        );
-        // right_more_tab_index is the tab to the right of the rightmost visible tab
-        let right_more_tab_index = left_count + tabs_to_render.len();
-        let collapsed_right = right_more_message(
-            right_count,
-            palette,
-            tab_separator(capabilities),
-            right_more_tab_index,
-        );
+        let right_more_tab_index = left_count + rendered_count;
 
-        let total_size = collapsed_left.len + middle_size + collapsed_right.len;
-
-        if total_size > cols {
-            // break and dont add collapsed tabs to tabs_to_render, they will not fit
-            break;
-        }
-
-        let left = if let Some(tab) = tabs_before_active.last() {
-            tab.len
-        } else {
-            usize::MAX
-        };
-
-        let right = if let Some(tab) = tabs_after_active.first() {
-            tab.len
-        } else {
-            usize::MAX
-        };
-
-        // total size is shortened if the next tab to be added is the last one, as that will remove the collapsed tab
-        let size_by_adding_left =
-            left.saturating_add(total_size)
-                .saturating_sub(if left_count == 1 {
-                    collapsed_left.len
-                } else {
-                    0
-                });
-        let size_by_adding_right =
-            right
-                .saturating_add(total_size)
-                .saturating_sub(if right_count == 1 {
-                    collapsed_right.len
-                } else {
-                    0
-                });
-
-        let left_fits = size_by_adding_left <= cols;
-        let right_fits = size_by_adding_right <= cols;
-        // active tab is kept in the middle by adding to the side that
-        // has less width, or if the tab on the other side doesn't fit
-        if (total_left <= total_right || !right_fits) && left_fits {
-            // add left tab
-            let tab = tabs_before_active.pop().unwrap();
-            middle_size += tab.len;
-            total_left += tab.len;
-            tabs_to_render.insert(0, tab);
-        } else if right_fits {
-            // add right tab
-            let tab = tabs_after_active.remove(0);
-            middle_size += tab.len;
-            total_right += tab.len;
-            tabs_to_render.push(tab);
-        } else {
-            // there's either no space to add more tabs or no more tabs to add, so we're done
-            tabs_to_render.insert(0, collapsed_left);
-            tabs_to_render.push(collapsed_right);
-            break;
+        CollapsedIndicators {
+            left: self.create_left_indicator(left_count, left_more_tab_index),
+            right: self.create_right_indicator(right_count, right_more_tab_index),
         }
     }
+
+    fn analyze_tab_fit(
+        &self,
+        tab_sizes: &TabSizes,
+        total_size: usize,
+        left_count: usize,
+        right_count: usize,
+        collapsed_indicators: &CollapsedIndicators,
+    ) -> TabFitAnalysis {
+        let size_by_adding_left = tab_sizes.left.saturating_add(total_size).saturating_sub(
+            if left_count == 1 {
+                collapsed_indicators.left.len
+            } else {
+                0
+            },
+        );
+
+        let size_by_adding_right = tab_sizes.right.saturating_add(total_size).saturating_sub(
+            if right_count == 1 {
+                collapsed_indicators.right.len
+            } else {
+                0
+            },
+        );
+
+        TabFitAnalysis {
+            left_fits: size_by_adding_left <= self.cols,
+            right_fits: size_by_adding_right <= self.cols,
+        }
+    }
+
+    fn decide_next_action(
+        &self,
+        fit_analysis: &TabFitAnalysis,
+        total_left: usize,
+        total_right: usize,
+    ) -> TabAction {
+        if (total_left <= total_right || !fit_analysis.right_fits) && fit_analysis.left_fits {
+            TabAction::AddLeft
+        } else if fit_analysis.right_fits {
+            TabAction::AddRight
+        } else {
+            TabAction::Finish
+        }
+    }
+
+    fn create_left_indicator(&self, tab_count: usize, tab_index: usize) -> LinePart {
+        if tab_count == 0 {
+            return LinePart::default();
+        }
+
+        let more_text = self.format_count_text(tab_count, "← +{}", " ← +many ");
+        self.create_styled_indicator(more_text, tab_index)
+    }
+
+    fn create_right_indicator(&self, tab_count: usize, tab_index: usize) -> LinePart {
+        if tab_count == 0 {
+            return LinePart::default();
+        }
+
+        let more_text = self.format_count_text(tab_count, "+{} →", " +many → ");
+        self.create_styled_indicator(more_text, tab_index)
+    }
+
+    fn format_count_text(&self, count: usize, format_str: &str, fallback: &str) -> String {
+        if count < 10000 {
+            format!(" {} ", format_str.replace("{}", &count.to_string()))
+        } else {
+            fallback.to_string()
+        }
+    }
+
+    fn create_styled_indicator(&self, text: String, tab_index: usize) -> LinePart {
+        let separator = tab_separator(self.capabilities);
+        let text_len = text.width() + 2 * separator.width();
+
+        let colors = IndicatorColors {
+            text: self.palette.ribbon_unselected.base,
+            separator: self.palette.text_unselected.background,
+            background: self.palette.text_selected.emphasis_0,
+        };
+
+        let styled_parts = [
+            style!(colors.separator, colors.background).paint(separator),
+            style!(colors.text, colors.background).bold().paint(text),
+            style!(colors.background, colors.separator).paint(separator),
+        ];
+
+        LinePart {
+            part: ANSIStrings(&styled_parts).to_string(),
+            len: text_len,
+            tab_index: Some(tab_index),
+        }
+    }
 }
 
-fn left_more_message(
-    tab_count_to_the_left: usize,
-    palette: Styling,
-    separator: &str,
-    tab_index: usize,
-) -> LinePart {
-    if tab_count_to_the_left == 0 {
-        return LinePart::default();
-    }
-    let more_text = if tab_count_to_the_left < 10000 {
-        format!(" ← +{} ", tab_count_to_the_left)
-    } else {
-        " ← +many ".to_string()
-    };
-    // 238
-    // chars length plus separator length on both sides
-    let more_text_len = more_text.width() + 2 * separator.width();
-    let (text_color, sep_color) = (
-        palette.ribbon_unselected.base,
-        palette.text_unselected.background,
-    );
-    let plus_ribbon_bg = palette.text_selected.emphasis_0;
-    let left_separator = style!(sep_color, plus_ribbon_bg).paint(separator);
-    let more_styled_text = style!(text_color, plus_ribbon_bg).bold().paint(more_text);
-    let right_separator = style!(plus_ribbon_bg, sep_color).paint(separator);
-    let more_styled_text =
-        ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
-    LinePart {
-        part: more_styled_text,
-        len: more_text_len,
-        tab_index: Some(tab_index),
-    }
+#[derive(Debug)]
+struct CollapsedIndicators {
+    left: LinePart,
+    right: LinePart,
 }
 
-fn right_more_message(
-    tab_count_to_the_right: usize,
-    palette: Styling,
-    separator: &str,
-    tab_index: usize,
-) -> LinePart {
-    if tab_count_to_the_right == 0 {
-        return LinePart::default();
-    };
-    let more_text = if tab_count_to_the_right < 10000 {
-        format!(" +{} → ", tab_count_to_the_right)
-    } else {
-        " +many → ".to_string()
-    };
-    // chars length plus separator length on both sides
-    let more_text_len = more_text.width() + 2 * separator.width();
-
-    let (text_color, sep_color) = (
-        palette.ribbon_unselected.base,
-        palette.text_unselected.background,
-    );
-    let plus_ribbon_bg = palette.text_selected.emphasis_0;
-    let left_separator = style!(sep_color, plus_ribbon_bg).paint(separator);
-    let more_styled_text = style!(text_color, plus_ribbon_bg).bold().paint(more_text);
-    let right_separator = style!(plus_ribbon_bg, sep_color).paint(separator);
-    let more_styled_text =
-        ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
-    LinePart {
-        part: more_styled_text,
-        len: more_text_len,
-        tab_index: Some(tab_index),
-    }
+#[derive(Debug)]
+struct TabSizes {
+    left: usize,
+    right: usize,
 }
 
-fn tab_line_prefix(
-    session_name: Option<&str>,
-    mode: InputMode,
+#[derive(Debug)]
+struct TabFitAnalysis {
+    left_fits: bool,
+    right_fits: bool,
+}
+
+#[derive(Debug)]
+struct IndicatorColors {
+    text: PaletteColor,
+    separator: PaletteColor,
+    background: PaletteColor,
+}
+
+#[derive(Debug)]
+enum TabAction {
+    AddLeft,
+    AddRight,
+    Finish,
+}
+
+struct TabLinePrefixBuilder {
     palette: Styling,
     cols: usize,
-) -> Vec<LinePart> {
-    let prefix_text = " Zellij ".to_string();
+}
 
-    let prefix_text_len = prefix_text.chars().count();
-    let text_color = palette.text_unselected.base;
-    let bg_color = palette.text_unselected.background;
-    let locked_mode_color = palette.text_unselected.emphasis_3;
-    let normal_mode_color = palette.text_unselected.emphasis_2;
-    let other_modes_color = palette.text_unselected.emphasis_0;
+impl TabLinePrefixBuilder {
+    fn new(palette: Styling, cols: usize) -> Self {
+        Self { palette, cols }
+    }
 
-    let prefix_styled_text = style!(text_color, bg_color).bold().paint(prefix_text);
-    let mut parts = vec![LinePart {
-        part: prefix_styled_text.to_string(),
-        len: prefix_text_len,
-        tab_index: None,
-    }];
-    if let Some(name) = session_name {
+    fn build(&self, session_name: Option<&str>, mode: InputMode) -> Vec<LinePart> {
+        let mut parts = vec![self.create_zellij_part()];
+        let mut used_len = parts.get(0).map_or(0, |p| p.len);
+
+        if let Some(name) = session_name {
+            if let Some(name_part) = self.create_session_name_part(name, used_len) {
+                used_len += name_part.len;
+                parts.push(name_part);
+            }
+        }
+
+        if let Some(mode_part) = self.create_mode_part(mode, used_len) {
+            parts.push(mode_part);
+        }
+
+        parts
+    }
+
+    fn create_zellij_part(&self) -> LinePart {
+        let prefix_text = " Zellij ";
+        let colors = self.get_text_colors();
+        
+        LinePart {
+            part: style!(colors.text, colors.background)
+                .bold()
+                .paint(prefix_text)
+                .to_string(),
+            len: prefix_text.chars().count(),
+            tab_index: None,
+        }
+    }
+
+    fn create_session_name_part(&self, name: &str, used_len: usize) -> Option<LinePart> {
         let name_part = format!("({})", name);
         let name_part_len = name_part.width();
-        let name_part_styled_text = style!(text_color, bg_color).bold().paint(name_part);
-        if cols.saturating_sub(prefix_text_len) >= name_part_len {
-            parts.push(LinePart {
-                part: name_part_styled_text.to_string(),
+        
+        if self.cols.saturating_sub(used_len) >= name_part_len {
+            let colors = self.get_text_colors();
+            Some(LinePart {
+                part: style!(colors.text, colors.background)
+                    .bold()
+                    .paint(name_part)
+                    .to_string(),
                 len: name_part_len,
                 tab_index: None,
             })
+        } else {
+            None
         }
     }
-    let mode_part = format!("{:?}", mode).to_uppercase();
-    let mode_part_padded = format!(" {} ", mode_part);
-    let mode_part_len = mode_part_padded.width();
-    let mode_part_styled_text = if mode == InputMode::Locked {
-        style!(locked_mode_color, bg_color)
-            .bold()
-            .paint(mode_part_padded)
-    } else if mode == InputMode::Normal {
-        style!(normal_mode_color, bg_color)
-            .bold()
-            .paint(mode_part_padded)
-    } else {
-        style!(other_modes_color, bg_color)
-            .bold()
-            .paint(mode_part_padded)
-    };
-    if cols.saturating_sub(prefix_text_len) >= mode_part_len {
-        parts.push(LinePart {
-            part: format!("{}", mode_part_styled_text),
-            len: mode_part_len,
-            tab_index: None,
-        })
+
+    fn create_mode_part(&self, mode: InputMode, used_len: usize) -> Option<LinePart> {
+        let mode_text = format!(" {} ", format!("{:?}", mode).to_uppercase());
+        let mode_len = mode_text.width();
+
+        if self.cols.saturating_sub(used_len) >= mode_len {
+            let colors = self.get_text_colors();
+            let style = match mode {
+                InputMode::Locked => style!(self.palette.text_unselected.emphasis_3, colors.background),
+                InputMode::Normal => style!(self.palette.text_unselected.emphasis_2, colors.background),
+                _ => style!(self.palette.text_unselected.emphasis_0, colors.background),
+            };
+
+            Some(LinePart {
+                part: style.bold().paint(mode_text).to_string(),
+                len: mode_len,
+                tab_index: None,
+            })
+        } else {
+            None
+        }
     }
-    parts
+
+    fn get_text_colors(&self) -> IndicatorColors {
+        IndicatorColors {
+            text: self.palette.text_unselected.base,
+            background: self.palette.text_unselected.background,
+            separator: self.palette.text_unselected.background,
+        }
+    }
+}
+
+struct RightSideElementsBuilder {
+    palette: Styling,
+    capabilities: PluginCapabilities,
+}
+
+impl RightSideElementsBuilder {
+    fn new(palette: Styling, capabilities: PluginCapabilities) -> Self {
+        Self { palette, capabilities }
+    }
+
+    fn build(&self, config: &TabLineConfig, available_space: usize) -> Vec<LinePart> {
+        let mut elements = Vec::new();
+
+        if let Some(ref tooltip_key) = config.toggle_tooltip_key {
+            elements.push(self.create_tooltip_indicator(tooltip_key, config.tooltip_is_active));
+        }
+
+        if let Some(swap_status) = self.create_swap_layout_status(config, available_space) {
+            elements.push(swap_status);
+        }
+
+        elements
+    }
+
+    fn create_tooltip_indicator(&self, toggle_key: &str, is_active: bool) -> LinePart {
+        let key_text = toggle_key;
+        let key = Text::new(key_text).color_all(3);
+        let ribbon_text = "Tooltip";
+        let mut ribbon = Text::new(ribbon_text);
+        
+        if is_active {
+            ribbon = ribbon.selected();
+        }
+
+        LinePart {
+            part: format!("{} {}", serialize_text(&key), serialize_ribbon(&ribbon)),
+            len: key_text.chars().count() + ribbon_text.chars().count() + 6,
+            tab_index: None,
+        }
+    }
+
+    fn create_swap_layout_status(&self, config: &TabLineConfig, max_len: usize) -> Option<LinePart> {
+        let swap_layout_name = config.active_swap_layout_name.as_ref()?;
+        
+        let mut layout_name = format!(" {} ", swap_layout_name);
+        layout_name.make_ascii_uppercase();
+        let layout_name_len = layout_name.len() + 3;
+
+        let colors = SwapLayoutColors {
+            bg: self.palette.text_unselected.background,
+            fg: self.palette.ribbon_unselected.background,
+            green: self.palette.ribbon_selected.background,
+        };
+
+        let separator = tab_separator(self.capabilities);
+        let styled_parts = self.create_swap_layout_styled_parts(
+            &layout_name,
+            config.mode,
+            config.is_swap_layout_dirty,
+            &colors,
+            separator,
+        );
+
+        let indicator = format!("{}{}{}", styled_parts.0, styled_parts.1, styled_parts.2);
+        let (part, full_len) = (indicator.clone(), layout_name_len);
+        let short_len = layout_name_len + 1;
+
+        if full_len <= max_len {
+            Some(LinePart {
+                part,
+                len: full_len,
+                tab_index: None,
+            })
+        } else if short_len <= max_len && config.mode != InputMode::Locked {
+            Some(LinePart {
+                part: indicator,
+                len: short_len,
+                tab_index: None,
+            })
+        } else {
+            None
+        }
+    }
+
+    fn create_swap_layout_styled_parts(
+        &self,
+        layout_name: &str,
+        mode: InputMode,
+        is_dirty: bool,
+        colors: &SwapLayoutColors,
+        separator: &str,
+    ) -> (String, String, String) {
+        match mode {
+            InputMode::Locked => (
+                style!(colors.bg, colors.fg).paint(separator).to_string(),
+                style!(colors.bg, colors.fg).italic().paint(layout_name).to_string(),
+                style!(colors.fg, colors.bg).paint(separator).to_string(),
+            ),
+            _ if is_dirty => (
+                style!(colors.bg, colors.fg).paint(separator).to_string(),
+                style!(colors.bg, colors.fg).bold().paint(layout_name).to_string(),
+                style!(colors.fg, colors.bg).paint(separator).to_string(),
+            ),
+            _ => (
+                style!(colors.bg, colors.green).paint(separator).to_string(),
+                style!(colors.bg, colors.green).bold().paint(layout_name).to_string(),
+                style!(colors.green, colors.bg).paint(separator).to_string(),
+            ),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct SwapLayoutColors {
+    bg: PaletteColor,
+    fg: PaletteColor,
+    green: PaletteColor,
+}
+
+pub struct TabLineBuilder {
+    config: TabLineConfig,
+    palette: Styling,
+    capabilities: PluginCapabilities,
+    cols: usize,
+}
+
+impl TabLineBuilder {
+    pub fn new(
+        config: TabLineConfig,
+        palette: Styling,
+        capabilities: PluginCapabilities,
+        cols: usize,
+    ) -> Self {
+        Self {
+            config,
+            palette,
+            capabilities,
+            cols,
+        }
+    }
+
+    pub fn build(self, all_tabs: Vec<LinePart>, active_tab_index: usize) -> Vec<LinePart> {
+        let (tabs_before_active, active_tab, tabs_after_active) = 
+            self.split_tabs(all_tabs, active_tab_index);
+
+        let prefix_builder = TabLinePrefixBuilder::new(self.palette, self.cols);
+        let session_name = if self.config.hide_session_name {
+            None
+        } else {
+            self.config.session_name.as_deref()
+        };
+        
+        let mut prefix = prefix_builder.build(session_name, self.config.mode);
+        let prefix_len = calculate_total_length(&prefix);
+
+        if prefix_len + active_tab.len > self.cols {
+            return prefix;
+        }
+
+        let mut tabs_to_render = vec![active_tab];
+        let populator = TabLinePopulator::new(
+            self.cols.saturating_sub(prefix_len),
+            self.palette,
+            self.capabilities,
+        );
+
+        let mut tabs_before = tabs_before_active;
+        let mut tabs_after = tabs_after_active;
+        populator.populate_tabs(&mut tabs_before, &mut tabs_after, &mut tabs_to_render);
+        
+        prefix.append(&mut tabs_to_render);
+        
+        self.add_right_side_elements(&mut prefix);
+        prefix
+    }
+
+    fn split_tabs(
+        &self,
+        mut all_tabs: Vec<LinePart>,
+        active_tab_index: usize,
+    ) -> (Vec<LinePart>, LinePart, Vec<LinePart>) {
+        let mut tabs_after_active = all_tabs.split_off(active_tab_index);
+        let mut tabs_before_active = all_tabs;
+        
+        let active_tab = if !tabs_after_active.is_empty() {
+            tabs_after_active.remove(0)
+        } else {
+            tabs_before_active.pop().unwrap_or_default()
+        };
+        
+        (tabs_before_active, active_tab, tabs_after_active)
+    }
+
+    fn add_right_side_elements(&self, prefix: &mut Vec<LinePart>) {
+        let current_len = calculate_total_length(prefix);
+        
+        if current_len < self.cols {
+            let right_builder = RightSideElementsBuilder::new(self.palette, self.capabilities);
+            let available_space = self.cols.saturating_sub(current_len);
+            let mut right_elements = right_builder.build(&self.config, available_space);
+            
+            let right_len = calculate_total_length(&right_elements);
+            
+            if current_len + right_len <= self.cols {
+                let remaining_space = self.cols.saturating_sub(current_len).saturating_sub(right_len);
+                
+                if remaining_space > 0 {
+                    prefix.push(self.create_spacer(remaining_space));
+                }
+                
+                prefix.append(&mut right_elements);
+            }
+        }
+    }
+
+    fn create_spacer(&self, space: usize) -> LinePart {
+        let bg = self.palette.text_unselected.background;
+        let buffer = (0..space)
+            .map(|_| style!(bg, bg).paint(" ").to_string())
+            .collect::<String>();
+
+        LinePart {
+            part: buffer,
+            len: space,
+            tab_index: None,
+        }
+    }
 }
 
 pub fn tab_separator(capabilities: PluginCapabilities) -> &'static str {
@@ -237,139 +588,5 @@ pub fn tab_separator(capabilities: PluginCapabilities) -> &'static str {
         ARROW_SEPARATOR
     } else {
         ""
-    }
-}
-
-pub fn tab_line(
-    session_name: Option<&str>,
-    mut all_tabs: Vec<LinePart>,
-    active_tab_index: usize,
-    cols: usize,
-    palette: Styling,
-    capabilities: PluginCapabilities,
-    hide_session_name: bool,
-    mode: InputMode,
-    active_swap_layout_name: &Option<String>,
-    is_swap_layout_dirty: bool,
-) -> Vec<LinePart> {
-    let mut tabs_after_active = all_tabs.split_off(active_tab_index);
-    let mut tabs_before_active = all_tabs;
-    let active_tab = if !tabs_after_active.is_empty() {
-        tabs_after_active.remove(0)
-    } else {
-        tabs_before_active.pop().unwrap()
-    };
-    let mut prefix = match hide_session_name {
-        true => tab_line_prefix(None, mode, palette, cols),
-        false => tab_line_prefix(session_name, mode, palette, cols),
-    };
-    let prefix_len = get_current_title_len(&prefix);
-
-    // if active tab alone won't fit in cols, don't draw any tabs
-    if prefix_len + active_tab.len > cols {
-        return prefix;
-    }
-
-    let mut tabs_to_render = vec![active_tab];
-
-    populate_tabs_in_tab_line(
-        &mut tabs_before_active,
-        &mut tabs_after_active,
-        &mut tabs_to_render,
-        cols.saturating_sub(prefix_len),
-        palette,
-        capabilities,
-    );
-    prefix.append(&mut tabs_to_render);
-
-    let current_title_len = get_current_title_len(&prefix);
-    if current_title_len < cols {
-        let mut remaining_space = cols - current_title_len;
-        let remaining_bg = palette.text_unselected.background;
-        if let Some(swap_layout_status) = swap_layout_status(
-            remaining_space,
-            active_swap_layout_name,
-            is_swap_layout_dirty,
-            mode,
-            &palette,
-            tab_separator(capabilities),
-        ) {
-            remaining_space -= swap_layout_status.len;
-            let mut buffer = String::new();
-            for _ in 0..remaining_space {
-                buffer.push_str(&style!(remaining_bg, remaining_bg).paint(" ").to_string());
-            }
-            prefix.push(LinePart {
-                part: buffer,
-                len: remaining_space,
-                tab_index: None,
-            });
-            prefix.push(swap_layout_status);
-        }
-    }
-
-    prefix
-}
-
-fn swap_layout_status(
-    max_len: usize,
-    swap_layout_name: &Option<String>,
-    is_swap_layout_damaged: bool,
-    input_mode: InputMode,
-    palette: &Styling,
-    separator: &str,
-) -> Option<LinePart> {
-    match swap_layout_name {
-        Some(swap_layout_name) => {
-            let mut swap_layout_name = format!(" {} ", swap_layout_name);
-            swap_layout_name.make_ascii_uppercase();
-            let swap_layout_name_len = swap_layout_name.len() + 3;
-            let bg = palette.text_unselected.background;
-            let fg = palette.ribbon_unselected.background;
-            let green = palette.ribbon_selected.background;
-
-            let (prefix_separator, swap_layout_name, suffix_separator) =
-                if input_mode == InputMode::Locked {
-                    (
-                        style!(bg, fg).paint(separator),
-                        style!(bg, fg).italic().paint(&swap_layout_name),
-                        style!(fg, bg).paint(separator),
-                    )
-                } else if is_swap_layout_damaged {
-                    (
-                        style!(bg, fg).paint(separator),
-                        style!(bg, fg).bold().paint(&swap_layout_name),
-                        style!(fg, bg).paint(separator),
-                    )
-                } else {
-                    (
-                        style!(bg, green).paint(separator),
-                        style!(bg, green).bold().paint(&swap_layout_name),
-                        style!(green, bg).paint(separator),
-                    )
-                };
-            let swap_layout_indicator = format!(
-                "{}{}{}",
-                prefix_separator, swap_layout_name, suffix_separator
-            );
-            let (part, full_len) = (format!("{}", swap_layout_indicator), swap_layout_name_len);
-            let short_len = swap_layout_name_len + 1; // 1 is the space between
-            if full_len <= max_len {
-                Some(LinePart {
-                    part,
-                    len: full_len,
-                    tab_index: None,
-                })
-            } else if short_len <= max_len && input_mode != InputMode::Locked {
-                Some(LinePart {
-                    part: swap_layout_indicator,
-                    len: short_len,
-                    tab_index: None,
-                })
-            } else {
-                None
-            }
-        },
-        None => None,
     }
 }

@@ -1,5 +1,5 @@
-use zellij_tile::prelude::*;
 use zellij_tile::prelude::actions::Action;
+use zellij_tile::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ActionType {
@@ -38,7 +38,6 @@ pub enum ActionType {
 }
 
 impl ActionType {
-    /// Get a user-friendly description for an action type
     pub fn description(&self) -> String {
         match self {
             ActionType::MoveFocus => "Move focus".to_string(),
@@ -59,11 +58,21 @@ impl ActionType {
             ActionType::PluginManager => "Plugin manager".to_string(),
             ActionType::Configuration => "Configuration".to_string(),
             ActionType::About => "About Zellij".to_string(),
-            ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::RenamePane => "Rename pane".to_string(),
-            ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::RenameTab => "Rename tab".to_string(),
-            ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::EnterSearch => "Search".to_string(),
-            ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::Locked => "Lock".to_string(),
-            ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::Normal => "Unlock".to_string(),
+            ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::RenamePane => {
+                "Rename pane".to_string()
+            },
+            ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::RenameTab => {
+                "Rename tab".to_string()
+            },
+            ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::EnterSearch => {
+                "Search".to_string()
+            },
+            ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::Locked => {
+                "Lock".to_string()
+            },
+            ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::Normal => {
+                "Unlock".to_string()
+            },
             ActionType::SwitchToMode(input_mode) => format!("{:?}", input_mode),
             ActionType::TogglePaneEmbedOrFloating => "Float or embed".to_string(),
             ActionType::ToggleFocusFullscreen => "Toggle fullscreen".to_string(),
@@ -81,7 +90,6 @@ impl ActionType {
         }
     }
 
-    /// Convert an Action to an ActionType
     pub fn from_action(action: &Action) -> Self {
         match action {
             Action::MoveFocus(_) => ActionType::MoveFocus,
@@ -119,4 +127,3 @@ impl ActionType {
         }
     }
 }
-

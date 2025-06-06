@@ -1,5 +1,5 @@
-use zellij_tile::prelude::*;
 use crate::LinePart;
+use zellij_tile::prelude::*;
 
 pub fn text_copied_hint(copy_destination: CopyDestination) -> LinePart {
     let hint = match copy_destination {
@@ -25,4 +25,3 @@ pub fn system_clipboard_error() -> LinePart {
         tab_index: None,
     }
 }
-

@@ -1,5 +1,5 @@
-use zellij_tile::prelude::*;
 use crate::keybind_utils::KeybindProcessor;
+use zellij_tile::prelude::*;
 
 pub struct TooltipRenderer<'a> {
     mode_info: &'a ModeInfo,
@@ -14,14 +14,20 @@ impl<'a> TooltipRenderer<'a> {
         let current_mode = self.mode_info.mode;
 
         if current_mode == InputMode::Normal {
-            let (text_components, tooltip_rows, tooltip_columns) = self.normal_mode_tooltip(current_mode);
-            // Render each text component at its calculated position
+            let (text_components, tooltip_rows, tooltip_columns) =
+                self.normal_mode_tooltip(current_mode);
             let base_x = cols.saturating_sub(tooltip_columns) / 2;
             let base_y = rows.saturating_sub(tooltip_rows) / 2;
             for (text, ribbon, x, y) in text_components {
                 let text_width = text.content().chars().count();
                 print_text_with_coordinates(text, base_x + x, base_y + y, None, None);
-                print_ribbon_with_coordinates(ribbon, base_x + x + text_width + 1, base_y + y, None, None);
+                print_ribbon_with_coordinates(
+                    ribbon,
+                    base_x + x + text_width + 1,
+                    base_y + y,
+                    None,
+                    None,
+                );
             }
         } else {
             let (table, tooltip_rows, tooltip_columns) = self.other_mode_tooltip(current_mode);
@@ -36,15 +42,18 @@ impl<'a> TooltipRenderer<'a> {
             InputMode::Normal => {
                 let (_, tooltip_rows, tooltip_cols) = self.normal_mode_tooltip(current_mode);
                 (tooltip_rows, tooltip_cols)
-            }
+            },
             _ => {
                 let (_, tooltip_rows, tooltip_cols) = self.other_mode_tooltip(current_mode);
                 (tooltip_rows + 1, tooltip_cols) // + 1 for the invisible table title
-            }
+            },
         }
     }
 
-    fn normal_mode_tooltip(&self, current_mode: InputMode) -> (Vec<(Text, Text, usize, usize)>, usize, usize) {
+    fn normal_mode_tooltip(
+        &self,
+        current_mode: InputMode,
+    ) -> (Vec<(Text, Text, usize, usize)>, usize, usize) {
         let actions = KeybindProcessor::get_predetermined_actions(self.mode_info, current_mode);
         let y = 0;
         let mut running_x = 0;
@@ -54,9 +63,9 @@ impl<'a> TooltipRenderer<'a> {
         for (key, description) in actions {
             let text = Text::new(&key).color_all(3);
             let ribbon = Text::new(&description);
-            
+
             let line_length = key.chars().count() + 1 + description.chars().count();
-            
+
             components.push((text, ribbon, running_x, y));
             running_x += line_length + 5;
             max_columns = max_columns.max(running_x);
@@ -69,32 +78,21 @@ impl<'a> TooltipRenderer<'a> {
     fn other_mode_tooltip(&self, current_mode: InputMode) -> (Table, usize, usize) {
         let actions = KeybindProcessor::get_predetermined_actions(self.mode_info, current_mode);
         let actions_vec: Vec<_> = actions.into_iter().collect();
-        
+
         let mut table = Table::new().add_row(vec![" ".to_owned(); 2]);
         let mut row_count = 1; // Start with header row
 
         if actions_vec.is_empty() {
             let tooltip_text = match self.mode_info.mode {
-                InputMode::EnterSearch => {
-                    "Entering search term...".to_owned()
-                }
-                InputMode::RenameTab => {
-                    "Renaming tab...".to_owned()
-                }
-                InputMode::RenamePane => {
-                    "Renaming pane...".to_owned()
-                }
-//                 InputMode::RenamePane,
-//                 InputMode::Prompt,
-//                 InputMode::Tmux,
-                _ => { format!("{:?}", self.mode_info.mode) }
-
-
+                InputMode::EnterSearch => "Entering search term...".to_owned(),
+                InputMode::RenameTab => "Renaming tab...".to_owned(),
+                InputMode::RenamePane => "Renaming pane...".to_owned(),
+                _ => {
+                    format!("{:?}", self.mode_info.mode)
+                },
             };
             let total_width = tooltip_text.chars().count();
-            table = table.add_styled_row(vec![
-                Text::new(tooltip_text).color_all(0),
-            ]);
+            table = table.add_styled_row(vec![Text::new(tooltip_text).color_all(0)]);
             row_count += 1;
             (table, row_count, total_width)
         } else {
@@ -106,11 +104,11 @@ impl<'a> TooltipRenderer<'a> {
                 action_width = action_width.max(description_formatted.chars().count());
                 table = table.add_styled_row(vec![
                     Text::new(&key).color_all(3),
-                    Text::new(description_formatted)
+                    Text::new(description_formatted),
                 ]);
                 row_count += 1;
             }
-            
+
             let total_width = key_width + action_width + 1; // +1 for separator
             (table, row_count, total_width)
         }

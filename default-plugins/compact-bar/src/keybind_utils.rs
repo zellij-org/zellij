@@ -1,7 +1,7 @@
-use std::collections::HashSet;
-use zellij_tile::prelude::*;
-use zellij_tile::prelude::actions::Action;
 use crate::action_types::ActionType;
+use std::collections::HashSet;
+use zellij_tile::prelude::actions::Action;
+use zellij_tile::prelude::*;
 
 pub struct KeybindProcessor;
 
@@ -10,7 +10,7 @@ impl KeybindProcessor {
     pub fn find_predetermined_actions<F>(
         mode_info: &ModeInfo,
         mode: InputMode,
-        predicates: Vec<F>
+        predicates: Vec<F>,
     ) -> Vec<(String, String)>
     where
         F: Fn(&Action) -> bool,
@@ -18,7 +18,7 @@ impl KeybindProcessor {
         let mut result = Vec::new();
         let keybinds = mode_info.get_keybinds_for_mode(mode);
         let mut processed_action_types = HashSet::new();
-        
+
         // Iterate through predicates in order to maintain the desired sequence
         for predicate in predicates {
             // Find the first matching action for this predicate
@@ -27,15 +27,15 @@ impl KeybindProcessor {
                 if let Some(first_action) = actions.first() {
                     if predicate(first_action) {
                         let action_type = ActionType::from_action(first_action);
-                        
+
                         // Skip if we've already processed this action type
                         if processed_action_types.contains(&action_type) {
                             found_match = true;
                             break;
                         }
-                        
+
                         let mut matching_keys = Vec::new();
-                        
+
                         // Find all keys that match this action type (including different directions)
                         for (inner_key, inner_actions) in &keybinds {
                             if let Some(inner_first_action) = inner_actions.first() {
@@ -44,48 +44,58 @@ impl KeybindProcessor {
                                 }
                             }
                         }
-                        
+
                         if !matching_keys.is_empty() {
                             let description = action_type.description();
                             let should_add_brackets_to_keys = mode != InputMode::Normal;
-                            
+
                             // Check if this is switching to normal mode
                             // let is_switching_to_locked = matches!(first_action, Action::SwitchToMode(InputMode::Normal));
-                            let is_switching_to_locked = matches!(first_action, Action::SwitchToMode(InputMode::Locked));
-                            
-                            let grouped_keys = Self::group_key_sets(&matching_keys, should_add_brackets_to_keys, is_switching_to_locked);
+                            let is_switching_to_locked =
+                                matches!(first_action, Action::SwitchToMode(InputMode::Locked));
+
+                            let grouped_keys = Self::group_key_sets(
+                                &matching_keys,
+                                should_add_brackets_to_keys,
+                                is_switching_to_locked,
+                            );
                             result.push((grouped_keys, description));
                             processed_action_types.insert(action_type);
                         }
-                        
+
                         found_match = true;
                         break;
                     }
                 }
             }
-            
+
             // If we found a match for this predicate, we've processed it
             if found_match {
                 continue;
             }
         }
-        
+
         result
     }
 
     /// Group keys into sets and separate different key types with '|'
-    fn group_key_sets(keys: &[String], should_add_brackets_to_keys: bool, is_switching_to_locked: bool) -> String {
+    fn group_key_sets(
+        keys: &[String],
+        should_add_brackets_to_keys: bool,
+        is_switching_to_locked: bool,
+    ) -> String {
         if keys.is_empty() {
             return String::new();
         }
-        
+
         // Filter out Esc and Enter keys when switching to normal mode, but only if other keys exist
         let filtered_keys: Vec<String> = if is_switching_to_locked {
-            let non_esc_enter_keys: Vec<String> = keys.iter()
+            let non_esc_enter_keys: Vec<String> = keys
+                .iter()
                 .filter(|k| k.as_str() != "ESC" && k.as_str() != "ENTER")
                 .cloned()
                 .collect();
-            
+
             if non_esc_enter_keys.is_empty() {
                 // If no other keys exist, keep the original keys
                 keys.to_vec()
@@ -96,7 +106,7 @@ impl KeybindProcessor {
         } else {
             keys.to_vec()
         };
-        
+
         if filtered_keys.len() == 1 {
             return if should_add_brackets_to_keys {
                 format!("<{}>", filtered_keys[0])
@@ -104,7 +114,7 @@ impl KeybindProcessor {
                 filtered_keys[0].clone()
             };
         }
-        
+
         // Group keys by type
         let mut arrow_keys = Vec::new();
         let mut hjkl_lower = Vec::new();
@@ -113,7 +123,7 @@ impl KeybindProcessor {
         let mut plus_minus_keys = Vec::new();
         let mut pgup_pgdown = Vec::new();
         let mut other_keys = Vec::new();
-        
+
         for key in &filtered_keys {
             match key.as_str() {
                 "Left" | "←" => arrow_keys.push("←"),
@@ -141,45 +151,69 @@ impl KeybindProcessor {
                     } else {
                         other_keys.push(key.clone());
                     }
-                }
+                },
             }
         }
-        
+
         let mut groups = Vec::new();
-        
+
         // Add hjkl group if present (prioritize hjkl over arrows)
         if !hjkl_lower.is_empty() {
             Self::sort_hjkl(&mut hjkl_lower);
-            groups.push(Self::format_key_group(&hjkl_lower, should_add_brackets_to_keys, false));
+            groups.push(Self::format_key_group(
+                &hjkl_lower,
+                should_add_brackets_to_keys,
+                false,
+            ));
         }
-        
+
         // Add HJKL group if present
         if !hjkl_upper.is_empty() {
             Self::sort_hjkl_upper(&mut hjkl_upper);
-            groups.push(Self::format_key_group(&hjkl_upper, should_add_brackets_to_keys, false));
+            groups.push(Self::format_key_group(
+                &hjkl_upper,
+                should_add_brackets_to_keys,
+                false,
+            ));
         }
-        
+
         // Add arrow keys group if present
         if !arrow_keys.is_empty() {
             Self::sort_arrows(&mut arrow_keys);
-            groups.push(Self::format_key_group(&arrow_keys, should_add_brackets_to_keys, false));
+            groups.push(Self::format_key_group(
+                &arrow_keys,
+                should_add_brackets_to_keys,
+                false,
+            ));
         }
 
         if !square_bracket_keys.is_empty() {
             Self::sort_square_brackets(&mut square_bracket_keys);
-            groups.push(Self::format_key_group(&square_bracket_keys, should_add_brackets_to_keys, false));
+            groups.push(Self::format_key_group(
+                &square_bracket_keys,
+                should_add_brackets_to_keys,
+                false,
+            ));
         }
 
         if !plus_minus_keys.is_empty() {
             Self::sort_plus_minus(&mut plus_minus_keys);
-            groups.push(Self::format_key_group(&plus_minus_keys, should_add_brackets_to_keys, false));
+            groups.push(Self::format_key_group(
+                &plus_minus_keys,
+                should_add_brackets_to_keys,
+                false,
+            ));
         }
 
         if !pgup_pgdown.is_empty() {
             Self::sort_pgup_pgdown(&mut pgup_pgdown);
-            groups.push(Self::format_key_group(&pgup_pgdown, should_add_brackets_to_keys, true));
+            groups.push(Self::format_key_group(
+                &pgup_pgdown,
+                should_add_brackets_to_keys,
+                true,
+            ));
         }
-        
+
         // Add other keys with / separator
         if !other_keys.is_empty() {
             groups.push(other_keys.join("/"));
@@ -248,10 +282,14 @@ impl KeybindProcessor {
         });
     }
 
-    fn format_key_group(keys: &[&str], should_add_brackets: bool, use_pipe_separator: bool) -> String {
+    fn format_key_group(
+        keys: &[&str],
+        should_add_brackets: bool,
+        use_pipe_separator: bool,
+    ) -> String {
         let separator = if use_pipe_separator { "|" } else { "" };
         let joined = keys.join(separator);
-        
+
         if should_add_brackets {
             format!("<{}>", joined)
         } else {
@@ -260,14 +298,17 @@ impl KeybindProcessor {
     }
 
     /// Get predetermined actions for a specific mode
-    pub fn get_predetermined_actions(mode_info: &ModeInfo, mode: InputMode) -> Vec<(String, String)> {
+    pub fn get_predetermined_actions(
+        mode_info: &ModeInfo,
+        mode: InputMode,
+    ) -> Vec<(String, String)> {
         match mode {
             InputMode::Locked => {
-                let ordered_predicates = vec![
-                    |action: &Action| matches!(action, Action::SwitchToMode(InputMode::Normal)),
-                ];
+                let ordered_predicates = vec![|action: &Action| {
+                    matches!(action, Action::SwitchToMode(InputMode::Normal))
+                }];
                 Self::find_predetermined_actions(mode_info, mode, ordered_predicates)
-            }
+            },
             InputMode::Normal => {
                 let ordered_predicates = vec![
                     |action: &Action| matches!(action, Action::SwitchToMode(InputMode::Locked)),
@@ -293,8 +334,12 @@ impl KeybindProcessor {
                     |action: &Action| matches!(action, Action::ToggleFocusFullscreen),
                     |action: &Action| matches!(action, Action::ToggleFloatingPanes),
                     |action: &Action| matches!(action, Action::TogglePaneEmbedOrFloating),
-                    |action: &Action| matches!(action, Action::NewPane(Some(Direction::Right), None, false)),
-                    |action: &Action| matches!(action, Action::NewPane(Some(Direction::Down), None, false)),
+                    |action: &Action| {
+                        matches!(action, Action::NewPane(Some(Direction::Right), None, false))
+                    },
+                    |action: &Action| {
+                        matches!(action, Action::NewPane(Some(Direction::Down), None, false))
+                    },
                 ];
                 Self::find_predetermined_actions(mode_info, mode, ordered_predicates)
             },
@@ -302,7 +347,9 @@ impl KeybindProcessor {
                 let ordered_predicates = vec![
                     |action: &Action| matches!(action, Action::GoToPreviousTab),
                     |action: &Action| matches!(action, Action::GoToNextTab),
-                    |action: &Action| matches!(action, Action::NewTab(None, _, None, None, None, true)),
+                    |action: &Action| {
+                        matches!(action, Action::NewTab(None, _, None, None, None, true))
+                    },
                     |action: &Action| matches!(action, Action::CloseTab),
                     |action: &Action| matches!(action, Action::SwitchToMode(InputMode::RenameTab)),
                     |action: &Action| matches!(action, Action::TabNameInput(_)),
@@ -318,14 +365,54 @@ impl KeybindProcessor {
                 let ordered_predicates = vec![
                     |action: &Action| matches!(action, Action::Resize(Resize::Increase, None)),
                     |action: &Action| matches!(action, Action::Resize(Resize::Decrease, None)),
-                    |action: &Action| matches!(action, Action::Resize(Resize::Increase, Some(Direction::Left))),
-                    |action: &Action| matches!(action, Action::Resize(Resize::Increase, Some(Direction::Down))),
-                    |action: &Action| matches!(action, Action::Resize(Resize::Increase, Some(Direction::Up))),
-                    |action: &Action| matches!(action, Action::Resize(Resize::Increase, Some(Direction::Right))),
-                    |action: &Action| matches!(action, Action::Resize(Resize::Decrease, Some(Direction::Left))),
-                    |action: &Action| matches!(action, Action::Resize(Resize::Decrease, Some(Direction::Down))),
-                    |action: &Action| matches!(action, Action::Resize(Resize::Decrease, Some(Direction::Up))),
-                    |action: &Action| matches!(action, Action::Resize(Resize::Decrease, Some(Direction::Right))),
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::Resize(Resize::Increase, Some(Direction::Left))
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::Resize(Resize::Increase, Some(Direction::Down))
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::Resize(Resize::Increase, Some(Direction::Up))
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::Resize(Resize::Increase, Some(Direction::Right))
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::Resize(Resize::Decrease, Some(Direction::Left))
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::Resize(Resize::Decrease, Some(Direction::Down))
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::Resize(Resize::Decrease, Some(Direction::Up))
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::Resize(Resize::Decrease, Some(Direction::Right))
+                        )
+                    },
                 ];
                 Self::find_predetermined_actions(mode_info, mode, ordered_predicates)
             },
@@ -346,14 +433,18 @@ impl KeybindProcessor {
                     |action: &Action| matches!(action, Action::HalfPageScrollUp),
                     |action: &Action| matches!(action, Action::PageScrollDown),
                     |action: &Action| matches!(action, Action::PageScrollUp),
-                    |action: &Action| matches!(action, Action::SwitchToMode(InputMode::EnterSearch)),
+                    |action: &Action| {
+                        matches!(action, Action::SwitchToMode(InputMode::EnterSearch))
+                    },
                     |action: &Action| matches!(action, Action::EditScrollback),
                 ];
                 Self::find_predetermined_actions(mode_info, mode, ordered_predicates)
             },
             InputMode::Search => {
                 let ordered_predicates = vec![
-                    |action: &Action| matches!(action, Action::SwitchToMode(InputMode::EnterSearch)),
+                    |action: &Action| {
+                        matches!(action, Action::SwitchToMode(InputMode::EnterSearch))
+                    },
                     |action: &Action| matches!(action, Action::SearchInput(_)),
                     |action: &Action| matches!(action, Action::ScrollDown),
                     |action: &Action| matches!(action, Action::ScrollUp),
@@ -361,11 +452,30 @@ impl KeybindProcessor {
                     |action: &Action| matches!(action, Action::PageScrollUp),
                     |action: &Action| matches!(action, Action::HalfPageScrollDown),
                     |action: &Action| matches!(action, Action::HalfPageScrollUp),
-                    |action: &Action| matches!(action, Action::Search(actions::SearchDirection::Down)),
-                    |action: &Action| matches!(action, Action::Search(actions::SearchDirection::Up)),
-                    |action: &Action| matches!(action, Action::SearchToggleOption(actions::SearchOption::CaseSensitivity)),
-                    |action: &Action| matches!(action, Action::SearchToggleOption(actions::SearchOption::Wrap)),
-                    |action: &Action| matches!(action, Action::SearchToggleOption(actions::SearchOption::WholeWord)),
+                    |action: &Action| {
+                        matches!(action, Action::Search(actions::SearchDirection::Down))
+                    },
+                    |action: &Action| {
+                        matches!(action, Action::Search(actions::SearchDirection::Up))
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::SearchToggleOption(actions::SearchOption::CaseSensitivity)
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::SearchToggleOption(actions::SearchOption::Wrap)
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::SearchToggleOption(actions::SearchOption::WholeWord)
+                        )
+                    },
                 ];
                 Self::find_predetermined_actions(mode_info, mode, ordered_predicates)
             },
@@ -379,8 +489,11 @@ impl KeybindProcessor {
                 ];
                 Self::find_predetermined_actions(mode_info, mode, ordered_predicates)
             },
-            InputMode::EnterSearch | InputMode::RenameTab | 
-            InputMode::RenamePane | InputMode::Prompt | InputMode::Tmux => Vec::new(),
+            InputMode::EnterSearch
+            | InputMode::RenameTab
+            | InputMode::RenamePane
+            | InputMode::Prompt
+            | InputMode::Tmux => Vec::new(),
         }
     }
 }
