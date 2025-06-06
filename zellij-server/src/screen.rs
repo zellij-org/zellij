@@ -24,8 +24,8 @@ use zellij_utils::{
     envs::set_session_name,
     input::command::TerminalAction,
     input::layout::{
-        FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
-        TiledPaneLayout, SplitSize
+        FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SplitSize, SwapFloatingLayout,
+        SwapTiledLayout, TiledPaneLayout,
     },
     position::Position,
 };
@@ -2433,7 +2433,12 @@ impl Screen {
                         height: Some(SplitSize::Fixed(pane.rows())),
                         pinned: Some(pane.current_geom().is_pinned),
                     };
-                    new_active_tab.add_floating_pane(pane, pane_id, Some(floating_pane_coordinates), false)?;
+                    new_active_tab.add_floating_pane(
+                        pane,
+                        pane_id,
+                        Some(floating_pane_coordinates),
+                        false,
+                    )?;
                 } else {
                     // here we pass None instead of the ClientId, because we do not want this pane to be
                     // necessarily focused

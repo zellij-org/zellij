@@ -18,8 +18,28 @@ impl<'a> TooltipRenderer<'a> {
                 self.normal_mode_tooltip(current_mode);
             let base_x = cols.saturating_sub(tooltip_columns) / 2;
             let base_y = rows.saturating_sub(tooltip_rows) / 2;
+
             for (text, ribbon, x, y) in text_components {
                 let text_width = text.content().chars().count();
+                let ribbon_content_width = ribbon.content().chars().count();
+                let ribbon_total_width = ribbon_content_width + 4;
+                let total_element_width = text_width + ribbon_total_width + 1;
+
+                // Check if this element would exceed the available columns and render an ellipses
+                // if it does
+                if base_x + x + total_element_width > cols {
+                    let remaining_space = cols.saturating_sub(base_x + x);
+                    let ellipsis = Text::new("...");
+                    print_text_with_coordinates(
+                        ellipsis,
+                        base_x + x,
+                        base_y + y,
+                        Some(remaining_space),
+                        None,
+                    );
+                    break;
+                }
+
                 print_text_with_coordinates(text, base_x + x, base_y + y, None, None);
                 print_ribbon_with_coordinates(
                     ribbon,
