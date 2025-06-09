@@ -17,7 +17,8 @@ use libc;
 use nix;
 use signal_hook;
 use signal_hook::consts::*;
-use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
+// use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
+use sysinfo::{Process, ProcessRefreshKind, System};
 use tempfile::tempfile;
 use zellij_utils::{
     channels,
@@ -743,13 +744,13 @@ impl ServerOsApi for ServerOsInputOutput {
         let mut system_info = System::new();
         // Update by minimizing information.
         // See https://docs.rs/sysinfo/0.22.5/sysinfo/struct.ProcessRefreshKind.html#
-        system_info.refresh_process_specifics(pid.into(), ProcessRefreshKind::default());
+        system_info.refresh_process_specifics((pid.as_raw() as usize).into(), ProcessRefreshKind::default());
 
-        if let Some(process) = system_info.process(pid.into()) {
+        if let Some(process) = system_info.process((pid.as_raw() as usize).into()) {
             let cwd = process.cwd();
             let cwd_is_empty = cwd.iter().next().is_none();
             if !cwd_is_empty {
-                return Some(process.cwd().to_path_buf());
+                return Some(process.cwd()?.to_path_buf());
             }
         }
         None
@@ -763,14 +764,16 @@ impl ServerOsApi for ServerOsInputOutput {
             // Update by minimizing information.
             // See https://docs.rs/sysinfo/0.22.5/sysinfo/struct.ProcessRefreshKind.html#
             let is_found =
-                system_info.refresh_process_specifics(pid.into(), ProcessRefreshKind::default());
+                system_info.refresh_process_specifics((pid.as_raw() as usize).into(), ProcessRefreshKind::default());
             if is_found {
-                if let Some(process) = system_info.process(pid.into()) {
-                    let cwd = process.cwd();
-                    let cwd_is_empty = cwd.iter().next().is_none();
-                    if !cwd_is_empty {
-                        cwds.insert(pid, process.cwd().to_path_buf());
-                    }
+                if let Some(process) = system_info.process((pid.as_raw() as usize).into()) {
+                    if let Some(cwd) = process.cwd() {
+                        // let cwd_is_empty = cwd.iter().next().is_none();
+                        let cwd_is_empty = cwd.as_os_str().is_empty();
+                        if !cwd_is_empty {
+                            cwds.insert(pid, cwd.to_path_buf());
+                        }
+                    };
                 }
             }
         }
