@@ -240,12 +240,16 @@ fn main() {
                 },
             }
         } else if web_opts.status {
-            let config_options = commands::get_config_options_from_cli_args(&opts).expect("Can't find config options");
+            let config_options = commands::get_config_options_from_cli_args(&opts)
+                .expect("Can't find config options");
             let web_server_base_url = web_server_base_url_from_config(config_options);
             match commands::web_server_status(&web_server_base_url) {
                 Ok(version) => {
                     let version = version.trim();
-                    println!("Web server online with version: {}. Checked: {}", version, web_server_base_url);
+                    println!(
+                        "Web server online with version: {}. Checked: {}",
+                        version, web_server_base_url
+                    );
                     if version != VERSION {
                         println!("");
                         println!(

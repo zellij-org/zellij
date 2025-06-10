@@ -11,7 +11,8 @@ pub const BULLETIN_1_FULL: &str = "- Visit base URL to start a new session";
 pub const BULLETIN_1_SHORT: &str = "- Base URL: new session";
 pub const BULLETIN_2_FULL: &str = "- Follow base URL with a session name to attach to or create it";
 pub const BULLETIN_2_SHORT: &str = "- Base URL + session name: attach or create";
-pub const BULLETIN_3_FULL: &str = "- By default sessions not started from the web must be explicitly shared";
+pub const BULLETIN_3_FULL: &str =
+    "- By default sessions not started from the web must be explicitly shared";
 pub const BULLETIN_3_SHORT: &str = "- Sessions not started from the web must be explicitly shared";
 pub const BULLETIN_4: &str = "- <t> manage login tokens";
 
@@ -82,24 +83,33 @@ impl ColoredTextBuilder {
 
     pub fn highlight_all(mut self, color: usize) -> Self {
         let end = self.text.chars().count();
-        self.ranges.push(ColorRange { start: 0, end, color });
+        self.ranges.push(ColorRange {
+            start: 0,
+            end,
+            color,
+        });
         self
     }
 
     pub fn build(self) -> (Text, usize) {
         let length = self.text.chars().count();
         let mut text_component = Text::new(self.text);
-        
+
         for range in self.ranges {
             text_component = text_component.color_range(range.color, range.start..range.end);
         }
-        
+
         (text_component, length)
     }
 }
 
 // create titled text with different colors for title and value
-fn create_titled_text(title: &str, value: &str, title_color: usize, value_color: usize) -> (Text, usize) {
+fn create_titled_text(
+    title: &str,
+    value: &str,
+    title_color: usize,
+    value_color: usize,
+) -> (Text, usize) {
     let full_text = format!("{}{}", title, value);
     ColoredTextBuilder::new(full_text)
         .highlight_range(0, title.chars().count(), title_color)
@@ -114,7 +124,11 @@ fn create_highlighted_shortcut(text: &str, shortcut: &str, color: usize) -> (Tex
         .build()
 }
 
-fn get_text_with_fallback(full_text: &'static str, short_text: &'static str, max_width: usize) -> &'static str {
+fn get_text_with_fallback(
+    full_text: &'static str,
+    short_text: &'static str,
+    max_width: usize,
+) -> &'static str {
     if full_text.chars().count() <= max_width {
         full_text
     } else {
@@ -123,7 +137,11 @@ fn get_text_with_fallback(full_text: &'static str, short_text: &'static str, max
 }
 
 fn calculate_max_length(texts: &[&str]) -> usize {
-    texts.iter().map(|text| text.chars().count()).max().unwrap_or(0)
+    texts
+        .iter()
+        .map(|text| text.chars().count())
+        .max()
+        .unwrap_or(0)
 }
 
 fn format_url_with_encryption_marker(base_url: &str, is_unencrypted: bool) -> String {
@@ -175,11 +193,20 @@ impl Usage {
     }
 
     pub fn full_usage_width_and_height(&self, max_width: usize) -> (usize, usize) {
-        let bulletin_1 = get_text_with_fallback(self.bulletin_1_full, self.bulletin_1_short, max_width);
-        let bulletin_2 = get_text_with_fallback(self.bulletin_2_full, self.bulletin_2_short, max_width);
-        let bulletin_3 = get_text_with_fallback(self.bulletin_3_full, self.bulletin_3_short, max_width);
-        
-        let texts = &[self.usage_title, bulletin_1, bulletin_2, bulletin_3, self.bulletin_4];
+        let bulletin_1 =
+            get_text_with_fallback(self.bulletin_1_full, self.bulletin_1_short, max_width);
+        let bulletin_2 =
+            get_text_with_fallback(self.bulletin_2_full, self.bulletin_2_short, max_width);
+        let bulletin_3 =
+            get_text_with_fallback(self.bulletin_3_full, self.bulletin_3_short, max_width);
+
+        let texts = &[
+            self.usage_title,
+            bulletin_1,
+            bulletin_2,
+            bulletin_3,
+            self.bulletin_4,
+        ];
         let width = calculate_max_length(texts);
         let height = 5;
         (width, height)
@@ -201,19 +228,24 @@ impl Usage {
     }
 
     pub fn render_full_usage(&self, x: usize, y: usize, max_width: usize) {
-        let bulletin_1 = get_text_with_fallback(self.bulletin_1_full, self.bulletin_1_short, max_width);
-        let bulletin_2 = get_text_with_fallback(self.bulletin_2_full, self.bulletin_2_short, max_width);
-        let bulletin_3 = get_text_with_fallback(self.bulletin_3_full, self.bulletin_3_short, max_width);
+        let bulletin_1 =
+            get_text_with_fallback(self.bulletin_1_full, self.bulletin_1_short, max_width);
+        let bulletin_2 =
+            get_text_with_fallback(self.bulletin_2_full, self.bulletin_2_short, max_width);
+        let bulletin_3 =
+            get_text_with_fallback(self.bulletin_3_full, self.bulletin_3_short, max_width);
 
         let usage_title = ColoredTextBuilder::new(self.usage_title.to_string())
             .highlight_all(COLOR_INDEX_2)
-            .build().0;
-        
+            .build()
+            .0;
+
         let bulletin_1_text = Text::new(bulletin_1);
         let bulletin_2_text = Text::new(bulletin_2);
         let bulletin_3_text = Text::new(bulletin_3);
-        
-        let bulletin_4_text = create_highlighted_shortcut(self.bulletin_4, "<t>", COLOR_HIGHLIGHT).0;
+
+        let bulletin_4_text =
+            create_highlighted_shortcut(self.bulletin_4, "<t>", COLOR_HIGHLIGHT).0;
 
         let texts_and_positions = vec![
             (usage_title, y),
@@ -231,10 +263,12 @@ impl Usage {
     pub fn render_first_time_usage(&self, x: usize, y: usize) {
         let usage_title = ColoredTextBuilder::new(self.first_time_usage_title.to_string())
             .highlight_all(COLOR_INDEX_1)
-            .build().0;
-        
-        let bulletin_1 = create_highlighted_shortcut(self.first_time_bulletin_1, "<t>", COLOR_HIGHLIGHT).0;
-        
+            .build()
+            .0;
+
+        let bulletin_1 =
+            create_highlighted_shortcut(self.first_time_bulletin_1, "<t>", COLOR_HIGHLIGHT).0;
+
         print_text_with_coordinates(usage_title, x, y, None, None);
         print_text_with_coordinates(bulletin_1, x, y + 1, None, None);
     }
@@ -278,10 +312,20 @@ impl WebServerStatusSection {
         if let Some(error) = &self.web_server_error {
             max_len = std::cmp::max(max_len, self.web_server_error_component(error).1);
         } else if let Some(different_version) = &self.web_server_different_version_error {
-            max_len = std::cmp::max(max_len, self.web_server_different_version_error_component(different_version).1);
+            max_len = std::cmp::max(
+                max_len,
+                self.web_server_different_version_error_component(different_version)
+                    .1,
+            );
         } else if self.web_server_started {
-            let url_display = format_url_with_encryption_marker(&self.web_server_base_url, self.connection_is_unencrypted);
-            max_len = std::cmp::max(max_len, URL_TITLE.chars().count() + url_display.chars().count());
+            let url_display = format_url_with_encryption_marker(
+                &self.web_server_base_url,
+                self.connection_is_unencrypted,
+            );
+            max_len = std::cmp::max(
+                max_len,
+                URL_TITLE.chars().count() + url_display.chars().count(),
+            );
         } else {
             max_len = std::cmp::max(max_len, self.start_server_line().1);
         }
@@ -289,7 +333,12 @@ impl WebServerStatusSection {
         (max_len, 2)
     }
 
-    pub fn render_web_server_status(&mut self, x: usize, y: usize, hover_coordinates: Option<(usize, usize)>) {
+    pub fn render_web_server_status(
+        &mut self,
+        x: usize,
+        y: usize,
+        hover_coordinates: Option<(usize, usize)>,
+    ) {
         let web_server_status_line = self.web_server_status_line().0;
         print_text_with_coordinates(web_server_status_line, x, y, None, None);
 
@@ -297,7 +346,9 @@ impl WebServerStatusSection {
             let error_component = self.web_server_error_component(error).0;
             print_text_with_coordinates(error_component, x, y + 1, None, None);
         } else if let Some(different_version) = &self.web_server_different_version_error {
-            let version_error_component = self.web_server_different_version_error_component(different_version).0;
+            let version_error_component = self
+                .web_server_different_version_error_component(different_version)
+                .0;
             print_text_with_coordinates(version_error_component, x, y + 1, None, None);
         } else if self.web_server_started {
             self.render_server_url(x, y, hover_coordinates);
@@ -323,7 +374,8 @@ impl WebServerStatusSection {
             ColoredTextBuilder::new(full_text)
                 .highlight_range(0, URL_TITLE.chars().count(), COLOR_INDEX_0)
                 .highlight_substring(UNENCRYPTED_MARKER, COLOR_INDEX_1)
-                .build().0
+                .build()
+                .0
         } else {
             create_titled_text(URL_TITLE, server_url, COLOR_INDEX_0, COLOR_INDEX_1).0
         };
@@ -342,7 +394,12 @@ impl WebServerStatusSection {
         } else if let Some(different_version) = &self.web_server_different_version_error {
             self.create_incompatible_version_line(different_version)
         } else {
-            create_titled_text(WEB_SERVER_TITLE, WEB_SERVER_NOT_RUNNING, COLOR_INDEX_0, COLOR_HIGHLIGHT)
+            create_titled_text(
+                WEB_SERVER_TITLE,
+                WEB_SERVER_NOT_RUNNING,
+                COLOR_INDEX_0,
+                COLOR_HIGHLIGHT,
+            )
         }
     }
 
@@ -413,8 +470,14 @@ impl CurrentSessionSection {
         let mut max_len = self.get_session_status_line_length();
 
         if self.web_sharing.web_clients_allowed() && self.web_server_started {
-            let url_display = format_url_with_encryption_marker(&self.session_url(), self.connection_is_unencrypted);
-            max_len = std::cmp::max(max_len, SESSION_URL_TITLE.chars().count() + url_display.chars().count());
+            let url_display = format_url_with_encryption_marker(
+                &self.session_url(),
+                self.connection_is_unencrypted,
+            );
+            max_len = std::cmp::max(
+                max_len,
+                SESSION_URL_TITLE.chars().count() + url_display.chars().count(),
+            );
         } else if self.web_sharing.web_clients_allowed() {
             max_len = std::cmp::max(max_len, WEB_SERVER_OFFLINE.chars().count());
         } else {
@@ -432,13 +495,18 @@ impl CurrentSessionSection {
         }
     }
 
-    pub fn render_current_session_status(&mut self, x: usize, y: usize, hover_coordinates: Option<(usize, usize)>) {
+    pub fn render_current_session_status(
+        &mut self,
+        x: usize,
+        y: usize,
+        hover_coordinates: Option<(usize, usize)>,
+    ) {
         let status_line = match self.web_sharing {
             WebSharing::On => self.render_current_session_sharing().0,
             WebSharing::Disabled => self.render_sharing_is_disabled().0,
             WebSharing::Off => self.render_not_sharing().0,
         };
-        
+
         print_text_with_coordinates(status_line, x, y, None, None);
 
         if self.web_sharing.web_clients_allowed() && self.web_server_started {
@@ -452,7 +520,12 @@ impl CurrentSessionSection {
         }
     }
 
-    fn render_session_url(&mut self, x: usize, y: usize, hover_coordinates: Option<(usize, usize)>) {
+    fn render_session_url(
+        &mut self,
+        x: usize,
+        y: usize,
+        hover_coordinates: Option<(usize, usize)>,
+    ) {
         let session_url = self.session_url();
         let url_x = x + SESSION_URL_TITLE.chars().count();
         let url_width = session_url.chars().count();
@@ -468,9 +541,16 @@ impl CurrentSessionSection {
             ColoredTextBuilder::new(full_text)
                 .highlight_range(0, SESSION_URL_TITLE.chars().count(), COLOR_INDEX_0)
                 .highlight_substring(UNENCRYPTED_MARKER, COLOR_INDEX_1)
-                .build().0
+                .build()
+                .0
         } else {
-            create_titled_text(SESSION_URL_TITLE, &session_url, COLOR_INDEX_0, COLOR_INDEX_1).0
+            create_titled_text(
+                SESSION_URL_TITLE,
+                &session_url,
+                COLOR_INDEX_0,
+                COLOR_INDEX_1,
+            )
+            .0
         };
 
         print_text_with_coordinates(info_line, x, y + 1, None, None);
@@ -491,24 +571,43 @@ impl CurrentSessionSection {
     }
 
     fn render_sharing_is_disabled(&self) -> (Text, usize) {
-        create_titled_text(CURRENT_SESSION_TITLE, SHARING_DISABLED, COLOR_INDEX_0, COLOR_HIGHLIGHT)
+        create_titled_text(
+            CURRENT_SESSION_TITLE,
+            SHARING_DISABLED,
+            COLOR_INDEX_0,
+            COLOR_HIGHLIGHT,
+        )
     }
 
     fn render_not_sharing(&self) -> (Text, usize) {
-        create_titled_text(CURRENT_SESSION_TITLE, NOT_SHARING, COLOR_INDEX_0, COLOR_HIGHLIGHT)
+        create_titled_text(
+            CURRENT_SESSION_TITLE,
+            NOT_SHARING,
+            COLOR_INDEX_0,
+            COLOR_HIGHLIGHT,
+        )
     }
 
     fn session_url(&self) -> String {
-        let web_server_ip = self.web_server_ip
+        let web_server_ip = self
+            .web_server_ip
             .map(|i| i.to_string())
             .unwrap_or_else(|| "UNDEFINED".to_owned());
-        let web_server_port = self.web_server_port
+        let web_server_port = self
+            .web_server_port
             .map(|p| p.to_string())
             .unwrap_or_else(|| "UNDEFINED".to_owned());
-        let prefix = if self.connection_is_unencrypted { "http" } else { "https" };
+        let prefix = if self.connection_is_unencrypted {
+            "http"
+        } else {
+            "https"
+        };
         let session_name = self.session_name.as_deref().unwrap_or("");
 
-        format!("{}://{}:{}/{}", prefix, web_server_ip, web_server_port, session_name)
+        format!(
+            "{}://{}:{}/{}",
+            prefix, web_server_ip, web_server_port, session_name
+        )
     }
 
     fn press_space_to_share(&self) -> (Text, usize) {

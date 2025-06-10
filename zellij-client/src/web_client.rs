@@ -1,6 +1,3 @@
-//! The `[cli_client]` is used to attach to a running server session
-//! and dispatch actions, that are specified through the command line.
-
 mod control_message;
 
 use std::{
@@ -84,10 +81,138 @@ use tokio::{
 const BRACKETED_PASTE_START: [u8; 6] = [27, 91, 50, 48, 48, 126]; // \u{1b}[200~
 const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201~
 
+pub trait ClientOsApiFactory: Send + Sync + std::fmt::Debug {
+    fn create_client_os_api(&self) -> Result<Box<dyn ClientOsApi>, Box<dyn std::error::Error>>;
+}
+
+#[derive(Debug, Clone)]
+pub struct RealClientOsApiFactory;
+
+impl ClientOsApiFactory for RealClientOsApiFactory {
+    fn create_client_os_api(&self) -> Result<Box<dyn ClientOsApi>, Box<dyn std::error::Error>> {
+        get_client_os_input()
+            .map(|os_input| Box::new(os_input) as Box<dyn ClientOsApi>)
+            .map_err(|e| format!("Failed to create client OS API: {:?}", e).into())
+    }
+}
+
+pub trait SessionManager: Send + Sync + std::fmt::Debug {
+    fn session_exists(&self, session_name: &str) -> Result<bool, Box<dyn std::error::Error>>;
+    fn get_resurrection_layout(&self, session_name: &str) -> Option<Layout>;
+    fn spawn_session_if_needed(
+        &self,
+        session_name: &str,
+        path: String,
+        client_attributes: ClientAttributes,
+        config: &Config,
+        config_options: &Options,
+        is_web_client: bool,
+        os_input: Box<dyn ClientOsApi>,
+        requested_layout: Option<LayoutInfo>,
+    ) -> (ClientToServerMsg, PathBuf);
+}
+
+#[derive(Debug, Clone)]
+pub struct RealSessionManager;
+
+impl SessionManager for RealSessionManager {
+    fn session_exists(&self, session_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
+        session_exists(session_name).map_err(|e| format!("Session check failed: {:?}", e).into())
+    }
+
+    fn get_resurrection_layout(&self, session_name: &str) -> Option<Layout> {
+        resurrection_layout(session_name)
+    }
+
+    fn spawn_session_if_needed(
+        &self,
+        session_name: &str,
+        path: String,
+        client_attributes: ClientAttributes,
+        config: &Config,
+        config_options: &Options,
+        is_web_client: bool,
+        os_input: Box<dyn ClientOsApi>,
+        requested_layout: Option<LayoutInfo>,
+    ) -> (ClientToServerMsg, PathBuf) {
+        spawn_session_if_needed(
+            session_name,
+            path,
+            client_attributes,
+            config,
+            config_options,
+            is_web_client,
+            os_input,
+            requested_layout,
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MockSessionManager {
+    pub mock_sessions: HashMap<String, bool>,
+    pub mock_layouts: HashMap<String, Layout>,
+}
+
+impl MockSessionManager {
+    pub fn new() -> Self {
+        Self {
+            mock_sessions: HashMap::new(),
+            mock_layouts: HashMap::new(),
+        }
+    }
+
+    pub fn add_session(&mut self, name: String) {
+        self.mock_sessions.insert(name, true);
+    }
+
+    pub fn add_layout(&mut self, session_name: String, layout: Layout) {
+        self.mock_layouts.insert(session_name, layout);
+    }
+}
+
+impl SessionManager for MockSessionManager {
+    fn session_exists(&self, session_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
+        Ok(self
+            .mock_sessions
+            .get(session_name)
+            .copied()
+            .unwrap_or(false))
+    }
+
+    fn get_resurrection_layout(&self, session_name: &str) -> Option<Layout> {
+        self.mock_layouts.get(session_name).cloned()
+    }
+
+    fn spawn_session_if_needed(
+        &self,
+        session_name: &str,
+        _path: String,
+        client_attributes: ClientAttributes,
+        config: &Config,
+        config_options: &Options,
+        is_web_client: bool,
+        _os_input: Box<dyn ClientOsApi>,
+        _requested_layout: Option<LayoutInfo>,
+    ) -> (ClientToServerMsg, PathBuf) {
+        let mock_ipc_path = PathBuf::from(format!("/tmp/mock_zellij_{}", session_name));
+
+        let first_message = ClientToServerMsg::AttachClient(
+            client_attributes,
+            config.clone(),
+            config_options.clone(),
+            None,
+            None,
+            is_web_client,
+        );
+
+        (first_message, mock_ipc_path)
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 struct ConnectionTable {
-    // client_id_to_os_api: HashMap<String, Box<dyn ClientOsApi>>
-    client_id_to_os_api: HashMap<String, ClientChannels>, // TODO: rename
+    client_id_to_channels: HashMap<String, ClientChannels>,
 }
 
 #[derive(Debug, Clone)]
@@ -121,7 +246,7 @@ impl ClientChannels {
 
 impl ConnectionTable {
     pub fn add_new_client(&mut self, client_id: String, client_os_api: Box<dyn ClientOsApi>) {
-        self.client_id_to_os_api
+        self.client_id_to_channels
             .insert(client_id, ClientChannels::new(client_os_api));
     }
     pub fn add_client_control_tx(
@@ -129,7 +254,7 @@ impl ConnectionTable {
         client_id: &str,
         control_channel_tx: tokio::sync::mpsc::UnboundedSender<Message>,
     ) {
-        self.client_id_to_os_api
+        self.client_id_to_channels
             .get_mut(client_id)
             .map(|c| c.add_control_tx(control_channel_tx));
     }
@@ -138,18 +263,18 @@ impl ConnectionTable {
         client_id: &str,
         terminal_channel_tx: tokio::sync::mpsc::UnboundedSender<String>,
     ) {
-        self.client_id_to_os_api
+        self.client_id_to_channels
             .get_mut(client_id)
             .map(|c| c.add_terminal_tx(terminal_channel_tx));
     }
     pub fn get_client_os_api(&self, client_id: &str) -> Option<&Box<dyn ClientOsApi>> {
-        self.client_id_to_os_api.get(client_id).map(|c| &c.os_api)
+        self.client_id_to_channels.get(client_id).map(|c| &c.os_api)
     }
     pub fn get_client_terminal_tx(
         &self,
         client_id: &str,
     ) -> Option<tokio::sync::mpsc::UnboundedSender<String>> {
-        self.client_id_to_os_api
+        self.client_id_to_channels
             .get(client_id)
             .and_then(|c| c.terminal_channel_tx.clone())
     }
@@ -157,12 +282,12 @@ impl ConnectionTable {
         &self,
         client_id: &str,
     ) -> Option<tokio::sync::mpsc::UnboundedSender<Message>> {
-        self.client_id_to_os_api
+        self.client_id_to_channels
             .get(client_id)
             .and_then(|c| c.control_channel_tx.clone())
     }
     pub fn remove_client(&mut self, client_id: &str) {
-        self.client_id_to_os_api.remove(client_id);
+        self.client_id_to_channels.remove(client_id);
     }
 }
 
@@ -369,6 +494,8 @@ pub fn start_web_client(config: Config, config_options: Options, run_daemonized:
         config_options,
         listener,
         tls_config,
+        None, // session manager
+        None, // client os api factory
     ));
 }
 
@@ -386,6 +513,8 @@ struct AppState {
     config: Config,
     config_options: Options,
     server_handle: Handle,
+    session_manager: Arc<dyn SessionManager>,
+    client_os_api_factory: Arc<dyn ClientOsApiFactory>,
 }
 
 async fn serve_html(request: Request) -> Html<String> {
@@ -396,20 +525,29 @@ async fn serve_html(request: Request) -> Html<String> {
     html
 }
 
-async fn serve_web_client(
+pub async fn serve_web_client(
     config: Config,
     config_options: Options,
     listener: std::net::TcpListener,
     rustls_config: Option<RustlsConfig>,
+    session_manager: Option<Arc<dyn SessionManager>>,
+    client_os_api_factory: Option<Arc<dyn ClientOsApiFactory>>,
 ) {
     let connection_table = Arc::new(Mutex::new(ConnectionTable::default()));
     let server_handle = Handle::new();
+    let session_manager = session_manager.unwrap_or_else(|| Arc::new(RealSessionManager));
+    let client_os_api_factory =
+        client_os_api_factory.unwrap_or_else(|| Arc::new(RealClientOsApiFactory));
+
     let state = AppState {
         connection_table,
         config,
         config_options,
         server_handle: server_handle.clone(),
+        session_manager,
+        client_os_api_factory,
     };
+
     let app = Router::new()
         .route("/ws/control", any(ws_handler_control))
         .route("/ws/terminal", any(ws_handler_terminal))
@@ -506,14 +644,16 @@ async fn create_new_client(
     State(state): State<AppState>,
 ) -> Result<Json<CreateClientIdResponse>, (StatusCode, impl IntoResponse)> {
     let web_client_id = String::from(Uuid::new_v4());
-    let os_input = get_client_os_input()
+    let os_input = state
+        .client_os_api_factory
+        .create_client_os_api()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_string())))?;
 
     state
         .connection_table
         .lock()
         .unwrap()
-        .add_new_client(web_client_id.to_owned(), Box::new(os_input));
+        .add_new_client(web_client_id.to_owned(), os_input);
 
     Ok(Json(CreateClientIdResponse { web_client_id }))
 }
@@ -664,7 +804,9 @@ async fn handle_ws_terminal(
         state.config.clone(),
         state.config_options.clone(),
         web_client_id.clone(),
+        state.session_manager.clone(),
     );
+
     render_to_client(stdout_channel_rx, client_channel_tx);
 
     // Handle incoming messages (STDIN)
@@ -830,6 +972,7 @@ fn zellij_server_listener(
     config: Config,
     config_options: Options,
     web_client_id: String,
+    session_manager: Arc<dyn SessionManager>,
 ) {
     let _server_listener_thread = std::thread::Builder::new()
         .name("server_listener".to_string())
@@ -882,7 +1025,7 @@ fn zellij_server_listener(
                         .to_owned();
 
                     let is_web_client = true;
-                    let (first_message, zellij_ipc_pipe) = spawn_session_if_needed(
+                    let (first_message, zellij_ipc_pipe) = session_manager.spawn_session_if_needed(
                         &session_name,
                         path,
                         client_attributes,
@@ -1163,8 +1306,7 @@ fn spawn_session_if_needed(
             is_web_client,
         )
     } else {
-        let force_run_commands = false; // this can only be true through the CLI, so not relevant
-                                        // here
+        let force_run_commands = false;
         let resurrection_layout =
             resurrection_layout(&session_name).map(|mut resurrection_layout| {
                 if force_run_commands {
@@ -1192,7 +1334,7 @@ fn spawn_session_if_needed(
                     os_input.clone(),
                     config.clone(),
                     config_options.clone(),
-                    new_session_layout.ok().map(|(l, c)| l), // TODO: handle config
+                    new_session_layout.ok().map(|(l, c)| l),
                     client_attributes,
                 )
             },
@@ -1383,3 +1525,7 @@ fn token_is_valid(token: &str) -> bool {
         },
     }
 }
+
+#[cfg(test)]
+#[path = "./unit/web_client_tests.rs"]
+mod web_client_tests;

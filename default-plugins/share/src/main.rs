@@ -1,6 +1,6 @@
 mod main_screen;
-mod token_screen;
 mod token_management_screen;
+mod token_screen;
 mod ui_components;
 
 use std::net::IpAddr;
@@ -8,8 +8,8 @@ use zellij_tile::prelude::*;
 
 use std::collections::{BTreeMap, HashMap};
 
-use token_management_screen::TokenManagementScreen;
 use main_screen::MainScreen;
+use token_management_screen::TokenManagementScreen;
 use token_screen::TokenScreen;
 
 static WEB_SERVER_QUERY_DURATION: f64 = 0.4; // Doherty threshold
@@ -42,7 +42,7 @@ impl ZellijPlugin for App {
             Event::Mouse(mouse_event) => self.handle_mouse_event(mouse_event),
             Event::RunCommandResult(exit_code, _stdout, _stderr, context) => {
                 self.handle_command_result(exit_code, context)
-            }
+            },
             Event::FailedToStartWebServer(error) => self.handle_web_server_error(error),
             _ => false,
         }
@@ -99,29 +99,29 @@ impl App {
 
     fn handle_mode_update(&mut self, mode_info: ModeInfo) -> bool {
         let mut should_render = false;
-        
+
         self.state.session_name = mode_info.session_name;
-        
+
         if let Some(web_clients_allowed) = mode_info.web_clients_allowed {
             self.web_server.clients_allowed = web_clients_allowed;
             should_render = true;
         }
-        
+
         if let Some(web_sharing) = mode_info.web_sharing {
             self.web_server.sharing = web_sharing;
             should_render = true;
         }
-        
+
         if let Some(web_server_ip) = mode_info.web_server_ip {
             self.web_server.ip = Some(web_server_ip);
             should_render = true;
         }
-        
+
         if let Some(web_server_port) = mode_info.web_server_port {
             self.web_server.port = Some(web_server_port);
             should_render = true;
         }
-        
+
         if let Some(web_server_capability) = mode_info.web_server_capability {
             self.web_server.capability = web_server_capability;
             if self.web_server.capability && !self.state.timer_running {
@@ -130,7 +130,7 @@ impl App {
             }
             should_render = true;
         }
-        
+
         should_render
     }
 
@@ -140,15 +140,15 @@ impl App {
                 self.web_server.base_url = base_url;
                 self.web_server.started = true;
                 self.web_server.different_version_error = None;
-            }
+            },
             WebServerStatus::Offline => {
                 self.web_server.started = false;
                 self.web_server.different_version_error = None;
-            }
+            },
             WebServerStatus::DifferentVersion(version) => {
                 self.web_server.started = false;
                 self.web_server.different_version_error = Some(version);
-            }
+            },
         }
         true
     }
@@ -174,30 +174,30 @@ impl App {
             BareKey::Enter if key.has_no_modifiers() && !self.web_server.started => {
                 start_web_server();
                 false
-            }
+            },
             BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                 stop_web_server();
                 false
-            }
+            },
             BareKey::Char(' ') if key.has_no_modifiers() => {
                 self.toggle_session_sharing();
                 false
-            }
+            },
             BareKey::Char('t') if key.has_no_modifiers() => {
                 self.handle_token_action();
                 true
-            }
+            },
             BareKey::Esc if key.has_no_modifiers() => {
                 close_self();
                 false
-            }
+            },
             _ => false,
         }
     }
 
     fn toggle_session_sharing(&self) {
         match self.web_server.sharing {
-            WebSharing::Disabled => {}
+            WebSharing::Disabled => {},
             WebSharing::On => stop_sharing_current_session(),
             WebSharing::Off => share_current_session(),
         }
@@ -216,7 +216,7 @@ impl App {
             BareKey::Esc if key.has_no_modifiers() => {
                 self.change_to_previous_screen();
                 true
-            }
+            },
             _ => false,
         }
     }
@@ -233,24 +233,24 @@ impl App {
             BareKey::Char('n') if key.has_no_modifiers() => {
                 self.tokens.start_new_token_input();
                 true
-            }
+            },
             BareKey::Enter if key.has_no_modifiers() => self.handle_enter_key(),
             BareKey::Char('r') if key.has_no_modifiers() => {
                 self.tokens.start_rename_input();
                 true
-            }
+            },
             BareKey::Char('x') if key.has_no_modifiers() => self.revoke_selected_token(),
             BareKey::Char('x') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                 self.revoke_all_tokens();
                 true
-            }
+            },
             _ => false,
         }
     }
 
     fn handle_escape_key(&mut self) -> bool {
         let was_editing = self.tokens.cancel_input();
-        
+
         if !was_editing {
             self.change_to_main_screen();
         }
@@ -286,7 +286,7 @@ impl App {
                     if self.tokens.adjust_selection_after_list_change() {
                         self.change_to_main_screen();
                     }
-                }
+                },
                 Err(e) => self.web_server.error = Some(e),
             }
         }
@@ -301,7 +301,7 @@ impl App {
                         self.change_to_main_screen();
                     }
                     self.state.info = Some("Revoked. Connected clients not affected.".to_owned());
-                }
+                },
                 Err(e) => self.web_server.error = Some(e),
             }
             return true;
@@ -317,7 +317,7 @@ impl App {
                     self.change_to_main_screen();
                 }
                 self.state.info = Some("Revoked. Connected clients not affected.".to_owned());
-            }
+            },
             Err(e) => self.web_server.error = Some(e),
         }
     }
@@ -328,7 +328,7 @@ impl App {
             Mouse::Hover(line, column) => {
                 self.ui.hover_coordinates = Some((column, line as usize));
                 true
-            }
+            },
             _ => false,
         }
     }
@@ -345,7 +345,11 @@ impl App {
         false
     }
 
-    fn handle_command_result(&mut self, exit_code: Option<i32>, context: BTreeMap<String, String>) -> bool {
+    fn handle_command_result(
+        &mut self,
+        exit_code: Option<i32>,
+        context: BTreeMap<String, String>,
+    ) -> bool {
         if context.contains_key("xdg_open_cli") && exit_code == Some(0) {
             self.ui.link_executable = Some("xdg-open");
         } else if context.contains_key("open_cli") && exit_code == Some(0) {
@@ -372,8 +376,12 @@ impl App {
     fn render_no_capability_message(&self, rows: usize, cols: usize) {
         let full_text = "This version of Zellij was compiled without web sharing capabilities";
         let short_text = "No web server capabilities";
-        let text = if cols >= full_text.chars().count() { full_text } else { short_text };
-        
+        let text = if cols >= full_text.chars().count() {
+            full_text
+        } else {
+            short_text
+        };
+
         let text_element = Text::new(text).color_range(3, ..);
         let text_x = cols.saturating_sub(text.chars().count()) / 2;
         let text_y = rows / 2;
@@ -424,20 +432,18 @@ impl App {
             self.ui.hover_coordinates,
             &self.state.info,
             &self.ui.link_executable,
-        ).render(rows, cols);
+        )
+        .render(rows, cols);
 
         self.ui.currently_hovering_over_link = state_changes.currently_hovering_over_link;
-        self.ui.currently_hovering_over_unencrypted = state_changes.currently_hovering_over_unencrypted;
+        self.ui.currently_hovering_over_unencrypted =
+            state_changes.currently_hovering_over_unencrypted;
         self.ui.clickable_urls = state_changes.clickable_urls;
     }
 
     fn render_token_screen(&self, rows: usize, cols: usize, token: &str) {
-        let token_screen = TokenScreen::new(
-            token.to_string(),
-            self.web_server.error.clone(),
-            rows,
-            cols,
-        );
+        let token_screen =
+            TokenScreen::new(token.to_string(), self.web_server.error.clone(), rows, cols);
         token_screen.render();
     }
 
@@ -451,7 +457,8 @@ impl App {
             &self.state.info,
             rows,
             cols,
-        ).render();
+        )
+        .render();
     }
 
     fn retrieve_token_list(&mut self) {
@@ -504,8 +511,8 @@ impl TokenManager {
             Ok(tokens) => {
                 self.list = tokens;
                 Ok(())
-            }
-            Err(e) => Err(format!("Failed to retrieve login tokens: {}", e))
+            },
+            Err(e) => Err(format!("Failed to retrieve login tokens: {}", e)),
         }
     }
 
@@ -568,7 +575,7 @@ impl TokenManager {
                     name.push(c);
                     return true;
                 }
-            }
+            },
             BareKey::Backspace if key.has_no_modifiers() => {
                 if let Some(ref mut name) = self.entering_new_name {
                     name.pop();
@@ -578,16 +585,16 @@ impl TokenManager {
                     name.pop();
                     return true;
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
         false
     }
 
     fn finish_new_token_input(&mut self) -> Option<Option<String>> {
-        self.entering_new_name.take().map(|name| {
-            if name.is_empty() { None } else { Some(name) }
-        })
+        self.entering_new_name
+            .take()
+            .map(|name| if name.is_empty() { None } else { Some(name) })
     }
 
     fn finish_rename_input(&mut self) -> Option<String> {
@@ -621,7 +628,6 @@ impl Default for Screen {
         Screen::Main
     }
 }
-
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct CoordinatesInLine {

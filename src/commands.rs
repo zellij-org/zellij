@@ -198,7 +198,8 @@ pub(crate) fn stop_web_server(opts: CliArgs) -> Result<(), String> {
         .web_server_ip
         .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
     let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
-    let has_certificate = config_options.web_server_cert.is_some() && config_options.web_server_key.is_some();
+    let has_certificate =
+        config_options.web_server_cert.is_some() && config_options.web_server_key.is_some();
     let enforce_https_for_localhost = config_options.enforce_https_for_localhost.unwrap_or(false);
     let web_server_base_url = web_server_base_url(
         web_server_ip,
@@ -211,10 +212,7 @@ pub(crate) fn stop_web_server(opts: CliArgs) -> Result<(), String> {
         .redirect_policy(RedirectPolicy::Follow)
         .build()
         .map_err(|e| e.to_string())?;
-    let request = Request::post(format!(
-        "{}/command/shutdown",
-        web_server_base_url
-    ));
+    let request = Request::post(format!("{}/command/shutdown", web_server_base_url));
     let req = request.body(()).map_err(|e| e.to_string())?;
     let res = http_client.send(req).map_err(|e| e.to_string())?;
     let status_code = res.status();
@@ -246,10 +244,7 @@ pub(crate) fn web_server_status(web_server_base_url: &str) -> Result<String, Str
         .redirect_policy(RedirectPolicy::Follow)
         .build()
         .map_err(|e| e.to_string())?;
-    let request = Request::get(format!(
-        "{}/info/version",
-        web_server_base_url,
-    ));
+    let request = Request::get(format!("{}/info/version", web_server_base_url,));
     let req = request.body(()).map_err(|e| e.to_string())?;
     let mut res = http_client.send(req).map_err(|e| e.to_string())?;
     let status_code = res.status();

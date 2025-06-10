@@ -31,7 +31,8 @@ pub struct MainScreen<'a> {
 
 impl<'a> MainScreen<'a> {
     const TITLE_TEXT: &'static str = "Share Session Locally in the Browser";
-    const WARNING_TEXT: &'static str = "[*] Connection unencrypted. Consider using an SSL certificate.";
+    const WARNING_TEXT: &'static str =
+        "[*] Connection unencrypted. Consider using an SSL certificate.";
     const MORE_INFO_TEXT: &'static str = "More info: ";
     const SSL_URL: &'static str = "https://zellij.dev/documentation/web-server-ssl";
     const HELP_TEXT_WITH_CLICK: &'static str = "Help: Click or Shift-Click to open in browser";
@@ -75,7 +76,7 @@ impl<'a> MainScreen<'a> {
 
         let layout = self.calculate_layout(rows, cols);
         self.render_content(&layout, &mut state);
-        
+
         state
     }
 
@@ -98,20 +99,21 @@ impl<'a> MainScreen<'a> {
         );
 
         let title_width = Self::TITLE_TEXT.chars().count();
-        
-        let (web_server_width, web_server_height) = 
+
+        let (web_server_width, web_server_height) =
             web_server_status_section.web_server_status_width_and_height();
-        let (current_session_width, current_session_height) = 
+        let (current_session_width, current_session_height) =
             current_session_section.current_session_status_width_and_height();
         let (usage_width, usage_height) = usage.usage_width_and_height(cols);
-        
+
         let mut max_width = title_width
             .max(web_server_width)
             .max(current_session_width)
             .max(usage_width);
-        
-        let mut total_height = 2 + web_server_height + 1 + current_session_height + 1 + usage_height;
-        
+
+        let mut total_height =
+            2 + web_server_height + 1 + current_session_height + 1 + usage_height;
+
         if self.connection_is_unencrypted() {
             let warning_width = self.unencrypted_warning_width();
             max_width = max_width.max(warning_width);
@@ -130,15 +132,15 @@ impl<'a> MainScreen<'a> {
 
     fn render_content(&self, layout: &Layout, state: &mut MainScreenState) {
         let mut current_y = layout.base_y;
-        
+
         self.render_title(layout, current_y);
         current_y += 2;
-        
+
         current_y = self.render_web_server_section(layout, current_y, state);
         current_y = self.render_current_session_section(layout, current_y, state);
         current_y = self.render_usage_section(layout, current_y);
         current_y = self.render_warnings_and_help(layout, current_y, state);
-        
+
         self.render_info(layout, current_y);
     }
 
@@ -147,7 +149,12 @@ impl<'a> MainScreen<'a> {
         print_text_with_coordinates(title, layout.base_x, y, None, None);
     }
 
-    fn render_web_server_section(&self, layout: &Layout, y: usize, state: &mut MainScreenState) -> usize {
+    fn render_web_server_section(
+        &self,
+        layout: &Layout,
+        y: usize,
+        state: &mut MainScreenState,
+    ) -> usize {
         let mut web_server_status_section = WebServerStatusSection::new(
             self.web_server_started,
             self.web_server_error.clone(),
@@ -155,24 +162,31 @@ impl<'a> MainScreen<'a> {
             self.web_server_base_url.clone(),
             self.connection_is_unencrypted(),
         );
-        
+
         web_server_status_section.render_web_server_status(
             layout.base_x,
             y,
             self.hover_coordinates,
         );
-        
-        state.currently_hovering_over_link |= web_server_status_section.currently_hovering_over_link;
-        state.currently_hovering_over_unencrypted |= web_server_status_section.currently_hovering_over_unencrypted;
-        
+
+        state.currently_hovering_over_link |=
+            web_server_status_section.currently_hovering_over_link;
+        state.currently_hovering_over_unencrypted |=
+            web_server_status_section.currently_hovering_over_unencrypted;
+
         for (coordinates, url) in web_server_status_section.clickable_urls {
             state.clickable_urls.insert(coordinates, url);
         }
-        
+
         y + layout.web_server_height + 1
     }
 
-    fn render_current_session_section(&self, layout: &Layout, y: usize, state: &mut MainScreenState) -> usize {
+    fn render_current_session_section(
+        &self,
+        layout: &Layout,
+        y: usize,
+        state: &mut MainScreenState,
+    ) -> usize {
         let mut current_session_section = CurrentSessionSection::new(
             self.web_server_started,
             self.web_server_ip,
@@ -181,19 +195,19 @@ impl<'a> MainScreen<'a> {
             self.web_sharing,
             self.connection_is_unencrypted(),
         );
-        
+
         current_session_section.render_current_session_status(
             layout.base_x,
             y,
             self.hover_coordinates,
         );
-        
+
         state.currently_hovering_over_link |= current_session_section.currently_hovering_over_link;
-        
+
         for (coordinates, url) in current_session_section.clickable_urls {
             state.clickable_urls.insert(coordinates, url);
         }
-        
+
         y + layout.web_server_height + 1
     }
 
@@ -203,7 +217,12 @@ impl<'a> MainScreen<'a> {
         y + layout.usage_height + 1
     }
 
-    fn render_warnings_and_help(&self, layout: &Layout, mut y: usize, state: &mut MainScreenState) -> usize {
+    fn render_warnings_and_help(
+        &self,
+        layout: &Layout,
+        mut y: usize,
+        state: &mut MainScreenState,
+    ) -> usize {
         if self.connection_is_unencrypted() && self.web_server_started {
             self.render_unencrypted_warning(layout.base_x, y, state);
             y += 3;
@@ -213,7 +232,7 @@ impl<'a> MainScreen<'a> {
             self.render_link_help(layout.base_x, y);
             y += 3;
         }
-        
+
         y
     }
 
@@ -226,25 +245,28 @@ impl<'a> MainScreen<'a> {
 
     fn unencrypted_warning_width(&self) -> usize {
         let more_info_line = format!("{}{}", Self::MORE_INFO_TEXT, Self::SSL_URL);
-        std::cmp::max(Self::WARNING_TEXT.chars().count(), more_info_line.chars().count())
+        std::cmp::max(
+            Self::WARNING_TEXT.chars().count(),
+            more_info_line.chars().count(),
+        )
     }
 
     fn render_unencrypted_warning(&self, x: usize, y: usize, state: &mut MainScreenState) {
         let warning_text = Text::new(Self::WARNING_TEXT).color_range(1, ..3);
         let more_info_line = Text::new(format!("{}{}", Self::MORE_INFO_TEXT, Self::SSL_URL));
-        
+
         let url_x = x + Self::MORE_INFO_TEXT.chars().count();
         let url_y = y + 1;
         let url_width = Self::SSL_URL.chars().count();
-        
+
         state.clickable_urls.insert(
             CoordinatesInLine::new(url_x, url_y, url_width),
             Self::SSL_URL.to_owned(),
         );
-        
+
         print_text_with_coordinates(warning_text, x, y, None, None);
         print_text_with_coordinates(more_info_line, x, y + 1, None, None);
-        
+
         if hovering_on_line(url_x, url_y, url_width, self.hover_coordinates) {
             state.currently_hovering_over_link = true;
             render_text_with_underline(url_x, url_y, Self::SSL_URL);
@@ -257,8 +279,7 @@ impl<'a> MainScreen<'a> {
                 .color_range(3, 6..=10)
                 .color_range(3, 15..=25)
         } else {
-            Text::new(Self::HELP_TEXT_SHIFT_ONLY)
-                .color_range(3, 6..=16)
+            Text::new(Self::HELP_TEXT_SHIFT_ONLY).color_range(3, 6..=16)
         };
         print_text_with_coordinates(help_text, x, y, None, None);
     }

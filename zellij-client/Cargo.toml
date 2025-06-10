@@ -42,6 +42,11 @@ tower-http = { version = "0.6.4", features = ["cors"] }
 
 [dev-dependencies]
 insta = "1.6.0"
+isahc = { workspace = true }
+tokio-tungstenite = "0.20"
+futures-util = "0.3"
+urlencoding = "2.1"
+serde_json = "1.0"
 
 [features]
 unstable = []
