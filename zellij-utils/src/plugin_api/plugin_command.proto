@@ -491,6 +491,7 @@ message MessageToPluginPayload {
   repeated ContextItem message_args = 5;
   optional NewPluginArgs new_plugin_args = 6;
   optional uint32 destination_plugin_id = 7;
+  optional FloatingPaneCoordinates floating_pane_coordinates = 8;
 }
 
 message NewPluginArgs {
