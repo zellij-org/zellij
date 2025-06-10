@@ -1,5 +1,5 @@
 use super::*;
-use super::{serve_web_client, MockSessionManager};
+use super::serve_web_client;
 use futures_util::{SinkExt, StreamExt};
 use isahc::prelude::*;
 use serde_json;
@@ -9,6 +9,7 @@ use std::time::Duration;
 use tokio::time::timeout;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use zellij_utils::{consts::VERSION, input::config::Config, input::options::Options};
+use zellij_utils::input::layout::Layout;
 
 use crate::os_input_output::ClientOsApi;
 use crate::web_client::control_message::{
@@ -17,9 +18,9 @@ use crate::web_client::control_message::{
 };
 use crate::web_client::ClientOsApiFactory;
 use zellij_utils::{
-    data::Palette,
+    data::{Palette, LayoutInfo},
     errors::ErrorContext,
-    ipc::{ClientToServerMsg, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ServerToClientMsg, ClientAttributes},
     pane_size::Size,
     web_authentication_tokens::{create_token, delete_db, revoke_token},
 };
@@ -1439,6 +1440,66 @@ mod web_client_tests {
         let _ = valid_terminal_sink.close().await;
         server_handle.abort();
         revoke_token(test_token_name).expect("Failed to revoke test token");
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MockSessionManager {
+    pub mock_sessions: HashMap<String, bool>,
+    pub mock_layouts: HashMap<String, Layout>,
+}
+
+impl MockSessionManager {
+    pub fn new() -> Self {
+        Self {
+            mock_sessions: HashMap::new(),
+            mock_layouts: HashMap::new(),
+        }
+    }
+
+    pub fn add_session(&mut self, name: String) {
+        self.mock_sessions.insert(name, true);
+    }
+
+}
+
+#[cfg(test)]
+impl SessionManager for MockSessionManager {
+    fn session_exists(&self, session_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
+        Ok(self
+            .mock_sessions
+            .get(session_name)
+            .copied()
+            .unwrap_or(false))
+    }
+
+    fn get_resurrection_layout(&self, session_name: &str) -> Option<Layout> {
+        self.mock_layouts.get(session_name).cloned()
+    }
+
+    fn spawn_session_if_needed(
+        &self,
+        session_name: &str,
+        _path: String,
+        client_attributes: ClientAttributes,
+        config: &Config,
+        config_options: &Options,
+        is_web_client: bool,
+        _os_input: Box<dyn ClientOsApi>,
+        _requested_layout: Option<LayoutInfo>,
+    ) -> (ClientToServerMsg, PathBuf) {
+        let mock_ipc_path = PathBuf::from(format!("/tmp/mock_zellij_{}", session_name));
+
+        let first_message = ClientToServerMsg::AttachClient(
+            client_attributes,
+            config.clone(),
+            config_options.clone(),
+            None,
+            None,
+            is_web_client,
+        );
+
+        (first_message, mock_ipc_path)
     }
 }
 
