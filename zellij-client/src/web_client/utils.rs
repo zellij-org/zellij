@@ -1,7 +1,7 @@
-use std::net::IpAddr;
 use axum::http::Request;
 use axum_extra::extract::cookie::Cookie;
 use std::collections::HashMap;
+use std::net::IpAddr;
 
 pub fn get_mime_type(ext: Option<&str>) -> &str {
     match ext {
@@ -72,14 +72,4 @@ pub fn terminal_init_messages() -> Vec<&'static str> {
         enter_kitty_keyboard_mode,
         enable_mouse_mode,
     ]
-}
-
-pub fn token_is_valid(token: &str) -> bool {
-    match zellij_utils::web_authentication_tokens::validate_token(token) {
-        Ok(is_valid) => is_valid,
-        Err(e) => {
-            log::error!("Failed to validate token: {}", e);
-            false
-        },
-    }
 }

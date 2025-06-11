@@ -1,6 +1,6 @@
-use crate::web_client::control_message::WebServerToWebClientControlMessage;
 use crate::os_input_output::ClientOsApi;
 use crate::report_changes_in_config_file;
+use crate::web_client::control_message::WebServerToWebClientControlMessage;
 use crate::web_client::session_management::build_initial_connection;
 use crate::web_client::types::{ClientConnectionBus, ConnectionTable, SessionManager};
 use crate::web_client::utils::terminal_init_messages;
@@ -30,7 +30,8 @@ pub fn zellij_server_listener(
         .name("server_listener".to_string())
         .spawn({
             move || {
-                let mut client_connection_bus = ClientConnectionBus::new(&web_client_id, &connection_table);
+                let mut client_connection_bus =
+                    ClientConnectionBus::new(&web_client_id, &connection_table);
                 let mut reconnect_to_session = match build_initial_connection(session_name) {
                     Ok(initial_session_connection) => initial_session_connection,
                     Err(e) => {
@@ -94,12 +95,15 @@ pub fn zellij_server_listener(
                     let _config_file_watcher =
                         report_changes_in_config_file(&CliArgs::default(), &os_input);
 
-                    client_connection_bus.send_control(WebServerToWebClientControlMessage::SwitchedSession { new_session_name: session_name.clone() });
+                    client_connection_bus.send_control(
+                        WebServerToWebClientControlMessage::SwitchedSession {
+                            new_session_name: session_name.clone(),
+                        },
+                    );
 
                     loop {
                         match os_input.recv_from_server() {
-                            Some((ServerToClientMsg::UnblockInputThread, _)) => {
-                            },
+                            Some((ServerToClientMsg::UnblockInputThread, _)) => {},
                             Some((ServerToClientMsg::Exit(exit_reason), _)) => {
                                 handle_exit_reason(&mut client_connection_bus, exit_reason);
                                 os_input.send_to_server(ClientToServerMsg::ClientExited);
@@ -122,14 +126,20 @@ pub fn zellij_server_listener(
                                 handle_config_write(&os_input, config);
                             },
                             Some((ServerToClientMsg::QueryTerminalSize, _)) => {
-                                client_connection_bus.send_control(WebServerToWebClientControlMessage::QueryTerminalSize);
-                            }
+                                client_connection_bus.send_control(
+                                    WebServerToWebClientControlMessage::QueryTerminalSize,
+                                );
+                            },
                             Some((ServerToClientMsg::Log(lines), _)) => {
-                                client_connection_bus.send_control(WebServerToWebClientControlMessage::Log{lines});
-                            }
+                                client_connection_bus.send_control(
+                                    WebServerToWebClientControlMessage::Log { lines },
+                                );
+                            },
                             Some((ServerToClientMsg::LogError(lines), _)) => {
-                                client_connection_bus.send_control(WebServerToWebClientControlMessage::LogError{lines});
-                            }
+                                client_connection_bus.send_control(
+                                    WebServerToWebClientControlMessage::LogError { lines },
+                                );
+                            },
                             _ => {},
                         }
                     }
@@ -144,15 +154,20 @@ pub fn zellij_server_listener(
 fn handle_exit_reason(client_connection_bus: &mut ClientConnectionBus, exit_reason: ExitReason) {
     match exit_reason {
         ExitReason::WebClientsForbidden => {
-            client_connection_bus.send_stdout(format!("\u{1b}[2J\n Web Clients are not allowed to attach to this session."));
-        }
+            client_connection_bus.send_stdout(format!(
+                "\u{1b}[2J\n Web Clients are not allowed to attach to this session."
+            ));
+        },
         ExitReason::Error(e) => {
             let goto_start_of_last_line = format!("\u{1b}[{};{}H", 1, 1);
             let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
             let disable_mouse = "\u{1b}[?1006l\u{1b}[?1015l\u{1b}[?1003l\u{1b}[?1002l\u{1b}[?1000l";
             let error = format!(
                 "{}{}\n{}{}\n",
-                disable_mouse, clear_client_terminal_attributes, goto_start_of_last_line, e.to_string().replace("\n", "\n\r")
+                disable_mouse,
+                clear_client_terminal_attributes,
+                goto_start_of_last_line,
+                e.to_string().replace("\n", "\n\r")
             );
             client_connection_bus.send_stdout(format!("\u{1b}[2J\n{}", error));
         },
@@ -163,22 +178,15 @@ fn handle_exit_reason(client_connection_bus: &mut ClientConnectionBus, exit_reas
 fn handle_config_write(os_input: &Box<dyn ClientOsApi>, config: String) {
     match Config::write_config_to_disk(config, &CliArgs::default()) {
         Ok(written_config) => {
-            let _ = os_input.send_to_server(
-                ClientToServerMsg::ConfigWrittenToDisk(written_config),
-            );
+            let _ = os_input.send_to_server(ClientToServerMsg::ConfigWrittenToDisk(written_config));
         },
         Err(e) => {
             let error_path = e
                 .as_ref()
                 .map(|p| p.display().to_string())
                 .unwrap_or_else(String::new);
-            log::error!(
-                "Failed to write config to disk: {}",
-                error_path
-            );
-            let _ = os_input.send_to_server(
-                ClientToServerMsg::FailedToWriteConfigToDisk(e),
-            );
+            log::error!("Failed to write config to disk: {}", error_path);
+            let _ = os_input.send_to_server(ClientToServerMsg::FailedToWriteConfigToDisk(e));
         },
     }
 }

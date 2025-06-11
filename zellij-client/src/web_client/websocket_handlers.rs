@@ -2,20 +2,22 @@ use crate::web_client::control_message::{
     SetConfigPayload, WebClientToWebServerControlMessage,
     WebClientToWebServerControlMessagePayload, WebServerToWebClientControlMessage,
 };
-use crate::web_client::message_handlers::{parse_stdin, render_to_client, send_control_messages_to_client};
+use crate::web_client::message_handlers::{
+    parse_stdin, render_to_client, send_control_messages_to_client,
+};
 use crate::web_client::server_listener::zellij_server_listener;
 use crate::web_client::types::{AppState, TerminalParams};
 
 use axum::{
-    extract::{ws::{Message, WebSocket, WebSocketUpgrade}, Path as AxumPath, Query, State},
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        Path as AxumPath, Query, State,
+    },
     response::IntoResponse,
 };
 use futures::StreamExt;
 use log::info;
-use zellij_utils::{
-    input::mouse::MouseEvent,
-    ipc::ClientToServerMsg,
-};
+use zellij_utils::{input::mouse::MouseEvent, ipc::ClientToServerMsg};
 
 pub async fn ws_handler_control(
     ws: WebSocketUpgrade,

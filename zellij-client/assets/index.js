@@ -173,9 +173,7 @@ document.addEventListener("DOMContentLoaded", async (event) => {
       ? `${ws_url_prefix}://${window.location.host}/ws/terminal`
       : `${ws_url_prefix}://${window.location.host}/ws/terminal/${session_name}`;
 
-    let query_string = has_authentication_cookie
-      ? `?web_client_id=${encodeURIComponent(web_client_id)}`
-      : `?web_client_id=${encodeURIComponent(web_client_id)}&token=${encodeURIComponent(token)}`;
+    let query_string = `?web_client_id=${encodeURIComponent(web_client_id)}`;
     const ws_terminal_url = `${url}${query_string}`;
 
     let ws_terminal = new WebSocket(ws_terminal_url);
@@ -314,9 +312,7 @@ document.addEventListener("DOMContentLoaded", async (event) => {
         //         );
         if (own_web_client_id == "") {
             own_web_client_id = web_client_id;
-            const ws_control_url = has_authentication_cookie
-              ? `${ws_url_prefix}://${window.location.host}/ws/control`
-              : `${ws_url_prefix}://${window.location.host}/ws/control?token=${encodeURIComponent(token)}`;
+            const ws_control_url = `${ws_url_prefix}://${window.location.host}/ws/control`;
             ws_control = new WebSocket(ws_control_url);
             start_ws_control();
         }
@@ -356,16 +352,32 @@ function initTerminal() {
 
 async function get_client_id(token, rememberMe, has_authentication_cookie) {
     let url_prefix = is_https() ? "https" : "http";
-    let headers = has_authentication_cookie
-      ? { "Content-Type": "application/json" }
-      : {
-        "Content-Type": "application/json",
-        'Authorization': `Bearer ${token}`,
-        'X-Remember-Me': rememberMe ? 'true' : 'false'
-      };
+    if (!has_authentication_cookie) {
+       let login_res = await fetch(`${url_prefix}://${window.location.host}/command/login`, {
+         method: 'POST',
+         headers: {
+           'Content-Type': 'application/json',
+         },
+         body: JSON.stringify({
+           auth_token: token,
+           remember_me: rememberMe ? true : false
+         }),
+         credentials: 'include'
+      });
+
+      if (login_res.status === 401) {
+        await showErrorModal("Error", "Unauthorized or revoked login token.");
+        return;
+      } else if (!login_res.ok) {
+        await showErrorModal("Error", `Error ${login_res.status} connecting to server.`);
+        return;
+      }
+    }
     let data = await fetch(`${url_prefix}://${window.location.host}/session`, {
         method: "POST",
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({}),
     });
     if (data.status === 401) {

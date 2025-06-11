@@ -1,16 +1,16 @@
+use axum::extract::ws::Message;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc::{UnboundedSender};
-use axum::extract::ws::Message;
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::os_input_output::ClientOsApi;
+use std::path::PathBuf;
 use zellij_utils::{
     data::LayoutInfo,
     input::{config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg},
 };
-use std::path::PathBuf;
 
 pub trait ClientOsApiFactory: Send + Sync + std::fmt::Debug {
     fn create_client_os_api(&self) -> Result<Box<dyn ClientOsApi>, Box<dyn std::error::Error>>;
@@ -29,7 +29,10 @@ impl ClientOsApiFactory for RealClientOsApiFactory {
 
 pub trait SessionManager: Send + Sync + std::fmt::Debug {
     fn session_exists(&self, session_name: &str) -> Result<bool, Box<dyn std::error::Error>>;
-    fn get_resurrection_layout(&self, session_name: &str) -> Option<zellij_utils::input::layout::Layout>;
+    fn get_resurrection_layout(
+        &self,
+        session_name: &str,
+    ) -> Option<zellij_utils::input::layout::Layout>;
     fn spawn_session_if_needed(
         &self,
         session_name: &str,
@@ -48,10 +51,14 @@ pub struct RealSessionManager;
 
 impl SessionManager for RealSessionManager {
     fn session_exists(&self, session_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
-        zellij_utils::sessions::session_exists(session_name).map_err(|e| format!("Session check failed: {:?}", e).into())
+        zellij_utils::sessions::session_exists(session_name)
+            .map_err(|e| format!("Session check failed: {:?}", e).into())
     }
 
-    fn get_resurrection_layout(&self, session_name: &str) -> Option<zellij_utils::input::layout::Layout> {
+    fn get_resurrection_layout(
+        &self,
+        session_name: &str,
+    ) -> Option<zellij_utils::input::layout::Layout> {
         zellij_utils::sessions::resurrection_layout(session_name)
     }
 
@@ -99,11 +106,11 @@ impl ClientChannels {
             terminal_channel_tx: None,
         }
     }
-    
+
     pub fn add_control_tx(&mut self, control_channel_tx: UnboundedSender<Message>) {
         self.control_channel_tx = Some(control_channel_tx);
     }
-    
+
     pub fn add_terminal_tx(&mut self, terminal_channel_tx: UnboundedSender<String>) {
         self.terminal_channel_tx = Some(terminal_channel_tx);
     }
@@ -171,6 +178,18 @@ pub struct CreateClientIdResponse {
 #[derive(Deserialize)]
 pub struct TerminalParams {
     pub web_client_id: String,
+}
+
+#[derive(Deserialize)]
+pub struct LoginRequest {
+    pub auth_token: String,
+    pub remember_me: Option<bool>,
+}
+
+#[derive(Serialize)]
+pub struct LoginResponse {
+    pub success: bool,
+    pub message: String,
 }
 
 pub const BRACKETED_PASTE_START: [u8; 6] = [27, 91, 50, 48, 48, 126]; // \u{1b}[200~

@@ -1,21 +1,17 @@
-use crate::keyboard_parser::KittyKeyboardParser;
 use crate::input_handler::from_termwiz;
-use crate::web_client::types::BRACKETED_PASTE_START;
-use crate::web_client::types::BRACKETED_PASTE_END;
+use crate::keyboard_parser::KittyKeyboardParser;
 use crate::os_input_output::ClientOsApi;
+use crate::web_client::types::BRACKETED_PASTE_END;
+use crate::web_client::types::BRACKETED_PASTE_START;
 
 use zellij_utils::{
-    input::{
-        actions::Action,
-        cast_termwiz_key,
-        mouse::MouseEvent,
-    },
+    input::{actions::Action, cast_termwiz_key, mouse::MouseEvent},
     ipc::ClientToServerMsg,
 };
 
-use termwiz::input::{InputEvent, InputParser};
-use futures::{prelude::stream::SplitSink, SinkExt};
 use axum::extract::ws::{Message, WebSocket};
+use futures::{prelude::stream::SplitSink, SinkExt};
+use termwiz::input::{InputEvent, InputParser};
 use tokio::sync::mpsc::UnboundedReceiver;
 
 pub fn render_to_client(

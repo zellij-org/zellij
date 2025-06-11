@@ -33,15 +33,17 @@ use interprocess::unnamed_pipe::pipe;
 use std::io::{prelude::*, BufRead, BufReader};
 use tokio::runtime::Runtime;
 use tower_http::cors::CorsLayer;
-use zellij_utils::{
-    input::{config::Config, options::Options},
-};
+use zellij_utils::input::{config::Config, options::Options};
 
 use authentication::auth_middleware;
 use http_handlers::{
-    create_new_client, get_static_asset, send_shutdown_signal, serve_html, version_handler,
+    create_new_client, get_static_asset, login_handler, send_shutdown_signal, serve_html,
+    version_handler,
 };
-use types::{AppState, ClientOsApiFactory, ConnectionTable, RealClientOsApiFactory, RealSessionManager, SessionManager};
+use types::{
+    AppState, ClientOsApiFactory, ConnectionTable, RealClientOsApiFactory, RealSessionManager,
+    SessionManager,
+};
 use utils::should_use_https;
 use websocket_handlers::{ws_handler_control, ws_handler_terminal};
 
@@ -175,6 +177,7 @@ pub async fn serve_web_client(
         .route("/", get(serve_html))
         .route("/{session}", get(serve_html))
         .route("/assets/{*path}", get(get_static_asset))
+        .route("/command/login", post(login_handler))
         .route("/info/version", get(version_handler))
         .route("/command/shutdown", post(send_shutdown_signal))
         .layer(CorsLayer::permissive()) // TODO: configure properly
