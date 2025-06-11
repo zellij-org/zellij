@@ -1,10 +1,7 @@
 // TODO: gate this file behind web_server_compatibility
-use crate::consts::{WEBSERVER_SOCKET_PATH, ZELLIJ_SOCK_DIR};
+use crate::consts::WEBSERVER_SOCKET_PATH;
 use crate::errors::prelude::*;
-use crate::ipc::{
-    create_webserver_sender, send_webserver_instruction, ClientToServerMsg,
-    InstructionForWebServer, IpcSenderWithContext,
-};
+use crate::ipc::{create_webserver_sender, send_webserver_instruction, InstructionForWebServer};
 use std::fs;
 use std::os::unix::fs::FileTypeExt;
 
