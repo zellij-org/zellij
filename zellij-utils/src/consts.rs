@@ -169,5 +169,6 @@ mod unix_only {
             ipc_dir.push(VERSION);
             ipc_dir
         };
+        pub static ref WEBSERVER_SOCKET_PATH: PathBuf = ZELLIJ_SOCK_DIR.join("web_server_bus");
     }
 }

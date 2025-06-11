@@ -451,13 +451,8 @@ pub(crate) fn background_jobs_main(
                                             Event::WebServerStatus(WebServerStatus::Offline),
                                         )]));
                                 } else {
-                                    let _ =
-                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                            None,
-                                            None,
-                                            // TODO: rename FailedToStartWebServer to WebServerError
-                                            Event::FailedToStartWebServer(e.to_string()),
-                                        )]));
+                                    // no-op - otherwise we'll get errors if we were mid-request
+                                    // (eg. when the server was shut down by a user action)
                                 }
                             },
                         }

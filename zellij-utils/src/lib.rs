@@ -28,6 +28,8 @@ pub mod logging; // Requires log4rs
 pub mod sessions;
 #[cfg(not(target_family = "wasm"))]
 pub mod web_authentication_tokens;
+#[cfg(not(target_family = "wasm"))]
+pub mod web_server_commands;
 
 // TODO(hartan): Remove this re-export for the next minor release.
 pub use ::prost;

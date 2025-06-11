@@ -1,23 +1,25 @@
 //! IPC stuff for starting to split things into a client and server model.
 use crate::{
     cli::CliArgs,
+    consts::{WEBSERVER_SOCKET_PATH, ZELLIJ_SOCK_DIR},
     data::{ClientId, ConnectToSession, KeyWithModifier, Style},
     errors::{get_current_ctx, prelude::*, ErrorContext},
     input::config::Config,
     input::{actions::Action, layout::Layout, options::Options, plugins::PluginAliases},
     pane_size::{Size, SizeInPixels},
 };
-use interprocess::local_socket::LocalSocketStream;
+use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
 use log::warn;
 use nix::unistd::dup;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Error, Formatter},
-    io::{self, Write},
+    io::{self, BufReader, BufWriter, Write},
     marker::PhantomData,
     os::unix::io::{AsRawFd, FromRawFd},
     path::PathBuf,
 };
+use uuid::Uuid;
 
 type SessionId = u64;
 
@@ -250,4 +252,24 @@ where
         let socket = unsafe { LocalSocketStream::from_raw_fd(dup_sock) };
         IpcSenderWithContext::new(socket)
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum InstructionForWebServer {
+    ShutdownWebServer,
+}
+
+pub fn create_webserver_sender(path: &str) -> Result<BufWriter<LocalSocketStream>> {
+    let stream = LocalSocketStream::connect(path)?;
+    Ok(BufWriter::new(stream))
+}
+
+pub fn send_webserver_instruction(
+    sender: &mut BufWriter<LocalSocketStream>,
+    instruction: InstructionForWebServer,
+) -> Result<()> {
+    rmp_serde::encode::write(sender, &instruction)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    sender.flush()?;
+    Ok(())
 }

@@ -25,6 +25,9 @@ use zellij_utils::sessions::{
 #[cfg(feature = "web_server_capability")]
 use zellij_client::web_client::start_web_client as start_web_client_impl;
 
+#[cfg(feature = "web_server_capability")]
+use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
+
 use miette::{Report, Result};
 use nix::sys::stat::{umask, Mode};
 use zellij_server::{
@@ -192,38 +195,9 @@ fn create_new_client() -> ClientInfo {
 }
 
 #[cfg(feature = "web_server_capability")]
-pub(crate) fn stop_web_server(opts: CliArgs) -> Result<(), String> {
-    let config_options = get_config_options_from_cli_args(&opts)?;
-    let web_server_ip = config_options
-        .web_server_ip
-        .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
-    let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
-    let has_certificate =
-        config_options.web_server_cert.is_some() && config_options.web_server_key.is_some();
-    let enforce_https_for_localhost = config_options.enforce_https_for_localhost.unwrap_or(false);
-    let web_server_base_url = web_server_base_url(
-        web_server_ip,
-        web_server_port,
-        has_certificate,
-        enforce_https_for_localhost,
-    );
-    let http_client = HttpClient::builder()
-        // TODO: timeout?
-        .redirect_policy(RedirectPolicy::Follow)
-        .build()
-        .map_err(|e| e.to_string())?;
-    let request = Request::post(format!("{}/command/shutdown", web_server_base_url));
-    let req = request.body(()).map_err(|e| e.to_string())?;
-    let res = http_client.send(req).map_err(|e| e.to_string())?;
-    let status_code = res.status();
-    if status_code == 200 {
-        Ok(())
-    } else {
-        Err(format!(
-            "Failed to stop web server, got status code: {}",
-            status_code
-        ))
-    }
+pub(crate) fn stop_web_server() -> Result<(), String> {
+    shutdown_all_webserver_instances().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[cfg(not(feature = "web_server_capability"))]

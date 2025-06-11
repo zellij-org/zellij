@@ -5921,6 +5921,7 @@ dependencies = [
  "nix 0.23.1",
  "notify-debouncer-full",
  "regex",
+ "rmp-serde",
  "serde",
  "serde_json",
  "serde_yaml",

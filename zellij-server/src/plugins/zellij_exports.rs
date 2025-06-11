@@ -24,10 +24,14 @@ use zellij_utils::data::{
     MessageToPlugin, OriginatingPlugin, PermissionStatus, PermissionType, PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
-use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
+use zellij_utils::ipc::{
+    create_webserver_sender, send_webserver_instruction, ClientToServerMsg,
+    InstructionForWebServer, IpcSenderWithContext,
+};
 use zellij_utils::web_authentication_tokens::{
     create_token, list_tokens, rename_token, revoke_all_tokens, revoke_token,
 };
+use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
 
 use crate::{panes::PaneId, screen::ScreenInstruction};
 
@@ -2207,10 +2211,8 @@ fn start_web_server(env: &PluginEnv) {
         .send_to_server(ServerInstruction::StartWebServer(env.client_id));
 }
 
-fn stop_web_server(env: &PluginEnv) {
-    let _ = env
-        .senders
-        .send_to_background_jobs(BackgroundJob::StopWebServer);
+fn stop_web_server(_env: &PluginEnv) {
+    let _ = shutdown_all_webserver_instances();
 }
 
 fn query_web_server_status(env: &PluginEnv) {

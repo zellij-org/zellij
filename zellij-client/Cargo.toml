@@ -28,6 +28,7 @@ log = { workspace = true }
 mio = { version = "0.7.11", default-features = false, features = ['os-ext'] }
 nix = { workspace = true }
 notify-debouncer-full = { workspace = true }
+rmp-serde = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

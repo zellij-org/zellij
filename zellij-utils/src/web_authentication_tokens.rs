@@ -58,20 +58,18 @@ impl From<std::io::Error> for TokenError {
 
 type Result<T> = std::result::Result<T, TokenError>;
 
-#[cfg(not(test))]
 fn get_db_path() -> Result<PathBuf> {
-    let data_dir = ZELLIJ_PROJ_DIR.data_dir();
-    std::fs::create_dir_all(data_dir)?;
-
-    Ok(data_dir.join("tokens.db"))
-}
-
-#[cfg(test)]
-fn get_db_path() -> Result<PathBuf> {
-    let data_dir = std::env::temp_dir();
-    std::fs::create_dir_all(&data_dir)?;
-
-    Ok(data_dir.join("tokens.db"))
+    if cfg!(debug_assertions) {
+        // tests db
+        let data_dir = std::env::temp_dir();
+        std::fs::create_dir_all(&data_dir)?;
+        Ok(data_dir.join("tokens.db"))
+    } else {
+        // prod db
+        let data_dir = ZELLIJ_PROJ_DIR.data_dir();
+        std::fs::create_dir_all(data_dir)?;
+        Ok(data_dir.join("tokens.db"))
+    }
 }
 
 fn init_db(conn: &Connection) -> Result<()> {

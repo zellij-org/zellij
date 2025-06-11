@@ -149,7 +149,6 @@ pub struct AppState {
     pub connection_table: Arc<Mutex<ConnectionTable>>,
     pub config: Config,
     pub config_options: Options,
-    pub server_handle: axum_server::Handle,
     pub session_manager: Arc<dyn SessionManager>,
     pub client_os_api_factory: Arc<dyn ClientOsApiFactory>,
 }

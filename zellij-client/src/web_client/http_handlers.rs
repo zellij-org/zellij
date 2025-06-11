@@ -114,15 +114,3 @@ pub async fn get_static_asset(AxumPath(path): AxumPath<String>) -> impl IntoResp
 pub async fn version_handler() -> &'static str {
     VERSION
 }
-
-pub async fn send_shutdown_signal(
-    State(state): State<AppState>,
-) -> Json<SendShutdownSignalResponse> {
-    tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        state.server_handle.shutdown();
-    });
-    Json(SendShutdownSignalResponse {
-        status: "Ok".to_owned(),
-    })
-}

@@ -230,7 +230,7 @@ fn main() {
             commands::start_web_server(opts, daemonize);
         } else if web_opts.stop {
             // TODO: test these without web_server_compatibility
-            match commands::stop_web_server(opts) {
+            match commands::stop_web_server() {
                 Ok(()) => {
                     println!("Stopped web server.");
                 },
