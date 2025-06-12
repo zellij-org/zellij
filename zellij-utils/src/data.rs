@@ -1111,6 +1111,7 @@ impl Default for PaletteColor {
     }
 }
 
+// these are used for the web client
 impl PaletteColor {
     pub fn as_rgb_str(&self) -> String {
         let (r, g, b) = match *self {
@@ -1118,6 +1119,37 @@ impl PaletteColor {
             Self::EightBit(c) => eightbit_to_rgb(c),
         };
         format!("rgb({}, {}, {})", r, g, b)
+    }
+    pub fn from_rgb_str(rgb_str: &str) -> Self {
+        let trimmed = rgb_str.trim();
+
+        if !trimmed.starts_with("rgb(") || !trimmed.ends_with(')') {
+            return Self::default();
+        }
+
+        let inner = trimmed
+            .strip_prefix("rgb(")
+            .and_then(|s| s.strip_suffix(')'))
+            .unwrap_or("");
+
+        let parts: Vec<&str> = inner.split(',').collect();
+
+        if parts.len() != 3 {
+            return Self::default();
+        }
+
+        let mut rgb_values = [0u8; 3];
+        for (i, part) in parts.iter().enumerate() {
+            if let Some(rgb_val) = rgb_values.get_mut(i) {
+                if let Ok(parsed) = part.trim().parse::<u8>() {
+                    *rgb_val = parsed;
+                } else {
+                    return Self::default();
+                }
+            }
+        }
+
+        Self::Rgb((rgb_values[0], rgb_values[1], rgb_values[2]))
     }
 }
 

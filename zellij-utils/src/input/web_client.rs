@@ -77,20 +77,46 @@ impl WebClientTheme {
     }
 
     pub fn to_kdl(&self) -> KdlNode {
+        macro_rules! add_color_nodes {
+            ($theme_children:expr, $self:expr, $($field:ident),+ $(,)?) => {
+                $(
+                    if let Some(color) = &$self.$field {
+                        let node = PaletteColor::from_rgb_str(color).to_kdl(stringify!($field));
+                        $theme_children.nodes_mut().push(node);
+                    }
+                )+
+            };
+        }
         let mut theme_node = KdlNode::new("theme");
         let mut theme_children = KdlDocument::new();
 
-        if let Some(background) = &self.background {
-            let mut background_node = KdlNode::new("background");
-            background_node.push(KdlValue::String(background.clone()));
-            theme_children.nodes_mut().push(background_node);
-        }
-
-        if let Some(foreground) = &self.foreground {
-            let mut foreground_node = KdlNode::new("foreground");
-            foreground_node.push(KdlValue::String(foreground.clone()));
-            theme_children.nodes_mut().push(foreground_node);
-        }
+        add_color_nodes!(
+            theme_children,
+            self,
+            background,
+            foreground,
+            black,
+            blue,
+            bright_black,
+            bright_blue,
+            bright_cyan,
+            bright_green,
+            bright_magenta,
+            bright_red,
+            bright_white,
+            bright_yellow,
+            cursor,
+            cursor_accent,
+            cyan,
+            green,
+            magenta,
+            red,
+            selection_background,
+            selection_foreground,
+            selection_inactive_background,
+            white,
+            yellow,
+        );
 
         theme_node.set_children(theme_children);
         theme_node
@@ -133,6 +159,9 @@ impl WebClientConfig {
         let mut font_node = KdlNode::new("font");
         font_node.push(KdlValue::String(self.font.clone()));
         web_client_children.nodes_mut().push(font_node);
+        if let Some(theme_node) = self.theme.as_ref().map(|t| t.to_kdl()) {
+            web_client_children.nodes_mut().push(theme_node);
+        }
         web_client_node.set_children(web_client_children);
         web_client_node
     }

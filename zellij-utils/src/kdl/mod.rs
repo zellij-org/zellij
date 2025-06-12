@@ -4147,6 +4147,8 @@ impl Config {
             document.nodes_mut().push(env);
         }
 
+        document.nodes_mut().push(self.web_client.to_kdl());
+
         document
             .nodes_mut()
             .append(&mut self.options.to_kdl(add_comments));
