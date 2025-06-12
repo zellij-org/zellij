@@ -268,5 +268,6 @@ Config {
     background_plugins: {},
     web_client: WebClientConfig {
         font: "monospace",
+        theme: None,
     },
 }

@@ -23,7 +23,7 @@ use zellij_utils::{
     errors::ErrorContext,
     ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
     pane_size::Size,
-    web_authentication_tokens::{create_session_token, create_token, delete_db, revoke_token},
+    web_authentication_tokens::{create_token, delete_db, revoke_token},
 };
 
 use serial_test::serial;
@@ -244,7 +244,7 @@ mod web_client_tests {
             "remember_me": true
         });
 
-        let mut login_response = timeout(
+        let login_response = timeout(
             Duration::from_secs(5),
             tokio::task::spawn_blocking(move || {
                 isahc::Request::post(&login_url)
@@ -549,10 +549,6 @@ impl MockSessionManager {
             mock_sessions: HashMap::new(),
             mock_layouts: HashMap::new(),
         }
-    }
-
-    pub fn add_session(&mut self, name: String) {
-        self.mock_sessions.insert(name, true);
     }
 }
 

@@ -38,7 +38,7 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
         let cmd = if crate_name.contains("plugins") {
             cmd!(sh, "{cargo} test --target {host_triple} --")
         } else {
-            cmd!(sh, "{cargo} test --")
+            cmd!(sh, "{cargo} test --all-features --")
         };
 
         cmd.args(&flags.args)

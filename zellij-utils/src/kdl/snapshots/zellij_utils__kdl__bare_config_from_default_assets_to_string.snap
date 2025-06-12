@@ -270,3 +270,6 @@ plugins {
 }
 load_plugins {
 }
+web_client {
+    font "monospace"
+}

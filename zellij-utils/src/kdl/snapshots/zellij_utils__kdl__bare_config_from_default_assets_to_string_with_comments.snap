@@ -277,6 +277,9 @@ plugins {
 // eg. "https://example.com/my-plugin.wasm"
 load_plugins {
 }
+web_client {
+    font "monospace"
+}
  
 // Use a simplified UI without special fonts (arrow glyphs)
 // Options:
