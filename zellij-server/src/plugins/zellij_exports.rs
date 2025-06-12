@@ -25,8 +25,7 @@ use zellij_utils::data::{
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{
-    create_webserver_sender, send_webserver_instruction, ClientToServerMsg,
-    InstructionForWebServer, IpcSenderWithContext,
+    ClientToServerMsg, IpcSenderWithContext,
 };
 use zellij_utils::web_authentication_tokens::{
     create_token, list_tokens, rename_token, revoke_all_tokens, revoke_token,

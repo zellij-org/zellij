@@ -1,9 +1,12 @@
 // TODO: gate this file behind web_server_compatibility
 use crate::consts::WEBSERVER_SOCKET_PATH;
 use crate::errors::prelude::*;
-use crate::ipc::{create_webserver_sender, send_webserver_instruction, InstructionForWebServer};
 use std::fs;
 use std::os::unix::fs::FileTypeExt;
+use std::io::{self, BufWriter, Write};
+use serde::{Deserialize, Serialize};
+use interprocess::local_socket::LocalSocketStream;
+use crate::input::config::Config;
 
 pub fn shutdown_all_webserver_instances() -> Result<()> {
     let entries = fs::read_dir(&*WEBSERVER_SOCKET_PATH)?;
@@ -33,5 +36,26 @@ pub fn shutdown_all_webserver_instances() -> Result<()> {
             }
         }
     }
+    Ok(())
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum InstructionForWebServer {
+    ShutdownWebServer,
+    ConfigWrittenToDisk(Config),
+}
+
+pub fn create_webserver_sender(path: &str) -> Result<BufWriter<LocalSocketStream>> {
+    let stream = LocalSocketStream::connect(path)?;
+    Ok(BufWriter::new(stream))
+}
+
+pub fn send_webserver_instruction(
+    sender: &mut BufWriter<LocalSocketStream>,
+    instruction: InstructionForWebServer,
+) -> Result<()> {
+    rmp_serde::encode::write(sender, &instruction)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    sender.flush()?;
     Ok(())
 }

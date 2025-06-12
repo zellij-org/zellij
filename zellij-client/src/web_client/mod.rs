@@ -40,7 +40,7 @@ use authentication::auth_middleware;
 use http_handlers::{
     create_new_client, get_static_asset, login_handler, serve_html, version_handler,
 };
-use ipc_listener::listen_to_web_server_instructions;
+use ipc_listener::{listen_to_web_server_instructions, create_webserver_receiver};
 use types::{
     AppState, ClientOsApiFactory, ConnectionTable, RealClientOsApiFactory, RealSessionManager,
     SessionManager,
@@ -160,12 +160,16 @@ pub async fn serve_web_client(
     let client_os_api_factory =
         client_os_api_factory.unwrap_or_else(|| Arc::new(RealClientOsApiFactory));
 
-    tokio::spawn({
-        let server_handle = server_handle.clone();
-        async move {
-            listen_to_web_server_instructions(server_handle).await;
-        }
-    });
+    if let Ok(receiver) = create_webserver_receiver().await {
+      tokio::spawn({
+          let server_handle = server_handle.clone();
+          async move {
+              listen_to_web_server_instructions(receiver, server_handle).await;
+          }
+      });
+    } else {
+      // TODO
+    }
 
     let state = AppState {
         connection_table,
