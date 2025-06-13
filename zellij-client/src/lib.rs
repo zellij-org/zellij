@@ -22,7 +22,6 @@ use std::time::Duration;
 use zellij_utils::errors::FatalError;
 use zellij_utils::shared::web_server_base_url;
 
-use notify_debouncer_full::notify::{self, Config as WatcherConfig, Event, RecursiveMode, Watcher};
 use zellij_utils::setup::Setup;
 
 use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser, SyncOutput};
@@ -37,7 +36,10 @@ use zellij_utils::{
     data::{ClientId, ConnectToSession, KeyWithModifier, Style},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
-    input::{config::Config, options::Options},
+    input::{
+        config::{watch_config_file_changes, Config},
+        options::Options,
+    },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     pane_size::Size,
 };
@@ -423,11 +425,7 @@ pub fn start_client(
             let os_input = os_input.clone();
             let opts = opts.clone();
             move || {
-                // we keep the config_file_watcher here so that it is only dropped when this thread
-                // exits (which is when the client disconnects/detaches), once it's dropped it
-                // stops watching and we want it to keep watching the config file path for changes
-                // as long as the client is alive
-                let _config_file_watcher = report_changes_in_config_file(&opts, &os_input);
+                report_changes_in_config_file(&opts, &os_input);
                 os_input.handle_signals(
                     Box::new({
                         let os_api = os_input.clone();
@@ -760,71 +758,20 @@ pub fn start_server_detached(
     os_input.send_to_server(first_msg);
 }
 
-pub fn report_changes_in_config_file(
-    opts: &CliArgs,
-    os_input: &Box<dyn ClientOsApi>,
-) -> Option<Box<dyn Watcher>> {
-    match Config::config_file_path(&opts) {
-        Some(config_file_path) => {
-            // use PollWatcher because on mac the RecommendedWatcher is causing EXC_BAD_ACCESS
-            // when called from a daemonized process.
-            // Performance should be fine as we are just watching a file
-            let mut watcher = notify::PollWatcher::new(
-                {
+pub fn report_changes_in_config_file(opts: &CliArgs, os_input: &Box<dyn ClientOsApi>) {
+    if let Some(config_file_path) = Config::config_file_path(&opts) {
+        let os_input = os_input.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async move {
+                watch_config_file_changes(config_file_path, move |new_config| {
                     let os_input = os_input.clone();
-                    let opts = opts.clone();
-                    let config_file_path = config_file_path.clone();
-                    move |res: Result<Event, _>| match res {
-                        Ok(event)
-                            if (event.kind.is_create() || event.kind.is_modify())
-                                && event.paths.contains(&config_file_path) =>
-                        {
-                            match Setup::from_cli_args(&opts) {
-                                Ok((
-                                    new_config,
-                                    _layout,
-                                    _config_options,
-                                    _config_without_layout,
-                                    _config_options_without_layout,
-                                )) => {
-                                    os_input.send_to_server(
-                                        ClientToServerMsg::ConfigWrittenToDisk(new_config),
-                                    );
-                                },
-                                Err(e) => {
-                                    log::error!("Failed to reload config: {}", e);
-                                },
-                            }
-                        },
-                        Err(e) => log::error!("watch error: {:?}", e),
-                        _ => {},
+                    async move {
+                        os_input.send_to_server(ClientToServerMsg::ConfigWrittenToDisk(new_config));
                     }
-                },
-                WatcherConfig::default().with_poll_interval(Duration::from_secs(1)),
-            )
-            .unwrap();
-            if let Some(config_file_parent_folder) = config_file_path.parent() {
-                match watcher.watch(&config_file_parent_folder, RecursiveMode::Recursive) {
-                    Ok(_) => {
-                        log::info!(
-                            "Watching config file folder: {:?}",
-                            config_file_parent_folder
-                        );
-                        Some(Box::new(watcher))
-                    },
-                    Err(e) => {
-                        log::error!("Failed to watch config file folder: {}", e);
-                        None
-                    },
-                }
-            } else {
-                log::error!("Could not find config parent folder");
-                None
-            }
-        },
-        None => {
-            log::error!("Failed to find config path");
-            None
-        },
+                })
+                .await;
+            });
+        });
     }
 }

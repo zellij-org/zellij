@@ -74,6 +74,7 @@ log = { version = "0.4.17", default-features = false }
 miette = { version = "5.7.0", default-features = false, features = ["fancy"] }
 nix = { version = "0.23.1", default-features = false }
 notify-debouncer-full = { version = "0.1.0", default-features = false }
+notify = { version = "6.0.0", default-features = false }
 prost = { version = "0.11.9", default-features = false, features = ["std", "prost-derive"] }
 regex = { version = "1.5.5", default-features = false, features = ["perf", "std"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
@@ -85,6 +86,7 @@ suggest = { version = "0.4.0", default-features = false }
 tempfile = { version = "3.2.0", default-features = false }
 termwiz = { version = "0.23.2", default-features = false }
 thiserror = { version = "1.0.40", default-features = false }
+tokio = { version = "1.38.1", features = ["full"] }
 unicode-width = { version = "0.1.8", default-features = false }
 url = { version = "2.2.2", default-features = false, features = ["serde"] }
 uuid = { version = "1.4.1", default-features = false, features = ["serde", "v4", "std"] }

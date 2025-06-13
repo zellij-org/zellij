@@ -53,6 +53,8 @@ humantime = { workspace = true }
 suggest = { workspace = true }
 names = { workspace = true }
 rusqlite = { workspace = true }
+notify = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }

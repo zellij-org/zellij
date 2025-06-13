@@ -34,21 +34,37 @@ use interprocess::unnamed_pipe::pipe;
 use std::io::{prelude::*, BufRead, BufReader};
 use tokio::runtime::Runtime;
 use tower_http::cors::CorsLayer;
-use zellij_utils::input::{config::Config, options::Options};
+use zellij_utils::input::{
+    config::{watch_config_file_changes, Config},
+    options::Options,
+};
 
 use authentication::auth_middleware;
 use http_handlers::{
     create_new_client, get_static_asset, login_handler, serve_html, version_handler,
 };
-use ipc_listener::{listen_to_web_server_instructions, create_webserver_receiver};
+use ipc_listener::listen_to_web_server_instructions;
 use types::{
     AppState, ClientOsApiFactory, ConnectionTable, RealClientOsApiFactory, RealSessionManager,
     SessionManager,
 };
 use utils::should_use_https;
+use uuid::Uuid;
 use websocket_handlers::{ws_handler_control, ws_handler_terminal};
 
-pub fn start_web_client(config: Config, config_options: Options, run_daemonized: bool) {
+use zellij_utils::{
+    consts::WEBSERVER_SOCKET_PATH,
+    web_server_commands::{
+        create_webserver_sender, send_webserver_instruction, InstructionForWebServer,
+    },
+};
+
+pub fn start_web_client(
+    config: Config,
+    config_options: Options,
+    config_file_path: Option<PathBuf>,
+    run_daemonized: bool,
+) {
     std::panic::set_hook({
         Box::new(move |info| {
             let thread = thread::current();
@@ -139,6 +155,7 @@ pub fn start_web_client(config: Config, config_options: Options, run_daemonized:
     runtime.block_on(serve_web_client(
         config,
         config_options,
+        config_file_path,
         listener,
         tls_config,
         None,
@@ -146,35 +163,68 @@ pub fn start_web_client(config: Config, config_options: Options, run_daemonized:
     ));
 }
 
+async fn listen_to_config_file_changes(config_file_path: PathBuf, instance_id: &str) {
+    let socket_path = WEBSERVER_SOCKET_PATH.join(instance_id);
+
+    watch_config_file_changes(config_file_path, move |new_config| {
+        let socket_path = socket_path.clone();
+        async move {
+            if let Ok(mut sender) = create_webserver_sender(&socket_path.to_string_lossy()) {
+                let _ = send_webserver_instruction(
+                    &mut sender,
+                    InstructionForWebServer::ConfigWrittenToDisk(new_config),
+                );
+                drop(sender);
+            }
+        }
+    })
+    .await;
+}
+
 pub async fn serve_web_client(
     config: Config,
     config_options: Options,
+    config_file_path: Option<PathBuf>,
     listener: std::net::TcpListener,
     rustls_config: Option<RustlsConfig>,
     session_manager: Option<Arc<dyn SessionManager>>,
     client_os_api_factory: Option<Arc<dyn ClientOsApiFactory>>,
 ) {
+    let Some(config_file_path) = config_file_path.or_else(|| Config::default_config_file_path())
+    else {
+        log::error!("Failed to find default config file path");
+        return;
+    };
     let connection_table = Arc::new(Mutex::new(ConnectionTable::default()));
     let server_handle = Handle::new();
     let session_manager = session_manager.unwrap_or_else(|| Arc::new(RealSessionManager));
     let client_os_api_factory =
         client_os_api_factory.unwrap_or_else(|| Arc::new(RealClientOsApiFactory));
+    let id = Uuid::new_v4();
 
-    if let Ok(receiver) = create_webserver_receiver().await {
-      tokio::spawn({
-          let server_handle = server_handle.clone();
-          async move {
-              listen_to_web_server_instructions(receiver, server_handle).await;
-          }
-      });
-    } else {
-      // TODO
-    }
+    #[cfg(not(test))]
+    tokio::spawn({
+        let config_file_path = config_file_path.clone();
+        let id_string = format!("{}", id);
+        async move {
+            listen_to_config_file_changes(config_file_path, &id_string).await;
+        }
+    });
+
+    tokio::spawn({
+        let server_handle = server_handle.clone();
+        let connection_table = connection_table.clone();
+        async move {
+            listen_to_web_server_instructions(server_handle, connection_table, &format!("{}", id))
+                .await;
+        }
+    });
 
     let state = AppState {
         connection_table,
         config,
         config_options,
+        config_file_path,
         session_manager,
         client_os_api_factory,
     };

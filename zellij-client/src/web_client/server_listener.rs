@@ -23,6 +23,7 @@ pub fn zellij_server_listener(
     session_name: Option<String>,
     config: Config,
     config_options: Options,
+    config_file_path: Option<PathBuf>,
     web_client_id: String,
     session_manager: Arc<dyn SessionManager>,
 ) {
@@ -92,8 +93,9 @@ pub fn zellij_server_listener(
                     os_input.connect_to_server(&zellij_ipc_pipe);
                     os_input.send_to_server(first_message);
 
-                    let _config_file_watcher =
-                        report_changes_in_config_file(&CliArgs::default(), &os_input);
+                    let mut args_for_report = CliArgs::default();
+                    args_for_report.config = config_file_path.clone();
+                    report_changes_in_config_file(&args_for_report, &os_input);
 
                     client_connection_bus.send_control(
                         WebServerToWebClientControlMessage::SwitchedSession {

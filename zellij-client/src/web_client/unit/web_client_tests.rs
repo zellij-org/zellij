@@ -50,6 +50,7 @@ mod web_client_tests {
             serve_web_client(
                 config,
                 options,
+                None,
                 listener,
                 None,
                 Some(session_manager),
@@ -102,6 +103,7 @@ mod web_client_tests {
             serve_web_client(
                 config,
                 options,
+                None,
                 listener,
                 None,
                 Some(session_manager),
@@ -167,6 +169,7 @@ mod web_client_tests {
             serve_web_client(
                 config,
                 options,
+                None,
                 listener,
                 None,
                 Some(session_manager),
@@ -228,6 +231,7 @@ mod web_client_tests {
             serve_web_client(
                 config,
                 options,
+                None,
                 listener,
                 None,
                 Some(session_manager),
@@ -430,6 +434,7 @@ mod web_client_tests {
             serve_web_client(
                 config,
                 options,
+                None,
                 listener,
                 None,
                 Some(session_manager),
@@ -475,6 +480,7 @@ mod web_client_tests {
             serve_web_client(
                 config,
                 options,
+                None,
                 listener,
                 None,
                 Some(session_manager),

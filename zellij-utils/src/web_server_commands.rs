@@ -1,12 +1,12 @@
 // TODO: gate this file behind web_server_compatibility
 use crate::consts::WEBSERVER_SOCKET_PATH;
 use crate::errors::prelude::*;
-use std::fs;
-use std::os::unix::fs::FileTypeExt;
-use std::io::{self, BufWriter, Write};
-use serde::{Deserialize, Serialize};
-use interprocess::local_socket::LocalSocketStream;
 use crate::input::config::Config;
+use interprocess::local_socket::LocalSocketStream;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::io::{self, BufWriter, Write};
+use std::os::unix::fs::FileTypeExt;
 
 pub fn shutdown_all_webserver_instances() -> Result<()> {
     let entries = fs::read_dir(&*WEBSERVER_SOCKET_PATH)?;

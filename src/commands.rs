@@ -176,7 +176,7 @@ pub(crate) fn start_web_server(opts: CliArgs, run_daemonized: bool) {
             },
         };
 
-    start_web_client_impl(config, config_options, run_daemonized);
+    start_web_client_impl(config, config_options, opts.config, run_daemonized);
 }
 
 #[cfg(not(feature = "web_server_capability"))]

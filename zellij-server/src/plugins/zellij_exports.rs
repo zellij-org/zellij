@@ -24,9 +24,7 @@ use zellij_utils::data::{
     MessageToPlugin, OriginatingPlugin, PermissionStatus, PermissionType, PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
-use zellij_utils::ipc::{
-    ClientToServerMsg, IpcSenderWithContext,
-};
+use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
 use zellij_utils::web_authentication_tokens::{
     create_token, list_tokens, rename_token, revoke_all_tokens, revoke_token,
 };
