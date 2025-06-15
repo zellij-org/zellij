@@ -5,7 +5,7 @@ use crate::data::{
     SessionInfo, StyleDeclaration, Styling, TabInfo, DEFAULT_STYLES,
 };
 use crate::envs::EnvironmentVariables;
-use crate::home::{find_default_config_dir, get_layout_dir};
+use crate::home::{self, find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
@@ -3458,6 +3458,38 @@ impl EnvironmentVariables {
     }
 }
 
+fn get_include_paths(kdl_includes: &KdlNode) -> Result<Vec<PathBuf>, ConfigError> {
+    let mut paths = Vec::new();
+
+    match kdl_first_entry_as_string!(kdl_includes) {
+        Some(property) => paths.push(expand_path(property, &kdl_includes)?),
+        None => {
+            let children =
+                kdl_children_nodes_or_error!(kdl_includes, "no path block or path for include");
+            for child in children.iter() {
+                paths.push(expand_path(kdl_name!(child), &child)?);
+            }
+        },
+    }
+
+    Ok(paths)
+}
+
+fn expand_path(path: &str, kdl_node: &KdlNode) -> Result<PathBuf, ConfigError> {
+    let mut expanded_path = match shellexpand::full(path) {
+        Ok(s) => Ok(PathBuf::from(s.as_ref())),
+        Err(e) => Err(kdl_parsing_error!(e.to_string(), kdl_node)),
+    }?;
+
+    if expanded_path.is_relative() {
+        if let Some(config_dir) = find_default_config_dir() {
+            expanded_path = config_dir.join(expanded_path);
+        }
+    }
+
+    Ok(expanded_path)
+}
+
 impl Keybinds {
     fn bind_keys_in_block(
         block: &KdlNode,
@@ -3829,6 +3861,12 @@ impl Config {
         if let Some(env_config) = kdl_config.get("env") {
             let config_env = EnvironmentVariables::from_kdl(&env_config)?;
             config.env = config.env.merge(config_env);
+        }
+        if let Some(include_statment) = kdl_config.get("include") {
+            let paths = get_include_paths(include_statment)?;
+            for path in paths.iter() {
+                config = Config::from_path(path, Some(config))?;
+            }
         }
         Ok(config)
     }
@@ -5882,6 +5920,43 @@ fn env_vars_to_string_with_no_env_vars() {
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = EnvironmentVariables::from_kdl(document.get("env").unwrap()).unwrap();
     assert_eq!(EnvironmentVariables::to_kdl(&deserialized), None);
+}
+
+#[test]
+fn include_paths_absolute_path() {
+    let fake_config = r##"
+    include "/absolute/path/to/file.kdl"
+    "##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let file_path = get_include_paths(document.get("include").unwrap()).unwrap();
+    assert_eq!(file_path, vec![PathBuf::from("/absolute/path/to/file.kdl")]);
+}
+
+#[test]
+fn include_paths_multiple_paths() {
+    let fake_config = r##"
+    include {
+        "/absolute/path/to/file.kdl"
+        "/second/absolute/path/to/file.kdl"
+    }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let file_path = get_include_paths(document.get("include").unwrap()).unwrap();
+    let expected_output = vec![
+        PathBuf::from("/absolute/path/to/file.kdl"),
+        PathBuf::from("/second/absolute/path/to/file.kdl"),
+    ];
+    assert_eq!(file_path, expected_output);
+}
+
+#[test]
+fn include_paths_single_and_multiple_paths_given() {
+    let fake_config = r##"
+    include "/single/path/to/file.kdl" {
+        "/absolute/path/to/file.kdl"
+    }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let file_path = get_include_paths(document.get("include").unwrap()).unwrap();
+    assert_eq!(file_path, vec![PathBuf::from("/single/path/to/file.kdl")]);
 }
 
 #[test]
