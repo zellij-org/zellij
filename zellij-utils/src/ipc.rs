@@ -18,6 +18,7 @@ use std::{
     os::unix::io::{AsRawFd, FromRawFd},
     path::PathBuf,
 };
+use crate::mouse_pointer_shapes::MousePointerShape;
 
 type SessionId = u64;
 
@@ -110,6 +111,7 @@ pub enum ServerToClientMsg {
     CliPipeOutput(String, String), // String -> pipe name, String -> Output
     QueryTerminalSize,
     WriteConfigToDisk { config: String },
+    SetMousePointerShape(MousePointerShape),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

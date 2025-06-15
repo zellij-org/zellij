@@ -29,7 +29,7 @@ use zellij_utils::{
     position::Position,
     shared::make_terminal_title,
 };
-
+use zellij_utils::mouse_pointer_shapes::MousePointerShape;
 use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
 
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
@@ -640,6 +640,10 @@ impl Pane for TerminalPane {
 
     fn exclude_from_sync(&self) -> bool {
         self.exclude_from_sync
+    }
+
+    fn get_mouse_pointer_shape(&self, _relative_position: Position) -> MousePointerShape {
+        self.grid.get_mouse_pointer_shape()
     }
 
     fn mouse_event(&self, event: &MouseEvent, _client_id: ClientId) -> Option<String> {

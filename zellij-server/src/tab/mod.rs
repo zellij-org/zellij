@@ -64,6 +64,8 @@ use zellij_utils::{
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
+use zellij_utils::ipc::ServerToClientMsg;
+use zellij_utils::mouse_pointer_shapes::MousePointerShape;
 
 #[macro_export]
 macro_rules! resize_pty {
@@ -266,6 +268,7 @@ pub(crate) struct Tab {
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
+    mouse_cursor_shape: HashMap<ClientId, MousePointerShape>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -501,6 +504,10 @@ pub trait Pane {
     fn borderless(&self) -> bool;
     fn set_exclude_from_sync(&mut self, exclude_from_sync: bool);
     fn exclude_from_sync(&self) -> bool;
+
+    fn get_mouse_pointer_shape(&self, relative_position: Position) -> MousePointerShape {
+        MousePointerShape::Text
+    }
 
     // TODO: this should probably be merged with the mouse_right_click
     fn handle_right_click(&mut self, _to: &Position, _client_id: ClientId) {}
@@ -777,6 +784,7 @@ impl Tab {
             current_pane_group,
             currently_marking_pane_group,
             advanced_mouse_actions,
+            mouse_cursor_shape: HashMap::new(),
         }
     }
 
@@ -3931,6 +3939,28 @@ impl Tab {
         let active_pane_id = self
             .get_active_pane_id(client_id)
             .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
+
+        let new_pointer_shape = if let Some(pane) = self
+            .get_pane_at(&absolute_position, true)
+            .with_context(err_context)?
+        {
+            if pane.position_is_on_frame(&absolute_position) {
+                Some(MousePointerShape::Default)
+            } else {
+                let relative_position = pane.relative_position(&absolute_position);
+                Some(pane.get_mouse_pointer_shape(relative_position))
+            }
+        } else {
+            None
+        };
+
+        if let Some(new_shape) = new_pointer_shape {
+            let last_shape = self.mouse_cursor_shape.get(&client_id).copied().unwrap_or(MousePointerShape::Default);
+            if last_shape != new_shape {
+                self.mouse_cursor_shape.insert(client_id, new_shape);
+                let _ = self.os_api.send_to_client(client_id, ServerToClientMsg::SetMousePointerShape(new_shape));
+            }
+        }
 
         if let Some(pane) = self
             .get_pane_at(&absolute_position, false)
