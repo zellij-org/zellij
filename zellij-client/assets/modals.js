@@ -351,7 +351,7 @@ function getSecurityToken() {
         <input type="password" id="token" placeholder="Enter your security token">
         <label>
           <input type="checkbox" id="remember">
-          Remember this session
+          Remember me
         </label>
         <div class="button-row">
           <button id="cancel" class="cancel-btn">Cancel</button>
