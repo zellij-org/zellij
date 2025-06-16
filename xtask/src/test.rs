@@ -1,4 +1,4 @@
-use crate::{build, flags, WorkspaceMember};
+use crate::{build, flags, metadata, WorkspaceMember};
 use anyhow::{anyhow, Context};
 use std::path::Path;
 use xshell::{cmd, Shell};
@@ -16,27 +16,44 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
             release: false,
             no_plugins: false,
             plugins_only: true,
-            no_web: false,
+            no_web: flags.no_web,
         },
     )
     .context(err_context)?;
 
     for WorkspaceMember { crate_name, .. } in crate::workspace_members().iter() {
-        // the workspace root only contains e2e tests, skip it
         if crate_name == &"." {
             continue;
         }
 
         let _pd = sh.push_dir(Path::new(crate_name));
-        // Tell the user where we are now
         println!();
         let msg = format!(">> Testing '{}'", crate_name);
         crate::status(&msg);
         println!("{}", msg);
 
-        // Override wasm32-wasip1 target for plugins only
-        let cmd = if crate_name.contains("plugins") {
+        let mut cmd = if crate_name.contains("plugins") {
             cmd!(sh, "{cargo} test --target {host_triple} --")
+        } else if flags.no_web {
+            // Check if this crate has web features that need modification
+            match metadata::get_no_web_features(sh, crate_name)
+                .context("Failed to check web features")?
+            {
+                Some(features) => {
+                    if features.is_empty() {
+                        // Crate has web_server_capability but no other applicable features
+                        cmd!(sh, "{cargo} test --no-default-features --")
+                    } else {
+                        cmd!(sh, "{cargo} test --no-default-features --features")
+                            .arg(features)
+                            .arg("--")
+                    }
+                },
+                None => {
+                    // Crate doesn't have web features, use normal test
+                    cmd!(sh, "{cargo} test --all-features --")
+                },
+            }
         } else {
             cmd!(sh, "{cargo} test --all-features --")
         };
@@ -48,8 +65,6 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
     Ok(())
 }
 
-// Determine the target triple of the host. We explicitly run all tests against the host
-// architecture so we can test the plugins, too (they default to wasm32-wasip1 otherwise).
 pub fn host_target_triple(sh: &Shell) -> anyhow::Result<String> {
     let rustc_ver = cmd!(sh, "rustc -vV")
         .read()

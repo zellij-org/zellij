@@ -31,11 +31,19 @@ pub fn make(sh: &Shell, flags: flags::Make) -> anyhow::Result<()> {
                     release: flags.release,
                     no_plugins: false,
                     plugins_only: false,
-                    no_web: false,
+                    no_web: flags.no_web,
                 },
             )
         })
-        .and_then(|_| test::test(sh, flags::Test { args: vec![] }))
+        .and_then(|_| {
+            test::test(
+                sh,
+                flags::Test {
+                    args: vec![],
+                    no_web: flags.no_web,
+                },
+            )
+        })
         .and_then(|_| clippy::clippy(sh, flags::Clippy {}))
         .with_context(err_context)
 }

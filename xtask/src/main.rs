@@ -12,6 +12,7 @@ mod clippy;
 mod dist;
 mod flags;
 mod format;
+mod metadata;
 mod pipelines;
 mod test;
 

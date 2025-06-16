@@ -58,6 +58,8 @@ xflags::xflags! {
             optional -r, --release
             /// Clean project before building
             optional -c, --clean
+            /// Compile without web server support
+            optional --no-web
         }
 
         /// Generate a runnable `zellij` executable with plugins bundled
@@ -91,6 +93,8 @@ xflags::xflags! {
 
         /// Run application tests
         cmd test {
+            /// Compile without web server support
+            optional --no-web
             /// Arguments to pass after `cargo test --`
             repeated args: OsString
         }
@@ -182,6 +186,7 @@ pub struct Clippy;
 pub struct Make {
     pub release: bool,
     pub clean: bool,
+    pub no_web: bool,
 }
 
 #[derive(Debug)]
@@ -209,6 +214,7 @@ pub struct Format {
 #[derive(Debug)]
 pub struct Test {
     pub args: Vec<OsString>,
+    pub no_web: bool,
 }
 
 #[derive(Debug)]
@@ -235,4 +241,3 @@ impl Xtask {
         Self::from_vec_(args)
     }
 }
-// generated end

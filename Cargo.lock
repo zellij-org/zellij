@@ -5858,6 +5858,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "prost-build",
+ "serde_json",
  "toml 0.5.10",
  "which",
  "xflags",
