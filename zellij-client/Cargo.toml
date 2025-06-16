@@ -14,9 +14,10 @@ license = "MIT"
 # so let's see how that works out before rocking the boat
 futures = { version = "0.3.30", optional = true }
 axum = { version = "0.8.4", features = ["ws"], optional = true }
-axum-extra = { version = "0.9", features = ["cookie"] }
-time = "0.3"
-axum-server = { version = "0.7", features = ["tls-rustls"] }
+axum-extra = { version = "0.9", features = ["cookie"], optional = true }
+axum-server = { version = "0.7", features = ["tls-rustls"], optional = true }
+time = { version = "0.3", optional = true }
+tower-http = { version = "0.6.4", features = ["cors"], optional = true }
 
 anyhow = { workspace = true }
 daemonize = { workspace = true }
@@ -38,7 +39,6 @@ url = { workspace = true }
 uuid = { workspace = true }
 include_dir = { workspace = true }
 zellij-utils = { workspace = true }
-tower-http = { version = "0.6.4", features = ["cors"] }
 tokio = { workspace = true }
 
 [dev-dependencies]
@@ -52,4 +52,12 @@ serial_test = "3.0"
 
 [features]
 unstable = []
-web_server_capability = ["dep:futures", "dep:axum", "zellij-utils/web_server_capability"]
+web_server_capability = [
+    "dep:futures",
+    "dep:axum",
+    "dep:axum-extra",
+    "dep:time",
+    "dep:axum-server",
+    "dep:tower-http",
+    "zellij-utils/web_server_capability",
+]
