@@ -201,7 +201,7 @@ pub(crate) fn stop_web_server() -> Result<(), String> {
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn stop_web_server(_opts: CliArgs) -> Result<(), String> {
+pub(crate) fn stop_web_server() -> Result<(), String> {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot stop web server!"
     );
@@ -234,7 +234,7 @@ pub(crate) fn web_server_status(web_server_base_url: &str) -> Result<String, Str
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn web_server_status(_opts: CliArgs) -> Result<String, String> {
+pub(crate) fn web_server_status(_web_server_base_url: &str) -> Result<String, String> {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot get web server status!"
     );

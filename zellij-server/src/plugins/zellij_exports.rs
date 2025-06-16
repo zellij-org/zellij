@@ -2321,6 +2321,8 @@ fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>) {
 #[cfg(not(feature = "web_server_capability"))]
 fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>) {
     log::error!("This version of Zellij was compiled without the web server capabilities!");
+    let empty_vec: Vec<&str> = vec![];
+    let _ = wasi_write_object(env, &empty_vec);
 }
 
 #[cfg(feature = "web_server_capability")]
@@ -2345,6 +2347,8 @@ fn revoke_web_login_token(env: &PluginEnv, token_label: String) {
 #[cfg(not(feature = "web_server_capability"))]
 fn revoke_web_login_token(env: &PluginEnv, token_label: String) {
     log::error!("This version of Zellij was compiled without the web server capabilities!");
+    let empty_vec: Vec<&str> = vec![];
+    let _ = wasi_write_object(env, &empty_vec);
 }
 
 #[cfg(feature = "web_server_capability")]
@@ -2365,6 +2369,8 @@ fn revoke_all_web_login_tokens(env: &PluginEnv) {
 #[cfg(not(feature = "web_server_capability"))]
 fn revoke_all_web_login_tokens(env: &PluginEnv) {
     log::error!("This version of Zellij was compiled without the web server capabilities!");
+    let empty_vec: Vec<&str> = vec![];
+    let _ = wasi_write_object(env, &empty_vec);
 }
 
 #[cfg(feature = "web_server_capability")]
@@ -2385,6 +2391,8 @@ fn rename_web_login_token(env: &PluginEnv, old_name: String, new_name: String) {
 #[cfg(not(feature = "web_server_capability"))]
 fn rename_web_login_token(env: &PluginEnv, old_name: String, new_name: String) {
     log::error!("This version of Zellij was compiled without the web server capabilities!");
+    let empty_vec: Vec<&str> = vec![];
+    let _ = wasi_write_object(env, &empty_vec);
 }
 
 #[cfg(feature = "web_server_capability")]
@@ -2407,6 +2415,8 @@ fn list_web_login_tokens(env: &PluginEnv) {
 #[cfg(not(feature = "web_server_capability"))]
 fn list_web_login_tokens(env: &PluginEnv) {
     log::error!("This version of Zellij was compiled without the web server capabilities!");
+    let empty_vec: Vec<&str> = vec![];
+    let _ = wasi_write_object(env, &empty_vec);
 }
 
 fn set_self_mouse_selection_support(env: &PluginEnv, selection_support: bool) {

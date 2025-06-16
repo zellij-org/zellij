@@ -22,10 +22,6 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
     .context(err_context)?;
 
     for WorkspaceMember { crate_name, .. } in crate::workspace_members().iter() {
-        if crate_name == &"." {
-            continue;
-        }
-
         let _pd = sh.push_dir(Path::new(crate_name));
         println!();
         let msg = format!(">> Testing '{}'", crate_name);

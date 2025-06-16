@@ -1,7 +1,7 @@
 //! Composite pipelines for the build system.
 //!
 //! Defines multiple "pipelines" that run specific individual steps in sequence.
-use crate::{build, clippy, format, test};
+use crate::{build, clippy, format, metadata, test};
 use crate::{flags, WorkspaceMember};
 use anyhow::Context;
 use xshell::{cmd, Shell};
@@ -155,16 +155,36 @@ pub fn run(sh: &Shell, mut flags: flags::Run) -> anyhow::Result<()> {
         .and_then(|_| crate::cargo())
         .and_then(|cargo| {
             if flags.no_web {
-                cmd!(sh, "{cargo} run")
-                    .args(singlepass.iter().flatten())
-                    .args(["--no-default-features"])
-                    // these are the default features without web_server_capability
-                    .args(["--features", "vendored_curl plugins_from_target"])
-                    .args(["--profile", profile])
-                    .args(["--"])
-                    .args(&flags.args)
-                    .run()
-                    .map_err(anyhow::Error::new)
+                // Use dynamic metadata approach to get the correct features
+                match metadata::get_no_web_features(sh, ".")
+                    .context("Failed to check web features for main crate")?
+                {
+                    Some(features) => {
+                        let mut cmd = cmd!(sh, "{cargo} run")
+                            .args(singlepass.iter().flatten())
+                            .args(["--no-default-features"]);
+
+                        if !features.is_empty() {
+                            cmd = cmd.args(["--features", &features]);
+                        }
+
+                        cmd.args(["--profile", profile])
+                            .args(["--"])
+                            .args(&flags.args)
+                            .run()
+                            .map_err(anyhow::Error::new)
+                    },
+                    None => {
+                        // Main crate doesn't have web_server_capability, run normally
+                        cmd!(sh, "{cargo} run")
+                            .args(singlepass.iter().flatten())
+                            .args(["--profile", profile])
+                            .args(["--"])
+                            .args(&flags.args)
+                            .run()
+                            .map_err(anyhow::Error::new)
+                    },
+                }
             } else {
                 cmd!(sh, "{cargo} run")
                     .args(singlepass.iter().flatten())
