@@ -13,6 +13,7 @@ pub enum PermissionType {
     Reconfigure = 9,
     FullHdAccess = 10,
     StartWebServer = 11,
+    InterceptInput = 12,
 }
 impl PermissionType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -33,6 +34,7 @@ impl PermissionType {
             PermissionType::Reconfigure => "Reconfigure",
             PermissionType::FullHdAccess => "FullHdAccess",
             PermissionType::StartWebServer => "StartWebServer",
+            PermissionType::InterceptInput => "InterceptInput",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -50,6 +52,7 @@ impl PermissionType {
             "Reconfigure" => Some(Self::Reconfigure),
             "FullHdAccess" => Some(Self::FullHdAccess),
             "StartWebServer" => Some(Self::StartWebServer),
+            "InterceptInput" => Some(Self::InterceptInput),
             _ => None,
         }
     }

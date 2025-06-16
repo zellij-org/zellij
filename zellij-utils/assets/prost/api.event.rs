@@ -9,7 +9,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -71,6 +71,8 @@ pub mod event {
         WebServerStatusPayload(super::WebServerStatusPayload),
         #[prost(message, tag="28")]
         FailedToStartWebServerPayload(super::FailedToStartWebServerPayload),
+        #[prost(message, tag="29")]
+        InterceptedKeyPayload(super::super::key::Key),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -565,7 +567,8 @@ pub enum EventType {
     ConfigWasWrittenToDisk = 30,
     WebServerStatus = 31,
     BeforeClose = 32,
-    FailedToStartWebServer = 33,
+    FailedToStartWebServer = 34,
+    InterceptedKeyPress = 35,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -608,6 +611,7 @@ impl EventType {
             EventType::WebServerStatus => "WebServerStatus",
             EventType::BeforeClose => "BeforeClose",
             EventType::FailedToStartWebServer => "FailedToStartWebServer",
+            EventType::InterceptedKeyPress => "InterceptedKeyPress",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -647,6 +651,7 @@ impl EventType {
             "WebServerStatus" => Some(Self::WebServerStatus),
             "BeforeClose" => Some(Self::BeforeClose),
             "FailedToStartWebServer" => Some(Self::FailedToStartWebServer),
+            "InterceptedKeyPress" => Some(Self::InterceptedKeyPress),
             _ => None,
         }
     }

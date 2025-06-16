@@ -380,6 +380,12 @@ impl TryFrom<ProtobufEvent> for Event {
                     failed_to_start_web_server_payload.error,
                 )),
                 _ => Err("Malformed payload for the FailedToStartWebServer Event"),
+            }
+            Some(ProtobufEventType::InterceptedKeyPress) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::KeyPayload(protobuf_key)) => {
+                    Ok(Event::InterceptedKeyPress(protobuf_key.try_into()?))
+                },
+                _ => Err("Malformed payload for the InterceptedKeyPress Event"),
             },
             None => Err("Unknown Protobuf Event"),
         }
@@ -770,6 +776,10 @@ impl TryFrom<Event> for ProtobufEvent {
                 payload: Some(event::Payload::FailedToStartWebServerPayload(
                     FailedToStartWebServerPayload { error },
                 )),
+            }),
+            Event::InterceptedKeyPress(key) => Ok(ProtobufEvent {
+                name: ProtobufEventType::InterceptedKeyPress as i32,
+                payload: Some(event::Payload::KeyPayload(key.try_into()?)),
             }),
         }
     }
@@ -1448,6 +1458,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::WebServerStatus => EventType::WebServerStatus,
             ProtobufEventType::BeforeClose => EventType::BeforeClose,
             ProtobufEventType::FailedToStartWebServer => EventType::FailedToStartWebServer,
+            ProtobufEventType::InterceptedKeyPress => EventType::InterceptedKeyPress,
         })
     }
 }
@@ -1490,6 +1501,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::WebServerStatus => ProtobufEventType::WebServerStatus,
             EventType::BeforeClose => ProtobufEventType::BeforeClose,
             EventType::FailedToStartWebServer => ProtobufEventType::FailedToStartWebServer,
+            EventType::InterceptedKeyPress => ProtobufEventType::InterceptedKeyPress,
         })
     }
 }

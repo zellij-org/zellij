@@ -714,6 +714,8 @@ pub fn load_new_plugin_from_hd() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -794,6 +796,8 @@ pub fn load_new_plugin_with_plugin_alias() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -870,6 +874,8 @@ pub fn plugin_workers() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     // we send a SystemClipboardFailure to trigger the custom handler in the fixture plugin that
@@ -950,6 +956,8 @@ pub fn plugin_workers_persist_state() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     // we send a SystemClipboardFailure to trigger the custom handler in the fixture plugin that
@@ -1040,6 +1048,8 @@ pub fn can_subscribe_to_hd_events() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     // extra long time because we only start the fs watcher on plugin load
     std::thread::sleep(std::time::Duration::from_millis(5000));
@@ -1118,6 +1128,8 @@ pub fn switch_to_mode_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -1190,6 +1202,8 @@ pub fn switch_to_mode_plugin_command_permission_denied() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -1262,6 +1276,8 @@ pub fn new_tabs_with_layout_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -1348,6 +1364,8 @@ pub fn new_tab_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -1420,6 +1438,8 @@ pub fn go_to_next_tab_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -1491,6 +1511,8 @@ pub fn go_to_previous_tab_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -1562,6 +1584,8 @@ pub fn resize_focused_pane_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -1633,6 +1657,8 @@ pub fn resize_focused_pane_with_direction_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -1704,6 +1730,8 @@ pub fn focus_next_pane_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -1775,6 +1803,8 @@ pub fn focus_previous_pane_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -1846,6 +1876,8 @@ pub fn move_focus_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -1917,6 +1949,8 @@ pub fn move_focus_or_tab_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -1988,6 +2022,8 @@ pub fn edit_scrollback_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -2059,6 +2095,8 @@ pub fn write_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -2130,6 +2168,8 @@ pub fn write_chars_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -2201,6 +2241,8 @@ pub fn toggle_tab_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -2272,6 +2314,8 @@ pub fn move_pane_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -2343,6 +2387,8 @@ pub fn move_pane_with_direction_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -2415,6 +2461,8 @@ pub fn clear_screen_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -2487,6 +2535,8 @@ pub fn scroll_up_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -2558,6 +2608,8 @@ pub fn scroll_down_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -2629,6 +2681,8 @@ pub fn scroll_to_top_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -2700,6 +2754,8 @@ pub fn scroll_to_bottom_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -2771,6 +2827,8 @@ pub fn page_scroll_up_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -2842,6 +2900,8 @@ pub fn page_scroll_down_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -2913,6 +2973,8 @@ pub fn toggle_focus_fullscreen_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -2984,6 +3046,8 @@ pub fn toggle_pane_frames_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -3055,6 +3119,8 @@ pub fn toggle_pane_embed_or_eject_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -3126,6 +3192,8 @@ pub fn undo_rename_pane_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -3197,6 +3265,8 @@ pub fn close_focus_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -3268,6 +3338,8 @@ pub fn toggle_active_tab_sync_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -3339,6 +3411,8 @@ pub fn close_focused_tab_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -3410,6 +3484,8 @@ pub fn undo_rename_tab_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -3481,6 +3557,8 @@ pub fn previous_swap_layout_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -3552,6 +3630,8 @@ pub fn next_swap_layout_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -3623,6 +3703,8 @@ pub fn go_to_tab_name_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -3694,6 +3776,8 @@ pub fn focus_or_create_tab_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -3765,6 +3849,8 @@ pub fn go_to_tab() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -3836,6 +3922,8 @@ pub fn start_or_reload_plugin() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -3914,6 +4002,8 @@ pub fn quit_zellij_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -3992,6 +4082,8 @@ pub fn detach_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -4070,6 +4162,8 @@ pub fn open_file_floating_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -4152,6 +4246,8 @@ pub fn open_file_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -4235,6 +4331,8 @@ pub fn open_file_with_line_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -4317,6 +4415,8 @@ pub fn open_file_with_line_floating_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -4399,6 +4499,8 @@ pub fn open_terminal_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -4477,6 +4579,8 @@ pub fn open_terminal_floating_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -4555,6 +4659,8 @@ pub fn open_command_pane_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -4633,6 +4739,8 @@ pub fn open_command_pane_floating_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -4704,6 +4812,8 @@ pub fn switch_to_tab_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -4775,6 +4885,8 @@ pub fn hide_self_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -4845,6 +4957,8 @@ pub fn show_self_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -4916,6 +5030,8 @@ pub fn close_terminal_pane_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -4987,6 +5103,8 @@ pub fn close_plugin_pane_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -5058,6 +5176,8 @@ pub fn focus_terminal_pane_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -5129,6 +5249,8 @@ pub fn focus_plugin_pane_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -5200,6 +5322,8 @@ pub fn rename_terminal_pane_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -5271,6 +5395,8 @@ pub fn rename_plugin_pane_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -5342,6 +5468,8 @@ pub fn rename_tab_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -5422,6 +5550,8 @@ pub fn send_configuration_to_plugins() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -5490,6 +5620,8 @@ pub fn request_plugin_permissions() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -5582,6 +5714,8 @@ pub fn granted_permission_request_result() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -5673,6 +5807,8 @@ pub fn denied_permission_request_result() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -5744,6 +5880,8 @@ pub fn run_command_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -5822,6 +5960,8 @@ pub fn run_command_with_env_vars_and_cwd_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -5900,6 +6040,8 @@ pub fn web_request_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -5971,6 +6113,8 @@ pub fn unblock_input_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
 
@@ -6053,6 +6197,8 @@ pub fn block_input_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     // extra long time because we only start the fs watcher on plugin load
     std::thread::sleep(std::time::Duration::from_millis(5000));
@@ -6143,6 +6289,8 @@ pub fn pipe_output_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
 
@@ -6226,6 +6374,8 @@ pub fn pipe_message_to_plugin_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::CliPipe {
@@ -6320,6 +6470,8 @@ pub fn switch_session_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
 
@@ -6401,6 +6553,8 @@ pub fn switch_session_with_layout_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
 
@@ -6482,6 +6636,8 @@ pub fn switch_session_with_layout_and_cwd_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
 
@@ -6563,6 +6719,8 @@ pub fn disconnect_other_clients_plugins_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
 
@@ -6644,6 +6802,8 @@ pub fn reconfigure_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
 
@@ -6729,6 +6889,8 @@ pub fn run_plugin_in_specific_cwd() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
 
@@ -6803,6 +6965,8 @@ pub fn hide_pane_with_id_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -6874,6 +7038,8 @@ pub fn show_pane_with_id_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -6952,6 +7118,8 @@ pub fn open_command_pane_background_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -7027,6 +7195,8 @@ pub fn rerun_command_pane_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -7098,6 +7268,8 @@ pub fn resize_pane_with_id_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -7169,6 +7341,8 @@ pub fn edit_scrollback_for_pane_with_id_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -7240,6 +7414,8 @@ pub fn write_to_pane_id_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -7311,6 +7487,8 @@ pub fn write_chars_to_pane_id_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -7382,6 +7560,8 @@ pub fn move_pane_with_pane_id_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -7453,6 +7633,8 @@ pub fn move_pane_with_pane_id_in_direction_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -7524,6 +7706,8 @@ pub fn clear_screen_for_pane_id_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -7595,6 +7779,8 @@ pub fn scroll_up_in_pane_id_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -7666,6 +7852,8 @@ pub fn scroll_down_in_pane_id_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -7737,6 +7925,8 @@ pub fn scroll_to_top_in_pane_id_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -7808,6 +7998,8 @@ pub fn scroll_to_bottom_in_pane_id_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -7879,6 +8071,8 @@ pub fn page_scroll_up_in_pane_id_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -7950,6 +8144,8 @@ pub fn page_scroll_down_in_pane_id_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -8021,6 +8217,8 @@ pub fn toggle_pane_id_fullscreen_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -8092,6 +8290,8 @@ pub fn toggle_pane_embed_or_eject_for_pane_id_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -8163,6 +8363,8 @@ pub fn close_tab_with_index_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -8234,6 +8436,8 @@ pub fn break_panes_to_new_tab_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -8305,6 +8509,8 @@ pub fn break_panes_to_tab_with_index_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -8376,6 +8582,8 @@ pub fn reload_plugin_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -8447,6 +8655,8 @@ pub fn load_new_plugin_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -8525,6 +8735,8 @@ pub fn rebind_keys_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
 
@@ -8599,6 +8811,8 @@ pub fn list_clients_plugin_command() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -8670,6 +8884,8 @@ pub fn before_close_plugin_event() {
         size,
         None,
         false,
+        None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(5000));
     // here we send an unload to plugin id 0 (the first plugin id, presumably this plugin)

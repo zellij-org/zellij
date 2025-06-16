@@ -967,6 +967,7 @@ impl TiledPanes {
                 let pane_is_stacked = pane.current_geom().is_stacked();
                 let pane_is_one_liner_in_stack =
                     pane_is_stacked && pane.current_geom().rows.is_fixed();
+                let pane_is_selectable = pane.selectable();
                 let mut pane_contents_and_ui = PaneContentsAndUi::new(
                     pane,
                     output,
@@ -1004,6 +1005,7 @@ impl TiledPanes {
                                 client_mode,
                                 self.session_is_mirrored,
                                 is_floating,
+                                pane_is_selectable,
                             )
                             .with_context(err_context)?;
                     } else if pane_is_stacked {
@@ -1015,6 +1017,7 @@ impl TiledPanes {
                                 client_mode,
                                 self.session_is_mirrored,
                                 is_floating,
+                                pane_is_selectable,
                             )
                             .with_context(err_context)?;
                         // we also need to render its boundaries as normal

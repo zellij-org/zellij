@@ -64,6 +64,7 @@ pub struct FrameParams {
     pub pane_is_floating: bool,
     pub content_offset: Offset,
     pub mouse_is_hovering_over_pane: bool,
+    pub pane_is_selectable: bool,
 }
 
 #[derive(Default, PartialEq)]
@@ -86,6 +87,7 @@ pub struct PaneFrame {
     is_floating: bool,
     content_offset: Offset,
     mouse_is_hovering_over_pane: bool,
+    is_selectable: bool,
 }
 
 impl PaneFrame {
@@ -114,6 +116,7 @@ impl PaneFrame {
             is_floating: frame_params.pane_is_floating,
             content_offset: frame_params.content_offset,
             mouse_is_hovering_over_pane: frame_params.mouse_is_hovering_over_pane,
+            is_selectable: frame_params.pane_is_selectable,
         }
     }
     pub fn is_pinned(mut self, is_pinned: bool) -> Self {
@@ -166,8 +169,9 @@ impl PaneFrame {
     ) -> Option<(Vec<TerminalCharacter>, usize)> {
         // string and length because of color
         let has_scroll = self.scroll_position.0 > 0 || self.scroll_position.1 > 0;
-        if has_scroll {
-            let pin_indication = if self.is_floating {
+        if has_scroll && self.is_selectable {
+            // TODO: don't show SCROLL at all for plugins
+            let pin_indication = if self.is_floating && self.is_selectable {
                 self.render_pinned_indication(max_length)
             } else {
                 None
@@ -192,7 +196,7 @@ impl PaneFrame {
                 (None, Some(scroll_indication)) => Some(scroll_indication),
                 _ => None,
             }
-        } else if self.is_floating {
+        } else if self.is_floating && self.is_selectable {
             self.render_pinned_indication(max_length)
         } else {
             None

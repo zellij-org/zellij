@@ -1186,7 +1186,7 @@ pub fn break_panes_to_new_tab(
     unsafe { host_run_plugin_command() };
 }
 
-/// Create a new tab that includes the specified pane ids
+/// Move the pane ids to the tab with the specified index
 pub fn break_panes_to_tab_with_index(
     pane_ids: &[PaneId],
     tab_index: usize,
@@ -1358,9 +1358,6 @@ pub fn set_self_mouse_selection_support(selection_support: bool) {
     unsafe { host_run_plugin_command() };
 }
 
-// TODO: CONTINUE HERE (28/5) - implement these three - should probably start by creating the
-// response structs (their protobuf version can be found in plugin_command.proto) and creating the
-// conversion - take inspiration from get_plugin_ids
 pub fn generate_web_login_token(token_label: Option<String>) -> Result<String, String> {
     let plugin_command = PluginCommand::GenerateWebLoginToken(token_label);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1438,6 +1435,20 @@ pub fn rename_web_token(old_name: &str, new_name: &str) -> Result<(), String> {
     } else {
         Ok(())
     }
+}
+
+pub fn intercept_key_presses() {
+    let plugin_command = PluginCommand::InterceptKeyPresses;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn clear_key_presses_intercepts() {
+    let plugin_command = PluginCommand::ClearKeyPressesIntercepts;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
 
 // Utility Functions

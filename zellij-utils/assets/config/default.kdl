@@ -188,12 +188,6 @@ keybinds {
         bind "Alt -" { Resize "Decrease"; }
         bind "Alt [" { PreviousSwapLayout; }
         bind "Alt ]" { NextSwapLayout; }
-        bind "Alt m" {
-            LaunchOrFocusPlugin "zellij:multiple-select" {
-                floating true
-                move_to_focused_tab true
-            }
-        }
         bind "Alt p" { TogglePaneInGroup; }
         bind "Alt Shift p" { ToggleGroupMarking; }
     }

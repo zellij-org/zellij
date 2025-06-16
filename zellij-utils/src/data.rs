@@ -3,6 +3,7 @@ use crate::input::config::ConversionError;
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{RunPlugin, SplitSize};
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
+use crate::pane_size::PaneGeom;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -941,6 +942,7 @@ pub enum Event {
     WebServerStatus(WebServerStatus),
     FailedToStartWebServer(String),
     BeforeClose,
+    InterceptedKeyPress(KeyWithModifier),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, ToString, Serialize, Deserialize)]
@@ -980,6 +982,7 @@ pub enum Permission {
     Reconfigure,
     FullHdAccess,
     StartWebServer,
+    InterceptInput,
 }
 
 impl PermissionType {
@@ -1005,6 +1008,7 @@ impl PermissionType {
             PermissionType::StartWebServer => {
                 "Start a local web server to serve Zellij sessions".to_owned()
             },
+            PermissionType::InterceptInput => "Intercept Input (keyboard & mouse)".to_owned(),
         }
     }
 }
@@ -1945,6 +1949,7 @@ pub struct MessageToPlugin {
     /// these will only be used in case we need to launch a new plugin to send this message to,
     /// since none are running
     pub new_plugin_args: Option<NewPluginArgs>,
+    pub floating_pane_coordinates: Option<FloatingPaneCoordinates>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -2006,6 +2011,13 @@ impl MessageToPlugin {
     }
     pub fn with_args(mut self, args: BTreeMap<String, String>) -> Self {
         self.message_args = args;
+        self
+    }
+    pub fn with_floating_pane_coordinates(
+        mut self,
+        floating_pane_coordinates: FloatingPaneCoordinates,
+    ) -> Self {
+        self.floating_pane_coordinates = Some(floating_pane_coordinates);
         self
     }
     pub fn new_plugin_instance_should_float(mut self, should_float: bool) -> Self {
@@ -2203,6 +2215,18 @@ impl FloatingPaneCoordinates {
         }
         self.height = Some(SplitSize::Percent(height));
         self
+    }
+}
+
+impl From<PaneGeom> for FloatingPaneCoordinates {
+    fn from(pane_geom: PaneGeom) -> Self {
+        FloatingPaneCoordinates {
+            x: Some(SplitSize::Fixed(pane_geom.x)),
+            y: Some(SplitSize::Fixed(pane_geom.y)),
+            width: Some(SplitSize::Fixed(pane_geom.cols.as_usize())),
+            height: Some(SplitSize::Fixed(pane_geom.rows.as_usize())),
+            pinned: Some(pane_geom.is_pinned),
+        }
     }
 }
 
@@ -2470,4 +2494,6 @@ pub enum PluginCommand {
     ListWebLoginTokens,
     RevokeAllWebLoginTokens,
     RenameWebLoginToken(String, String), // (original_name, new_name)
+    InterceptKeyPresses,
+    ClearKeyPressesIntercepts,
 }

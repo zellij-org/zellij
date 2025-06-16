@@ -384,6 +384,8 @@ pub enum ScreenContext {
     ToggleGroupMarking,
     SessionSharingStatusChange,
     SetMouseSelectionSupport,
+    InterceptKeyPresses,
+    ClearKeyPressesIntercepts,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

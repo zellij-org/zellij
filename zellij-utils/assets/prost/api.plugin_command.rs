@@ -624,6 +624,8 @@ pub struct MessageToPluginPayload {
     pub new_plugin_args: ::core::option::Option<NewPluginArgs>,
     #[prost(uint32, optional, tag="7")]
     pub destination_plugin_id: ::core::option::Option<u32>,
+    #[prost(message, optional, tag="8")]
+    pub floating_pane_coordinates: ::core::option::Option<FloatingPaneCoordinates>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1009,6 +1011,8 @@ pub enum CommandName {
     ListWebLoginTokens = 140,
     RevokeAllWebLoginTokens = 141,
     RenameWebLoginToken = 142,
+    InterceptKeyPresses = 143,
+    ClearKeyPressesIntercepts = 144,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1160,6 +1164,8 @@ impl CommandName {
             CommandName::ListWebLoginTokens => "ListWebLoginTokens",
             CommandName::RevokeAllWebLoginTokens => "RevokeAllWebLoginTokens",
             CommandName::RenameWebLoginToken => "RenameWebLoginToken",
+            CommandName::InterceptKeyPresses => "InterceptKeyPresses",
+            CommandName::ClearKeyPressesIntercepts => "ClearKeyPressesIntercepts",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1308,6 +1314,8 @@ impl CommandName {
             "ListWebLoginTokens" => Some(Self::ListWebLoginTokens),
             "RevokeAllWebLoginTokens" => Some(Self::RevokeAllWebLoginTokens),
             "RenameWebLoginToken" => Some(Self::RenameWebLoginToken),
+            "InterceptKeyPresses" => Some(Self::InterceptKeyPresses),
+            "ClearKeyPressesIntercepts" => Some(Self::ClearKeyPressesIntercepts),
             _ => None,
         }
     }

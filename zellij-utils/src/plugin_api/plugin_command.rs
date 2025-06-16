@@ -939,6 +939,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     message_args,
                     new_plugin_args,
                     destination_plugin_id,
+                    floating_pane_coordinates,
                 })) => {
                     let plugin_config: BTreeMap<String, String> = plugin_config
                         .into_iter()
@@ -966,6 +967,8 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                             })
                         }),
                         destination_plugin_id,
+                        floating_pane_coordinates: floating_pane_coordinates
+                            .and_then(|f| f.try_into().ok()),
                     }))
                 },
                 _ => Err("Mismatched payload for MessageToPlugin"),
@@ -1700,6 +1703,14 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("RenameWebLoginToken requires a payload"),
             },
+            Some(CommandName::InterceptKeyPresses) => match protobuf_plugin_command.payload {
+                Some(_) => Err("InterceptKeyPresses should have no payload, found a payload"),
+                None => Ok(PluginCommand::InterceptKeyPresses),
+            },
+            Some(CommandName::ClearKeyPressesIntercepts) => match protobuf_plugin_command.payload {
+                Some(_) => Err("ClearKeyPressesIntercepts should have no payload, found a payload"),
+                None => Ok(PluginCommand::ClearKeyPressesIntercepts),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2229,6 +2240,9 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                             }
                         }),
                         destination_plugin_id: message_to_plugin.destination_plugin_id,
+                        floating_pane_coordinates: message_to_plugin
+                            .floating_pane_coordinates
+                            .and_then(|f| f.try_into().ok()),
                     })),
                 })
             },
@@ -2825,6 +2839,14 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 payload: Some(Payload::RenameWebLoginTokenPayload(
                     RenameWebLoginTokenPayload { old_name, new_name },
                 )),
+            }),
+            PluginCommand::InterceptKeyPresses => Ok(ProtobufPluginCommand {
+                name: CommandName::InterceptKeyPresses as i32,
+                payload: None,
+            }),
+            PluginCommand::ClearKeyPressesIntercepts => Ok(ProtobufPluginCommand {
+                name: CommandName::ClearKeyPressesIntercepts as i32,
+                payload: None,
             }),
         }
     }

@@ -1,9 +1,6 @@
-pub mod state;
-pub mod ui;
-
-use state::{MarkedIndex, VisibilityAndFocus};
 use std::collections::BTreeMap;
-use ui::PaneItem;
+use std::time::Instant;
+use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 
 #[derive(Debug, Default)]
@@ -12,13 +9,17 @@ pub struct App {
     own_client_id: Option<ClientId>,
     own_tab_index: Option<usize>,
     total_tabs_in_session: Option<usize>,
-    search_string: String,
-    previous_search_string: String, // used eg. for the new tab title when breaking panes
-    left_side_panes: Vec<PaneItem>,
-    right_side_panes: Vec<PaneItem>,
-    search_results: Option<Vec<PaneItem>>,
-    visibility_and_focus: VisibilityAndFocus,
-    marked_index: Option<MarkedIndex>,
+    grouped_panes: Vec<PaneId>,
+    grouped_panes_count: usize,
+    mode_info: ModeInfo,
+    closing: bool,
+    highlighted_at: Option<Instant>,
+    baseline_ui_width: usize,
+    current_rows: usize,
+    current_cols: usize,
+    display_area_rows: usize,
+    display_area_cols: usize,
+    alternate_coordinates: bool,
 }
 
 register_plugin!(App);
@@ -27,186 +28,597 @@ impl ZellijPlugin for App {
     fn load(&mut self, _configuration: BTreeMap<String, String>) {
         subscribe(&[
             EventType::Key,
-            EventType::Mouse,
+            EventType::InterceptedKeyPress,
             EventType::ModeUpdate,
-            EventType::RunCommandResult,
-            EventType::TabUpdate,
             EventType::PaneUpdate,
-            EventType::FailedToWriteConfigToDisk,
-            EventType::ConfigWasWrittenToDisk,
-            EventType::BeforeClose,
+            EventType::TabUpdate,
+            EventType::Timer,
         ]);
+
         let plugin_ids = get_plugin_ids();
         self.own_plugin_id = Some(plugin_ids.plugin_id);
         self.own_client_id = Some(plugin_ids.client_id);
-        rename_plugin_pane(plugin_ids.plugin_id, "Multiple Select");
+
+        intercept_key_presses();
+        set_selectable(false);
     }
+
     fn update(&mut self, event: Event) -> bool {
-        let mut should_render = false;
+        if self.closing {
+            return false;
+        }
         match event {
-            Event::PaneUpdate(pane_manifest) => {
-                self.react_to_zellij_state_update(pane_manifest);
-                should_render = true;
-            },
-            Event::Key(key) => {
-                match key.bare_key {
-                    BareKey::Tab if key.has_no_modifiers() => {
-                        self.visibility_and_focus.toggle_focus();
-                        self.marked_index = None;
-                        self.update_highlighted_panes();
-                        should_render = true;
-                    },
-                    BareKey::Char(character)
-                        if key.has_no_modifiers()
-                            && self.visibility_and_focus.left_side_is_focused()
-                            && self.marked_index.is_none() =>
-                    {
-                        self.search_string.push(character);
-                        self.update_search_results();
-                        should_render = true;
-                    },
-                    BareKey::Backspace
-                        if key.has_no_modifiers()
-                            && self.visibility_and_focus.left_side_is_focused()
-                            && self.marked_index.is_none() =>
-                    {
-                        self.search_string.pop();
-                        self.update_search_results();
-                        should_render = true;
-                    },
-                    BareKey::Enter if key.has_no_modifiers() => {
-                        if self.visibility_and_focus.left_side_is_focused() {
-                            if let Some(marked_index) = self.marked_index.take() {
-                                let keep_left_side_focused = false;
-                                self.group_panes(marked_index, keep_left_side_focused);
-                            } else {
-                                match self.search_results.take() {
-                                    Some(search_results) => {
-                                        self.group_search_results(search_results)
-                                    },
-                                    None => self.group_all_panes(),
-                                }
-                                self.handle_left_side_emptied();
-                            }
-                        }
-                        should_render = true;
-                    },
-                    BareKey::Right
-                        if key.has_no_modifiers()
-                            && self.visibility_and_focus.left_side_is_focused() =>
-                    {
-                        if let Some(marked_index) = self.marked_index.take() {
-                            let keep_left_side_focused = true;
-                            self.group_panes(marked_index, keep_left_side_focused);
-                            should_render = true;
-                        }
-                    },
-                    BareKey::Left
-                        if key.has_no_modifiers()
-                            && self.visibility_and_focus.right_side_is_focused() =>
-                    {
-                        if self.visibility_and_focus.right_side_is_focused() {
-                            if let Some(marked_index) = self.marked_index.take() {
-                                self.ungroup_panes(marked_index);
-                                should_render = true;
-                            }
-                        }
-                    },
-                    BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
-                        if self.visibility_and_focus.right_side_is_focused() {
-                            // this means we're in the selection panes part and we want to clear
-                            // them
-                            self.ungroup_all_panes();
-                        } else if self.visibility_and_focus.left_side_is_focused() {
-                            if self.marked_index.is_some() {
-                                self.marked_index = None;
-                                self.update_highlighted_panes();
-                            } else {
-                                self.ungroup_all_panes_and_close_self();
-                            }
-                        }
-                        should_render = true;
-                    },
-                    BareKey::Down if key.has_no_modifiers() => {
-                        self.move_marked_index_down();
-                        should_render = true;
-                    },
-                    BareKey::Up if key.has_no_modifiers() => {
-                        self.move_marked_index_up();
-                        should_render = true;
-                    },
-                    BareKey::Char(' ') if key.has_no_modifiers() && self.marked_index.is_some() => {
-                        self.mark_entry();
-                        should_render = true;
-                    },
-                    BareKey::Char('b')
-                        if key.has_no_modifiers()
-                            && self.visibility_and_focus.right_side_is_focused() =>
-                    {
-                        self.break_grouped_panes_to_new_tab();
-                    },
-                    BareKey::Char('s')
-                        if key.has_no_modifiers()
-                            && self.visibility_and_focus.right_side_is_focused() =>
-                    {
-                        self.stack_grouped_panes();
-                    },
-                    BareKey::Char('f')
-                        if key.has_no_modifiers()
-                            && self.visibility_and_focus.right_side_is_focused() =>
-                    {
-                        self.float_grouped_panes();
-                    },
-                    BareKey::Char('e')
-                        if key.has_no_modifiers()
-                            && self.visibility_and_focus.right_side_is_focused() =>
-                    {
-                        self.embed_grouped_panes();
-                    },
-                    BareKey::Char('r')
-                        if key.has_no_modifiers()
-                            && self.visibility_and_focus.right_side_is_focused() =>
-                    {
-                        self.break_grouped_panes_right();
-                    },
-                    BareKey::Char('l')
-                        if key.has_no_modifiers()
-                            && self.visibility_and_focus.right_side_is_focused() =>
-                    {
-                        self.break_grouped_panes_left();
-                    },
-                    BareKey::Char('c')
-                        if key.has_no_modifiers()
-                            && self.visibility_and_focus.right_side_is_focused() =>
-                    {
-                        self.close_grouped_panes();
-                    },
-                    _ => {},
-                }
-            },
-            Event::BeforeClose => {
-                self.unhighlight_all_panes();
-            },
-            _ => {},
+            Event::ModeUpdate(mode_info) => self.handle_mode_update(mode_info),
+            Event::PaneUpdate(pane_manifest) => self.handle_pane_update(pane_manifest),
+            Event::TabUpdate(tab_infos) => self.handle_tab_update(tab_infos),
+            Event::InterceptedKeyPress(key) => self.handle_key_press(key),
+            Event::Timer(_) => self.handle_timer(),
+            _ => false,
         }
-        should_render
     }
+
     fn render(&mut self, rows: usize, cols: usize) {
-        self.render_close_shortcut(cols);
-        self.render_tab_shortcut(cols, rows);
-        match self.visibility_and_focus {
-            VisibilityAndFocus::OnlyLeftSideVisible => self.render_left_side(rows, cols, true),
-            VisibilityAndFocus::OnlyRightSideVisible => self.render_right_side(rows, cols, true),
-            VisibilityAndFocus::BothSidesVisibleLeftSideFocused => {
-                self.render_left_side(rows, cols, true);
-                self.render_right_side(rows, cols, false);
-            },
-            VisibilityAndFocus::BothSidesVisibleRightSideFocused => {
-                self.render_left_side(rows, cols, false);
-                self.render_right_side(rows, cols, true);
-            },
-        }
-        self.render_focus_boundary(rows, cols);
-        self.render_help_line(rows, cols);
+        self.update_current_size(rows, cols);
+        let ui_width = self.calculate_ui_width();
+        self.update_baseline_ui_width(ui_width);
+        let base_x = cols.saturating_sub(self.baseline_ui_width) / 2;
+        let base_y = rows.saturating_sub(8) / 2;
+        self.render_header(base_x, base_y);
+        self.render_shortcuts(base_x, base_y + 2);
+        self.render_controls(base_x, base_y + 7);
     }
+}
+
+impl App {
+    fn update_current_size(&mut self, new_rows: usize, new_cols: usize) {
+        let size_changed = new_rows != self.current_rows || new_cols != self.current_cols;
+        self.current_rows = new_rows;
+        self.current_cols = new_cols;
+        if size_changed {
+            self.baseline_ui_width = 0;
+        }
+    }
+    fn update_baseline_ui_width(&mut self, current_ui_width: usize) {
+        if current_ui_width > self.baseline_ui_width {
+            self.baseline_ui_width = current_ui_width;
+        }
+    }
+
+    fn calculate_ui_width(&self) -> usize {
+        let controls_width = group_controls_length(&self.mode_info);
+
+        let header_width = Self::header_text().0.len();
+        let shortcuts_max_width = Self::shortcuts_max_width();
+
+        std::cmp::max(
+            controls_width,
+            std::cmp::max(header_width, shortcuts_max_width),
+        )
+    }
+
+    fn header_text() -> (&'static str, Text) {
+        let header_text = "<ESC> - cancel, <TAB> - move";
+        let header_text_component = Text::new(header_text)
+            .color_substring(3, "<ESC>")
+            .color_substring(3, "<TAB>");
+        (header_text, header_text_component)
+    }
+
+    fn shortcuts_max_width() -> usize {
+        std::cmp::max(
+            std::cmp::max(
+                Self::group_actions_text().0.len(),
+                Self::shortcuts_line1_text().0.len(),
+            ),
+            std::cmp::max(
+                Self::shortcuts_line2_text().0.len(),
+                Self::shortcuts_line3_text().0.len(),
+            ),
+        )
+    }
+
+    fn group_actions_text() -> (&'static str, Text) {
+        let text = "GROUP ACTIONS";
+        let component = Text::new(text).color_all(2);
+        (text, component)
+    }
+
+    fn shortcuts_line1_text() -> (&'static str, Text) {
+        let text = "<b> - break out, <s> - stack, <c> - close";
+        let component = Text::new(text)
+            .color_substring(3, "<b>")
+            .color_substring(3, "<s>")
+            .color_substring(3, "<c>");
+        (text, component)
+    }
+
+    fn shortcuts_line2_text() -> (&'static str, Text) {
+        let text = "<r> - break right, <l> - break left";
+        let component = Text::new(text)
+            .color_substring(3, "<r>")
+            .color_substring(3, "<l>");
+        (text, component)
+    }
+
+    fn shortcuts_line3_text() -> (&'static str, Text) {
+        let text = "<e> - embed, <f> - float";
+        let component = Text::new(text)
+            .color_substring(3, "<e>")
+            .color_substring(3, "<f>");
+        (text, component)
+    }
+
+    fn handle_mode_update(&mut self, mode_info: ModeInfo) -> bool {
+        if self.mode_info != mode_info {
+            self.mode_info = mode_info;
+            let ui_width = self.calculate_ui_width();
+            self.update_baseline_ui_width(ui_width);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn handle_pane_update(&mut self, pane_manifest: PaneManifest) -> bool {
+        let Some(own_client_id) = self.own_client_id else {
+            return false;
+        };
+
+        self.update_grouped_panes(&pane_manifest, own_client_id);
+        self.update_tab_info(&pane_manifest);
+        self.total_tabs_in_session = Some(pane_manifest.panes.keys().count());
+
+        true
+    }
+
+    fn handle_tab_update(&mut self, tab_infos: Vec<TabInfo>) -> bool {
+        for tab in tab_infos {
+            if tab.active {
+                self.display_area_rows = tab.display_area_rows;
+                self.display_area_cols = tab.display_area_columns;
+                break;
+            }
+        }
+
+        false
+    }
+
+    fn update_grouped_panes(&mut self, pane_manifest: &PaneManifest, own_client_id: ClientId) {
+        self.grouped_panes.clear();
+        let mut count = 0;
+
+        for (_tab_index, pane_infos) in &pane_manifest.panes {
+            for pane_info in pane_infos {
+                if pane_info.index_in_pane_group.get(&own_client_id).is_some() {
+                    let pane_id = if pane_info.is_plugin {
+                        PaneId::Plugin(pane_info.id)
+                    } else {
+                        PaneId::Terminal(pane_info.id)
+                    };
+                    self.grouped_panes.push(pane_id);
+                    count += 1;
+                }
+            }
+        }
+        if count == 0 {
+            self.close_self();
+        }
+
+        let previous_count = self.grouped_panes_count;
+        self.grouped_panes_count = count;
+        if let Some(own_plugin_id) = self.own_plugin_id {
+            let title = if count == 1 {
+                "SELECTED PANE"
+            } else {
+                "SELECTED PANES"
+            };
+            if previous_count != count {
+                rename_plugin_pane(own_plugin_id, format!("{} {}", count, title));
+            }
+            if previous_count != 0 && count != 0 && previous_count != count {
+                if self.doherty_threshold_elapsed_since_highlight() {
+                    self.highlighted_at = Some(Instant::now());
+                    highlight_and_unhighlight_panes(vec![PaneId::Plugin(own_plugin_id)], vec![]);
+                    set_timeout(0.4);
+                }
+            }
+        }
+    }
+
+    fn doherty_threshold_elapsed_since_highlight(&self) -> bool {
+        self.highlighted_at
+            .map(|h| h.elapsed() >= std::time::Duration::from_millis(400))
+            .unwrap_or(true)
+    }
+
+    fn update_tab_info(&mut self, pane_manifest: &PaneManifest) {
+        for (tab_index, pane_infos) in &pane_manifest.panes {
+            for pane_info in pane_infos {
+                if pane_info.is_plugin && Some(pane_info.id) == self.own_plugin_id {
+                    self.own_tab_index = Some(*tab_index);
+                    return;
+                }
+            }
+        }
+    }
+
+    fn handle_key_press(&mut self, key: KeyWithModifier) -> bool {
+        if !key.has_no_modifiers() {
+            return false;
+        }
+
+        match key.bare_key {
+            BareKey::Char('b') => self.break_grouped_panes_to_new_tab(),
+            BareKey::Char('s') => self.stack_grouped_panes(),
+            BareKey::Char('f') => self.float_grouped_panes(),
+            BareKey::Char('e') => self.embed_grouped_panes(),
+            BareKey::Char('r') => self.break_grouped_panes_right(),
+            BareKey::Char('l') => self.break_grouped_panes_left(),
+            BareKey::Char('c') => self.close_grouped_panes(),
+            BareKey::Tab => self.next_coordinates(),
+            BareKey::Esc => {
+                self.ungroup_panes_in_zellij(&self.grouped_panes.clone());
+                self.close_self();
+            },
+            _ => return false,
+        }
+        false
+    }
+    fn handle_timer(&mut self) -> bool {
+        if let Some(own_plugin_id) = self.own_plugin_id {
+            if self.doherty_threshold_elapsed_since_highlight() {
+                highlight_and_unhighlight_panes(vec![], vec![PaneId::Plugin(own_plugin_id)]);
+            }
+        }
+        false
+    }
+
+    fn render_header(&self, base_x: usize, base_y: usize) {
+        let header_text = Self::header_text();
+
+        print_text_with_coordinates(header_text.1, base_x, base_y, None, None);
+    }
+
+    fn render_shortcuts(&self, base_x: usize, base_y: usize) {
+        let mut running_y = base_y;
+        print_text_with_coordinates(Self::group_actions_text().1, base_x, running_y, None, None);
+        running_y += 1;
+
+        print_text_with_coordinates(
+            Self::shortcuts_line1_text().1,
+            base_x,
+            running_y,
+            None,
+            None,
+        );
+        running_y += 1;
+
+        print_text_with_coordinates(
+            Self::shortcuts_line2_text().1,
+            base_x,
+            running_y,
+            None,
+            None,
+        );
+        running_y += 1;
+
+        print_text_with_coordinates(
+            Self::shortcuts_line3_text().1,
+            base_x,
+            running_y,
+            None,
+            None,
+        );
+    }
+
+    fn render_controls(&self, base_x: usize, base_y: usize) {
+        render_group_controls(&self.mode_info, base_x, base_y);
+    }
+
+    fn execute_action_and_close<F>(&mut self, action: F)
+    where
+        F: FnOnce(&[PaneId]),
+    {
+        let pane_ids = self.grouped_panes.clone();
+        action(&pane_ids);
+        self.close_self();
+    }
+
+    pub fn break_grouped_panes_to_new_tab(&mut self) {
+        self.execute_action_and_close(|pane_ids| {
+            break_panes_to_new_tab(pane_ids, None, true);
+        });
+        self.ungroup_panes_in_zellij(&self.grouped_panes.clone());
+    }
+
+    pub fn stack_grouped_panes(&mut self) {
+        self.execute_action_and_close(|pane_ids| {
+            stack_panes(pane_ids.to_vec());
+        });
+        self.ungroup_panes_in_zellij(&self.grouped_panes.clone());
+    }
+
+    pub fn float_grouped_panes(&mut self) {
+        self.execute_action_and_close(|pane_ids| {
+            float_multiple_panes(pane_ids.to_vec());
+        });
+        self.ungroup_panes_in_zellij(&self.grouped_panes.clone());
+    }
+
+    pub fn embed_grouped_panes(&mut self) {
+        self.execute_action_and_close(|pane_ids| {
+            embed_multiple_panes(pane_ids.to_vec());
+        });
+        self.ungroup_panes_in_zellij(&self.grouped_panes.clone());
+    }
+
+    pub fn break_grouped_panes_right(&mut self) {
+        let Some(own_tab_index) = self.own_tab_index else {
+            return;
+        };
+
+        let pane_ids = self.grouped_panes.clone();
+
+        if Some(own_tab_index + 1) < self.total_tabs_in_session {
+            break_panes_to_tab_with_index(&pane_ids, own_tab_index + 1, true);
+        } else {
+            break_panes_to_new_tab(&pane_ids, None, true);
+        }
+
+        self.close_self();
+    }
+
+    pub fn break_grouped_panes_left(&mut self) {
+        let Some(own_tab_index) = self.own_tab_index else {
+            return;
+        };
+
+        let pane_ids = self.grouped_panes.clone();
+
+        if own_tab_index > 0 {
+            break_panes_to_tab_with_index(&pane_ids, own_tab_index - 1, true);
+        } else {
+            break_panes_to_new_tab(&pane_ids, None, true);
+        }
+
+        self.close_self();
+    }
+
+    pub fn close_grouped_panes(&mut self) {
+        self.execute_action_and_close(|pane_ids| {
+            close_multiple_panes(pane_ids.to_vec());
+        });
+    }
+
+    pub fn ungroup_panes_in_zellij(&mut self, pane_ids: &[PaneId]) {
+        group_and_ungroup_panes(vec![], pane_ids.to_vec());
+    }
+    pub fn close_self(&mut self) {
+        self.closing = true;
+        close_self();
+    }
+    pub fn next_coordinates(&mut self) {
+        let width_30_percent = (self.display_area_cols as f64 * 0.3) as usize;
+        let height_30_percent = (self.display_area_rows as f64 * 0.3) as usize;
+        let width = std::cmp::max(width_30_percent, 48);
+        let height = std::cmp::max(height_30_percent, 10);
+        let y_position = self.display_area_rows.saturating_sub(height + 2);
+        if let Some(own_plugin_id) = self.own_plugin_id {
+            if self.alternate_coordinates {
+                let x_position = 2;
+                let Some(next_coordinates) = FloatingPaneCoordinates::new(
+                    Some(format!("{}", x_position)),
+                    Some(format!("{}", y_position)),
+                    Some(format!("{}", width)),
+                    Some(format!("{}", height)),
+                    Some(true),
+                ) else {
+                    return;
+                };
+                change_floating_panes_coordinates(vec![(
+                    PaneId::Plugin(own_plugin_id),
+                    next_coordinates,
+                )]);
+                self.alternate_coordinates = false;
+            } else {
+                let x_position = self
+                    .display_area_cols
+                    .saturating_sub(width)
+                    .saturating_sub(2);
+                let Some(next_coordinates) = FloatingPaneCoordinates::new(
+                    Some(format!("{}", x_position)),
+                    Some(format!("{}", y_position)),
+                    Some(format!("{}", width)),
+                    Some(format!("{}", height)),
+                    Some(true),
+                ) else {
+                    return;
+                };
+                change_floating_panes_coordinates(vec![(
+                    PaneId::Plugin(own_plugin_id),
+                    next_coordinates,
+                )]);
+                self.alternate_coordinates = true;
+            }
+        }
+    }
+}
+
+fn render_group_controls(mode_info: &ModeInfo, base_x: usize, base_y: usize) {
+    let keymap = mode_info.get_mode_keybinds();
+    let (common_modifiers, pane_group_key, group_mark_key) = extract_key_bindings(&keymap);
+
+    let pane_group_bound = pane_group_key != "UNBOUND";
+    let group_mark_bound = group_mark_key != "UNBOUND";
+
+    if !pane_group_bound && !group_mark_bound {
+        return;
+    }
+
+    render_common_modifiers(&common_modifiers, base_x, base_y);
+
+    let mut next_x = base_x + render_common_modifiers(&common_modifiers, base_x, base_y);
+
+    if pane_group_bound {
+        next_x = render_toggle_group_ribbon(&pane_group_key, next_x, base_y);
+    }
+
+    if group_mark_bound {
+        render_follow_focus_ribbon(&group_mark_key, next_x, base_y, mode_info);
+    }
+}
+
+fn group_controls_length(mode_info: &ModeInfo) -> usize {
+    let keymap = mode_info.get_mode_keybinds();
+    let (common_modifiers, pane_group_key, group_mark_key) = extract_key_bindings(&keymap);
+
+    let pane_group_bound = pane_group_key != "UNBOUND";
+    let group_mark_bound = group_mark_key != "UNBOUND";
+
+    let mut length = 0;
+
+    if !common_modifiers.is_empty() {
+        let modifiers_text = format!(
+            "{} + ",
+            common_modifiers
+                .iter()
+                .map(|m| m.to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        length += modifiers_text.chars().count();
+    }
+
+    if pane_group_bound {
+        let toggle_text = format!("<{}> Toggle", pane_group_key);
+        length += toggle_text.chars().count() + 4;
+    }
+
+    if group_mark_bound {
+        let follow_text = format!("<{}> Follow Focus", group_mark_key);
+        length += follow_text.chars().count() + 4;
+    }
+
+    length
+}
+
+fn extract_key_bindings(
+    keymap: &[(KeyWithModifier, Vec<Action>)],
+) -> (Vec<KeyModifier>, String, String) {
+    let pane_group_keys = get_key_for_action(keymap, &[Action::TogglePaneInGroup]);
+    let group_mark_keys = get_key_for_action(keymap, &[Action::ToggleGroupMarking]);
+
+    let key_refs: Vec<&KeyWithModifier> = [pane_group_keys.first(), group_mark_keys.first()]
+        .into_iter()
+        .flatten()
+        .collect();
+
+    let common_modifiers = get_common_modifiers(key_refs);
+
+    let pane_group_key = format_key_without_modifiers(&pane_group_keys, &common_modifiers);
+    let group_mark_key = format_key_without_modifiers(&group_mark_keys, &common_modifiers);
+
+    (common_modifiers, pane_group_key, group_mark_key)
+}
+
+fn format_key_without_modifiers(
+    keys: &[KeyWithModifier],
+    common_modifiers: &[KeyModifier],
+) -> String {
+    keys.first()
+        .map(|key| format!("{}", key.strip_common_modifiers(&common_modifiers.to_vec())))
+        .unwrap_or_else(|| "UNBOUND".to_string())
+}
+
+fn render_common_modifiers(
+    common_modifiers: &[KeyModifier],
+    base_x: usize,
+    base_y: usize,
+) -> usize {
+    if !common_modifiers.is_empty() {
+        let modifiers_text = format!(
+            "{} + ",
+            common_modifiers
+                .iter()
+                .map(|m| m.to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+
+        print_text_with_coordinates(
+            Text::new(&modifiers_text).color_all(0),
+            base_x,
+            base_y,
+            None,
+            None,
+        );
+
+        modifiers_text.chars().count()
+    } else {
+        0
+    }
+}
+
+fn get_key_for_action(
+    keymap: &[(KeyWithModifier, Vec<Action>)],
+    target_action: &[Action],
+) -> Vec<KeyWithModifier> {
+    keymap
+        .iter()
+        .find_map(|(key, actions)| {
+            if actions.first() == target_action.first() {
+                Some(key.clone())
+            } else {
+                None
+            }
+        })
+        .map(|key| vec![key])
+        .unwrap_or_default()
+}
+
+fn get_common_modifiers(keys: Vec<&KeyWithModifier>) -> Vec<KeyModifier> {
+    if keys.is_empty() {
+        return vec![];
+    }
+
+    let mut common = keys[0].key_modifiers.clone();
+
+    for key in keys.iter().skip(1) {
+        common = common.intersection(&key.key_modifiers).cloned().collect();
+    }
+
+    common.into_iter().collect()
+}
+
+fn render_follow_focus_ribbon(
+    group_mark_key: &str,
+    x_position: usize,
+    base_y: usize,
+    mode_info: &ModeInfo,
+) {
+    let follow_text = format!("<{}> Follow Focus", group_mark_key);
+    let key_highlight = format!("{}", group_mark_key);
+
+    let mut ribbon = Text::new(&follow_text).color_substring(0, &key_highlight);
+
+    if mode_info.currently_marking_pane_group.unwrap_or(false) {
+        ribbon = ribbon.selected();
+    }
+
+    print_ribbon_with_coordinates(ribbon, x_position, base_y, None, None);
+}
+
+fn render_toggle_group_ribbon(pane_group_key: &str, base_x: usize, base_y: usize) -> usize {
+    let toggle_text = format!("<{}> Toggle", pane_group_key);
+    let key_highlight = format!("{}", pane_group_key);
+
+    print_ribbon_with_coordinates(
+        Text::new(&toggle_text).color_substring(0, &key_highlight),
+        base_x,
+        base_y,
+        None,
+        None,
+    );
+
+    base_x + toggle_text.len() + 4
 }
