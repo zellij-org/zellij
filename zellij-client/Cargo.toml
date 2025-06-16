@@ -14,7 +14,7 @@ license = "MIT"
 # so let's see how that works out before rocking the boat
 futures = { version = "0.3.30", optional = true }
 axum = { version = "0.8.4", features = ["ws"], optional = true }
-axum-extra = { version = "0.9", features = ["cookie"], optional = true }
+axum-extra = { version = "0.10.1", features = ["cookie"], optional = true }
 axum-server = { version = "0.7", features = ["tls-rustls"], optional = true }
 time = { version = "0.3", optional = true }
 tower-http = { version = "0.6.4", features = ["cors"], optional = true }
