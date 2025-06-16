@@ -136,7 +136,7 @@ disable_automatic_asset_installation = ["zellij-utils/disable_automatic_asset_in
 vendored_curl = ["zellij-utils/vendored_curl"]
 unstable = ["zellij-client/unstable", "zellij-utils/unstable"]
 singlepass = ["zellij-server/singlepass"]
-web_server_capability = ["zellij-client/web_server_capability", "zellij-server/web_server_capability"]
+web_server_capability = ["zellij-client/web_server_capability", "zellij-server/web_server_capability", "zellij-utils/web_server_capability"]
 
 # uncomment this when developing plugins in the Zellij UI to make plugin compilation faster
 # [profile.dev.package."*"]

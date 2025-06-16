@@ -52,7 +52,7 @@ curl-sys = { version = "0.4", default-features = false, features = ["force-syste
 humantime = { workspace = true }
 suggest = { workspace = true }
 names = { workspace = true }
-rusqlite = { workspace = true }
+rusqlite = { workspace = true, optional = true }
 notify = { workspace = true }
 tokio = { workspace = true }
 
@@ -71,4 +71,5 @@ prost-build = "0.11.9"
 disable_automatic_asset_installation = []
 unstable = []
 plugins_from_target = []
+web_server_capability = ["dep:rusqlite"]
 vendored_curl = ["isahc/static-curl", "dep:openssl-sys", "dep:curl-sys"]

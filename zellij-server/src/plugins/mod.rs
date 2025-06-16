@@ -26,7 +26,8 @@ use async_std::{channel, future::timeout, task};
 use zellij_utils::{
     data::{
         ClientInfo, Event, EventType, FloatingPaneCoordinates, InputMode, MessageToPlugin,
-        PermissionStatus, PermissionType, PipeMessage, PipeSource, PluginCapabilities, WebServerStatus
+        PermissionStatus, PermissionType, PipeMessage, PipeSource, PluginCapabilities,
+        WebServerStatus,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{

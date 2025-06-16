@@ -11,7 +11,7 @@ use std::time::Duration;
 use log::{debug, warn};
 use zellij_utils::data::{
     Direction, FloatingPaneCoordinates, KeyWithModifier, PaneManifest, PluginPermission, Resize,
-    ResizeStrategy, SessionInfo, Styling, WebSharing
+    ResizeStrategy, SessionInfo, Styling, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -647,7 +647,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::SetMouseSelectionSupport(..) => {
                 ScreenContext::SetMouseSelectionSupport
-            }
+            },
             ScreenInstruction::InterceptKeyPresses(..) => ScreenContext::InterceptKeyPresses,
             ScreenInstruction::ClearKeyPressesIntercepts(..) => {
                 ScreenContext::ClearKeyPressesIntercepts

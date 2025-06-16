@@ -380,7 +380,7 @@ impl TryFrom<ProtobufEvent> for Event {
                     failed_to_start_web_server_payload.error,
                 )),
                 _ => Err("Malformed payload for the FailedToStartWebServer Event"),
-            }
+            },
             Some(ProtobufEventType::InterceptedKeyPress) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::KeyPayload(protobuf_key)) => {
                     Ok(Event::InterceptedKeyPress(protobuf_key.try_into()?))

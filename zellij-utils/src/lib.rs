@@ -26,9 +26,9 @@ pub mod ipc; // Requires interprocess
 pub mod logging; // Requires log4rs
 #[cfg(not(target_family = "wasm"))]
 pub mod sessions;
-#[cfg(not(target_family = "wasm"))]
+#[cfg(all(not(target_family = "wasm"), feature = "web_server_capability"))]
 pub mod web_authentication_tokens;
-#[cfg(not(target_family = "wasm"))]
+#[cfg(all(not(target_family = "wasm"), feature = "web_server_capability"))]
 pub mod web_server_commands;
 
 // TODO(hartan): Remove this re-export for the next minor release.

@@ -25,9 +25,11 @@ use zellij_utils::data::{
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
+#[cfg(feature = "web_server_capability")]
 use zellij_utils::web_authentication_tokens::{
     create_token, list_tokens, rename_token, revoke_all_tokens, revoke_token,
 };
+#[cfg(feature = "web_server_capability")]
 use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
 
 use crate::{panes::PaneId, screen::ScreenInstruction};
@@ -2216,7 +2218,10 @@ fn start_web_server(env: &PluginEnv) {
 }
 
 fn stop_web_server(_env: &PluginEnv) {
+    #[cfg(feature = "web_server_capability")]
     let _ = shutdown_all_webserver_instances();
+    #[cfg(not(feature = "web_server_capability"))]
+    log::error!("This instance of Zellij was compiled without web server capabilities");
 }
 
 fn query_web_server_status(env: &PluginEnv) {
@@ -2296,6 +2301,7 @@ fn embed_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
         ));
 }
 
+#[cfg(feature = "web_server_capability")]
 fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>) {
     let serialized = match create_token(token_label) {
         Ok((token, token_label)) => CreateTokenResponse {
@@ -2312,6 +2318,12 @@ fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>) {
     let _ = wasi_write_object(env, &serialized.encode_to_vec());
 }
 
+#[cfg(not(feature = "web_server_capability"))]
+fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>) {
+    log::error!("This version of Zellij was compiled without the web server capabilities!");
+}
+
+#[cfg(feature = "web_server_capability")]
 fn revoke_web_login_token(env: &PluginEnv, token_label: String) {
     let serialized = match revoke_token(&token_label) {
         Ok(true) => RevokeTokenResponse {
@@ -2330,6 +2342,12 @@ fn revoke_web_login_token(env: &PluginEnv, token_label: String) {
     let _ = wasi_write_object(env, &serialized.encode_to_vec());
 }
 
+#[cfg(not(feature = "web_server_capability"))]
+fn revoke_web_login_token(env: &PluginEnv, token_label: String) {
+    log::error!("This version of Zellij was compiled without the web server capabilities!");
+}
+
+#[cfg(feature = "web_server_capability")]
 fn revoke_all_web_login_tokens(env: &PluginEnv) {
     let serialized = match revoke_all_tokens() {
         Ok(_) => RevokeAllWebTokensResponse {
@@ -2344,6 +2362,12 @@ fn revoke_all_web_login_tokens(env: &PluginEnv) {
     let _ = wasi_write_object(env, &serialized.encode_to_vec());
 }
 
+#[cfg(not(feature = "web_server_capability"))]
+fn revoke_all_web_login_tokens(env: &PluginEnv) {
+    log::error!("This version of Zellij was compiled without the web server capabilities!");
+}
+
+#[cfg(feature = "web_server_capability")]
 fn rename_web_login_token(env: &PluginEnv, old_name: String, new_name: String) {
     let serialized = match rename_token(&old_name, &new_name) {
         Ok(_) => RenameWebTokenResponse {
@@ -2358,6 +2382,12 @@ fn rename_web_login_token(env: &PluginEnv, old_name: String, new_name: String) {
     let _ = wasi_write_object(env, &serialized.encode_to_vec());
 }
 
+#[cfg(not(feature = "web_server_capability"))]
+fn rename_web_login_token(env: &PluginEnv, old_name: String, new_name: String) {
+    log::error!("This version of Zellij was compiled without the web server capabilities!");
+}
+
+#[cfg(feature = "web_server_capability")]
 fn list_web_login_tokens(env: &PluginEnv) {
     let serialized = match list_tokens() {
         Ok(token_list) => ListTokensResponse {
@@ -2372,6 +2402,11 @@ fn list_web_login_tokens(env: &PluginEnv) {
         },
     };
     let _ = wasi_write_object(env, &serialized.encode_to_vec());
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+fn list_web_login_tokens(env: &PluginEnv) {
+    log::error!("This version of Zellij was compiled without the web server capabilities!");
 }
 
 fn set_self_mouse_selection_support(env: &PluginEnv, selection_support: bool) {

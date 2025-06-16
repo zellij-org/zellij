@@ -69,4 +69,4 @@ wasmtime = { version = "29.0.1", features = ["winch"] } # Keep in sync with the 
 
 [features]
 singlepass = ["wasmtime/winch"]
-web_server_capability = [ ]
+web_server_capability = ["zellij-utils/web_server_capability"]
