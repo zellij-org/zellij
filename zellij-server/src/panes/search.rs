@@ -92,7 +92,7 @@ pub struct SearchResult {
     // Which of the selections we found is currently 'active' (highlighted differently)
     pub active: Option<Selection>,
     // What we are looking for
-    pub needle: String,
+    pub needle: Vec<char>,
     // Does case matter?
     pub case_insensitive: bool,
     // Only search whole words, not parts inside a word
@@ -196,7 +196,7 @@ impl SearchResult {
                 source.get_next_two_chars(hidx, self.whole_word_only);
 
             // Get current needle character
-            let needle_char = self.needle.chars().nth(nidx).unwrap(); // Unwrapping is safe here
+            let needle_char: char = *self.needle.get(nidx).unwrap(); // Unwrapping is safe here
 
             // Check if needle and haystack match (with search-options)
             let chars_match = self.check_if_haystack_char_matches_needle(
@@ -412,7 +412,7 @@ impl Grid {
     }
 
     pub fn set_search_string(&mut self, needle: &str) {
-        self.search_results.needle = needle.to_string();
+        self.search_results.needle = needle.chars().collect();
         self.search_viewport();
         // If the current viewport does not contain any hits,
         // we jump around until we find something. Starting
