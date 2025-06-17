@@ -235,9 +235,28 @@ document.addEventListener("DOMContentLoaded", async (event) => {
             const msg = JSON.parse(event.data);
             if (msg.type === "SetConfig") {
                 console.log("SetConfig message received", msg);
-                const { font, theme } = msg;
+                const {
+                  font,
+                  theme,
+                  cursor_blink,
+                  mac_option_is_meta,
+                  cursor_style,
+                  cursor_inactive_style
+                } = msg;
                 term.options.fontFamily = font;
                 term.options.theme = theme;
+                if (cursor_blink !== 'undefined') {
+                  term.options.cursorBlink = cursor_blink;
+                }
+                if (mac_option_is_meta !== 'undefined') {
+                  term.options.macOptionIsMeta = mac_option_is_meta;
+                }
+                if (cursor_style !== 'undefined') {
+                  term.options.cursorStyle = cursor_style;
+                }
+                if (cursor_inactive_style !== 'undefined') {
+                  term.options.cursorInactiveStyle = cursor_inactive_style;
+                }
                 const body = document.querySelector("body");
                 body.style.background = theme.background;
 
@@ -307,17 +326,41 @@ document.addEventListener("DOMContentLoaded", async (event) => {
     }
 
     ws_terminal.onmessage = function (event) {
-        //         console.log(
-        //             "Received message from WebSocket terminal server",
-        //             event.data
-        //         );
         if (own_web_client_id == "") {
             own_web_client_id = web_client_id;
             const ws_control_url = `${ws_url_prefix}://${window.location.host}/ws/control`;
             ws_control = new WebSocket(ws_control_url);
             start_ws_control();
         }
-        term.write(event.data);
+
+        // workaround for: https://github.com/xtermjs/xterm.js/issues/3293
+        // since in this version of xterm.js the default cursor is hard-coded to blinking
+        // we need to replace it with the appropriate cursor shape / blinking based on the
+        // user's config
+        let data = event.data;
+        if (typeof data === 'string' && data.includes('\x1b[0 q')) {
+            const shouldBlink = term.options.cursorBlink;
+            const cursorStyle = term.options.cursorStyle;
+            let replacement;
+            switch (cursorStyle) {
+                case 'block':
+                    replacement = shouldBlink ? '\x1b[1 q' : '\x1b[2 q';
+                    break;
+                case 'underline':
+                    replacement = shouldBlink ? '\x1b[3 q' : '\x1b[4 q';
+                    break;
+                case 'bar':
+                    replacement = shouldBlink ? '\x1b[5 q' : '\x1b[6 q';
+                    break;
+                default:
+                    // Fallback to steady block if unknown style
+                    replacement = '\x1b[2 q';
+                    break;
+            }
+            // Replace \033[0 q with the appropriate sequence
+            data = data.replace(/\x1b\[0 q/g, replacement);
+        }
+        term.write(data);
     };
 
     ws_terminal.onclose = function () {

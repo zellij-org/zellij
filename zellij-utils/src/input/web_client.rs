@@ -2,7 +2,7 @@ use kdl::{KdlDocument, KdlNode, KdlValue};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    data::PaletteColor, kdl_children_or_error, kdl_get_child, kdl_get_child_entry_string_value,
+    data::PaletteColor, kdl_children_or_error, kdl_get_child, kdl_get_child_entry_string_value, kdl_get_child_entry_bool_value, kdl_first_entry_as_string
 };
 
 use super::config::ConfigError;
@@ -124,9 +124,119 @@ impl WebClientTheme {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum CursorInactiveStyle {
+    Outline,
+    Block,
+    Bar,
+    Underline,
+    NoStyle,
+}
+
+impl std::fmt::Display for CursorInactiveStyle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CursorInactiveStyle::Block => write!(f, "block"),
+            CursorInactiveStyle::Bar => write!(f, "bar"),
+            CursorInactiveStyle::Underline => write!(f, "underline"),
+            CursorInactiveStyle::Outline => write!(f, "outline"),
+            CursorInactiveStyle::NoStyle => write!(f, "none"),
+        }
+    }
+}
+
+impl CursorInactiveStyle {
+    pub fn from_kdl(kdl: &KdlNode) -> Result<Self, ConfigError> {
+        match kdl_first_entry_as_string!(kdl) {
+            Some("block") => Ok(CursorInactiveStyle::Block),
+            Some("bar") => Ok(CursorInactiveStyle::Bar),
+            Some("underline") => Ok(CursorInactiveStyle::Underline),
+            Some("outline") => Ok(CursorInactiveStyle::Outline),
+            Some("no_style") => Ok(CursorInactiveStyle::NoStyle),
+            _ => Err(ConfigError::new_kdl_error(
+                format!("Must be 'block', 'bar', 'underline', 'outline' or 'no_style'"),
+                kdl.span().offset(),
+                kdl.span().len())
+            ),
+        }
+    }
+    pub fn to_kdl(&self) -> KdlNode {
+        let mut cursor_inactive_style_node = KdlNode::new("cursor_inactive_style");
+        match self {
+            CursorInactiveStyle::Block => {
+                cursor_inactive_style_node.push(KdlValue::String("block".to_owned()));
+            },
+            CursorInactiveStyle::Bar => {
+                cursor_inactive_style_node.push(KdlValue::String("bar".to_owned()));
+            },
+            CursorInactiveStyle::Underline => {
+                cursor_inactive_style_node.push(KdlValue::String("underline".to_owned()));
+            },
+            CursorInactiveStyle::Outline => {
+                cursor_inactive_style_node.push(KdlValue::String("outline".to_owned()));
+            },
+            CursorInactiveStyle::NoStyle => {
+                cursor_inactive_style_node.push(KdlValue::String("no_style".to_owned()));
+            },
+        }
+        cursor_inactive_style_node
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum CursorStyle {
+    Block,
+    Bar,
+    Underline,
+}
+
+impl std::fmt::Display for CursorStyle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CursorStyle::Block => write!(f, "block"),
+            CursorStyle::Bar => write!(f, "bar"),
+            CursorStyle::Underline => write!(f, "underline"),
+        }
+    }
+}
+
+impl CursorStyle {
+    pub fn from_kdl(kdl: &KdlNode) -> Result<Self, ConfigError> {
+        match kdl_first_entry_as_string!(kdl) {
+            Some("block") => Ok(CursorStyle::Block),
+            Some("bar") => Ok(CursorStyle::Bar),
+            Some("underline") => Ok(CursorStyle::Underline),
+            _ => Err(ConfigError::new_kdl_error(
+                format!("Must be 'block', 'bar' or 'underline'"),
+                kdl.span().offset(),
+                kdl.span().len())
+            ),
+        }
+    }
+    pub fn to_kdl(&self) -> KdlNode {
+        let mut cursor_style_node = KdlNode::new("cursor_style");
+        match self {
+            CursorStyle::Block => {
+                cursor_style_node.push(KdlValue::String("block".to_owned()));
+            },
+            CursorStyle::Bar => {
+                cursor_style_node.push(KdlValue::String("bar".to_owned()));
+            },
+            CursorStyle::Underline => {
+                cursor_style_node.push(KdlValue::String("underline".to_owned()));
+            },
+        }
+        cursor_style_node
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WebClientConfig {
     pub font: String,
     pub theme: Option<WebClientTheme>,
+    pub cursor_blink: bool,
+    pub cursor_inactive_style: Option<CursorInactiveStyle>,
+    pub cursor_style: Option<CursorStyle>,
+    pub mac_option_is_meta: bool,
 }
 
 impl Default for WebClientConfig {
@@ -134,6 +244,10 @@ impl Default for WebClientConfig {
         WebClientConfig {
             font: "monospace".to_string(),
             theme: None,
+            cursor_blink: false,
+            cursor_inactive_style: None,
+            cursor_style: None,
+            mac_option_is_meta: true, // TODO: yes? no?
         }
     }
 }
@@ -150,18 +264,61 @@ impl WebClientConfig {
             web_client_config.theme = Some(WebClientTheme::from_kdl(theme_node)?);
         }
 
+        if let Some(cursor_blink) = kdl_get_child_entry_bool_value!(kdl, "cursor_blink") {
+            web_client_config.cursor_blink = cursor_blink;
+        }
+
+        if let Some(cursor_inactive_style_node) = kdl_get_child!(kdl, "cursor_inactive_style") {
+            web_client_config
+                .cursor_inactive_style = Some(CursorInactiveStyle::from_kdl(cursor_inactive_style_node)?);
+        }
+
+        if let Some(cursor_style_node) = kdl_get_child!(kdl, "cursor_style") {
+            web_client_config
+                .cursor_style = Some(CursorStyle::from_kdl(cursor_style_node)?);
+        }
+
+        if let Some(mac_option_is_meta) = kdl_get_child_entry_bool_value!(kdl, "mac_option_is_meta") {
+            web_client_config.mac_option_is_meta = mac_option_is_meta;
+        }
+
         Ok(web_client_config)
     }
 
     pub fn to_kdl(&self) -> KdlNode {
         let mut web_client_node = KdlNode::new("web_client");
         let mut web_client_children = KdlDocument::new();
+
         let mut font_node = KdlNode::new("font");
         font_node.push(KdlValue::String(self.font.clone()));
         web_client_children.nodes_mut().push(font_node);
+
         if let Some(theme_node) = self.theme.as_ref().map(|t| t.to_kdl()) {
             web_client_children.nodes_mut().push(theme_node);
         }
+
+        if self.cursor_blink {
+            // this defaults to false, so we only need to add it if it's true
+            let mut cursor_blink_node = KdlNode::new("cursor_blink");
+            cursor_blink_node.push(KdlValue::Bool(true));
+            web_client_children.nodes_mut().push(cursor_blink_node);
+        }
+
+        if let Some(cursor_inactive_style_node) = self.cursor_inactive_style.as_ref().map(|c| c.to_kdl()) {
+            web_client_children.nodes_mut().push(cursor_inactive_style_node);
+        }
+
+        if let Some(cursor_style_node) = self.cursor_style.as_ref().map(|c| c.to_kdl()) {
+            web_client_children.nodes_mut().push(cursor_style_node);
+        }
+
+        if !self.mac_option_is_meta {
+            // this defaults to true, so we only need to add it if it's false
+            let mut mac_option_is_meta_node = KdlNode::new("mac_option_is_meta");
+            mac_option_is_meta_node.push(KdlValue::Bool(false));
+            web_client_children.nodes_mut().push(mac_option_is_meta_node);
+        }
+
         web_client_node.set_children(web_client_children);
         web_client_node
     }
@@ -170,6 +327,10 @@ impl WebClientConfig {
         let mut merged = self.clone();
         merged.font = other.font;
         merged.theme = other.theme;
+        merged.cursor_blink = other.cursor_blink;
+        merged.cursor_inactive_style = other.cursor_inactive_style;
+        merged.cursor_style = other.cursor_style;
+        merged.mac_option_is_meta = other.mac_option_is_meta;
         merged
     }
 }

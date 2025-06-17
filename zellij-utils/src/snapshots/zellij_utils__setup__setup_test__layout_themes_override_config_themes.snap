@@ -7865,5 +7865,9 @@ Config {
     web_client: WebClientConfig {
         font: "monospace",
         theme: None,
+        cursor_blink: false,
+        cursor_inactive_style: None,
+        cursor_style: None,
+        mac_option_is_meta: true,
     },
 }
