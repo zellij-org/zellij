@@ -1,5 +1,4 @@
 use super::sixel::{PixelRect, SixelGrid, SixelImageStore};
-use regex::Regex;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -301,11 +300,17 @@ macro_rules! dump_screen {
             if line.is_canonical && !is_first {
                 buf.push_str("\n");
             }
-            let s: String = (&line.columns).into_iter().map(|x| x.character).collect();
+
             // Replace the spaces at the end of the line. Sometimes, the lines are
             // collected with spaces until the end of the panel.
-            let re = Regex::new("([^ ])[ ]*$").unwrap();
-            buf.push_str(&(re.replace(&s, "${1}")));
+            let line_length = line
+                .columns
+                .iter()
+                .rposition(|c| c.character != ' ')
+                .map(|pos| pos + 1)
+                .unwrap_or(0);
+
+            buf.extend(line.columns.iter().take(line_length).map(|x| x.character));
             is_first = false;
         }
         buf
