@@ -3796,20 +3796,25 @@ impl Row {
     }
     pub fn split_to_rows_of_length(&mut self, max_row_length: usize) -> Vec<Row> {
         let mut parts: Vec<Row> = vec![];
-        let mut current_part: VecDeque<TerminalCharacter> = VecDeque::new();
-        let mut current_part_len = 0;
-        for character in self.columns.drain(..) {
-            if current_part_len + character.width() > max_row_length {
-                parts.push(Row::from_columns(current_part));
-                current_part = VecDeque::new();
-                current_part_len = 0;
+        while !self.columns.is_empty() {
+            let mut current_width = 0;
+            let mut split_index = 0;
+
+            for (index, character) in self.columns.iter().enumerate() {
+                if current_width + character.width() > max_row_length {
+                    break;
+                }
+                current_width += character.width();
+                split_index = index + 1;
             }
-            current_part_len += character.width();
-            current_part.push_back(character);
+
+            let remaining_columns = self.columns.split_off(split_index);
+            let row_columns = std::mem::replace(&mut self.columns, remaining_columns);
+            parts.push(Row::from_columns(row_columns));
         }
-        if !current_part.is_empty() {
-            parts.push(Row::from_columns(current_part))
-        };
+        // `.split_off()` does not reduce capacity
+        self.columns.shrink_to_fit();
+
         if !parts.is_empty() && self.is_canonical {
             if let Some(part) = parts.get_mut(0) {
                 part.is_canonical = true;
