@@ -2,6 +2,7 @@ use crate::panes::selection::Selection;
 use crate::panes::terminal_character::TerminalCharacter;
 use crate::panes::{Grid, Row};
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::fmt::Debug;
 use zellij_utils::input::actions::SearchDirection;
 use zellij_utils::position::Position;
@@ -355,7 +356,7 @@ impl SearchResult {
         &mut self,
         amount: usize,
         viewport: &[Row],
-        lines_below: &[Row],
+        lines_below: &VecDeque<Row>,
         grid_height: usize,
     ) -> bool {
         let mut found_something = false;
