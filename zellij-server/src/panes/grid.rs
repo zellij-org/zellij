@@ -41,7 +41,7 @@ use crate::panes::terminal_character::{
 };
 use crate::ui::components::UiComponentParser;
 
-fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
+fn get_lines_below_top_non_canonical_rows(rows: &mut VecDeque<Row>) -> VecDeque<Row> {
     let mut index_of_last_non_canonical_row = None;
     for (i, row) in rows.iter().enumerate() {
         if row.is_canonical {
@@ -54,7 +54,24 @@ fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
         Some(index_of_last_non_canonical_row) => {
             rows.drain(..=index_of_last_non_canonical_row).collect()
         },
-        None => vec![],
+        None => VecDeque::new(),
+    }
+}
+
+fn get_viewport_top_non_canonical_rows(rows: &mut Vec<Row>) -> VecDeque<Row> {
+    let mut index_of_last_non_canonical_row = None;
+    for (i, row) in rows.iter().enumerate() {
+        if row.is_canonical {
+            break;
+        } else {
+            index_of_last_non_canonical_row = Some(i);
+        }
+    }
+    match index_of_last_non_canonical_row {
+        Some(index_of_last_non_canonical_row) => {
+            rows.drain(..=index_of_last_non_canonical_row).collect()
+        },
+        None => VecDeque::new(),
     }
 }
 
@@ -74,7 +91,7 @@ fn get_lines_above_bottom_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> V
     }
 }
 
-fn get_viewport_bottom_canonical_row_and_wraps(viewport: &mut Vec<Row>) -> Vec<Row> {
+fn get_viewport_bottom_canonical_row_and_wraps(viewport: &mut Vec<Row>) -> VecDeque<Row> {
     let mut index_of_last_non_canonical_row = None;
     for (i, row) in viewport.iter().enumerate().rev() {
         index_of_last_non_canonical_row = Some(i);
@@ -86,11 +103,11 @@ fn get_viewport_bottom_canonical_row_and_wraps(viewport: &mut Vec<Row>) -> Vec<R
         Some(index_of_last_non_canonical_row) => {
             viewport.drain(index_of_last_non_canonical_row..).collect()
         },
-        None => vec![],
+        None => VecDeque::new(),
     }
 }
 
-fn get_top_canonical_row_and_wraps(rows: &mut Vec<Row>) -> Vec<Row> {
+fn get_top_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> Vec<Row> {
     let mut index_of_first_non_canonical_row = None;
     let mut end_index_of_first_canonical_line = None;
     for (i, row) in rows.iter().enumerate() {
@@ -111,8 +128,12 @@ fn get_top_canonical_row_and_wraps(rows: &mut Vec<Row>) -> Vec<Row> {
         index_of_first_non_canonical_row,
         end_index_of_first_canonical_line,
     ) {
-        (Some(first_index), Some(last_index)) => rows.drain(first_index..=last_index).collect(),
-        (Some(first_index), None) => rows.drain(first_index..).collect(),
+        (Some(first_index), Some(last_index)) => {
+            let mut result = Vec::with_capacity(last_index - first_index + 1);
+            result.extend(rows.drain(first_index..=last_index));
+            result
+        },
+        (Some(first_index), None) => rows.split_off(first_index).into(),
         _ => vec![],
     }
 }
@@ -124,7 +145,7 @@ fn transfer_rows_from_lines_above_to_viewport(
     count: usize,
     max_viewport_width: usize,
 ) -> usize {
-    let mut next_lines: Vec<Row> = vec![];
+    let mut next_lines = VecDeque::<Row>::new();
     let mut lines_added_to_viewport: isize = 0;
     loop {
         if lines_added_to_viewport as usize == count {
@@ -133,12 +154,14 @@ fn transfer_rows_from_lines_above_to_viewport(
         if next_lines.is_empty() {
             match lines_above.pop_back() {
                 Some(next_line) => {
-                    let mut top_non_canonical_rows_in_dst = get_top_non_canonical_rows(viewport);
+                    let mut top_non_canonical_rows_in_dst =
+                        get_viewport_top_non_canonical_rows(viewport);
                     lines_added_to_viewport -= top_non_canonical_rows_in_dst.len() as isize;
-                    next_lines.push(next_line);
+                    next_lines.push_back(next_line);
                     next_lines.append(&mut top_non_canonical_rows_in_dst);
-                    next_lines =
-                        Row::from_rows(next_lines).split_to_rows_of_length(max_viewport_width);
+                    next_lines = Row::from_rows(next_lines.into())
+                        .split_to_rows_of_length(max_viewport_width)
+                        .into();
                     if next_lines.is_empty() {
                         // no more lines at lines_above, the line we popped was probably empty
                         break;
@@ -147,11 +170,11 @@ fn transfer_rows_from_lines_above_to_viewport(
                 None => break, // no more rows
             }
         }
-        viewport.insert(0, next_lines.pop().unwrap());
+        viewport.insert(0, next_lines.pop_back().unwrap());
         lines_added_to_viewport += 1;
     }
     if !next_lines.is_empty() {
-        let excess_row = Row::from_rows(next_lines);
+        let excess_row = Row::from_rows(next_lines.into());
         bounded_push(lines_above, sixel_grid, excess_row);
     }
     match usize::try_from(lines_added_to_viewport) {
@@ -189,7 +212,7 @@ fn transfer_rows_from_viewport_to_lines_above(
 }
 
 fn transfer_rows_from_lines_below_to_viewport(
-    lines_below: &mut Vec<Row>,
+    lines_below: &mut VecDeque<Row>,
     viewport: &mut Vec<Row>,
     count: usize,
     max_viewport_width: usize,
@@ -200,13 +223,13 @@ fn transfer_rows_from_lines_below_to_viewport(
         if next_lines.is_empty() {
             if !lines_below.is_empty() {
                 let mut top_non_canonical_rows_in_lines_below =
-                    get_top_non_canonical_rows(lines_below);
+                    get_lines_below_top_non_canonical_rows(lines_below);
                 if !top_non_canonical_rows_in_lines_below.is_empty() {
                     let mut canonical_line = get_viewport_bottom_canonical_row_and_wraps(viewport);
                     lines_pulled_from_viewport += canonical_line.len();
                     canonical_line.append(&mut top_non_canonical_rows_in_lines_below);
-                    next_lines =
-                        Row::from_rows(canonical_line).split_to_rows_of_length(max_viewport_width);
+                    next_lines = Row::from_rows(canonical_line.into())
+                        .split_to_rows_of_length(max_viewport_width);
                 } else {
                     let canonical_row = get_top_canonical_row_and_wraps(lines_below);
                     next_lines =
@@ -315,7 +338,7 @@ fn utf8_mouse_coordinates(column: usize, line: isize) -> Vec<u8> {
 pub struct Grid {
     pub(crate) lines_above: VecDeque<Row>,
     pub(crate) viewport: Vec<Row>,
-    pub(crate) lines_below: Vec<Row>,
+    pub(crate) lines_below: VecDeque<Row>,
     horizontal_tabstops: BTreeSet<usize>,
     alternate_screen_state: Option<AlternateScreenState>,
     cursor: Cursor,
@@ -504,7 +527,7 @@ impl Grid {
         Grid {
             lines_above: VecDeque::new(),
             viewport: vec![Row::new().canonical()],
-            lines_below: vec![],
+            lines_below: VecDeque::new(),
             horizontal_tabstops: create_horizontal_tabstops(columns),
             cursor: Cursor::new(0, 0, styled_underlines),
             cursor_is_hidden: false,
@@ -1730,7 +1753,7 @@ impl Grid {
     }
     pub fn reset_terminal_state(&mut self) {
         self.lines_above = VecDeque::new();
-        self.lines_below = vec![];
+        self.lines_below = VecDeque::new();
         self.viewport = vec![Row::new().canonical()];
         self.alternate_screen_state = None;
         self.cursor_key_mode = false;
