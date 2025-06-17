@@ -630,10 +630,10 @@ impl Grid {
         )
     }
 
-    fn recalculate_scrollback_buffer_count(&self) -> usize {
+    fn recalculate_scrollback_buffer_count(&mut self) -> usize {
         let mut scrollback_buffer_count = 0;
-        for row in &self.lines_above {
-            let row_width = row.width();
+        for row in &mut self.lines_above {
+            let row_width = row.width_cached();
             // rows in lines_above are unwrapped, so we need to account for that
             if row_width > self.width {
                 scrollback_buffer_count += calculate_row_display_height(row_width, self.width);
