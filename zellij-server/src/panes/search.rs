@@ -545,7 +545,62 @@ impl Grid {
         }
     }
 
+    fn line_contain_needle(&self, row: &Row, tail: &mut Vec<&Row>) -> bool {
+        let mut current_line = row;
+
+        while !tail.is_empty() {
+            if !self.search_results.search_row(0, current_line, tail).is_empty() {
+                return true;
+            }
+            current_line = tail.remove(0);
+        }
+
+        !self.search_results.search_row(0, current_line, tail).is_empty()
+    }
+
+    fn buffer_contains_needle<'a, F>(&self, lines: F, reverse: bool) -> bool
+    where
+        F: Iterator<Item = &'a Row>,
+    {
+        let mut tail: Vec<&Row> = vec![];
+        let mut first_row: Option<&Row> = None;
+        for line in lines {
+            if !line.is_canonical {
+                tail.push(&line);
+            } else {
+                if reverse {
+                    tail.reverse();
+                    if self.line_contain_needle(line, &mut tail) {
+                        return true;
+                    }
+                } else {
+                    // If not iterating in reverse we need to keep track of the first row
+                    if let Some(first_line) = first_row {
+                        if self.line_contain_needle(first_line, &mut tail) {
+                            return true;
+                        }
+                    }
+                    first_row = Some(line);
+                }
+
+                tail.clear();
+            }
+        }
+        false
+    }
+
     fn search_viewport_move(&mut self, dir: SearchDirection) -> bool {
+        // First check if the buffer contains the needle before moving viewport
+        // This saves a significant amount of time in the case where buffer does not contain the search string
+        let buffer_contains_needle = match dir {
+            SearchDirection::Down => self.buffer_contains_needle(&mut self.lines_below.iter(), false),
+            SearchDirection::Up => self.buffer_contains_needle(&mut self.lines_above.iter().rev(), true),
+        };
+
+        if !buffer_contains_needle {
+            return false;
+        }
+
         // We need to move the viewport
         let mut rows = 0;
         let mut found_something = false;
