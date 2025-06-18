@@ -1,4 +1,3 @@
-// TODO: gate this file behind web_server_compatibility
 use crate::consts::WEBSERVER_SOCKET_PATH;
 use crate::errors::prelude::*;
 use crate::input::config::Config;

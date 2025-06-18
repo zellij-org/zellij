@@ -225,11 +225,10 @@ fn main() {
         opts.layout = Some(layout_for_new_session.clone());
         commands::start_client(opts);
     } else if let Some(Command::Web(web_opts)) = &opts.command {
-        if web_opts.start {
+        if web_opts.get_start() {
             let daemonize = web_opts.daemonize;
             commands::start_web_server(opts, daemonize);
         } else if web_opts.stop {
-            // TODO: test these without web_server_compatibility
             match commands::stop_web_server() {
                 Ok(()) => {
                     println!("Stopped web server.");
@@ -263,6 +262,55 @@ fn main() {
                 Err(_e) => {
                     println!("Web server is offline, checked: {}", web_server_base_url);
                 },
+            }
+        } else if web_opts.create_token {
+            match commands::create_auth_token() {
+                Ok(token_and_name) => {
+                    println!("Created token successfully");
+                    println!("");
+                    println!("{}", token_and_name);
+                },
+                Err(e) => {
+                    eprintln!("Failed to create token: {}", e);
+                    std::process::exit(2)
+                }
+            }
+        } else if let Some(token_name_to_revoke) = &web_opts.revoke_token {
+            match commands::revoke_auth_token(token_name_to_revoke) {
+                Ok(revoked) => {
+                    if revoked {
+                        println!("Successfully revoked token.");
+                    } else {
+                        eprintln!("Token by that name does not exist.");
+                        std::process::exit(2)
+                    }
+                },
+                Err(e) => {
+                    eprintln!("Failed to revoke token: {}", e);
+                    std::process::exit(2)
+                }
+            }
+        } else if web_opts.revoke_all_tokens {
+            match commands::revoke_all_auth_tokens() {
+                Ok(_) => {
+                    println!("Successfully revoked all auth tokens");
+                },
+                Err(e) => {
+                    eprintln!("Failed to revoke all auth tokens: {}", e);
+                    std::process::exit(2)
+                }
+            }
+        } else if web_opts.list_tokens {
+            match commands::list_auth_tokens() {
+                Ok(token_list) => {
+                    for item in token_list {
+                        println!("{}", item);
+                    }
+                },
+                Err(e) => {
+                    eprintln!("Failed to list tokens: {}", e);
+                    std::process::exit(2)
+                }
             }
         }
     } else {

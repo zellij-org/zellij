@@ -28,6 +28,9 @@ use zellij_client::web_client::start_web_client as start_web_client_impl;
 #[cfg(feature = "web_server_capability")]
 use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
 
+#[cfg(feature = "web_server_capability")]
+use zellij_utils::web_authentication_tokens::{create_token, revoke_token, revoke_all_tokens, list_tokens};
+
 use miette::{Report, Result};
 use nix::sys::stat::{umask, Mode};
 use zellij_server::{
@@ -207,6 +210,79 @@ pub(crate) fn stop_web_server() -> Result<(), String> {
     );
     eprintln!(
         "This version of Zellij was compiled without web server support, cannot stop web server!"
+    );
+    std::process::exit(2);
+}
+
+#[cfg(feature = "web_server_capability")]
+pub(crate) fn create_auth_token() -> Result<String, String> { // returns the token and it's name
+    create_token(None).map(|(token_name, token)| format!("{}: {}", token, token_name)).map_err(|e| e.to_string())
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+pub(crate) fn create_auth_token() -> Result<String, String> {
+    log::error!(
+        "This version of Zellij was compiled without web server support, cannot create auth token!"
+    );
+    eprintln!(
+        "This version of Zellij was compiled without web server support, cannot create auth token!"
+    );
+    std::process::exit(2);
+}
+
+#[cfg(feature = "web_server_capability")]
+pub(crate) fn revoke_auth_token(token_name: &str) -> Result<bool, String> {
+    revoke_token(token_name)
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+pub(crate) fn revoke_auth_token(_token_name: &str) -> Result<bool, String> {
+    log::error!(
+        "This version of Zellij was compiled without web server support, cannot revoke auth token!"
+    );
+    eprintln!(
+        "This version of Zellij was compiled without web server support, cannot revoke auth token!"
+    );
+    std::process::exit(2);
+}
+
+#[cfg(feature = "web_server_capability")]
+pub(crate) fn revoke_all_auth_tokens() -> Result<usize, String> { // returns the revoked count
+    revoke_all_tokens().map_err(|e| e.to_string())
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+pub(crate) fn revoke_all_auth_tokens() -> Result<usize, String> {
+    log::error!(
+        "This version of Zellij was compiled without web server support, cannot revoke all tokens!"
+    );
+    eprintln!(
+        "This version of Zellij was compiled without web server support, cannot revoke all tokens!"
+    );
+    std::process::exit(2);
+}
+
+#[cfg(feature = "web_server_capability")]
+pub(crate) fn list_auth_tokens() -> Result<Vec<String>, String> { // returns the token list line by line
+    list_tokens()
+    .map(|tokens| {
+        let mut res = vec![];
+        for t in tokens {
+            res.push(format!("{}: created at {}", t.name, t.created_at))
+        }
+        res
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+pub(crate) fn list_auth_tokens() -> Result<Vec<String>, String> {
+    log::error!(
+        "This version of Zellij was compiled without web server support, cannot list tokens!"
+    );
+    eprintln!(
+        "This version of Zellij was compiled without web server support, cannot list tokens!"
     );
     std::process::exit(2);
 }
