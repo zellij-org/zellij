@@ -8,6 +8,82 @@ document.addEventListener("DOMContentLoaded", async (event) => {
     let remember;
     let has_authentication_cookie = window.is_authenticated;
 
+    // Reconnection state
+    let reconnectionAttempt = 0;
+    let isReconnecting = false;
+    let reconnectionTimeout = null;
+    let hasConnectedBefore = false;
+    let isPageUnloading = false;
+
+    async function checkConnection() {
+        try {
+            let url_prefix = is_https() ? "https" : "http";
+            const response = await fetch(`${url_prefix}://${window.location.host}/info/version`, {
+                method: 'GET',
+                timeout: 5000
+            });
+            return response.ok;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function getReconnectionDelay(attempt) {
+        const delays = [1, 2, 4, 8, 16];
+        return delays[Math.min(attempt - 1, delays.length - 1)];
+    }
+
+    async function handleReconnection() {
+        if (isReconnecting || !hasConnectedBefore || isPageUnloading) {
+            return;
+        }
+        
+        isReconnecting = true;
+        let currentModal = null;
+        
+        while (isReconnecting) {
+            reconnectionAttempt++;
+            const delaySeconds = getReconnectionDelay(reconnectionAttempt);
+            
+            const result = await showReconnectionModal(reconnectionAttempt, delaySeconds);
+            
+            if (result.action === 'cancel') {
+                if (result.cleanup) result.cleanup();
+                isReconnecting = false;
+                reconnectionAttempt = 0;
+                return;
+            }
+            
+            if (result.action === 'reconnect') {
+                currentModal = result.modal;
+                const connectionOk = await checkConnection();
+                
+                if (connectionOk) {
+                    // Reset state and reload page
+                    if (result.cleanup) result.cleanup();
+                    isReconnecting = false;
+                    reconnectionAttempt = 0;
+                    window.location.reload();
+                    return;
+                } else {
+                    // Clean up current modal before showing next one
+                    if (result.cleanup) result.cleanup();
+                    // Continue with next attempt (modal will show again in next loop iteration)
+                    continue;
+                }
+            }
+        }
+    }
+
+    // Detect page unload to prevent reconnection modal during refresh/navigation
+    window.addEventListener('beforeunload', () => {
+        isPageUnloading = true;
+    });
+
+    window.addEventListener('pagehide', () => {
+        isPageUnloading = true;
+    });
+
     async function wait_for_security_token() {
       token = null;
       remember = null;
@@ -215,6 +291,7 @@ document.addEventListener("DOMContentLoaded", async (event) => {
 
     ws_terminal.onopen = function () {
         console.log("Connected to WebSocket terminal server");
+        hasConnectedBefore = true;
     };
     function start_ws_control() {
         ws_control.onopen = function (event) {
@@ -322,6 +399,7 @@ document.addEventListener("DOMContentLoaded", async (event) => {
 
         ws_control.onclose = function () {
             console.log("Disconnected from WebSocket control server");
+            handleReconnection();
         };
     }
 
@@ -365,6 +443,7 @@ document.addEventListener("DOMContentLoaded", async (event) => {
 
     ws_terminal.onclose = function () {
         console.log("Disconnected from WebSocket terminal server");
+        handleReconnection();
     };
 });
 
@@ -479,4 +558,3 @@ function build_link_handler() {
     linkHandler.activate = activateLink;
     return { linkHandler, activateLink };
 }
-

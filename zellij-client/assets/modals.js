@@ -449,3 +449,108 @@ function showErrorModal(title, description) {
     };
   });
 }
+
+function showReconnectionModal(attemptNumber, delaySeconds) {
+  return new Promise((resolve) => {
+    createModalStyles();
+    
+    const modal = document.createElement('div');
+    modal.className = 'security-modal';
+    modal.style.background = 'rgba(28, 28, 28, 0.85)'; // More transparent to show terminal
+    
+    const isFirstAttempt = attemptNumber === 1;
+    const title = isFirstAttempt ? 'Connection Lost' : 'Reconnection Failed';
+    const message = isFirstAttempt 
+      ? `Reconnecting in <span id="countdown">${delaySeconds}</span> second${delaySeconds > 1 ? 's' : ''}...`
+      : `Retrying in <span id="countdown">${delaySeconds}</span> second${delaySeconds > 1 ? 's' : ''}... (Attempt ${attemptNumber})`;
+    
+    modal.innerHTML = `
+      <div class="security-modal-content">
+        <h3 id="modal-title">${title}</h3>
+        <div class="error-description" id="modal-message">${message}</div>
+        <div class="button-row" id="button-row">
+          <button id="cancel" class="cancel-btn">Cancel</button>
+          <button id="reconnect" class="submit-btn">Reconnect Now</button>
+        </div>
+        <div class="status-bar"></div>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+    modal.querySelector('#reconnect').focus();
+    
+    let countdownInterval;
+    let remainingSeconds = delaySeconds;
+    let isCheckingConnection = false;
+    
+    const updateCountdown = () => {
+      const countdownElement = modal.querySelector('#countdown');
+      if (countdownElement && !isCheckingConnection) {
+        countdownElement.textContent = remainingSeconds;
+      }
+      remainingSeconds--;
+      
+      if (remainingSeconds < 0 && !isCheckingConnection) {
+        clearInterval(countdownInterval);
+        handleReconnect();
+      }
+    };
+    
+    const showConnectionCheck = () => {
+      isCheckingConnection = true;
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+      }
+      
+      const messageElement = modal.querySelector('#modal-message');
+      messageElement.innerHTML = 'Connecting...';
+    };
+    
+    countdownInterval = setInterval(updateCountdown, 1000);
+    
+    const handleKeydown = (e) => {
+      if (isCheckingConnection) return;
+      
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleReconnect();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        handleCancel();
+      }
+    };
+    
+    modal.addEventListener('keydown', handleKeydown);
+    
+    const cleanup = () => {
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+      }
+      modal.removeEventListener('keydown', handleKeydown);
+      if (document.body.contains(modal)) {
+        document.body.removeChild(modal);
+      }
+    };
+    
+    const handleReconnect = () => {
+      showConnectionCheck();
+      // Don't cleanup here - let the parent handle it
+      resolve({ action: 'reconnect', cleanup, modal });
+    };
+    
+    const handleCancel = () => {
+      if (isCheckingConnection) return;
+      cleanup();
+      resolve({ action: 'cancel' });
+    };
+    
+    modal.querySelector('#reconnect').onclick = handleReconnect;
+    modal.querySelector('#cancel').onclick = handleCancel;
+    
+    modal.onclick = (e) => {
+      if (e.target === modal && !isCheckingConnection) {
+        handleCancel();
+      }
+    };
+  });
+}
