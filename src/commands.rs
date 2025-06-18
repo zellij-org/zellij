@@ -29,7 +29,9 @@ use zellij_client::web_client::start_web_client as start_web_client_impl;
 use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
 
 #[cfg(feature = "web_server_capability")]
-use zellij_utils::web_authentication_tokens::{create_token, revoke_token, revoke_all_tokens, list_tokens};
+use zellij_utils::web_authentication_tokens::{
+    create_token, list_tokens, revoke_all_tokens, revoke_token,
+};
 
 use miette::{Report, Result};
 use nix::sys::stat::{umask, Mode};
@@ -215,8 +217,11 @@ pub(crate) fn stop_web_server() -> Result<(), String> {
 }
 
 #[cfg(feature = "web_server_capability")]
-pub(crate) fn create_auth_token() -> Result<String, String> { // returns the token and it's name
-    create_token(None).map(|(token_name, token)| format!("{}: {}", token, token_name)).map_err(|e| e.to_string())
+pub(crate) fn create_auth_token() -> Result<String, String> {
+    // returns the token and it's name
+    create_token(None)
+        .map(|(token_name, token)| format!("{}: {}", token, token_name))
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(not(feature = "web_server_capability"))]
@@ -232,8 +237,7 @@ pub(crate) fn create_auth_token() -> Result<String, String> {
 
 #[cfg(feature = "web_server_capability")]
 pub(crate) fn revoke_auth_token(token_name: &str) -> Result<bool, String> {
-    revoke_token(token_name)
-        .map_err(|e| e.to_string())
+    revoke_token(token_name).map_err(|e| e.to_string())
 }
 
 #[cfg(not(feature = "web_server_capability"))]
@@ -248,7 +252,8 @@ pub(crate) fn revoke_auth_token(_token_name: &str) -> Result<bool, String> {
 }
 
 #[cfg(feature = "web_server_capability")]
-pub(crate) fn revoke_all_auth_tokens() -> Result<usize, String> { // returns the revoked count
+pub(crate) fn revoke_all_auth_tokens() -> Result<usize, String> {
+    // returns the revoked count
     revoke_all_tokens().map_err(|e| e.to_string())
 }
 
@@ -264,16 +269,17 @@ pub(crate) fn revoke_all_auth_tokens() -> Result<usize, String> {
 }
 
 #[cfg(feature = "web_server_capability")]
-pub(crate) fn list_auth_tokens() -> Result<Vec<String>, String> { // returns the token list line by line
+pub(crate) fn list_auth_tokens() -> Result<Vec<String>, String> {
+    // returns the token list line by line
     list_tokens()
-    .map(|tokens| {
-        let mut res = vec![];
-        for t in tokens {
-            res.push(format!("{}: created at {}", t.name, t.created_at))
-        }
-        res
-    })
-    .map_err(|e| e.to_string())
+        .map(|tokens| {
+            let mut res = vec![];
+            for t in tokens {
+                res.push(format!("{}: created at {}", t.name, t.created_at))
+            }
+            res
+        })
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(not(feature = "web_server_capability"))]

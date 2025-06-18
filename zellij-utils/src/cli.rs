@@ -105,29 +105,15 @@ pub enum Command {
 #[derive(Debug, Clone, Args, Serialize, Deserialize)]
 pub struct WebCli {
     /// Start the server (default unless other arguments are specified)
-    #[clap(
-        long,
-        value_parser,
-        display_order = 1
-    )]
+    #[clap(long, value_parser, display_order = 1)]
     pub start: bool,
 
     /// Stop the server
-    #[clap(
-        long,
-        value_parser,
-        exclusive(true),
-        display_order = 2
-    )]
+    #[clap(long, value_parser, exclusive(true), display_order = 2)]
     pub stop: bool,
 
     /// Get the server status
-    #[clap(
-        long,
-        value_parser,
-        exclusive(true),
-        display_order = 3
-    )]
+    #[clap(long, value_parser, exclusive(true), display_order = 3)]
     pub status: bool,
 
     /// Run the server in the background
@@ -141,12 +127,7 @@ pub struct WebCli {
     pub daemonize: bool,
     /// Create a login token for the web interface, will only be displayed once and cannot later be
     /// retrieved. Returns the token name and the token.
-    #[clap(
-        long,
-        value_parser,
-        exclusive(true),
-        display_order = 5
-    )]
+    #[clap(long, value_parser, exclusive(true), display_order = 5)]
     pub create_token: bool,
     /// Revoke a login token by its name
     #[clap(
@@ -158,28 +139,22 @@ pub struct WebCli {
     )]
     pub revoke_token: Option<String>,
     /// Revoke all login tokens
-    #[clap(
-        long,
-        value_parser,
-        exclusive(true),
-        display_order = 7
-    )]
+    #[clap(long, value_parser, exclusive(true), display_order = 7)]
     pub revoke_all_tokens: bool,
     /// List token names and their creation dates (cannot show actual tokens)
-    #[clap(
-        long,
-        value_parser,
-        exclusive(true),
-        display_order = 8
-    )]
+    #[clap(long, value_parser, exclusive(true), display_order = 8)]
     pub list_tokens: bool,
 }
 
 impl WebCli {
     pub fn get_start(&self) -> bool {
-        self.start ||
-            !(self.stop || self.status || self.create_token || 
-              self.revoke_token.is_some() || self.revoke_all_tokens || self.list_tokens)
+        self.start
+            || !(self.stop
+                || self.status
+                || self.create_token
+                || self.revoke_token.is_some()
+                || self.revoke_all_tokens
+                || self.list_tokens)
     }
 }
 

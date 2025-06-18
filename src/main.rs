@@ -273,7 +273,7 @@ fn main() {
                 Err(e) => {
                     eprintln!("Failed to create token: {}", e);
                     std::process::exit(2)
-                }
+                },
             }
         } else if let Some(token_name_to_revoke) = &web_opts.revoke_token {
             match commands::revoke_auth_token(token_name_to_revoke) {
@@ -288,7 +288,7 @@ fn main() {
                 Err(e) => {
                     eprintln!("Failed to revoke token: {}", e);
                     std::process::exit(2)
-                }
+                },
             }
         } else if web_opts.revoke_all_tokens {
             match commands::revoke_all_auth_tokens() {
@@ -298,7 +298,7 @@ fn main() {
                 Err(e) => {
                     eprintln!("Failed to revoke all auth tokens: {}", e);
                     std::process::exit(2)
-                }
+                },
             }
         } else if web_opts.list_tokens {
             match commands::list_auth_tokens() {
@@ -310,7 +310,7 @@ fn main() {
                 Err(e) => {
                     eprintln!("Failed to list tokens: {}", e);
                     std::process::exit(2)
-                }
+                },
             }
         }
     } else {
