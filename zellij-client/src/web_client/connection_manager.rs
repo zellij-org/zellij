@@ -1,8 +1,9 @@
 use crate::os_input_output::ClientOsApi;
 use crate::web_client::control_message::WebServerToWebClientControlMessage;
 use crate::web_client::types::{ClientChannels, ClientConnectionBus, ConnectionTable};
-use axum::extract::ws::Message;
+use axum::extract::ws::{CloseFrame, Message};
 use tokio::sync::mpsc::UnboundedSender;
+use tokio_util::sync::CancellationToken;
 
 impl ConnectionTable {
     pub fn add_new_client(&mut self, client_id: String, client_os_api: Box<dyn ClientOsApi>) {
@@ -30,6 +31,16 @@ impl ConnectionTable {
             .map(|c| c.add_terminal_tx(terminal_channel_tx));
     }
 
+    pub fn add_client_terminal_channel_cancellation_token(
+        &mut self,
+        client_id: &str,
+        terminal_channel_cancellation_token: CancellationToken,
+    ) {
+        self.client_id_to_channels.get_mut(client_id).map(|c| {
+            c.add_terminal_channel_cancellation_token(terminal_channel_cancellation_token)
+        });
+    }
+
     pub fn get_client_os_api(&self, client_id: &str) -> Option<&Box<dyn ClientOsApi>> {
         self.client_id_to_channels.get(client_id).map(|c| &c.os_api)
     }
@@ -47,7 +58,9 @@ impl ConnectionTable {
     }
 
     pub fn remove_client(&mut self, client_id: &str) {
-        self.client_id_to_channels.remove(client_id);
+        if let Some(mut client_channels) = self.client_id_to_channels.remove(client_id).take() {
+            client_channels.cleanup();
+        }
     }
 }
 
@@ -83,6 +96,30 @@ impl ClientConnectionBus {
                 }
             },
         }
+    }
+    pub fn close_connection(&mut self) {
+        let close_frame = CloseFrame {
+            code: axum::extract::ws::close_code::NORMAL,
+            reason: "Connection closed".into(),
+        };
+        let close_message = Message::Close(Some(close_frame));
+        match self.control_channel_tx.as_ref() {
+            Some(control_channel_tx) => {
+                let _ = control_channel_tx.send(close_message);
+            },
+            None => {
+                self.get_control_channel_tx();
+                if let Some(control_channel_tx) = self.control_channel_tx.as_ref() {
+                    let _ = control_channel_tx.send(close_message);
+                } else {
+                    log::error!("Failed to send close message to client");
+                }
+            },
+        }
+        self.connection_table
+            .lock()
+            .unwrap()
+            .remove_client(&self.web_client_id);
     }
 
     fn get_control_channel_tx(&mut self) {

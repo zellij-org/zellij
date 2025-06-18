@@ -175,6 +175,7 @@ fn handle_exit_reason(client_connection_bus: &mut ClientConnectionBus, exit_reas
         },
         _ => {},
     }
+    client_connection_bus.close_connection();
 }
 
 fn handle_config_write(os_input: &Box<dyn ClientOsApi>, config: String) {

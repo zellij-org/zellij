@@ -9,23 +9,49 @@ use zellij_utils::{
     ipc::ClientToServerMsg,
 };
 
-use axum::extract::ws::{Message, WebSocket};
+use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures::{prelude::stream::SplitSink, SinkExt};
 use termwiz::input::{InputEvent, InputParser};
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio_util::sync::CancellationToken;
 
 pub fn render_to_client(
     mut stdout_channel_rx: UnboundedReceiver<String>,
     mut client_channel_tx: SplitSink<WebSocket, Message>,
+    cancellation_token: CancellationToken,
 ) {
     tokio::spawn(async move {
-        while let Some(rendered_bytes) = stdout_channel_rx.recv().await {
-            if client_channel_tx
-                .send(Message::Text(rendered_bytes.into()))
-                .await
-                .is_err()
-            {
-                break;
+        loop {
+            tokio::select! {
+                result = stdout_channel_rx.recv() => {
+                    match result {
+                        Some(rendered_bytes) => {
+                            if client_channel_tx
+                                .send(Message::Text(rendered_bytes.into()))
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                        }
+                        None => break,
+                    }
+                }
+                _ = cancellation_token.cancelled() => {
+                    let close_frame = CloseFrame {
+                        code: axum::extract::ws::close_code::NORMAL,
+                        reason: "Connection closed".into(),
+                    };
+                    let close_message = Message::Close(Some(close_frame));
+                    if client_channel_tx
+                        .send(close_message)
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                    break;
+                }
             }
         }
     });

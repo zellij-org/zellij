@@ -107,16 +107,24 @@ impl From<(&Config, &Options)> for SetConfigPayload {
             .or_else(|| palette.map(|p| p.text_unselected.base.as_rgb_str()));
         theme.black = web_client_theme_from_config.and_then(|theme| theme.black.clone());
         theme.blue = web_client_theme_from_config.and_then(|theme| theme.blue.clone());
-        theme.bright_black = web_client_theme_from_config.and_then(|theme| theme.bright_black.clone());
-        theme.bright_blue = web_client_theme_from_config.and_then(|theme| theme.bright_blue.clone());
-        theme.bright_cyan = web_client_theme_from_config.and_then(|theme| theme.bright_cyan.clone());
-        theme.bright_green = web_client_theme_from_config.and_then(|theme| theme.bright_green.clone());
-        theme.bright_magenta = web_client_theme_from_config.and_then(|theme| theme.bright_magenta.clone());
+        theme.bright_black =
+            web_client_theme_from_config.and_then(|theme| theme.bright_black.clone());
+        theme.bright_blue =
+            web_client_theme_from_config.and_then(|theme| theme.bright_blue.clone());
+        theme.bright_cyan =
+            web_client_theme_from_config.and_then(|theme| theme.bright_cyan.clone());
+        theme.bright_green =
+            web_client_theme_from_config.and_then(|theme| theme.bright_green.clone());
+        theme.bright_magenta =
+            web_client_theme_from_config.and_then(|theme| theme.bright_magenta.clone());
         theme.bright_red = web_client_theme_from_config.and_then(|theme| theme.bright_red.clone());
-        theme.bright_white = web_client_theme_from_config.and_then(|theme| theme.bright_white.clone());
-        theme.bright_yellow = web_client_theme_from_config.and_then(|theme| theme.bright_yellow.clone());
+        theme.bright_white =
+            web_client_theme_from_config.and_then(|theme| theme.bright_white.clone());
+        theme.bright_yellow =
+            web_client_theme_from_config.and_then(|theme| theme.bright_yellow.clone());
         theme.cursor = web_client_theme_from_config.and_then(|theme| theme.cursor.clone());
-        theme.cursor_accent = web_client_theme_from_config.and_then(|theme| theme.cursor_accent.clone());
+        theme.cursor_accent =
+            web_client_theme_from_config.and_then(|theme| theme.cursor_accent.clone());
         theme.cyan = web_client_theme_from_config.and_then(|theme| theme.cyan.clone());
         theme.green = web_client_theme_from_config.and_then(|theme| theme.green.clone());
         theme.magenta = web_client_theme_from_config.and_then(|theme| theme.magenta.clone());
@@ -127,15 +135,23 @@ impl From<(&Config, &Options)> for SetConfigPayload {
         theme.selection_foreground = web_client_theme_from_config
             .and_then(|theme| theme.selection_foreground.clone())
             .or_else(|| palette.map(|p| p.text_selected.base.as_rgb_str()));
-        theme.selection_inactive_background =
-            web_client_theme_from_config.and_then(|theme| theme.selection_inactive_background.clone());
+        theme.selection_inactive_background = web_client_theme_from_config
+            .and_then(|theme| theme.selection_inactive_background.clone());
         theme.white = web_client_theme_from_config.and_then(|theme| theme.white.clone());
         theme.yellow = web_client_theme_from_config.and_then(|theme| theme.yellow.clone());
 
         let cursor_blink = config.web_client.cursor_blink;
         let mac_option_is_meta = config.web_client.mac_option_is_meta;
-        let cursor_style = config.web_client.cursor_style.as_ref().map(|s| s.to_string());
-        let cursor_inactive_style = config.web_client.cursor_inactive_style.as_ref().map(|s| s.to_string());
+        let cursor_style = config
+            .web_client
+            .cursor_style
+            .as_ref()
+            .map(|s| s.to_string());
+        let cursor_inactive_style = config
+            .web_client
+            .cursor_inactive_style
+            .as_ref()
+            .map(|s| s.to_string());
 
         SetConfigPayload {
             font,
@@ -192,8 +208,16 @@ impl From<Config> for SetConfigPayload {
 
         let cursor_blink = config.web_client.cursor_blink;
         let mac_option_is_meta = config.web_client.mac_option_is_meta;
-        let cursor_style = config.web_client.cursor_style.as_ref().map(|s| s.to_string());
-        let cursor_inactive_style = config.web_client.cursor_inactive_style.as_ref().map(|s| s.to_string());
+        let cursor_style = config
+            .web_client
+            .cursor_style
+            .as_ref()
+            .map(|s| s.to_string());
+        let cursor_inactive_style = config
+            .web_client
+            .cursor_inactive_style
+            .as_ref()
+            .map(|s| s.to_string());
 
         SetConfigPayload {
             font,

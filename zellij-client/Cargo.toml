@@ -40,6 +40,7 @@ uuid = { workspace = true }
 include_dir = { workspace = true }
 zellij-utils = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 
 [dev-dependencies]
 insta = "1.6.0"

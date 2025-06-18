@@ -2,7 +2,8 @@ use kdl::{KdlDocument, KdlNode, KdlValue};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    data::PaletteColor, kdl_children_or_error, kdl_get_child, kdl_get_child_entry_string_value, kdl_get_child_entry_bool_value, kdl_first_entry_as_string
+    data::PaletteColor, kdl_children_or_error, kdl_first_entry_as_string, kdl_get_child,
+    kdl_get_child_entry_bool_value, kdl_get_child_entry_string_value,
 };
 
 use super::config::ConfigError;
@@ -155,8 +156,8 @@ impl CursorInactiveStyle {
             _ => Err(ConfigError::new_kdl_error(
                 format!("Must be 'block', 'bar', 'underline', 'outline' or 'no_style'"),
                 kdl.span().offset(),
-                kdl.span().len())
-            ),
+                kdl.span().len(),
+            )),
         }
     }
     pub fn to_kdl(&self) -> KdlNode {
@@ -208,8 +209,8 @@ impl CursorStyle {
             _ => Err(ConfigError::new_kdl_error(
                 format!("Must be 'block', 'bar' or 'underline'"),
                 kdl.span().offset(),
-                kdl.span().len())
-            ),
+                kdl.span().len(),
+            )),
         }
     }
     pub fn to_kdl(&self) -> KdlNode {
@@ -269,16 +270,16 @@ impl WebClientConfig {
         }
 
         if let Some(cursor_inactive_style_node) = kdl_get_child!(kdl, "cursor_inactive_style") {
-            web_client_config
-                .cursor_inactive_style = Some(CursorInactiveStyle::from_kdl(cursor_inactive_style_node)?);
+            web_client_config.cursor_inactive_style =
+                Some(CursorInactiveStyle::from_kdl(cursor_inactive_style_node)?);
         }
 
         if let Some(cursor_style_node) = kdl_get_child!(kdl, "cursor_style") {
-            web_client_config
-                .cursor_style = Some(CursorStyle::from_kdl(cursor_style_node)?);
+            web_client_config.cursor_style = Some(CursorStyle::from_kdl(cursor_style_node)?);
         }
 
-        if let Some(mac_option_is_meta) = kdl_get_child_entry_bool_value!(kdl, "mac_option_is_meta") {
+        if let Some(mac_option_is_meta) = kdl_get_child_entry_bool_value!(kdl, "mac_option_is_meta")
+        {
             web_client_config.mac_option_is_meta = mac_option_is_meta;
         }
 
@@ -304,8 +305,12 @@ impl WebClientConfig {
             web_client_children.nodes_mut().push(cursor_blink_node);
         }
 
-        if let Some(cursor_inactive_style_node) = self.cursor_inactive_style.as_ref().map(|c| c.to_kdl()) {
-            web_client_children.nodes_mut().push(cursor_inactive_style_node);
+        if let Some(cursor_inactive_style_node) =
+            self.cursor_inactive_style.as_ref().map(|c| c.to_kdl())
+        {
+            web_client_children
+                .nodes_mut()
+                .push(cursor_inactive_style_node);
         }
 
         if let Some(cursor_style_node) = self.cursor_style.as_ref().map(|c| c.to_kdl()) {
@@ -316,7 +321,9 @@ impl WebClientConfig {
             // this defaults to true, so we only need to add it if it's false
             let mut mac_option_is_meta_node = KdlNode::new("mac_option_is_meta");
             mac_option_is_meta_node.push(KdlValue::Bool(false));
-            web_client_children.nodes_mut().push(mac_option_is_meta_node);
+            web_client_children
+                .nodes_mut()
+                .push(mac_option_is_meta_node);
         }
 
         web_client_node.set_children(web_client_children);

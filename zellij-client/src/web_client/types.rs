@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::UnboundedSender;
+use tokio_util::sync::CancellationToken;
 
 use crate::os_input_output::ClientOsApi;
 use std::path::PathBuf;
@@ -96,6 +97,7 @@ pub struct ClientChannels {
     pub os_api: Box<dyn ClientOsApi>,
     pub control_channel_tx: Option<UnboundedSender<Message>>,
     pub terminal_channel_tx: Option<UnboundedSender<String>>,
+    terminal_channel_cancellation_token: Option<CancellationToken>,
 }
 
 impl ClientChannels {
@@ -104,6 +106,7 @@ impl ClientChannels {
             os_api,
             control_channel_tx: None,
             terminal_channel_tx: None,
+            terminal_channel_cancellation_token: None,
         }
     }
 
@@ -113,6 +116,22 @@ impl ClientChannels {
 
     pub fn add_terminal_tx(&mut self, terminal_channel_tx: UnboundedSender<String>) {
         self.terminal_channel_tx = Some(terminal_channel_tx);
+    }
+
+    pub fn add_terminal_channel_cancellation_token(
+        &mut self,
+        terminal_channel_cancellation_token: CancellationToken,
+    ) {
+        self.terminal_channel_cancellation_token = Some(terminal_channel_cancellation_token);
+    }
+    pub fn cleanup(&mut self) {
+        log::info!("cleanup");
+        if let Some(terminal_channel_cancellation_token) =
+            self.terminal_channel_cancellation_token.take()
+        {
+            log::info!("cancelling renders");
+            terminal_channel_cancellation_token.cancel();
+        }
     }
 }
 

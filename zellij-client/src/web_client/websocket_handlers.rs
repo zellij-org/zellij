@@ -17,6 +17,7 @@ use axum::{
 };
 use futures::StreamExt;
 use log::info;
+use tokio_util::sync::CancellationToken;
 use zellij_utils::{input::mouse::MouseEvent, ipc::ClientToServerMsg};
 
 pub async fn ws_handler_control(
@@ -137,7 +138,7 @@ async fn handle_ws_terminal(
         return;
     };
 
-    let (client_channel_tx, mut client_channel_rx) = socket.split();
+    let (client_terminal_channel_tx, mut client_terminal_channel_rx) = socket.split();
     info!(
         "New Terminal WebSocket connection established {:?}",
         session_name
@@ -160,7 +161,20 @@ async fn handle_ws_terminal(
         state.session_manager.clone(),
     );
 
-    render_to_client(stdout_channel_rx, client_channel_tx);
+    let terminal_channel_cancellation_token = CancellationToken::new();
+    render_to_client(
+        stdout_channel_rx,
+        client_terminal_channel_tx,
+        terminal_channel_cancellation_token.clone(),
+    );
+    state
+        .connection_table
+        .lock()
+        .unwrap()
+        .add_client_terminal_channel_cancellation_token(
+            &web_client_id,
+            terminal_channel_cancellation_token,
+        );
 
     let explicitly_disable_kitty_keyboard_protocol = state
         .config
@@ -169,7 +183,7 @@ async fn handle_ws_terminal(
         .map(|e| !e)
         .unwrap_or(false);
     let mut mouse_old_event = MouseEvent::new();
-    while let Some(Ok(msg)) = client_channel_rx.next().await {
+    while let Some(Ok(msg)) = client_terminal_channel_rx.next().await {
         match msg {
             Message::Text(msg) => {
                 let Some(client_connection) = state

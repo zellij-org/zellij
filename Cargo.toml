@@ -87,6 +87,7 @@ tempfile = { version = "3.2.0", default-features = false }
 termwiz = { version = "0.23.2", default-features = false }
 thiserror = { version = "1.0.40", default-features = false }
 tokio = { version = "1.38.1", features = ["full"] }
+tokio-util = { version = "0.7.15" }
 unicode-width = { version = "0.1.8", default-features = false }
 url = { version = "2.2.2", default-features = false, features = ["serde"] }
 uuid = { version = "1.4.1", default-features = false, features = ["serde", "v4", "std"] }
