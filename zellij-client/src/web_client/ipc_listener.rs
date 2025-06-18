@@ -10,6 +10,7 @@ use zellij_utils::web_server_commands::InstructionForWebServer;
 pub async fn create_webserver_receiver(
     id: &str,
 ) -> Result<UnixStream, Box<dyn std::error::Error + Send + Sync>> {
+    std::fs::create_dir_all(&WEBSERVER_SOCKET_PATH.as_path())?;
     let socket_path = WEBSERVER_SOCKET_PATH.join(format!("{}", id));
 
     if socket_path.exists() {
