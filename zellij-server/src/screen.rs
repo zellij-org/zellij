@@ -362,6 +362,7 @@ pub enum ScreenInstruction {
     SwitchFocus(ClientId, Option<NotificationEnd>),
     FocusNextPane(ClientId, Option<NotificationEnd>),
     FocusPreviousPane(ClientId, Option<NotificationEnd>),
+    FocusLastPane(ClientId, Option<NotificationEnd>),
     MoveFocusLeft(ClientId, Option<NotificationEnd>),
     MoveFocusLeftOrPreviousTab(ClientId, Option<NotificationEnd>),
     MoveFocusDown(ClientId, Option<NotificationEnd>),
@@ -862,6 +863,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SwitchFocus(..) => ScreenContext::SwitchFocus,
             ScreenInstruction::FocusNextPane(..) => ScreenContext::FocusNextPane,
             ScreenInstruction::FocusPreviousPane(..) => ScreenContext::FocusPreviousPane,
+            ScreenInstruction::FocusLastPane(..) => ScreenContext::FocusLastPane,
             ScreenInstruction::MoveFocusLeft(..) => ScreenContext::MoveFocusLeft,
             ScreenInstruction::MoveFocusLeftOrPreviousTab(..) => {
                 ScreenContext::MoveFocusLeftOrPreviousTab
@@ -5462,6 +5464,19 @@ pub(crate) fn screen_thread_main(
                     screen.render(None)?;
                     screen.log_and_report_session_state()?;
                 }
+            },
+            ScreenInstruction::FocusLastPane(
+                client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.focus_last_pane(client_id)
+                );
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
             },
             ScreenInstruction::MoveFocusLeft(client_id, mut _completion_tx) => {
                 if screen.get_first_client_id().is_none() {
