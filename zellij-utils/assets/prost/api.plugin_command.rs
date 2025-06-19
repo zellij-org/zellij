@@ -1024,6 +1024,7 @@ pub enum CommandName {
     InterceptKeyPresses = 143,
     ClearKeyPressesIntercepts = 144,
     ReplacePaneWithExistingPane = 155,
+    FocusLastPane = 156,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1178,6 +1179,7 @@ impl CommandName {
             CommandName::InterceptKeyPresses => "InterceptKeyPresses",
             CommandName::ClearKeyPressesIntercepts => "ClearKeyPressesIntercepts",
             CommandName::ReplacePaneWithExistingPane => "ReplacePaneWithExistingPane",
+            CommandName::FocusLastPane => "FocusLastPane",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1329,6 +1331,7 @@ impl CommandName {
             "InterceptKeyPresses" => Some(Self::InterceptKeyPresses),
             "ClearKeyPressesIntercepts" => Some(Self::ClearKeyPressesIntercepts),
             "ReplacePaneWithExistingPane" => Some(Self::ReplacePaneWithExistingPane),
+            "FocusLastPane" => Some(Self::FocusLastPane),
             _ => None,
         }
     }
