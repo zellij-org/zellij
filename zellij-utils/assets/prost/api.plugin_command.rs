@@ -2152,6 +2152,7 @@ pub enum CommandName {
     KillSessionsAndReply = 212,
     DeleteDeadSessionAndReply = 213,
     DeleteAllDeadSessionsAndReply = 214,
+    FocusLastPane = 215,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2354,6 +2355,7 @@ impl CommandName {
             CommandName::KillSessionsAndReply => "KillSessionsAndReply",
             CommandName::DeleteDeadSessionAndReply => "DeleteDeadSessionAndReply",
             CommandName::DeleteAllDeadSessionsAndReply => "DeleteAllDeadSessionsAndReply",
+            CommandName::FocusLastPane => "FocusLastPane",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2553,6 +2555,7 @@ impl CommandName {
             "KillSessionsAndReply" => Some(Self::KillSessionsAndReply),
             "DeleteDeadSessionAndReply" => Some(Self::DeleteDeadSessionAndReply),
             "DeleteAllDeadSessionsAndReply" => Some(Self::DeleteAllDeadSessionsAndReply),
+            "FocusLastPane" => Some(Self::FocusLastPane),
             _ => None,
         }
     }

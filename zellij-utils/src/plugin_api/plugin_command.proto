@@ -207,6 +207,7 @@ enum CommandName {
   KillSessionsAndReply = 212;
   DeleteDeadSessionAndReply = 213;
   DeleteAllDeadSessionsAndReply = 214;
+  FocusLastPane = 215;
 }
 
 message PluginCommand {
