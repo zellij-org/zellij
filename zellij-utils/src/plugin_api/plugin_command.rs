@@ -527,6 +527,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 }
                 Ok(PluginCommand::FocusPreviousPane)
             },
+            Some(CommandName::FocusLastPane) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    return Err("FocusLastPane should not have a payload");
+                }
+                Ok(PluginCommand::FocusLastPane)
+            },
             Some(CommandName::MoveFocus) => match protobuf_plugin_command.payload {
                 Some(Payload::MoveFocusPayload(move_payload)) => match move_payload.direction {
                     Some(direction) => Ok(PluginCommand::MoveFocus(direction.try_into()?)),
@@ -1925,6 +1931,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             }),
             PluginCommand::FocusPreviousPane => Ok(ProtobufPluginCommand {
                 name: CommandName::FocusPreviousPane as i32,
+                payload: None,
+            }),
+            PluginCommand::FocusLastPane => Ok(ProtobufPluginCommand {
+                name: CommandName::FocusLastPane as i32,
                 payload: None,
             }),
             PluginCommand::MoveFocus(direction) => Ok(ProtobufPluginCommand {

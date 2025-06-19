@@ -227,15 +227,17 @@ message Action {
     ChangeFloatingPaneCoordinatesAction change_floating_pane_coordinates = 89;
     TogglePaneInGroupAction toggle_pane_in_group = 90;
     ToggleGroupMarkingAction toggle_group_marking = 91;
+    FocusLastPaneAction focus_last_pane = 92;
   }
 }
 
-// Action message definitions (all 91 variants)
+// Action message definitions (all 92 variants)
 
 // Simple action types (no data)
 message QuitAction {}
 message FocusNextPaneAction {}
 message FocusPreviousPaneAction {}
+message FocusLastPaneAction {}
 message SwitchFocusAction {}
 message MovePaneBackwardsAction {}
 message ClearScreenAction {}
