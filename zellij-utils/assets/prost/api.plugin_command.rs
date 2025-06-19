@@ -2229,6 +2229,7 @@ pub enum CommandName {
     NewTabUnfocused = 220,
     NewTiledPaneInTab = 221,
     ExitMobileMode = 222,
+    FocusLastPane = 223,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2437,6 +2438,7 @@ impl CommandName {
             CommandName::NewTabUnfocused => "NewTabUnfocused",
             CommandName::NewTiledPaneInTab => "NewTiledPaneInTab",
             CommandName::ExitMobileMode => "ExitMobileMode",
+            CommandName::FocusLastPane => "FocusLastPane",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2642,6 +2644,7 @@ impl CommandName {
             "NewTabUnfocused" => Some(Self::NewTabUnfocused),
             "NewTiledPaneInTab" => Some(Self::NewTiledPaneInTab),
             "ExitMobileMode" => Some(Self::ExitMobileMode),
+            "FocusLastPane" => Some(Self::FocusLastPane),
             _ => None,
         }
     }

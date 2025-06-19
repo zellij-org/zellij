@@ -213,6 +213,7 @@ enum CommandName {
   NewTabUnfocused = 220;
   NewTiledPaneInTab = 221;
   ExitMobileMode = 222;
+  FocusLastPane = 223;
 }
 
 message PluginCommand {
