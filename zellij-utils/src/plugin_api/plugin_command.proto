@@ -204,6 +204,7 @@ enum CommandName {
   OpenPluginPaneFloating = 209;
   ListWindowsVolumes = 210;
   GetSessionList = 211;
+  FocusLastPane = 212;
 }
 
 message PluginCommand {

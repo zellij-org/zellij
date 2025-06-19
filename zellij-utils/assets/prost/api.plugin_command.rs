@@ -2124,6 +2124,7 @@ pub enum CommandName {
     OpenPluginPaneFloating = 209,
     ListWindowsVolumes = 210,
     GetSessionList = 211,
+    FocusLastPane = 212,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2323,6 +2324,7 @@ impl CommandName {
             CommandName::OpenPluginPaneFloating => "OpenPluginPaneFloating",
             CommandName::ListWindowsVolumes => "ListWindowsVolumes",
             CommandName::GetSessionList => "GetSessionList",
+            CommandName::FocusLastPane => "FocusLastPane",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2519,6 +2521,7 @@ impl CommandName {
             "OpenPluginPaneFloating" => Some(Self::OpenPluginPaneFloating),
             "ListWindowsVolumes" => Some(Self::ListWindowsVolumes),
             "GetSessionList" => Some(Self::GetSessionList),
+            "FocusLastPane" => Some(Self::FocusLastPane),
             _ => None,
         }
     }
