@@ -232,6 +232,13 @@ document.addEventListener("DOMContentLoaded", async (event) => {
         }
     });
 
+    document.addEventListener('contextmenu', function(event) {
+        if (event.altKey) {
+          // this is so that when the user does an alt-right-click to ungroup panes, the context menu will not appear
+            event.preventDefault();
+        }
+    });
+
     term.onData((data) => {
         if (!own_web_client_id == "") {
             ws_terminal.send(data);
