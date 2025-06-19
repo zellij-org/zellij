@@ -244,6 +244,7 @@ enum ActionName {
     TogglePaneInGroup = 87;
     ToggleGroupMarking = 88;
     NewStackedPane = 89;
+    FocusLastPane = 90;
 }
 
 message Position {

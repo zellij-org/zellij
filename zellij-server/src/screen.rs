@@ -169,6 +169,7 @@ pub enum ScreenInstruction {
     SwitchFocus(ClientId),
     FocusNextPane(ClientId),
     FocusPreviousPane(ClientId),
+    FocusLastPane(ClientId),
     MoveFocusLeft(ClientId),
     MoveFocusLeftOrPreviousTab(ClientId),
     MoveFocusDown(ClientId),
@@ -468,6 +469,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SwitchFocus(..) => ScreenContext::SwitchFocus,
             ScreenInstruction::FocusNextPane(..) => ScreenContext::FocusNextPane,
             ScreenInstruction::FocusPreviousPane(..) => ScreenContext::FocusPreviousPane,
+            ScreenInstruction::FocusLastPane(_) => ScreenContext::FocusLastPane,
             ScreenInstruction::MoveFocusLeft(..) => ScreenContext::MoveFocusLeft,
             ScreenInstruction::MoveFocusLeftOrPreviousTab(..) => {
                 ScreenContext::MoveFocusLeftOrPreviousTab
@@ -3681,6 +3683,16 @@ pub(crate) fn screen_thread_main(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.focus_previous_pane(client_id)
+                );
+                screen.render(None)?;
+                screen.unblock_input()?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::FocusLastPane(client_id) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.focus_last_pane(client_id)
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;

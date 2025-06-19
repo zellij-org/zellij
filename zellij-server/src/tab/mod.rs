@@ -2673,6 +2673,12 @@ impl Tab {
         }
         self.tiled_panes.switch_prev_pane_fullscreen(client_id);
     }
+    pub fn switch_last_pane_fullscreen(&mut self, client_id: ClientId) {
+        if !self.is_fullscreen_active() {
+            return;
+        }
+        self.tiled_panes.switch_last_pane_fullscreen(client_id);
+    }
     pub fn set_force_render(&mut self) {
         self.tiled_panes.set_force_render();
         self.floating_panes.set_force_render();
@@ -2986,6 +2992,16 @@ impl Tab {
             return;
         }
         self.tiled_panes.focus_previous_pane(client_id);
+    }
+    pub fn focus_last_pane(&mut self, client_id: ClientId) {
+        if !self.has_selectable_panes() {
+            return;
+        }
+        if self.tiled_panes.fullscreen_is_active() {
+            self.switch_last_pane_fullscreen(client_id);
+            return;
+        }
+        self.tiled_panes.focus_last_pane(client_id);
     }
     pub fn focus_pane_on_edge(&mut self, direction: Direction, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
