@@ -2351,6 +2351,7 @@ pub enum PluginCommand {
     ResizeWithDirection(ResizeStrategy),
     FocusNextPane,
     FocusPreviousPane,
+    FocusLastPane,
     MoveFocus(Direction),
     MoveFocusOrTab(Direction),
     Detach,
