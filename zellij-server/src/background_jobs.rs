@@ -57,7 +57,6 @@ pub enum BackgroundJob {
     ),
     HighlightPanesWithMessage(Vec<PaneId>, String),
     RenderToClients,
-    StopWebServer,
     QueryZellijWebServerStatus,
     Exit,
 }
@@ -82,7 +81,6 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::HighlightPanesWithMessage(..) => {
                 BackgroundJobContext::HighlightPanesWithMessage
             },
-            BackgroundJob::StopWebServer => BackgroundJobContext::StopWebServer,
             BackgroundJob::QueryZellijWebServerStatus => {
                 BackgroundJobContext::QueryZellijWebServerStatus
             },
@@ -454,51 +452,6 @@ pub(crate) fn background_jobs_main(
                                     // no-op - otherwise we'll get errors if we were mid-request
                                     // (eg. when the server was shut down by a user action)
                                 }
-                            },
-                        }
-                    }
-                });
-            },
-            BackgroundJob::StopWebServer => {
-                task::spawn({
-                    let http_client = http_client.clone();
-                    let senders = bus.senders.clone();
-                    let web_server_base_url = web_server_base_url.clone();
-                    async move {
-                        async fn web_request(
-                            http_client: HttpClient,
-                            web_server_base_url: &str,
-                        ) -> Result<
-                            (u16, Vec<u8>), // status_code, body
-                            isahc::Error,
-                        > {
-                            let request =
-                                Request::post(format!("{}/command/shutdown", web_server_base_url,));
-                            let req = request.body(())?;
-                            let mut res = http_client.send_async(req).await?;
-
-                            let status_code = res.status();
-                            let body = res.bytes().await?;
-                            Ok((status_code.as_u16(), body))
-                        }
-                        let Some(http_client) = http_client else {
-                            log::error!("Cannot perform http request, likely due to a misconfigured http client");
-                            return;
-                        };
-
-                        match web_request(http_client, &web_server_base_url).await {
-                            Ok((_status, _body)) => {
-                                // optimistic update - we assume if we got a 200 here, the web
-                                // server is indeed down. If there was some internal error and it
-                                // remained up, we'll pick this up in the next status query
-                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                    None,
-                                    None,
-                                    Event::WebServerStatus(WebServerStatus::Offline),
-                                )]));
-                            },
-                            Err(e) => {
-                                log::error!("Failed to shut down web server: {}", e)
                             },
                         }
                     }

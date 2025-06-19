@@ -179,7 +179,6 @@ fn right_more_message(
 fn tab_line_prefix(session_name: Option<&str>, palette: Styling, cols: usize) -> Vec<LinePart> {
     let prefix_text = " Zellij ".to_string();
 
-    // let prefix_text_len = prefix_text.chars().count();
     let running_text_len = prefix_text.chars().count();
     let text_color = palette.text_unselected.base;
     let bg_color = palette.text_unselected.background;

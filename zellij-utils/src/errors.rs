@@ -534,7 +534,6 @@ pub enum BackgroundJobContext {
     ListWebSessions,
     RenderToClients,
     HighlightPanesWithMessage,
-    StopWebServer,
     QueryZellijWebServerStatus,
     Exit,
 }
