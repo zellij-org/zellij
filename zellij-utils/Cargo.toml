@@ -52,7 +52,7 @@ curl-sys = { version = "0.4", default-features = false, features = ["force-syste
 humantime = { workspace = true }
 suggest = { workspace = true }
 names = { workspace = true }
-rusqlite = { workspace = true, optional = true }
+rusqlite = { version = "0.30", default-features = false, features = ["bundled"], optional = true }
 notify = { workspace = true }
 tokio = { workspace = true }
 
