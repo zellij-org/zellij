@@ -15,14 +15,15 @@ use zellij_utils::{
     input::{config::Config, options::Options},
     ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
     sessions::generate_unique_session_name,
+    setup::Setup,
 };
 
 pub fn zellij_server_listener(
     os_input: Box<dyn ClientOsApi>,
     connection_table: Arc<Mutex<ConnectionTable>>,
     session_name: Option<String>,
-    config: Config,
-    config_options: Options,
+    mut config: Config,
+    mut config_options: Options,
     config_file_path: Option<PathBuf>,
     web_client_id: String,
     session_manager: Arc<dyn SessionManager>,
@@ -55,6 +56,8 @@ pub fn zellij_server_listener(
                         sock_dir.push(session_name.clone());
                         sock_dir.to_str().unwrap().to_owned()
                     };
+
+                    reload_config_from_disk(&mut config, &mut config_options, &config_file_path);
 
                     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
                     let mut sent_init_messages = false;
@@ -192,4 +195,22 @@ fn handle_config_write(os_input: &Box<dyn ClientOsApi>, config: String) {
             let _ = os_input.send_to_server(ClientToServerMsg::FailedToWriteConfigToDisk(e));
         },
     }
+}
+
+fn reload_config_from_disk(
+    config_without_layout: &mut Config,
+    config_options_without_layout: &mut Options,
+    config_file_path: &Option<PathBuf>,
+) {
+    let mut cli_args = CliArgs::default();
+    cli_args.config = config_file_path.clone();
+    match Setup::from_cli_args(&cli_args) {
+        Ok((_, _, _, reloaded_config_without_layout, reloaded_config_options_without_layout)) => {
+            *config_without_layout = reloaded_config_without_layout;
+            *config_options_without_layout = reloaded_config_options_without_layout;
+        },
+        Err(e) => {
+            log::error!("Failed to reload config: {}", e);
+        },
+    };
 }

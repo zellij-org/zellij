@@ -17,6 +17,7 @@ use super::theme::{Themes, UiConfig};
 use super::web_client::WebClientConfig;
 use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariables;
+use crate::setup::Setup;
 use crate::{home, setup};
 
 const DEFAULT_CONFIG_FILE_NAME: &str = "config.kdl";
@@ -462,10 +463,12 @@ where
                                     continue;
                                 }
 
-                                if let Ok(new_config) = Config::from_path(&config_file_path, None)
+                                let mut cli_args_for_config = CliArgs::default();
+                                cli_args_for_config.config = Some(PathBuf::from(&config_file_path));
+                                if let Ok(new_config) = Setup::from_cli_args(&cli_args_for_config)
                                     .map_err(|e| e.to_string())
                                 {
-                                    on_config_change(new_config).await;
+                                    on_config_change(new_config.0).await;
                                 }
                             }
                         }
