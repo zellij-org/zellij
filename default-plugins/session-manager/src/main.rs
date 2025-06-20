@@ -513,6 +513,8 @@ impl State {
                             }
                         } else if let Some(tab_position) = selected_tab {
                             go_to_tab(tab_position as u32);
+                        } else {
+                            self.show_error("Already attached...");
                         }
                     } else {
                         switch_session_with_focus(
@@ -526,7 +528,13 @@ impl State {
                 self.search_term.clear();
                 self.sessions
                     .update_search_term(&self.search_term, &self.colors);
-                hide_self();
+                if !self.is_welcome_screen {
+                    // we usually don't want to hide_self() if we're the welcome screen because
+                    // unless the user did something odd like opening an extra pane/tab in the
+                    // welcome screen, this will result in the current session closing, as this is
+                    // the last selectable pane...
+                    hide_self();
+                }
             },
             ActiveScreen::ResurrectSession => {
                 if let Some(session_name_to_resurrect) =
@@ -559,6 +567,13 @@ impl State {
             .iter()
             .filter_map(|s| {
                 if self.is_web_client && !s.web_clients_allowed {
+                    None
+                } else if self.is_welcome_screen && s.is_current_session {
+                    // do not display current session if we're the welcome screen
+                    // because:
+                    // 1. attaching to the welcome screen from the welcome screen is not a thing
+                    // 2. it can cause issues on the web (since we're disconnecting and
+                    //    reconnecting to a session we just closed by disconnecting...)
                     None
                 } else {
                     Some(SessionUiInfo::from_session_info(s))
