@@ -344,6 +344,9 @@ document.addEventListener("DOMContentLoaded", async (event) => {
                 const body = document.querySelector("body");
                 body.style.background = theme.background;
 
+                const terminal = document.getElementById("terminal");
+                terminal.style.background = theme.background;
+
                 const fit_dimensions = fitAddon.proposeDimensions();
                 if (fit_dimensions === undefined) {
                     console.warn("failed to get new fit dimensions");

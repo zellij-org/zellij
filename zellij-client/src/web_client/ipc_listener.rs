@@ -48,7 +48,7 @@ pub async fn listen_to_web_server_instructions(
                             break;
                         },
                         InstructionForWebServer::ConfigWrittenToDisk(new_config) => {
-                            let set_config_payload = SetConfigPayload::from(new_config);
+                            let set_config_payload = SetConfigPayload::from(&new_config);
 
                             let client_ids: Vec<String> = {
                                 let connection_table_lock = connection_table.lock().unwrap();

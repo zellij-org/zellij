@@ -49,7 +49,7 @@ pub async fn ws_handler_terminal(
 async fn handle_ws_control(socket: WebSocket, state: AppState) {
     info!("New Control WebSocket connection established");
 
-    let config = SetConfigPayload::from((&state.config, &state.config_options));
+    let config = SetConfigPayload::from(&state.config);
     let set_config_msg = WebServerToWebClientControlMessage::SetConfig(config);
     info!("Sending initial config to client: {:?}", set_config_msg);
 
