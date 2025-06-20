@@ -204,7 +204,12 @@ pub async fn serve_web_client(
     // we use a short version here to bypass macos socket path length limitations
     // since there likely aren't going to be more than a handful of web instances on the same
     // machine listening to the same ipc socket path, the collision risk here is extremely low
-    let id: String = Uuid::new_v4().simple().to_string().chars().take(5).collect();
+    let id: String = Uuid::new_v4()
+        .simple()
+        .to_string()
+        .chars()
+        .take(5)
+        .collect();
 
     #[cfg(not(test))]
     tokio::spawn({
