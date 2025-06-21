@@ -22,6 +22,7 @@ keybinds {
         bind "l" "Right" { MoveFocus "Right"; }
         bind "j" "Down" { MoveFocus "Down"; }
         bind "k" "Up" { MoveFocus "Up"; }
+        bind "\\" { FocusLastPane; }
         bind "p" { SwitchFocus; }
         bind "n" { NewPane; SwitchToMode "Normal"; }
         bind "d" { NewPane "Down"; SwitchToMode "Normal"; }
@@ -125,6 +126,7 @@ keybinds {
         bind "j" { MoveFocus "Down"; SwitchToMode "Normal"; }
         bind "k" { MoveFocus "Up"; SwitchToMode "Normal"; }
         bind "o" { FocusNextPane; }
+        bind ";" { FocusLastPane; }
         bind "d" { Detach; }
         bind "x" { CloseFocus; SwitchToMode "Normal"; }
     }
