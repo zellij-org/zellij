@@ -1331,7 +1331,7 @@ impl Tab {
             }
             if let Some(embedded_pane_to_float) = self.extract_pane(focused_pane_id, true) {
                 self.show_floating_panes();
-                self.add_floating_pane(embedded_pane_to_float, focused_pane_id, None, true)?;
+                self.add_floating_pane(embedded_pane_to_float, focused_pane_id, None, true, Some(client_id))?;
             }
         }
         Ok(())
@@ -1367,7 +1367,7 @@ impl Tab {
                 return Ok(());
             }
             if let Some(embedded_pane_to_float) = self.extract_pane(pane_id, true) {
-                self.add_floating_pane(embedded_pane_to_float, pane_id, None, true)?;
+                self.add_floating_pane(embedded_pane_to_float, pane_id, None, true, client_id)?;
             }
         }
         Ok(())
@@ -1632,13 +1632,13 @@ impl Tab {
             Ok(())
         } else if should_focus_pane {
             if self.floating_panes.panes_are_visible() {
-                self.add_floating_pane(new_pane, pid, None, true)
+                self.add_floating_pane(new_pane, pid, None, true, client_id)
             } else {
                 self.add_tiled_pane(new_pane, pid, false, client_id)
             }
         } else {
             if self.floating_panes.panes_are_visible() {
-                self.add_floating_pane(new_pane, pid, None, false)
+                self.add_floating_pane(new_pane, pid, None, false, client_id)
             } else {
                 self.add_tiled_pane(new_pane, pid, false, client_id)
             }
@@ -1842,7 +1842,7 @@ impl Tab {
                 .insert(pid, (is_scrollback_editor, new_pane));
             Ok(())
         } else {
-            self.add_floating_pane(new_pane, pid, floating_pane_coordinates, should_focus_pane)
+            self.add_floating_pane(new_pane, pid, floating_pane_coordinates, should_focus_pane, None)
         }
     }
     pub fn new_in_place_pane(
@@ -5146,7 +5146,7 @@ impl Tab {
                         pane.set_selectable(true);
                         if should_float {
                             self.show_floating_panes();
-                            self.add_floating_pane(pane, pane_id, None, true)
+                            self.add_floating_pane(pane, pane_id, None, true, Some(client_id))
                         } else if should_be_in_place {
                             let replaced_pane = if self.are_floating_panes_visible() {
                                 self.floating_panes
@@ -5178,7 +5178,7 @@ impl Tab {
         match self.suppressed_panes.remove(&pane_id) {
             Some(pane) => {
                 self.show_floating_panes();
-                self.add_floating_pane(pane.1, pane_id, None, true)
+                self.add_floating_pane(pane.1, pane_id, None, true, None)
                     .non_fatal();
                 self.floating_panes.focus_pane_for_all_clients(pane_id);
             },
@@ -5206,7 +5206,7 @@ impl Tab {
         {
             Some(pane) => {
                 if should_float_if_hidden {
-                    self.add_floating_pane(pane, pane_id, None, true)
+                    self.add_floating_pane(pane, pane_id, None, true, None)
                         .non_fatal();
                 } else {
                     self.add_tiled_pane(pane, pane_id, false, None).non_fatal();
@@ -5227,7 +5227,7 @@ impl Tab {
         {
             Some(pane) => {
                 if should_float_if_hidden {
-                    self.add_floating_pane(pane, pane_id, None, true)
+                    self.add_floating_pane(pane, pane_id, None, true, None)
                         .non_fatal();
                 } else {
                     self.add_tiled_pane(pane, pane_id, false, None).non_fatal();
@@ -5314,6 +5314,7 @@ impl Tab {
         pane_id: PaneId,
         floating_pane_coordinates: Option<FloatingPaneCoordinates>,
         should_focus_new_pane: bool,
+        client_id: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || format!("failed to add floating pane");
         if let Some(mut new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
@@ -5698,7 +5699,7 @@ impl Tab {
                 || self.suppressed_panes.contains_key(pane_id)
             {
                 if let Some(pane) = self.extract_pane(*pane_id, true) {
-                    self.add_floating_pane(pane, *pane_id, None, false)?;
+                    self.add_floating_pane(pane, *pane_id, None, false, None)?;
                 }
             }
         }
