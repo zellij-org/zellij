@@ -635,6 +635,13 @@ impl FloatingPanes {
         }
     }
 
+    pub fn focus_last_pane(&mut self, client_id: ClientId) {
+        if let Some(pane_id) = self.active_panes.get_last(&client_id).copied() {
+            self.focus_pane(pane_id, client_id);
+            self.set_force_render();
+        }
+    }
+
     pub fn move_active_pane_down(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.active_panes.get(&client_id) {
             self.move_pane_down(*active_pane_id);
@@ -829,6 +836,11 @@ impl FloatingPanes {
         self.set_force_render();
     }
     pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        if let Some(focused_pane) = self.active_panes.get(&client_id) {
+            if pane_id != *focused_pane {
+                self.active_panes.set_last_pane(client_id, *focused_pane);
+            }
+        }
         let pane_is_selectable = self
             .panes
             .get(&pane_id)

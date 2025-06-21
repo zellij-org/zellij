@@ -2997,7 +2997,10 @@ impl Tab {
         if !self.has_selectable_panes() {
             return;
         }
-        if self.tiled_panes.fullscreen_is_active() {
+        if self.floating_panes.panes_are_visible() {
+            self.floating_panes.focus_last_pane(client_id);
+        }
+        else if self.tiled_panes.fullscreen_is_active() {
             self.switch_last_pane_fullscreen(client_id);
             return;
         }
@@ -5007,7 +5010,11 @@ impl Tab {
                 .with_context(err_context)?;
             self.floating_panes.add_pane(pane_id, pane);
             if should_focus_new_pane {
-                self.floating_panes.focus_pane_for_all_clients(pane_id);
+                if let Some(client_id) = client_id {
+                    self.floating_panes.focus_pane(pane_id, client_id);
+                } else {
+                    self.floating_panes.focus_pane_for_all_clients(pane_id);
+                }
             }
         }
         if self.auto_layout && !self.swap_layouts.is_floating_damaged() {
