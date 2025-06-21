@@ -2424,6 +2424,108 @@ fn move_floating_pane_focus_with_mouse() {
 }
 
 #[test]
+fn move_floating_pane_focus_to_last_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+    let new_pane_id_4 = PaneId::Terminal(5);
+    let new_pane_id_5 = PaneId::Terminal(6);
+    let mut output = Output::default();
+    tab.toggle_floating_panes(Some(client_id), None, None).unwrap();
+    tab.new_pane(
+        new_pane_id_1,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.new_pane(
+        new_pane_id_2,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.new_pane(
+        new_pane_id_3,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.new_pane(
+        new_pane_id_4,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.new_pane(
+        new_pane_id_5,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.handle_pty_bytes(
+        2,
+        Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
+    )
+    .unwrap();
+    tab.handle_pty_bytes(3, Vec::from("\u{1b}#8".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(4, Vec::from("\u{1b}#8".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(5, Vec::from("\u{1b}#8".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
+        .unwrap();
+    tab.move_focus_up(client_id).unwrap();
+    tab.focus_last_pane(client_id);
+    tab.render(&mut output, None).unwrap();
+    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_eq!(
+        cursor_coordinates,
+        Some((5, 5)),
+        "cursor coordinates moved back to the last pane below"
+    );
+
+    assert_snapshot!(snapshot);
+}
+
+
+#[test]
 fn move_pane_focus_with_mouse_to_non_floating_pane() {
     let size = Size {
         cols: 121,
@@ -5839,6 +5941,7 @@ fn focus_last_stacked_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5849,6 +5952,7 @@ fn focus_last_stacked_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5859,6 +5963,7 @@ fn focus_last_stacked_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.move_focus_right(client_id);
