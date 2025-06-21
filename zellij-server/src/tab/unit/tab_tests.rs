@@ -1198,6 +1198,90 @@ fn switch_to_prev_pane_fullscreen() {
 }
 
 #[test]
+fn switch_to_last_pane_fullscreen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut active_tab = create_new_tab(size, stacked_resize);
+
+    //testing four consecutive switches in fullscreen mode
+
+    active_tab
+        .new_pane(
+            PaneId::Terminal(1),
+            None,
+            None,
+            None,
+            None,
+            false,
+            true,
+            Some(1),
+        )
+        .unwrap();
+    active_tab
+        .new_pane(
+            PaneId::Terminal(2),
+            None,
+            None,
+            None,
+            None,
+            false,
+            true,
+            Some(1),
+        )
+        .unwrap();
+    active_tab
+        .new_pane(
+            PaneId::Terminal(3),
+            None,
+            None,
+            None,
+            None,
+            false,
+            true,
+            Some(1),
+        )
+        .unwrap();
+    active_tab
+        .new_pane(
+            PaneId::Terminal(4),
+            None,
+            None,
+            None,
+            None,
+            false,
+            true,
+            Some(1),
+        )
+        .unwrap();
+    active_tab.toggle_active_pane_fullscreen(1);
+
+    // order is now 1 2 3 4, current active is Terminal 4
+
+    active_tab.switch_last_pane_fullscreen(1);
+
+    // the position should now be in Terminal 3
+
+    assert_eq!(
+        active_tab.get_active_pane_id(1).unwrap(),
+        PaneId::Terminal(3),
+        "Active pane did not switch to the last pane in fullscreen mode"
+    );
+
+    active_tab.switch_last_pane_fullscreen(1);
+
+    // the position should now be back in Terminal 4
+
+    assert_eq!(
+        active_tab.get_active_pane_id(1).unwrap(),
+        PaneId::Terminal(4),
+        "Active pane did not switch to the last pane in fullscreen mode"
+    );
+}
+
+#[test]
 pub fn close_pane_with_another_pane_above_it() {
     // ┌───────────┐            ┌───────────┐
     // │xxxxxxxxxxx│            │xxxxxxxxxxx│

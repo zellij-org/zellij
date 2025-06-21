@@ -549,6 +549,7 @@ impl ZellijPlugin for State {
                 BareKey::Char('z') if key.has_modifiers(&[KeyModifier::Alt]) => {
                     list_clients();
                 },
+                BareKey::Char('0') if key.has_modifiers(&[KeyModifier::Alt]) => focus_last_pane(),
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {
