@@ -4790,7 +4790,7 @@ impl Tab {
         let old_value = self.web_sharing;
         self.web_sharing = web_sharing;
         if old_value != self.web_sharing {
-            self.update_input_modes();
+            let _ = self.update_input_modes();
         }
     }
     pub fn extract_suppressed_panes(&mut self) -> SuppressedPanes {

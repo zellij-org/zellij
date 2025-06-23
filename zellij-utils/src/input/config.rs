@@ -17,7 +17,6 @@ use super::theme::{Themes, UiConfig};
 use super::web_client::WebClientConfig;
 use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariables;
-use crate::setup::Setup;
 use crate::{home, setup};
 
 const DEFAULT_CONFIG_FILE_NAME: &str = "config.kdl";
@@ -426,6 +425,7 @@ where
     // we do this because the alternative is to watch its parent folder and this might cause the
     // classic "too many open files" issue if there are a lot of files there and/or lots of Zellij
     // instances
+    use crate::setup::Setup;
     use notify::{self, Config as WatcherConfig, Event, PollWatcher, RecursiveMode, Watcher};
     use std::time::Duration;
     use tokio::sync::mpsc;
@@ -487,8 +487,8 @@ where
 #[cfg(test)]
 mod config_test {
     use super::*;
-    use crate::data::{InputMode, Palette, PaletteColor, PluginTag, StyleDeclaration, Styling};
-    use crate::input::layout::{RunPlugin, RunPluginLocation};
+    use crate::data::{InputMode, Palette, PaletteColor, StyleDeclaration, Styling};
+    use crate::input::layout::RunPlugin;
     use crate::input::options::{Clipboard, OnForceClose};
     use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
     use std::collections::{BTreeMap, HashMap};

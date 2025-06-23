@@ -1,10 +1,8 @@
 use dialoguer::Confirm;
-use std::net::{IpAddr, Ipv4Addr};
-use std::str::FromStr;
 use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 
 #[cfg(feature = "web_server_capability")]
-use isahc::{config::RedirectPolicy, prelude::*, AsyncReadResponseExt, HttpClient, Request};
+use isahc::{config::RedirectPolicy, prelude::*, HttpClient, Request};
 
 use nix;
 use zellij_client::{
@@ -34,10 +32,7 @@ use zellij_utils::web_authentication_tokens::{
 };
 
 use miette::{Report, Result};
-use nix::sys::stat::{umask, Mode};
-use zellij_server::{
-    daemonize, os_input_output::get_server_os_input, start_server as start_server_impl,
-};
+use zellij_server::{os_input_output::get_server_os_input, start_server as start_server_impl};
 use zellij_utils::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
     data::{ConnectToSession, LayoutInfo},
@@ -49,7 +44,6 @@ use zellij_utils::{
         options::Options,
     },
     setup::{find_default_config_dir, get_layout_dir, Setup},
-    shared::web_server_base_url,
 };
 
 pub(crate) use zellij_utils::sessions::list_sessions;

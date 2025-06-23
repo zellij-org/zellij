@@ -48,12 +48,15 @@ use zellij_utils::{
         layout::{Layout, RunPluginOrAlias},
     },
     plugin_api::{
-        plugin_command::{
-            CreateTokenResponse, ListTokensResponse, ProtobufPluginCommand, RenameWebTokenResponse,
-            RevokeAllWebTokensResponse, RevokeTokenResponse,
-        },
+        plugin_command::ProtobufPluginCommand,
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
+};
+
+#[cfg(feature = "web_server_capability")]
+use zellij_utils::plugin_api::plugin_command::{
+    CreateTokenResponse, ListTokensResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
+    RevokeTokenResponse,
 };
 
 macro_rules! apply_action {
@@ -2319,7 +2322,7 @@ fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>) {
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>) {
+fn generate_web_login_token(env: &PluginEnv, _token_label: Option<String>) {
     log::error!("This version of Zellij was compiled without the web server capabilities!");
     let empty_vec: Vec<&str> = vec![];
     let _ = wasi_write_object(env, &empty_vec);
@@ -2345,7 +2348,7 @@ fn revoke_web_login_token(env: &PluginEnv, token_label: String) {
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-fn revoke_web_login_token(env: &PluginEnv, token_label: String) {
+fn revoke_web_login_token(env: &PluginEnv, _token_label: String) {
     log::error!("This version of Zellij was compiled without the web server capabilities!");
     let empty_vec: Vec<&str> = vec![];
     let _ = wasi_write_object(env, &empty_vec);
@@ -2389,7 +2392,7 @@ fn rename_web_login_token(env: &PluginEnv, old_name: String, new_name: String) {
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-fn rename_web_login_token(env: &PluginEnv, old_name: String, new_name: String) {
+fn rename_web_login_token(env: &PluginEnv, _old_name: String, _new_name: String) {
     log::error!("This version of Zellij was compiled without the web server capabilities!");
     let empty_vec: Vec<&str> = vec![];
     let _ = wasi_write_object(env, &empty_vec);

@@ -1,6 +1,4 @@
-use crate::web_client::types::{
-    AppState, CreateClientIdResponse, LoginRequest, LoginResponse, SendShutdownSignalResponse,
-};
+use crate::web_client::types::{AppState, CreateClientIdResponse, LoginRequest, LoginResponse};
 use crate::web_client::utils::{get_mime_type, parse_cookies};
 use axum::{
     extract::{Path as AxumPath, Request, State},

@@ -28,7 +28,7 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
         crate::status(&msg);
         println!("{}", msg);
 
-        let mut cmd = if crate_name.contains("plugins") {
+        let cmd = if crate_name.contains("plugins") {
             cmd!(sh, "{cargo} test --target {host_triple} --")
         } else if flags.no_web {
             // Check if this crate has web features that need modification

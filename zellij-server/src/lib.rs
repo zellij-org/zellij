@@ -1325,7 +1325,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     log::error!("Cannot start web server: this instance of Zellij was compiled without web_server_capability");
                 }
             },
-            ServerInstruction::ShareCurrentSession(client_id) => {
+            ServerInstruction::ShareCurrentSession(_client_id) => {
                 if cfg!(feature = "web_server_capability") {
                     let successfully_changed = session_data
                         .write()
@@ -1346,7 +1346,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     log::error!("Cannot share session: this instance of Zellij was compiled without web_server_capability");
                 }
             },
-            ServerInstruction::StopSharingCurrentSession(client_id) => {
+            ServerInstruction::StopSharingCurrentSession(_client_id) => {
                 if cfg!(feature = "web_server_capability") {
                     let successfully_changed = session_data
                         .write()

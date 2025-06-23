@@ -18,11 +18,8 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
 use zellij_utils::errors::FatalError;
 use zellij_utils::shared::web_server_base_url;
-
-use zellij_utils::setup::Setup;
 
 use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser, SyncOutput};
 use crate::{
