@@ -25,6 +25,15 @@
           window.is_authenticated = IS_AUTHENTICATED;
         </script>
         <script src="/assets/modals.js"></script>
-        <script src="/assets/index.js"></script>
+        <!-- Module files - order matters -->
+        <script type="module" src="/assets/utils.js"></script>
+        <script type="module" src="/assets/connection.js"></script>
+        <script type="module" src="/assets/auth.js"></script>
+        <script type="module" src="/assets/keyboard.js"></script>
+        <script type="module" src="/assets/links.js"></script>
+        <script type="module" src="/assets/terminal.js"></script>
+        <script type="module" src="/assets/input.js"></script>
+        <script type="module" src="/assets/websockets.js"></script>
+        <script type="module" src="/assets/index.js"></script>
     </body>
 </html>
