@@ -27,7 +27,7 @@ miette = { workspace = true }
 nix = { workspace = true }
 percent-encoding = { version = "2.1.0", default-features = false, features = ["std"] }
 prost = { workspace = true }
-rmp-serde = { version = "1.1.0", default-features = false }
+rmp-serde = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 shellexpand = { version = "3.0.0", default-features = false, features = ["base-0", "tilde"] }
@@ -39,6 +39,7 @@ thiserror = { workspace = true }
 unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
+sha2 = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 async-std = { workspace = true }
@@ -48,6 +49,12 @@ interprocess = { workspace = true }
 openssl-sys = { version = "0.9.93", default-features = false, features = ["vendored"], optional = true }
 isahc = { workspace = true }
 curl-sys = { version = "0.4", default-features = false, features = ["force-system-lib-on-osx", "ssl"], optional = true }
+humantime = { workspace = true }
+suggest = { workspace = true }
+names = { workspace = true }
+rusqlite = { version = "0.30", default-features = false, features = ["bundled"], optional = true }
+notify = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
@@ -64,4 +71,5 @@ prost-build = "0.11.9"
 disable_automatic_asset_installation = []
 unstable = []
 plugins_from_target = []
+web_server_capability = ["dep:rusqlite"]
 vendored_curl = ["isahc/static-curl", "dep:openssl-sys", "dep:curl-sys"]

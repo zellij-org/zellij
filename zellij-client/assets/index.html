@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en" style="height: 100%">
+    <head>
+        <link rel="icon" href="/assets/favicon.ico" />
+        <!-- preload the font to avoid rendering issue on first load
+        not 100% perfect but much better than without
+        check this for some additional context: https://github.com/xtermjs/xterm.js/issues/5164
+        -->
+        <link href="/assets/style.css" rel="stylesheet" />
+        <!-- xterm.css -->
+        <link rel="stylesheet" href="/assets/xterm.css" />
+        <!-- xterm.js -->
+        <script src="/assets/xterm.js"></script>
+        <script src="/assets/addon-fit.js"></script>
+        <script src="/assets/addon-clipboard.js"></script>
+        <script src="/assets/addon-web-links.js"></script>
+        <script src="/assets/addon-webgl.js"></script>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Zellij Web Client</title>
+    </head>
+    <body>
+        <div id="terminal" tabindex=0></div>
+        <script>
+          window.is_authenticated = IS_AUTHENTICATED;
+        </script>
+        <script src="/assets/modals.js"></script>
+        <!-- Module files - order matters -->
+        <script type="module" src="/assets/utils.js"></script>
+        <script type="module" src="/assets/connection.js"></script>
+        <script type="module" src="/assets/auth.js"></script>
+        <script type="module" src="/assets/keyboard.js"></script>
+        <script type="module" src="/assets/links.js"></script>
+        <script type="module" src="/assets/terminal.js"></script>
+        <script type="module" src="/assets/input.js"></script>
+        <script type="module" src="/assets/websockets.js"></script>
+        <script type="module" src="/assets/index.js"></script>
+    </body>
+</html>

@@ -1,7 +1,7 @@
 //! Composite pipelines for the build system.
 //!
 //! Defines multiple "pipelines" that run specific individual steps in sequence.
-use crate::{build, clippy, format, test};
+use crate::{build, clippy, format, metadata, test};
 use crate::{flags, WorkspaceMember};
 use anyhow::Context;
 use xshell::{cmd, Shell};
@@ -31,10 +31,19 @@ pub fn make(sh: &Shell, flags: flags::Make) -> anyhow::Result<()> {
                     release: flags.release,
                     no_plugins: false,
                     plugins_only: false,
+                    no_web: flags.no_web,
                 },
             )
         })
-        .and_then(|_| test::test(sh, flags::Test { args: vec![] }))
+        .and_then(|_| {
+            test::test(
+                sh,
+                flags::Test {
+                    args: vec![],
+                    no_web: flags.no_web,
+                },
+            )
+        })
         .and_then(|_| clippy::clippy(sh, flags::Clippy {}))
         .with_context(err_context)
 }
@@ -57,6 +66,7 @@ pub fn install(sh: &Shell, flags: flags::Install) -> anyhow::Result<()> {
             release: true,
             no_plugins: false,
             plugins_only: true,
+            no_web: flags.no_web,
         },
     )
     .and_then(|_| {
@@ -67,6 +77,7 @@ pub fn install(sh: &Shell, flags: flags::Install) -> anyhow::Result<()> {
                 release: true,
                 no_plugins: true,
                 plugins_only: false,
+                no_web: flags.no_web,
             },
         )
     })
@@ -111,13 +122,18 @@ pub fn run(sh: &Shell, mut flags: flags::Run) -> anyhow::Result<()> {
 
     if let Some(ref data_dir) = flags.data_dir {
         let data_dir = sh.current_dir().join(data_dir);
+        let features = if flags.no_web {
+            "disable_automatic_asset_installation"
+        } else {
+            "disable_automatic_asset_installation web_server_capability"
+        };
 
         crate::cargo()
             .and_then(|cargo| {
                 cmd!(sh, "{cargo} run")
                     .args(["--package", "zellij"])
                     .arg("--no-default-features")
-                    .args(["--features", "disable_automatic_asset_installation"])
+                    .args(["--features", features])
                     .args(singlepass.iter().flatten())
                     .args(["--profile", profile])
                     .args(["--", "--data-dir", &format!("{}", data_dir.display())])
@@ -133,17 +149,51 @@ pub fn run(sh: &Shell, mut flags: flags::Run) -> anyhow::Result<()> {
                 release: false,
                 no_plugins: false,
                 plugins_only: true,
+                no_web: flags.no_web,
             },
         )
         .and_then(|_| crate::cargo())
         .and_then(|cargo| {
-            cmd!(sh, "{cargo} run")
-                .args(singlepass.iter().flatten())
-                .args(["--profile", profile])
-                .args(["--"])
-                .args(&flags.args)
-                .run()
-                .map_err(anyhow::Error::new)
+            if flags.no_web {
+                // Use dynamic metadata approach to get the correct features
+                match metadata::get_no_web_features(sh, ".")
+                    .context("Failed to check web features for main crate")?
+                {
+                    Some(features) => {
+                        let mut cmd = cmd!(sh, "{cargo} run")
+                            .args(singlepass.iter().flatten())
+                            .args(["--no-default-features"]);
+
+                        if !features.is_empty() {
+                            cmd = cmd.args(["--features", &features]);
+                        }
+
+                        cmd.args(["--profile", profile])
+                            .args(["--"])
+                            .args(&flags.args)
+                            .run()
+                            .map_err(anyhow::Error::new)
+                    },
+                    None => {
+                        // Main crate doesn't have web_server_capability, run normally
+                        cmd!(sh, "{cargo} run")
+                            .args(singlepass.iter().flatten())
+                            .args(["--profile", profile])
+                            .args(["--"])
+                            .args(&flags.args)
+                            .run()
+                            .map_err(anyhow::Error::new)
+                    },
+                }
+            } else {
+                cmd!(sh, "{cargo} run")
+                    .args(singlepass.iter().flatten())
+                    .args(["--profile", profile])
+                    .args(["--"])
+                    .args(&flags.args)
+                    .run()
+                    .map_err(anyhow::Error::new)
+            }
         })
         .with_context(|| err_context(&flags))
     }
@@ -167,6 +217,7 @@ pub fn dist(sh: &Shell, _flags: flags::Dist) -> anyhow::Result<()> {
                 sh,
                 flags::Install {
                     destination: crate::project_root().join("./target/dist/zellij"),
+                    no_web: false,
                 },
             )
         })
@@ -275,6 +326,7 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                 release: true,
                 no_plugins: false,
                 plugins_only: true,
+                no_web: false,
             },
         )
         .context(err_context)?;

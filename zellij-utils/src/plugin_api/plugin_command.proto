@@ -140,13 +140,24 @@ enum CommandName {
   OpenFileNearPlugin = 124;
   OpenFileFloatingNearPlugin = 125;
   OpenFileInPlaceOfPlugin = 126;
-  GroupAndUngroupPanes = 127;
-  HighlightAndUnhighlightPanes = 128;
-  CloseMultiplePanes = 129;
-  FloatMultiplePanes = 130;
-  EmbedMultiplePanes = 131;
-  InterceptKeyPresses = 132;
-  ClearKeyPressesIntercepts = 133;
+  StartWebServer = 127;
+  GroupAndUngroupPanes = 128;
+  HighlightAndUnhighlightPanes = 129;
+  CloseMultiplePanes = 130;
+  FloatMultiplePanes = 131;
+  EmbedMultiplePanes = 132;
+  ShareCurrentSession = 133;
+  StopSharingCurrentSession = 134;
+  StopWebServer = 135;
+  QueryWebServerStatus = 136;
+  SetSelfMouseSelectionSupport = 137;
+  GenerateWebLoginToken = 138;
+  RevokeWebLoginToken = 139;
+  ListWebLoginTokens = 140;
+  RevokeAllWebLoginTokens = 141;
+  RenameWebLoginToken = 142;
+  InterceptKeyPresses = 143;
+  ClearKeyPressesIntercepts = 144;
 }
 
 message PluginCommand {
@@ -248,7 +259,28 @@ message PluginCommand {
     CloseMultiplePanesPayload close_multiple_panes_payload = 104;
     FloatMultiplePanesPayload float_multiple_panes_payload = 105;
     EmbedMultiplePanesPayload embed_multiple_panes_payload = 106;
+    SetSelfMouseSelectionSupportPayload set_self_mouse_selection_support_payload = 107;
+    GenerateWebLoginTokenPayload generate_web_login_token_payload = 108;
+    RevokeWebLoginTokenPayload revoke_web_login_token_payload = 109;
+    RenameWebLoginTokenPayload rename_web_login_token_payload = 110;
   }
+}
+
+message RenameWebLoginTokenPayload {
+  string old_name = 1;
+  string new_name = 2;
+}
+
+message RevokeWebLoginTokenPayload {
+  string token_label = 1;
+}
+
+message GenerateWebLoginTokenPayload {
+  optional string token_label = 1;
+}
+
+message SetSelfMouseSelectionSupportPayload {
+  bool support_mouse_selection = 1;
 }
 
 message EmbedMultiplePanesPayload {
@@ -627,4 +659,32 @@ message FixedOrPercentValue {
 enum FixedOrPercent {
   Fixed = 0;
   Percent = 1;
+}
+
+message CreateTokenResponse {
+  optional string token = 1;
+  optional string token_label = 2;
+  optional string error = 3;
+}
+
+message RevokeTokenResponse {
+  bool successfully_revoked = 1;
+  optional string error = 2;
+}
+
+message ListTokensResponse {
+  // tokens/creation_times should be synchronized
+  repeated string tokens = 1;
+  repeated string creation_times = 2;
+  optional string error = 3;
+}
+
+message RevokeAllWebTokensResponse {
+  bool successfully_revoked = 1;
+  optional string error = 2;
+}
+
+message RenameWebTokenResponse {
+  bool successfully_renamed = 1;
+  optional string error = 2;
 }

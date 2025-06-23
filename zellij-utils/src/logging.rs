@@ -73,6 +73,12 @@ pub fn configure_logger() {
     let config = Config::builder()
         .appender(Appender::builder().build("logFile", Box::new(log_file)))
         .appender(Appender::builder().build("logPlugin", Box::new(log_plugin)))
+        // reduce the verbosity of isahc, otherwise it logs on every failed web request
+        .logger(
+            Logger::builder()
+                .appender("logFile")
+                .build("isahc", LevelFilter::Error),
+        )
         .logger(
             Logger::builder()
                 .appender("logPlugin")

@@ -4,7 +4,7 @@ use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
     input::{layout::PluginUserConfiguration, options::CliOptions},
 };
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use url::Url;
@@ -48,6 +48,10 @@ pub struct CliArgs {
     #[clap(long, value_parser, hide = true, overrides_with = "server")]
     pub server: Option<PathBuf>,
 
+    /// Run a web server
+    #[clap(long, value_parser, hide = true, overrides_with = "server")]
+    pub web: Option<String>,
+
     /// Specify name of a new session
     #[clap(long, short, overrides_with = "session", value_parser = validate_session)]
     pub session: Option<String>,
@@ -89,9 +93,69 @@ pub enum Command {
     #[clap(name = "setup", value_parser)]
     Setup(Setup),
 
+    /// Setup zellij and check its configuration
+    #[clap(name = "web", value_parser)]
+    Web(WebCli),
+
     /// Explore existing zellij sessions
     #[clap(flatten)]
     Sessions(Sessions),
+}
+
+#[derive(Debug, Clone, Args, Serialize, Deserialize)]
+pub struct WebCli {
+    /// Start the server (default unless other arguments are specified)
+    #[clap(long, value_parser, display_order = 1)]
+    pub start: bool,
+
+    /// Stop the server
+    #[clap(long, value_parser, exclusive(true), display_order = 2)]
+    pub stop: bool,
+
+    /// Get the server status
+    #[clap(long, value_parser, exclusive(true), display_order = 3)]
+    pub status: bool,
+
+    /// Run the server in the background
+    #[clap(
+        short,
+        long,
+        value_parser,
+        conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
+        display_order = 4
+    )]
+    pub daemonize: bool,
+    /// Create a login token for the web interface, will only be displayed once and cannot later be
+    /// retrieved. Returns the token name and the token.
+    #[clap(long, value_parser, exclusive(true), display_order = 5)]
+    pub create_token: bool,
+    /// Revoke a login token by its name
+    #[clap(
+        long,
+        value_parser,
+        exclusive(true),
+        value_name = "TOKEN NAME",
+        display_order = 6
+    )]
+    pub revoke_token: Option<String>,
+    /// Revoke all login tokens
+    #[clap(long, value_parser, exclusive(true), display_order = 7)]
+    pub revoke_all_tokens: bool,
+    /// List token names and their creation dates (cannot show actual tokens)
+    #[clap(long, value_parser, exclusive(true), display_order = 8)]
+    pub list_tokens: bool,
+}
+
+impl WebCli {
+    pub fn get_start(&self) -> bool {
+        self.start
+            || !(self.stop
+                || self.status
+                || self.create_token
+                || self.revoke_token.is_some()
+                || self.revoke_all_tokens
+                || self.list_tokens)
+    }
 }
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]

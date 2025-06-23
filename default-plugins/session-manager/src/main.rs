@@ -46,6 +46,7 @@ struct State {
     is_welcome_screen: bool,
     show_kill_all_sessions_warning: bool,
     request_ids: Vec<String>,
+    is_web_client: bool,
 }
 
 register_plugin!(State);
@@ -94,6 +95,7 @@ impl ZellijPlugin for State {
         match event {
             Event::ModeUpdate(mode_info) => {
                 self.colors = Colors::new(mode_info.style.colors);
+                self.is_web_client = mode_info.is_web_client.unwrap_or(false);
                 should_render = true;
             },
             Event::Key(key) => {
@@ -462,6 +464,12 @@ impl State {
                 } else if self.new_session_info.name().contains('/') {
                     self.show_error("Session name cannot contain '/'");
                     return;
+                } else if self
+                    .sessions
+                    .has_forbidden_session(self.new_session_info.name())
+                {
+                    self.show_error("This session exists and web clients cannot attach to it.");
+                    return;
                 }
                 self.new_session_info.handle_selection(&self.session_name);
             },
@@ -505,6 +513,8 @@ impl State {
                             }
                         } else if let Some(tab_position) = selected_tab {
                             go_to_tab(tab_position as u32);
+                        } else {
+                            self.show_error("Already attached...");
                         }
                     } else {
                         switch_session_with_focus(
@@ -518,7 +528,13 @@ impl State {
                 self.search_term.clear();
                 self.sessions
                     .update_search_term(&self.search_term, &self.colors);
-                hide_self();
+                if !self.is_welcome_screen {
+                    // we usually don't want to hide_self() if we're the welcome screen because
+                    // unless the user did something odd like opening an extra pane/tab in the
+                    // welcome screen, this will result in the current session closing, as this is
+                    // the last selectable pane...
+                    hide_self();
+                }
             },
             ActiveScreen::ResurrectSession => {
                 if let Some(session_name_to_resurrect) =
@@ -547,9 +563,32 @@ impl State {
         self.session_name = Some(new_name.to_owned());
     }
     fn update_session_infos(&mut self, session_infos: Vec<SessionInfo>) {
-        let session_infos: Vec<SessionUiInfo> = session_infos
+        let session_ui_infos: Vec<SessionUiInfo> = session_infos
             .iter()
-            .map(|s| SessionUiInfo::from_session_info(s))
+            .filter_map(|s| {
+                if self.is_web_client && !s.web_clients_allowed {
+                    None
+                } else if self.is_welcome_screen && s.is_current_session {
+                    // do not display current session if we're the welcome screen
+                    // because:
+                    // 1. attaching to the welcome screen from the welcome screen is not a thing
+                    // 2. it can cause issues on the web (since we're disconnecting and
+                    //    reconnecting to a session we just closed by disconnecting...)
+                    None
+                } else {
+                    Some(SessionUiInfo::from_session_info(s))
+                }
+            })
+            .collect();
+        let forbidden_sessions: Vec<SessionUiInfo> = session_infos
+            .iter()
+            .filter_map(|s| {
+                if self.is_web_client && !s.web_clients_allowed {
+                    Some(SessionUiInfo::from_session_info(s))
+                } else {
+                    None
+                }
+            })
             .collect();
         let current_session_name = session_infos.iter().find_map(|s| {
             if s.is_current_session {
@@ -561,7 +600,8 @@ impl State {
         if let Some(current_session_name) = current_session_name {
             self.session_name = Some(current_session_name);
         }
-        self.sessions.set_sessions(session_infos);
+        self.sessions
+            .set_sessions(session_ui_infos, forbidden_sessions);
     }
     fn main_menu_size(&self, rows: usize, cols: usize) -> (usize, usize, usize, usize) {
         // x, y, width, height

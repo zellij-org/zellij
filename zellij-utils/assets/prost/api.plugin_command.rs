@@ -3,7 +3,7 @@
 pub struct PluginCommand {
     #[prost(enumeration="CommandName", tag="1")]
     pub name: i32,
-    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106")]
+    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110")]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
 /// Nested message and enum types in `PluginCommand`.
@@ -203,7 +203,41 @@ pub mod plugin_command {
         FloatMultiplePanesPayload(super::FloatMultiplePanesPayload),
         #[prost(message, tag="106")]
         EmbedMultiplePanesPayload(super::EmbedMultiplePanesPayload),
+        #[prost(message, tag="107")]
+        SetSelfMouseSelectionSupportPayload(super::SetSelfMouseSelectionSupportPayload),
+        #[prost(message, tag="108")]
+        GenerateWebLoginTokenPayload(super::GenerateWebLoginTokenPayload),
+        #[prost(message, tag="109")]
+        RevokeWebLoginTokenPayload(super::RevokeWebLoginTokenPayload),
+        #[prost(message, tag="110")]
+        RenameWebLoginTokenPayload(super::RenameWebLoginTokenPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenameWebLoginTokenPayload {
+    #[prost(string, tag="1")]
+    pub old_name: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub new_name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RevokeWebLoginTokenPayload {
+    #[prost(string, tag="1")]
+    pub token_label: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GenerateWebLoginTokenPayload {
+    #[prost(string, optional, tag="1")]
+    pub token_label: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetSelfMouseSelectionSupportPayload {
+    #[prost(bool, tag="1")]
+    pub support_mouse_selection: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -786,6 +820,51 @@ pub struct FixedOrPercentValue {
     #[prost(uint32, tag="2")]
     pub value: u32,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CreateTokenResponse {
+    #[prost(string, optional, tag="1")]
+    pub token: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="2")]
+    pub token_label: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="3")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RevokeTokenResponse {
+    #[prost(bool, tag="1")]
+    pub successfully_revoked: bool,
+    #[prost(string, optional, tag="2")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListTokensResponse {
+    /// tokens/creation_times should be synchronized
+    #[prost(string, repeated, tag="1")]
+    pub tokens: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="2")]
+    pub creation_times: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="3")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RevokeAllWebTokensResponse {
+    #[prost(bool, tag="1")]
+    pub successfully_revoked: bool,
+    #[prost(string, optional, tag="2")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenameWebTokenResponse {
+    #[prost(bool, tag="1")]
+    pub successfully_renamed: bool,
+    #[prost(string, optional, tag="2")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum CommandName {
@@ -916,13 +995,24 @@ pub enum CommandName {
     OpenFileNearPlugin = 124,
     OpenFileFloatingNearPlugin = 125,
     OpenFileInPlaceOfPlugin = 126,
-    GroupAndUngroupPanes = 127,
-    HighlightAndUnhighlightPanes = 128,
-    CloseMultiplePanes = 129,
-    FloatMultiplePanes = 130,
-    EmbedMultiplePanes = 131,
-    InterceptKeyPresses = 132,
-    ClearKeyPressesIntercepts = 133,
+    StartWebServer = 127,
+    GroupAndUngroupPanes = 128,
+    HighlightAndUnhighlightPanes = 129,
+    CloseMultiplePanes = 130,
+    FloatMultiplePanes = 131,
+    EmbedMultiplePanes = 132,
+    ShareCurrentSession = 133,
+    StopSharingCurrentSession = 134,
+    StopWebServer = 135,
+    QueryWebServerStatus = 136,
+    SetSelfMouseSelectionSupport = 137,
+    GenerateWebLoginToken = 138,
+    RevokeWebLoginToken = 139,
+    ListWebLoginTokens = 140,
+    RevokeAllWebLoginTokens = 141,
+    RenameWebLoginToken = 142,
+    InterceptKeyPresses = 143,
+    ClearKeyPressesIntercepts = 144,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1058,11 +1148,22 @@ impl CommandName {
             CommandName::OpenFileNearPlugin => "OpenFileNearPlugin",
             CommandName::OpenFileFloatingNearPlugin => "OpenFileFloatingNearPlugin",
             CommandName::OpenFileInPlaceOfPlugin => "OpenFileInPlaceOfPlugin",
+            CommandName::StartWebServer => "StartWebServer",
             CommandName::GroupAndUngroupPanes => "GroupAndUngroupPanes",
             CommandName::HighlightAndUnhighlightPanes => "HighlightAndUnhighlightPanes",
             CommandName::CloseMultiplePanes => "CloseMultiplePanes",
             CommandName::FloatMultiplePanes => "FloatMultiplePanes",
             CommandName::EmbedMultiplePanes => "EmbedMultiplePanes",
+            CommandName::ShareCurrentSession => "ShareCurrentSession",
+            CommandName::StopSharingCurrentSession => "StopSharingCurrentSession",
+            CommandName::StopWebServer => "StopWebServer",
+            CommandName::QueryWebServerStatus => "QueryWebServerStatus",
+            CommandName::SetSelfMouseSelectionSupport => "SetSelfMouseSelectionSupport",
+            CommandName::GenerateWebLoginToken => "GenerateWebLoginToken",
+            CommandName::RevokeWebLoginToken => "RevokeWebLoginToken",
+            CommandName::ListWebLoginTokens => "ListWebLoginTokens",
+            CommandName::RevokeAllWebLoginTokens => "RevokeAllWebLoginTokens",
+            CommandName::RenameWebLoginToken => "RenameWebLoginToken",
             CommandName::InterceptKeyPresses => "InterceptKeyPresses",
             CommandName::ClearKeyPressesIntercepts => "ClearKeyPressesIntercepts",
         }
@@ -1197,11 +1298,22 @@ impl CommandName {
             "OpenFileNearPlugin" => Some(Self::OpenFileNearPlugin),
             "OpenFileFloatingNearPlugin" => Some(Self::OpenFileFloatingNearPlugin),
             "OpenFileInPlaceOfPlugin" => Some(Self::OpenFileInPlaceOfPlugin),
+            "StartWebServer" => Some(Self::StartWebServer),
             "GroupAndUngroupPanes" => Some(Self::GroupAndUngroupPanes),
             "HighlightAndUnhighlightPanes" => Some(Self::HighlightAndUnhighlightPanes),
             "CloseMultiplePanes" => Some(Self::CloseMultiplePanes),
             "FloatMultiplePanes" => Some(Self::FloatMultiplePanes),
             "EmbedMultiplePanes" => Some(Self::EmbedMultiplePanes),
+            "ShareCurrentSession" => Some(Self::ShareCurrentSession),
+            "StopSharingCurrentSession" => Some(Self::StopSharingCurrentSession),
+            "StopWebServer" => Some(Self::StopWebServer),
+            "QueryWebServerStatus" => Some(Self::QueryWebServerStatus),
+            "SetSelfMouseSelectionSupport" => Some(Self::SetSelfMouseSelectionSupport),
+            "GenerateWebLoginToken" => Some(Self::GenerateWebLoginToken),
+            "RevokeWebLoginToken" => Some(Self::RevokeWebLoginToken),
+            "ListWebLoginTokens" => Some(Self::ListWebLoginTokens),
+            "RevokeAllWebLoginTokens" => Some(Self::RevokeAllWebLoginTokens),
+            "RenameWebLoginToken" => Some(Self::RenameWebLoginToken),
             "InterceptKeyPresses" => Some(Self::InterceptKeyPresses),
             "ClearKeyPressesIntercepts" => Some(Self::ClearKeyPressesIntercepts),
             _ => None,

@@ -27,6 +27,7 @@ use zellij_utils::{
     data::{
         ClientInfo, Event, EventType, FloatingPaneCoordinates, InputMode, MessageToPlugin,
         PermissionStatus, PermissionType, PipeMessage, PipeSource, PluginCapabilities,
+        WebServerStatus,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -77,9 +78,9 @@ pub enum PluginInstruction {
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
-        usize, // tab_index
-        bool,  // should change focus to new tab
-        ClientId,
+        usize,            // tab_index
+        bool,             // should change focus to new tab
+        (ClientId, bool), // bool -> is_web_client
     ),
     ApplyCachedEvents {
         plugin_ids: Vec<PluginId>,
@@ -162,6 +163,8 @@ pub enum PluginInstruction {
     WatchFilesystem,
     ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
     ChangePluginHostDir(PathBuf, PluginId, ClientId),
+    WebServerStarted(String), // String -> the base url of the web server
+    FailedToStartWebServer(String),
     Exit,
 }
 
@@ -209,6 +212,8 @@ impl From<&PluginInstruction> for PluginContext {
             },
             PluginInstruction::ListClientsToPlugin(..) => PluginContext::ListClientsToPlugin,
             PluginInstruction::ChangePluginHostDir(..) => PluginContext::ChangePluginHostDir,
+            PluginInstruction::WebServerStarted(..) => PluginContext::WebServerStarted,
+            PluginInstruction::FailedToStartWebServer(..) => PluginContext::FailedToStartWebServer,
         }
     }
 }
@@ -424,7 +429,7 @@ pub(crate) fn plugin_thread_main(
                 mut floating_panes_layout,
                 tab_index,
                 should_change_focus_to_new_tab,
-                client_id,
+                (client_id, is_web_client),
             ) => {
                 // prefer connected clients so as to avoid opening plugins in the background for
                 // CLI clients unless no-one else is connected
@@ -496,7 +501,7 @@ pub(crate) fn plugin_thread_main(
                     tab_index,
                     plugin_ids,
                     should_change_focus_to_new_tab,
-                    client_id,
+                    (client_id, is_web_client),
                 )));
             },
             PluginInstruction::ApplyCachedEvents {
@@ -913,6 +918,22 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::ChangePluginHostDir(new_host_folder, plugin_id, client_id) => {
                 wasm_bridge
                     .change_plugin_host_dir(new_host_folder, plugin_id, client_id)
+                    .non_fatal();
+            },
+            PluginInstruction::WebServerStarted(base_url) => {
+                let updates = vec![(
+                    None,
+                    None,
+                    Event::WebServerStatus(WebServerStatus::Online(base_url)),
+                )];
+                wasm_bridge
+                    .update_plugins(updates, shutdown_send.clone())
+                    .non_fatal();
+            },
+            PluginInstruction::FailedToStartWebServer(error) => {
+                let updates = vec![(None, None, Event::FailedToStartWebServer(error))];
+                wasm_bridge
+                    .update_plugins(updates, shutdown_send.clone())
                     .non_fatal();
             },
             PluginInstruction::Exit => {

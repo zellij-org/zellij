@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 5111
 expression: serialized
 ---
 name "my session name"
@@ -90,6 +89,8 @@ panes {
     }
 }
 connected_clients 2
+web_clients_allowed true
+web_client_count 2
 available_layouts {
     layout1 source="file"
     layout2 source="built-in"
@@ -97,4 +98,3 @@ available_layouts {
 }
 tab_history {
 }
-

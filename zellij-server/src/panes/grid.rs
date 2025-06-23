@@ -1413,14 +1413,14 @@ impl Grid {
         self.move_cursor_forward_until_edge(character_width);
     }
     pub fn get_character_under_cursor(&self) -> Option<TerminalCharacter> {
-        let absolute_x_in_line = self.get_absolute_character_index(self.cursor.x, self.cursor.y);
+        let absolute_x_in_line = self.get_absolute_character_index(self.cursor.x, self.cursor.y)?;
         self.viewport
             .get(self.cursor.y)
             .and_then(|current_line| current_line.columns.get(absolute_x_in_line))
             .cloned()
     }
-    pub fn get_absolute_character_index(&self, x: usize, y: usize) -> usize {
-        self.viewport.get(y).unwrap().absolute_character_index(x)
+    pub fn get_absolute_character_index(&self, x: usize, y: usize) -> Option<usize> {
+        Some(self.viewport.get(y)?.absolute_character_index(x))
     }
     pub fn move_cursor_forward_until_edge(&mut self, count: usize) {
         let count_to_move = std::cmp::min(count, self.width.saturating_sub(self.cursor.x));
@@ -2422,6 +2422,9 @@ impl Grid {
     }
     pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
         self.arrow_fonts = should_support_arrow_fonts;
+    }
+    pub fn has_selection(&self) -> bool {
+        !self.selection.is_empty()
     }
 }
 

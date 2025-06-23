@@ -102,6 +102,7 @@ pub(crate) struct PluginPane {
     styled_underlines: bool,
     should_be_suppressed: bool,
     text_being_pasted: Option<Vec<u8>>,
+    supports_mouse_selection: bool,
 }
 
 impl PluginPane {
@@ -157,6 +158,7 @@ impl PluginPane {
             styled_underlines,
             should_be_suppressed: false,
             text_being_pasted: None,
+            supports_mouse_selection: false,
         };
         for client_id in currently_connected_clients {
             plugin.handle_plugin_bytes(client_id, initial_loading_message.as_bytes().to_vec());
@@ -255,7 +257,14 @@ impl Pane for PluginPane {
         _raw_input_bytes_are_kitty: bool,
         client_id: Option<ClientId>,
     ) -> Option<AdjustedInput> {
-        if let Some(requesting_permissions) = &self.requesting_permissions {
+        if client_id
+            .and_then(|c| self.grids.get(&c))
+            .map(|g| g.has_selection())
+            .unwrap_or(false)
+        {
+            self.reset_selection(client_id);
+            None
+        } else if let Some(requesting_permissions) = &self.requesting_permissions {
             let permissions = requesting_permissions.permissions.clone();
             if let Some(key_with_modifier) = key_with_modifier {
                 match key_with_modifier.bare_key {
@@ -537,6 +546,12 @@ impl Pane for PluginPane {
         self.resize_grids();
         self.set_should_render(true);
     }
+    fn dump_screen(&self, full: bool, client_id: Option<ClientId>) -> String {
+        client_id
+            .and_then(|c| self.grids.get(&c))
+            .map(|g| g.dump_screen(full))
+            .unwrap_or_else(|| "".to_owned())
+    }
     fn scroll_up(&mut self, count: usize, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
@@ -562,31 +577,68 @@ impl Pane for PluginPane {
         // noop
     }
     fn start_selection(&mut self, start: &Position, client_id: ClientId) {
-        self.send_plugin_instructions
-            .send(PluginInstruction::Update(vec![(
-                Some(self.pid),
-                Some(client_id),
-                Event::Mouse(Mouse::LeftClick(start.line.0, start.column.0)),
-            )]))
-            .unwrap();
+        if self.supports_mouse_selection {
+            if let Some(grid) = self.grids.get_mut(&client_id) {
+                grid.start_selection(start);
+                self.set_should_render(true);
+            }
+        } else {
+            self.send_plugin_instructions
+                .send(PluginInstruction::Update(vec![(
+                    Some(self.pid),
+                    Some(client_id),
+                    Event::Mouse(Mouse::LeftClick(start.line.0, start.column.0)),
+                )]))
+                .unwrap();
+        }
     }
     fn update_selection(&mut self, position: &Position, client_id: ClientId) {
-        self.send_plugin_instructions
-            .send(PluginInstruction::Update(vec![(
-                Some(self.pid),
-                Some(client_id),
-                Event::Mouse(Mouse::Hold(position.line.0, position.column.0)),
-            )]))
-            .unwrap();
+        if self.supports_mouse_selection {
+            if let Some(grid) = self.grids.get_mut(&client_id) {
+                grid.update_selection(position);
+                self.set_should_render(true); // TODO: no??
+            }
+        } else {
+            self.send_plugin_instructions
+                .send(PluginInstruction::Update(vec![(
+                    Some(self.pid),
+                    Some(client_id),
+                    Event::Mouse(Mouse::Hold(position.line.0, position.column.0)),
+                )]))
+                .unwrap();
+        }
     }
     fn end_selection(&mut self, end: &Position, client_id: ClientId) {
-        self.send_plugin_instructions
-            .send(PluginInstruction::Update(vec![(
-                Some(self.pid),
-                Some(client_id),
-                Event::Mouse(Mouse::Release(end.line(), end.column())),
-            )]))
-            .unwrap();
+        if self.supports_mouse_selection {
+            if let Some(grid) = self.grids.get_mut(&client_id) {
+                grid.end_selection(end);
+            }
+        } else {
+            self.send_plugin_instructions
+                .send(PluginInstruction::Update(vec![(
+                    Some(self.pid),
+                    Some(client_id),
+                    Event::Mouse(Mouse::Release(end.line(), end.column())),
+                )]))
+                .unwrap();
+        }
+    }
+    fn reset_selection(&mut self, client_id: Option<ClientId>) {
+        if let Some(grid) = client_id.and_then(|c| self.grids.get_mut(&c)) {
+            grid.reset_selection();
+            self.set_should_render(true);
+        }
+    }
+    fn supports_mouse_selection(&self) -> bool {
+        self.supports_mouse_selection
+    }
+
+    fn get_selected_text(&self, client_id: ClientId) -> Option<String> {
+        if let Some(grid) = self.grids.get(&client_id) {
+            grid.get_selected_text()
+        } else {
+            None
+        }
     }
     fn is_scrolled(&self) -> bool {
         false
@@ -789,6 +841,15 @@ impl Pane for PluginPane {
             _ => {},
         }
         None
+    }
+    fn set_mouse_selection_support(&mut self, selection_support: bool) {
+        self.supports_mouse_selection = selection_support;
+        if !selection_support {
+            let client_ids_with_grids: Vec<ClientId> = self.grids.keys().copied().collect();
+            for client_id in client_ids_with_grids {
+                self.reset_selection(Some(client_id));
+            }
+        }
     }
 }
 

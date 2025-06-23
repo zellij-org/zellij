@@ -1,12 +1,4 @@
-use anyhow;
-use humantime::format_duration;
-use interprocess::local_socket::LocalSocketStream;
-use std::collections::HashMap;
-use std::os::unix::fs::FileTypeExt;
-use std::time::{Duration, SystemTime};
-use std::{fs, io, process};
-use suggest::Suggest;
-use zellij_utils::{
+use crate::{
     consts::{
         session_info_folder_for_session, session_layout_cache_file_name,
         ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
@@ -15,8 +7,16 @@ use zellij_utils::{
     input::layout::Layout,
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
 };
+use anyhow;
+use humantime::format_duration;
+use interprocess::local_socket::LocalSocketStream;
+use std::collections::HashMap;
+use std::os::unix::fs::FileTypeExt;
+use std::time::{Duration, SystemTime};
+use std::{fs, io, process};
+use suggest::Suggest;
 
-pub(crate) fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
+pub fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         Ok(files) => {
             let mut sessions = Vec::new();
@@ -40,7 +40,7 @@ pub(crate) fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
     }
 }
 
-pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
+pub fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
     match fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
         Ok(files_in_session_info_folder) => {
             let files_that_are_folders = files_in_session_info_folder
@@ -97,7 +97,7 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
     }
 }
 
-pub(crate) fn get_resurrectable_session_names() -> Vec<String> {
+pub fn get_resurrectable_session_names() -> Vec<String> {
     match fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
         Ok(files_in_session_info_folder) => {
             let files_that_are_folders = files_in_session_info_folder
@@ -128,7 +128,7 @@ pub(crate) fn get_resurrectable_session_names() -> Vec<String> {
     }
 }
 
-pub(crate) fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
+pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         Ok(files) => {
             let mut sessions_with_mtime: Vec<(String, SystemTime)> = Vec::new();
@@ -170,7 +170,7 @@ fn assert_socket(name: &str) -> bool {
     }
 }
 
-pub(crate) fn print_sessions(
+pub fn print_sessions(
     mut sessions: Vec<(String, Duration, bool)>,
     no_formatting: bool,
     short: bool,
@@ -221,7 +221,7 @@ pub(crate) fn print_sessions(
         })
 }
 
-pub(crate) fn print_sessions_with_index(sessions: Vec<String>) {
+pub fn print_sessions_with_index(sessions: Vec<String>) {
     let curr_session = envs::get_session_name().unwrap_or_else(|_| "".into());
     for (i, session) in sessions.iter().enumerate() {
         let suffix = if curr_session == *session {
@@ -233,13 +233,13 @@ pub(crate) fn print_sessions_with_index(sessions: Vec<String>) {
     }
 }
 
-pub(crate) enum ActiveSession {
+pub enum ActiveSession {
     None,
     One(String),
     Many,
 }
 
-pub(crate) fn get_active_session() -> ActiveSession {
+pub fn get_active_session() -> ActiveSession {
     match get_sessions() {
         Ok(sessions) if sessions.is_empty() => ActiveSession::None,
         Ok(mut sessions) if sessions.len() == 1 => ActiveSession::One(sessions.pop().unwrap().0),
@@ -251,7 +251,7 @@ pub(crate) fn get_active_session() -> ActiveSession {
     }
 }
 
-pub(crate) fn kill_session(name: &str) {
+pub fn kill_session(name: &str) {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match LocalSocketStream::connect(path) {
         Ok(stream) => {
@@ -264,7 +264,7 @@ pub(crate) fn kill_session(name: &str) {
     };
 }
 
-pub(crate) fn delete_session(name: &str, force: bool) {
+pub fn delete_session(name: &str, force: bool) {
     if force {
         let path = &*ZELLIJ_SOCK_DIR.join(name);
         let _ = LocalSocketStream::connect(path).map(|stream| {
@@ -285,7 +285,7 @@ pub(crate) fn delete_session(name: &str, force: bool) {
     }
 }
 
-pub(crate) fn list_sessions(no_formatting: bool, short: bool, reverse: bool) {
+pub fn list_sessions(no_formatting: bool, short: bool, reverse: bool) {
     let exit_code = match get_sessions() {
         Ok(running_sessions) => {
             let resurrectable_sessions = get_resurrectable_sessions();
@@ -330,7 +330,7 @@ pub enum SessionNameMatch {
     None,
 }
 
-pub(crate) fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::ErrorKind> {
+pub fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::ErrorKind> {
     let sessions = get_sessions()?;
 
     let filtered_sessions: Vec<_> = sessions
@@ -353,7 +353,7 @@ pub(crate) fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::E
     })
 }
 
-pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
+pub fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
     match match_session_name(name) {
         Ok(SessionNameMatch::Exact(_)) => Ok(true),
         Ok(_) => Ok(false),
@@ -362,7 +362,7 @@ pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
 }
 
 // if the session is resurrecable, the returned layout is the one to be used to resurrect it
-pub(crate) fn resurrection_layout(session_name_to_resurrect: &str) -> Option<Layout> {
+pub fn resurrection_layout(session_name_to_resurrect: &str) -> Option<Layout> {
     let resurrectable_sessions = get_resurrectable_sessions();
     resurrectable_sessions
         .iter()
@@ -375,7 +375,7 @@ pub(crate) fn resurrection_layout(session_name_to_resurrect: &str) -> Option<Lay
         })
 }
 
-pub(crate) fn assert_session(name: &str) {
+pub fn assert_session(name: &str) {
     match session_exists(name) {
         Ok(result) => {
             if result {
@@ -400,7 +400,7 @@ pub(crate) fn assert_session(name: &str) {
     process::exit(1);
 }
 
-pub(crate) fn assert_dead_session(name: &str, force: bool) {
+pub fn assert_dead_session(name: &str, force: bool) {
     match session_exists(name) {
         Ok(exists) => {
             if exists && !force {
@@ -422,7 +422,7 @@ pub(crate) fn assert_dead_session(name: &str, force: bool) {
     process::exit(1);
 }
 
-pub(crate) fn assert_session_ne(name: &str) {
+pub fn assert_session_ne(name: &str) {
     if name.trim().is_empty() {
         eprintln!("Session name cannot be empty. Please provide a specific session name.");
         process::exit(1);
@@ -451,6 +451,30 @@ pub(crate) fn assert_session_ne(name: &str) {
     process::exit(1);
 }
 
+pub fn generate_unique_session_name() -> Option<String> {
+    let sessions = get_sessions().map(|sessions| {
+        sessions
+            .iter()
+            .map(|s| s.0.clone())
+            .collect::<Vec<String>>()
+    });
+    let dead_sessions = get_resurrectable_session_names();
+    let Ok(sessions) = sessions else {
+        eprintln!("Failed to list existing sessions: {:?}", sessions);
+        return None;
+    };
+
+    let name = get_name_generator()
+        .take(1000)
+        .find(|name| !sessions.contains(name) && !dead_sessions.contains(name));
+
+    if let Some(name) = name {
+        return Some(name);
+    } else {
+        return None;
+    }
+}
+
 /// Create a new random name generator
 ///
 /// Used to provide a memorable handle for a session when users don't specify a session name when the session is
@@ -459,7 +483,7 @@ pub(crate) fn assert_session_ne(name: &str) {
 /// Uses the list of adjectives and nouns defined below, with the intention of avoiding unfortunate
 /// and offensive combinations. Care should be taken when adding or removing to either list due to the birthday paradox/
 /// hash collisions, e.g. with 4096 unique names, the likelihood of a collision in 10 session names is 1%.
-pub(crate) fn get_name_generator() -> impl Iterator<Item = String> {
+pub fn get_name_generator() -> impl Iterator<Item = String> {
     names::Generator::new(&ADJECTIVES, &NOUNS, names::Name::Plain)
 }
 

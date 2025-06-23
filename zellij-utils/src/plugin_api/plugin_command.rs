@@ -6,15 +6,17 @@ pub use super::generated_api::api::{
         plugin_command::Payload, BreakPanesToNewTabPayload, BreakPanesToTabWithIndexPayload,
         ChangeFloatingPanesCoordinatesPayload, ChangeHostFolderPayload,
         ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseMultiplePanesPayload,
-        CloseTabWithIndexPayload, CommandName, ContextItem, EditScrollbackForPaneWithIdPayload,
-        EmbedMultiplePanesPayload, EnvVariable, ExecCmdPayload,
+        CloseTabWithIndexPayload, CommandName, ContextItem,
+        CreateTokenResponse as ProtobufCreateTokenResponse, CreateTokenResponse,
+        EditScrollbackForPaneWithIdPayload, EmbedMultiplePanesPayload, EnvVariable, ExecCmdPayload,
         FixedOrPercent as ProtobufFixedOrPercent,
         FixedOrPercentValue as ProtobufFixedOrPercentValue, FloatMultiplePanesPayload,
-        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, GroupAndUngroupPanesPayload,
-        HidePaneWithIdPayload, HighlightAndUnhighlightPanesPayload, HttpVerb as ProtobufHttpVerb,
-        IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload, LoadNewPluginPayload,
-        MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload,
-        MovePayload, NewPluginArgs as ProtobufNewPluginArgs, NewTabsWithLayoutInfoPayload,
+        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, GenerateWebLoginTokenPayload,
+        GroupAndUngroupPanesPayload, HidePaneWithIdPayload, HighlightAndUnhighlightPanesPayload,
+        HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
+        ListTokensResponse, LoadNewPluginPayload, MessageToPluginPayload,
+        MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload, MovePayload,
+        NewPluginArgs as ProtobufNewPluginArgs, NewTabsWithLayoutInfoPayload,
         OpenCommandPaneFloatingNearPluginPayload, OpenCommandPaneInPlaceOfPluginPayload,
         OpenCommandPaneNearPluginPayload, OpenCommandPanePayload,
         OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
@@ -23,10 +25,12 @@ pub use super::generated_api::api::{
         PageScrollDownInPaneIdPayload, PageScrollUpInPaneIdPayload, PaneId as ProtobufPaneId,
         PaneIdAndFloatingPaneCoordinates, PaneType as ProtobufPaneType,
         PluginCommand as ProtobufPluginCommand, PluginMessagePayload, RebindKeysPayload,
-        ReconfigurePayload, ReloadPluginPayload, RequestPluginPermissionPayload,
-        RerunCommandPanePayload, ResizePaneIdWithDirectionPayload, ResizePayload,
-        RunCommandPayload, ScrollDownInPaneIdPayload, ScrollToBottomInPaneIdPayload,
-        ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetFloatingPanePinnedPayload,
+        ReconfigurePayload, ReloadPluginPayload, RenameWebLoginTokenPayload,
+        RenameWebTokenResponse, RequestPluginPermissionPayload, RerunCommandPanePayload,
+        ResizePaneIdWithDirectionPayload, ResizePayload, RevokeAllWebTokensResponse,
+        RevokeTokenResponse, RevokeWebLoginTokenPayload, RunCommandPayload,
+        ScrollDownInPaneIdPayload, ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload,
+        ScrollUpInPaneIdPayload, SetFloatingPanePinnedPayload, SetSelfMouseSelectionSupportPayload,
         SetTimeoutPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
         SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
         TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
@@ -1545,6 +1549,27 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for OpenFileInPlaceOfPlugin"),
             },
+            Some(CommandName::StartWebServer) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    Err("StartWebServer should not have a payload")
+                } else {
+                    Ok(PluginCommand::StartWebServer)
+                }
+            },
+            Some(CommandName::StopWebServer) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    Err("StopWebServer should not have a payload")
+                } else {
+                    Ok(PluginCommand::StopWebServer)
+                }
+            },
+            Some(CommandName::QueryWebServerStatus) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    Err("QueryWebServerStatus should not have a payload")
+                } else {
+                    Ok(PluginCommand::QueryWebServerStatus)
+                }
+            },
             Some(CommandName::GroupAndUngroupPanes) => match protobuf_plugin_command.payload {
                 Some(Payload::GroupAndUngroupPanesPayload(group_and_ungroup_panes_payload)) => {
                     Ok(PluginCommand::GroupAndUngroupPanes(
@@ -1616,6 +1641,67 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     ))
                 },
                 _ => Err("Mismatched payload for EmbedMultiplePanes"),
+            },
+            Some(CommandName::ShareCurrentSession) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    Err("ShareCurrentSession should not have a payload")
+                } else {
+                    Ok(PluginCommand::ShareCurrentSession)
+                }
+            },
+            Some(CommandName::StopSharingCurrentSession) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    Err("StopSharingCurrentSession should not have a payload")
+                } else {
+                    Ok(PluginCommand::StopSharingCurrentSession)
+                }
+            },
+            Some(CommandName::SetSelfMouseSelectionSupport) => {
+                match protobuf_plugin_command.payload {
+                    Some(Payload::SetSelfMouseSelectionSupportPayload(
+                        set_self_mouse_selection_support_payload,
+                    )) => Ok(PluginCommand::SetSelfMouseSelectionSupport(
+                        set_self_mouse_selection_support_payload.support_mouse_selection,
+                    )),
+                    _ => Err("SetSelfMouseSelectionSupport requires a payload"),
+                }
+            },
+            Some(CommandName::GenerateWebLoginToken) => match protobuf_plugin_command.payload {
+                Some(Payload::GenerateWebLoginTokenPayload(generate_web_login_token_payload)) => {
+                    Ok(PluginCommand::GenerateWebLoginToken(
+                        generate_web_login_token_payload.token_label,
+                    ))
+                },
+                _ => Err("GenerateWebLoginToken requires a payload"),
+            },
+            Some(CommandName::RevokeWebLoginToken) => match protobuf_plugin_command.payload {
+                Some(Payload::RevokeWebLoginTokenPayload(revoke_web_login_token_payload)) => Ok(
+                    PluginCommand::RevokeWebLoginToken(revoke_web_login_token_payload.token_label),
+                ),
+                _ => Err("RevokeWebLoginToken requires a payload"),
+            },
+            Some(CommandName::ListWebLoginTokens) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    Err("ListWebLoginTokens should not have a payload")
+                } else {
+                    Ok(PluginCommand::ListWebLoginTokens)
+                }
+            },
+            Some(CommandName::RevokeAllWebLoginTokens) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    Err("RevokeAllWebLoginTokens should not have a payload")
+                } else {
+                    Ok(PluginCommand::RevokeAllWebLoginTokens)
+                }
+            },
+            Some(CommandName::RenameWebLoginToken) => match protobuf_plugin_command.payload {
+                Some(Payload::RenameWebLoginTokenPayload(rename_web_login_token_payload)) => {
+                    Ok(PluginCommand::RenameWebLoginToken(
+                        rename_web_login_token_payload.old_name,
+                        rename_web_login_token_payload.new_name,
+                    ))
+                },
+                _ => Err("RenameWebLoginToken requires a payload"),
             },
             Some(CommandName::InterceptKeyPresses) => match protobuf_plugin_command.payload {
                 Some(_) => Err("InterceptKeyPresses should have no payload, found a payload"),
@@ -2656,6 +2742,18 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
+            PluginCommand::StartWebServer => Ok(ProtobufPluginCommand {
+                name: CommandName::StartWebServer as i32,
+                payload: None,
+            }),
+            PluginCommand::StopWebServer => Ok(ProtobufPluginCommand {
+                name: CommandName::StopWebServer as i32,
+                payload: None,
+            }),
+            PluginCommand::QueryWebServerStatus => Ok(ProtobufPluginCommand {
+                name: CommandName::QueryWebServerStatus as i32,
+                payload: None,
+            }),
             PluginCommand::HighlightAndUnhighlightPanes(
                 panes_to_highlight,
                 panes_to_unhighlight,
@@ -2696,6 +2794,50 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     EmbedMultiplePanesPayload {
                         pane_ids: pane_ids.iter().filter_map(|&p| p.try_into().ok()).collect(),
                     },
+                )),
+            }),
+            PluginCommand::ShareCurrentSession => Ok(ProtobufPluginCommand {
+                name: CommandName::ShareCurrentSession as i32,
+                payload: None,
+            }),
+            PluginCommand::StopSharingCurrentSession => Ok(ProtobufPluginCommand {
+                name: CommandName::StopSharingCurrentSession as i32,
+                payload: None,
+            }),
+            PluginCommand::SetSelfMouseSelectionSupport(support_mouse_selection) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::SetSelfMouseSelectionSupport as i32,
+                    payload: Some(Payload::SetSelfMouseSelectionSupportPayload(
+                        SetSelfMouseSelectionSupportPayload {
+                            support_mouse_selection,
+                        },
+                    )),
+                })
+            },
+            PluginCommand::GenerateWebLoginToken(token_label) => Ok(ProtobufPluginCommand {
+                name: CommandName::GenerateWebLoginToken as i32,
+                payload: Some(Payload::GenerateWebLoginTokenPayload(
+                    GenerateWebLoginTokenPayload { token_label },
+                )),
+            }),
+            PluginCommand::RevokeWebLoginToken(token_label) => Ok(ProtobufPluginCommand {
+                name: CommandName::RevokeWebLoginToken as i32,
+                payload: Some(Payload::RevokeWebLoginTokenPayload(
+                    RevokeWebLoginTokenPayload { token_label },
+                )),
+            }),
+            PluginCommand::ListWebLoginTokens => Ok(ProtobufPluginCommand {
+                name: CommandName::ListWebLoginTokens as i32,
+                payload: None,
+            }),
+            PluginCommand::RevokeAllWebLoginTokens => Ok(ProtobufPluginCommand {
+                name: CommandName::RevokeAllWebLoginTokens as i32,
+                payload: None,
+            }),
+            PluginCommand::RenameWebLoginToken(old_name, new_name) => Ok(ProtobufPluginCommand {
+                name: CommandName::RenameWebLoginToken as i32,
+                payload: Some(Payload::RenameWebLoginTokenPayload(
+                    RenameWebLoginTokenPayload { old_name, new_name },
                 )),
             }),
             PluginCommand::InterceptKeyPresses => Ok(ProtobufPluginCommand {

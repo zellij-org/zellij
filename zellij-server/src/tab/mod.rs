@@ -9,11 +9,12 @@ mod swap_layouts;
 use copy_command::CopyCommand;
 use serde;
 use std::env::temp_dir;
+use std::net::IpAddr;
 use std::path::PathBuf;
 use uuid::Uuid;
 use zellij_utils::data::{
     Direction, KeyWithModifier, PaneInfo, PermissionStatus, PermissionType, PluginPermission,
-    ResizeStrategy,
+    ResizeStrategy, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -262,10 +263,17 @@ pub(crate) struct Tab {
     arrow_fonts: bool,
     styled_underlines: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
+    web_clients_allowed: bool,
+    web_sharing: WebSharing,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
+    connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+    // the below are the configured values - the ones that will be set if and when the web server
+    // is brought online
+    web_server_ip: IpAddr,
+    web_server_port: u16,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -342,7 +350,7 @@ pub trait Pane {
     fn pull_left(&mut self, count: usize);
     fn pull_up(&mut self, count: usize);
     fn clear_screen(&mut self);
-    fn dump_screen(&self, _full: bool) -> String {
+    fn dump_screen(&self, _full: bool, _client_id: Option<ClientId>) -> String {
         "".to_owned()
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
@@ -368,8 +376,11 @@ pub trait Pane {
     fn start_selection(&mut self, _start: &Position, _client_id: ClientId) {}
     fn update_selection(&mut self, _position: &Position, _client_id: ClientId) {}
     fn end_selection(&mut self, _end: &Position, _client_id: ClientId) {}
-    fn reset_selection(&mut self) {}
-    fn get_selected_text(&self) -> Option<String> {
+    fn reset_selection(&mut self, _client_id: Option<ClientId>) {}
+    fn supports_mouse_selection(&self) -> bool {
+        true
+    }
+    fn get_selected_text(&self, _client_id: ClientId) -> Option<String> {
         None
     }
 
@@ -613,6 +624,7 @@ pub trait Pane {
     fn toggle_pinned(&mut self) {}
     fn set_pinned(&mut self, _should_be_pinned: bool) {}
     fn reset_logical_position(&mut self) {}
+    fn set_mouse_selection_support(&mut self, _selection_support: bool) {}
 }
 
 #[derive(Clone, Debug)]
@@ -663,7 +675,7 @@ impl Tab {
         default_mode_info: ModeInfo,
         draw_pane_frames: bool,
         auto_layout: bool,
-        connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
+        connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
         session_is_mirrored: bool,
         client_id: Option<ClientId>,
         copy_options: CopyOptions,
@@ -676,9 +688,13 @@ impl Tab {
         styled_underlines: bool,
         explicitly_disable_kitty_keyboard_protocol: bool,
         default_editor: Option<PathBuf>,
+        web_clients_allowed: bool,
+        web_sharing: WebSharing,
         current_pane_group: Rc<RefCell<PaneGroups>>,
         currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
         advanced_mouse_actions: bool,
+        web_server_ip: IpAddr,
+        web_server_port: u16,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -715,7 +731,7 @@ impl Tab {
             display_area.clone(),
             viewport.clone(),
             connected_clients.clone(),
-            connected_clients_in_app,
+            connected_clients_in_app.clone(),
             mode_info.clone(),
             character_cell_size.clone(),
             session_is_mirrored,
@@ -773,10 +789,15 @@ impl Tab {
             styled_underlines,
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
+            web_clients_allowed,
+            web_sharing,
             mouse_hover_pane_id: HashMap::new(),
             current_pane_group,
             currently_marking_pane_group,
             advanced_mouse_actions,
+            connected_clients_in_app,
+            web_server_ip,
+            web_server_port,
         }
     }
 
@@ -1001,8 +1022,22 @@ impl Tab {
                 .clone();
             mode_info.shell = Some(self.default_shell.clone());
             mode_info.editor = self.default_editor.clone();
+            mode_info.web_clients_allowed = Some(self.web_clients_allowed);
+            mode_info.web_sharing = Some(self.web_sharing);
             mode_info.currently_marking_pane_group =
                 currently_marking_pane_group.get(client_id).copied();
+            mode_info.web_server_ip = Some(self.web_server_ip);
+            mode_info.web_server_port = Some(self.web_server_port);
+            mode_info.is_web_client = self
+                .connected_clients_in_app
+                .borrow()
+                .get(&client_id)
+                .copied();
+            if cfg!(feature = "web_server_capability") {
+                mode_info.web_server_capability = Some(true);
+            } else {
+                mode_info.web_server_capability = Some(false);
+            }
             plugin_updates.push((None, Some(*client_id), Event::ModeUpdate(mode_info)));
         }
         self.senders
@@ -2882,6 +2917,11 @@ impl Tab {
             self.draw_pane_frames,
         );
     }
+    pub fn set_mouse_selection_support(&mut self, pane_id: PaneId, selection_support: bool) {
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.set_mouse_selection_support(selection_support);
+        }
+    }
     pub fn close_pane(&mut self, id: PaneId, ignore_suppressed_panes: bool) {
         // we need to ignore suppressed panes when we toggle a pane to be floating/embedded(tiled)
         // this is because in that case, while we do use this logic, we're not actually closing the
@@ -3122,7 +3162,7 @@ impl Tab {
             || format!("failed to dump active terminal screen for client {client_id}");
 
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            let dump = active_pane.dump_screen(full);
+            let dump = active_pane.dump_screen(full, Some(client_id));
             self.os_api
                 .write_to_file(dump, file)
                 .with_context(err_context)?;
@@ -3136,7 +3176,7 @@ impl Tab {
         full: bool,
     ) -> Result<()> {
         if let Some(pane) = self.get_pane_with_id(pane_id) {
-            let dump = pane.dump_screen(full);
+            let dump = pane.dump_screen(full, None);
             self.os_api.write_to_file(dump, file).non_fatal()
         }
         Ok(())
@@ -3664,10 +3704,10 @@ impl Tab {
                 // start selection for copy/paste
                 let mut leave_clipboard_message = false;
                 pane_at_position.start_selection(&relative_position, client_id);
-                if pane_at_position.get_selected_text().is_some() {
+                if pane_at_position.get_selected_text(client_id).is_some() {
                     leave_clipboard_message = true;
                 }
-                if let PaneId::Terminal(_) = pane_at_position.pid() {
+                if pane_at_position.supports_mouse_selection() {
                     self.selecting_with_mouse_in_pane = Some(pane_at_position.pid());
                 }
                 if leave_clipboard_message {
@@ -3818,9 +3858,9 @@ impl Tab {
             } else {
                 let relative_position = pane_with_selection.relative_position(&event.position);
                 pane_with_selection.end_selection(&relative_position, client_id);
-                if let PaneId::Terminal(_) = pane_with_selection.pid() {
+                if pane_with_selection.supports_mouse_selection() {
                     if copy_on_release {
-                        let selected_text = pane_with_selection.get_selected_text();
+                        let selected_text = pane_with_selection.get_selected_text(client_id);
 
                         if let Some(selected_text) = selected_text {
                             leave_clipboard_message = true;
@@ -4087,7 +4127,7 @@ impl Tab {
     pub fn copy_selection(&self, client_id: ClientId) -> Result<()> {
         let selected_text = self
             .get_active_pane(client_id)
-            .and_then(|p| p.get_selected_text());
+            .and_then(|p| p.get_selected_text(client_id));
         if let Some(selected_text) = selected_text {
             self.write_selection_to_clipboard(&selected_text)
                 .with_context(|| {
@@ -4745,6 +4785,13 @@ impl Tab {
     }
     pub fn update_advanced_mouse_actions(&mut self, advanced_mouse_actions: bool) {
         self.advanced_mouse_actions = advanced_mouse_actions;
+    }
+    pub fn update_web_sharing(&mut self, web_sharing: WebSharing) {
+        let old_value = self.web_sharing;
+        self.web_sharing = web_sharing;
+        if old_value != self.web_sharing {
+            let _ = self.update_input_modes();
+        }
     }
     pub fn extract_suppressed_panes(&mut self) -> SuppressedPanes {
         self.suppressed_panes.drain().collect()

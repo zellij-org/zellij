@@ -16,12 +16,15 @@ mod terminal_bytes;
 mod thread_bus;
 mod ui;
 
+pub use daemonize;
+
 use background_jobs::{background_jobs_main, BackgroundJob};
 use log::info;
 use nix::sys::stat::{umask, Mode};
 use pty_writer::{pty_writer_main, PtyWriteInstruction};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::{
+    net::{IpAddr, Ipv4Addr},
     path::PathBuf,
     sync::{Arc, RwLock},
     thread,
@@ -45,7 +48,7 @@ use zellij_utils::{
     consts::{
         DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
-    data::{ConnectToSession, Event, InputMode, KeyWithModifier, PluginCapabilities},
+    data::{ConnectToSession, Event, InputMode, KeyWithModifier, PluginCapabilities, WebSharing},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
     input::{
@@ -59,7 +62,7 @@ use zellij_utils::{
         plugins::PluginAliases,
     },
     ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
-    shared::default_palette,
+    shared::{default_palette, web_server_base_url},
 };
 
 pub type ClientId = u16;
@@ -75,6 +78,7 @@ pub enum ServerInstruction {
         Box<Layout>,
         Box<PluginAliases>,
         bool, // should launch setup wizard
+        bool, // is_web_client
         ClientId,
     ),
     Render(Option<HashMap<ClientId, String>>),
@@ -90,6 +94,7 @@ pub enum ServerInstruction {
         Options,             // represents the runtime configuration options
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
+        bool,                // is_web_client
         ClientId,
     ),
     ConnStatus(ClientId),
@@ -118,6 +123,12 @@ pub enum ServerInstruction {
         keys_to_unbind: Vec<(InputMode, KeyWithModifier)>,
         write_config_to_disk: bool,
     },
+    StartWebServer(ClientId),
+    ShareCurrentSession(ClientId),
+    StopSharingCurrentSession(ClientId),
+    SendWebClientsForbidden(ClientId),
+    WebServerStarted(String), // String -> base_url
+    FailedToStartWebServer(String),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -154,6 +165,16 @@ impl From<&ServerInstruction> for ServerContext {
                 ServerContext::FailedToWriteConfigToDisk
             },
             ServerInstruction::RebindKeys { .. } => ServerContext::RebindKeys,
+            ServerInstruction::StartWebServer(..) => ServerContext::StartWebServer,
+            ServerInstruction::ShareCurrentSession(..) => ServerContext::ShareCurrentSession,
+            ServerInstruction::StopSharingCurrentSession(..) => {
+                ServerContext::StopSharingCurrentSession
+            },
+            ServerInstruction::WebServerStarted(..) => ServerContext::WebServerStarted,
+            ServerInstruction::FailedToStartWebServer(..) => ServerContext::FailedToStartWebServer,
+            ServerInstruction::SendWebClientsForbidden(..) => {
+                ServerContext::SendWebClientsForbidden
+            },
         }
     }
 }
@@ -303,7 +324,10 @@ pub(crate) struct SessionMetaData {
     pub layout: Box<Layout>,
     pub current_input_modes: HashMap<ClientId, InputMode>,
     pub session_configuration: SessionConfiguration,
-
+    pub web_sharing: WebSharing, // this is a special attribute explicitly set on session
+    // initialization because we don't want it to be overridden by
+    // configuration changes, the only way it can be overwritten is by
+    // explicit plugin action
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
@@ -453,8 +477,8 @@ macro_rules! send_to_client {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct SessionState {
-    clients: HashMap<ClientId, Option<Size>>,
-    pipes: HashMap<String, ClientId>, // String => pipe_id
+    clients: HashMap<ClientId, Option<(Size, bool)>>, // bool -> is_web_client
+    pipes: HashMap<String, ClientId>,                 // String => pipe_id
 }
 
 impl SessionState {
@@ -485,20 +509,31 @@ impl SessionState {
         self.pipes.retain(|_p_id, c_id| c_id != &client_id);
     }
     pub fn set_client_size(&mut self, client_id: ClientId, size: Size) {
-        self.clients.insert(client_id, Some(size));
+        self.clients
+            .entry(client_id)
+            .or_insert_with(Default::default)
+            .as_mut()
+            .map(|(s, _is_web_client)| *s = size);
+    }
+    pub fn set_client_data(&mut self, client_id: ClientId, size: Size, is_web_client: bool) {
+        self.clients.insert(client_id, Some((size, is_web_client)));
     }
     pub fn min_client_terminal_size(&self) -> Option<Size> {
         // None if there are no client sizes
         let mut rows: Vec<usize> = self
             .clients
             .values()
-            .filter_map(|size| size.map(|size| size.rows))
+            .filter_map(|size_and_is_web_client| {
+                size_and_is_web_client.map(|(size, _is_web_client)| size.rows)
+            })
             .collect();
         rows.sort_unstable();
         let mut cols: Vec<usize> = self
             .clients
             .values()
-            .filter_map(|size| size.map(|size| size.cols))
+            .filter_map(|size_and_is_web_client| {
+                size_and_is_web_client.map(|(size, _is_web_client)| size.cols)
+            })
             .collect();
         cols.sort_unstable();
         let min_rows = rows.first();
@@ -513,6 +548,15 @@ impl SessionState {
     }
     pub fn client_ids(&self) -> Vec<ClientId> {
         self.clients.keys().copied().collect()
+    }
+    pub fn web_client_ids(&self) -> Vec<ClientId> {
+        self.clients
+            .iter()
+            .filter_map(|(c_id, size_and_is_web_client)| {
+                size_and_is_web_client
+                    .and_then(|(_s, is_web_client)| if is_web_client { Some(*c_id) } else { None })
+            })
+            .collect()
     }
     pub fn get_pipe(&self, pipe_name: &str) -> Option<ClientId> {
         self.pipes.get(pipe_name).copied()
@@ -621,6 +665,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 layout,
                 plugin_aliases,
                 should_launch_setup_wizard,
+                is_web_client,
                 client_id,
             ) => {
                 let mut session = init_session(
@@ -650,10 +695,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .insert(client_id, default_input_mode);
 
                 *session_data.write().unwrap() = Some(session);
-                session_state
-                    .write()
-                    .unwrap()
-                    .set_client_size(client_id, client_attributes.size);
+                session_state.write().unwrap().set_client_data(
+                    client_id,
+                    client_attributes.size,
+                    is_web_client,
+                );
 
                 let default_shell = runtime_config_options.default_shell.map(|shell| {
                     TerminalAction::RunCommand(RunCommand {
@@ -683,7 +729,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             tab_name,
                             swap_layouts,
                             should_focus_tab,
-                            client_id,
+                            (client_id, is_web_client),
                         ))
                         .unwrap()
                 };
@@ -746,6 +792,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 runtime_config_options,
                 tab_position_to_focus,
                 pane_id_to_focus,
+                is_web_client,
                 client_id,
             ) => {
                 let mut rlock = session_data.write().unwrap();
@@ -765,10 +812,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .current_input_modes
                     .insert(client_id, default_input_mode);
 
-                session_state
-                    .write()
-                    .unwrap()
-                    .set_client_size(client_id, attrs.size);
+                session_state.write().unwrap().set_client_data(
+                    client_id,
+                    attrs.size,
+                    is_web_client,
+                );
                 let min_size = session_state
                     .read()
                     .unwrap()
@@ -782,6 +830,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_screen(ScreenInstruction::AddClient(
                         client_id,
+                        is_web_client,
                         tab_position_to_focus,
                         pane_id_to_focus,
                     ))
@@ -948,6 +997,23 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                     .unwrap();
+            },
+            ServerInstruction::SendWebClientsForbidden(client_id) => {
+                let _ = os_input.send_to_client(
+                    client_id,
+                    ServerToClientMsg::Exit(ExitReason::WebClientsForbidden),
+                );
+                remove_client!(client_id, os_input, session_state);
+                if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                        .unwrap();
+                }
             },
             ServerInstruction::KillSession => {
                 let client_ids = session_state.read().unwrap().client_ids();
@@ -1246,6 +1312,98 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     }
                 }
             },
+            ServerInstruction::StartWebServer(client_id) => {
+                if cfg!(feature = "web_server_capability") {
+                    send_to_client!(
+                        client_id,
+                        os_input,
+                        ServerToClientMsg::StartWebServer,
+                        session_state
+                    );
+                } else {
+                    // TODO: test this
+                    log::error!("Cannot start web server: this instance of Zellij was compiled without web_server_capability");
+                }
+            },
+            ServerInstruction::ShareCurrentSession(_client_id) => {
+                if cfg!(feature = "web_server_capability") {
+                    let successfully_changed = session_data
+                        .write()
+                        .ok()
+                        .and_then(|mut s| s.as_mut().map(|s| s.web_sharing.set_sharing()))
+                        .unwrap_or(false);
+                    if successfully_changed {
+                        session_data
+                            .write()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_screen(ScreenInstruction::SessionSharingStatusChange(true))
+                            .unwrap();
+                    }
+                } else {
+                    log::error!("Cannot share session: this instance of Zellij was compiled without web_server_capability");
+                }
+            },
+            ServerInstruction::StopSharingCurrentSession(_client_id) => {
+                if cfg!(feature = "web_server_capability") {
+                    let successfully_changed = session_data
+                        .write()
+                        .ok()
+                        .and_then(|mut s| s.as_mut().map(|s| s.web_sharing.set_not_sharing()))
+                        .unwrap_or(false);
+                    if successfully_changed {
+                        // disconnect existing web clients
+                        let web_client_ids: Vec<ClientId> = session_state
+                            .read()
+                            .unwrap()
+                            .web_client_ids()
+                            .iter()
+                            .copied()
+                            .collect();
+                        for client_id in web_client_ids {
+                            let _ = os_input.send_to_client(
+                                client_id,
+                                ServerToClientMsg::Exit(ExitReason::WebClientsForbidden),
+                            );
+                            remove_client!(client_id, os_input, session_state);
+                        }
+
+                        session_data
+                            .write()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_screen(ScreenInstruction::SessionSharingStatusChange(false))
+                            .unwrap();
+                    }
+                } else {
+                    // TODO: test this
+                    log::error!("Cannot start web server: this instance of Zellij was compiled without web_server_capability");
+                }
+            },
+            ServerInstruction::WebServerStarted(base_url) => {
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_plugin(PluginInstruction::WebServerStarted(base_url))
+                    .unwrap();
+            },
+            ServerInstruction::FailedToStartWebServer(error) => {
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_plugin(PluginInstruction::FailedToStartWebServer(error))
+                    .unwrap();
+            },
         }
     }
 
@@ -1312,6 +1470,13 @@ fn init_session(
 
     let serialization_interval = config_options.serialization_interval;
     let disable_session_metadata = config_options.disable_session_metadata.unwrap_or(false);
+    let web_server_ip = config_options
+        .web_server_ip
+        .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
+    let has_certificate =
+        config_options.web_server_cert.is_some() && config_options.web_server_key.is_some();
+    let enforce_https_for_localhost = config_options.enforce_https_for_localhost.unwrap_or(false);
 
     let default_shell = config_options.default_shell.clone().map(|command| {
         TerminalAction::RunCommand(RunCommand {
@@ -1459,11 +1624,18 @@ fn init_session(
                 None,
                 Some(os_input.clone()),
             );
+            let web_server_base_url = web_server_base_url(
+                web_server_ip,
+                web_server_port,
+                has_certificate,
+                enforce_https_for_localhost,
+            );
             move || {
                 background_jobs_main(
                     background_jobs_bus,
                     serialization_interval,
                     disable_session_metadata,
+                    web_server_base_url,
                 )
                 .fatal()
             }
@@ -1491,6 +1663,10 @@ fn init_session(
         plugin_thread: Some(plugin_thread),
         pty_writer_thread: Some(pty_writer_thread),
         background_jobs_thread: Some(background_jobs_thread),
+        #[cfg(feature = "web_server_capability")]
+        web_sharing: config.options.web_sharing.unwrap_or(WebSharing::Off),
+        #[cfg(not(feature = "web_server_capability"))]
+        web_sharing: WebSharing::Disabled,
     }
 }
 

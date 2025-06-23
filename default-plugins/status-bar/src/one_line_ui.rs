@@ -1368,6 +1368,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
     ]} else if mi.mode == IM::Session { vec![
         (s("Detach"), s("Detach"), action_key(&km, &[Action::Detach])),
         (s("Session Manager"), s("Manager"), session_manager_key(&km)),
+        (s("Share"), s("Share"), share_key(&km)),
         (s("Configure"), s("Config"), configuration_key(&km)),
         (s("Plugin Manager"), s("Plugins"), plugin_manager_key(&km)),
         (s("About"), s("About"), about_key(&km)),
@@ -1447,6 +1448,25 @@ fn session_manager_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWith
         let has_match = acvec
             .iter()
             .find(|a| a.launches_plugin("session-manager"))
+            .is_some();
+        if has_match {
+            Some(key.clone())
+        } else {
+            None
+        }
+    });
+    if let Some(matching) = matching.take() {
+        vec![matching]
+    } else {
+        vec![]
+    }
+}
+
+fn share_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithModifier> {
+    let mut matching = keymap.iter().find_map(|(key, acvec)| {
+        let has_match = acvec
+            .iter()
+            .find(|a| a.launches_plugin("zellij:share"))
             .is_some();
         if has_match {
             Some(key.clone())

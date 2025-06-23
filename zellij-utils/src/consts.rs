@@ -131,6 +131,7 @@ mod not_wasm {
             add_plugin!(assets, "configuration.wasm");
             add_plugin!(assets, "plugin-manager.wasm");
             add_plugin!(assets, "about.wasm");
+            add_plugin!(assets, "share.wasm");
             add_plugin!(assets, "multiple-select.wasm");
             assets
         };
@@ -168,5 +169,6 @@ mod unix_only {
             ipc_dir.push(VERSION);
             ipc_dir
         };
+        pub static ref WEBSERVER_SOCKET_PATH: PathBuf = ZELLIJ_SOCK_DIR.join("web_server_bus");
     }
 }

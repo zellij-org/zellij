@@ -1,15 +1,9 @@
 use dialoguer::Confirm;
 use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 
-use crate::sessions::{
-    assert_dead_session, assert_session, assert_session_ne, delete_session as delete_session_impl,
-    get_active_session, get_name_generator, get_resurrectable_session_names,
-    get_resurrectable_sessions, get_sessions, get_sessions_sorted_by_mtime,
-    kill_session as kill_session_impl, match_session_name, print_sessions,
-    print_sessions_with_index, resurrection_layout, session_exists, ActiveSession,
-    SessionNameMatch,
-};
-use miette::{Report, Result};
+#[cfg(feature = "web_server_capability")]
+use isahc::{config::RedirectPolicy, prelude::*, HttpClient, Request};
+
 use nix;
 use zellij_client::{
     old_config_converter::{
@@ -18,6 +12,26 @@ use zellij_client::{
     os_input_output::get_client_os_input,
     start_client as start_client_impl, ClientInfo,
 };
+use zellij_utils::sessions::{
+    assert_dead_session, assert_session, assert_session_ne, delete_session as delete_session_impl,
+    generate_unique_session_name, get_active_session, get_resurrectable_sessions, get_sessions,
+    get_sessions_sorted_by_mtime, kill_session as kill_session_impl, match_session_name,
+    print_sessions, print_sessions_with_index, resurrection_layout, session_exists, ActiveSession,
+    SessionNameMatch,
+};
+
+#[cfg(feature = "web_server_capability")]
+use zellij_client::web_client::start_web_client as start_web_client_impl;
+
+#[cfg(feature = "web_server_capability")]
+use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
+
+#[cfg(feature = "web_server_capability")]
+use zellij_utils::web_authentication_tokens::{
+    create_token, list_tokens, revoke_all_tokens, revoke_token,
+};
+
+use miette::{Report, Result};
 use zellij_server::{os_input_output::get_server_os_input, start_server as start_server_impl};
 use zellij_utils::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
@@ -32,7 +46,7 @@ use zellij_utils::{
     setup::{find_default_config_dir, get_layout_dir, Setup},
 };
 
-pub(crate) use crate::sessions::list_sessions;
+pub(crate) use zellij_utils::sessions::list_sessions;
 
 pub(crate) fn kill_all_sessions(yes: bool) {
     match get_sessions() {
@@ -144,8 +158,166 @@ pub(crate) fn start_server(path: PathBuf, debug: bool) {
     start_server_impl(Box::new(os_input), path);
 }
 
+#[cfg(feature = "web_server_capability")]
+pub(crate) fn start_web_server(opts: CliArgs, run_daemonized: bool) {
+    // TODO: move this outside of this function
+    let (config, _layout, config_options, _config_without_layout, _config_options_without_layout) =
+        match Setup::from_cli_args(&opts) {
+            Ok(results) => results,
+            Err(e) => {
+                if let ConfigError::KdlError(error) = e {
+                    let report: Report = error.into();
+                    eprintln!("{:?}", report);
+                } else {
+                    eprintln!("{}", e);
+                }
+                process::exit(1);
+            },
+        };
+
+    start_web_client_impl(config, config_options, opts.config, run_daemonized);
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+pub(crate) fn start_web_server(_opts: CliArgs, _run_daemonized: bool) {
+    log::error!(
+        "This version of Zellij was compiled without web server support, cannot run web server!"
+    );
+    eprintln!(
+        "This version of Zellij was compiled without web server support, cannot run web server!"
+    );
+    std::process::exit(2);
+}
+
 fn create_new_client() -> ClientInfo {
-    ClientInfo::New(generate_unique_session_name())
+    ClientInfo::New(generate_unique_session_name_or_exit())
+}
+
+#[cfg(feature = "web_server_capability")]
+pub(crate) fn stop_web_server() -> Result<(), String> {
+    shutdown_all_webserver_instances().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+pub(crate) fn stop_web_server() -> Result<(), String> {
+    log::error!(
+        "This version of Zellij was compiled without web server support, cannot stop web server!"
+    );
+    eprintln!(
+        "This version of Zellij was compiled without web server support, cannot stop web server!"
+    );
+    std::process::exit(2);
+}
+
+#[cfg(feature = "web_server_capability")]
+pub(crate) fn create_auth_token() -> Result<String, String> {
+    // returns the token and it's name
+    create_token(None)
+        .map(|(token_name, token)| format!("{}: {}", token, token_name))
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+pub(crate) fn create_auth_token() -> Result<String, String> {
+    log::error!(
+        "This version of Zellij was compiled without web server support, cannot create auth token!"
+    );
+    eprintln!(
+        "This version of Zellij was compiled without web server support, cannot create auth token!"
+    );
+    std::process::exit(2);
+}
+
+#[cfg(feature = "web_server_capability")]
+pub(crate) fn revoke_auth_token(token_name: &str) -> Result<bool, String> {
+    revoke_token(token_name).map_err(|e| e.to_string())
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+pub(crate) fn revoke_auth_token(_token_name: &str) -> Result<bool, String> {
+    log::error!(
+        "This version of Zellij was compiled without web server support, cannot revoke auth token!"
+    );
+    eprintln!(
+        "This version of Zellij was compiled without web server support, cannot revoke auth token!"
+    );
+    std::process::exit(2);
+}
+
+#[cfg(feature = "web_server_capability")]
+pub(crate) fn revoke_all_auth_tokens() -> Result<usize, String> {
+    // returns the revoked count
+    revoke_all_tokens().map_err(|e| e.to_string())
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+pub(crate) fn revoke_all_auth_tokens() -> Result<usize, String> {
+    log::error!(
+        "This version of Zellij was compiled without web server support, cannot revoke all tokens!"
+    );
+    eprintln!(
+        "This version of Zellij was compiled without web server support, cannot revoke all tokens!"
+    );
+    std::process::exit(2);
+}
+
+#[cfg(feature = "web_server_capability")]
+pub(crate) fn list_auth_tokens() -> Result<Vec<String>, String> {
+    // returns the token list line by line
+    list_tokens()
+        .map(|tokens| {
+            let mut res = vec![];
+            for t in tokens {
+                res.push(format!("{}: created at {}", t.name, t.created_at))
+            }
+            res
+        })
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+pub(crate) fn list_auth_tokens() -> Result<Vec<String>, String> {
+    log::error!(
+        "This version of Zellij was compiled without web server support, cannot list tokens!"
+    );
+    eprintln!(
+        "This version of Zellij was compiled without web server support, cannot list tokens!"
+    );
+    std::process::exit(2);
+}
+
+#[cfg(feature = "web_server_capability")]
+pub(crate) fn web_server_status(web_server_base_url: &str) -> Result<String, String> {
+    let http_client = HttpClient::builder()
+        // TODO: timeout?
+        .redirect_policy(RedirectPolicy::Follow)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let request = Request::get(format!("{}/info/version", web_server_base_url,));
+    let req = request.body(()).map_err(|e| e.to_string())?;
+    let mut res = http_client.send(req).map_err(|e| e.to_string())?;
+    let status_code = res.status();
+    if status_code == 200 {
+        let body = res.bytes().map_err(|e| e.to_string())?;
+        Ok(String::from_utf8_lossy(&body).to_string())
+    } else {
+        Err(format!(
+            "Failed to stop web server, got status code: {}",
+            status_code
+        ))
+    }
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+pub(crate) fn web_server_status(_web_server_base_url: &str) -> Result<String, String> {
+    log::error!(
+        "This version of Zellij was compiled without web server support, cannot get web server status!"
+    );
+    eprintln!(
+        "This version of Zellij was compiled without web server support, cannot get web server status!"
+    );
+    std::process::exit(2);
 }
 
 fn find_indexed_session(
@@ -660,7 +832,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     process::exit(0);
                 }
 
-                let session_name = generate_unique_session_name();
+                let session_name = generate_unique_session_name_or_exit();
                 start_client_plan(session_name.clone());
                 reconnect_to_session = start_client_impl(
                     Box::new(os_input),
@@ -682,29 +854,12 @@ pub(crate) fn start_client(opts: CliArgs) {
     }
 }
 
-fn generate_unique_session_name() -> String {
-    let sessions = get_sessions().map(|sessions| {
-        sessions
-            .iter()
-            .map(|s| s.0.clone())
-            .collect::<Vec<String>>()
-    });
-    let dead_sessions = get_resurrectable_session_names();
-    let Ok(sessions) = sessions else {
-        eprintln!("Failed to list existing sessions: {:?}", sessions);
-        process::exit(1);
-    };
-
-    let name = get_name_generator()
-        .take(1000)
-        .find(|name| !sessions.contains(name) && !dead_sessions.contains(name));
-
-    if let Some(name) = name {
-        return name;
-    } else {
+fn generate_unique_session_name_or_exit() -> String {
+    let Some(unique_session_name) = generate_unique_session_name() else {
         eprintln!("Failed to generate a unique session name, giving up");
         process::exit(1);
-    }
+    };
+    unique_session_name
 }
 
 pub(crate) fn list_aliases(opts: CliArgs) {
@@ -741,4 +896,10 @@ fn reload_config_from_disk(
             log::error!("Failed to reload config: {}", e);
         },
     };
+}
+
+pub fn get_config_options_from_cli_args(opts: &CliArgs) -> Result<Options, String> {
+    Setup::from_cli_args(&opts)
+        .map(|(_, _, config_options, _, _)| config_options)
+        .map_err(|e| e.to_string())
 }

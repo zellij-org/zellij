@@ -8,15 +8,16 @@ use crate::{
     thread_bus::ThreadSenders,
     ClientId,
 };
+use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
-use zellij_utils::data::{Direction, Resize, ResizeStrategy};
+use zellij_utils::data::{Direction, Resize, ResizeStrategy, WebSharing};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 
@@ -157,10 +158,10 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
-    let mut connected_clients = HashSet::new();
+    let mut connected_clients = HashMap::new();
     let character_cell_info = Rc::new(RefCell::new(None));
     let stacked_resize = Rc::new(RefCell::new(stacked_resize));
-    connected_clients.insert(client_id);
+    connected_clients.insert(client_id, false);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
@@ -173,6 +174,9 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
     let styled_underlines = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
     let mut tab = Tab::new(
         index,
         position,
@@ -201,9 +205,13 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        false,
+        web_sharing,
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        web_server_ip,
+        web_server_port,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -230,10 +238,10 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
-    let mut connected_clients = HashSet::new();
+    let mut connected_clients = HashMap::new();
     let character_cell_info = Rc::new(RefCell::new(None));
     let stacked_resize = Rc::new(RefCell::new(true));
-    connected_clients.insert(client_id);
+    connected_clients.insert(client_id, false);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
@@ -246,6 +254,9 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let styled_underlines = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
     let mut tab = Tab::new(
         index,
         position,
@@ -274,9 +285,13 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        false,
+        web_sharing,
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        web_server_ip,
+        web_server_port,
     );
     let mut new_terminal_ids = vec![];
     for i in 0..layout.extract_run_instructions().len() {
@@ -310,8 +325,8 @@ fn create_new_tab_with_cell_size(
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
-    let mut connected_clients = HashSet::new();
-    connected_clients.insert(client_id);
+    let mut connected_clients = HashMap::new();
+    connected_clients.insert(client_id, false);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
@@ -325,6 +340,9 @@ fn create_new_tab_with_cell_size(
     let styled_underlines = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
     let mut tab = Tab::new(
         index,
         position,
@@ -353,9 +371,13 @@ fn create_new_tab_with_cell_size(
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
         None,
+        false,
+        web_sharing,
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        web_server_ip,
+        web_server_port,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),

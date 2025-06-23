@@ -54,8 +54,10 @@ enum EventType {
     FailedToChangeHostFolder = 28;
     PastedText = 29;
     ConfigWasWrittenToDisk = 30;
-    BeforeClose = 31;
-    InterceptedKeyPress = 32;
+    WebServerStatus = 31;
+    BeforeClose = 32;
+    FailedToStartWebServer = 34;
+    InterceptedKeyPress = 35;
 }
 
 message EventNameList {
@@ -90,12 +92,29 @@ message Event {
     HostFolderChangedPayload host_folder_changed_payload = 24;
     FailedToChangeHostFolderPayload failed_to_change_host_folder_payload = 25;
     PastedTextPayload pasted_text_payload = 26;
-    key.Key intercepted_key_payload = 27;
+    WebServerStatusPayload web_server_status_payload = 27;
+    FailedToStartWebServerPayload failed_to_start_web_server_payload = 28;
+    key.Key intercepted_key_payload = 29;
   }
+}
+
+message FailedToStartWebServerPayload {
+  string error = 1;
 }
 
 message PastedTextPayload {
   string pasted_text = 1;
+}
+
+enum WebServerStatusIndication {
+  Online = 0;
+  Offline = 1;
+  DifferentVersion = 2;
+}
+
+message WebServerStatusPayload {
+  WebServerStatusIndication web_server_status_indication = 1;
+  optional string payload = 2;
 }
 
 message FailedToChangeHostFolderPayload {
@@ -260,7 +279,9 @@ message SessionManifest {
   bool is_current_session = 5;
   repeated LayoutInfo available_layouts = 6;
   repeated PluginInfo plugins = 7;
-  repeated ClientTabHistory tab_history = 8;
+  bool web_clients_allowed = 8;
+  uint32 web_client_count = 9;
+  repeated ClientTabHistory tab_history = 10;
 }
 
 message ClientTabHistory {
@@ -343,7 +364,19 @@ message ModeUpdatePayload {
   optional input_mode.InputMode base_mode = 6;
   optional string editor = 7;
   optional string shell = 8;
-  optional bool currently_marking_pane_group = 9;
+  optional bool web_clients_allowed = 9;
+  optional WebSharing web_sharing = 10;
+  optional bool currently_marking_pane_group = 11;
+  optional bool is_web_client = 12;
+  optional string web_server_ip = 13;
+  optional uint32 web_server_port = 14;
+  optional bool web_server_capability = 15;
+}
+
+enum WebSharing {
+    On = 0;
+    Off = 1;
+    Disabled = 2;
 }
 
 message InputModeKeybinds {

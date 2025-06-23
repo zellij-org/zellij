@@ -65,6 +65,7 @@ impl PluginConfig {
                     || tag == "configuration"
                     || tag == "plugin-manager"
                     || tag == "about"
+                    || tag == "share"
                     || tag == "multiple-select"
                 {
                     Some(PluginConfig {

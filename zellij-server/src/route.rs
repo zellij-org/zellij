@@ -508,6 +508,7 @@ pub(crate) fn route_action(
                 swap_tiled_layouts.unwrap_or_else(|| default_layout.swap_tiled_layouts.clone());
             let swap_floating_layouts = swap_floating_layouts
                 .unwrap_or_else(|| default_layout.swap_floating_layouts.clone());
+            let is_web_client = false; // actions cannot be initiated directly from the web
             senders
                 .send_to_screen(ScreenInstruction::NewTab(
                     None,
@@ -517,7 +518,7 @@ pub(crate) fn route_action(
                     tab_name,
                     (swap_tiled_layouts, swap_floating_layouts),
                     should_change_focus_to_new_tab,
-                    client_id,
+                    (client_id, is_web_client),
                 ))
                 .with_context(err_context)?;
         },
@@ -1146,6 +1147,7 @@ pub(crate) fn route_thread_main(
                             layout,
                             plugin_aliases,
                             should_launch_setup_wizard,
+                            is_web_client,
                         ) => {
                             let new_client_instruction = ServerInstruction::NewClient(
                                 client_attributes,
@@ -1155,6 +1157,7 @@ pub(crate) fn route_thread_main(
                                 layout,
                                 plugin_aliases,
                                 should_launch_setup_wizard,
+                                is_web_client,
                                 client_id,
                             );
                             to_server
@@ -1167,18 +1170,37 @@ pub(crate) fn route_thread_main(
                             runtime_config_options,
                             tab_position_to_focus,
                             pane_id_to_focus,
+                            is_web_client,
                         ) => {
-                            let attach_client_instruction = ServerInstruction::AttachClient(
-                                client_attributes,
-                                config,
-                                runtime_config_options,
-                                tab_position_to_focus,
-                                pane_id_to_focus,
-                                client_id,
-                            );
-                            to_server
-                                .send(attach_client_instruction)
-                                .with_context(err_context)?;
+                            let allow_web_connections = rlocked_sessions
+                                .as_ref()
+                                .map(|rlocked_sessions| {
+                                    rlocked_sessions.web_sharing.web_clients_allowed()
+                                })
+                                .unwrap_or(false);
+                            let should_allow_connection = !is_web_client || allow_web_connections;
+                            if should_allow_connection {
+                                let attach_client_instruction = ServerInstruction::AttachClient(
+                                    client_attributes,
+                                    config,
+                                    runtime_config_options,
+                                    tab_position_to_focus,
+                                    pane_id_to_focus,
+                                    is_web_client,
+                                    client_id,
+                                );
+                                to_server
+                                    .send(attach_client_instruction)
+                                    .with_context(err_context)?;
+                            } else {
+                                let error = "This session does not allow web connections.";
+                                let _ = to_server.send(ServerInstruction::LogError(
+                                    vec![error.to_owned()],
+                                    client_id,
+                                ));
+                                let _ = to_server
+                                    .send(ServerInstruction::SendWebClientsForbidden(client_id));
+                            }
                         },
                         ClientToServerMsg::ClientExited => {
                             // we don't unwrap this because we don't really care if there's an error here (eg.
@@ -1208,6 +1230,13 @@ pub(crate) fn route_thread_main(
                                 client_id,
                                 failed_path,
                             ));
+                        },
+                        ClientToServerMsg::WebServerStarted(base_url) => {
+                            let _ = to_server.send(ServerInstruction::WebServerStarted(base_url));
+                        },
+                        ClientToServerMsg::FailedToStartWebServer(error) => {
+                            let _ =
+                                to_server.send(ServerInstruction::FailedToStartWebServer(error));
                         },
                     }
                     Ok(should_break)

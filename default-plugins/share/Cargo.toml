@@ -1,0 +1,11 @@
+[package]
+name = "share"
+version = "0.1.0"
+authors = ["Aram Drevekenin <aram@poor.dev>"]
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+zellij-tile = { path = "../../zellij-tile" }
+url = "2.0"
+rand = "0.9.0"
