@@ -59,18 +59,8 @@ jobs:
         with:
           rustflags: ""
 
-      - name: Test with debugging
-        run: |
-          echo "=== System info ==="
-          uname -a
-          echo "=== Network interfaces ==="
-          ip addr show || ifconfig
-          echo "=== Available ports ==="
-          ss -tuln | head -20 || netstat -tuln | head -20
-          echo "=== Running tests ==="
-          RUST_LOG=debug cargo xtask test
-        env:
-          RUST_BACKTRACE: full
+      - name: Test
+        run: cargo xtask test
 
   test-no-web:
     name: Test (No Web)
