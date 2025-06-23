@@ -31,6 +31,24 @@ use serial_test::serial;
 mod web_client_tests {
     use super::*;
 
+    use std::time::{Duration, Instant};
+
+    async fn wait_for_server(port: u16, timeout: Duration) -> Result<(), String> {
+        let start = Instant::now();
+        let addr = format!("127.0.0.1:{}", port);
+
+        while start.elapsed() < timeout {
+            if tokio::net::TcpStream::connect(&addr).await.is_ok() {
+                return Ok(());
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        Err(format!(
+            "Server failed to start on port {} within {:?}",
+            port, timeout
+        ))
+    }
+
     #[tokio::test]
     #[serial]
     async fn test_version_endpoint() {
@@ -59,7 +77,9 @@ mod web_client_tests {
             .await;
         });
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
 
         let url = format!("http://127.0.0.1:{}/info/version", port);
 
@@ -112,7 +132,9 @@ mod web_client_tests {
             .await;
         });
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
 
         let login_url = format!("http://127.0.0.1:{}/command/login", port);
         let login_payload = serde_json::json!({
@@ -178,7 +200,9 @@ mod web_client_tests {
             .await;
         });
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
 
         let login_url = format!("http://127.0.0.1:{}/command/login", port);
         let login_payload = serde_json::json!({
@@ -240,7 +264,9 @@ mod web_client_tests {
             .await;
         });
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
 
         let login_url = format!("http://127.0.0.1:{}/command/login", port);
         let login_payload = serde_json::json!({
@@ -443,7 +469,9 @@ mod web_client_tests {
             .await;
         });
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
 
         let session_url = format!("http://127.0.0.1:{}/session", port);
         let response = timeout(
@@ -489,7 +517,9 @@ mod web_client_tests {
             .await;
         });
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
 
         let session_url = format!("http://127.0.0.1:{}/session", port);
         let response = timeout(
@@ -546,7 +576,9 @@ mod web_client_tests {
             .await;
         });
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
 
         // Login and get session token
         let session_token = login_and_get_session_token(port, &auth_token).await;
@@ -686,7 +718,9 @@ mod web_client_tests {
             .await;
         });
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
 
         // Login and get session token
         let session_token = login_and_get_session_token(port, &auth_token).await;
@@ -855,7 +889,9 @@ mod web_client_tests {
             .await;
         });
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
 
         // Login and create session
         let session_token = login_and_get_session_token(port, &auth_token).await;
@@ -1000,7 +1036,9 @@ mod web_client_tests {
             .await;
         });
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
 
         // Login and create session
         let session_token = login_and_get_session_token(port, &auth_token).await;
