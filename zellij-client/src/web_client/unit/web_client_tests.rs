@@ -84,27 +84,30 @@ mod web_client_tests {
         let addr = listener.local_addr().unwrap();
         let port = addr.port();
 
-        let server_handle = tokio::task::spawn_blocking(move || {
-            let rt = tokio::runtime::Handle::current();
-            rt.block_on(serve_web_client(
-                config,
-                options,
-                None,
-                listener,
-                None,
-                Some(session_manager),
-                Some(client_os_api_factory),
-            ))
-        });
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
 
-        wait_for_server(port, Duration::from_secs(5))
-            .await
-            .expect("Server failed to start");
+        let server_handle = tokio::spawn(serve_web_client(
+            config,
+            options,
+            Some(temp_config_path),
+            listener,
+            None,
+            Some(session_manager),
+            Some(client_os_api_factory),
+        ));
+
+        match wait_for_server(port, Duration::from_secs(10)).await {
+            Ok(_) => println!("Server is ready, proceeding with test"),
+            Err(e) => {
+                server_handle.abort();
+                panic!("Server failed to start: {}", e);
+            },
+        }
 
         let url = format!("http://127.0.0.1:{}/info/version", port);
 
         let mut response = timeout(
-            Duration::from_secs(10), // Also increase this timeout
+            Duration::from_secs(5),
             tokio::task::spawn_blocking(move || isahc::get(&url)),
         )
         .await
@@ -118,6 +121,8 @@ mod web_client_tests {
         assert_eq!(version_text, VERSION);
 
         server_handle.abort();
+        // time for cleanup
+        tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
     //     #[tokio::test]
