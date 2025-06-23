@@ -35,36 +35,36 @@ mod web_client_tests {
 
     async fn wait_for_server(port: u16, timeout: Duration) -> Result<(), String> {
         let start = Instant::now();
-        let addr = format!("127.0.0.1:{}", port);
+        let url = format!("http://127.0.0.1:{}/info/version", port);
 
-        eprintln!("Waiting for server on port {} to start...", port);
+        println!("Waiting for HTTP server on port {} to start...", port);
 
         while start.elapsed() < timeout {
-            match tokio::net::TcpStream::connect(&addr).await {
-                Ok(_) => {
+            match tokio::task::spawn_blocking({
+                let url = url.clone();
+                move || isahc::get(&url)
+            })
+            .await
+            {
+                Ok(Ok(_)) => {
                     eprintln!(
-                        "Server is ready on port {} after {:?}",
+                        "HTTP server is ready on port {} after {:?}",
                         port,
                         start.elapsed()
                     );
                     return Ok(());
                 },
+                Ok(Err(e)) => {
+                    eprintln!("HTTP request failed: {:?}", e);
+                },
                 Err(e) => {
-                    if start.elapsed().as_secs() % 1 == 0 && start.elapsed().as_millis() % 1000 < 50
-                    {
-                        eprintln!(
-                            "Still waiting for server on port {} ({}s elapsed). Last error: {}",
-                            port,
-                            start.elapsed().as_secs(),
-                            e
-                        );
-                    }
+                    eprintln!("Task spawn failed: {:?}", e);
                 },
             }
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
         Err(format!(
-            "Server failed to start on port {} within {:?}",
+            "HTTP server failed to start on port {} within {:?}",
             port, timeout
         ))
     }
