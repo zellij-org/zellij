@@ -16,19 +16,14 @@ use axum::{
     response::IntoResponse,
 };
 use futures::StreamExt;
-use log::info;
 use tokio_util::sync::CancellationToken;
 use zellij_utils::{input::mouse::MouseEvent, ipc::ClientToServerMsg};
 
 pub async fn ws_handler_control(
     ws: WebSocketUpgrade,
-    path: Option<AxumPath<String>>,
+    _path: Option<AxumPath<String>>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    log::info!(
-        "Control WebSocket connection established with path: {:?}",
-        path
-    );
     ws.on_upgrade(move |socket| handle_ws_control(socket, state))
 }
 
@@ -38,20 +33,12 @@ pub async fn ws_handler_terminal(
     Query(params): Query<TerminalParams>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    log::info!(
-        "Terminal WebSocket connection established with session_name: {:?}",
-        session_name
-    );
-
     ws.on_upgrade(move |socket| handle_ws_terminal(socket, session_name, params, state))
 }
 
 async fn handle_ws_control(socket: WebSocket, state: AppState) {
-    info!("New Control WebSocket connection established");
-
     let config = SetConfigPayload::from(&state.config);
     let set_config_msg = WebServerToWebClientControlMessage::SetConfig(config);
-    info!("Sending initial config to client: {:?}", set_config_msg);
 
     let (control_socket_tx, mut control_socket_rx) = socket.split();
 
@@ -110,7 +97,6 @@ async fn handle_ws_control(socket: WebSocket, state: AppState) {
                 }
             },
             Message::Close(_) => {
-                log::info!("Control WebSocket connection closed, exiting");
                 return;
             },
             _ => {
@@ -139,10 +125,6 @@ async fn handle_ws_terminal(
     };
 
     let (client_terminal_channel_tx, mut client_terminal_channel_rx) = socket.split();
-    info!(
-        "New Terminal WebSocket connection established {:?}",
-        session_name
-    );
     let (stdout_channel_tx, stdout_channel_rx) = tokio::sync::mpsc::unbounded_channel();
     state
         .connection_table
@@ -204,7 +186,6 @@ async fn handle_ws_terminal(
                 );
             },
             Message::Close(_) => {
-                log::info!("Client WebSocket connection closed, exiting");
                 state
                     .connection_table
                     .lock()

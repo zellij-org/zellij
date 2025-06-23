@@ -125,11 +125,9 @@ impl ClientChannels {
         self.terminal_channel_cancellation_token = Some(terminal_channel_cancellation_token);
     }
     pub fn cleanup(&mut self) {
-        log::info!("cleanup");
         if let Some(terminal_channel_cancellation_token) =
             self.terminal_channel_cancellation_token.take()
         {
-            log::info!("cancelling renders");
             terminal_channel_cancellation_token.cancel();
         }
     }
