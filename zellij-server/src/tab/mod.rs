@@ -143,6 +143,11 @@ const MAX_PENDING_VTE_EVENTS: usize = 7000;
 type HoldForCommand = Option<RunCommand>;
 pub type SuppressedPanes = HashMap<PaneId, (bool, Box<dyn Pane>)>; // bool => is scrollback editor
 
+pub enum PaneOrPaneId {
+    Pane(Box<dyn Pane>),
+    PaneId(PaneId),
+}
+
 enum BufferedTabInstruction {
     SetPaneSelectable(PaneId, bool),
     HandlePtyBytes(u32, VteBytes),
@@ -1581,6 +1586,35 @@ impl Tab {
             },
         }
         Ok(())
+    }
+    pub fn suppress_pane_and_replace_with_other_pane(&mut self, pane_id_to_replace: PaneId, pane_to_replace_with: Box<dyn Pane>, close_suppressed_pane: bool) {
+        // TODO: CONTINUE HERE - create a ScreenInstruction for this, then create a plugin API for
+        // this, then test it out with the picker plugin
+        let replaced_pane = if self.floating_panes.panes_contain(&pane_id_to_replace) {
+            self.floating_panes
+                .replace_pane(pane_id_to_replace, pane_to_replace_with)
+                .ok()
+        } else {
+            self.tiled_panes
+                .replace_pane(pane_id_to_replace, pane_to_replace_with)
+        };
+        if close_suppressed_pane {
+            drop(replaced_pane);
+        } else {
+            if let Some(replaced_pane) = replaced_pane {
+                let _ = resize_pty!(
+                    replaced_pane,
+                    self.os_api,
+                    self.senders,
+                    self.character_cell_size
+                );
+                let is_scrollback_editor = false;
+                self.suppressed_panes.insert(
+                    replaced_pane.pid(),
+                    (is_scrollback_editor, replaced_pane),
+                );
+            }
+        }
     }
     pub fn horizontal_split(
         &mut self,

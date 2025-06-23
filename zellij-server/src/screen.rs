@@ -43,7 +43,7 @@ use crate::{
     panes::PaneId,
     plugins::{PluginId, PluginInstruction, PluginRenderAsset},
     pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
-    tab::{SuppressedPanes, Tab},
+    tab::{SuppressedPanes, Tab, PaneOrPaneId},
     thread_bus::Bus,
     ui::{
         loading_indication::LoadingIndication,
@@ -2515,6 +2515,54 @@ impl Screen {
             },
         }
         Ok(())
+    }
+    pub fn replace_pane_with_existing_pane(
+        &mut self,
+        pane_id_to_replace: PaneId,
+        pane_id_of_existing_pane: PaneId,
+        should_close_pane_id_to_replace: bool,
+    ) {
+        let Some(tab_index_of_pane_id_to_replace) = self
+            .tabs
+            .iter()
+            .find(|(_tab_index, tab)| tab.has_pane_with_pid(&pane_id_to_replace))
+            .map(|(_tab_index, tab)| tab.position) else {
+                log::error!("Cold not find tab");
+                return;
+            };
+        let Some(tab_index_of_existing_pane) = self
+            .tabs
+            .iter()
+            .find(|(_tab_index, tab)| tab.has_pane_with_pid(&pane_id_of_existing_pane))
+            .map(|(_tab_index, tab)| tab.position) else {
+                log::error!("Cold not find tab");
+                return;
+            };
+        let Some(extracted_pane_from_other_tab) = self
+            .tabs
+            .iter_mut()
+            .find(|(_, t)| t.position == tab_index_of_existing_pane)
+            .and_then(|(_, t)| t.extract_pane(pane_id_of_existing_pane, false)) else {
+                log::error!("Failed to find pane");
+                return;
+            };
+        if let Some(tab) =
+            self.tabs.iter_mut().find(|(_, t)| t.position == tab_index_of_pane_id_to_replace)
+        {
+            tab.1.suppress_pane_and_replace_with_other_pane(
+                pane_id_to_replace,
+                extracted_pane_from_other_tab,
+                should_close_pane_id_to_replace
+            );
+        }
+        // TODO:
+        // 0. Find the tab of both of these... if they are not the same tab:
+        //     1. copy the PaneId portion above to find the relevant tab and extract the pane from it
+        //     2. build a PaneOrPaneId enum with Pane and this, and pass it to the tab's
+        //        suppress_pane_and_replace_with_other_panw
+        // 1. if they are, construct a PaneOrPaneId enum with Pane and the pane_id_of_existing_pane
+        //    and call the tab's suppress_pane_and_replace_with_other_panw function
+        unimplemented!()
     }
     pub fn reconfigure(
         &mut self,
