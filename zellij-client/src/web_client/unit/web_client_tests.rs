@@ -84,11 +84,9 @@ mod web_client_tests {
         let addr = listener.local_addr().unwrap();
         let port = addr.port();
 
-        eprintln!("Starting server on port {}", port);
-
-        let server_handle = tokio::spawn(async move {
-            eprintln!("Server task started, calling serve_web_client...");
-            let result = serve_web_client(
+        let server_handle = tokio::task::spawn_blocking(move || {
+            let rt = tokio::runtime::Handle::current();
+            rt.block_on(serve_web_client(
                 config,
                 options,
                 None,
@@ -96,32 +94,12 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
-            )
-            .await;
-            eprintln!("serve_web_client completed with result: {:?}", result);
-            result
+            ))
         });
 
-        // Increase timeout to 30 seconds for CI
-        match wait_for_server(port, Duration::from_secs(30)).await {
-            Ok(_) => eprintln!("Server is ready, proceeding with test"),
-            Err(e) => {
-                eprintln!("Server failed to start: {}", e);
-
-                // Check if the server task panicked or completed
-                if server_handle.is_finished() {
-                    match server_handle.await {
-                        Ok(result) => eprintln!("Server task completed with: {:?}", result),
-                        Err(e) => eprintln!("Server task panicked: {:?}", e),
-                    }
-                } else {
-                    eprintln!("Server task is still running but not accepting connections");
-                    server_handle.abort();
-                }
-
-                panic!("Server failed to start: {}", e);
-            },
-        }
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
 
         let url = format!("http://127.0.0.1:{}/info/version", port);
 
