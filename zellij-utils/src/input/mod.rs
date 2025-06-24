@@ -8,6 +8,7 @@ pub mod options;
 pub mod permission;
 pub mod plugins;
 pub mod theme;
+pub mod web_client;
 
 #[cfg(not(target_family = "wasm"))]
 pub use not_wasm::*;
@@ -45,7 +46,13 @@ mod not_wasm {
             session_name,
             editor: None,
             shell: None,
+            web_clients_allowed: None,
+            web_sharing: None,
             currently_marking_pane_group: None,
+            is_web_client: None,
+            web_server_ip: None,
+            web_server_port: None,
+            web_server_capability: None,
         }
     }
 

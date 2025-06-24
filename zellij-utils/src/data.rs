@@ -3,12 +3,13 @@ use crate::input::config::ConversionError;
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{RunPlugin, SplitSize};
 use crate::pane_size::PaneGeom;
-use crate::shared::colors as default_colors;
+use crate::shared::{colors as default_colors, eightbit_to_rgb};
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::fs::Metadata;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::time::Duration;
@@ -938,8 +939,17 @@ pub enum Event {
     FailedToChangeHostFolder(Option<String>), // String -> the error we got when changing
     PastedText(String),
     ConfigWasWrittenToDisk,
+    WebServerStatus(WebServerStatus),
+    FailedToStartWebServer(String),
     BeforeClose,
     InterceptedKeyPress(KeyWithModifier),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, ToString, Serialize, Deserialize)]
+pub enum WebServerStatus {
+    Online(String), // String -> base url
+    Offline,
+    DifferentVersion(String), // version
 }
 
 #[derive(
@@ -971,6 +981,7 @@ pub enum Permission {
     MessageAndLaunchOtherPlugins,
     Reconfigure,
     FullHdAccess,
+    StartWebServer,
     InterceptInput,
 }
 
@@ -994,6 +1005,9 @@ impl PermissionType {
             },
             PermissionType::Reconfigure => "Change Zellij runtime configuration".to_owned(),
             PermissionType::FullHdAccess => "Full access to the hard-drive".to_owned(),
+            PermissionType::StartWebServer => {
+                "Start a local web server to serve Zellij sessions".to_owned()
+            },
             PermissionType::InterceptInput => "Intercept Input (keyboard & mouse)".to_owned(),
         }
     }
@@ -1098,6 +1112,48 @@ pub enum PaletteColor {
 impl Default for PaletteColor {
     fn default() -> PaletteColor {
         PaletteColor::EightBit(0)
+    }
+}
+
+// these are used for the web client
+impl PaletteColor {
+    pub fn as_rgb_str(&self) -> String {
+        let (r, g, b) = match *self {
+            Self::Rgb((r, g, b)) => (r, g, b),
+            Self::EightBit(c) => eightbit_to_rgb(c),
+        };
+        format!("rgb({}, {}, {})", r, g, b)
+    }
+    pub fn from_rgb_str(rgb_str: &str) -> Self {
+        let trimmed = rgb_str.trim();
+
+        if !trimmed.starts_with("rgb(") || !trimmed.ends_with(')') {
+            return Self::default();
+        }
+
+        let inner = trimmed
+            .strip_prefix("rgb(")
+            .and_then(|s| s.strip_suffix(')'))
+            .unwrap_or("");
+
+        let parts: Vec<&str> = inner.split(',').collect();
+
+        if parts.len() != 3 {
+            return Self::default();
+        }
+
+        let mut rgb_values = [0u8; 3];
+        for (i, part) in parts.iter().enumerate() {
+            if let Some(rgb_val) = rgb_values.get_mut(i) {
+                if let Ok(parsed) = part.trim().parse::<u8>() {
+                    *rgb_val = parsed;
+                } else {
+                    return Self::default();
+                }
+            }
+        }
+
+        Self::Rgb((rgb_values[0], rgb_values[1], rgb_values[2]))
     }
 }
 
@@ -1517,7 +1573,14 @@ pub struct ModeInfo {
     pub session_name: Option<String>,
     pub editor: Option<PathBuf>,
     pub shell: Option<PathBuf>,
+    pub web_clients_allowed: Option<bool>,
+    pub web_sharing: Option<WebSharing>,
     pub currently_marking_pane_group: Option<bool>,
+    pub is_web_client: Option<bool>,
+    // note: these are only the configured ip/port that will be bound if and when the server is up
+    pub web_server_ip: Option<IpAddr>,
+    pub web_server_port: Option<u16>,
+    pub web_server_capability: Option<bool>,
 }
 
 impl ModeInfo {
@@ -1564,6 +1627,8 @@ pub struct SessionInfo {
     pub is_current_session: bool,
     pub available_layouts: Vec<LayoutInfo>,
     pub plugins: BTreeMap<u32, PluginInfo>,
+    pub web_clients_allowed: bool,
+    pub web_client_count: usize,
     pub tab_history: BTreeMap<ClientId, Vec<usize>>,
 }
 
@@ -2182,6 +2247,77 @@ impl OriginatingPlugin {
     }
 }
 
+#[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WebSharing {
+    #[serde(alias = "on")]
+    On,
+    #[serde(alias = "off")]
+    Off,
+    #[serde(alias = "disabled")]
+    Disabled,
+}
+
+impl Default for WebSharing {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
+impl WebSharing {
+    pub fn is_on(&self) -> bool {
+        match self {
+            WebSharing::On => true,
+            _ => false,
+        }
+    }
+    pub fn web_clients_allowed(&self) -> bool {
+        match self {
+            WebSharing::On => true,
+            _ => false,
+        }
+    }
+    pub fn sharing_is_disabled(&self) -> bool {
+        match self {
+            WebSharing::Disabled => true,
+            _ => false,
+        }
+    }
+    pub fn set_sharing(&mut self) -> bool {
+        // returns true if successfully set sharing
+        match self {
+            WebSharing::On => true,
+            WebSharing::Off => {
+                *self = WebSharing::On;
+                true
+            },
+            WebSharing::Disabled => false,
+        }
+    }
+    pub fn set_not_sharing(&mut self) -> bool {
+        // returns true if successfully set not sharing
+        match self {
+            WebSharing::On => {
+                *self = WebSharing::Off;
+                true
+            },
+            WebSharing::Off => true,
+            WebSharing::Disabled => false,
+        }
+    }
+}
+
+impl FromStr for WebSharing {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "On" | "on" => Ok(Self::On),
+            "Off" | "off" => Ok(Self::Off),
+            "Disabled" | "disabled" => Ok(Self::Disabled),
+            _ => Err(format!("No such option: {}", s)),
+        }
+    }
+}
+
 type Context = BTreeMap<String, String>;
 
 #[derive(Debug, Clone, EnumDiscriminants, ToString)]
@@ -2340,6 +2476,10 @@ pub enum PluginCommand {
     // close_plugin_after_replace
     OpenFileNearPlugin(FileToOpen, Context),
     OpenFileFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>, Context),
+    StartWebServer,
+    StopWebServer,
+    ShareCurrentSession,
+    StopSharingCurrentSession,
     OpenFileInPlaceOfPlugin(FileToOpen, bool, Context), // bool -> close_plugin_after_replace
     GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>),     // panes to group, panes to ungroup
     HighlightAndUnhighlightPanes(Vec<PaneId>, Vec<PaneId>), // panes to highlight, panes to
@@ -2347,6 +2487,13 @@ pub enum PluginCommand {
     CloseMultiplePanes(Vec<PaneId>),
     FloatMultiplePanes(Vec<PaneId>),
     EmbedMultiplePanes(Vec<PaneId>),
+    QueryWebServerStatus,
+    SetSelfMouseSelectionSupport(bool),
+    GenerateWebLoginToken(Option<String>), // String -> optional token label
+    RevokeWebLoginToken(String),           // String -> token id (provided name or generated id)
+    ListWebLoginTokens,
+    RevokeAllWebLoginTokens,
+    RenameWebLoginToken(String, String), // (original_name, new_name)
     InterceptKeyPresses,
     ClearKeyPressesIntercepts,
 }

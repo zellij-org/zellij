@@ -12,6 +12,7 @@ mod clippy;
 mod dist;
 mod flags;
 mod format;
+mod metadata;
 mod pipelines;
 mod test;
 
@@ -71,6 +72,10 @@ fn workspace_members() -> &'static Vec<WorkspaceMember> {
             },
             WorkspaceMember {
                 crate_name: "default-plugins/multiple-select",
+                build: true,
+            },
+            WorkspaceMember {
+                crate_name: "default-plugins/share",
                 build: true,
             },
             WorkspaceMember {

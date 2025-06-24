@@ -292,6 +292,7 @@ impl PaneFrame {
             full_indication.push(EMPTY_TERMINAL_CHARACTER);
             full_indication.append(&mut text.clone());
             short_indication_len += 2;
+            short_indication.push(EMPTY_TERMINAL_CHARACTER);
             short_indication.append(&mut text);
         }
         if full_indication_len + 4 <= max_length {

@@ -2,7 +2,7 @@ mod kdl_layout_parser;
 use crate::data::{
     BareKey, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo,
     MultiplayerColors, Palette, PaletteColor, PaneInfo, PaneManifest, PermissionType, Resize,
-    SessionInfo, StyleDeclaration, Styling, TabInfo, DEFAULT_STYLES,
+    SessionInfo, StyleDeclaration, Styling, TabInfo, WebSharing, DEFAULT_STYLES,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -15,8 +15,10 @@ use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
+use crate::input::web_client::WebClientConfig;
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::net::{IpAddr, Ipv4Addr};
 use strum::IntoEnumIterator;
 use uuid::Uuid;
 
@@ -2295,6 +2297,18 @@ impl Options {
             "support_kitty_keyboard_protocol"
         )
         .map(|(v, _)| v);
+        let web_server =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "web_server").map(|(v, _)| v);
+        let web_sharing =
+            match kdl_property_first_arg_as_string_or_error!(kdl_options, "web_sharing") {
+                Some((string, entry)) => Some(WebSharing::from_str(string).map_err(|_| {
+                    kdl_parsing_error!(
+                        format!("Invalid value for web_sharing: '{}'", string),
+                        entry
+                    )
+                })?),
+                None => None,
+            };
         let stacked_resize =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "stacked_resize").map(|(v, _)| v);
         let show_startup_tips =
@@ -2306,6 +2320,29 @@ impl Options {
         let advanced_mouse_actions =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "advanced_mouse_actions")
                 .map(|(v, _)| v);
+        let web_server_ip =
+            match kdl_property_first_arg_as_string_or_error!(kdl_options, "web_server_ip") {
+                Some((string, entry)) => Some(IpAddr::from_str(string).map_err(|_| {
+                    kdl_parsing_error!(
+                        format!("Invalid value for web_server_ip: '{}'", string),
+                        entry
+                    )
+                })?),
+                None => None,
+            };
+        let web_server_port =
+            kdl_property_first_arg_as_i64_or_error!(kdl_options, "web_server_port")
+                .map(|(web_server_port, _entry)| web_server_port as u16);
+        let web_server_cert =
+            kdl_property_first_arg_as_string_or_error!(kdl_options, "web_server_cert")
+                .map(|(string, _entry)| PathBuf::from(string));
+        let web_server_key =
+            kdl_property_first_arg_as_string_or_error!(kdl_options, "web_server_key")
+                .map(|(string, _entry)| PathBuf::from(string));
+        let enforce_https_for_localhost =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "enforce_https_for_localhost")
+                .map(|(v, _)| v);
+
         Ok(Options {
             simplified_ui,
             theme,
@@ -2334,10 +2371,17 @@ impl Options {
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
+            web_server,
+            web_sharing,
             stacked_resize,
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            web_server_ip,
+            web_server_port,
+            web_server_cert,
+            web_server_key,
+            enforce_https_for_localhost,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -3137,6 +3181,169 @@ impl Options {
             None
         }
     }
+    fn web_server_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            "// Whether to make sure a local web server is running when a new Zellij session starts.",
+            "// This web server will allow creating new sessions and attaching to existing ones that have",
+            "// opted in to being shared in the browser.",
+            "// When enabled, navigate to http://127.0.0.1:8082",
+            "// (Requires restart)",
+            "// ",
+            "// Note: a local web server can still be manually started from within a Zellij session or from the CLI.",
+            "// If this is not desired, one can use a version of Zellij compiled without",
+            "// `web_server_capability`",
+            "// ",
+            "// Possible values:",
+            "// - true",
+            "// - false",
+            "// Default: false",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("web_server");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(web_server) = self.web_server {
+            let mut node = create_node(web_server);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn web_sharing_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            "// Whether to allow sessions started in the terminal to be shared through a local web server, assuming one is",
+            "// running (see the `web_server` option for more details).",
+            "// (Requires restart)",
+            "// ",
+            "// Note: This is an administrative separation and not intended as a security measure.",
+            "// ",
+            "// Possible values:",
+            "// - \"on\" (allow web sharing through the local web server if it",
+            "// is online)",
+            "// - \"off\" (do not allow web sharing unless sessions explicitly opt-in to it)",
+            "// - \"disabled\" (do not allow web sharing and do not permit sessions started in the terminal to opt-in to it)",
+            "// Default: \"off\"",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("web_sharing");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(web_sharing) = &self.web_sharing {
+            let mut node = match web_sharing {
+                WebSharing::On => create_node("on"),
+                WebSharing::Off => create_node("off"),
+                WebSharing::Disabled => create_node("disabled"),
+            };
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("off");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn web_server_cert_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            "// A path to a certificate file to be used when setting up the web client to serve the",
+            "// connection over HTTPs",
+            "// ",
+        );
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("web_server_cert");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(web_server_cert) = &self.web_server_cert {
+            let mut node = create_node(&web_server_cert.display().to_string());
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("/path/to/cert.pem");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn web_server_key_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            "// A path to a key file to be used when setting up the web client to serve the",
+            "// connection over HTTPs",
+            "// ",
+        );
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("web_server_key");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(web_server_key) = &self.web_server_key {
+            let mut node = create_node(&web_server_key.display().to_string());
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("/path/to/key.pem");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn enforce_https_for_localhost_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            "/// Whether to enforce https connections to the web server when it is bound to localhost",
+            "/// (127.0.0.0/8)",
+            "///",
+            "/// Note: https is ALWAYS enforced when bound to non-local interfaces",
+            "///",
+            "/// Default: false",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("enforce_https_for_localhost");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(enforce_https_for_localhost) = self.enforce_https_for_localhost {
+            let mut node = create_node(enforce_https_for_localhost);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn stacked_resize_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
@@ -3242,6 +3449,62 @@ impl Options {
             None
         }
     }
+    fn web_server_ip_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// The ip address the web server should listen on when it starts",
+            "// Default: \"127.0.0.1\"",
+            "// (Requires restart)",
+        );
+
+        let create_node = |node_value: IpAddr| -> KdlNode {
+            let mut node = KdlNode::new("web_server_ip");
+            node.push(KdlValue::String(node_value.to_string()));
+            node
+        };
+        if let Some(web_server_ip) = self.web_server_ip {
+            let mut node = create_node(web_server_ip);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn web_server_port_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// The port the web server should listen on when it starts",
+            "// Default: 8082",
+            "// (Requires restart)",
+        );
+
+        let create_node = |node_value: u16| -> KdlNode {
+            let mut node = KdlNode::new("web_server_port");
+            node.push(KdlValue::Base10(node_value as i64));
+            node
+        };
+        if let Some(web_server_port) = self.web_server_port {
+            let mut node = create_node(web_server_port);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(8082);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
@@ -3329,6 +3592,23 @@ impl Options {
         {
             nodes.push(support_kitty_keyboard_protocol);
         }
+        if let Some(web_server) = self.web_server_to_kdl(add_comments) {
+            nodes.push(web_server);
+        }
+        if let Some(web_sharing) = self.web_sharing_to_kdl(add_comments) {
+            nodes.push(web_sharing);
+        }
+        if let Some(web_server_cert) = self.web_server_cert_to_kdl(add_comments) {
+            nodes.push(web_server_cert);
+        }
+        if let Some(web_server_key) = self.web_server_key_to_kdl(add_comments) {
+            nodes.push(web_server_key);
+        }
+        if let Some(enforce_https_for_localhost) =
+            self.enforce_https_for_localhost_to_kdl(add_comments)
+        {
+            nodes.push(enforce_https_for_localhost);
+        }
         if let Some(stacked_resize) = self.stacked_resize_to_kdl(add_comments) {
             nodes.push(stacked_resize);
         }
@@ -3340,6 +3620,12 @@ impl Options {
         }
         if let Some(advanced_mouse_actions) = self.advanced_mouse_actions_to_kdl(add_comments) {
             nodes.push(advanced_mouse_actions);
+        }
+        if let Some(web_server_ip) = self.web_server_ip_to_kdl(add_comments) {
+            nodes.push(web_server_ip);
+        }
+        if let Some(web_server_port) = self.web_server_port_to_kdl(add_comments) {
+            nodes.push(web_server_port);
         }
         nodes
     }
@@ -3830,6 +4116,10 @@ impl Config {
             let config_env = EnvironmentVariables::from_kdl(&env_config)?;
             config.env = config.env.merge(config_env);
         }
+        if let Some(web_client_config) = kdl_config.get("web_client") {
+            let config_web_client = WebClientConfig::from_kdl(&web_client_config)?;
+            config.web_client = config.web_client.merge(config_web_client);
+        }
         Ok(config)
     }
     pub fn to_string(&self, add_comments: bool) -> String {
@@ -3856,6 +4146,8 @@ impl Config {
         if let Some(env) = self.env.to_kdl() {
             document.nodes_mut().push(env);
         }
+
+        document.nodes_mut().push(self.web_client.to_kdl());
 
         document
             .nodes_mut()
@@ -4499,6 +4791,17 @@ impl SessionInfo {
                     .collect()
             })
             .ok_or("Failed to parse available_layouts")?;
+        let web_client_count = kdl_document
+            .get("web_client_count")
+            .and_then(|n| n.entries().iter().next())
+            .and_then(|e| e.value().as_i64())
+            .map(|c| c as usize)
+            .unwrap_or(0);
+        let web_clients_allowed = kdl_document
+            .get("web_clients_allowed")
+            .and_then(|n| n.entries().iter().next())
+            .and_then(|e| e.value().as_bool())
+            .unwrap_or(false);
         let is_current_session = name == current_session_name;
         let mut tab_history = BTreeMap::new();
         if let Some(kdl_tab_history) = kdl_document.get("tab_history").and_then(|p| p.children()) {
@@ -4530,6 +4833,8 @@ impl SessionInfo {
             connected_clients,
             is_current_session,
             available_layouts,
+            web_client_count,
+            web_clients_allowed,
             plugins: Default::default(), // we do not serialize plugin information
             tab_history,
         })
@@ -4555,6 +4860,12 @@ impl SessionInfo {
 
         let mut panes = KdlNode::new("panes");
         panes.set_children(self.panes.encode_to_kdl());
+
+        let mut web_client_count = KdlNode::new("web_client_count");
+        web_client_count.push(self.web_client_count as i64);
+
+        let mut web_clients_allowed = KdlNode::new("web_clients_allowed");
+        web_clients_allowed.push(self.web_clients_allowed);
 
         let mut available_layouts = KdlNode::new("available_layouts");
         let mut available_layouts_children = KdlDocument::new();
@@ -4594,6 +4905,8 @@ impl SessionInfo {
         kdl_document.nodes_mut().push(tabs);
         kdl_document.nodes_mut().push(panes);
         kdl_document.nodes_mut().push(connected_clients);
+        kdl_document.nodes_mut().push(web_clients_allowed);
+        kdl_document.nodes_mut().push(web_client_count);
         kdl_document.nodes_mut().push(available_layouts);
         kdl_document.nodes_mut().push(tab_history);
         kdl_document.fmt();
@@ -5151,6 +5464,8 @@ fn serialize_and_deserialize_session_info_with_data() {
             LayoutInfo::File("layout3".to_owned()),
         ],
         plugins: Default::default(),
+        web_client_count: 2,
+        web_clients_allowed: true,
         tab_history: Default::default(),
     };
     let serialized = session_info.to_string();
@@ -5914,6 +6229,8 @@ fn config_options_to_string() {
         serialization_interval 1
         disable_session_metadata true
         support_kitty_keyboard_protocol false
+        web_server true
+        web_sharing "disabled"
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = Options::from_kdl(&document).unwrap();
@@ -5959,6 +6276,8 @@ fn config_options_to_string_with_comments() {
         serialization_interval 1
         disable_session_metadata true
         support_kitty_keyboard_protocol false
+        web_server true
+        web_sharing "disabled"
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = Options::from_kdl(&document).unwrap();

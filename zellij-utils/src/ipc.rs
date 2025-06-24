@@ -79,6 +79,7 @@ pub enum ClientToServerMsg {
         Box<Layout>,
         Box<PluginAliases>,
         bool, // should launch setup wizard
+        bool, // is_web_client
     ),
     AttachClient(
         ClientAttributes,
@@ -86,6 +87,7 @@ pub enum ClientToServerMsg {
         Options,             // represents the runtime configuration
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane id to focus
+        bool,                // is_web_client
     ),
     Action(Action, Option<u32>, Option<ClientId>), // u32 is the terminal id
     Key(KeyWithModifier, Vec<u8>, bool),           // key, raw_bytes, is_kitty_keyboard_protocol
@@ -94,6 +96,8 @@ pub enum ClientToServerMsg {
     ConnStatus,
     ConfigWrittenToDisk(Config),
     FailedToWriteConfigToDisk(Option<PathBuf>),
+    WebServerStarted(String), // String -> base_url
+    FailedToStartWebServer(String),
 }
 
 // Types of messages sent from the server to the client
@@ -110,6 +114,7 @@ pub enum ServerToClientMsg {
     CliPipeOutput(String, String), // String -> pipe name, String -> Output
     QueryTerminalSize,
     WriteConfigToDisk { config: String },
+    StartWebServer,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -119,6 +124,7 @@ pub enum ExitReason {
     ForceDetached,
     CannotAttach,
     Disconnect,
+    WebClientsForbidden,
     Error(String),
 }
 
@@ -134,6 +140,10 @@ impl Display for ExitReason {
             Self::CannotAttach => write!(
                 f,
                 "Session attached to another client. Use --force flag to force connect."
+            ),
+            Self::WebClientsForbidden => write!(
+                f,
+                "Web clients are not allowed in this session - cannot attach"
             ),
             Self::Disconnect => {
                 let session_tip = match crate::envs::get_session_name() {

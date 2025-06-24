@@ -88,9 +88,15 @@ pub struct ClientOsInputOutput {
     session_name: Arc<Mutex<Option<String>>>,
 }
 
+impl std::fmt::Debug for ClientOsInputOutput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClientOsInputOutput").finish()
+    }
+}
+
 /// The `ClientOsApi` trait represents an abstract interface to the features of an operating system that
 /// Zellij client requires.
-pub trait ClientOsApi: Send + Sync {
+pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
     /// Returns the size of the terminal associated to file descriptor `fd`.
     fn get_terminal_size_using_fd(&self, fd: RawFd) -> Size;
     /// Set the terminal associated to file descriptor `fd` to
@@ -216,14 +222,14 @@ impl ClientOsApi for ClientOsInputOutput {
     }
 
     fn send_to_server(&self, msg: ClientToServerMsg) {
-        // TODO: handle the error here, right now we silently ignore it
-        let _ = self
-            .send_instructions_to_server
-            .lock()
-            .unwrap()
-            .as_mut()
-            .unwrap()
-            .send(msg);
+        match self.send_instructions_to_server.lock().unwrap().as_mut() {
+            Some(sender) => {
+                let _ = sender.send(msg);
+            },
+            None => {
+                log::warn!("Server not ready, dropping message.");
+            },
+        }
     }
     fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
         self.receive_instructions_from_server

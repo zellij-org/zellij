@@ -25,6 +25,12 @@ use zellij_utils::data::{
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
+#[cfg(feature = "web_server_capability")]
+use zellij_utils::web_authentication_tokens::{
+    create_token, list_tokens, rename_token, revoke_all_tokens, revoke_token,
+};
+#[cfg(feature = "web_server_capability")]
+use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
 
 use crate::{panes::PaneId, screen::ScreenInstruction};
 
@@ -45,6 +51,12 @@ use zellij_utils::{
         plugin_command::ProtobufPluginCommand,
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
+};
+
+#[cfg(feature = "web_server_capability")]
+use zellij_utils::plugin_api::plugin_command::{
+    CreateTokenResponse, ListTokensResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
+    RevokeTokenResponse,
 };
 
 macro_rules! apply_action {
@@ -455,6 +467,29 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     },
                     PluginCommand::EmbedMultiplePanes(pane_ids) => {
                         embed_multiple_panes(env, pane_ids.into_iter().map(|p| p.into()).collect())
+                    },
+                    PluginCommand::StartWebServer => start_web_server(env),
+                    PluginCommand::StopWebServer => stop_web_server(env),
+                    PluginCommand::QueryWebServerStatus => query_web_server_status(env),
+                    PluginCommand::ShareCurrentSession => share_current_session(env),
+                    PluginCommand::StopSharingCurrentSession => stop_sharing_current_session(env),
+                    PluginCommand::SetSelfMouseSelectionSupport(selection_support) => {
+                        set_self_mouse_selection_support(env, selection_support);
+                    },
+                    PluginCommand::GenerateWebLoginToken(token_label) => {
+                        generate_web_login_token(env, token_label);
+                    },
+                    PluginCommand::RevokeWebLoginToken(label) => {
+                        revoke_web_login_token(env, label);
+                    },
+                    PluginCommand::ListWebLoginTokens => {
+                        list_web_login_tokens(env);
+                    },
+                    PluginCommand::RevokeAllWebLoginTokens => {
+                        revoke_all_web_login_tokens(env);
+                    },
+                    PluginCommand::RenameWebLoginToken(old_name, new_name) => {
+                        rename_web_login_token(env, old_name, new_name);
                     },
                     PluginCommand::InterceptKeyPresses => intercept_key_presses(&mut env),
                     PluginCommand::ClearKeyPressesIntercepts => {
@@ -2179,6 +2214,37 @@ fn load_new_plugin(
     }
 }
 
+fn start_web_server(env: &PluginEnv) {
+    let _ = env
+        .senders
+        .send_to_server(ServerInstruction::StartWebServer(env.client_id));
+}
+
+fn stop_web_server(_env: &PluginEnv) {
+    #[cfg(feature = "web_server_capability")]
+    let _ = shutdown_all_webserver_instances();
+    #[cfg(not(feature = "web_server_capability"))]
+    log::error!("This instance of Zellij was compiled without web server capabilities");
+}
+
+fn query_web_server_status(env: &PluginEnv) {
+    let _ = env
+        .senders
+        .send_to_background_jobs(BackgroundJob::QueryZellijWebServerStatus);
+}
+
+fn share_current_session(env: &PluginEnv) {
+    let _ = env
+        .senders
+        .send_to_server(ServerInstruction::ShareCurrentSession(env.client_id));
+}
+
+fn stop_sharing_current_session(env: &PluginEnv) {
+    let _ = env
+        .senders
+        .send_to_server(ServerInstruction::StopSharingCurrentSession(env.client_id));
+}
+
 fn group_and_ungroup_panes(
     env: &PluginEnv,
     panes_to_group: Vec<PaneId>,
@@ -2236,6 +2302,140 @@ fn embed_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
             pane_ids,
             env.client_id,
         ));
+}
+
+#[cfg(feature = "web_server_capability")]
+fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>) {
+    let serialized = match create_token(token_label) {
+        Ok((token, token_label)) => CreateTokenResponse {
+            token: Some(token),
+            token_label: Some(token_label),
+            error: None,
+        },
+        Err(e) => CreateTokenResponse {
+            token: None,
+            token_label: None,
+            error: Some(e.to_string()),
+        },
+    };
+    let _ = wasi_write_object(env, &serialized.encode_to_vec());
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+fn generate_web_login_token(env: &PluginEnv, _token_label: Option<String>) {
+    log::error!("This version of Zellij was compiled without the web server capabilities!");
+    let empty_vec: Vec<&str> = vec![];
+    let _ = wasi_write_object(env, &empty_vec);
+}
+
+#[cfg(feature = "web_server_capability")]
+fn revoke_web_login_token(env: &PluginEnv, token_label: String) {
+    let serialized = match revoke_token(&token_label) {
+        Ok(true) => RevokeTokenResponse {
+            successfully_revoked: true,
+            error: None,
+        },
+        Ok(false) => RevokeTokenResponse {
+            successfully_revoked: false,
+            error: Some(format!("Token with label {} not found", token_label)),
+        },
+        Err(e) => RevokeTokenResponse {
+            successfully_revoked: false,
+            error: Some(e.to_string()),
+        },
+    };
+    let _ = wasi_write_object(env, &serialized.encode_to_vec());
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+fn revoke_web_login_token(env: &PluginEnv, _token_label: String) {
+    log::error!("This version of Zellij was compiled without the web server capabilities!");
+    let empty_vec: Vec<&str> = vec![];
+    let _ = wasi_write_object(env, &empty_vec);
+}
+
+#[cfg(feature = "web_server_capability")]
+fn revoke_all_web_login_tokens(env: &PluginEnv) {
+    let serialized = match revoke_all_tokens() {
+        Ok(_) => RevokeAllWebTokensResponse {
+            successfully_revoked: true,
+            error: None,
+        },
+        Err(e) => RevokeAllWebTokensResponse {
+            successfully_revoked: false,
+            error: Some(e.to_string()),
+        },
+    };
+    let _ = wasi_write_object(env, &serialized.encode_to_vec());
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+fn revoke_all_web_login_tokens(env: &PluginEnv) {
+    log::error!("This version of Zellij was compiled without the web server capabilities!");
+    let empty_vec: Vec<&str> = vec![];
+    let _ = wasi_write_object(env, &empty_vec);
+}
+
+#[cfg(feature = "web_server_capability")]
+fn rename_web_login_token(env: &PluginEnv, old_name: String, new_name: String) {
+    let serialized = match rename_token(&old_name, &new_name) {
+        Ok(_) => RenameWebTokenResponse {
+            successfully_renamed: true,
+            error: None,
+        },
+        Err(e) => RenameWebTokenResponse {
+            successfully_renamed: false,
+            error: Some(e.to_string()),
+        },
+    };
+    let _ = wasi_write_object(env, &serialized.encode_to_vec());
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+fn rename_web_login_token(env: &PluginEnv, _old_name: String, _new_name: String) {
+    log::error!("This version of Zellij was compiled without the web server capabilities!");
+    let empty_vec: Vec<&str> = vec![];
+    let _ = wasi_write_object(env, &empty_vec);
+}
+
+#[cfg(feature = "web_server_capability")]
+fn list_web_login_tokens(env: &PluginEnv) {
+    let serialized = match list_tokens() {
+        Ok(token_list) => ListTokensResponse {
+            tokens: token_list.iter().map(|t| t.name.clone()).collect(),
+            creation_times: token_list.iter().map(|t| t.created_at.clone()).collect(),
+            error: None,
+        },
+        Err(e) => ListTokensResponse {
+            tokens: vec![],
+            creation_times: vec![],
+            error: Some(e.to_string()),
+        },
+    };
+    let _ = wasi_write_object(env, &serialized.encode_to_vec());
+}
+
+#[cfg(not(feature = "web_server_capability"))]
+fn list_web_login_tokens(env: &PluginEnv) {
+    log::error!("This version of Zellij was compiled without the web server capabilities!");
+    let empty_vec: Vec<&str> = vec![];
+    let _ = wasi_write_object(env, &empty_vec);
+}
+
+fn set_self_mouse_selection_support(env: &PluginEnv, selection_support: bool) {
+    env.senders
+        .send_to_screen(ScreenInstruction::SetMouseSelectionSupport(
+            PaneId::Plugin(env.plugin_id),
+            selection_support,
+        ))
+        .with_context(|| {
+            format!(
+                "failed to set plugin {} selectable from plugin {}",
+                selection_support,
+                env.name()
+            )
+        })
+        .non_fatal();
 }
 
 fn intercept_key_presses(env: &mut PluginEnv) {
@@ -2433,6 +2633,16 @@ fn check_command_permission(
             PermissionType::Reconfigure
         },
         PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,
+        PluginCommand::ShareCurrentSession
+        | PluginCommand::StopSharingCurrentSession
+        | PluginCommand::StopWebServer
+        | PluginCommand::QueryWebServerStatus
+        | PluginCommand::GenerateWebLoginToken(..)
+        | PluginCommand::RevokeWebLoginToken(..)
+        | PluginCommand::RevokeAllWebLoginTokens
+        | PluginCommand::RenameWebLoginToken(..)
+        | PluginCommand::ListWebLoginTokens
+        | PluginCommand::StartWebServer => PermissionType::StartWebServer,
         PluginCommand::InterceptKeyPresses | PluginCommand::ClearKeyPressesIntercepts => {
             PermissionType::InterceptInput
         },

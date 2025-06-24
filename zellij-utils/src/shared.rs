@@ -1,10 +1,12 @@
 //! Some general utility functions.
 
+use std::net::{IpAddr, Ipv4Addr};
 use std::{iter, str::from_utf8};
 
 use crate::data::{Palette, PaletteColor, PaletteSource, ThemeHue};
 use crate::envs::get_session_name;
-use colorsys::Rgb;
+use crate::input::options::Options;
+use colorsys::{Ansi256, Rgb};
 use strip_ansi_escapes::strip;
 use unicode_width::UnicodeWidthStr;
 
@@ -87,6 +89,10 @@ pub fn _hex_to_rgb(hex: &str) -> (u8, u8, u8) {
         .into()
 }
 
+pub fn eightbit_to_rgb(c: u8) -> (u8, u8, u8) {
+    Ansi256::new(c).as_rgb().into()
+}
+
 pub fn default_palette() -> Palette {
     Palette {
         source: PaletteSource::Default,
@@ -148,4 +154,39 @@ pub fn version_number(mut version: &str) -> usize {
     }
 
     version_number
+}
+
+pub fn web_server_base_url(
+    web_server_ip: IpAddr,
+    web_server_port: u16,
+    has_certificate: bool,
+    enforce_https_for_localhost: bool,
+) -> String {
+    let is_loopback = match web_server_ip {
+        IpAddr::V4(ipv4) => ipv4.is_loopback(),
+        IpAddr::V6(ipv6) => ipv6.is_loopback(),
+    };
+
+    let url_prefix = if is_loopback && !enforce_https_for_localhost && !has_certificate {
+        "http"
+    } else {
+        "https"
+    };
+    format!("{}://{}:{}", url_prefix, web_server_ip, web_server_port)
+}
+
+pub fn web_server_base_url_from_config(config_options: Options) -> String {
+    let web_server_ip = config_options
+        .web_server_ip
+        .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
+    let has_certificate =
+        config_options.web_server_cert.is_some() && config_options.web_server_key.is_some();
+    let enforce_https_for_localhost = config_options.enforce_https_for_localhost.unwrap_or(false);
+    web_server_base_url(
+        web_server_ip,
+        web_server_port,
+        has_certificate,
+        enforce_https_for_localhost,
+    )
 }

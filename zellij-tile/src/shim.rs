@@ -8,7 +8,10 @@ use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
 pub use zellij_utils::plugin_api;
-use zellij_utils::plugin_api::plugin_command::ProtobufPluginCommand;
+use zellij_utils::plugin_api::plugin_command::{
+    CreateTokenResponse, ListTokensResponse, ProtobufPluginCommand, RenameWebTokenResponse,
+    RevokeAllWebTokensResponse, RevokeTokenResponse,
+};
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
 pub use super::ui_components::*;
@@ -1273,6 +1276,41 @@ pub fn change_floating_panes_coordinates(
     unsafe { host_run_plugin_command() };
 }
 
+pub fn start_web_server() {
+    let plugin_command = PluginCommand::StartWebServer;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn stop_web_server() {
+    let plugin_command = PluginCommand::StopWebServer;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn query_web_server_status() {
+    let plugin_command = PluginCommand::QueryWebServerStatus;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn share_current_session() {
+    let plugin_command = PluginCommand::ShareCurrentSession;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn stop_sharing_current_session() {
+    let plugin_command = PluginCommand::StopSharingCurrentSession;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 pub fn group_and_ungroup_panes(pane_ids_to_group: Vec<PaneId>, pane_ids_to_ungroup: Vec<PaneId>) {
     let plugin_command =
         PluginCommand::GroupAndUngroupPanes(pane_ids_to_group, pane_ids_to_ungroup);
@@ -1311,6 +1349,92 @@ pub fn embed_multiple_panes(pane_ids: Vec<PaneId>) {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+}
+
+pub fn set_self_mouse_selection_support(selection_support: bool) {
+    let plugin_command = PluginCommand::SetSelfMouseSelectionSupport(selection_support);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn generate_web_login_token(token_label: Option<String>) -> Result<String, String> {
+    let plugin_command = PluginCommand::GenerateWebLoginToken(token_label);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let create_token_response =
+        CreateTokenResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    if let Some(error) = create_token_response.error {
+        Err(error)
+    } else if let Some(token) = create_token_response.token {
+        Ok(token)
+    } else {
+        Err("Received empty response".to_owned())
+    }
+}
+
+pub fn revoke_web_login_token(token_label: &str) -> Result<(), String> {
+    let plugin_command = PluginCommand::RevokeWebLoginToken(token_label.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let revoke_token_response =
+        RevokeTokenResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    if let Some(error) = revoke_token_response.error {
+        Err(error)
+    } else {
+        Ok(())
+    }
+}
+
+pub fn list_web_login_tokens() -> Result<Vec<(String, String)>, String> {
+    // (name, created_at)
+    let plugin_command = PluginCommand::ListWebLoginTokens;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let list_tokens_response =
+        ListTokensResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    if let Some(error) = list_tokens_response.error {
+        Err(error)
+    } else {
+        let tokens_and_creation_times = std::iter::zip(
+            list_tokens_response.tokens,
+            list_tokens_response.creation_times,
+        )
+        .collect();
+        Ok(tokens_and_creation_times)
+    }
+}
+
+pub fn revoke_all_web_tokens() -> Result<(), String> {
+    let plugin_command = PluginCommand::RevokeAllWebLoginTokens;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let revoke_all_web_tokens_response =
+        RevokeAllWebTokensResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    if let Some(error) = revoke_all_web_tokens_response.error {
+        Err(error)
+    } else {
+        Ok(())
+    }
+}
+
+pub fn rename_web_token(old_name: &str, new_name: &str) -> Result<(), String> {
+    let plugin_command =
+        PluginCommand::RenameWebLoginToken(old_name.to_owned(), new_name.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let rename_web_token_response =
+        RenameWebTokenResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    if let Some(error) = rename_web_token_response.error {
+        Err(error)
+    } else {
+        Ok(())
+    }
 }
 
 pub fn intercept_key_presses() {

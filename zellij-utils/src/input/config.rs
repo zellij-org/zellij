@@ -14,6 +14,7 @@ use super::layout::RunPluginOrAlias;
 use super::options::Options;
 use super::plugins::{PluginAliases, PluginsConfigError};
 use super::theme::{Themes, UiConfig};
+use super::web_client::WebClientConfig;
 use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariables;
 use crate::{home, setup};
@@ -32,6 +33,7 @@ pub struct Config {
     pub ui: UiConfig,
     pub env: EnvironmentVariables,
     pub background_plugins: HashSet<RunPluginOrAlias>,
+    pub web_client: WebClientConfig,
 }
 
 #[derive(Error, Debug)]
@@ -245,6 +247,9 @@ impl Config {
                 .map(|config_dir| config_dir.join(DEFAULT_CONFIG_FILE_NAME))
         })
     }
+    pub fn default_config_file_path() -> Option<PathBuf> {
+        home::find_default_config_dir().map(|config_dir| config_dir.join(DEFAULT_CONFIG_FILE_NAME))
+    }
     pub fn write_config_to_disk(config: String, opts: &CliArgs) -> Result<Config, Option<PathBuf>> {
         // if we fail, try to return the PathBuf of the file we were not able to write to
         Config::from_kdl(&config, None)
@@ -404,11 +409,86 @@ impl Config {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
+pub async fn watch_config_file_changes<F, Fut>(config_file_path: PathBuf, on_config_change: F)
+where
+    F: Fn(Config) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = ()> + Send,
+{
+    // in a gist, what we do here is fire the `on_config_change` function whenever there is a
+    // change in the config file, we do this by:
+    // 1. Trying to watch the provided config file for changes
+    // 2. If the file is deleted or does not exist, we periodically poll for it (manually, not
+    //    through filesystem events)
+    // 3. Once it exists, we start watching it for changes again
+    //
+    // we do this because the alternative is to watch its parent folder and this might cause the
+    // classic "too many open files" issue if there are a lot of files there and/or lots of Zellij
+    // instances
+    use crate::setup::Setup;
+    use notify::{self, Config as WatcherConfig, Event, PollWatcher, RecursiveMode, Watcher};
+    use std::time::Duration;
+    use tokio::sync::mpsc;
+    loop {
+        if config_file_path.exists() {
+            let (tx, mut rx) = mpsc::unbounded_channel();
+
+            let mut watcher = match PollWatcher::new(
+                move |res: Result<Event, notify::Error>| {
+                    let _ = tx.send(res);
+                },
+                WatcherConfig::default().with_poll_interval(Duration::from_secs(1)),
+            ) {
+                Ok(watcher) => watcher,
+                Err(_) => break,
+            };
+
+            if watcher
+                .watch(&config_file_path, RecursiveMode::NonRecursive)
+                .is_err()
+            {
+                break;
+            }
+
+            while let Some(event_result) = rx.recv().await {
+                match event_result {
+                    Ok(event) => {
+                        if event.paths.contains(&config_file_path) {
+                            if event.kind.is_remove() {
+                                break;
+                            } else if event.kind.is_create() || event.kind.is_modify() {
+                                tokio::time::sleep(Duration::from_millis(100)).await;
+
+                                if !config_file_path.exists() {
+                                    continue;
+                                }
+
+                                let mut cli_args_for_config = CliArgs::default();
+                                cli_args_for_config.config = Some(PathBuf::from(&config_file_path));
+                                if let Ok(new_config) = Setup::from_cli_args(&cli_args_for_config)
+                                    .map_err(|e| e.to_string())
+                                {
+                                    on_config_change(new_config.0).await;
+                                }
+                            }
+                        }
+                    },
+                    Err(_) => break,
+                }
+            }
+        }
+
+        while !config_file_path.exists() {
+            tokio::time::sleep(Duration::from_secs(3)).await;
+        }
+    }
+}
+
 #[cfg(test)]
 mod config_test {
     use super::*;
-    use crate::data::{InputMode, Palette, PaletteColor, PluginTag, StyleDeclaration, Styling};
-    use crate::input::layout::{RunPlugin, RunPluginLocation};
+    use crate::data::{InputMode, Palette, PaletteColor, StyleDeclaration, Styling};
+    use crate::input::layout::RunPlugin;
     use crate::input::options::{Clipboard, OnForceClose};
     use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
     use std::collections::{BTreeMap, HashMap};

@@ -9,7 +9,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -68,14 +68,32 @@ pub mod event {
         #[prost(message, tag="26")]
         PastedTextPayload(super::PastedTextPayload),
         #[prost(message, tag="27")]
+        WebServerStatusPayload(super::WebServerStatusPayload),
+        #[prost(message, tag="28")]
+        FailedToStartWebServerPayload(super::FailedToStartWebServerPayload),
+        #[prost(message, tag="29")]
         InterceptedKeyPayload(super::super::key::Key),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FailedToStartWebServerPayload {
+    #[prost(string, tag="1")]
+    pub error: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PastedTextPayload {
     #[prost(string, tag="1")]
     pub pasted_text: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WebServerStatusPayload {
+    #[prost(enumeration="WebServerStatusIndication", tag="1")]
+    pub web_server_status_indication: i32,
+    #[prost(string, optional, tag="2")]
+    pub payload: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -313,7 +331,11 @@ pub struct SessionManifest {
     pub available_layouts: ::prost::alloc::vec::Vec<LayoutInfo>,
     #[prost(message, repeated, tag="7")]
     pub plugins: ::prost::alloc::vec::Vec<PluginInfo>,
-    #[prost(message, repeated, tag="8")]
+    #[prost(bool, tag="8")]
+    pub web_clients_allowed: bool,
+    #[prost(uint32, tag="9")]
+    pub web_client_count: u32,
+    #[prost(message, repeated, tag="10")]
     pub tab_history: ::prost::alloc::vec::Vec<ClientTabHistory>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -464,7 +486,19 @@ pub struct ModeUpdatePayload {
     #[prost(string, optional, tag="8")]
     pub shell: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, optional, tag="9")]
+    pub web_clients_allowed: ::core::option::Option<bool>,
+    #[prost(enumeration="WebSharing", optional, tag="10")]
+    pub web_sharing: ::core::option::Option<i32>,
+    #[prost(bool, optional, tag="11")]
     pub currently_marking_pane_group: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="12")]
+    pub is_web_client: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="13")]
+    pub web_server_ip: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint32, optional, tag="14")]
+    pub web_server_port: ::core::option::Option<u32>,
+    #[prost(bool, optional, tag="15")]
+    pub web_server_capability: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -531,8 +565,10 @@ pub enum EventType {
     FailedToChangeHostFolder = 28,
     PastedText = 29,
     ConfigWasWrittenToDisk = 30,
-    BeforeClose = 31,
-    InterceptedKeyPress = 32,
+    WebServerStatus = 31,
+    BeforeClose = 32,
+    FailedToStartWebServer = 34,
+    InterceptedKeyPress = 35,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -572,7 +608,9 @@ impl EventType {
             EventType::FailedToChangeHostFolder => "FailedToChangeHostFolder",
             EventType::PastedText => "PastedText",
             EventType::ConfigWasWrittenToDisk => "ConfigWasWrittenToDisk",
+            EventType::WebServerStatus => "WebServerStatus",
             EventType::BeforeClose => "BeforeClose",
+            EventType::FailedToStartWebServer => "FailedToStartWebServer",
             EventType::InterceptedKeyPress => "InterceptedKeyPress",
         }
     }
@@ -610,8 +648,39 @@ impl EventType {
             "FailedToChangeHostFolder" => Some(Self::FailedToChangeHostFolder),
             "PastedText" => Some(Self::PastedText),
             "ConfigWasWrittenToDisk" => Some(Self::ConfigWasWrittenToDisk),
+            "WebServerStatus" => Some(Self::WebServerStatus),
             "BeforeClose" => Some(Self::BeforeClose),
+            "FailedToStartWebServer" => Some(Self::FailedToStartWebServer),
             "InterceptedKeyPress" => Some(Self::InterceptedKeyPress),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum WebServerStatusIndication {
+    Online = 0,
+    Offline = 1,
+    DifferentVersion = 2,
+}
+impl WebServerStatusIndication {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            WebServerStatusIndication::Online => "Online",
+            WebServerStatusIndication::Offline => "Offline",
+            WebServerStatusIndication::DifferentVersion => "DifferentVersion",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "Online" => Some(Self::Online),
+            "Offline" => Some(Self::Offline),
+            "DifferentVersion" => Some(Self::DifferentVersion),
             _ => None,
         }
     }
@@ -709,6 +778,35 @@ impl MouseEventName {
             "MouseHold" => Some(Self::MouseHold),
             "MouseRelease" => Some(Self::MouseRelease),
             "MouseHover" => Some(Self::MouseHover),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum WebSharing {
+    On = 0,
+    Off = 1,
+    Disabled = 2,
+}
+impl WebSharing {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            WebSharing::On => "On",
+            WebSharing::Off => "Off",
+            WebSharing::Disabled => "Disabled",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "On" => Some(Self::On),
+            "Off" => Some(Self::Off),
+            "Disabled" => Some(Self::Disabled),
             _ => None,
         }
     }

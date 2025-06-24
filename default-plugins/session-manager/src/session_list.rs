@@ -9,6 +9,7 @@ use crate::ui::{
 #[derive(Debug, Default)]
 pub struct SessionList {
     pub session_ui_infos: Vec<SessionUiInfo>,
+    pub forbidden_sessions: Vec<SessionUiInfo>,
     pub selected_index: SelectedIndex,
     pub selected_search_index: Option<usize>,
     pub search_results: Vec<SearchResult>,
@@ -16,7 +17,11 @@ pub struct SessionList {
 }
 
 impl SessionList {
-    pub fn set_sessions(&mut self, mut session_ui_infos: Vec<SessionUiInfo>) {
+    pub fn set_sessions(
+        &mut self,
+        mut session_ui_infos: Vec<SessionUiInfo>,
+        mut forbidden_sessions: Vec<SessionUiInfo>,
+    ) {
         session_ui_infos.sort_unstable_by(|a, b| {
             if a.is_current_session {
                 std::cmp::Ordering::Less
@@ -26,7 +31,9 @@ impl SessionList {
                 a.name.cmp(&b.name)
             }
         });
+        forbidden_sessions.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         self.session_ui_infos = session_ui_infos;
+        self.forbidden_sessions = forbidden_sessions;
     }
     pub fn update_search_term(&mut self, search_term: &str, colors: &Colors) {
         let mut flattened_assets = self.flatten_assets(colors);
@@ -316,6 +323,11 @@ impl SessionList {
     }
     pub fn has_session(&self, session_name: &str) -> bool {
         self.session_ui_infos.iter().any(|s| s.name == session_name)
+    }
+    pub fn has_forbidden_session(&self, session_name: &str) -> bool {
+        self.forbidden_sessions
+            .iter()
+            .any(|s| s.name == session_name)
     }
     pub fn update_session_name(&mut self, old_name: &str, new_name: &str) {
         self.session_ui_infos

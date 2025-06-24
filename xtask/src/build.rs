@@ -4,7 +4,7 @@
 //!
 //! - [`build`]: Builds general cargo projects (i.e. zellij components) with `cargo build`
 //! - [`manpage`]: Builds the manpage with `mandown`
-use crate::{flags, WorkspaceMember};
+use crate::{flags, metadata, WorkspaceMember};
 use anyhow::Context;
 use std::path::{Path, PathBuf};
 use xshell::{cmd, Shell};
@@ -94,6 +94,23 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
         let mut base_cmd = cmd!(sh, "{cargo} build");
         if flags.release {
             base_cmd = base_cmd.arg("--release");
+        }
+        if flags.no_web {
+            // Check if this crate has web features that need modification
+            match metadata::get_no_web_features(sh, crate_name)
+                .context("Failed to check web features")?
+            {
+                Some(features) => {
+                    base_cmd = base_cmd.arg("--no-default-features");
+                    if !features.is_empty() {
+                        base_cmd = base_cmd.arg("--features");
+                        base_cmd = base_cmd.arg(features);
+                    }
+                },
+                None => {
+                    // Crate doesn't have web features, build normally
+                },
+            }
         }
         base_cmd.run().with_context(err_context)?;
 

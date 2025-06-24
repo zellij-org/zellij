@@ -62,6 +62,26 @@ jobs:
       - name: Test
         run: cargo xtask test
 
+  test-no-web:
+    name: Test (No Web)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Test without web support
+        run: cargo xtask test --no-web
+
   format:
     name: Check Formatting
     runs-on: ubuntu-latest
