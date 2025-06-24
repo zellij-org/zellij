@@ -34,7 +34,7 @@ pub use super::generated_api::api::{
         SetTimeoutPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
         SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
         TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload, ReplacePaneWithExistingPanePayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1711,6 +1711,22 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(_) => Err("ClearKeyPressesIntercepts should have no payload, found a payload"),
                 None => Ok(PluginCommand::ClearKeyPressesIntercepts),
             },
+            Some(CommandName::ReplacePaneWithExistingPane) => match protobuf_plugin_command.payload {
+                Some(Payload::ReplacePaneWithExistingPanePayload(replace_pane_with_other_pane_payload)) => {
+                    Ok(PluginCommand::ReplacePaneWithExistingPane(
+                        replace_pane_with_other_pane_payload
+                            .pane_id_to_replace
+                            .and_then(|p_id| PaneId::try_from(p_id).ok())
+                            .ok_or("Failed to parse ReplacePaneWithExistingPanePayload")?,
+                        replace_pane_with_other_pane_payload
+                            .existing_pane_id
+                            .and_then(|p_id| PaneId::try_from(p_id).ok())
+                            .ok_or("Failed to parse ReplacePaneWithExistingPanePayload")?,
+                        replace_pane_with_other_pane_payload.should_close_replaced_pane
+                    ))
+                },
+                _ => Err("Mismatched payload for ReplacePaneWithExistingPane")
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2848,6 +2864,16 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::ClearKeyPressesIntercepts as i32,
                 payload: None,
             }),
+            PluginCommand::ReplacePaneWithExistingPane(pane_id_to_replace, existing_pane_id, should_close_replaced_pane) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::ReplacePaneWithExistingPane as i32,
+                    payload: Some(Payload::ReplacePaneWithExistingPanePayload(ReplacePaneWithExistingPanePayload {
+                        pane_id_to_replace: ProtobufPaneId::try_from(pane_id_to_replace).ok(),
+                        existing_pane_id: ProtobufPaneId::try_from(existing_pane_id).ok(),
+                        should_close_replaced_pane,
+                    })),
+                })
+            },
         }
     }
 }

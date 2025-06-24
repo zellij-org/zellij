@@ -421,6 +421,7 @@ pub enum ScreenInstruction {
     SetMouseSelectionSupport(PaneId, bool),
     InterceptKeyPresses(PluginId, ClientId),
     ClearKeyPressesIntercepts(ClientId),
+    ReplacePaneWithExistingPane(PaneId, PaneId, bool), // bool -> should_close_pane_id_to_replace
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -652,6 +653,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ClearKeyPressesIntercepts(..) => {
                 ScreenContext::ClearKeyPressesIntercepts
             },
+            ScreenInstruction::ReplacePaneWithExistingPane(..) => ScreenContext::ReplacePaneWithExistingPane,
         }
     }
 }
@@ -2597,12 +2599,13 @@ impl Screen {
         pane_id_of_existing_pane: PaneId,
         should_close_pane_id_to_replace: bool,
     ) {
+        // TODO CONTINUE HERE: log_and_report_session_state
         let Some(tab_index_of_pane_id_to_replace) = self
             .tabs
             .iter()
             .find(|(_tab_index, tab)| tab.has_pane_with_pid(&pane_id_to_replace))
             .map(|(_tab_index, tab)| tab.position) else {
-                log::error!("Cold not find tab");
+                log::error!("Could not find tab");
                 return;
             };
         let Some(tab_index_of_existing_pane) = self
@@ -2610,7 +2613,7 @@ impl Screen {
             .iter()
             .find(|(_tab_index, tab)| tab.has_pane_with_pid(&pane_id_of_existing_pane))
             .map(|(_tab_index, tab)| tab.position) else {
-                log::error!("Cold not find tab");
+                log::error!("Could not find tab");
                 return;
             };
         let Some(extracted_pane_from_other_tab) = self
@@ -2637,7 +2640,6 @@ impl Screen {
         //        suppress_pane_and_replace_with_other_panw
         // 1. if they are, construct a PaneOrPaneId enum with Pane and the pane_id_of_existing_pane
         //    and call the tab's suppress_pane_and_replace_with_other_panw function
-        unimplemented!()
     }
     pub fn reconfigure(
         &mut self,
@@ -5517,6 +5519,10 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ClearKeyPressesIntercepts(client_id) => {
                 keybind_intercepts.remove(&client_id);
             },
+            ScreenInstruction::ReplacePaneWithExistingPane(old_pane_id, new_pane_id, should_close_pane_id_to_replace) => {
+                screen.replace_pane_with_existing_pane(old_pane_id, new_pane_id, should_close_pane_id_to_replace)
+
+            }
         }
     }
     Ok(())
