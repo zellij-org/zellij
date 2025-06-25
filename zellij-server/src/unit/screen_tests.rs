@@ -653,7 +653,6 @@ impl MockScreen {
             main_client_id,
             pty_receiver: Some(pty_receiver),
             pty_writer_receiver: Some(pty_writer_receiver),
-            // background_jobs_receiver: Some(background_jobs_receiver),
             background_jobs_receiver: None,
             screen_receiver: Some(screen_receiver),
             server_receiver: Some(server_receiver),
