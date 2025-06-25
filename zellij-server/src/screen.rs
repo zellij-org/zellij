@@ -1077,7 +1077,6 @@ impl Screen {
                 Ok(active_tab) => {
                     let active_tab_pos = active_tab.position;
                     let new_tab_pos = (active_tab_pos + 1) % self.tabs.len();
-                    eprintln!("active_tab_pos, new_tab_pos: {:?}, {:?}", active_tab_pos, new_tab_pos);
                     return self.switch_active_tab(
                         new_tab_pos,
                         should_change_pane_focus,
@@ -1276,10 +1275,12 @@ impl Screen {
         }
     }
 
-    /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self, plugin_render_assets: Option<Vec<PluginRenderAsset>>) -> Result<()> {
-        // TODO: instead of doing this, send a RenderToClients message to background_jobs, then the
-        // job to send a RenderToClients instruction here (new) which will do this
+        // here we schedule the RenderToClients background job which debounces renders every 10ms
+        // rather than actually rendering
+        //
+        // when this job decides to render, it sends back the ScreenInstruction::RenderToClients
+        // message, triggering our render_to_clients method which does the actual rendering
 
         let _ = self
             .bus
@@ -1296,7 +1297,8 @@ impl Screen {
     }
 
     pub fn render_to_clients(&mut self) -> Result<()> {
-        eprintln!("screen.render_to_clients");
+        // this method does the actual rendering and is triggered by a debounced BackgroundJob (see
+        // the render method for more details)
         let err_context = "failed to render screen";
 
         let mut output = Output::new(
@@ -1318,11 +1320,8 @@ impl Screen {
                 .context(err_context)
                 .non_fatal();
         }
-        eprintln!("output.is_dirty()?");
         if output.is_dirty() {
-            eprintln!("yes!");
             let serialized_output = output.serialize().context(err_context)?;
-            eprintln!("serialized_output: {:?}", serialized_output);
             let _ = self
                 .bus
                 .senders
@@ -3998,7 +3997,6 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::SwitchTabNext(client_id) => {
-                eprintln!("SwitchTabNext");
                 screen.switch_tab_next(None, true, client_id)?;
                 screen.unblock_input()?;
                 screen.render(None)?;

@@ -337,6 +337,7 @@ impl MockScreen {
         initial_layout: Option<TiledPaneLayout>,
         initial_floating_panes_layout: Vec<FloatingPaneLayout>,
     ) -> std::thread::JoinHandle<()> {
+        std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
         let mut config = self.config.clone();
         config.options.advanced_mouse_actions = Some(self.advanced_mouse_actions);
         let client_attributes = self.client_attributes.clone();
@@ -387,6 +388,8 @@ impl MockScreen {
         let tab_name = None;
         let tab_index = self.last_opened_tab_index.map(|l| l + 1).unwrap_or(0);
         let should_change_focus_to_new_tab = true;
+        std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async
+                                                                   // render
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             None,
             default_shell,
@@ -408,6 +411,7 @@ impl MockScreen {
             (self.main_client_id, false),
         ));
         self.last_opened_tab_index = Some(tab_index);
+        std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
         screen_thread
     }
     // same as the above function, but starts a plugin with a plugin alias
@@ -634,7 +638,6 @@ impl MockScreen {
                         .expect("failed to receive event on channel");
                     match event {
                         BackgroundJob::RenderToClients => {
-                            eprintln!("BackgroundJob::RenderToClients");
                             let _ = to_screen.send(ScreenInstruction::RenderToClients);
                         }
                         BackgroundJob::Exit => {
@@ -1457,7 +1460,9 @@ pub fn mouse_hover_effect() {
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -1807,7 +1812,9 @@ pub fn send_cli_resize_action_to_screen() {
         resize: Resize::Increase,
         direction: Some(Direction::Left),
     };
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     send_cli_action_to_server(&session_metadata, resize_cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2280,6 +2287,7 @@ pub fn send_cli_page_scroll_up_action() {
     );
     let page_scroll_up_action = CliAction::PageScrollUp;
     let mut pane_contents = String::new();
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     for i in 0..20 {
         pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
     }
@@ -2325,6 +2333,7 @@ pub fn send_cli_page_scroll_down_action() {
     for i in 0..20 {
         pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
     }
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
         0,
         pane_contents.as_bytes().to_vec(),
@@ -2332,10 +2341,13 @@ pub fn send_cli_page_scroll_down_action() {
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     // scroll up some
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     send_cli_action_to_server(&session_metadata, page_scroll_up_action.clone(), client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     send_cli_action_to_server(&session_metadata, page_scroll_up_action.clone(), client_id);
 
     // scroll down
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     send_cli_action_to_server(&session_metadata, page_scroll_down_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
@@ -2411,6 +2423,7 @@ pub fn send_cli_half_page_scroll_down_action() {
     let half_page_scroll_up_action = CliAction::HalfPageScrollUp;
     let half_page_scroll_down_action = CliAction::HalfPageScrollDown;
     let mut pane_contents = String::new();
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     for i in 0..20 {
         pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
     }
@@ -2426,11 +2439,13 @@ pub fn send_cli_half_page_scroll_down_action() {
         half_page_scroll_up_action.clone(),
         client_id,
     );
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     send_cli_action_to_server(
         &session_metadata,
         half_page_scroll_up_action.clone(),
         client_id,
     );
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
 
     // scroll down
     send_cli_action_to_server(&session_metadata, half_page_scroll_down_action, client_id);
@@ -3102,6 +3117,7 @@ pub fn send_cli_next_tab_action() {
     mock_screen.new_tab(second_tab_layout);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -3110,18 +3126,16 @@ pub fn send_cli_next_tab_action() {
         server_receiver
     );
     let goto_next_tab = CliAction::GoToNextTab;
-    // send_cli_action_to_server(&session_metadata, goto_next_tab, client_id);
-    eprintln!("sleeping");
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    eprintln!("tearing down");
+    send_cli_action_to_server(&session_metadata, goto_next_tab, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     mock_screen.teardown(vec![server_thread, screen_thread]);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
         size,
     );
     let snapshot_count = snapshots.len();
     for (_cursor_coordinates, snapshot) in snapshots {
-        eprintln!("snapshot\n: {}", snapshot);
         assert_snapshot!(format!("{}", snapshot));
     }
     assert_snapshot!(format!("{}", snapshot_count));
@@ -3553,7 +3567,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded_for_
     );
     let snapshot_count = snapshots.len();
     assert_eq!(
-        snapshot_count, 2,
+        snapshot_count, 3,
         "Another render was sent for focusing the already loaded plugin"
     );
     for (cursor_coordinates, _snapshot) in snapshots.iter().skip(1) {
@@ -3607,7 +3621,9 @@ pub fn screen_can_break_pane_to_a_new_tab() {
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![pane_to_break_free, pane_to_stay];
     let mut mock_screen = MockScreen::new(size);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -3706,7 +3722,9 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![pane_to_break_free];
     let mut mock_screen = MockScreen::new(size);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     let screen_thread = mock_screen.run(Some(initial_layout), floating_panes_layout.clone());
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -3779,7 +3797,9 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![pane_to_break_free, pane_to_stay];
     let mut mock_screen = MockScreen::new(size);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -3850,7 +3870,9 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![pane_to_break_free];
     let mut mock_screen = MockScreen::new(size);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     let screen_thread = mock_screen.run(Some(initial_layout), floating_panes_layout.clone());
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
