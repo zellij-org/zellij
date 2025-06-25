@@ -627,7 +627,6 @@ impl MockScreen {
         let config_options = Options::default();
         let main_client_id = 1;
 
-
         std::thread::Builder::new()
             .name("background_jobs_thread".to_string())
             .spawn({
@@ -639,10 +638,10 @@ impl MockScreen {
                     match event {
                         BackgroundJob::RenderToClients => {
                             let _ = to_screen.send(ScreenInstruction::RenderToClients);
-                        }
+                        },
                         BackgroundJob::Exit => {
                             break;
-                        }
+                        },
                         _ => {},
                     }
                 }
