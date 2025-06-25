@@ -147,6 +147,7 @@ pub enum ScreenInstruction {
     PtyBytes(u32, VteBytes),
     PluginBytes(Vec<PluginRenderAsset>),
     Render,
+    RenderToClients,
     NewPane(
         PaneId,
         Option<InitialTitle>,
@@ -429,6 +430,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PtyBytes(..) => ScreenContext::HandlePtyBytes,
             ScreenInstruction::PluginBytes(..) => ScreenContext::PluginBytes,
             ScreenInstruction::Render => ScreenContext::Render,
+            ScreenInstruction::RenderToClients => ScreenContext::RenderToClients,
             ScreenInstruction::NewPane(..) => ScreenContext::NewPane,
             ScreenInstruction::OpenInPlaceEditor(..) => ScreenContext::OpenInPlaceEditor,
             ScreenInstruction::TogglePaneEmbedOrFloating(..) => {
@@ -1075,6 +1077,7 @@ impl Screen {
                 Ok(active_tab) => {
                     let active_tab_pos = active_tab.position;
                     let new_tab_pos = (active_tab_pos + 1) % self.tabs.len();
+                    eprintln!("active_tab_pos, new_tab_pos: {:?}, {:?}", active_tab_pos, new_tab_pos);
                     return self.switch_active_tab(
                         new_tab_pos,
                         should_change_pane_focus,
@@ -1275,6 +1278,25 @@ impl Screen {
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self, plugin_render_assets: Option<Vec<PluginRenderAsset>>) -> Result<()> {
+        // TODO: instead of doing this, send a RenderToClients message to background_jobs, then the
+        // job to send a RenderToClients instruction here (new) which will do this
+
+        let _ = self
+            .bus
+            .senders
+            .send_to_background_jobs(BackgroundJob::RenderToClients);
+        if let Some(plugin_render_assets) = plugin_render_assets {
+            let _ = self
+                .bus
+                .senders
+                .send_to_plugin(PluginInstruction::UnblockCliPipes(plugin_render_assets))
+                .context("failed to unblock input pipe");
+        }
+        Ok(())
+    }
+
+    pub fn render_to_clients(&mut self) -> Result<()> {
+        eprintln!("screen.render_to_clients");
         let err_context = "failed to render screen";
 
         let mut output = Output::new(
@@ -1296,20 +1318,16 @@ impl Screen {
                 .context(err_context)
                 .non_fatal();
         }
+        eprintln!("output.is_dirty()?");
         if output.is_dirty() {
+            eprintln!("yes!");
             let serialized_output = output.serialize().context(err_context)?;
+            eprintln!("serialized_output: {:?}", serialized_output);
             let _ = self
                 .bus
                 .senders
                 .send_to_server(ServerInstruction::Render(Some(serialized_output)))
                 .context(err_context);
-        }
-        if let Some(plugin_render_assets) = plugin_render_assets {
-            let _ = self
-                .bus
-                .senders
-                .send_to_plugin(PluginInstruction::UnblockCliPipes(plugin_render_assets))
-                .context("failed to unblock input pipe");
         }
         Ok(())
     }
@@ -2805,7 +2823,6 @@ impl Screen {
                 self.render(None).non_fatal();
             },
             Err(e) => {
-                eprintln!("mouse event error: {:?}", e);
                 log::error!("Failed to process MouseEvent: {}", e);
             },
         }
@@ -3264,6 +3281,9 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::Render => {
                 screen.render(None)?;
+            },
+            ScreenInstruction::RenderToClients => {
+                screen.render_to_clients()?;
             },
             ScreenInstruction::NewPane(
                 pid,
@@ -3978,6 +3998,7 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::SwitchTabNext(client_id) => {
+                eprintln!("SwitchTabNext");
                 screen.switch_tab_next(None, true, client_id)?;
                 screen.unblock_input()?;
                 screen.render(None)?;

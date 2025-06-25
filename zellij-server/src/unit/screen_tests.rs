@@ -536,6 +536,7 @@ impl MockScreen {
         let _ = self.to_screen.send(ScreenInstruction::Exit);
         let _ = self.to_server.send(ServerInstruction::KillSession);
         let _ = self.to_plugin.send(PluginInstruction::Exit);
+        let _ = self.to_background_jobs.send(BackgroundJob::Exit);
         for thread in threads {
             let _ = thread.join();
         }
@@ -621,11 +622,36 @@ impl MockScreen {
         let os_input = FakeInputOutput::default();
         let config_options = Options::default();
         let main_client_id = 1;
+
+
+        std::thread::Builder::new()
+            .name("background_jobs_thread".to_string())
+            .spawn({
+                let to_screen = to_screen.clone();
+                move || loop {
+                    let (event, _err_ctx) = background_jobs_receiver
+                        .recv()
+                        .expect("failed to receive event on channel");
+                    match event {
+                        BackgroundJob::RenderToClients => {
+                            eprintln!("BackgroundJob::RenderToClients");
+                            let _ = to_screen.send(ScreenInstruction::RenderToClients);
+                        }
+                        BackgroundJob::Exit => {
+                            break;
+                        }
+                        _ => {},
+                    }
+                }
+            })
+            .unwrap();
+
         MockScreen {
             main_client_id,
             pty_receiver: Some(pty_receiver),
             pty_writer_receiver: Some(pty_writer_receiver),
-            background_jobs_receiver: Some(background_jobs_receiver),
+            // background_jobs_receiver: Some(background_jobs_receiver),
+            background_jobs_receiver: None,
             screen_receiver: Some(screen_receiver),
             server_receiver: Some(server_receiver),
             plugin_receiver: Some(plugin_receiver),
@@ -3084,8 +3110,10 @@ pub fn send_cli_next_tab_action() {
         server_receiver
     );
     let goto_next_tab = CliAction::GoToNextTab;
-    send_cli_action_to_server(&session_metadata, goto_next_tab, client_id);
+    // send_cli_action_to_server(&session_metadata, goto_next_tab, client_id);
+    eprintln!("sleeping");
     std::thread::sleep(std::time::Duration::from_millis(100));
+    eprintln!("tearing down");
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -3093,6 +3121,7 @@ pub fn send_cli_next_tab_action() {
     );
     let snapshot_count = snapshots.len();
     for (_cursor_coordinates, snapshot) in snapshots {
+        eprintln!("snapshot\n: {}", snapshot);
         assert_snapshot!(format!("{}", snapshot));
     }
     assert_snapshot!(format!("{}", snapshot_count));

@@ -145,7 +145,7 @@ pub fn zellij_server_listener(
                                     WebServerToWebClientControlMessage::LogError { lines },
                                 );
                             },
-                            _ => {},
+                            _ => {}, // TODO: this should bre break!!
                         }
                     }
                     if reconnect_to_session.is_none() {
