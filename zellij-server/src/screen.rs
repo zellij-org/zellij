@@ -2633,13 +2633,7 @@ impl Screen {
                 should_close_pane_id_to_replace
             );
         }
-        // TODO:
-        // 0. Find the tab of both of these... if they are not the same tab:
-        //     1. copy the PaneId portion above to find the relevant tab and extract the pane from it
-        //     2. build a PaneOrPaneId enum with Pane and this, and pass it to the tab's
-        //        suppress_pane_and_replace_with_other_panw
-        // 1. if they are, construct a PaneOrPaneId enum with Pane and the pane_id_of_existing_pane
-        //    and call the tab's suppress_pane_and_replace_with_other_panw function
+        let _ = self.log_and_report_session_state();
     }
     pub fn reconfigure(
         &mut self,

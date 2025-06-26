@@ -1623,8 +1623,6 @@ impl Tab {
         Ok(())
     }
     pub fn suppress_pane_and_replace_with_other_pane(&mut self, pane_id_to_replace: PaneId, pane_to_replace_with: Box<dyn Pane>, close_suppressed_pane: bool) {
-        // TODO: CONTINUE HERE - create a ScreenInstruction for this, then create a plugin API for
-        // this, then test it out with the picker plugin
         let replaced_pane = if self.floating_panes.panes_contain(&pane_id_to_replace) {
             self.floating_panes
                 .replace_pane(pane_id_to_replace, pane_to_replace_with)
