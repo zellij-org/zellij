@@ -653,7 +653,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ClearKeyPressesIntercepts(..) => {
                 ScreenContext::ClearKeyPressesIntercepts
             },
-            ScreenInstruction::ReplacePaneWithExistingPane(..) => ScreenContext::ReplacePaneWithExistingPane,
+            ScreenInstruction::ReplacePaneWithExistingPane(..) => {
+                ScreenContext::ReplacePaneWithExistingPane
+            },
         }
     }
 }
@@ -2602,28 +2604,33 @@ impl Screen {
             .tabs
             .iter()
             .find(|(_tab_index, tab)| tab.has_pane_with_pid(&pane_id_to_replace))
-            .map(|(_tab_index, tab)| tab.position) else {
-                log::error!("Could not find tab");
-                return;
-            };
+            .map(|(_tab_index, tab)| tab.position)
+        else {
+            log::error!("Could not find tab");
+            return;
+        };
         let Some(tab_index_of_existing_pane) = self
             .tabs
             .iter()
             .find(|(_tab_index, tab)| tab.has_pane_with_pid(&pane_id_of_existing_pane))
-            .map(|(_tab_index, tab)| tab.position) else {
-                log::error!("Could not find tab");
-                return;
-            };
+            .map(|(_tab_index, tab)| tab.position)
+        else {
+            log::error!("Could not find tab");
+            return;
+        };
         let Some(extracted_pane_from_other_tab) = self
             .tabs
             .iter_mut()
             .find(|(_, t)| t.position == tab_index_of_existing_pane)
-            .and_then(|(_, t)| t.extract_pane(pane_id_of_existing_pane, false)) else {
-                log::error!("Failed to find pane");
-                return;
-            };
-        if let Some(tab) =
-            self.tabs.iter_mut().find(|(_, t)| t.position == tab_index_of_pane_id_to_replace)
+            .and_then(|(_, t)| t.extract_pane(pane_id_of_existing_pane, false))
+        else {
+            log::error!("Failed to find pane");
+            return;
+        };
+        if let Some(tab) = self
+            .tabs
+            .iter_mut()
+            .find(|(_, t)| t.position == tab_index_of_pane_id_to_replace)
         {
             tab.1.close_pane_and_replace_with_other_pane(
                 pane_id_to_replace,
@@ -5512,8 +5519,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ReplacePaneWithExistingPane(old_pane_id, new_pane_id) => {
                 screen.replace_pane_with_existing_pane(old_pane_id, new_pane_id)
-
-            }
+            },
         }
     }
     Ok(())
