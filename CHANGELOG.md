@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: multiple select and bulk pane actions (https://github.com/zellij-org/zellij/pull/4169 and https://github.com/zellij-org/zellij/pull/4171 and https://github.com/zellij-org/zellij/pull/4221)
 * feat: add an optional key tooltip to show the current keybindings for the compact bar (https://github.com/zellij-org/zellij/pull/4225)
 * feat: web-client, allowing users to share sessions in the browser (https://github.com/zellij-org/zellij/pull/4242)
+* performance: consolidate renders (https://github.com/zellij-org/zellij/pull/4245)
 
 ## [0.42.2] - 2025-04-15
 * refactor(terminal): track scroll_region as tuple rather than Option (https://github.com/zellij-org/zellij/pull/4082)
