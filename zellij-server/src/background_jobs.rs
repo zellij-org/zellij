@@ -483,7 +483,7 @@ pub(crate) fn background_jobs_main(
                         let task_start_time = current_time;
                         async move {
                             task::sleep(std::time::Duration::from_millis(REPAINT_DELAY_MS)).await;
-                            let _ = senders.send_to_screen(ScreenInstruction::Render);
+                            let _ = senders.send_to_screen(ScreenInstruction::RenderToClients);
                             {
                                 let mut last_render_request = last_render_request.lock().unwrap();
                                 if let Some(last_render_request) = *last_render_request {
