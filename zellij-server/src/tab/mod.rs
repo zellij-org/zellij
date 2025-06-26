@@ -144,11 +144,6 @@ const MAX_PENDING_VTE_EVENTS: usize = 7000;
 type HoldForCommand = Option<RunCommand>;
 pub type SuppressedPanes = HashMap<PaneId, (bool, Box<dyn Pane>)>; // bool => is scrollback editor
 
-pub enum PaneOrPaneId {
-    Pane(Box<dyn Pane>),
-    PaneId(PaneId),
-}
-
 enum BufferedTabInstruction {
     SetPaneSelectable(PaneId, bool),
     HandlePtyBytes(u32, VteBytes),
@@ -1622,8 +1617,8 @@ impl Tab {
         }
         Ok(())
     }
-    pub fn suppress_pane_and_replace_with_other_pane(&mut self, pane_id_to_replace: PaneId, pane_to_replace_with: Box<dyn Pane>, close_suppressed_pane: bool) {
-        let replaced_pane = if self.floating_panes.panes_contain(&pane_id_to_replace) {
+    pub fn close_pane_and_replace_with_other_pane(&mut self, pane_id_to_replace: PaneId, pane_to_replace_with: Box<dyn Pane>) {
+        let mut replaced_pane = if self.floating_panes.panes_contain(&pane_id_to_replace) {
             self.floating_panes
                 .replace_pane(pane_id_to_replace, pane_to_replace_with)
                 .ok()
@@ -1631,22 +1626,16 @@ impl Tab {
             self.tiled_panes
                 .replace_pane(pane_id_to_replace, pane_to_replace_with)
         };
-        if close_suppressed_pane {
+        if let Some(replaced_pane) = replaced_pane.take() {
+            let pane_id = replaced_pane.pid();
+            let _ = self.senders
+                .send_to_pty(PtyInstruction::ClosePane(pane_id));
+            let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                None,
+                Event::PaneClosed(pane_id.into())
+            )]));
             drop(replaced_pane);
-        } else {
-            if let Some(replaced_pane) = replaced_pane {
-                let _ = resize_pty!(
-                    replaced_pane,
-                    self.os_api,
-                    self.senders,
-                    self.character_cell_size
-                );
-                let is_scrollback_editor = false;
-                self.suppressed_panes.insert(
-                    replaced_pane.pid(),
-                    (is_scrollback_editor, replaced_pane),
-                );
-            }
         }
     }
     pub fn horizontal_split(

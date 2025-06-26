@@ -222,8 +222,6 @@ pub struct ReplacePaneWithExistingPanePayload {
     pub pane_id_to_replace: ::core::option::Option<PaneId>,
     #[prost(message, optional, tag="2")]
     pub existing_pane_id: ::core::option::Option<PaneId>,
-    #[prost(bool, tag="3")]
-    pub should_close_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

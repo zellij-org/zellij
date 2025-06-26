@@ -1451,8 +1451,8 @@ pub fn clear_key_presses_intercepts() {
     unsafe { host_run_plugin_command() };
 }
 
-pub fn replace_pane_with_existing_pane(pane_id_to_replace: PaneId, existing_pane_id: PaneId, should_close_replaced_pane: bool) {
-    let plugin_command = PluginCommand::ReplacePaneWithExistingPane(pane_id_to_replace, existing_pane_id, should_close_replaced_pane);
+pub fn replace_pane_with_existing_pane(pane_id_to_replace: PaneId, existing_pane_id: PaneId) {
+    let plugin_command = PluginCommand::ReplacePaneWithExistingPane(pane_id_to_replace, existing_pane_id);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

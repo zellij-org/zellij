@@ -1722,7 +1722,6 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                             .existing_pane_id
                             .and_then(|p_id| PaneId::try_from(p_id).ok())
                             .ok_or("Failed to parse ReplacePaneWithExistingPanePayload")?,
-                        replace_pane_with_other_pane_payload.should_close_replaced_pane
                     ))
                 },
                 _ => Err("Mismatched payload for ReplacePaneWithExistingPane")
@@ -2864,13 +2863,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::ClearKeyPressesIntercepts as i32,
                 payload: None,
             }),
-            PluginCommand::ReplacePaneWithExistingPane(pane_id_to_replace, existing_pane_id, should_close_replaced_pane) => {
+            PluginCommand::ReplacePaneWithExistingPane(pane_id_to_replace, existing_pane_id) => {
                 Ok(ProtobufPluginCommand {
                     name: CommandName::ReplacePaneWithExistingPane as i32,
                     payload: Some(Payload::ReplacePaneWithExistingPanePayload(ReplacePaneWithExistingPanePayload {
                         pane_id_to_replace: ProtobufPaneId::try_from(pane_id_to_replace).ok(),
                         existing_pane_id: ProtobufPaneId::try_from(existing_pane_id).ok(),
-                        should_close_replaced_pane,
                     })),
                 })
             },

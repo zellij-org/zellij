@@ -271,7 +271,6 @@ message PluginCommand {
 message ReplacePaneWithExistingPanePayload {
   PaneId pane_id_to_replace = 1;
   PaneId existing_pane_id = 2;
-  bool should_close_replaced_pane = 3;
 }
 
 message RenameWebLoginTokenPayload {

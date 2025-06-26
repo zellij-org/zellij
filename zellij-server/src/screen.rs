@@ -44,7 +44,7 @@ use crate::{
     panes::PaneId,
     plugins::{PluginId, PluginInstruction, PluginRenderAsset},
     pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
-    tab::{SuppressedPanes, Tab, PaneOrPaneId},
+    tab::{SuppressedPanes, Tab},
     thread_bus::Bus,
     ui::{
         loading_indication::LoadingIndication,
@@ -421,7 +421,7 @@ pub enum ScreenInstruction {
     SetMouseSelectionSupport(PaneId, bool),
     InterceptKeyPresses(PluginId, ClientId),
     ClearKeyPressesIntercepts(ClientId),
-    ReplacePaneWithExistingPane(PaneId, PaneId, bool), // bool -> should_close_pane_id_to_replace
+    ReplacePaneWithExistingPane(PaneId, PaneId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -2597,9 +2597,7 @@ impl Screen {
         &mut self,
         pane_id_to_replace: PaneId,
         pane_id_of_existing_pane: PaneId,
-        should_close_pane_id_to_replace: bool,
     ) {
-        // TODO CONTINUE HERE: log_and_report_session_state
         let Some(tab_index_of_pane_id_to_replace) = self
             .tabs
             .iter()
@@ -2627,10 +2625,9 @@ impl Screen {
         if let Some(tab) =
             self.tabs.iter_mut().find(|(_, t)| t.position == tab_index_of_pane_id_to_replace)
         {
-            tab.1.suppress_pane_and_replace_with_other_pane(
+            tab.1.close_pane_and_replace_with_other_pane(
                 pane_id_to_replace,
                 extracted_pane_from_other_tab,
-                should_close_pane_id_to_replace
             );
         }
         let _ = self.log_and_report_session_state();
@@ -5513,8 +5510,8 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ClearKeyPressesIntercepts(client_id) => {
                 keybind_intercepts.remove(&client_id);
             },
-            ScreenInstruction::ReplacePaneWithExistingPane(old_pane_id, new_pane_id, should_close_pane_id_to_replace) => {
-                screen.replace_pane_with_existing_pane(old_pane_id, new_pane_id, should_close_pane_id_to_replace)
+            ScreenInstruction::ReplacePaneWithExistingPane(old_pane_id, new_pane_id) => {
+                screen.replace_pane_with_existing_pane(old_pane_id, new_pane_id)
 
             }
         }

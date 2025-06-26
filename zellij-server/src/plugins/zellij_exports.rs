@@ -495,8 +495,8 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ClearKeyPressesIntercepts => {
                         clear_key_presses_intercepts(&mut env)
                     },
-                    PluginCommand::ReplacePaneWithExistingPane(pane_id_to_replace, existing_pane_id, should_close_replaced_pane) => {
-                        replace_pane_with_existing_pane(&mut env, pane_id_to_replace.into(), existing_pane_id.into(), should_close_replaced_pane)
+                    PluginCommand::ReplacePaneWithExistingPane(pane_id_to_replace, existing_pane_id) => {
+                        replace_pane_with_existing_pane(&mut env, pane_id_to_replace.into(), existing_pane_id.into())
                     },
                 },
                 (PermissionStatus::Denied, permission) => {
@@ -2458,10 +2458,10 @@ fn clear_key_presses_intercepts(env: &mut PluginEnv) {
         .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(env.client_id));
 }
 
-fn replace_pane_with_existing_pane(env: &mut PluginEnv, pane_to_replace: PaneId, existing_pane: PaneId, should_close_replaced_pane: bool) {
+fn replace_pane_with_existing_pane(env: &mut PluginEnv, pane_to_replace: PaneId, existing_pane: PaneId) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::ReplacePaneWithExistingPane(pane_to_replace, existing_pane, should_close_replaced_pane));
+        .send_to_screen(ScreenInstruction::ReplacePaneWithExistingPane(pane_to_replace, existing_pane));
 }
 
 // Custom panic handler for plugins.
