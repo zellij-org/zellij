@@ -495,6 +495,14 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ClearKeyPressesIntercepts => {
                         clear_key_presses_intercepts(&mut env)
                     },
+                    PluginCommand::ReplacePaneWithExistingPane(
+                        pane_id_to_replace,
+                        existing_pane_id,
+                    ) => replace_pane_with_existing_pane(
+                        &mut env,
+                        pane_id_to_replace.into(),
+                        existing_pane_id.into(),
+                    ),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -2455,6 +2463,19 @@ fn clear_key_presses_intercepts(env: &mut PluginEnv) {
         .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(env.client_id));
 }
 
+fn replace_pane_with_existing_pane(
+    env: &mut PluginEnv,
+    pane_to_replace: PaneId,
+    existing_pane: PaneId,
+) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::ReplacePaneWithExistingPane(
+            pane_to_replace,
+            existing_pane,
+        ));
+}
+
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -2621,6 +2642,7 @@ fn check_command_permission(
         | PluginCommand::CloseMultiplePanes(..)
         | PluginCommand::FloatMultiplePanes(..)
         | PluginCommand::EmbedMultiplePanes(..)
+        | PluginCommand::ReplacePaneWithExistingPane(..)
         | PluginCommand::KillSessions(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)

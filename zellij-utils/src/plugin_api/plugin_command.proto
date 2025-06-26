@@ -158,6 +158,7 @@ enum CommandName {
   RenameWebLoginToken = 142;
   InterceptKeyPresses = 143;
   ClearKeyPressesIntercepts = 144;
+  ReplacePaneWithExistingPane = 155;
 }
 
 message PluginCommand {
@@ -263,7 +264,13 @@ message PluginCommand {
     GenerateWebLoginTokenPayload generate_web_login_token_payload = 108;
     RevokeWebLoginTokenPayload revoke_web_login_token_payload = 109;
     RenameWebLoginTokenPayload rename_web_login_token_payload = 110;
+    ReplacePaneWithExistingPanePayload replace_pane_with_existing_pane_payload = 111;
   }
+}
+
+message ReplacePaneWithExistingPanePayload {
+  PaneId pane_id_to_replace = 1;
+  PaneId existing_pane_id = 2;
 }
 
 message RenameWebLoginTokenPayload {

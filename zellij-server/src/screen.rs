@@ -422,6 +422,7 @@ pub enum ScreenInstruction {
     SetMouseSelectionSupport(PaneId, bool),
     InterceptKeyPresses(PluginId, ClientId),
     ClearKeyPressesIntercepts(ClientId),
+    ReplacePaneWithExistingPane(PaneId, PaneId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -653,6 +654,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::InterceptKeyPresses(..) => ScreenContext::InterceptKeyPresses,
             ScreenInstruction::ClearKeyPressesIntercepts(..) => {
                 ScreenContext::ClearKeyPressesIntercepts
+            },
+            ScreenInstruction::ReplacePaneWithExistingPane(..) => {
+                ScreenContext::ReplacePaneWithExistingPane
             },
         }
     }
@@ -2607,6 +2611,50 @@ impl Screen {
             },
         }
         Ok(())
+    }
+    pub fn replace_pane_with_existing_pane(
+        &mut self,
+        pane_id_to_replace: PaneId,
+        pane_id_of_existing_pane: PaneId,
+    ) {
+        let Some(tab_index_of_pane_id_to_replace) = self
+            .tabs
+            .iter()
+            .find(|(_tab_index, tab)| tab.has_pane_with_pid(&pane_id_to_replace))
+            .map(|(_tab_index, tab)| tab.position)
+        else {
+            log::error!("Could not find tab");
+            return;
+        };
+        let Some(tab_index_of_existing_pane) = self
+            .tabs
+            .iter()
+            .find(|(_tab_index, tab)| tab.has_pane_with_pid(&pane_id_of_existing_pane))
+            .map(|(_tab_index, tab)| tab.position)
+        else {
+            log::error!("Could not find tab");
+            return;
+        };
+        let Some(extracted_pane_from_other_tab) = self
+            .tabs
+            .iter_mut()
+            .find(|(_, t)| t.position == tab_index_of_existing_pane)
+            .and_then(|(_, t)| t.extract_pane(pane_id_of_existing_pane, false))
+        else {
+            log::error!("Failed to find pane");
+            return;
+        };
+        if let Some(tab) = self
+            .tabs
+            .iter_mut()
+            .find(|(_, t)| t.position == tab_index_of_pane_id_to_replace)
+        {
+            tab.1.close_pane_and_replace_with_other_pane(
+                pane_id_to_replace,
+                extracted_pane_from_other_tab,
+            );
+        }
+        let _ = self.log_and_report_session_state();
     }
     pub fn reconfigure(
         &mut self,
@@ -5487,6 +5535,9 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ClearKeyPressesIntercepts(client_id) => {
                 keybind_intercepts.remove(&client_id);
+            },
+            ScreenInstruction::ReplacePaneWithExistingPane(old_pane_id, new_pane_id) => {
+                screen.replace_pane_with_existing_pane(old_pane_id, new_pane_id)
             },
         }
     }

@@ -387,6 +387,7 @@ pub enum ScreenContext {
     SetMouseSelectionSupport,
     InterceptKeyPresses,
     ClearKeyPressesIntercepts,
+    ReplacePaneWithExistingPane,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

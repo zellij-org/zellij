@@ -1617,6 +1617,30 @@ impl Tab {
         }
         Ok(())
     }
+    pub fn close_pane_and_replace_with_other_pane(
+        &mut self,
+        pane_id_to_replace: PaneId,
+        pane_to_replace_with: Box<dyn Pane>,
+    ) {
+        let mut replaced_pane = if self.floating_panes.panes_contain(&pane_id_to_replace) {
+            self.floating_panes
+                .replace_pane(pane_id_to_replace, pane_to_replace_with)
+                .ok()
+        } else {
+            self.tiled_panes
+                .replace_pane(pane_id_to_replace, pane_to_replace_with)
+        };
+        if let Some(replaced_pane) = replaced_pane.take() {
+            let pane_id = replaced_pane.pid();
+            let _ = self.senders.send_to_pty(PtyInstruction::ClosePane(pane_id));
+            let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                None,
+                Event::PaneClosed(pane_id.into()),
+            )]));
+            drop(replaced_pane);
+        }
+    }
     pub fn horizontal_split(
         &mut self,
         pid: PaneId,

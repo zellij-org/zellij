@@ -2496,4 +2496,5 @@ pub enum PluginCommand {
     RenameWebLoginToken(String, String), // (original_name, new_name)
     InterceptKeyPresses,
     ClearKeyPressesIntercepts,
+    ReplacePaneWithExistingPane(PaneId, PaneId), // (pane id to replace, pane id of existing)
 }
