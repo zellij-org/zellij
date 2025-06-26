@@ -356,7 +356,8 @@ impl RemoteTerminal {
         x == self.cursor_x && y == self.cursor_y
     }
     pub fn status_bar_appears(&self) -> bool {
-        self.last_snapshot.lock().unwrap().contains("Ctrl +") && self.last_snapshot.lock().unwrap().contains("LOCK")
+        self.last_snapshot.lock().unwrap().contains("Ctrl +")
+            && self.last_snapshot.lock().unwrap().contains("LOCK")
     }
     pub fn ctrl_plus_appears(&self) -> bool {
         self.last_snapshot.lock().unwrap().contains("Ctrl +")
