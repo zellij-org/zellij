@@ -84,6 +84,7 @@ keybinds {
         // bind "Alt c" { Copy; }
     }
     search {
+        bind "s" { SwitchToMode "EnterSearch"; SearchInput 0; }
         bind "Ctrl s" { SwitchToMode "Normal"; }
         bind "Ctrl c" { ScrollToBottom; SwitchToMode "Normal"; }
         bind "j" "Down" { ScrollDown; }
