@@ -296,7 +296,7 @@ impl Page {
     }
     fn new_mouse_any_event() -> Page {
         Page::new()
-            .with_title(Text::new("Mosue Any-Event Tracking").color_range(0, ..))
+            .with_title(Text::new("Mouse Any-Event Tracking").color_range(0, ..))
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
                     Text::new(
