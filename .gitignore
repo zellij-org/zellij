@@ -5,3 +5,5 @@ target/
 .idea
 .DS_Store
 /assets/man/zellij.1
+.idea/
+docker-compose.override.yml

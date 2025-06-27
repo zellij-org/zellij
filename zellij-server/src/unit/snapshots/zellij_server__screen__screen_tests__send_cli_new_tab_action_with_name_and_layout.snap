@@ -3,7 +3,9 @@ source: zellij-server/src/./unit/screen_tests.rs
 expression: "format!(\"{:#?}\", new_tab_instruction)"
 ---
 NewTab(
-    None,
+    Some(
+        ".",
+    ),
     None,
     Some(
         TiledPaneLayout {
