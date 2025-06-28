@@ -367,6 +367,9 @@ impl Pane for TerminalPane {
                 if self.grid.search_results.wrap_search {
                     modifiers.push("w")
                 }
+                if self.grid.search_results.regex_search {
+                    modifiers.push("r")
+                }
                 modifier_text.push_str(&modifiers.join(", "));
                 modifier_text.push(']');
             }
@@ -723,6 +726,10 @@ impl Pane for TerminalPane {
     }
     fn toggle_search_wrap(&mut self) {
         self.grid.toggle_search_wrap();
+    }
+    fn toggle_search_regex(&mut self) {
+        self.grid.toggle_search_regex();
+        self.set_should_render(true);
     }
     fn clear_search(&mut self) {
         self.grid.clear_search();

@@ -337,6 +337,7 @@ pub enum SearchOption {
     CaseSensitivity = 0,
     WholeWord = 1,
     Wrap = 2,
+    Regex = 3,
 }
 impl SearchOption {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -348,6 +349,7 @@ impl SearchOption {
             SearchOption::CaseSensitivity => "CaseSensitivity",
             SearchOption::WholeWord => "WholeWord",
             SearchOption::Wrap => "Wrap",
+            SearchOption::Regex => "Regex",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -356,6 +358,7 @@ impl SearchOption {
             "CaseSensitivity" => Some(Self::CaseSensitivity),
             "WholeWord" => Some(Self::WholeWord),
             "Wrap" => Some(Self::Wrap),
+            "Regex" => Some(Self::Regex),
             _ => None,
         }
     }
