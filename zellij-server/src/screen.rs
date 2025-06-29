@@ -43,7 +43,7 @@ use crate::{
     panes::sixel::SixelImageStore,
     panes::PaneId,
     plugins::{PluginId, PluginInstruction, PluginRenderAsset},
-    pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
+    pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes, NewPanePlacement},
     tab::{SuppressedPanes, Tab},
     thread_bus::Bus,
     ui::{
@@ -151,10 +151,9 @@ pub enum ScreenInstruction {
     NewPane(
         PaneId,
         Option<InitialTitle>,
-        Option<ShouldFloat>,
         HoldForCommand,
         Option<Run>, // invoked with
-        Option<FloatingPaneCoordinates>,
+        NewPanePlacement,
         bool, // start suppressed
         ClientTabIndexOrPaneId,
     ),
@@ -3335,10 +3334,9 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::NewPane(
                 pid,
                 initial_pane_title,
-                should_float,
                 hold_for_command,
                 invoked_with,
-                floating_pane_coordinates,
+                new_pane_placement,
                 start_suppressed,
                 client_or_tab_index,
             ) => {
@@ -3347,11 +3345,10 @@ pub(crate) fn screen_thread_main(
                         active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| {
                             tab.new_pane(pid,
                                initial_pane_title,
-                               should_float,
                                invoked_with,
-                               floating_pane_coordinates,
                                start_suppressed,
                                true,
+                               new_pane_placement,
                                Some(client_id)
                            )
                         }, ?);
@@ -3374,11 +3371,10 @@ pub(crate) fn screen_thread_main(
                             active_tab.new_pane(
                                 pid,
                                 initial_pane_title,
-                                should_float,
                                 invoked_with,
-                                floating_pane_coordinates,
                                 start_suppressed,
                                 true,
+                                new_pane_placement,
                                 None,
                             )?;
                             if let Some(hold_for_command) = hold_for_command {
@@ -3397,11 +3393,10 @@ pub(crate) fn screen_thread_main(
                                 tab.new_pane(
                                     pid,
                                     initial_pane_title,
-                                    should_float,
                                     invoked_with,
-                                    floating_pane_coordinates,
                                     start_suppressed,
                                     true,
+                                    new_pane_placement,
                                     None,
                                 )?;
                                 if let Some(hold_for_command) = hold_for_command {
@@ -4659,6 +4654,10 @@ pub(crate) fn screen_thread_main(
                 should_focus_plugin,
                 client_id,
             ) => {
+                let new_pane_placement = NewPanePlacement::default()
+                    .with_floating_pane_coordinates(floating_pane_coordinates.clone())
+                    .with_should_be_in_place(should_be_in_place)
+                    .with_pane_id_to_replace(pane_id_to_replace);
                 if screen.active_tab_indices.is_empty() && tab_index.is_none() {
                     pending_events_waiting_for_client.push(ScreenInstruction::AddPlugin(
                         should_float,
@@ -4718,11 +4717,10 @@ pub(crate) fn screen_thread_main(
                         active_tab.new_pane(
                             PaneId::Plugin(plugin_id),
                             Some(pane_title),
-                            should_float,
                             Some(run_plugin),
-                            floating_pane_coordinates,
                             start_suppressed,
                             should_focus_plugin.unwrap_or(true),
+                            new_pane_placement,
                             Some(client_id),
                         )
                     }, ?);
@@ -4732,11 +4730,10 @@ pub(crate) fn screen_thread_main(
                     active_tab.new_pane(
                         PaneId::Plugin(plugin_id),
                         Some(pane_title),
-                        should_float,
                         Some(run_plugin),
-                        None,
                         start_suppressed,
                         should_focus_plugin.unwrap_or(true),
+                        new_pane_placement,
                         None,
                     )?;
                 } else {

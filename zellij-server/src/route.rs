@@ -6,7 +6,7 @@ use crate::{
     os_input_output::ServerOsApi,
     panes::PaneId,
     plugins::PluginInstruction,
-    pty::{ClientTabIndexOrPaneId, PtyInstruction},
+    pty::{ClientTabIndexOrPaneId, PtyInstruction, NewPanePlacement},
     screen::ScreenInstruction,
     ServerInstruction, SessionMetaData, SessionState,
 };
@@ -270,12 +270,10 @@ pub(crate) fn route_action(
                 Some(Direction::Down) => {
                     PtyInstruction::SpawnTerminalHorizontally(shell, name, client_id)
                 },
-                // No direction specified - try to put it in the biggest available spot
                 None => PtyInstruction::SpawnTerminal(
                     shell,
-                    None,
                     name,
-                    None,
+                    NewPanePlacement::default(),
                     start_suppressed,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ),
@@ -328,9 +326,12 @@ pub(crate) fn route_action(
                 // placement to screen
                 (None, _, _) | (_, true, _) => PtyInstruction::SpawnTerminal(
                     Some(open_file),
-                    Some(should_float),
                     Some(title),
-                    floating_pane_coordinates,
+                    if should_float {
+                        NewPanePlacement::Floating(floating_pane_coordinates)
+                    } else {
+                        NewPanePlacement::Tiled(None)
+                    },
                     start_suppressed,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ),
@@ -368,16 +369,14 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::NewFloatingPane(run_command, name, floating_pane_coordinates) => {
-            let should_float = true;
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
             senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     run_cmd,
-                    Some(should_float),
                     name,
-                    floating_pane_coordinates,
+                    NewPanePlacement::Floating(floating_pane_coordinates),
                     false,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ))
@@ -411,7 +410,6 @@ pub(crate) fn route_action(
             }
         },
         Action::NewTiledPane(direction, run_command, name) => {
-            let should_float = false;
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
@@ -428,12 +426,10 @@ pub(crate) fn route_action(
                 Some(Direction::Down) => {
                     PtyInstruction::SpawnTerminalHorizontally(run_cmd, name, client_id)
                 },
-                // No direction specified - try to put it in the biggest available spot
                 None => PtyInstruction::SpawnTerminal(
                     run_cmd,
-                    Some(should_float),
                     name,
-                    None,
+                    NewPanePlacement::Tiled(None),
                     false,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ),
@@ -478,12 +474,10 @@ pub(crate) fn route_action(
                 Some(Direction::Down) => {
                     PtyInstruction::SpawnTerminalHorizontally(run_cmd, None, client_id)
                 },
-                // No direction specified - try to put it in the biggest available spot
                 None => PtyInstruction::SpawnTerminal(
                     run_cmd,
                     None,
-                    None,
-                    None,
+                    NewPanePlacement::Tiled(None),
                     false,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ),

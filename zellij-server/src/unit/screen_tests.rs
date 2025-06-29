@@ -34,7 +34,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::{
     plugins::PluginInstruction,
-    pty::{ClientTabIndexOrPaneId, PtyInstruction},
+    pty::{ClientTabIndexOrPaneId, PtyInstruction, NewPanePlacement},
 };
 use zellij_utils::ipc::PixelDimensions;
 
@@ -1235,10 +1235,9 @@ fn switch_to_tab_with_fullscreen() {
                 PaneId::Terminal(2),
                 None,
                 None,
-                None,
-                None,
                 false,
                 true,
+                NewPanePlacement::default(),
                 Some(1),
             )
             .unwrap();
@@ -1359,10 +1358,9 @@ fn attach_after_first_tab_closed() {
                 PaneId::Terminal(2),
                 None,
                 None,
-                None,
-                None,
                 false,
                 true,
+                NewPanePlacement::default(),
                 Some(1),
             )
             .unwrap();
@@ -1390,17 +1388,18 @@ fn open_new_floating_pane_with_custom_coordinates() {
         .new_pane(
             PaneId::Terminal(2),
             None,
-            should_float,
             None,
-            Some(FloatingPaneCoordinates {
-                x: Some(SplitSize::Percent(10)),
-                y: Some(SplitSize::Fixed(5)),
-                width: Some(SplitSize::Percent(1)),
-                height: Some(SplitSize::Fixed(2)),
-                pinned: None,
-            }),
             false,
             true,
+            NewPanePlacement::Floating(
+                Some(FloatingPaneCoordinates {
+                    x: Some(SplitSize::Percent(10)),
+                    y: Some(SplitSize::Fixed(5)),
+                    width: Some(SplitSize::Percent(1)),
+                    height: Some(SplitSize::Fixed(2)),
+                    pinned: None,
+                }),
+            ),
             Some(1),
         )
         .unwrap();
@@ -1421,22 +1420,22 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
-    let should_float = Some(true);
     active_tab
         .new_pane(
             PaneId::Terminal(2),
             None,
-            should_float,
             None,
-            Some(FloatingPaneCoordinates {
-                x: Some(SplitSize::Fixed(122)),
-                y: Some(SplitSize::Fixed(21)),
-                width: Some(SplitSize::Fixed(10)),
-                height: Some(SplitSize::Fixed(10)),
-                pinned: None,
-            }),
             false,
             true,
+            NewPanePlacement::Floating(
+                Some(FloatingPaneCoordinates {
+                    x: Some(SplitSize::Fixed(122)),
+                    y: Some(SplitSize::Fixed(21)),
+                    width: Some(SplitSize::Fixed(10)),
+                    height: Some(SplitSize::Fixed(10)),
+                    pinned: None,
+                })
+            ),
             Some(1),
         )
         .unwrap();
@@ -1617,11 +1616,10 @@ fn group_panes_following_focus() {
                 .new_pane(
                     PaneId::Terminal(i),
                     None,
-                    should_float,
-                    None,
                     None,
                     false,
                     true,
+                    NewPanePlacement::Tiled(None),
                     Some(client_id),
                 )
                 .unwrap();
@@ -1670,17 +1668,15 @@ fn break_group_with_mouse() {
 
     {
         let active_tab = screen.get_active_tab_mut(client_id).unwrap();
-        let should_float = Some(false);
         for i in 2..5 {
             active_tab
                 .new_pane(
                     PaneId::Terminal(i),
                     None,
-                    should_float,
-                    None,
                     None,
                     false,
                     true,
+                    NewPanePlacement::Tiled(None),
                     Some(client_id),
                 )
                 .unwrap();

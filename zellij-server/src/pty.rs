@@ -16,7 +16,7 @@ use nix::unistd::Pid;
 use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::{
-    data::{Event, FloatingPaneCoordinates, OriginatingPlugin},
+    data::{Event, FloatingPaneCoordinates, OriginatingPlugin, Direction},
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
@@ -37,14 +37,69 @@ pub enum ClientTabIndexOrPaneId {
     PaneId(PaneId),
 }
 
+#[derive(Clone, Debug)]
+pub enum NewPanePlacement {
+    NoPreference,
+    Tiled(Option<Direction>),
+    Floating(Option<FloatingPaneCoordinates>),
+    InPlace(Option<PaneId>),
+    Stacked(Option<PaneId>),
+}
+
+impl Default for NewPanePlacement {
+    fn default() -> Self {
+        NewPanePlacement::NoPreference
+    }
+}
+
+impl NewPanePlacement {
+    pub fn with_floating_pane_coordinates(mut self, floating_pane_coordinates: Option<FloatingPaneCoordinates>) -> Self {
+        self = NewPanePlacement::Floating(floating_pane_coordinates);
+        self
+    }
+    pub fn with_should_be_in_place(mut self, should_be_in_place: bool) -> Self {
+        if should_be_in_place {
+            NewPanePlacement::InPlace(None)
+        } else {
+            self
+        }
+    }
+//     pub fn with_should_float(mut self, should_float: bool) -> Self {
+//         match self {
+//             NewPanePlacement::Floating(_) if should_float => self, // to preserve coordinates if they exist
+//             NewPanePlacement::Floating(_) if !should_float => NewPanePlacement::Tiled(None),
+//             ::Floating(_) if !should_float => NewPanePlacement::Tiled(None),
+//             _ => {
+//                 NewPanePlacement::Floating(None)
+//             }
+//         }
+//     }
+    pub fn with_pane_id_to_replace(mut self, pane_id_to_replace: Option<PaneId>) -> Self {
+        self = NewPanePlacement::InPlace(pane_id_to_replace);
+        self
+    }
+    pub fn should_float(&self) -> Option<bool> {
+        match self {
+            NewPanePlacement::Floating(_) => Some(true),
+            NewPanePlacement::Tiled(_) => Some(false),
+            _ => None
+        }
+    }
+    pub fn floating_pane_coordinates(&self) -> Option<FloatingPaneCoordinates> {
+        match self {
+            NewPanePlacement::Floating(floating_pane_coordinates) => floating_pane_coordinates.clone(),
+            _ => None,
+        }
+    }
+}
+
 /// Instructions related to PTYs (pseudoterminals).
 #[derive(Clone, Debug)]
 pub enum PtyInstruction {
     SpawnTerminal(
         Option<TerminalAction>,
-        Option<bool>,
         Option<String>,
-        Option<FloatingPaneCoordinates>,
+        NewPanePlacement,
         bool, // start suppressed
         ClientTabIndexOrPaneId,
     ), // bool (if Some) is
@@ -153,9 +208,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
         match event {
             PtyInstruction::SpawnTerminal(
                 terminal_action,
-                should_float,
                 name,
-                floating_pane_coordinates,
+                new_terminal_placement,
                 start_suppressed,
                 client_or_tab_index,
             ) => {
@@ -235,10 +289,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                             .send_to_screen(ScreenInstruction::NewPane(
                                 PaneId::Terminal(pid),
                                 pane_title,
-                                should_float,
                                 hold_for_command,
                                 invoked_with,
-                                floating_pane_coordinates,
+                                new_terminal_placement,
                                 start_suppressed,
                                 client_or_tab_index,
                             ))
@@ -253,10 +306,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                     .send_to_screen(ScreenInstruction::NewPane(
                                         PaneId::Terminal(*terminal_id),
                                         pane_title,
-                                        should_float,
                                         hold_for_command,
                                         invoked_with,
-                                        floating_pane_coordinates,
+                                        new_terminal_placement,
                                         start_suppressed,
                                         client_or_tab_index,
                                     ))

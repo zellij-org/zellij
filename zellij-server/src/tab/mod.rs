@@ -39,7 +39,7 @@ use crate::{
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
     plugins::PluginInstruction,
-    pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
+    pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes, NewPanePlacement},
     thread_bus::ThreadSenders,
     ClientId, ServerInstruction,
 };
@@ -1238,7 +1238,6 @@ impl Tab {
                 },
                 None => {
                     let name = None;
-                    let should_float = true;
                     let client_id_or_tab_index = match client_id {
                         Some(client_id) => ClientTabIndexOrPaneId::ClientId(client_id),
                         None => ClientTabIndexOrPaneId::TabIndex(self.index),
@@ -1246,9 +1245,8 @@ impl Tab {
                     let should_start_suppressed = false;
                     let instruction = PtyInstruction::SpawnTerminal(
                         default_shell,
-                        Some(should_float),
                         name,
-                        None,
+                        NewPanePlacement::Floating(None),
                         should_start_suppressed,
                         client_id_or_tab_index,
                     );
@@ -1266,16 +1264,15 @@ impl Tab {
         &mut self,
         pid: PaneId,
         initial_pane_title: Option<String>,
-        should_float: Option<bool>,
         invoked_with: Option<Run>,
-        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
         start_suppressed: bool,
         should_focus_pane: bool,
+        new_pane_placement: NewPanePlacement,
         client_id: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
         if should_focus_pane {
-            match should_float {
+            match new_pane_placement.should_float() {
                 Some(true) => self.show_floating_panes(),
                 Some(false) => self.hide_floating_panes(),
                 None => {},
@@ -1357,19 +1354,19 @@ impl Tab {
             Ok(())
         } else if should_focus_pane {
             if self.floating_panes.panes_are_visible() {
-                self.add_floating_pane(new_pane, pid, floating_pane_coordinates, true)
+                self.add_floating_pane(new_pane, pid, new_pane_placement.floating_pane_coordinates(), true)
             } else {
                 self.add_tiled_pane(new_pane, pid, client_id)
             }
         } else {
-            match should_float {
+            match new_pane_placement.should_float() {
                 Some(true) => {
-                    self.add_floating_pane(new_pane, pid, floating_pane_coordinates, false)
+                    self.add_floating_pane(new_pane, pid, new_pane_placement.floating_pane_coordinates(), false)
                 },
                 Some(false) => self.add_tiled_pane(new_pane, pid, client_id),
                 None => {
                     if self.floating_panes.panes_are_visible() {
-                        self.add_floating_pane(new_pane, pid, floating_pane_coordinates, false)
+                        self.add_floating_pane(new_pane, pid, new_pane_placement.floating_pane_coordinates(), false)
                     } else {
                         self.add_tiled_pane(new_pane, pid, client_id)
                     }
