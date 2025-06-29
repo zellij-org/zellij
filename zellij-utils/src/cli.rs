@@ -20,7 +20,7 @@ fn validate_session(name: &str) -> Result<String, String> {
         if socket_path.as_os_str().len() >= ZELLIJ_SOCK_MAX_LENGTH {
             // socket path must be less than 108 bytes
             let available_length = ZELLIJ_SOCK_MAX_LENGTH
-                .saturating_sub(socket_path.as_os_str().len())
+                .saturating_sub(crate::consts::ZELLIJ_SOCK_DIR.as_os_str().len())
                 .saturating_sub(1);
 
             return Err(format!(
