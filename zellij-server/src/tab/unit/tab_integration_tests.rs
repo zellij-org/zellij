@@ -1342,6 +1342,36 @@ fn new_floating_pane() {
 }
 
 #[test]
+fn new_stacked_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+    tab.new_pane(
+        new_pane_id,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Stacked(None),
+        Some(client_id),
+    )
+    .unwrap();
+    tab.render(&mut output).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
 fn floating_panes_persist_across_toggles() {
     let size = Size {
         cols: 121,
