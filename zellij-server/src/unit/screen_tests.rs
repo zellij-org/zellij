@@ -34,7 +34,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::{
     plugins::PluginInstruction,
-    pty::{ClientTabIndexOrPaneId, PtyInstruction, NewPanePlacement},
+    pty::{ClientTabIndexOrPaneId, NewPanePlacement, PtyInstruction},
 };
 use zellij_utils::ipc::PixelDimensions;
 
@@ -1391,15 +1391,13 @@ fn open_new_floating_pane_with_custom_coordinates() {
             None,
             false,
             true,
-            NewPanePlacement::Floating(
-                Some(FloatingPaneCoordinates {
-                    x: Some(SplitSize::Percent(10)),
-                    y: Some(SplitSize::Fixed(5)),
-                    width: Some(SplitSize::Percent(1)),
-                    height: Some(SplitSize::Fixed(2)),
-                    pinned: None,
-                }),
-            ),
+            NewPanePlacement::Floating(Some(FloatingPaneCoordinates {
+                x: Some(SplitSize::Percent(10)),
+                y: Some(SplitSize::Fixed(5)),
+                width: Some(SplitSize::Percent(1)),
+                height: Some(SplitSize::Fixed(2)),
+                pinned: None,
+            })),
             Some(1),
         )
         .unwrap();
@@ -1427,15 +1425,13 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
             None,
             false,
             true,
-            NewPanePlacement::Floating(
-                Some(FloatingPaneCoordinates {
-                    x: Some(SplitSize::Fixed(122)),
-                    y: Some(SplitSize::Fixed(21)),
-                    width: Some(SplitSize::Fixed(10)),
-                    height: Some(SplitSize::Fixed(10)),
-                    pinned: None,
-                })
-            ),
+            NewPanePlacement::Floating(Some(FloatingPaneCoordinates {
+                x: Some(SplitSize::Fixed(122)),
+                y: Some(SplitSize::Fixed(21)),
+                width: Some(SplitSize::Fixed(10)),
+                height: Some(SplitSize::Fixed(10)),
+                pinned: None,
+            })),
             Some(1),
         )
         .unwrap();
@@ -2592,6 +2588,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         width: None,
         height: None,
         pinned: None,
+        stacked: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2636,6 +2633,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         width: None,
         height: None,
         pinned: None,
+        stacked: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2680,6 +2678,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         width: None,
         height: None,
         pinned: None,
+        stacked: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2735,6 +2734,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         width: Some("20%".to_owned()),
         height: None,
         pinned: None,
+        stacked: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be

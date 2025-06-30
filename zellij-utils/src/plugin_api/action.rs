@@ -1257,6 +1257,7 @@ impl TryFrom<Action> for ProtobufAction {
             Action::NoOp
             | Action::Confirm
             | Action::NewInPlacePane(..)
+            | Action::NewStackedPane(..)
             | Action::NewInPlacePluginPane(..)
             | Action::Deny
             | Action::Copy

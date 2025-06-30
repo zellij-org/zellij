@@ -16,7 +16,7 @@ use nix::unistd::Pid;
 use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::{
-    data::{Event, FloatingPaneCoordinates, OriginatingPlugin, Direction},
+    data::{Direction, Event, FloatingPaneCoordinates, OriginatingPlugin},
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
@@ -37,6 +37,7 @@ pub enum ClientTabIndexOrPaneId {
     PaneId(PaneId),
 }
 
+// TODO: move elsewhere
 #[derive(Clone, Debug)]
 pub enum NewPanePlacement {
     NoPreference,
@@ -53,7 +54,10 @@ impl Default for NewPanePlacement {
 }
 
 impl NewPanePlacement {
-    pub fn with_floating_pane_coordinates(mut self, floating_pane_coordinates: Option<FloatingPaneCoordinates>) -> Self {
+    pub fn with_floating_pane_coordinates(
+        mut self,
+        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+    ) -> Self {
         self = NewPanePlacement::Floating(floating_pane_coordinates);
         self
     }
@@ -64,16 +68,6 @@ impl NewPanePlacement {
             self
         }
     }
-//     pub fn with_should_float(mut self, should_float: bool) -> Self {
-//         match self {
-//             NewPanePlacement::Floating(_) if should_float => self, // to preserve coordinates if they exist
-//             NewPanePlacement::Floating(_) if !should_float => NewPanePlacement::Tiled(None),
-//             ::Floating(_) if !should_float => NewPanePlacement::Tiled(None),
-//             _ => {
-//                 NewPanePlacement::Floating(None)
-//             }
-//         }
-//     }
     pub fn with_pane_id_to_replace(mut self, pane_id_to_replace: Option<PaneId>) -> Self {
         self = NewPanePlacement::InPlace(pane_id_to_replace);
         self
@@ -82,12 +76,26 @@ impl NewPanePlacement {
         match self {
             NewPanePlacement::Floating(_) => Some(true),
             NewPanePlacement::Tiled(_) => Some(false),
-            _ => None
+            _ => None,
         }
     }
     pub fn floating_pane_coordinates(&self) -> Option<FloatingPaneCoordinates> {
         match self {
-            NewPanePlacement::Floating(floating_pane_coordinates) => floating_pane_coordinates.clone(),
+            NewPanePlacement::Floating(floating_pane_coordinates) => {
+                floating_pane_coordinates.clone()
+            },
+            _ => None,
+        }
+    }
+    pub fn should_stack(&self) -> bool {
+        match self {
+            NewPanePlacement::Stacked(_) => true,
+            _ => false,
+        }
+    }
+    pub fn id_of_stack_root(&self) -> Option<PaneId> {
+        match self {
+            NewPanePlacement::Stacked(id) => *id,
             _ => None,
         }
     }
@@ -209,7 +217,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::SpawnTerminal(
                 terminal_action,
                 name,
-                new_terminal_placement,
+                new_pane_placement,
                 start_suppressed,
                 client_or_tab_index,
             ) => {
@@ -291,7 +299,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 pane_title,
                                 hold_for_command,
                                 invoked_with,
-                                new_terminal_placement,
+                                new_pane_placement,
                                 start_suppressed,
                                 client_or_tab_index,
                             ))
@@ -308,7 +316,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         pane_title,
                                         hold_for_command,
                                         invoked_with,
-                                        new_terminal_placement,
+                                        new_pane_placement,
                                         start_suppressed,
                                         client_or_tab_index,
                                     ))

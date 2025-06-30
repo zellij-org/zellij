@@ -43,7 +43,7 @@ use crate::{
     panes::sixel::SixelImageStore,
     panes::PaneId,
     plugins::{PluginId, PluginInstruction, PluginRenderAsset},
-    pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes, NewPanePlacement},
+    pty::{get_default_shell, ClientTabIndexOrPaneId, NewPanePlacement, PtyInstruction, VteBytes},
     tab::{SuppressedPanes, Tab},
     thread_bus::Bus,
     ui::{

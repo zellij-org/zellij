@@ -2,7 +2,7 @@ use super::PluginInstruction;
 use crate::background_jobs::BackgroundJob;
 use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::wasm_bridge::handle_plugin_crash;
-use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction, NewPanePlacement};
+use crate::pty::{ClientTabIndexOrPaneId, NewPanePlacement, PtyInstruction};
 use crate::route::route_action;
 use crate::ServerInstruction;
 use async_std::task;

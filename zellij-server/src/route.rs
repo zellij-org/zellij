@@ -6,7 +6,7 @@ use crate::{
     os_input_output::ServerOsApi,
     panes::PaneId,
     plugins::PluginInstruction,
-    pty::{ClientTabIndexOrPaneId, PtyInstruction, NewPanePlacement},
+    pty::{ClientTabIndexOrPaneId, NewPanePlacement, PtyInstruction},
     screen::ScreenInstruction,
     ServerInstruction, SessionMetaData, SessionState,
 };
@@ -402,6 +402,35 @@ pub(crate) fn route_action(
                         .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
                             run_cmd,
                             name,
+                            false,
+                            ClientTabIndexOrPaneId::ClientId(client_id),
+                        ))
+                        .with_context(err_context)?;
+                },
+            }
+        },
+        Action::NewStackedPane(run_command, name) => {
+            let run_cmd = run_command
+                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
+                .or_else(|| default_shell.clone());
+            match pane_id {
+                Some(pane_id) => {
+                    senders
+                        .send_to_pty(PtyInstruction::SpawnTerminal(
+                            run_cmd,
+                            name,
+                            NewPanePlacement::Stacked(Some(pane_id)),
+                            false,
+                            ClientTabIndexOrPaneId::PaneId(pane_id),
+                        ))
+                        .with_context(err_context)?;
+                },
+                None => {
+                    senders
+                        .send_to_pty(PtyInstruction::SpawnTerminal(
+                            run_cmd,
+                            name,
+                            NewPanePlacement::Stacked(None),
                             false,
                             ClientTabIndexOrPaneId::ClientId(client_id),
                         ))

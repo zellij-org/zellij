@@ -39,7 +39,7 @@ use crate::{
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
     plugins::PluginInstruction,
-    pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes, NewPanePlacement},
+    pty::{ClientTabIndexOrPaneId, NewPanePlacement, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
     ClientId, ServerInstruction,
 };
@@ -1354,19 +1354,41 @@ impl Tab {
             Ok(())
         } else if should_focus_pane {
             if self.floating_panes.panes_are_visible() {
-                self.add_floating_pane(new_pane, pid, new_pane_placement.floating_pane_coordinates(), true)
+                self.add_floating_pane(
+                    new_pane,
+                    pid,
+                    new_pane_placement.floating_pane_coordinates(),
+                    true,
+                )
+            } else if new_pane_placement.should_stack() {
+                if let Some(id_of_stack_root) = new_pane_placement.id_of_stack_root() {
+                    self.add_stacked_pane_to_pane_id(new_pane, pid, id_of_stack_root)
+                } else if let Some(client_id) = client_id {
+                    self.add_stacked_pane_to_active_pane(new_pane, pid, client_id)
+                } else {
+                    log::error!("Must have client id or pane id to stack pane");
+                    return Ok(());
+                }
             } else {
                 self.add_tiled_pane(new_pane, pid, client_id)
             }
         } else {
             match new_pane_placement.should_float() {
-                Some(true) => {
-                    self.add_floating_pane(new_pane, pid, new_pane_placement.floating_pane_coordinates(), false)
-                },
+                Some(true) => self.add_floating_pane(
+                    new_pane,
+                    pid,
+                    new_pane_placement.floating_pane_coordinates(),
+                    false,
+                ),
                 Some(false) => self.add_tiled_pane(new_pane, pid, client_id),
                 None => {
                     if self.floating_panes.panes_are_visible() {
-                        self.add_floating_pane(new_pane, pid, new_pane_placement.floating_pane_coordinates(), false)
+                        self.add_floating_pane(
+                            new_pane,
+                            pid,
+                            new_pane_placement.floating_pane_coordinates(),
+                            false,
+                        )
                     } else {
                         self.add_tiled_pane(new_pane, pid, client_id)
                     }
@@ -4648,6 +4670,38 @@ impl Tab {
                                                       // next layout
             self.relayout_tiled_panes(false)?;
         }
+        Ok(())
+    }
+    pub fn add_stacked_pane_to_pane_id(
+        &mut self,
+        pane: Box<dyn Pane>,
+        pane_id: PaneId,
+        root_pane_id: PaneId,
+    ) -> Result<()> {
+        if self.tiled_panes.fullscreen_is_active() {
+            self.tiled_panes.unset_fullscreen();
+        }
+        self.tiled_panes
+            .add_pane_to_stack_of_pane_id(pane_id, pane, root_pane_id);
+        self.set_should_clear_display_before_rendering();
+        self.tiled_panes.expand_pane_in_stack(pane_id); // so that it will get focused by all
+                                                        // clients
+        self.swap_layouts.set_is_tiled_damaged();
+        Ok(())
+    }
+    pub fn add_stacked_pane_to_active_pane(
+        &mut self,
+        pane: Box<dyn Pane>,
+        pane_id: PaneId,
+        client_id: ClientId,
+    ) -> Result<()> {
+        if self.tiled_panes.fullscreen_is_active() {
+            self.tiled_panes.unset_fullscreen();
+        }
+        self.tiled_panes
+            .add_pane_to_stack_of_active_pane(pane_id, pane, client_id);
+        self.tiled_panes.focus_pane(pane_id, client_id);
+        self.swap_layouts.set_is_tiled_damaged();
         Ok(())
     }
     pub fn request_plugin_permissions(&mut self, pid: u32, permissions: Option<PluginPermission>) {

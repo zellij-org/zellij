@@ -180,6 +180,8 @@ pub enum Action {
     /// Open a new pane in place of the focused one, suppressing it instead
     NewInPlacePane(Option<RunCommandAction>, Option<String>), // String is an
     // optional pane
+    NewStackedPane(Option<RunCommandAction>, Option<String>), // String is an
+    // optional pane
     // name
     /// Embed focused pane in tab if floating or float focused pane if embedded
     TogglePaneEmbedOrFloating,
@@ -362,6 +364,7 @@ impl Action {
                 width,
                 height,
                 pinned,
+                stacked,
             } => {
                 let current_dir = get_current_dir();
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
@@ -443,6 +446,8 @@ impl Action {
                         )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane(Some(run_command_action), name)])
+                    } else if stacked.unwrap_or(false) {
+                        Ok(vec![Action::NewStackedPane(Some(run_command_action), name)])
                     } else {
                         Ok(vec![Action::NewTiledPane(
                             direction,
@@ -459,6 +464,8 @@ impl Action {
                         )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane(None, name)])
+                    } else if stacked.unwrap_or(false) {
+                        Ok(vec![Action::NewStackedPane(None, name)])
                     } else {
                         Ok(vec![Action::NewTiledPane(direction, None, name)])
                     }

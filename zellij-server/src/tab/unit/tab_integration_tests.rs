@@ -32,8 +32,8 @@ use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
 
-use crate::pty_writer::PtyWriteInstruction;
 use crate::pty::NewPanePlacement;
+use crate::pty_writer::PtyWriteInstruction;
 use zellij_utils::channels::{self, ChannelWithContext, SenderWithContext};
 
 use std::cell::RefCell;

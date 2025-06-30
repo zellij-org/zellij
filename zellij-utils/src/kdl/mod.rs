@@ -534,6 +534,8 @@ impl Action {
             "NewPane" => {
                 if string.is_empty() {
                     return Ok(Action::NewPane(None, None, false));
+                } else if string == "stacked" {
+                    return Ok(Action::NewStackedPane(None, None));
                 } else {
                     let direction = Direction::from_str(string.as_str()).map_err(|_| {
                         ConfigError::new_kdl_error(
@@ -885,6 +887,44 @@ impl Action {
                     let mut in_place_node = KdlNode::new("in_place");
                     in_place_node.push(KdlValue::Bool(true));
                     node_children.nodes_mut().push(in_place_node);
+                    if let Some(cwd) = &run_command_action.cwd {
+                        let mut cwd_node = KdlNode::new("cwd");
+                        cwd_node.push(cwd.display().to_string());
+                        node_children.nodes_mut().push(cwd_node);
+                    }
+                    if run_command_action.hold_on_start {
+                        let mut hos_node = KdlNode::new("hold_on_start");
+                        hos_node.push(KdlValue::Bool(true));
+                        node_children.nodes_mut().push(hos_node);
+                    }
+                    if !run_command_action.hold_on_close {
+                        let mut hoc_node = KdlNode::new("hold_on_close");
+                        hoc_node.push(KdlValue::Bool(false));
+                        node_children.nodes_mut().push(hoc_node);
+                    }
+                }
+                if let Some(name) = name {
+                    let mut name_node = KdlNode::new("name");
+                    name_node.push(name.clone());
+                    node_children.nodes_mut().push(name_node);
+                }
+                if !node_children.nodes().is_empty() {
+                    node.set_children(node_children);
+                }
+                Some(node)
+            },
+            Action::NewStackedPane(run_command_action, name) => {
+                // TODO: test this
+                let mut node = KdlNode::new("Run");
+                let mut node_children = KdlDocument::new();
+                if let Some(run_command_action) = run_command_action {
+                    node.push(run_command_action.command.display().to_string());
+                    for arg in &run_command_action.args {
+                        node.push(arg.clone());
+                    }
+                    let mut stacked_node = KdlNode::new("stacked");
+                    stacked_node.push(KdlValue::Bool(true));
+                    node_children.nodes_mut().push(stacked_node);
                     if let Some(cwd) = &run_command_action.cwd {
                         let mut cwd_node = KdlNode::new("cwd");
                         cwd_node.push(cwd.display().to_string());
@@ -1557,6 +1597,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let in_place = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "in_place"))
                     .unwrap_or(false);
+                let stacked = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "stacked"))
+                    .unwrap_or(false);
                 let run_command_action = RunCommandAction {
                     command: PathBuf::from(command),
                     args,
@@ -1588,6 +1631,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     ))
                 } else if in_place {
                     Ok(Action::NewInPlacePane(Some(run_command_action), name))
+                } else if stacked {
+                    Ok(Action::NewStackedPane(Some(run_command_action), name))
                 } else {
                     Ok(Action::NewTiledPane(
                         direction,

@@ -1,6 +1,7 @@
 use super::Tab;
 use crate::pane_groups::PaneGroups;
 use crate::panes::sixel::SixelImageStore;
+use crate::pty::NewPanePlacement;
 use crate::screen::CopyOptions;
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
@@ -8,7 +9,6 @@ use crate::{
     thread_bus::ThreadSenders,
     ClientId,
 };
-use crate::pty::NewPanePlacement;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use zellij_utils::data::{Direction, Resize, ResizeStrategy, WebSharing};
@@ -626,8 +626,16 @@ fn split_largest_pane() {
     let mut tab = create_new_tab(size, stacked_resize);
     for i in 2..5 {
         let new_pane_id = PaneId::Terminal(i);
-        tab.new_pane(new_pane_id, None, None, false, true, NewPanePlacement::default(), Some(1))
-            .unwrap();
+        tab.new_pane(
+            new_pane_id,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+        )
+        .unwrap();
     }
     assert_eq!(tab.tiled_panes.panes.len(), 4, "The tab has four panes");
 
@@ -888,8 +896,16 @@ pub fn toggle_focused_pane_fullscreen() {
     let mut tab = create_new_tab(size, stacked_resize);
     for i in 2..5 {
         let new_pane_id = PaneId::Terminal(i);
-        tab.new_pane(new_pane_id, None, None, false, true, NewPanePlacement::default(), Some(1))
-            .unwrap();
+        tab.new_pane(
+            new_pane_id,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+        )
+        .unwrap();
     }
     tab.toggle_active_pane_fullscreen(1);
     assert_eq!(
@@ -971,9 +987,9 @@ pub fn toggle_focused_pane_fullscreen_with_stacked_resizes() {
             false,
             true,
             NewPanePlacement::default(),
-            Some(1)
+            Some(1),
         )
-            .unwrap();
+        .unwrap();
     }
     tab.toggle_active_pane_fullscreen(1);
     assert_eq!(
