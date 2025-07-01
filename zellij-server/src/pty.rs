@@ -58,14 +58,12 @@ impl Default for NewPanePlacement {
 
 impl NewPanePlacement {
     pub fn with_floating_pane_coordinates(
-        mut self,
         floating_pane_coordinates: Option<FloatingPaneCoordinates>,
     ) -> Self {
-        self = NewPanePlacement::Floating(floating_pane_coordinates);
-        self
+        NewPanePlacement::Floating(floating_pane_coordinates)
     }
     pub fn with_should_be_in_place(
-        mut self,
+        self,
         should_be_in_place: bool,
         close_replaced_pane: bool,
     ) -> Self {
@@ -79,15 +77,13 @@ impl NewPanePlacement {
         }
     }
     pub fn with_pane_id_to_replace(
-        mut self,
         pane_id_to_replace: Option<PaneId>,
         close_replaced_pane: bool,
     ) -> Self {
-        self = NewPanePlacement::InPlace {
+        NewPanePlacement::InPlace {
             pane_id_to_replace,
             close_replaced_pane,
-        };
-        self
+        }
     }
     pub fn should_float(&self) -> Option<bool> {
         match self {

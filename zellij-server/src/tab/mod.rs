@@ -1647,7 +1647,7 @@ impl Tab {
             },
         }
         if let Some(initial_pane_title) = initial_pane_title {
-            self.rename_pane(initial_pane_title.as_bytes().to_vec(), pid);
+            let _ = self.rename_pane(initial_pane_title.as_bytes().to_vec(), pid);
         }
         Ok(())
     }
