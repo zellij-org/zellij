@@ -1,7 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 6878
-expression: "format!(\"{:#?}\",\n        new_tab_event).replace(&format!(\"{:?}\", temp_folder.path()),\n    \"\\\"CWD\\\"\")"
+expression: "format!(\"{:#?}\",\nnew_tab_event).replace(&format!(\"{:?}\", temp_folder.path()), \"\\\"CWD\\\"\")"
 ---
 Some(
     SpawnTerminal(
@@ -29,8 +28,7 @@ Some(
             ),
         ),
         None,
-        None,
-        None,
+        NoPreference,
         true,
         ClientId(
             1,

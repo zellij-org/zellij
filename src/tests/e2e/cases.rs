@@ -1045,7 +1045,6 @@ pub fn resize_terminal_window() {
             name: "wait for terminal to be resized and app to be re-rendered",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                eprintln!("current_snapshot: {}", remote_terminal.current_snapshot());
                 if remote_terminal.cursor_position_is(53, 2) && remote_terminal.ctrl_plus_appears()
                 {
                     // size has been changed
