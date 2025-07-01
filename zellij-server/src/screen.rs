@@ -4654,10 +4654,11 @@ pub(crate) fn screen_thread_main(
                 should_focus_plugin,
                 client_id,
             ) => {
+                let close_replaced_pane = false; // TODO: support this
                 let new_pane_placement = NewPanePlacement::default()
                     .with_floating_pane_coordinates(floating_pane_coordinates.clone())
-                    .with_should_be_in_place(should_be_in_place)
-                    .with_pane_id_to_replace(pane_id_to_replace);
+                    .with_should_be_in_place(should_be_in_place, close_replaced_pane)
+                    .with_pane_id_to_replace(pane_id_to_replace, close_replaced_pane);
                 if screen.active_tab_indices.is_empty() && tab_index.is_none() {
                     pending_events_waiting_for_client.push(ScreenInstruction::AddPlugin(
                         should_float,

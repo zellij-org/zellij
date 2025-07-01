@@ -2689,7 +2689,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         .unwrap()
         .iter()
         .find(|instruction| match instruction {
-            PtyInstruction::SpawnTerminalVertically(..) => true,
+            PtyInstruction::SpawnTerminal(..) => true,
             _ => false,
         })
         .cloned();

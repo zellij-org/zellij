@@ -43,7 +43,7 @@ pub enum NewPanePlacement {
     NoPreference,
     Tiled(Option<Direction>),
     Floating(Option<FloatingPaneCoordinates>),
-    InPlace(Option<PaneId>),
+    InPlace {pane_id_to_replace: Option<PaneId>, close_replaced_pane: bool},
     Stacked(Option<PaneId>),
 }
 
@@ -61,15 +61,18 @@ impl NewPanePlacement {
         self = NewPanePlacement::Floating(floating_pane_coordinates);
         self
     }
-    pub fn with_should_be_in_place(mut self, should_be_in_place: bool) -> Self {
+    pub fn with_should_be_in_place(mut self, should_be_in_place: bool, close_replaced_pane: bool) -> Self {
         if should_be_in_place {
-            NewPanePlacement::InPlace(None)
+            NewPanePlacement::InPlace{pane_id_to_replace: None, close_replaced_pane}
         } else {
             self
         }
     }
-    pub fn with_pane_id_to_replace(mut self, pane_id_to_replace: Option<PaneId>) -> Self {
-        self = NewPanePlacement::InPlace(pane_id_to_replace);
+    pub fn with_pane_id_to_replace(mut self, pane_id_to_replace: Option<PaneId>, close_replaced_pane: bool) -> Self {
+        self = NewPanePlacement::InPlace{
+            pane_id_to_replace,
+            close_replaced_pane
+        };
         self
     }
     pub fn should_float(&self) -> Option<bool> {
