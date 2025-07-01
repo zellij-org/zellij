@@ -313,8 +313,15 @@ pub enum Sessions {
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long, requires("floating"))]
         pinned: Option<bool>,
-        #[clap(long, conflicts_with("floating"), conflicts_with("direction"))]
-        stacked: Option<bool>,
+        #[clap(
+            long,
+            conflicts_with("floating"),
+            conflicts_with("direction"),
+            value_parser,
+            default_value("false"),
+            takes_value(false)
+        )]
+        stacked: bool,
     },
     /// Load a plugin
     #[clap(visible_alias = "p")]
@@ -604,8 +611,15 @@ pub enum CliAction {
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long, requires("floating"))]
         pinned: Option<bool>,
-        #[clap(long, conflicts_with("floating"), conflicts_with("direction"))]
-        stacked: Option<bool>,
+        #[clap(
+            long,
+            conflicts_with("floating"),
+            conflicts_with("direction"),
+            value_parser,
+            default_value("false"),
+            takes_value(false)
+        )]
+        stacked: bool,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {

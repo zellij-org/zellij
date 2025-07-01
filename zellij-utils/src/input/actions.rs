@@ -446,7 +446,7 @@ impl Action {
                         )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane(Some(run_command_action), name)])
-                    } else if stacked.unwrap_or(false) {
+                    } else if stacked {
                         Ok(vec![Action::NewStackedPane(Some(run_command_action), name)])
                     } else {
                         Ok(vec![Action::NewTiledPane(
@@ -464,7 +464,7 @@ impl Action {
                         )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane(None, name)])
-                    } else if stacked.unwrap_or(false) {
+                    } else if stacked {
                         Ok(vec![Action::NewStackedPane(None, name)])
                     } else {
                         Ok(vec![Action::NewTiledPane(direction, None, name)])

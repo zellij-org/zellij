@@ -79,7 +79,7 @@ fn main() {
         })) = opts.command
         {
             let cwd = None;
-            let stacked = None;
+            let stacked = false;
             let command_cli_action = CliAction::NewPane {
                 command: vec![],
                 plugin: Some(url),
