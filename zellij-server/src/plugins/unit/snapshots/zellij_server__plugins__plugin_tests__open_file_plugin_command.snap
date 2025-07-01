@@ -1,7 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 4078
-expression: "format!(\"{:#?}\",\n        new_tab_event).replace(&format!(\"{:?}\", temp_folder.path()),\n    \"\\\"CWD\\\"\")"
+expression: "format!(\"{:#?}\",\nnew_tab_event).replace(&format!(\"{:?}\", temp_folder.path()), \"\\\"CWD\\\"\")"
 ---
 Some(
     SpawnTerminal(
@@ -24,12 +23,11 @@ Some(
             ),
         ),
         Some(
-            false,
-        ),
-        Some(
             "Editing: /path/to/my/file.rs",
         ),
-        None,
+        Tiled(
+            None,
+        ),
         false,
         ClientId(
             1,

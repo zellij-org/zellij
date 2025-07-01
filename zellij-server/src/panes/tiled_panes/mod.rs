@@ -395,6 +395,72 @@ impl TiledPanes {
             },
         }
     }
+    pub fn add_pane_to_stack_of_active_pane(
+        &mut self,
+        pane_id: PaneId,
+        mut pane: Box<dyn Pane>,
+        client_id: ClientId,
+    ) {
+        let mut pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        let Some(active_pane_id) = self.active_panes.get(&client_id) else {
+            log::error!("Could not find active pane id for client_id");
+            return;
+        };
+        let pane_id_is_stacked = pane_grid
+            .get_pane_geom(active_pane_id)
+            .map(|p| p.is_stacked())
+            .unwrap_or(false);
+        if !pane_id_is_stacked {
+            let _ = pane_grid.make_pane_stacked(&active_pane_id);
+        }
+        match pane_grid.make_room_in_stack_of_pane_id_for_pane(active_pane_id) {
+            Ok(new_pane_geom) => {
+                pane.set_geom(new_pane_geom);
+                self.panes.insert(pane_id, pane);
+                self.set_force_render(); // TODO: why do we need this?
+                return;
+            },
+            Err(e) => {
+                log::error!("Failed to add pane to stack: {}", e);
+            },
+        }
+    }
+    pub fn add_pane_to_stack_of_pane_id(
+        &mut self,
+        pane_id: PaneId,
+        mut pane: Box<dyn Pane>,
+        root_pane_id: PaneId,
+    ) {
+        let mut pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        let pane_id_is_stacked = pane_grid
+            .get_pane_geom(&root_pane_id)
+            .map(|p| p.is_stacked())
+            .unwrap_or(false);
+        if !pane_id_is_stacked {
+            let _ = pane_grid.make_pane_stacked(&root_pane_id);
+        }
+        match pane_grid.make_room_in_stack_of_pane_id_for_pane(&root_pane_id) {
+            Ok(new_pane_geom) => {
+                pane.set_geom(new_pane_geom);
+                self.panes.insert(pane_id, pane);
+                self.set_force_render(); // TODO: why do we need this?
+                return;
+            },
+            Err(e) => {
+                log::error!("Failed to add pane to stack: {}", e);
+            },
+        }
+    }
     pub fn fixed_pane_geoms(&self) -> Vec<Viewport> {
         self.panes
             .values()

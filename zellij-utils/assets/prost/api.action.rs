@@ -475,6 +475,7 @@ pub enum ActionName {
     MouseEvent = 86,
     TogglePaneInGroup = 87,
     ToggleGroupMarking = 88,
+    NewStackedPane = 89,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -569,6 +570,7 @@ impl ActionName {
             ActionName::MouseEvent => "MouseEvent",
             ActionName::TogglePaneInGroup => "TogglePaneInGroup",
             ActionName::ToggleGroupMarking => "ToggleGroupMarking",
+            ActionName::NewStackedPane => "NewStackedPane",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -660,6 +662,7 @@ impl ActionName {
             "MouseEvent" => Some(Self::MouseEvent),
             "TogglePaneInGroup" => Some(Self::TogglePaneInGroup),
             "ToggleGroupMarking" => Some(Self::ToggleGroupMarking),
+            "NewStackedPane" => Some(Self::NewStackedPane),
             _ => None,
         }
     }

@@ -1343,6 +1343,20 @@ Config {
                 bare_key: Char(
                     's',
                 ),
+                key_modifiers: {},
+            }: [
+                NewStackedPane(
+                    None,
+                    None,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    's',
+                ),
                 key_modifiers: {
                     Ctrl,
                 },

@@ -2,7 +2,7 @@ use super::PluginInstruction;
 use crate::background_jobs::BackgroundJob;
 use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::wasm_bridge::handle_plugin_crash;
-use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
+use crate::pty::{ClientTabIndexOrPaneId, NewPanePlacement, PtyInstruction};
 use crate::route::route_action;
 use crate::ServerInstruction;
 use async_std::task;
@@ -744,14 +744,12 @@ fn open_file_near_plugin(
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
         );
     let title = format!("Editing: {}", open_file_payload.path.display());
-    let should_float = false;
     let start_suppressed = false;
     let open_file = TerminalAction::OpenFile(open_file_payload);
     let pty_instr = PtyInstruction::SpawnTerminal(
         Some(open_file),
-        Some(should_float),
         Some(title),
-        None,
+        NewPanePlacement::default(),
         start_suppressed,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
     );
@@ -774,14 +772,12 @@ fn open_file_floating_near_plugin(
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
         );
     let title = format!("Editing: {}", open_file_payload.path.display());
-    let should_float = true;
     let start_suppressed = false;
     let open_file = TerminalAction::OpenFile(open_file_payload);
     let pty_instr = PtyInstruction::SpawnTerminal(
         Some(open_file),
-        Some(should_float),
         Some(title),
-        floating_pane_coordinates,
+        NewPanePlacement::Floating(floating_pane_coordinates),
         start_suppressed,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
     );
@@ -834,7 +830,6 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
 
 fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
     let cwd = env.plugin_cwd.join(cwd);
-    let should_float = false;
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -845,9 +840,8 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
     default_shell.change_cwd(cwd);
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(default_shell),
-        Some(should_float),
         name,
-        None,
+        NewPanePlacement::Tiled(None),
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
     ));
@@ -881,7 +875,6 @@ fn open_terminal_floating_near_plugin(
     floating_pane_coordinates: Option<FloatingPaneCoordinates>,
 ) {
     let cwd = env.plugin_cwd.join(cwd);
-    let should_float = true;
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -892,9 +885,8 @@ fn open_terminal_floating_near_plugin(
     let name = None;
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(default_shell),
-        Some(should_float),
         name,
-        floating_pane_coordinates,
+        NewPanePlacement::Floating(floating_pane_coordinates),
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
     ));
@@ -1021,7 +1013,6 @@ fn open_command_pane_near_plugin(
     let hold_on_close = true;
     let hold_on_start = false;
     let name = None;
-    let should_float = false;
     let run_command_action = RunCommandAction {
         command,
         args,
@@ -1038,9 +1029,8 @@ fn open_command_pane_near_plugin(
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(run_cmd),
-        Some(should_float),
         name,
-        None,
+        NewPanePlacement::Tiled(None),
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
     ));
@@ -1090,7 +1080,6 @@ fn open_command_pane_floating_near_plugin(
     let hold_on_close = true;
     let hold_on_start = false;
     let name = None;
-    let should_float = true;
     let run_command_action = RunCommandAction {
         command,
         args,
@@ -1107,9 +1096,8 @@ fn open_command_pane_floating_near_plugin(
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(run_cmd),
-        Some(should_float),
         name,
-        floating_pane_coordinates,
+        NewPanePlacement::Floating(floating_pane_coordinates),
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
     ));
@@ -1177,9 +1165,8 @@ fn open_command_pane_background(
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(run_cmd),
-        None,
         name,
-        None,
+        NewPanePlacement::default(),
         start_suppressed,
         ClientTabIndexOrPaneId::ClientId(env.client_id),
     ));

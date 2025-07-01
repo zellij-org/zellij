@@ -1,6 +1,7 @@
 use super::Tab;
 use crate::pane_groups::PaneGroups;
 use crate::panes::sixel::SixelImageStore;
+use crate::pty::NewPanePlacement;
 use crate::screen::CopyOptions;
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
@@ -625,8 +626,16 @@ fn split_largest_pane() {
     let mut tab = create_new_tab(size, stacked_resize);
     for i in 2..5 {
         let new_pane_id = PaneId::Terminal(i);
-        tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(1))
-            .unwrap();
+        tab.new_pane(
+            new_pane_id,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+        )
+        .unwrap();
     }
     assert_eq!(tab.tiled_panes.panes.len(), 4, "The tab has four panes");
 
@@ -838,10 +847,9 @@ pub fn cannot_split_largest_pane_when_there_is_no_room() {
         PaneId::Terminal(2),
         None,
         None,
-        None,
-        None,
         false,
         true,
+        NewPanePlacement::default(),
         Some(1),
     )
     .unwrap();
@@ -888,8 +896,16 @@ pub fn toggle_focused_pane_fullscreen() {
     let mut tab = create_new_tab(size, stacked_resize);
     for i in 2..5 {
         let new_pane_id = PaneId::Terminal(i);
-        tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(1))
-            .unwrap();
+        tab.new_pane(
+            new_pane_id,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+        )
+        .unwrap();
     }
     tab.toggle_active_pane_fullscreen(1);
     assert_eq!(
@@ -964,8 +980,16 @@ pub fn toggle_focused_pane_fullscreen_with_stacked_resizes() {
     let mut tab = create_new_tab(size, stacked_resize);
     for i in 2..5 {
         let new_pane_id = PaneId::Terminal(i);
-        tab.new_pane(new_pane_id, None, None, None, None, false, true, Some(1))
-            .unwrap();
+        tab.new_pane(
+            new_pane_id,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+        )
+        .unwrap();
     }
     tab.toggle_active_pane_fullscreen(1);
     assert_eq!(
@@ -1044,10 +1068,9 @@ fn switch_to_next_pane_fullscreen() {
             PaneId::Terminal(1),
             None,
             None,
-            None,
-            None,
             false,
             true,
+            NewPanePlacement::default(),
             Some(1),
         )
         .unwrap();
@@ -1056,10 +1079,9 @@ fn switch_to_next_pane_fullscreen() {
             PaneId::Terminal(2),
             None,
             None,
-            None,
-            None,
             false,
             true,
+            NewPanePlacement::default(),
             Some(1),
         )
         .unwrap();
@@ -1068,10 +1090,9 @@ fn switch_to_next_pane_fullscreen() {
             PaneId::Terminal(3),
             None,
             None,
-            None,
-            None,
             false,
             true,
+            NewPanePlacement::default(),
             Some(1),
         )
         .unwrap();
@@ -1080,10 +1101,9 @@ fn switch_to_next_pane_fullscreen() {
             PaneId::Terminal(4),
             None,
             None,
-            None,
-            None,
             false,
             true,
+            NewPanePlacement::default(),
             Some(1),
         )
         .unwrap();
@@ -1121,10 +1141,9 @@ fn switch_to_prev_pane_fullscreen() {
             PaneId::Terminal(1),
             None,
             None,
-            None,
-            None,
             false,
             true,
+            NewPanePlacement::default(),
             Some(1),
         )
         .unwrap();
@@ -1133,10 +1152,9 @@ fn switch_to_prev_pane_fullscreen() {
             PaneId::Terminal(2),
             None,
             None,
-            None,
-            None,
             false,
             true,
+            NewPanePlacement::default(),
             Some(1),
         )
         .unwrap();
@@ -1145,10 +1163,9 @@ fn switch_to_prev_pane_fullscreen() {
             PaneId::Terminal(3),
             None,
             None,
-            None,
-            None,
             false,
             true,
+            NewPanePlacement::default(),
             Some(1),
         )
         .unwrap();
@@ -1157,10 +1174,9 @@ fn switch_to_prev_pane_fullscreen() {
             PaneId::Terminal(4),
             None,
             None,
-            None,
-            None,
             false,
             true,
+            NewPanePlacement::default(),
             Some(1),
         )
         .unwrap();
@@ -14758,10 +14774,9 @@ fn correctly_resize_frameless_panes_on_pane_close() {
         PaneId::Terminal(2),
         None,
         None,
-        None,
-        None,
         false,
         true,
+        NewPanePlacement::default(),
         Some(1),
     )
     .unwrap();

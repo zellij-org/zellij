@@ -1,6 +1,5 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2339
 expression: "format!(\"{:?}\", new_pane_instruction)"
 ---
-Some(SpawnTerminalVertically(Some(RunCommand(RunCommand { command: "htop", args: [], cwd: Some("/some/folder"), hold_on_close: true, hold_on_start: false, originating_plugin: None })), None, 10))
+Some(SpawnTerminal(Some(RunCommand(RunCommand { command: "htop", args: [], cwd: Some("/some/folder"), hold_on_close: true, hold_on_start: false, originating_plugin: None })), None, Tiled(Some(Right)), false, ClientId(10)))

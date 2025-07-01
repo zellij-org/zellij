@@ -16,7 +16,7 @@ use nix::unistd::Pid;
 use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::{
-    data::{Event, FloatingPaneCoordinates, OriginatingPlugin},
+    data::{Direction, Event, FloatingPaneCoordinates, OriginatingPlugin},
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
@@ -37,26 +37,95 @@ pub enum ClientTabIndexOrPaneId {
     PaneId(PaneId),
 }
 
+// TODO: move elsewhere
+#[derive(Clone, Debug)]
+pub enum NewPanePlacement {
+    NoPreference,
+    Tiled(Option<Direction>),
+    Floating(Option<FloatingPaneCoordinates>),
+    InPlace {
+        pane_id_to_replace: Option<PaneId>,
+        close_replaced_pane: bool,
+    },
+    Stacked(Option<PaneId>),
+}
+
+impl Default for NewPanePlacement {
+    fn default() -> Self {
+        NewPanePlacement::NoPreference
+    }
+}
+
+impl NewPanePlacement {
+    pub fn with_floating_pane_coordinates(
+        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+    ) -> Self {
+        NewPanePlacement::Floating(floating_pane_coordinates)
+    }
+    pub fn with_should_be_in_place(
+        self,
+        should_be_in_place: bool,
+        close_replaced_pane: bool,
+    ) -> Self {
+        if should_be_in_place {
+            NewPanePlacement::InPlace {
+                pane_id_to_replace: None,
+                close_replaced_pane,
+            }
+        } else {
+            self
+        }
+    }
+    pub fn with_pane_id_to_replace(
+        pane_id_to_replace: Option<PaneId>,
+        close_replaced_pane: bool,
+    ) -> Self {
+        NewPanePlacement::InPlace {
+            pane_id_to_replace,
+            close_replaced_pane,
+        }
+    }
+    pub fn should_float(&self) -> Option<bool> {
+        match self {
+            NewPanePlacement::Floating(_) => Some(true),
+            NewPanePlacement::Tiled(_) => Some(false),
+            _ => None,
+        }
+    }
+    pub fn floating_pane_coordinates(&self) -> Option<FloatingPaneCoordinates> {
+        match self {
+            NewPanePlacement::Floating(floating_pane_coordinates) => {
+                floating_pane_coordinates.clone()
+            },
+            _ => None,
+        }
+    }
+    pub fn should_stack(&self) -> bool {
+        match self {
+            NewPanePlacement::Stacked(_) => true,
+            _ => false,
+        }
+    }
+    pub fn id_of_stack_root(&self) -> Option<PaneId> {
+        match self {
+            NewPanePlacement::Stacked(id) => *id,
+            _ => None,
+        }
+    }
+}
+
 /// Instructions related to PTYs (pseudoterminals).
 #[derive(Clone, Debug)]
 pub enum PtyInstruction {
     SpawnTerminal(
         Option<TerminalAction>,
-        Option<bool>,
         Option<String>,
-        Option<FloatingPaneCoordinates>,
+        NewPanePlacement,
         bool, // start suppressed
         ClientTabIndexOrPaneId,
     ), // bool (if Some) is
     // should_float, String is an optional pane name
     OpenInPlaceEditor(PathBuf, Option<usize>, ClientTabIndexOrPaneId), // Option<usize> is the optional line number
-    SpawnTerminalVertically(Option<TerminalAction>, Option<String>, ClientId), // String is an
-    // optional pane
-    // name
-    // bool is start_suppressed
-    SpawnTerminalHorizontally(Option<TerminalAction>, Option<String>, ClientId), // String is an
-    // optional pane
-    // name
     UpdateActivePane(Option<PaneId>, ClientId),
     GoToTab(TabIndex, ClientId),
     NewTab(
@@ -114,8 +183,6 @@ impl From<&PtyInstruction> for PtyContext {
         match *pty_instruction {
             PtyInstruction::SpawnTerminal(..) => PtyContext::SpawnTerminal,
             PtyInstruction::OpenInPlaceEditor(..) => PtyContext::OpenInPlaceEditor,
-            PtyInstruction::SpawnTerminalVertically(..) => PtyContext::SpawnTerminalVertically,
-            PtyInstruction::SpawnTerminalHorizontally(..) => PtyContext::SpawnTerminalHorizontally,
             PtyInstruction::UpdateActivePane(..) => PtyContext::UpdateActivePane,
             PtyInstruction::GoToTab(..) => PtyContext::GoToTab,
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
@@ -153,9 +220,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
         match event {
             PtyInstruction::SpawnTerminal(
                 terminal_action,
-                should_float,
                 name,
-                floating_pane_coordinates,
+                new_pane_placement,
                 start_suppressed,
                 client_or_tab_index,
             ) => {
@@ -235,10 +301,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                             .send_to_screen(ScreenInstruction::NewPane(
                                 PaneId::Terminal(pid),
                                 pane_title,
-                                should_float,
                                 hold_for_command,
                                 invoked_with,
-                                floating_pane_coordinates,
+                                new_pane_placement,
                                 start_suppressed,
                                 client_or_tab_index,
                             ))
@@ -253,10 +318,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                     .send_to_screen(ScreenInstruction::NewPane(
                                         PaneId::Terminal(*terminal_id),
                                         pane_title,
-                                        should_float,
                                         hold_for_command,
                                         invoked_with,
-                                        floating_pane_coordinates,
+                                        new_pane_placement,
                                         start_suppressed,
                                         client_or_tab_index,
                                     ))
@@ -387,144 +451,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                     Err(e) => {
                         Err::<(), _>(e).with_context(err_context).non_fatal();
-                    },
-                }
-            },
-            PtyInstruction::SpawnTerminalVertically(terminal_action, name, client_id) => {
-                let err_context =
-                    || format!("failed to spawn terminal vertically for client {client_id}");
-
-                let (hold_on_close, run_command, pane_title) = match &terminal_action {
-                    Some(TerminalAction::RunCommand(run_command)) => (
-                        run_command.hold_on_close,
-                        Some(run_command.clone()),
-                        Some(name.unwrap_or_else(|| run_command.to_string())),
-                    ),
-                    _ => (false, None, name),
-                };
-                match pty
-                    .spawn_terminal(terminal_action, ClientTabIndexOrPaneId::ClientId(client_id))
-                    .with_context(err_context)
-                {
-                    Ok((pid, starts_held)) => {
-                        let hold_for_command = if starts_held { run_command } else { None };
-                        pty.bus
-                            .senders
-                            .send_to_screen(ScreenInstruction::VerticalSplit(
-                                PaneId::Terminal(pid),
-                                pane_title,
-                                hold_for_command,
-                                client_id,
-                            ))
-                            .with_context(err_context)?;
-                    },
-                    Err(err) => match err.downcast_ref::<ZellijError>() {
-                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
-                            let hold_for_command = None; // we do not hold an "error" pane
-                            if hold_on_close {
-                                pty.bus
-                                    .senders
-                                    .send_to_screen(ScreenInstruction::VerticalSplit(
-                                        PaneId::Terminal(*terminal_id),
-                                        pane_title,
-                                        hold_for_command,
-                                        client_id,
-                                    ))
-                                    .with_context(err_context)?;
-                                if let Some(run_command) = run_command {
-                                    pty.bus
-                                        .senders
-                                        .send_to_screen(ScreenInstruction::PtyBytes(
-                                            *terminal_id,
-                                            format!(
-                                                "Command not found: {}",
-                                                run_command.command.display()
-                                            )
-                                            .as_bytes()
-                                            .to_vec(),
-                                        ))
-                                        .with_context(err_context)?;
-                                    pty.bus
-                                        .senders
-                                        .send_to_screen(ScreenInstruction::HoldPane(
-                                            PaneId::Terminal(*terminal_id),
-                                            Some(2), // exit status
-                                            run_command,
-                                        ))
-                                        .with_context(err_context)?;
-                                }
-                            }
-                        },
-                        _ => Err::<(), _>(err).non_fatal(),
-                    },
-                }
-            },
-            PtyInstruction::SpawnTerminalHorizontally(terminal_action, name, client_id) => {
-                let err_context =
-                    || format!("failed to spawn terminal horizontally for client {client_id}");
-
-                let (hold_on_close, run_command, pane_title) = match &terminal_action {
-                    Some(TerminalAction::RunCommand(run_command)) => (
-                        run_command.hold_on_close,
-                        Some(run_command.clone()),
-                        Some(name.unwrap_or_else(|| run_command.to_string())),
-                    ),
-                    _ => (false, None, name),
-                };
-                match pty
-                    .spawn_terminal(terminal_action, ClientTabIndexOrPaneId::ClientId(client_id))
-                    .with_context(err_context)
-                {
-                    Ok((pid, starts_held)) => {
-                        let hold_for_command = if starts_held { run_command } else { None };
-                        pty.bus
-                            .senders
-                            .send_to_screen(ScreenInstruction::HorizontalSplit(
-                                PaneId::Terminal(pid),
-                                pane_title,
-                                hold_for_command,
-                                client_id,
-                            ))
-                            .with_context(err_context)?;
-                    },
-                    Err(err) => match err.downcast_ref::<ZellijError>() {
-                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
-                            if hold_on_close {
-                                let hold_for_command = None; // we do not hold an "error" pane
-                                pty.bus
-                                    .senders
-                                    .send_to_screen(ScreenInstruction::HorizontalSplit(
-                                        PaneId::Terminal(*terminal_id),
-                                        pane_title,
-                                        hold_for_command,
-                                        client_id,
-                                    ))
-                                    .with_context(err_context)?;
-                                if let Some(run_command) = run_command {
-                                    pty.bus
-                                        .senders
-                                        .send_to_screen(ScreenInstruction::PtyBytes(
-                                            *terminal_id,
-                                            format!(
-                                                "Command not found: {}",
-                                                run_command.command.display()
-                                            )
-                                            .as_bytes()
-                                            .to_vec(),
-                                        ))
-                                        .with_context(err_context)?;
-                                    pty.bus
-                                        .senders
-                                        .send_to_screen(ScreenInstruction::HoldPane(
-                                            PaneId::Terminal(*terminal_id),
-                                            Some(2), // exit status
-                                            run_command,
-                                        ))
-                                        .with_context(err_context)?;
-                                }
-                            }
-                        },
-                        _ => Err::<(), _>(err).non_fatal(),
                     },
                 }
             },
