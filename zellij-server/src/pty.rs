@@ -113,11 +113,11 @@ pub enum PtyInstruction {
     ), // bool (if Some) is
     // should_float, String is an optional pane name
     OpenInPlaceEditor(PathBuf, Option<usize>, ClientTabIndexOrPaneId), // Option<usize> is the optional line number
-    SpawnTerminalVertically(Option<TerminalAction>, Option<String>, ClientId), // String is an
+    // SpawnTerminalVertically(Option<TerminalAction>, Option<String>, ClientId), // String is an
     // optional pane
     // name
     // bool is start_suppressed
-    SpawnTerminalHorizontally(Option<TerminalAction>, Option<String>, ClientId), // String is an
+    // SpawnTerminalHorizontally(Option<TerminalAction>, Option<String>, ClientId), // String is an
     // optional pane
     // name
     UpdateActivePane(Option<PaneId>, ClientId),
@@ -177,8 +177,8 @@ impl From<&PtyInstruction> for PtyContext {
         match *pty_instruction {
             PtyInstruction::SpawnTerminal(..) => PtyContext::SpawnTerminal,
             PtyInstruction::OpenInPlaceEditor(..) => PtyContext::OpenInPlaceEditor,
-            PtyInstruction::SpawnTerminalVertically(..) => PtyContext::SpawnTerminalVertically,
-            PtyInstruction::SpawnTerminalHorizontally(..) => PtyContext::SpawnTerminalHorizontally,
+            // PtyInstruction::SpawnTerminalVertically(..) => PtyContext::SpawnTerminalVertically,
+            // PtyInstruction::SpawnTerminalHorizontally(..) => PtyContext::SpawnTerminalHorizontally,
             PtyInstruction::UpdateActivePane(..) => PtyContext::UpdateActivePane,
             PtyInstruction::GoToTab(..) => PtyContext::GoToTab,
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
@@ -450,144 +450,146 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::SpawnTerminalVertically(terminal_action, name, client_id) => {
-                let err_context =
-                    || format!("failed to spawn terminal vertically for client {client_id}");
-
-                let (hold_on_close, run_command, pane_title) = match &terminal_action {
-                    Some(TerminalAction::RunCommand(run_command)) => (
-                        run_command.hold_on_close,
-                        Some(run_command.clone()),
-                        Some(name.unwrap_or_else(|| run_command.to_string())),
-                    ),
-                    _ => (false, None, name),
-                };
-                match pty
-                    .spawn_terminal(terminal_action, ClientTabIndexOrPaneId::ClientId(client_id))
-                    .with_context(err_context)
-                {
-                    Ok((pid, starts_held)) => {
-                        let hold_for_command = if starts_held { run_command } else { None };
-                        pty.bus
-                            .senders
-                            .send_to_screen(ScreenInstruction::VerticalSplit(
-                                PaneId::Terminal(pid),
-                                pane_title,
-                                hold_for_command,
-                                client_id,
-                            ))
-                            .with_context(err_context)?;
-                    },
-                    Err(err) => match err.downcast_ref::<ZellijError>() {
-                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
-                            let hold_for_command = None; // we do not hold an "error" pane
-                            if hold_on_close {
-                                pty.bus
-                                    .senders
-                                    .send_to_screen(ScreenInstruction::VerticalSplit(
-                                        PaneId::Terminal(*terminal_id),
-                                        pane_title,
-                                        hold_for_command,
-                                        client_id,
-                                    ))
-                                    .with_context(err_context)?;
-                                if let Some(run_command) = run_command {
-                                    pty.bus
-                                        .senders
-                                        .send_to_screen(ScreenInstruction::PtyBytes(
-                                            *terminal_id,
-                                            format!(
-                                                "Command not found: {}",
-                                                run_command.command.display()
-                                            )
-                                            .as_bytes()
-                                            .to_vec(),
-                                        ))
-                                        .with_context(err_context)?;
-                                    pty.bus
-                                        .senders
-                                        .send_to_screen(ScreenInstruction::HoldPane(
-                                            PaneId::Terminal(*terminal_id),
-                                            Some(2), // exit status
-                                            run_command,
-                                        ))
-                                        .with_context(err_context)?;
-                                }
-                            }
-                        },
-                        _ => Err::<(), _>(err).non_fatal(),
-                    },
-                }
-            },
-            PtyInstruction::SpawnTerminalHorizontally(terminal_action, name, client_id) => {
-                let err_context =
-                    || format!("failed to spawn terminal horizontally for client {client_id}");
-
-                let (hold_on_close, run_command, pane_title) = match &terminal_action {
-                    Some(TerminalAction::RunCommand(run_command)) => (
-                        run_command.hold_on_close,
-                        Some(run_command.clone()),
-                        Some(name.unwrap_or_else(|| run_command.to_string())),
-                    ),
-                    _ => (false, None, name),
-                };
-                match pty
-                    .spawn_terminal(terminal_action, ClientTabIndexOrPaneId::ClientId(client_id))
-                    .with_context(err_context)
-                {
-                    Ok((pid, starts_held)) => {
-                        let hold_for_command = if starts_held { run_command } else { None };
-                        pty.bus
-                            .senders
-                            .send_to_screen(ScreenInstruction::HorizontalSplit(
-                                PaneId::Terminal(pid),
-                                pane_title,
-                                hold_for_command,
-                                client_id,
-                            ))
-                            .with_context(err_context)?;
-                    },
-                    Err(err) => match err.downcast_ref::<ZellijError>() {
-                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
-                            if hold_on_close {
-                                let hold_for_command = None; // we do not hold an "error" pane
-                                pty.bus
-                                    .senders
-                                    .send_to_screen(ScreenInstruction::HorizontalSplit(
-                                        PaneId::Terminal(*terminal_id),
-                                        pane_title,
-                                        hold_for_command,
-                                        client_id,
-                                    ))
-                                    .with_context(err_context)?;
-                                if let Some(run_command) = run_command {
-                                    pty.bus
-                                        .senders
-                                        .send_to_screen(ScreenInstruction::PtyBytes(
-                                            *terminal_id,
-                                            format!(
-                                                "Command not found: {}",
-                                                run_command.command.display()
-                                            )
-                                            .as_bytes()
-                                            .to_vec(),
-                                        ))
-                                        .with_context(err_context)?;
-                                    pty.bus
-                                        .senders
-                                        .send_to_screen(ScreenInstruction::HoldPane(
-                                            PaneId::Terminal(*terminal_id),
-                                            Some(2), // exit status
-                                            run_command,
-                                        ))
-                                        .with_context(err_context)?;
-                                }
-                            }
-                        },
-                        _ => Err::<(), _>(err).non_fatal(),
-                    },
-                }
-            },
+//             PtyInstruction::SpawnTerminalVertically(terminal_action, name, client_id) => {
+//                 // TODO: CONTINUE HERE - move both this and Horizontally to SpawnTerminal using the
+//                 // NewPanePlacement thingy
+//                 let err_context =
+//                     || format!("failed to spawn terminal vertically for client {client_id}");
+// 
+//                 let (hold_on_close, run_command, pane_title) = match &terminal_action {
+//                     Some(TerminalAction::RunCommand(run_command)) => (
+//                         run_command.hold_on_close,
+//                         Some(run_command.clone()),
+//                         Some(name.unwrap_or_else(|| run_command.to_string())),
+//                     ),
+//                     _ => (false, None, name),
+//                 };
+//                 match pty
+//                     .spawn_terminal(terminal_action, ClientTabIndexOrPaneId::ClientId(client_id))
+//                     .with_context(err_context)
+//                 {
+//                     Ok((pid, starts_held)) => {
+//                         let hold_for_command = if starts_held { run_command } else { None };
+//                         pty.bus
+//                             .senders
+//                             .send_to_screen(ScreenInstruction::VerticalSplit(
+//                                 PaneId::Terminal(pid),
+//                                 pane_title,
+//                                 hold_for_command,
+//                                 client_id,
+//                             ))
+//                             .with_context(err_context)?;
+//                     },
+//                     Err(err) => match err.downcast_ref::<ZellijError>() {
+//                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
+//                             let hold_for_command = None; // we do not hold an "error" pane
+//                             if hold_on_close {
+//                                 pty.bus
+//                                     .senders
+//                                     .send_to_screen(ScreenInstruction::VerticalSplit(
+//                                         PaneId::Terminal(*terminal_id),
+//                                         pane_title,
+//                                         hold_for_command,
+//                                         client_id,
+//                                     ))
+//                                     .with_context(err_context)?;
+//                                 if let Some(run_command) = run_command {
+//                                     pty.bus
+//                                         .senders
+//                                         .send_to_screen(ScreenInstruction::PtyBytes(
+//                                             *terminal_id,
+//                                             format!(
+//                                                 "Command not found: {}",
+//                                                 run_command.command.display()
+//                                             )
+//                                             .as_bytes()
+//                                             .to_vec(),
+//                                         ))
+//                                         .with_context(err_context)?;
+//                                     pty.bus
+//                                         .senders
+//                                         .send_to_screen(ScreenInstruction::HoldPane(
+//                                             PaneId::Terminal(*terminal_id),
+//                                             Some(2), // exit status
+//                                             run_command,
+//                                         ))
+//                                         .with_context(err_context)?;
+//                                 }
+//                             }
+//                         },
+//                         _ => Err::<(), _>(err).non_fatal(),
+//                     },
+//                 }
+//             },
+//             PtyInstruction::SpawnTerminalHorizontally(terminal_action, name, client_id) => {
+//                 let err_context =
+//                     || format!("failed to spawn terminal horizontally for client {client_id}");
+// 
+//                 let (hold_on_close, run_command, pane_title) = match &terminal_action {
+//                     Some(TerminalAction::RunCommand(run_command)) => (
+//                         run_command.hold_on_close,
+//                         Some(run_command.clone()),
+//                         Some(name.unwrap_or_else(|| run_command.to_string())),
+//                     ),
+//                     _ => (false, None, name),
+//                 };
+//                 match pty
+//                     .spawn_terminal(terminal_action, ClientTabIndexOrPaneId::ClientId(client_id))
+//                     .with_context(err_context)
+//                 {
+//                     Ok((pid, starts_held)) => {
+//                         let hold_for_command = if starts_held { run_command } else { None };
+//                         pty.bus
+//                             .senders
+//                             .send_to_screen(ScreenInstruction::HorizontalSplit(
+//                                 PaneId::Terminal(pid),
+//                                 pane_title,
+//                                 hold_for_command,
+//                                 client_id,
+//                             ))
+//                             .with_context(err_context)?;
+//                     },
+//                     Err(err) => match err.downcast_ref::<ZellijError>() {
+//                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
+//                             if hold_on_close {
+//                                 let hold_for_command = None; // we do not hold an "error" pane
+//                                 pty.bus
+//                                     .senders
+//                                     .send_to_screen(ScreenInstruction::HorizontalSplit(
+//                                         PaneId::Terminal(*terminal_id),
+//                                         pane_title,
+//                                         hold_for_command,
+//                                         client_id,
+//                                     ))
+//                                     .with_context(err_context)?;
+//                                 if let Some(run_command) = run_command {
+//                                     pty.bus
+//                                         .senders
+//                                         .send_to_screen(ScreenInstruction::PtyBytes(
+//                                             *terminal_id,
+//                                             format!(
+//                                                 "Command not found: {}",
+//                                                 run_command.command.display()
+//                                             )
+//                                             .as_bytes()
+//                                             .to_vec(),
+//                                         ))
+//                                         .with_context(err_context)?;
+//                                     pty.bus
+//                                         .senders
+//                                         .send_to_screen(ScreenInstruction::HoldPane(
+//                                             PaneId::Terminal(*terminal_id),
+//                                             Some(2), // exit status
+//                                             run_command,
+//                                         ))
+//                                         .with_context(err_context)?;
+//                                 }
+//                             }
+//                         },
+//                         _ => Err::<(), _>(err).non_fatal(),
+//                     },
+//                 }
+//             },
             PtyInstruction::UpdateActivePane(pane_id, client_id) => {
                 pty.set_active_pane(pane_id, client_id);
             },
