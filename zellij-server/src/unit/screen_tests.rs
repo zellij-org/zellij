@@ -1383,7 +1383,6 @@ fn open_new_floating_pane_with_custom_coordinates() {
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
-    let should_float = Some(true);
     active_tab
         .new_pane(
             PaneId::Terminal(2),
@@ -1606,7 +1605,6 @@ fn group_panes_following_focus() {
 
     {
         let active_tab = screen.get_active_tab_mut(client_id).unwrap();
-        let should_float = Some(false);
         for i in 2..5 {
             active_tab
                 .new_pane(
@@ -2588,7 +2586,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         width: None,
         height: None,
         pinned: None,
-        stacked: None,
+        stacked: false,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2633,7 +2631,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         width: None,
         height: None,
         pinned: None,
-        stacked: None,
+        stacked: false,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2678,7 +2676,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         width: None,
         height: None,
         pinned: None,
-        stacked: None,
+        stacked: false,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2734,7 +2732,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         width: Some("20%".to_owned()),
         height: None,
         pinned: None,
-        stacked: None,
+        stacked: false,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
