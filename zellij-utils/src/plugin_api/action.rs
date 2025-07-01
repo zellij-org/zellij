@@ -722,7 +722,7 @@ impl TryFrom<ProtobufAction> for Action {
             },
             Some(ProtobufActionName::NewStackedPane) => match protobuf_action.optional_payload {
                 Some(_) => Err("NewStackedPane should not have a payload"),
-                None => Ok(Action::NewStackedPane(None, None))
+                None => Ok(Action::NewStackedPane(None, None)),
             },
             _ => Err("Unknown Action"),
         }

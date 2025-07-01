@@ -4656,10 +4656,15 @@ pub(crate) fn screen_thread_main(
                 let close_replaced_pane = false; // TODO: support this
                 let mut new_pane_placement = NewPanePlacement::default();
                 if floating_pane_coordinates.is_some() {
-                    new_pane_placement = NewPanePlacement::with_floating_pane_coordinates(floating_pane_coordinates.clone());
+                    new_pane_placement = NewPanePlacement::with_floating_pane_coordinates(
+                        floating_pane_coordinates.clone(),
+                    );
                 }
                 if should_be_in_place {
-                    new_pane_placement = NewPanePlacement::with_pane_id_to_replace(pane_id_to_replace, close_replaced_pane);
+                    new_pane_placement = NewPanePlacement::with_pane_id_to_replace(
+                        pane_id_to_replace,
+                        close_replaced_pane,
+                    );
                 }
                 if screen.active_tab_indices.is_empty() && tab_index.is_none() {
                     pending_events_waiting_for_client.push(ScreenInstruction::AddPlugin(
