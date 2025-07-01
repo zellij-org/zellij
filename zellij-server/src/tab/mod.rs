@@ -1271,26 +1271,22 @@ impl Tab {
         client_id: Option<ClientId>,
     ) -> Result<()> {
         match new_pane_placement {
-            NewPanePlacement::NoPreference => {
-                self.new_no_preference_pane(
-                    pid,
-                    initial_pane_title,
-                    invoked_with,
-                    start_suppressed,
-                    should_focus_pane,
-                    client_id
-                )
-            }
-            NewPanePlacement::Tiled(None) => {
-                self.new_tiled_pane(
-                    pid,
-                    initial_pane_title,
-                    invoked_with,
-                    start_suppressed,
-                    should_focus_pane,
-                    client_id
-                )
-            }
+            NewPanePlacement::NoPreference => self.new_no_preference_pane(
+                pid,
+                initial_pane_title,
+                invoked_with,
+                start_suppressed,
+                should_focus_pane,
+                client_id,
+            ),
+            NewPanePlacement::Tiled(None) => self.new_tiled_pane(
+                pid,
+                initial_pane_title,
+                invoked_with,
+                start_suppressed,
+                should_focus_pane,
+                client_id,
+            ),
             NewPanePlacement::Tiled(Some(direction)) => {
                 if let Some(client_id) = client_id {
                     if direction == Direction::Left || direction == Direction::Right {
@@ -1300,40 +1296,37 @@ impl Tab {
                     }
                 }
                 Ok(())
-            }
-            NewPanePlacement::Floating(floating_pane_coordinates) => {
-                self.new_floating_pane(
-                    pid,
-                    initial_pane_title,
-                    invoked_with,
-                    start_suppressed,
-                    should_focus_pane,
-                    floating_pane_coordinates,
-                )
-            }
-            NewPanePlacement::InPlace{pane_id_to_replace, close_replaced_pane} => {
-                self.new_in_place_pane(
-                    pid,
-                    initial_pane_title,
-                    invoked_with,
-                    start_suppressed,
-                    should_focus_pane,
-                    pane_id_to_replace,
-                    close_replaced_pane,
-                    client_id
-                )
-            }
-            NewPanePlacement::Stacked(pane_id_to_stack_under) => {
-                self.new_stacked_pane(
-                    pid,
-                    initial_pane_title,
-                    invoked_with,
-                    start_suppressed,
-                    should_focus_pane,
-                    pane_id_to_stack_under,
-                    client_id
-                )
-            }
+            },
+            NewPanePlacement::Floating(floating_pane_coordinates) => self.new_floating_pane(
+                pid,
+                initial_pane_title,
+                invoked_with,
+                start_suppressed,
+                should_focus_pane,
+                floating_pane_coordinates,
+            ),
+            NewPanePlacement::InPlace {
+                pane_id_to_replace,
+                close_replaced_pane,
+            } => self.new_in_place_pane(
+                pid,
+                initial_pane_title,
+                invoked_with,
+                start_suppressed,
+                should_focus_pane,
+                pane_id_to_replace,
+                close_replaced_pane,
+                client_id,
+            ),
+            NewPanePlacement::Stacked(pane_id_to_stack_under) => self.new_stacked_pane(
+                pid,
+                initial_pane_title,
+                invoked_with,
+                start_suppressed,
+                should_focus_pane,
+                pane_id_to_stack_under,
+                client_id,
+            ),
         }
     }
     pub fn new_no_preference_pane(
@@ -1422,23 +1415,13 @@ impl Tab {
             Ok(())
         } else if should_focus_pane {
             if self.floating_panes.panes_are_visible() {
-                self.add_floating_pane(
-                    new_pane,
-                    pid,
-                    None,
-                    true,
-                )
+                self.add_floating_pane(new_pane, pid, None, true)
             } else {
                 self.add_tiled_pane(new_pane, pid, client_id)
             }
         } else {
             if self.floating_panes.panes_are_visible() {
-                self.add_floating_pane(
-                    new_pane,
-                    pid,
-                    None,
-                    false,
-                )
+                self.add_floating_pane(new_pane, pid, None, false)
             } else {
                 self.add_tiled_pane(new_pane, pid, client_id)
             }
@@ -1643,159 +1626,30 @@ impl Tab {
                     pane_id_to_replace,
                     pid,
                     close_replaced_pane,
-                    invoked_with
+                    invoked_with,
                 )?;
             },
-            (None, Some(client_id)) => {
-                match self.get_active_pane_id(client_id) {
-                    Some(active_pane_id) => {
-                        self.suppress_pane_and_replace_with_pid(
-                            active_pane_id,
-                            pid,
-                            close_replaced_pane,
-                            invoked_with
-                        )?;
-                    },
-                    None => {
-                        log::error!("Cannot find active pane");
-                    }
-                }
+            (None, Some(client_id)) => match self.get_active_pane_id(client_id) {
+                Some(active_pane_id) => {
+                    self.suppress_pane_and_replace_with_pid(
+                        active_pane_id,
+                        pid,
+                        close_replaced_pane,
+                        invoked_with,
+                    )?;
+                },
+                None => {
+                    log::error!("Cannot find active pane");
+                },
             },
             _ => {
                 log::error!("Must have pane id to replace or client id to start pane in place>");
-            }
+            },
         }
         if let Some(initial_pane_title) = initial_pane_title {
             self.rename_pane(initial_pane_title.as_bytes().to_vec(), pid);
         }
         Ok(())
-
-
-//         let err_context = || format!("failed to create new pane with id {pid:?}");
-//         if should_focus_pane {
-//             match new_pane_placement.should_float() {
-//                 Some(true) => self.show_floating_panes(),
-//                 Some(false) => self.hide_floating_panes(),
-//                 None => {},
-//             };
-//         }
-//         self.close_down_to_max_terminals()
-//             .with_context(err_context)?;
-//         let mut new_pane = match pid {
-//             PaneId::Terminal(term_pid) => {
-//                 let next_terminal_position = self.get_next_terminal_position();
-//                 Box::new(TerminalPane::new(
-//                     term_pid,
-//                     PaneGeom::default(), // this will be filled out later
-//                     self.style,
-//                     next_terminal_position,
-//                     String::new(),
-//                     self.link_handler.clone(),
-//                     self.character_cell_size.clone(),
-//                     self.sixel_image_store.clone(),
-//                     self.terminal_emulator_colors.clone(),
-//                     self.terminal_emulator_color_codes.clone(),
-//                     initial_pane_title,
-//                     invoked_with,
-//                     self.debug,
-//                     self.arrow_fonts,
-//                     self.styled_underlines,
-//                     self.explicitly_disable_kitty_keyboard_protocol,
-//                 )) as Box<dyn Pane>
-//             },
-//             PaneId::Plugin(plugin_pid) => {
-//                 Box::new(PluginPane::new(
-//                     plugin_pid,
-//                     PaneGeom::default(), // this will be filled out later
-//                     self.senders
-//                         .to_plugin
-//                         .as_ref()
-//                         .with_context(err_context)?
-//                         .clone(),
-//                     initial_pane_title.unwrap_or("".to_owned()),
-//                     String::new(),
-//                     self.sixel_image_store.clone(),
-//                     self.terminal_emulator_colors.clone(),
-//                     self.terminal_emulator_color_codes.clone(),
-//                     self.link_handler.clone(),
-//                     self.character_cell_size.clone(),
-//                     self.connected_clients.borrow().iter().copied().collect(),
-//                     self.style,
-//                     invoked_with,
-//                     self.debug,
-//                     self.arrow_fonts,
-//                     self.styled_underlines,
-//                 )) as Box<dyn Pane>
-//             },
-//         };
-// 
-//         if start_suppressed {
-//             // this pane needs to start in the background (suppressed), only accessible if a plugin takes it out
-//             // of there in one way or another
-//             // we need to do some bookkeeping for this pane, namely setting its geom and
-//             // content_offset so that things will appear properly in the terminal - we set it to
-//             // the default geom of the first floating pane - this is just in order to give it some
-//             // reasonable size, when it is shown - if needed - it will be given the proper geom as if it were
-//             // resized
-//             let viewport = { self.viewport.borrow().clone() };
-//             let new_pane_geom = half_size_middle_geom(&viewport, 0);
-//             new_pane.set_active_at(Instant::now());
-//             new_pane.set_geom(new_pane_geom);
-//             new_pane.set_content_offset(Offset::frame(1));
-//             resize_pty!(
-//                 new_pane,
-//                 self.os_api,
-//                 self.senders,
-//                 self.character_cell_size
-//             )
-//             .with_context(err_context)?;
-//             let is_scrollback_editor = false;
-//             self.suppressed_panes
-//                 .insert(pid, (is_scrollback_editor, new_pane));
-//             Ok(())
-//         } else if should_focus_pane {
-//             if self.floating_panes.panes_are_visible() {
-//                 self.add_floating_pane(
-//                     new_pane,
-//                     pid,
-//                     new_pane_placement.floating_pane_coordinates(),
-//                     true,
-//                 )
-//             } else if new_pane_placement.should_stack() {
-//                 if let Some(id_of_stack_root) = new_pane_placement.id_of_stack_root() {
-//                     self.add_stacked_pane_to_pane_id(new_pane, pid, id_of_stack_root)
-//                 } else if let Some(client_id) = client_id {
-//                     self.add_stacked_pane_to_active_pane(new_pane, pid, client_id)
-//                 } else {
-//                     log::error!("Must have client id or pane id to stack pane");
-//                     return Ok(());
-//                 }
-//             } else {
-//                 self.add_tiled_pane(new_pane, pid, client_id)
-//             }
-//         } else {
-//             match new_pane_placement.should_float() {
-//                 Some(true) => self.add_floating_pane(
-//                     new_pane,
-//                     pid,
-//                     new_pane_placement.floating_pane_coordinates(),
-//                     false,
-//                 ),
-//                 Some(false) => self.add_tiled_pane(new_pane, pid, client_id),
-//                 None => {
-//                     if self.floating_panes.panes_are_visible() {
-//                         self.add_floating_pane(
-//                             new_pane,
-//                             pid,
-//                             new_pane_placement.floating_pane_coordinates(),
-//                             false,
-//                         )
-//                     } else {
-//                         self.add_tiled_pane(new_pane, pid, client_id)
-//                     }
-//                 },
-//             }
-//         }
     }
     pub fn new_stacked_pane(
         &mut self,

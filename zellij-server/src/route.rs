@@ -281,13 +281,13 @@ pub(crate) fn route_action(
                         Some(open_file),
                         Some(title),
                         false,
-                        ClientTabIndexOrPaneId::PaneId(pane_id)
+                        ClientTabIndexOrPaneId::PaneId(pane_id),
                     ),
                     None => PtyInstruction::SpawnInPlaceTerminal(
                         Some(open_file),
                         Some(title),
                         false,
-                        ClientTabIndexOrPaneId::ClientId(client_id)
+                        ClientTabIndexOrPaneId::ClientId(client_id),
                     ),
                 }
             } else {
