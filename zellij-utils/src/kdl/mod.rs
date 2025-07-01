@@ -914,42 +914,48 @@ impl Action {
                 Some(node)
             },
             Action::NewStackedPane(run_command_action, name) => {
-                // TODO: test this
-                let mut node = KdlNode::new("Run");
-                let mut node_children = KdlDocument::new();
-                if let Some(run_command_action) = run_command_action {
-                    node.push(run_command_action.command.display().to_string());
-                    for arg in &run_command_action.args {
-                        node.push(arg.clone());
-                    }
-                    let mut stacked_node = KdlNode::new("stacked");
-                    stacked_node.push(KdlValue::Bool(true));
-                    node_children.nodes_mut().push(stacked_node);
-                    if let Some(cwd) = &run_command_action.cwd {
-                        let mut cwd_node = KdlNode::new("cwd");
-                        cwd_node.push(cwd.display().to_string());
-                        node_children.nodes_mut().push(cwd_node);
-                    }
-                    if run_command_action.hold_on_start {
-                        let mut hos_node = KdlNode::new("hold_on_start");
-                        hos_node.push(KdlValue::Bool(true));
-                        node_children.nodes_mut().push(hos_node);
-                    }
-                    if !run_command_action.hold_on_close {
-                        let mut hoc_node = KdlNode::new("hold_on_close");
-                        hoc_node.push(KdlValue::Bool(false));
-                        node_children.nodes_mut().push(hoc_node);
+                match run_command_action {
+                    Some(run_command_action) => {
+                        let mut node = KdlNode::new("Run");
+                        let mut node_children = KdlDocument::new();
+                        node.push(run_command_action.command.display().to_string());
+                        for arg in &run_command_action.args {
+                            node.push(arg.clone());
+                        }
+                        let mut stacked_node = KdlNode::new("stacked");
+                        stacked_node.push(KdlValue::Bool(true));
+                        node_children.nodes_mut().push(stacked_node);
+                        if let Some(cwd) = &run_command_action.cwd {
+                            let mut cwd_node = KdlNode::new("cwd");
+                            cwd_node.push(cwd.display().to_string());
+                            node_children.nodes_mut().push(cwd_node);
+                        }
+                        if run_command_action.hold_on_start {
+                            let mut hos_node = KdlNode::new("hold_on_start");
+                            hos_node.push(KdlValue::Bool(true));
+                            node_children.nodes_mut().push(hos_node);
+                        }
+                        if !run_command_action.hold_on_close {
+                            let mut hoc_node = KdlNode::new("hold_on_close");
+                            hoc_node.push(KdlValue::Bool(false));
+                            node_children.nodes_mut().push(hoc_node);
+                        }
+                        if let Some(name) = name {
+                            let mut name_node = KdlNode::new("name");
+                            name_node.push(name.clone());
+                            node_children.nodes_mut().push(name_node);
+                        }
+                        if !node_children.nodes().is_empty() {
+                            node.set_children(node_children);
+                        }
+                        Some(node)
+                    },
+                    None => {
+                        let mut node = KdlNode::new("NewPane");
+                        node.push("stacked");
+                        Some(node)
                     }
                 }
-                if let Some(name) = name {
-                    let mut name_node = KdlNode::new("name");
-                    name_node.push(name.clone());
-                    node_children.nodes_mut().push(name_node);
-                }
-                if !node_children.nodes().is_empty() {
-                    node.set_children(node_children);
-                }
-                Some(node)
             },
             Action::Detach => Some(KdlNode::new("Detach")),
             Action::LaunchOrFocusPlugin(

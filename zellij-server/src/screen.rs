@@ -4655,10 +4655,16 @@ pub(crate) fn screen_thread_main(
             ) => {
                 let close_replaced_pane = false; // TODO: support this
                 let mut new_pane_placement = NewPanePlacement::default();
-                if floating_pane_coordinates.is_some() {
+                let maybe_should_float = should_float;
+                let should_be_tiled = maybe_should_float.map(|f| !f).unwrap_or(false);
+                let should_float = maybe_should_float.unwrap_or(false);
+                if floating_pane_coordinates.is_some() || should_float {
                     new_pane_placement = NewPanePlacement::with_floating_pane_coordinates(
                         floating_pane_coordinates.clone(),
                     );
+                }
+                if should_be_tiled {
+                    new_pane_placement = NewPanePlacement::Tiled(None);
                 }
                 if should_be_in_place {
                     new_pane_placement = NewPanePlacement::with_pane_id_to_replace(
@@ -4668,7 +4674,7 @@ pub(crate) fn screen_thread_main(
                 }
                 if screen.active_tab_indices.is_empty() && tab_index.is_none() {
                     pending_events_waiting_for_client.push(ScreenInstruction::AddPlugin(
-                        should_float,
+                        maybe_should_float,
                         should_be_in_place,
                         run_plugin_or_alias,
                         pane_title,

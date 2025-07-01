@@ -31,6 +31,7 @@ keybinds clear-defaults=true {{
         bind "n" {{ NewPane; SwitchToMode "Locked"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Locked"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Locked"; }}
+        bind "s" {{ NewPane "stacked"; SwitchToMode "Locked"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Locked"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Locked"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Locked"; }}
@@ -244,6 +245,7 @@ keybinds clear-defaults=true {{
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
+        bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
@@ -468,6 +470,7 @@ keybinds clear-defaults=true {{
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
+        bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
@@ -663,6 +666,7 @@ keybinds clear-defaults=true {{
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
+        bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
@@ -865,6 +869,7 @@ keybinds clear-defaults=true {{
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
+        bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
@@ -1042,6 +1047,7 @@ keybinds clear-defaults=true {{
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
+        bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
