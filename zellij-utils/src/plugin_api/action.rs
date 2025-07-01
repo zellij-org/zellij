@@ -720,6 +720,10 @@ impl TryFrom<ProtobufAction> for Action {
                     plugin_id: None,
                 }),
             },
+            Some(ProtobufActionName::NewStackedPane) => match protobuf_action.optional_payload {
+                Some(_) => Err("NewStackedPane should not have a payload"),
+                None => Ok(Action::NewStackedPane(None, None))
+            },
             _ => Err("Unknown Action"),
         }
     }
@@ -1254,10 +1258,13 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::ToggleGroupMarking as i32,
                 optional_payload: None,
             }),
+            Action::NewStackedPane(..) => Ok(ProtobufAction {
+                name: ProtobufActionName::NewStackedPane as i32,
+                optional_payload: None,
+            }),
             Action::NoOp
             | Action::Confirm
             | Action::NewInPlacePane(..)
-            | Action::NewStackedPane(..)
             | Action::NewInPlacePluginPane(..)
             | Action::Deny
             | Action::Copy
