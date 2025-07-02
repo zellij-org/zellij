@@ -63,10 +63,7 @@ pub fn make_terminal_title(pane_title: &str) -> String {
                 .unwrap_or_default()
         )
     } else {
-        format!(
-            "\u{1b}]0;{}\u{07}",
-            pane_title,
-        )
+        format!("\u{1b}]0;{}\u{07}", pane_title,)
     }
 }
 
