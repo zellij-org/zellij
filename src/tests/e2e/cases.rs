@@ -2038,6 +2038,7 @@ pub fn toggle_floating_panes() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(33, 8)
                     && remote_terminal.snapshot_contains("STAGGERED")
+                    && remote_terminal.snapshot_contains("LOCK")
                 {
                     // cursor is in the newly opened second pane
                     step_is_complete = true;
