@@ -1077,6 +1077,10 @@ impl TiledPanes {
                 .add_character_chunks_to_client(client_id, boundaries_to_render, None)
                 .with_context(err_context)?;
         }
+        if floating_panes_are_visible {
+            // we do this here so that when they are toggled off, we will make sure to re-render the title
+            self.window_title = None;
+        }
         Ok(())
     }
     pub fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
