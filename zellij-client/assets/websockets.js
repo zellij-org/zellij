@@ -145,7 +145,7 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId) {
                 term.options.cursorInactiveStyle = cursor_inactive_style;
             }
             const body = document.querySelector("body");
-            body.style.background = theme.background;
+            body.style.background = theme.background || "black";
 
             const terminal = document.getElementById("terminal");
             terminal.style.background = theme.background;
