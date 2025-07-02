@@ -42,26 +42,37 @@ export function initWebSockets(webClientId, sessionName, term, fitAddon, sendAns
         }
 
         let data = event.data;
-        if (typeof data === 'string' && data.includes('\x1b[0 q')) {
-            const shouldBlink = term.options.cursorBlink;
-            const cursorStyle = term.options.cursorStyle;
-            let replacement;
-            switch (cursorStyle) {
-                case 'block':
-                    replacement = shouldBlink ? '\x1b[1 q' : '\x1b[2 q';
-                    break;
-                case 'underline':
-                    replacement = shouldBlink ? '\x1b[3 q' : '\x1b[4 q';
-                    break;
-                case 'bar':
-                    replacement = shouldBlink ? '\x1b[5 q' : '\x1b[6 q';
-                    break;
-                default:
-                    replacement = '\x1b[2 q';
-                    break;
+        
+        if (typeof data === 'string') {
+            // Handle ANSI title change sequences
+            const titleRegex = /\x1b\]0;([^\x07\x1b]*?)(?:\x07|\x1b\\)/g;
+            let match;
+            while ((match = titleRegex.exec(data)) !== null) {
+                document.title = match[1];
             }
-            data = data.replace(/\x1b\[0 q/g, replacement);
+            
+            if (data.includes('\x1b[0 q')) {
+                const shouldBlink = term.options.cursorBlink;
+                const cursorStyle = term.options.cursorStyle;
+                let replacement;
+                switch (cursorStyle) {
+                    case 'block':
+                        replacement = shouldBlink ? '\x1b[1 q' : '\x1b[2 q';
+                        break;
+                    case 'underline':
+                        replacement = shouldBlink ? '\x1b[3 q' : '\x1b[4 q';
+                        break;
+                    case 'bar':
+                        replacement = shouldBlink ? '\x1b[5 q' : '\x1b[6 q';
+                        break;
+                    default:
+                        replacement = '\x1b[2 q';
+                        break;
+                }
+                data = data.replace(/\x1b\[0 q/g, replacement);
+            }
         }
+        
         term.write(data);
     };
     
@@ -145,7 +156,7 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId) {
                 term.options.cursorInactiveStyle = cursor_inactive_style;
             }
             const body = document.querySelector("body");
-            body.style.background = theme.background;
+            body.style.background = theme.background || "black";
 
             const terminal = document.getElementById("terminal");
             terminal.style.background = theme.background;

@@ -145,7 +145,11 @@ pub fn zellij_server_listener(
                                     WebServerToWebClientControlMessage::LogError { lines },
                                 );
                             },
-                            _ => {},
+                            _ => {
+                                // server disconnected, stop trying to listen otherwise we retry
+                                // indefinitely and get 100% CPU
+                                break;
+                            },
                         }
                     }
                     if reconnect_to_session.is_none() {

@@ -459,7 +459,7 @@ impl Pane for TerminalPane {
         let pane_title = if self.pane_name.is_empty() && input_mode == InputMode::RenamePane {
             "Enter name..."
         } else if self.pane_name.is_empty() {
-            self.grid.title.as_deref().unwrap_or(&self.pane_title)
+            self.grid.title.as_deref().unwrap_or("")
         } else {
             &self.pane_name
         };
