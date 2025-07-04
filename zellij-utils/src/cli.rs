@@ -722,8 +722,20 @@ pub enum CliAction {
         name: Option<String>,
 
         /// Change the working directory of the new tab
-        #[clap(short, long, value_parser, requires("layout"))]
+        #[clap(short, long, value_parser)]
         cwd: Option<PathBuf>,
+
+        /// Run command in the new tab
+        #[clap(short, long, value_parser, conflicts_with("edit"))]
+        run: Option<PathBuf>,
+
+        /// Command line arguments when running a command
+        #[clap(short, long, value_parser, requires("run"))]
+        args: Option<Vec<String>>,
+
+        /// Edit file in the new tab
+        #[clap(short, long, value_parser)]
+        edit: Option<PathBuf>,
     },
     /// Move the focused tab in the specified direction. [right|left]
     MoveTab {

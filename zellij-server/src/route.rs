@@ -456,6 +456,8 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::NewTab(
+            cwd,
+            run,
             tab_layout,
             floating_panes_layout,
             swap_tiled_layouts,
@@ -463,7 +465,7 @@ pub(crate) fn route_action(
             tab_name,
             should_change_focus_to_new_tab,
         ) => {
-            let shell = default_shell.clone();
+            let shell = run.or_else(|| default_shell.clone());
             let swap_tiled_layouts =
                 swap_tiled_layouts.unwrap_or_else(|| default_layout.swap_tiled_layouts.clone());
             let swap_floating_layouts = swap_floating_layouts
@@ -471,7 +473,7 @@ pub(crate) fn route_action(
             let is_web_client = false; // actions cannot be initiated directly from the web
             senders
                 .send_to_screen(ScreenInstruction::NewTab(
-                    None,
+                    cwd,
                     shell,
                     tab_layout,
                     floating_panes_layout,

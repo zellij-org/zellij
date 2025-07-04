@@ -218,6 +218,9 @@ fn main() {
                 layout_dir: options.as_ref().and_then(|o| o.layout_dir.clone()),
                 name: None,
                 cwd: options.as_ref().and_then(|o| o.default_cwd.clone()),
+                run: None,
+                args: None,
+                edit: None,
             };
             commands::send_action_to_session(new_layout_cli_action, Some(session_name), config);
         } else {
