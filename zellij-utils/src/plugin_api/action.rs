@@ -664,9 +664,9 @@ impl TryFrom<ProtobufAction> for Action {
             },
             Some(ProtobufActionName::RenameTab) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::RenameTabPayload(payload)) => {
-                    let tab_index = payload.id;
+                    let tab_position = payload.id;
                     let new_tab_name = payload.name;
-                    Ok(Action::RenameTab(tab_index, new_tab_name))
+                    Ok(Action::RenameTab(tab_position, new_tab_name))
                 },
                 _ => Err("Wrong payload for Action::RenameTab"),
             },
@@ -1219,11 +1219,11 @@ impl TryFrom<Action> for ProtobufAction {
                     id: plugin_pane_id,
                 })),
             }),
-            Action::RenameTab(tab_index, new_name) => Ok(ProtobufAction {
+            Action::RenameTab(tab_position, new_name) => Ok(ProtobufAction {
                 name: ProtobufActionName::RenameTab as i32,
                 optional_payload: Some(OptionalPayload::RenameTabPayload(IdAndName {
                     name: new_name,
-                    id: tab_index,
+                    id: tab_position,
                 })),
             }),
             Action::BreakPane => Ok(ProtobufAction {
