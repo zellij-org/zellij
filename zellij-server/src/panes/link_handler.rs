@@ -11,8 +11,8 @@ pub struct LinkHandler {
 }
 #[derive(Debug, Clone)]
 pub struct Link {
-    id: Option<String>,
-    uri: String,
+    pub id: Option<String>,
+    pub uri: String,
 }
 
 impl LinkHandler {
@@ -51,7 +51,13 @@ impl LinkHandler {
 
     pub fn new_link_from_url(&mut self, url: String) -> LinkAnchor {
         let anchor = LinkAnchor::Start(self.link_index);
-        self.links.insert(self.link_index, Link { id: Some(self.link_index.to_string()), uri: url });
+        self.links.insert(
+            self.link_index,
+            Link {
+                id: Some(self.link_index.to_string()),
+                uri: url,
+            },
+        );
         self.link_index += 1;
         anchor
     }
@@ -80,6 +86,11 @@ impl LinkHandler {
             },
             LinkAnchor::End => Some(format!("\u{1b}]8;;{}", TERMINATOR)),
         })
+    }
+
+    #[cfg(test)]
+    pub fn links(&self) -> HashMap<u16, Link> {
+        self.links.clone()
     }
 }
 

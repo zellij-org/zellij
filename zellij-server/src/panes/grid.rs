@@ -31,6 +31,7 @@ use zellij_utils::{consts::VERSION, shared::version_number};
 
 use crate::output::{CharacterChunk, OutputBuffer, SixelImageChunk};
 use crate::panes::alacritty_functions::{parse_number, xparse_color};
+use crate::panes::hyperlink_tracker::HyperlinkTracker;
 use crate::panes::link_handler::LinkHandler;
 use crate::panes::search::SearchResult;
 use crate::panes::selection::Selection;
@@ -39,7 +40,6 @@ use crate::panes::terminal_character::{
     TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
 use crate::ui::components::UiComponentParser;
-use crate::panes::hyperlink_tracker::HyperlinkTracker;
 
 fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
