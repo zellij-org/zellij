@@ -91,7 +91,7 @@ impl From<&Config> for SetConfigPayload {
     fn from(config: &Config) -> Self {
         let font = config.web_client.font.clone();
 
-        let palette = config.theme_config(None);
+        let palette = config.theme_config(config.options.theme.as_ref());
         let web_client_theme_from_config = config.web_client.theme.as_ref();
 
         let mut theme = SetConfigPayloadTheme::default();
