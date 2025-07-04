@@ -205,6 +205,12 @@ pub fn might_have_more_data(buf: &[u8]) -> bool {
     }
 
     let len = buf.len();
+
+    // Special case: lone ESC should be processed immediately
+    if len == 1 && buf == b"\x1b" {
+        return false;
+    }
+
     // Check if buffer ends with potential incomplete ANSI sequence
     if len >= 1 && buf[len - 1] == 0x1b {
         return true; // Ends with ESC

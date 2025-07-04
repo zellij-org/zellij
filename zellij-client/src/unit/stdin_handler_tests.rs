@@ -38,7 +38,7 @@ mod tests {
     #[test]
     fn test_might_have_more_data_incomplete_sequences() {
         // Incomplete sequences should require more data
-        assert_eq!(might_have_more_data(b"\x1b"), true); // Just ESC
+        assert_eq!(might_have_more_data(b"\x1b"), false); // Just ESC is send immediately
         assert_eq!(might_have_more_data(b"\x1b[3"), true); // Incomplete color
         assert_eq!(might_have_more_data(b"\x1b[31"), true); // Incomplete color
         assert_eq!(might_have_more_data(b"\x1b[<0"), true); // Incomplete mouse
@@ -202,9 +202,9 @@ mod tests {
     fn test_multiple_fragments_accumulation() {
         // Test sequence that fragments into 3 parts (avoiding the Alt+[ special case)
         let fragments = vec![
-            b"\x1b".to_vec(), // Just ESC
-            b"[31".to_vec(),  // [ + partial color code
-            b"m".to_vec(),    // Complete color code
+            b"\x1b[3".to_vec(), // ESC + [ + partial color code
+            b"1".to_vec(),      // more partial color code
+            b"m".to_vec(),      // Complete color code
         ];
 
         let mut mock_input = MockOsInput::new(fragments);
@@ -300,9 +300,6 @@ mod tests {
     fn test_edge_cases() {
         // Empty buffer
         assert_eq!(might_have_more_data(b""), false);
-
-        // Just ESC
-        assert_eq!(might_have_more_data(b"\x1b"), true);
 
         // ESC followed by non-bracket
         assert_eq!(might_have_more_data(b"\x1bc"), false);
