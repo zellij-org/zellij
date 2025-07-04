@@ -49,6 +49,13 @@ impl LinkHandler {
         }
     }
 
+    pub fn new_link_from_url(&mut self, url: String) -> LinkAnchor {
+        let anchor = LinkAnchor::Start(self.link_index);
+        self.links.insert(self.link_index, Link { id: Some(self.link_index.to_string()), uri: url });
+        self.link_index += 1;
+        anchor
+    }
+
     pub fn output_osc8(&self, link_anchor: Option<LinkAnchor>) -> Option<String> {
         link_anchor.and_then(|link| match link {
             LinkAnchor::Start(index) => {
