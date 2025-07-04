@@ -31,6 +31,7 @@ use zellij_utils::{consts::VERSION, shared::version_number};
 
 use crate::output::{CharacterChunk, OutputBuffer, SixelImageChunk};
 use crate::panes::alacritty_functions::{parse_number, xparse_color};
+use crate::panes::hyperlink_tracker::HyperlinkTracker;
 use crate::panes::link_handler::LinkHandler;
 use crate::panes::search::SearchResult;
 use crate::panes::selection::Selection;
@@ -363,6 +364,7 @@ pub struct Grid {
     explicitly_disable_kitty_keyboard_protocol: bool, // has kitty keyboard support been explicitly
     // disabled by user config?
     click: Click,
+    hyperlink_tracker: HyperlinkTracker,
 }
 
 const CLICK_TIME_THRESHOLD: u128 = 400; // Doherty Threshold
@@ -550,6 +552,7 @@ impl Grid {
             supports_kitty_keyboard_protocol: false,
             explicitly_disable_kitty_keyboard_protocol,
             click: Click::default(),
+            hyperlink_tracker: HyperlinkTracker::new(),
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -1294,6 +1297,13 @@ impl Grid {
     }
     pub fn add_canonical_line(&mut self) {
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
+        self.hyperlink_tracker.update(
+            '\n',
+            &self.cursor,
+            &mut self.viewport,
+            &mut self.lines_above,
+            &mut self.link_handler.borrow_mut(),
+        );
         if self.cursor.y == scroll_region_bottom {
             // end of scroll region
             // when we have a scroll region set and we're at its bottom
@@ -1348,6 +1358,13 @@ impl Grid {
         terminal_character: TerminalCharacter,
         should_insert_character: bool,
     ) {
+        self.hyperlink_tracker.update(
+            terminal_character.character,
+            &self.cursor,
+            &mut self.viewport,
+            &mut self.lines_above,
+            &mut self.link_handler.borrow_mut(),
+        );
         // this function assumes the current line has enough room for terminal_character (that its
         // width has been checked beforehand)
         match self.viewport.get_mut(self.cursor.y) {
@@ -1477,6 +1494,7 @@ impl Grid {
         if self.cursor.y == self.height.saturating_sub(1) {
             if self.alternate_screen_state.is_none() {
                 self.transfer_rows_to_lines_above(1);
+                self.hyperlink_tracker.offset_cursor_lines(1);
             } else {
                 self.viewport.remove(0);
             }
