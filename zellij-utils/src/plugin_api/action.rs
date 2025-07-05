@@ -91,6 +91,10 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("FocusPreviousPane should not have a payload"),
                 None => Ok(Action::FocusPreviousPane),
             },
+            Some(ProtobufActionName::FocusLastPane) => match protobuf_action.optional_payload {
+                Some(_) => Err("FocusLastPane should not have a payload"),
+                None => Ok(Action::FocusLastPane),
+            },
             Some(ProtobufActionName::SwitchFocus) => match protobuf_action.optional_payload {
                 Some(_) => Err("SwitchFocus should not have a payload"),
                 None => Ok(Action::SwitchFocus),
@@ -788,6 +792,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::FocusPreviousPane => Ok(ProtobufAction {
                 name: ProtobufActionName::FocusPreviousPane as i32,
+                optional_payload: None,
+            }),
+            Action::FocusLastPane => Ok(ProtobufAction {
+                name: ProtobufActionName::FocusLastPane as i32,
                 optional_payload: None,
             }),
             Action::SwitchFocus => Ok(ProtobufAction {
