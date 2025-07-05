@@ -2849,6 +2849,9 @@ impl Tab {
         // bool => is_scrollback_editor
         self.suppressed_panes.iter()
     }
+    fn get_non_selectable_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+        self.get_tiled_panes().filter(|(_, p)| !p.selectable())
+    }
     fn get_selectable_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.get_tiled_panes().filter(|(_, p)| p.selectable())
     }
@@ -3909,22 +3912,6 @@ impl Tab {
     ) -> Result<Option<PaneId>> {
         let err_context = || format!("failed to get id of pane at position {point:?}");
 
-        if self.tiled_panes.fullscreen_is_active()
-            && self
-                .is_position_inside_viewport(point)
-                .with_context(err_context)?
-        {
-            // TODO: instead of doing this, record the pane that is in fullscreen
-            let first_client_id = self
-                .connected_clients
-                .borrow()
-                .iter()
-                .copied()
-                .next()
-                .with_context(err_context)?;
-            return Ok(self.tiled_panes.get_active_pane_id(first_client_id));
-        }
-
         let (stacked_pane_ids_under_flexible_pane, _stacked_pane_ids_over_flexible_pane) = {
             self.tiled_panes
                 .stacked_pane_ids_under_and_over_flexible_panes()
@@ -3958,6 +3945,32 @@ impl Tab {
             };
             geom_to_compare_against.contains(point)
         };
+
+        if self.tiled_panes.fullscreen_is_active()
+            && self
+                .is_position_inside_viewport(point)
+                .with_context(err_context)?
+        {
+            // non-selectable panes are visible in fullscreen
+            if let Some(id) = self
+                .get_non_selectable_tiled_panes()
+                .find(|(_, p)| pane_contains_point(p, point, &stacked_pane_ids_under_flexible_pane))
+                .map(|(&id, _)| id)
+            {
+                if !search_selectable {
+                    return Ok(Some(id));
+                }
+            }
+            // TODO: instead of doing this, record the pane that is in fullscreen
+            let first_client_id = self
+                .connected_clients
+                .borrow()
+                .iter()
+                .copied()
+                .next()
+                .with_context(err_context)?;
+            return Ok(self.tiled_panes.get_active_pane_id(first_client_id));
+        }
 
         if search_selectable {
             Ok(self
