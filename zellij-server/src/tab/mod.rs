@@ -3952,12 +3952,14 @@ impl Tab {
                 .with_context(err_context)?
         {
             // non-selectable panes are visible in fullscreen
-            if let Some(id) = self
-                .get_non_selectable_tiled_panes()
-                .find(|(_, p)| pane_contains_point(p, point, &stacked_pane_ids_under_flexible_pane))
-                .map(|(&id, _)| id)
-            {
-                if !search_selectable {
+            if !search_selectable {
+                if let Some(id) = self
+                    .get_non_selectable_tiled_panes()
+                    .find(|(_, p)| {
+                        pane_contains_point(p, point, &stacked_pane_ids_under_flexible_pane)
+                    })
+                    .map(|(&id, _)| id)
+                {
                     return Ok(Some(id));
                 }
             }
