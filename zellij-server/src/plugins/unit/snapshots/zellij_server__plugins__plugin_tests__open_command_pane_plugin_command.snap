@@ -22,6 +22,7 @@ Some(
                             context: {},
                         },
                     ),
+                    use_terminal_title: false,
                 },
             ),
         ),
