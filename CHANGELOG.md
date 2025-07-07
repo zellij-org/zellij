@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: add plugin API to replace a pane with another existing pane (https://github.com/zellij-org/zellij/pull/4246)
 * feat: add "stack" keybinding and CLI action to add a stacked pane to the current pane (https://github.com/zellij-org/zellij/pull/4255)
 * fix: support multiline hyperlinks (https://github.com/zellij-org/zellij/pull/4264)
+* fix: use terminal title when spawning terminal panes from plugin (https://github.com/zellij-org/zellij/pull/4272)
 
 ## [0.42.2] - 2025-04-15
 * refactor(terminal): track scroll_region as tuple rather than Option (https://github.com/zellij-org/zellij/pull/4082)
