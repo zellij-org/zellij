@@ -369,6 +369,7 @@ impl SessionMetaData {
                 TerminalAction::RunCommand(RunCommand {
                     command: shell.clone(),
                     cwd: new_config.options.default_cwd.clone(),
+                    use_terminal_title: true,
                     ..Default::default()
                 })
             });
@@ -705,6 +706,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     TerminalAction::RunCommand(RunCommand {
                         command: shell,
                         cwd: config.options.default_cwd.clone(),
+                        use_terminal_title: true,
                         ..Default::default()
                     })
                 });
@@ -1481,6 +1483,7 @@ fn init_session(
     let default_shell = config_options.default_shell.clone().map(|command| {
         TerminalAction::RunCommand(RunCommand {
             command,
+            use_terminal_title: true,
             ..Default::default()
         })
     });

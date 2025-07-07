@@ -59,6 +59,8 @@ pub struct RunCommand {
     pub hold_on_start: bool,
     #[serde(default)]
     pub originating_plugin: Option<OriginatingPlugin>,
+    #[serde(default)]
+    pub use_terminal_title: bool,
 }
 
 impl std::fmt::Display for RunCommand {
@@ -94,6 +96,8 @@ pub struct RunCommandAction {
     pub hold_on_start: bool,
     #[serde(default)]
     pub originating_plugin: Option<OriginatingPlugin>,
+    #[serde(default)]
+    pub use_terminal_title: bool,
 }
 
 impl From<RunCommandAction> for RunCommand {
@@ -105,6 +109,7 @@ impl From<RunCommandAction> for RunCommand {
             hold_on_close: action.hold_on_close,
             hold_on_start: action.hold_on_start,
             originating_plugin: action.originating_plugin,
+            use_terminal_title: action.use_terminal_title,
         }
     }
 }
@@ -119,6 +124,7 @@ impl From<RunCommand> for RunCommandAction {
             hold_on_close: run_command.hold_on_close,
             hold_on_start: run_command.hold_on_start,
             originating_plugin: run_command.originating_plugin,
+            use_terminal_title: run_command.use_terminal_title,
         }
     }
 }

@@ -233,7 +233,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         Some(TerminalAction::RunCommand(run_command)) => (
                             run_command.hold_on_close,
                             Some(run_command.clone()),
-                            Some(name.unwrap_or_else(|| run_command.to_string())),
+                            if run_command.use_terminal_title {
+                                None
+                            } else {
+                                Some(name.unwrap_or_else(|| run_command.to_string()))
+                            },
                             None,
                         ),
                         Some(TerminalAction::OpenFile(open_file_payload)) => {
@@ -359,7 +363,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     Some(TerminalAction::RunCommand(run_command)) => (
                         run_command.hold_on_close,
                         Some(run_command.clone()),
-                        Some(name.unwrap_or_else(|| run_command.to_string())),
+                        if run_command.use_terminal_title {
+                            None
+                        } else {
+                            Some(name.unwrap_or_else(|| run_command.to_string()))
+                        },
                     ),
                     _ => (false, None, name),
                 };
