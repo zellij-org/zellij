@@ -4,11 +4,15 @@ expression: "format!(\"{:#?}\", new_tab_event)"
 ---
 Some(
     NewTab(
-        None,
+        Some(
+            "/path/to/my/cwd",
+        ),
         None,
         None,
         [],
-        None,
+        Some(
+            "new_tab_name",
+        ),
         (
             [],
             [],

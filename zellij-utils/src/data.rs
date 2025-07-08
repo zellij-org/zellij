@@ -2344,7 +2344,10 @@ pub enum PluginCommand {
     ShowSelf(bool), // bool - should float if hidden
     SwitchToMode(InputMode),
     NewTabsWithLayout(String), // raw kdl layout
-    NewTab,
+    NewTab {
+        name: Option<String>,
+        cwd: Option<String>,
+    },
     GoToNextTab,
     GoToPreviousTab,
     Resize(Resize),

@@ -696,11 +696,10 @@ impl Action {
                 Some(node)
             },
             Action::UndoRenamePane => Some(KdlNode::new("UndoRenamePane")),
-            Action::NewTab(_, _, _, _, name, should_change_focus_to_new_tab) => {
-                log::warn!("Converting new tab action without arguments, original action saved to .bak.kdl file");
+            Action::NewTab(_, _, _, _, name, should_change_focus_to_new_tab, cwd) => {
                 let mut node = KdlNode::new("NewTab");
+                let mut children = KdlDocument::new();
                 if let Some(name) = name {
-                    let mut children = KdlDocument::new();
                     let mut name_node = KdlNode::new("name");
                     if !should_change_focus_to_new_tab {
                         let mut should_change_focus_to_new_tab_node =
@@ -712,6 +711,13 @@ impl Action {
                     }
                     name_node.push(name.clone());
                     children.nodes_mut().push(name_node);
+                }
+                if let Some(cwd) = cwd {
+                    let mut cwd_node = KdlNode::new("cwd");
+                    cwd_node.push(cwd.display().to_string());
+                    children.nodes_mut().push(cwd_node);
+                }
+                if name.is_some() || cwd.is_some() {
                     node.set_children(children);
                 }
                 Some(node)
@@ -1472,7 +1478,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "NewTab" => {
                 let command_metadata = action_children.iter().next();
                 if command_metadata.is_none() {
-                    return Ok(Action::NewTab(None, vec![], None, None, None, true));
+                    return Ok(Action::NewTab(None, vec![], None, None, None, true, None));
                 }
 
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -1508,7 +1514,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     &raw_layout,
                     path_to_raw_layout,
                     swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())),
-                    cwd,
+                    cwd.clone(),
                 )
                 .map_err(|e| {
                     ConfigError::new_kdl_error(
@@ -1540,6 +1546,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         swap_floating_layouts,
                         name,
                         should_change_focus_to_new_tab,
+                        cwd,
                     ))
                 } else {
                     let (layout, floating_panes_layout) = layout.new_tab();
@@ -1552,6 +1559,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         swap_floating_layouts,
                         name,
                         should_change_focus_to_new_tab,
+                        cwd,
                     ))
                 }
             },

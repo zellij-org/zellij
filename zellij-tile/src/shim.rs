@@ -434,8 +434,13 @@ pub fn new_tabs_with_layout_info(layout_info: LayoutInfo) {
 }
 
 /// Open a new tab with the default layout
-pub fn new_tab() {
-    let plugin_command = PluginCommand::NewTab;
+pub fn new_tab<S: AsRef<str>>(name: Option<S>, cwd: Option<S>)
+where
+    S: ToString,
+{
+    let name = name.map(|s| s.to_string());
+    let cwd = cwd.map(|s| s.to_string());
+    let plugin_command = PluginCommand::NewTab { name, cwd };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
