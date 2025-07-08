@@ -414,6 +414,7 @@ impl SessionMetaData {
                 .send_to_pty(PtyInstruction::Reconfigure {
                     client_id,
                     default_editor: new_config.options.scrollback_editor,
+                    post_command_discovery_hook: new_config.options.post_command_discovery_hook,
                 })
                 .unwrap();
         }
@@ -1512,6 +1513,7 @@ fn init_session(
                 ),
                 opts.debug,
                 config_options.scrollback_editor.clone(),
+                config_options.post_command_discovery_hook.clone(),
             );
 
             move || pty_thread_main(pty, layout.clone()).fatal()
