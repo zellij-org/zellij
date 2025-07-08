@@ -527,3 +527,10 @@ web_client {
 // Default: 8082
 // (Requires restart)
 // web_server_port 8082
+ 
+// A command to run (will be wrapped with sh -c and provided the RESURRECT_COMMAND env variable) 
+// after Zellij attempts to discover a command inside a pane when resurrecting sessions, the STDOUT
+// of this command will be used instead of the discovered RESURRECT_COMMAND
+// can be useful for removing wrappers around commands
+// Note: be sure to escape backslashes and similar characters properly
+// post_command_discovery_hook "echo $RESURRECT_COMMAND | sed <your_regex_here>"

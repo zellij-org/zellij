@@ -353,7 +353,7 @@ pub enum ScreenInstruction {
         bool, // close replaced pane
         ClientTabIndexOrPaneId,
     ),
-    DumpLayoutToHd,
+    SerializeLayoutForResurrection,
     RenameSession(String, ClientId), // String -> new name
     ListClientsMetadata(Option<PathBuf>, ClientId), // Option<PathBuf> - default shell
     Reconfigure {
@@ -595,7 +595,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdateSessionInfos(..) => ScreenContext::UpdateSessionInfos,
             ScreenInstruction::ReplacePane(..) => ScreenContext::ReplacePane,
             ScreenInstruction::NewInPlacePluginPane(..) => ScreenContext::NewInPlacePluginPane,
-            ScreenInstruction::DumpLayoutToHd => ScreenContext::DumpLayoutToHd,
+            ScreenInstruction::SerializeLayoutForResurrection => {
+                ScreenContext::SerializeLayoutForResurrection
+            },
             ScreenInstruction::RenameSession(..) => ScreenContext::RenameSession,
             ScreenInstruction::ListClientsMetadata(..) => ScreenContext::ListClientsMetadata,
             ScreenInstruction::Reconfigure { .. } => ScreenContext::Reconfigure,
@@ -5047,7 +5049,7 @@ pub(crate) fn screen_thread_main(
 
                 screen.render(None)?;
             },
-            ScreenInstruction::DumpLayoutToHd => {
+            ScreenInstruction::SerializeLayoutForResurrection => {
                 if screen.session_serialization {
                     screen.dump_layout_to_hd()?;
                 }

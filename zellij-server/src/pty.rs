@@ -173,6 +173,7 @@ pub enum PtyInstruction {
     Reconfigure {
         client_id: ClientId,
         default_editor: Option<PathBuf>,
+        post_command_discovery_hook: Option<String>,
     },
     ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
     Exit,
@@ -211,6 +212,7 @@ pub(crate) struct Pty {
     debug_to_file: bool,
     task_handles: HashMap<u32, JoinHandle<()>>, // terminal_id to join-handle
     default_editor: Option<PathBuf>,
+    post_command_discovery_hook: Option<String>,
 }
 
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
@@ -726,9 +728,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             },
             PtyInstruction::Reconfigure {
                 default_editor,
+                post_command_discovery_hook,
                 client_id: _,
             } => {
-                pty.reconfigure(default_editor);
+                pty.reconfigure(default_editor, post_command_discovery_hook);
             },
             PtyInstruction::Exit => break,
         }
@@ -741,6 +744,7 @@ impl Pty {
         bus: Bus<PtyInstruction>,
         debug_to_file: bool,
         default_editor: Option<PathBuf>,
+        post_command_discovery_hook: Option<String>,
     ) -> Self {
         Pty {
             active_panes: HashMap::new(),
@@ -750,6 +754,7 @@ impl Pty {
             task_handles: HashMap::new(),
             default_editor,
             originating_plugins: HashMap::new(),
+            post_command_discovery_hook,
         }
     }
     pub fn get_default_terminal(
@@ -1430,7 +1435,7 @@ impl Pty {
             .bus
             .os_input
             .as_ref()
-            .map(|os_input| os_input.get_all_cmds_by_ppid())
+            .map(|os_input| os_input.get_all_cmds_by_ppid(&self.post_command_discovery_hook))
             .unwrap_or_default();
 
         for terminal_id in terminal_ids {
@@ -1505,8 +1510,13 @@ impl Pty {
         ))?;
         Ok(())
     }
-    pub fn reconfigure(&mut self, default_editor: Option<PathBuf>) {
+    pub fn reconfigure(
+        &mut self,
+        default_editor: Option<PathBuf>,
+        post_command_discovery_hook: Option<String>,
+    ) {
         self.default_editor = default_editor;
+        self.post_command_discovery_hook = post_command_discovery_hook;
     }
 }
 
