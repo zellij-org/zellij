@@ -199,6 +199,7 @@ pub enum Action {
         Option<Vec<SwapFloatingLayout>>,
         Option<String>,
         bool, // should_change_focus_to_new_tab
+        Option<PathBuf>, // cwd
     ), // the String is the tab name
     /// Do nothing.
     NoOp,
@@ -621,6 +622,7 @@ impl Action {
                                 swap_floating_layouts.clone(),
                                 name,
                                 should_change_focus_to_new_tab,
+                                None, // the cwd is done through the layout
                             ));
                         }
                         Ok(new_tab_actions)
@@ -636,6 +638,7 @@ impl Action {
                             swap_floating_layouts,
                             name,
                             should_change_focus_to_new_tab,
+                            None, // the cwd is done through the layout
                         )])
                     }
                 } else {
@@ -647,6 +650,7 @@ impl Action {
                         None,
                         name,
                         should_change_focus_to_new_tab,
+                        cwd,
                     )])
                 }
             },

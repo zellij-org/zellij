@@ -173,7 +173,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         };
 
         vec![
-        (s("New"), s("New"), action_key(&km, &[A::NewTab(None, vec![], None, None, None, true), TO_NORMAL])),
+        (s("New"), s("New"), action_key(&km, &[A::NewTab(None, vec![], None, None, None, true, None), TO_NORMAL])),
         (s("Change focus"), s("Move"), focus_keys),
         (s("Close"), s("Close"), action_key(&km, &[A::CloseTab, TO_NORMAL])),
         (s("Rename"), s("Rename"),
@@ -253,7 +253,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(Some(Dir::Down), None, false), TO_NORMAL])),
         (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(Some(Dir::Right), None, false), TO_NORMAL])),
         (s("Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
-        (s("New tab"), s("New"), action_key(&km, &[A::NewTab(None, vec![], None, None, None, true), TO_NORMAL])),
+        (s("New tab"), s("New"), action_key(&km, &[A::NewTab(None, vec![], None, None, None, true, None), TO_NORMAL])),
         (s("Rename tab"), s("Rename"),
             action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
         (s("Previous Tab"), s("Previous"), action_key(&km, &[A::GoToPreviousTab, TO_NORMAL])),

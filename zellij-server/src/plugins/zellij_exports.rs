@@ -1431,6 +1431,7 @@ fn new_tabs_with_layout_info(env: &PluginEnv, layout_info: LayoutInfo) -> Result
 fn apply_layout(env: &PluginEnv, layout: Layout) {
     let mut tabs_to_open = vec![];
     let tabs = layout.tabs();
+    let cwd = None; // TODO: add this to the plugin API
     if tabs.is_empty() {
         let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
         let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
@@ -1441,6 +1442,7 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
             swap_floating_layouts,
             None,
             true,
+            cwd,
         );
         tabs_to_open.push(action);
     } else {
@@ -1458,6 +1460,7 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
                 swap_floating_layouts,
                 tab_name,
                 should_focus_tab,
+                cwd.clone(),
             );
             tabs_to_open.push(action);
         }
@@ -1469,7 +1472,8 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
 }
 
 fn new_tab(env: &PluginEnv) {
-    let action = Action::NewTab(None, vec![], None, None, None, true);
+    let cwd = None; // TODO: add this to the plugin api
+    let action = Action::NewTab(None, vec![], None, None, None, true, cwd);
     let error_msg = || format!("Failed to open new tab");
     apply_action!(action, error_msg, env);
 }

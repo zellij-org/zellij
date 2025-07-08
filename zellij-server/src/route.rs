@@ -462,6 +462,7 @@ pub(crate) fn route_action(
             swap_floating_layouts,
             tab_name,
             should_change_focus_to_new_tab,
+            cwd,
         ) => {
             let shell = default_shell.clone();
             let swap_tiled_layouts =
@@ -471,7 +472,7 @@ pub(crate) fn route_action(
             let is_web_client = false; // actions cannot be initiated directly from the web
             senders
                 .send_to_screen(ScreenInstruction::NewTab(
-                    None,
+                    cwd,
                     shell,
                     tab_layout,
                     floating_panes_layout,
