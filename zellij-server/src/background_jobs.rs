@@ -237,7 +237,9 @@ pub(crate) fn background_jobs_main(
                                     .unwrap_or(DEFAULT_SERIALIZATION_INTERVAL)
                                     .into()
                             {
-                                let _ = senders.send_to_screen(ScreenInstruction::SerializeLayoutForResurrection);
+                                let _ = senders.send_to_screen(
+                                    ScreenInstruction::SerializeLayoutForResurrection,
+                                );
                                 *last_serialization_time.lock().unwrap() = Instant::now();
                             }
                             task::sleep(std::time::Duration::from_millis(SESSION_READ_DURATION))

@@ -354,7 +354,7 @@ pub enum ScreenInstruction {
         ClientTabIndexOrPaneId,
     ),
     SerializeLayoutForResurrection,
-    RenameSession(String, ClientId),      // String -> new name
+    RenameSession(String, ClientId), // String -> new name
     ListClientsMetadata(Option<PathBuf>, ClientId), // Option<PathBuf> - default shell
     Reconfigure {
         client_id: ClientId,
