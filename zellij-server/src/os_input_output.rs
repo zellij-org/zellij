@@ -805,7 +805,7 @@ impl ServerOsApi for ServerOsInputOutput {
                                 Err(e) => {
                                     log::error!("Post command hook failed to run: {}", e);
                                     stringified.to_owned()
-                                }
+                                },
                             };
                             let line_parts: Vec<String> = cmd
                                 .trim()
@@ -816,7 +816,7 @@ impl ServerOsApi for ServerOsInputOutput {
                         },
                         None => {
                             cmds.insert(ppid.into(), line_parts.collect());
-                        }
+                        },
                     }
                 }
             }
@@ -962,14 +962,10 @@ fn run_command_hook(
         .output()?;
 
     if !output.status.success() {
-        return Err(format!(
-            "Hook failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ).into());
+        return Err(format!("Hook failed: {}", String::from_utf8_lossy(&output.stderr)).into());
     }
     Ok(String::from_utf8(output.stdout)?.trim().to_string())
 }
-
 
 #[cfg(test)]
 #[path = "./unit/os_input_output_tests.rs"]

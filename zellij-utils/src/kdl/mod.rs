@@ -3718,7 +3718,9 @@ impl Options {
         if let Some(web_server_port) = self.web_server_port_to_kdl(add_comments) {
             nodes.push(web_server_port);
         }
-        if let Some(post_command_discovery_hook) = self.post_command_discovery_hook_to_kdl(add_comments) {
+        if let Some(post_command_discovery_hook) =
+            self.post_command_discovery_hook_to_kdl(add_comments)
+        {
             nodes.push(post_command_discovery_hook);
         }
         nodes

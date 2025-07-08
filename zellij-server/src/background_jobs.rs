@@ -240,7 +240,11 @@ pub(crate) fn background_jobs_main(
                                 let force_serialize = false; // force means serialize no matter
                                                              // what, even if this is the welcome
                                                              // screen or just the initial layout
-                                let _ = senders.send_to_screen(ScreenInstruction::SerializeLayoutForResurrection(force_serialize));
+                                let _ = senders.send_to_screen(
+                                    ScreenInstruction::SerializeLayoutForResurrection(
+                                        force_serialize,
+                                    ),
+                                );
                                 *last_serialization_time.lock().unwrap() = Instant::now();
                             }
                             task::sleep(std::time::Duration::from_millis(SESSION_READ_DURATION))

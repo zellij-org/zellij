@@ -1510,7 +1510,11 @@ impl Pty {
         ))?;
         Ok(())
     }
-    pub fn reconfigure(&mut self, default_editor: Option<PathBuf>, post_command_discovery_hook: Option<String>) {
+    pub fn reconfigure(
+        &mut self,
+        default_editor: Option<PathBuf>,
+        post_command_discovery_hook: Option<String>,
+    ) {
         self.default_editor = default_editor;
         self.post_command_discovery_hook = post_command_discovery_hook;
     }

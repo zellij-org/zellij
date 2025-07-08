@@ -354,7 +354,7 @@ pub enum ScreenInstruction {
         ClientTabIndexOrPaneId,
     ),
     SerializeLayoutForResurrection(bool), // bool -> force serialize
-    RenameSession(String, ClientId), // String -> new name
+    RenameSession(String, ClientId),      // String -> new name
     ListClientsMetadata(Option<PathBuf>, ClientId), // Option<PathBuf> - default shell
     Reconfigure {
         client_id: ClientId,
@@ -595,7 +595,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdateSessionInfos(..) => ScreenContext::UpdateSessionInfos,
             ScreenInstruction::ReplacePane(..) => ScreenContext::ReplacePane,
             ScreenInstruction::NewInPlacePluginPane(..) => ScreenContext::NewInPlacePluginPane,
-            ScreenInstruction::SerializeLayoutForResurrection(..) => ScreenContext::SerializeLayoutForResurrection,
+            ScreenInstruction::SerializeLayoutForResurrection(..) => {
+                ScreenContext::SerializeLayoutForResurrection
+            },
             ScreenInstruction::RenameSession(..) => ScreenContext::RenameSession,
             ScreenInstruction::ListClientsMetadata(..) => ScreenContext::ListClientsMetadata,
             ScreenInstruction::Reconfigure { .. } => ScreenContext::Reconfigure,
