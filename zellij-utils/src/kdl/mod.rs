@@ -3582,8 +3582,8 @@ impl Options {
             node.push(node_value.to_owned());
             node
         };
-        if let Some(scrollback_editor) = &self.scrollback_editor {
-            let mut node = create_node(&scrollback_editor.display().to_string());
+        if let Some(post_command_discovery_hook) = &self.post_command_discovery_hook {
+            let mut node = create_node(&post_command_discovery_hook);
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
             }

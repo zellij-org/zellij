@@ -43,4 +43,5 @@ Options {
     web_server_cert: None,
     web_server_key: None,
     enforce_https_for_localhost: None,
+    post_command_discovery_hook: None,
 }
