@@ -1852,6 +1852,7 @@ Config {
                     None,
                     None,
                     true,
+                    None,
                 ),
                 SwitchToMode(
                     Normal,
@@ -5582,6 +5583,7 @@ Config {
                     None,
                     None,
                     true,
+                    None,
                 ),
                 SwitchToMode(
                     Normal,

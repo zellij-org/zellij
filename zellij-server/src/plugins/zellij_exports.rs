@@ -179,7 +179,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::NewTabsWithLayoutInfo(layout_info) => {
                         new_tabs_with_layout_info(env, layout_info)?
                     },
-                    PluginCommand::NewTab => new_tab(env),
+                    PluginCommand::NewTab { name, cwd } => new_tab(env, name, cwd),
                     PluginCommand::GoToNextTab => go_to_next_tab(env),
                     PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
                     PluginCommand::Resize(resize_payload) => resize(env, resize_payload),
@@ -1471,9 +1471,9 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
     }
 }
 
-fn new_tab(env: &PluginEnv) {
-    let cwd = None; // TODO: add this to the plugin api
-    let action = Action::NewTab(None, vec![], None, None, None, true, cwd);
+fn new_tab(env: &PluginEnv, name: Option<String>, cwd: Option<String>) {
+    let cwd = cwd.map(|c| PathBuf::from(c));
+    let action = Action::NewTab(None, vec![], None, None, name, true, cwd);
     let error_msg = || format!("Failed to open new tab");
     apply_action!(action, error_msg, env);
 }
@@ -2558,7 +2558,7 @@ fn check_command_permission(
         | PluginCommand::SwitchToMode(..)
         | PluginCommand::NewTabsWithLayout(..)
         | PluginCommand::NewTabsWithLayoutInfo(..)
-        | PluginCommand::NewTab
+        | PluginCommand::NewTab{ .. }
         | PluginCommand::GoToNextTab
         | PluginCommand::GoToPreviousTab
         | PluginCommand::Resize(..)

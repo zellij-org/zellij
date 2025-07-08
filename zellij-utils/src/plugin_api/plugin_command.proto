@@ -265,7 +265,13 @@ message PluginCommand {
     RevokeWebLoginTokenPayload revoke_web_login_token_payload = 109;
     RenameWebLoginTokenPayload rename_web_login_token_payload = 110;
     ReplacePaneWithExistingPanePayload replace_pane_with_existing_pane_payload = 111;
+    NewTabPayload new_tab_payload = 112;
   }
+}
+
+message NewTabPayload {
+  optional string name = 1;
+  optional string cwd = 2;
 }
 
 message ReplacePaneWithExistingPanePayload {

@@ -92,7 +92,7 @@ impl ZellijPlugin for State {
                     }",
                     );
                 },
-                BareKey::Char('c') if key.has_no_modifiers() => new_tab(),
+                BareKey::Char('c') if key.has_no_modifiers() => new_tab(Some("new_tab_name"), Some("/path/to/my/cwd")),
                 BareKey::Char('d') if key.has_no_modifiers() => go_to_next_tab(),
                 BareKey::Char('e') if key.has_no_modifiers() => go_to_previous_tab(),
                 BareKey::Char('f') if key.has_no_modifiers() => {

@@ -34,7 +34,7 @@ pub use super::generated_api::api::{
         SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowPaneWithIdPayload,
         StackPanesPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToPayload,
         TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
-        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload, NewTabPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -474,11 +474,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for NewTabsWithLayout"),
             },
-            Some(CommandName::NewTab) => {
-                if protobuf_plugin_command.payload.is_some() {
-                    return Err("NewTab should not have a payload");
-                }
-                Ok(PluginCommand::NewTab)
+            Some(CommandName::NewTab) => match protobuf_plugin_command.payload {
+                Some(Payload::NewTabPayload(protobuf_new_tab_payload)) => {
+                    Ok(PluginCommand::NewTab{ name: protobuf_new_tab_payload.name, cwd: protobuf_new_tab_payload.cwd})
+                },
+                None => Ok(PluginCommand::NewTab{ name: None, cwd: None }),
+                _ => Err("Mismatched payload for NewTab")
             },
             Some(CommandName::GoToNextTab) => {
                 if protobuf_plugin_command.payload.is_some() {
@@ -1886,9 +1887,9 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::NewTabsWithLayout as i32,
                 payload: Some(Payload::NewTabsWithLayoutPayload(raw_layout)),
             }),
-            PluginCommand::NewTab => Ok(ProtobufPluginCommand {
+            PluginCommand::NewTab{ name, cwd } => Ok(ProtobufPluginCommand {
                 name: CommandName::NewTab as i32,
-                payload: None,
+                payload: Some(Payload::NewTabPayload(NewTabPayload { name, cwd }))
             }),
             PluginCommand::GoToNextTab => Ok(ProtobufPluginCommand {
                 name: CommandName::GoToNextTab as i32,

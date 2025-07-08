@@ -717,7 +717,9 @@ impl Action {
                     cwd_node.push(cwd.display().to_string());
                     children.nodes_mut().push(cwd_node);
                 }
-                node.set_children(children);
+                if name.is_some() || cwd.is_some() {
+                    node.set_children(children);
+                }
                 Some(node)
             },
             Action::GoToNextTab => Some(KdlNode::new("GoToNextTab")),
