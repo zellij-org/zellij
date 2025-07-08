@@ -15,6 +15,7 @@ Some(
                     hold_on_close: false,
                     hold_on_start: false,
                     originating_plugin: None,
+                    use_terminal_title: true,
                 },
             ),
         ),

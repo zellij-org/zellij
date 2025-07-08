@@ -1,6 +1,5 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 8246
 expression: "format!(\"{:#?}\", screen_instruction)"
 ---
 Some(
@@ -22,6 +21,7 @@ Some(
                     hold_on_close: false,
                     hold_on_start: false,
                     originating_plugin: None,
+                    use_terminal_title: true,
                 },
             ),
         ),
