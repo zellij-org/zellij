@@ -779,6 +779,8 @@ impl ServerOsApi for ServerOsInputOutput {
     }
     fn get_all_cmds_by_ppid(&self) -> HashMap<String, Vec<String>> {
         // the key is the stringified ppid
+        // TODO: CONTINUE HERE - clean this up, then get it passed from pty and place it in the
+        // config
         let mut cmds = HashMap::new();
         if let Some(output) = Command::new("ps")
             .args(vec!["-ao", "ppid,args"])
@@ -788,6 +790,10 @@ impl ServerOsApi for ServerOsInputOutput {
             let output = String::from_utf8(output.stdout.clone())
                 .unwrap_or_else(|_| String::from_utf8_lossy(&output.stdout).to_string());
             for line in output.lines() {
+                log::info!("line: {:#?}", line);
+                // let test_replacement = r#"echo "$RESURRECT_COMMAND" | sed 's|/nix/store/[^/]*/bin/||; s|/home/.*/\.nix-profile/bin/||; s|/etc/profiles/per-user/.*/bin/||; s/ -u .*$//; s/ --cmd.*$//'"#;
+                // let test_replacement = r#"s/^sudo\s*//"#;
+                let test_replacement = r#"echo "$RESURRECT_COMMAND" | sed 's/^sudo\s\+//'"#;
                 let line_parts: Vec<String> = line
                     .trim()
                     .split_ascii_whitespace()
@@ -796,7 +802,19 @@ impl ServerOsApi for ServerOsInputOutput {
                 let mut line_parts = line_parts.into_iter();
                 let ppid = line_parts.next();
                 if let Some(ppid) = ppid {
-                    cmds.insert(ppid.into(), line_parts.collect());
+                    let command: Vec<String> = line_parts.clone().collect();
+                    let stringified = command.join(" ");
+                    log::info!("before: {:?}", stringified);
+                    let cmd = run_command_hook(&stringified, test_replacement).unwrap_or_else(|_| stringified.clone());
+                    log::info!("after: {:?}", cmd);
+
+                    let line_parts: Vec<String> = cmd
+                        .trim()
+                        .split_ascii_whitespace()
+                        .map(|p| p.to_owned())
+                        .collect();
+                    cmds.insert(ppid.into(), line_parts);
+                    // cmds.insert(ppid.into(), line_parts.collect());
                 }
             }
         }
@@ -929,6 +947,69 @@ pub struct ChildId {
     /// field is it's parent process id.
     pub shell: Option<Pid>,
 }
+
+// fn run_command_hook(
+//     original_command: &str,
+//     // pane_id: &str,
+//     // working_dir: &str,
+//     // strategy: Option<&str>,
+//     // phase: &str,
+//     hook_script: &str,
+// ) -> Result<String, Box<dyn std::error::Error>> {
+//     env::set_var("RESURRECT_COMMAND", original_command);
+//     // env::set_var("RESURRECT_PANE", pane_id);
+//     // env::set_var("RESURRECT_DIR", working_dir);
+//     // env::set_var("RESURRECT_STRATEGY", strategy.unwrap_or(""));
+//     // env::set_var("RESURRECT_PHASE", phase);
+// 
+//     let output = Command::new("sh")
+//         .arg("-c")
+//         .arg(hook_script)
+//         .output()?;
+// 
+//     if !output.status.success() {
+//         log::info!("failed: {:?}", String::from_utf8_lossy(&output.stderr));
+//         return Err(format!(
+//             "Hook failed: {}",
+//             String::from_utf8_lossy(&output.stderr)
+//         ).into());
+//     }
+//     log::info!("success! {:?}", String::from_utf8_lossy(&output.stdout));
+// 
+//     Ok(String::from_utf8(output.stdout)?.trim().to_string())
+// }
+
+fn run_command_hook(
+    original_command: &str,
+    hook_script: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(hook_script)
+        .env("RESURRECT_COMMAND", original_command)
+        .output()?;
+
+//     if !output.status.success() {
+//         return Err(format!(
+//             "Hook failed: {}",
+//             String::from_utf8_lossy(&output.stderr)
+//         ).into());
+//     }
+
+    if !output.status.success() {
+        log::info!("failed: {:?}", String::from_utf8_lossy(&output.stderr));
+        return Err(format!(
+            "Hook failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ).into());
+    }
+    log::info!("success! {:?}", String::from_utf8_lossy(&output.stdout));
+
+
+
+    Ok(String::from_utf8(output.stdout)?.trim().to_string())
+}
+
 
 #[cfg(test)]
 #[path = "./unit/os_input_output_tests.rs"]

@@ -1441,6 +1441,7 @@ impl Pty {
             let cmd = process_id
                 .as_ref()
                 .and_then(|pid| ppids_to_cmds.get(&format!("{}", pid)));
+            log::info!("cmd: {:?}", cmd);
             if let Some(cmd) = cmd {
                 terminal_ids_to_commands.insert(terminal_id, cmd.clone());
             }
