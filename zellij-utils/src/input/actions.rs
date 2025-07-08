@@ -198,7 +198,7 @@ pub enum Action {
         Option<Vec<SwapTiledLayout>>,
         Option<Vec<SwapFloatingLayout>>,
         Option<String>,
-        bool, // should_change_focus_to_new_tab
+        bool,            // should_change_focus_to_new_tab
         Option<PathBuf>, // cwd
     ), // the String is the tab name
     /// Do nothing.

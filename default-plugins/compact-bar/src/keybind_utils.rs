@@ -348,7 +348,10 @@ impl KeybindProcessor {
                     |action: &Action| matches!(action, Action::GoToPreviousTab),
                     |action: &Action| matches!(action, Action::GoToNextTab),
                     |action: &Action| {
-                        matches!(action, Action::NewTab(None, _, None, None, None, true, None))
+                        matches!(
+                            action,
+                            Action::NewTab(None, _, None, None, None, true, None)
+                        )
                     },
                     |action: &Action| matches!(action, Action::CloseTab),
                     |action: &Action| matches!(action, Action::SwitchToMode(InputMode::RenameTab)),

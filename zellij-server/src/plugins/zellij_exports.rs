@@ -2558,7 +2558,7 @@ fn check_command_permission(
         | PluginCommand::SwitchToMode(..)
         | PluginCommand::NewTabsWithLayout(..)
         | PluginCommand::NewTabsWithLayoutInfo(..)
-        | PluginCommand::NewTab{ .. }
+        | PluginCommand::NewTab { .. }
         | PluginCommand::GoToNextTab
         | PluginCommand::GoToPreviousTab
         | PluginCommand::Resize(..)

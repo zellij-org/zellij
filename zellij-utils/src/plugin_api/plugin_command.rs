@@ -16,7 +16,7 @@ pub use super::generated_api::api::{
         HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
         ListTokensResponse, LoadNewPluginPayload, MessageToPluginPayload,
         MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload, MovePayload,
-        NewPluginArgs as ProtobufNewPluginArgs, NewTabsWithLayoutInfoPayload,
+        NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload, NewTabsWithLayoutInfoPayload,
         OpenCommandPaneFloatingNearPluginPayload, OpenCommandPaneInPlaceOfPluginPayload,
         OpenCommandPaneNearPluginPayload, OpenCommandPanePayload,
         OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
@@ -34,7 +34,7 @@ pub use super::generated_api::api::{
         SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowPaneWithIdPayload,
         StackPanesPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToPayload,
         TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
-        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload, NewTabPayload
+        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -476,10 +476,16 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::NewTab) => match protobuf_plugin_command.payload {
                 Some(Payload::NewTabPayload(protobuf_new_tab_payload)) => {
-                    Ok(PluginCommand::NewTab{ name: protobuf_new_tab_payload.name, cwd: protobuf_new_tab_payload.cwd})
+                    Ok(PluginCommand::NewTab {
+                        name: protobuf_new_tab_payload.name,
+                        cwd: protobuf_new_tab_payload.cwd,
+                    })
                 },
-                None => Ok(PluginCommand::NewTab{ name: None, cwd: None }),
-                _ => Err("Mismatched payload for NewTab")
+                None => Ok(PluginCommand::NewTab {
+                    name: None,
+                    cwd: None,
+                }),
+                _ => Err("Mismatched payload for NewTab"),
             },
             Some(CommandName::GoToNextTab) => {
                 if protobuf_plugin_command.payload.is_some() {
@@ -1887,9 +1893,9 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::NewTabsWithLayout as i32,
                 payload: Some(Payload::NewTabsWithLayoutPayload(raw_layout)),
             }),
-            PluginCommand::NewTab{ name, cwd } => Ok(ProtobufPluginCommand {
+            PluginCommand::NewTab { name, cwd } => Ok(ProtobufPluginCommand {
                 name: CommandName::NewTab as i32,
-                payload: Some(Payload::NewTabPayload(NewTabPayload { name, cwd }))
+                payload: Some(Payload::NewTabPayload(NewTabPayload { name, cwd })),
             }),
             PluginCommand::GoToNextTab => Ok(ProtobufPluginCommand {
                 name: CommandName::GoToNextTab as i32,
