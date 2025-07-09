@@ -14,6 +14,7 @@ fn cursors(focused_clients: &[ClientId], colors: MultiplayerColors) -> (Vec<ANSI
             len += 1;
         }
     }
+    len += 2; // 2 for the brackets: [ and ]
     (cursors, len)
 }
 
