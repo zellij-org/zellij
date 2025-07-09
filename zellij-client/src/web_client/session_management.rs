@@ -18,8 +18,11 @@ use zellij_utils::{
 
 pub fn build_initial_connection(
     session_name: Option<String>,
+    config: &Config,
 ) -> Result<Option<ConnectToSession>, &'static str> {
     let should_start_with_welcome_screen = session_name.is_none();
+    let default_layout_from_config =
+        LayoutInfo::from_config(&config.options.layout_dir, &config.options.default_layout);
     if should_start_with_welcome_screen {
         let Some(initial_session_name) = session_name.clone().or_else(generate_unique_session_name)
         else {
@@ -33,6 +36,12 @@ pub fn build_initial_connection(
     } else if let Some(session_name) = session_name {
         Ok(Some(ConnectToSession {
             name: Some(session_name.clone()),
+            layout: default_layout_from_config,
+            ..Default::default()
+        }))
+    } else if default_layout_from_config.is_some() {
+        Ok(Some(ConnectToSession {
+            layout: default_layout_from_config,
             ..Default::default()
         }))
     } else {

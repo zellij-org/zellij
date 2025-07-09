@@ -34,7 +34,8 @@ pub fn zellij_server_listener(
             move || {
                 let mut client_connection_bus =
                     ClientConnectionBus::new(&web_client_id, &connection_table);
-                let mut reconnect_to_session = match build_initial_connection(session_name) {
+                let mut reconnect_to_session = match build_initial_connection(session_name, &config)
+                {
                     Ok(initial_session_connection) => initial_session_connection,
                     Err(e) => {
                         log::error!("{}", e);

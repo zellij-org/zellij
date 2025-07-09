@@ -1,3 +1,4 @@
+use crate::home::default_layout_dir;
 use crate::input::actions::Action;
 use crate::input::config::ConversionError;
 use crate::input::keybinds::Keybinds;
@@ -1670,6 +1671,34 @@ impl LayoutInfo {
             LayoutInfo::File(_name) => false,
             LayoutInfo::Url(_url) => false,
             LayoutInfo::Stringified(_stringified) => false,
+        }
+    }
+    pub fn from_config(
+        layout_dir: &Option<PathBuf>,
+        default_layout: &Option<PathBuf>,
+    ) -> Option<Self> {
+        match default_layout {
+            Some(default_layout) => {
+                if default_layout.extension().is_some() || default_layout.components().count() > 1 {
+                    let Some(layout_dir) = layout_dir
+                        .as_ref()
+                        .map(|l| l.clone())
+                        .or_else(default_layout_dir)
+                    else {
+                        return None;
+                    };
+                    Some(LayoutInfo::File(
+                        layout_dir.join(default_layout).display().to_string(),
+                    ))
+                } else if default_layout.starts_with("http://")
+                    || default_layout.starts_with("https://")
+                {
+                    Some(LayoutInfo::Url(default_layout.display().to_string()))
+                } else {
+                    Some(LayoutInfo::BuiltIn(default_layout.display().to_string()))
+                }
+            },
+            None => None,
         }
     }
 }
