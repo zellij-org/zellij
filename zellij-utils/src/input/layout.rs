@@ -1163,15 +1163,20 @@ impl Layout {
                 let mut available_layouts = vec![];
                 for file in layout_files {
                     if let Ok(file) = file {
-                        if Layout::from_path_or_default_without_config(
-                            Some(&file.path()),
-                            layout_dir.clone(),
-                        )
-                        .is_ok()
+                        if file.path().extension().map(|e| e.to_ascii_lowercase())
+                            == Some(std::ffi::OsString::from("kdl"))
                         {
-                            if let Some(file_name) = file.path().file_stem() {
-                                available_layouts
-                                    .push(LayoutInfo::File(file_name.to_string_lossy().to_string()))
+                            if Layout::from_path_or_default_without_config(
+                                Some(&file.path()),
+                                layout_dir.clone(),
+                            )
+                            .is_ok()
+                            {
+                                if let Some(file_name) = file.path().file_stem() {
+                                    available_layouts.push(LayoutInfo::File(
+                                        file_name.to_string_lossy().to_string(),
+                                    ))
+                                }
                             }
                         }
                     }
