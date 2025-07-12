@@ -1,5 +1,4 @@
 use crate::os_input_output::ClientOsApi;
-use crate::report_changes_in_config_file;
 use crate::web_client::control_message::WebServerToWebClientControlMessage;
 use crate::web_client::session_management::build_initial_connection;
 use crate::web_client::types::{ClientConnectionBus, ConnectionTable, SessionManager};
@@ -96,10 +95,6 @@ pub fn zellij_server_listener(
 
                     os_input.connect_to_server(&zellij_ipc_pipe);
                     os_input.send_to_server(first_message);
-
-                    let mut args_for_report = CliArgs::default();
-                    args_for_report.config = config_file_path.clone();
-                    report_changes_in_config_file(&args_for_report, &os_input);
 
                     client_connection_bus.send_control(
                         WebServerToWebClientControlMessage::SwitchedSession {
