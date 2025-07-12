@@ -1425,7 +1425,7 @@ impl Pty {
             .filter_map(|id| self.id_to_child_pid.get(&id))
             .map(|pid| Pid::from_raw(*pid))
             .collect();
-        let pids_to_cwds = self
+        let (pids_to_cwds, pids_to_cmds) = self
             .bus
             .os_input
             .as_ref()
@@ -1443,10 +1443,15 @@ impl Pty {
             let cwd = process_id
                 .as_ref()
                 .and_then(|pid| pids_to_cwds.get(&Pid::from_raw(**pid)));
-            let cmd = process_id
+            let cmd_sysinfo = process_id
+                .as_ref()
+                .and_then(|pid| pids_to_cmds.get(&Pid::from_raw(**pid)));
+            let cmd_ps = process_id
                 .as_ref()
                 .and_then(|pid| ppids_to_cmds.get(&format!("{}", pid)));
-            if let Some(cmd) = cmd {
+            if let Some(cmd) = cmd_ps {
+                terminal_ids_to_commands.insert(terminal_id, cmd.clone());
+            } else if let Some(cmd) = cmd_sysinfo {
                 terminal_ids_to_commands.insert(terminal_id, cmd.clone());
             }
             if let Some(cwd) = cwd {
