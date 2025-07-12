@@ -512,6 +512,14 @@ pub fn focus_previous_pane() {
     unsafe { host_run_plugin_command() };
 }
 
+/// Change focus to the previously focused pane
+pub fn focus_last_pane() {
+    let plugin_command = PluginCommand::FocusLastPane;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Change the focused pane in the specified direction
 pub fn move_focus(direction: Direction) {
     let plugin_command = PluginCommand::MoveFocus(direction);

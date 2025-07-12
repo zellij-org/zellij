@@ -149,6 +149,7 @@ ACTIONS
   on  screen edge.
 * __FocusPreviousPane__ - switches focus to the next pane to the left or above
   if on  screen edge.
+* __FocusLastPane__ - switches focus to the previously focused pane.
 * __SwitchFocus__ - left for legacy support. Switches focus to a pane with the
   next ID.
 * __MoveFocus: <Direction\>__ -  moves focus in the specified direction (Left,
