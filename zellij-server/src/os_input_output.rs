@@ -508,8 +508,8 @@ pub trait ServerOsApi: Send + Sync {
     /// Returns the current working directory for a given pid
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf>;
     /// Returns the current working directory for multiple pids
-    fn get_cwds(&self, _pids: Vec<Pid>) -> HashMap<Pid, PathBuf> {
-        HashMap::new()
+    fn get_cwds(&self, _pids: Vec<Pid>) -> (HashMap<Pid, PathBuf>, HashMap<Pid, Vec<String>>) {
+        (HashMap::new(), HashMap::new())
     }
     /// Get a list of all running commands by their parent process id
     fn get_all_cmds_by_ppid(&self, _post_hook: &Option<String>) -> HashMap<String, Vec<String>> {
@@ -755,9 +755,10 @@ impl ServerOsApi for ServerOsInputOutput {
         None
     }
 
-    fn get_cwds(&self, pids: Vec<Pid>) -> HashMap<Pid, PathBuf> {
+    fn get_cwds(&self, pids: Vec<Pid>) -> (HashMap<Pid, PathBuf>, HashMap<Pid, Vec<String>>) {
         let mut system_info = System::new();
         let mut cwds = HashMap::new();
+        let mut cmds = HashMap::new();
 
         for pid in pids {
             // Update by minimizing information.
@@ -767,15 +768,20 @@ impl ServerOsApi for ServerOsInputOutput {
             if is_found {
                 if let Some(process) = system_info.process(pid.into()) {
                     let cwd = process.cwd();
+                    let cmd = process.cmd();
                     let cwd_is_empty = cwd.iter().next().is_none();
                     if !cwd_is_empty {
                         cwds.insert(pid, process.cwd().to_path_buf());
+                    }
+                    let cmd_is_empty = cmd.iter().next().is_none();
+                    if !cmd_is_empty {
+                        cmds.insert(pid, process.cmd().to_vec());
                     }
                 }
             }
         }
 
-        cwds
+        (cwds, cmds)
     }
     fn get_all_cmds_by_ppid(&self, post_hook: &Option<String>) -> HashMap<String, Vec<String>> {
         // the key is the stringified ppid
