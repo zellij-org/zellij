@@ -44,6 +44,7 @@ use http_handlers::{
     create_new_client, get_static_asset, login_handler, serve_html, version_handler,
 };
 use ipc_listener::listen_to_web_server_instructions;
+
 use types::{
     AppState, ClientOsApiFactory, ConnectionTable, RealClientOsApiFactory, RealSessionManager,
     SessionManager,
@@ -53,7 +54,9 @@ use uuid::Uuid;
 use websocket_handlers::{ws_handler_control, ws_handler_terminal};
 
 use zellij_utils::{
+    cli::CliArgs,
     consts::WEBSERVER_SOCKET_PATH,
+    ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     web_server_commands::{
         create_webserver_sender, send_webserver_instruction, InstructionForWebServer,
     },
