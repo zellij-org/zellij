@@ -254,7 +254,7 @@ pub(crate) fn plugin_thread_main(
         engine,
         plugin_dir,
         path_to_default_shell,
-        zellij_cwd,
+        zellij_cwd.clone(),
         capabilities,
         client_attributes,
         default_shell,
@@ -321,11 +321,16 @@ pub(crate) fn plugin_thread_main(
                             tab_index,
                             plugin_id,
                             pane_id_to_replace,
-                            cwd,
+                            cwd.clone(),
                             start_suppressed,
                             floating_pane_coordinates,
                             should_focus_plugin,
                             Some(client_id),
+                        )));
+
+                        drop(bus.senders.send_to_pty(PtyInstruction::ReportPluginCwd(
+                            plugin_id,
+                            cwd.unwrap_or_else(|| zellij_cwd.clone()),
                         )));
                     },
                     Err(e) => {
@@ -924,9 +929,14 @@ pub(crate) fn plugin_thread_main(
                 wasm_bridge.start_fs_watcher_if_not_started();
             },
             PluginInstruction::ChangePluginHostDir(new_host_folder, plugin_id, client_id) => {
-                wasm_bridge
-                    .change_plugin_host_dir(new_host_folder, plugin_id, client_id)
-                    .non_fatal();
+                if let Ok(_) = wasm_bridge
+                    .change_plugin_host_dir(new_host_folder.clone(), plugin_id, client_id) {
+                        drop(bus.senders.send_to_pty(PtyInstruction::ReportPluginCwd(
+                            plugin_id,
+                            new_host_folder,
+                        )));
+                }
+
             },
             PluginInstruction::WebServerStarted(base_url) => {
                 let updates = vec![(
