@@ -2222,6 +2222,7 @@ fn load_new_plugin(
                     client_id,
                     size,
                     cwd,
+                    None,
                     skip_cache,
                     None,
                     None,

@@ -1489,6 +1489,10 @@ impl Pty {
         };
 
         let cwd = cwd.or_else(get_focused_cwd);
+        let focused_plugin_id = self.active_panes.get(&client_id).and_then(|pane| match pane {
+            PaneId::Plugin(plugin_id) => Some(*plugin_id),
+            _ => None
+        });
 
         if let RunPluginOrAlias::Alias(alias) = &mut run {
             let cwd = get_focused_cwd();
@@ -1504,6 +1508,7 @@ impl Pty {
             client_id,
             size,
             cwd,
+            focused_plugin_id,
             skip_cache,
             should_focus_plugin,
             floating_pane_coordinates,

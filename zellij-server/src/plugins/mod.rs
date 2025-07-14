@@ -55,6 +55,7 @@ pub enum PluginInstruction {
         ClientId,
         Size,
         Option<PathBuf>, // cwd
+        Option<PluginId>, // the focused plugin id if relevant
         bool,            // skip cache
         Option<bool>,    // should focus plugin
         Option<FloatingPaneCoordinates>,
@@ -287,12 +288,19 @@ pub(crate) fn plugin_thread_main(
                 client_id,
                 size,
                 cwd,
+                focused_plugin_id,
                 skip_cache,
                 should_focus_plugin,
                 floating_pane_coordinates,
             ) => {
                 run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
-                let cwd = run_plugin_or_alias.get_initial_cwd().or(cwd);
+                let cwd = run_plugin_or_alias.get_initial_cwd().or(cwd).or_else(|| {
+                    if let Some(plugin_id) = focused_plugin_id {
+                        wasm_bridge.get_plugin_cwd(plugin_id, client_id)
+                    } else {
+                        None
+                    }
+                });
                 let run_plugin = run_plugin_or_alias.get_run_plugin();
                 let start_suppressed = false;
                 match wasm_bridge.load_plugin(
