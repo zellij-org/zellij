@@ -16,7 +16,7 @@ pub struct State {
     pub hide_hidden_files: bool,
     pub current_rows: Option<usize>,
     pub handling_filepick_request_from: Option<(PipeSource, BTreeMap<String, String>)>,
-    pub initial_cwd: PathBuf, // TODO: get this from zellij
+    pub initial_cwd: PathBuf,
     pub is_searching: bool,
     pub search_term: String,
     pub close_on_selection: bool,
@@ -137,7 +137,7 @@ impl State {
     pub fn descend_to_root_path(&mut self) {
         self.search_term.clear();
         self.search_view.clear_and_reset_selection();
-        self.file_list_view.descend_to_root_path();
+        self.file_list_view.descend_to_root_path(&self.initial_cwd);
         refresh_directory(&self.file_list_view.path);
     }
     pub fn toggle_hidden_files(&mut self) {
@@ -214,13 +214,7 @@ impl State {
         }
     }
     pub fn send_filepick_response(&mut self) {
-        let selected_path = self.initial_cwd.join(
-            self.file_list_view
-                .path
-                .strip_prefix(ROOT)
-                .map(|p| p.to_path_buf())
-                .unwrap_or_else(|_| self.file_list_view.path.clone()),
-        );
+        let selected_path = &self.file_list_view.path;
         match &self.handling_filepick_request_from {
             Some((PipeSource::Plugin(plugin_id), args)) => {
                 pipe_message_to_plugin(
@@ -245,7 +239,6 @@ impl State {
     }
 }
 
-pub(crate) fn refresh_directory(path: &Path) {
-    let path_on_host = Path::new(ROOT).join(path.strip_prefix("/").unwrap_or(path));
-    scan_host_folder(&path_on_host);
+pub(crate) fn refresh_directory(full_path: &Path) {
+    change_host_folder(PathBuf::from(full_path));
 }

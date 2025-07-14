@@ -2,7 +2,7 @@ use crate::shared::{calculate_list_bounds, render_list_tip};
 use crate::state::{refresh_directory, ROOT};
 use pretty_bytes::converter::convert as pretty_bytes;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 
@@ -18,7 +18,7 @@ impl Default for FileListView {
     fn default() -> Self {
         FileListView {
             path_is_dir: true,
-            path: Default::default(),
+            path: PathBuf::new(),
             files: Default::default(),
             cursor_hist: Default::default(),
         }
@@ -27,30 +27,48 @@ impl Default for FileListView {
 
 impl FileListView {
     pub fn descend_to_previous_path(&mut self) {
-        self.path.pop();
+        if let Some(parent) = self.path.parent() {
+            self.path = parent.to_path_buf();
+        } else {
+            self.path = PathBuf::new();
+        }
         self.path_is_dir = true;
         self.files.clear();
         self.clear_selected();
         refresh_directory(&self.path);
     }
-    pub fn descend_to_root_path(&mut self) {
-        self.path.clear();
+
+    pub fn descend_to_root_path(&mut self, initial_cwd: &PathBuf) {
+        self.path = initial_cwd.clone();
         self.path_is_dir = true;
         self.files.clear();
         self.clear_selected();
-        refresh_directory(&self.path);
     }
+
     pub fn enter_dir(&mut self, entry: &FsEntry) {
         let is_dir = entry.is_folder();
-        let path = entry.get_pathbuf_without_root_prefix();
+        let path = entry.get_full_pathbuf();
         self.path = path;
         self.path_is_dir = is_dir;
         self.files.clear();
         self.clear_selected();
     }
+
     pub fn clear_selected(&mut self) {
         self.cursor_hist.remove(&self.path);
     }
+
+    pub fn get_relative_path(&self) -> PathBuf {
+        if let Some(initial_cwd_part) = self.path.iter().next() {
+            self.path
+                .strip_prefix(initial_cwd_part)
+                .unwrap_or(&self.path)
+                .to_path_buf()
+        } else {
+            PathBuf::new()
+        }
+    }
+
     pub fn update_files(
         &mut self,
         paths: Vec<(PathBuf, Option<FileMetadata>)>,
@@ -58,8 +76,11 @@ impl FileListView {
     ) {
         let mut files = vec![];
         for (entry, entry_metadata) in paths {
+            let entry = self
+                .path
+                .join(entry.strip_prefix("/host").unwrap_or(&entry));
             if entry_metadata.map(|e| e.is_symlink).unwrap_or(false) {
-                continue; // ignore symlinks
+                continue;
             }
             let entry = if entry_metadata.map(|e| e.is_dir).unwrap_or(false) {
                 FsEntry::Dir(entry)
@@ -74,20 +95,25 @@ impl FileListView {
         self.files = files;
         self.files.sort_unstable();
     }
+
     pub fn get_selected_entry(&self) -> Option<FsEntry> {
         self.selected().and_then(|f| self.files.get(f).cloned())
     }
+
     pub fn selected_mut(&mut self) -> &mut usize {
         self.cursor_hist.entry(self.path.clone()).or_default()
     }
+
     pub fn selected(&self) -> Option<usize> {
         self.cursor_hist.get(&self.path).copied()
     }
+
     pub fn move_selection_up(&mut self) {
         if let Some(selected) = self.selected() {
             *self.selected_mut() = selected.saturating_sub(1);
         }
     }
+
     pub fn move_selection_down(&mut self) {
         if let Some(selected) = self.selected() {
             let next = selected.saturating_add(1);
@@ -96,6 +122,7 @@ impl FileListView {
             *self.selected_mut() = 0;
         }
     }
+
     pub fn render(&mut self, rows: usize, cols: usize) {
         let (start_index, selected_index_in_range, end_index) =
             calculate_list_bounds(self.files.len(), rows.saturating_sub(1), self.selected());
@@ -121,7 +148,6 @@ impl FileListView {
                     );
                     format!("{}{}{}", file_or_folder_name, padding, size)
                 } else {
-                    // drop the size, no room for it
                     let padding = " ".repeat(cols.saturating_sub(file_or_folder_name_width));
                     format!("{}{}", file_or_folder_name, padding)
                 };
@@ -159,12 +185,14 @@ impl FsEntry {
         };
         path.file_name().unwrap().to_string_lossy().into_owned()
     }
+
     pub fn size(&self) -> Option<u64> {
         match self {
             FsEntry::Dir(_p) => None,
             FsEntry::File(_, size) => Some(*size),
         }
     }
+
     pub fn get_pathbuf_without_root_prefix(&self) -> PathBuf {
         match self {
             FsEntry::Dir(p) => p
@@ -178,14 +206,18 @@ impl FsEntry {
         }
     }
 
+    pub fn get_full_pathbuf(&self) -> PathBuf {
+        match self {
+            FsEntry::Dir(p) => p.clone(),
+            FsEntry::File(p, _) => p.clone(),
+        }
+    }
+
     pub fn is_hidden_file(&self) -> bool {
         self.name().starts_with('.')
     }
 
     pub fn is_folder(&self) -> bool {
-        match self {
-            FsEntry::Dir(_) => true,
-            _ => false,
-        }
+        matches!(self, FsEntry::Dir(_))
     }
 }

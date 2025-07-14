@@ -809,12 +809,6 @@ impl WasmBridge {
             .running_plugins_and_subscriptions()
             .iter()
             .cloned()
-            .filter(|(plugin_id, _client_id, _running_plugin, _subscriptions)| {
-                // TODO: cache this somehow in this case...
-                !&self
-                    .cached_events_for_pending_plugins
-                    .contains_key(&plugin_id)
-            })
             .collect();
         task::spawn({
             let senders = self.senders.clone();

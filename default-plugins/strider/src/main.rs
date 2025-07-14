@@ -31,28 +31,23 @@ impl ZellijPlugin for State {
             EventType::CustomMessage,
             EventType::Timer,
             EventType::FileSystemUpdate,
+            EventType::HostFolderChanged,
+            EventType::PermissionRequestResult,
         ]);
         self.file_list_view.clear_selected();
-        // the caller_cwd might be different from the initial_cwd if this plugin was defined as an
-        // alias, with access to a certain part of the file system (often broader) and was called
-        // from an individual pane somewhere inside this broad scope - in this case, we want to
-        // start in the same cwd as the caller, giving them the full access we were granted
-        match configuration
-            .get("caller_cwd")
-            .map(|c| PathBuf::from(c))
-            .and_then(|c| {
-                c.strip_prefix(&self.initial_cwd)
-                    .ok()
-                    .map(|c| PathBuf::from(c))
-            }) {
-            Some(relative_caller_path) => {
-                let relative_caller_path = FsEntry::Dir(relative_caller_path.to_path_buf());
-                self.file_list_view.enter_dir(&relative_caller_path);
-                refresh_directory(&self.file_list_view.path);
+
+        match configuration.get("caller_cwd").map(|c| PathBuf::from(c)) {
+            Some(caller_cwd) => {
+                self.file_list_view.path = caller_cwd;
             },
             None => {
-                refresh_directory(&std::path::Path::new("/"));
+                self.file_list_view.path = self.initial_cwd.clone();
             },
+        }
+        if self.initial_cwd != self.file_list_view.path {
+            change_host_folder(self.file_list_view.path.clone());
+        } else {
+            scan_host_folder(&"/host");
         }
     }
 
@@ -61,6 +56,10 @@ impl ZellijPlugin for State {
         match event {
             Event::FileSystemUpdate(paths) => {
                 self.update_files(paths);
+                should_render = true;
+            },
+            Event::HostFolderChanged(new_host_folder) => {
+                scan_host_folder(&"/host");
                 should_render = true;
             },
             Event::Key(key) => match key.bare_key {
@@ -137,11 +136,10 @@ impl ZellijPlugin for State {
         };
         should_render
     }
+
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
         if pipe_message.is_private && pipe_message.name == "filepicker" {
             if let PipeSource::Cli(pipe_id) = &pipe_message.source {
-                // here we block the cli pipe input because we want it to wait until the user chose
-                // a file
                 #[cfg(target_family = "wasm")]
                 block_cli_pipe_input(pipe_id);
             }
@@ -157,7 +155,6 @@ impl ZellijPlugin for State {
         let rows_for_list = rows.saturating_sub(6);
         render_search_term(&self.search_term);
         render_current_path(
-            &self.initial_cwd,
             &self.file_list_view.path,
             self.file_list_view.path_is_dir,
             self.handling_filepick_request_from.is_some(),
