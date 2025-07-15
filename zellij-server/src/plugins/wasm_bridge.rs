@@ -775,6 +775,27 @@ impl WasmBridge {
         }
         Ok(())
     }
+    pub fn get_plugin_cwd(&self, plugin_id: PluginId, client_id: ClientId) -> Option<PathBuf> {
+        self.plugin_map
+            .lock()
+            .unwrap()
+            .running_plugins()
+            .iter()
+            .find_map(|(p_id, c_id, running_plugin)| {
+                if p_id == &plugin_id && c_id == &client_id {
+                    let plugin_cwd = running_plugin
+                        .lock()
+                        .unwrap()
+                        .store
+                        .data()
+                        .plugin_cwd
+                        .clone();
+                    Some(plugin_cwd)
+                } else {
+                    None
+                }
+            })
+    }
     pub fn change_plugin_host_dir(
         &mut self,
         new_host_dir: PathBuf,
@@ -793,12 +814,6 @@ impl WasmBridge {
             .running_plugins_and_subscriptions()
             .iter()
             .cloned()
-            .filter(|(plugin_id, _client_id, _running_plugin, _subscriptions)| {
-                // TODO: cache this somehow in this case...
-                !&self
-                    .cached_events_for_pending_plugins
-                    .contains_key(&plugin_id)
-            })
             .collect();
         task::spawn({
             let senders = self.senders.clone();

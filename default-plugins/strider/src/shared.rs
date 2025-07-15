@@ -31,7 +31,6 @@ pub fn render_list_tip(y: usize, max_cols: usize) {
     print_text_with_coordinates(tip, 0, y, Some(max_cols), None);
 }
 
-// returns the list (start_index, selected_index_in_range, end_index)
 pub fn calculate_list_bounds(
     result_count: usize,
     max_result_count: usize,
@@ -48,17 +47,17 @@ pub fn calculate_list_bounds(
                     break;
                 }
                 if !alternate && start_index > 0 {
-                    start_index -= 1;
-                    room_in_list -= 1;
+                    start_index = start_index.saturating_sub(1);
+                    room_in_list = room_in_list.saturating_sub(1);
                 } else if alternate && end_index < result_count {
                     end_index += 1;
-                    room_in_list -= 1;
+                    room_in_list = room_in_list.saturating_sub(1);
                 } else if start_index > 0 {
-                    start_index -= 1;
-                    room_in_list -= 1;
+                    start_index = start_index.saturating_sub(1);
+                    room_in_list = room_in_list.saturating_sub(1);
                 } else if end_index < result_count {
                     end_index += 1;
-                    room_in_list -= 1;
+                    room_in_list = room_in_list.saturating_sub(1);
                 } else {
                     break;
                 }
@@ -80,15 +79,13 @@ pub fn render_search_term(search_term: &str) {
 }
 
 pub fn render_current_path(
-    initial_cwd: &PathBuf,
-    path: &PathBuf,
+    full_path: &PathBuf,
     path_is_dir: bool,
     handling_filepick: bool,
     max_cols: usize,
 ) {
     let prompt = "PATH: ";
-    let current_path = initial_cwd.join(path);
-    let current_path = current_path.display().to_string();
+    let current_path = full_path.display().to_string();
     let prompt_len = prompt.width();
     let current_path_len = current_path.width();
 
@@ -118,7 +115,7 @@ pub fn render_current_path(
             current_path
         } else {
             truncate_path(
-                initial_cwd.join(path),
+                full_path.clone(),
                 current_path_len.saturating_sub(max_path_len),
             )
         };

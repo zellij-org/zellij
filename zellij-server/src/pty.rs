@@ -176,6 +176,7 @@ pub enum PtyInstruction {
         post_command_discovery_hook: Option<String>,
     },
     ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
+    ReportPluginCwd(PluginId, PathBuf),
     Exit,
 }
 
@@ -199,6 +200,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::ListClientsMetadata(..) => PtyContext::ListClientsMetadata,
             PtyInstruction::Reconfigure { .. } => PtyContext::Reconfigure,
             PtyInstruction::ListClientsToPlugin(..) => PtyContext::ListClientsToPlugin,
+            PtyInstruction::ReportPluginCwd(..) => PtyContext::ReportPluginCwd,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -213,6 +215,7 @@ pub(crate) struct Pty {
     task_handles: HashMap<u32, JoinHandle<()>>, // terminal_id to join-handle
     default_editor: Option<PathBuf>,
     post_command_discovery_hook: Option<String>,
+    plugin_cwds: HashMap<u32, PathBuf>, // plugin_id -> cwd
 }
 
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
@@ -676,6 +679,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     .with_context(err_context)
                     .non_fatal();
             },
+            PtyInstruction::ReportPluginCwd(plugin_id, cwd) => {
+                pty.plugin_cwds.insert(plugin_id, cwd);
+            },
             PtyInstruction::LogLayoutToHd(mut session_layout_metadata) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
@@ -755,6 +761,7 @@ impl Pty {
             default_editor,
             originating_plugins: HashMap::new(),
             post_command_discovery_hook,
+            plugin_cwds: HashMap::new(),
         }
     }
     pub fn get_default_terminal(
@@ -803,27 +810,31 @@ impl Pty {
                     .active_panes
                     .get(&client_id)
                     .and_then(|pane| match pane {
-                        PaneId::Plugin(..) => None,
-                        PaneId::Terminal(id) => self.id_to_child_pid.get(id),
+                        PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
+                        PaneId::Terminal(id) => self.id_to_child_pid.get(id).and_then(|&id| {
+                            self.bus
+                                .os_input
+                                .as_ref()
+                                .and_then(|input| input.get_cwd(Pid::from_raw(id)))
+                        }),
                     })
-                    .and_then(|&id| {
-                        self.bus
-                            .os_input
-                            .as_ref()
-                            .and_then(|input| input.get_cwd(Pid::from_raw(id)))
-                    });
             };
         };
     }
-    fn fill_cwd_from_pane_id(&self, terminal_action: &mut TerminalAction, pane_id: &u32) {
+    fn fill_cwd_from_pane_id(&self, terminal_action: &mut TerminalAction, pane_id: &PaneId) {
         if let TerminalAction::RunCommand(run_command) = terminal_action {
             if run_command.cwd.is_none() {
-                run_command.cwd = self.id_to_child_pid.get(pane_id).and_then(|&id| {
-                    self.bus
-                        .os_input
-                        .as_ref()
-                        .and_then(|input| input.get_cwd(Pid::from_raw(id)))
-                });
+                run_command.cwd = match pane_id {
+                    PaneId::Terminal(terminal_pane_id) => {
+                        self.id_to_child_pid.get(terminal_pane_id).and_then(|&id| {
+                            self.bus
+                                .os_input
+                                .as_ref()
+                                .and_then(|input| input.get_cwd(Pid::from_raw(id)))
+                        })
+                    },
+                    PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
+                };
             };
         };
     }
@@ -849,9 +860,7 @@ impl Pty {
             ClientTabIndexOrPaneId::PaneId(pane_id) => {
                 let mut terminal_action =
                     terminal_action.unwrap_or_else(|| self.get_default_terminal(None, None));
-                if let PaneId::Terminal(terminal_pane_id) = pane_id {
-                    self.fill_cwd_from_pane_id(&mut terminal_action, &terminal_pane_id);
-                }
+                self.fill_cwd_from_pane_id(&mut terminal_action, &pane_id);
                 terminal_action
             },
         };
@@ -1482,18 +1491,24 @@ impl Pty {
             self.active_panes
                 .get(&client_id)
                 .and_then(|pane| match pane {
-                    PaneId::Plugin(..) => None,
-                    PaneId::Terminal(id) => self.id_to_child_pid.get(id),
-                })
-                .and_then(|&id| {
-                    self.bus
-                        .os_input
-                        .as_ref()
-                        .and_then(|input| input.get_cwd(Pid::from_raw(id)))
+                    PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
+                    PaneId::Terminal(id) => self.id_to_child_pid.get(id).and_then(|&id| {
+                        self.bus
+                            .os_input
+                            .as_ref()
+                            .and_then(|input| input.get_cwd(Pid::from_raw(id)))
+                    }),
                 })
         };
 
         let cwd = cwd.or_else(get_focused_cwd);
+        let focused_plugin_id = self
+            .active_panes
+            .get(&client_id)
+            .and_then(|pane| match pane {
+                PaneId::Plugin(plugin_id) => Some(*plugin_id),
+                _ => None,
+            });
 
         if let RunPluginOrAlias::Alias(alias) = &mut run {
             let cwd = get_focused_cwd();
@@ -1509,6 +1524,7 @@ impl Pty {
             client_id,
             size,
             cwd,
+            focused_plugin_id,
             skip_cache,
             should_focus_plugin,
             floating_pane_coordinates,
