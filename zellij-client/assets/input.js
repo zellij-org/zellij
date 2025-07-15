@@ -17,6 +17,10 @@ export function setupInputHandlers(term, sendFunction) {
     // Custom key event handler
     term.attachCustomKeyEventHandler((ev) => {
         if (ev.type === "keydown") {
+            if (ev.key == "V" && ev.ctrlKey && ev.shiftKey) {
+              // pass ctrl-shift-v onwards so that paste is interpreted by xterm.js
+              return;
+            }
             let modifiers_count = 0;
             let shift_keycode = 16;
             let alt_keycode = 17;
