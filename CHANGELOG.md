@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: use terminal title when spawning terminal panes from plugin (https://github.com/zellij-org/zellij/pull/4272)
 * fix: allow specifying CWD for tabs without necessitating a layout (https://github.com/zellij-org/zellij/pull/4273)
 * fix: don't serialize when only ui elements present and provide post command disovery hook (https://github.com/zellij-org/zellij/pull/4276)
+* fix: use plugin `/host` folder as cwd when opening new panes (https://github.com/zellij-org/zellij/pull/4290)
+* fix: better command detection when serializing layouts for resurrection (https://github.com/zellij-org/zellij/pull/4287)
 
 ## [0.42.2] - 2025-04-15
 * refactor(terminal): track scroll_region as tuple rather than Option (https://github.com/zellij-org/zellij/pull/4082)
