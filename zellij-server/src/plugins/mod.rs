@@ -54,10 +54,10 @@ pub enum PluginInstruction {
         Option<PaneId>, // pane id to replace if this is to be opened "in-place"
         ClientId,
         Size,
-        Option<PathBuf>, // cwd
+        Option<PathBuf>,  // cwd
         Option<PluginId>, // the focused plugin id if relevant
-        bool,            // skip cache
-        Option<bool>,    // should focus plugin
+        bool,             // skip cache
+        Option<bool>,     // should focus plugin
         Option<FloatingPaneCoordinates>,
     ),
     LoadBackgroundPlugin(RunPluginOrAlias, ClientId),
@@ -929,14 +929,18 @@ pub(crate) fn plugin_thread_main(
                 wasm_bridge.start_fs_watcher_if_not_started();
             },
             PluginInstruction::ChangePluginHostDir(new_host_folder, plugin_id, client_id) => {
-                if let Ok(_) = wasm_bridge
-                    .change_plugin_host_dir(new_host_folder.clone(), plugin_id, client_id) {
-                        drop(bus.senders.send_to_pty(PtyInstruction::ReportPluginCwd(
+                if let Ok(_) = wasm_bridge.change_plugin_host_dir(
+                    new_host_folder.clone(),
+                    plugin_id,
+                    client_id,
+                ) {
+                    drop(
+                        bus.senders.send_to_pty(PtyInstruction::ReportPluginCwd(
                             plugin_id,
                             new_host_folder,
-                        )));
+                        )),
+                    );
                 }
-
             },
             PluginInstruction::WebServerStarted(base_url) => {
                 let updates = vec![(

@@ -681,7 +681,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             },
             PtyInstruction::ReportPluginCwd(plugin_id, cwd) => {
                 pty.plugin_cwds.insert(plugin_id, cwd);
-            }
+            },
             PtyInstruction::LogLayoutToHd(mut session_layout_metadata) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
@@ -811,15 +811,12 @@ impl Pty {
                     .get(&client_id)
                     .and_then(|pane| match pane {
                         PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
-                        PaneId::Terminal(id) => {
-                            self.id_to_child_pid.get(id)
-                                .and_then(|&id| {
-                                    self.bus
-                                        .os_input
-                                        .as_ref()
-                                        .and_then(|input| input.get_cwd(Pid::from_raw(id)))
-                                })
-                        }
+                        PaneId::Terminal(id) => self.id_to_child_pid.get(id).and_then(|&id| {
+                            self.bus
+                                .os_input
+                                .as_ref()
+                                .and_then(|input| input.get_cwd(Pid::from_raw(id)))
+                        }),
                     })
             };
         };
@@ -836,9 +833,7 @@ impl Pty {
                                 .and_then(|input| input.get_cwd(Pid::from_raw(id)))
                         })
                     },
-                    PaneId::Plugin(plugin_id) => {
-                        self.plugin_cwds.get(plugin_id).cloned()
-                    }
+                    PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
                 };
             };
         };
@@ -1492,23 +1487,23 @@ impl Pty {
                 .get(&client_id)
                 .and_then(|pane| match pane {
                     PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
-                    PaneId::Terminal(id) => {
-                        self.id_to_child_pid.get(id)
-                            .and_then(|&id| {
-                                self.bus
-                                    .os_input
-                                    .as_ref()
-                                    .and_then(|input| input.get_cwd(Pid::from_raw(id)))
-                            })
-                    }
+                    PaneId::Terminal(id) => self.id_to_child_pid.get(id).and_then(|&id| {
+                        self.bus
+                            .os_input
+                            .as_ref()
+                            .and_then(|input| input.get_cwd(Pid::from_raw(id)))
+                    }),
                 })
         };
 
         let cwd = cwd.or_else(get_focused_cwd);
-        let focused_plugin_id = self.active_panes.get(&client_id).and_then(|pane| match pane {
-            PaneId::Plugin(plugin_id) => Some(*plugin_id),
-            _ => None
-        });
+        let focused_plugin_id = self
+            .active_panes
+            .get(&client_id)
+            .and_then(|pane| match pane {
+                PaneId::Plugin(plugin_id) => Some(*plugin_id),
+                _ => None,
+            });
 
         if let RunPluginOrAlias::Alias(alias) = &mut run {
             let cwd = get_focused_cwd();

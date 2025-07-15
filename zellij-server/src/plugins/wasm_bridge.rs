@@ -776,15 +776,20 @@ impl WasmBridge {
         Ok(())
     }
     pub fn get_plugin_cwd(&self, plugin_id: PluginId, client_id: ClientId) -> Option<PathBuf> {
-        self
-            .plugin_map
+        self.plugin_map
             .lock()
             .unwrap()
             .running_plugins()
             .iter()
             .find_map(|(p_id, c_id, running_plugin)| {
                 if p_id == &plugin_id && c_id == &client_id {
-                    let plugin_cwd = running_plugin.lock().unwrap().store.data().plugin_cwd.clone();
+                    let plugin_cwd = running_plugin
+                        .lock()
+                        .unwrap()
+                        .store
+                        .data()
+                        .plugin_cwd
+                        .clone();
                     Some(plugin_cwd)
                 } else {
                     None
