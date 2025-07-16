@@ -90,7 +90,7 @@ pub(crate) fn delete_all_sessions(yes: bool, force: bool) {
     } else {
         resurrectable_sessions
             .iter()
-            .filter(|(name, _, _)| !active_sessions.contains(name))
+            .filter(|(name, _)| !active_sessions.contains(name))
             .cloned()
             .collect()
     };
