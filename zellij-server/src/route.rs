@@ -257,10 +257,14 @@ pub(crate) fn route_action(
         },
         Action::NewPane(direction, name, start_suppressed) => {
             let shell = default_shell.clone();
-            senders.send_to_pty(PtyInstruction::SpawnTerminal(
+            let new_pane_placement = match direction {
+                Some(direction) => NewPanePlacement::Tiled(Some(direction)),
+                None => NewPanePlacement::NoPreference,
+            };
+            let _ = senders.send_to_pty(PtyInstruction::SpawnTerminal(
                 shell,
                 name,
-                NewPanePlacement::Tiled(direction),
+                new_pane_placement,
                 start_suppressed,
                 ClientTabIndexOrPaneId::ClientId(client_id),
             ));
