@@ -90,7 +90,7 @@ pub(crate) fn delete_all_sessions(yes: bool, force: bool) {
     } else {
         resurrectable_sessions
             .iter()
-            .filter(|(name, _, _)| !active_sessions.contains(name))
+            .filter(|(name, _)| !active_sessions.contains(name))
             .cloned()
             .collect()
     };
@@ -699,7 +699,15 @@ pub(crate) fn start_client(opts: CliArgs) {
                     .and_then(|s| session_exists(&s).ok())
                     .unwrap_or(false);
                 let resurrection_layout =
-                    session_name.as_ref().and_then(|s| resurrection_layout(&s));
+                    session_name
+                        .as_ref()
+                        .and_then(|s| match resurrection_layout(&s) {
+                            Ok(layout) => layout,
+                            Err(e) => {
+                                eprintln!("{}", e);
+                                process::exit(2);
+                            },
+                        });
                 if (create || should_create_detached)
                     && !session_exists
                     && resurrection_layout.is_none()
