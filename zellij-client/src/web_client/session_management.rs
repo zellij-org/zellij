@@ -110,7 +110,7 @@ pub fn spawn_session_if_needed(
             });
 
         match resurrection_layout {
-            Some(resurrection_layout) => spawn_new_session(
+            Ok(resurrection_layout) => spawn_new_session(
                 &session_name,
                 os_input.clone(),
                 config.clone(),
@@ -118,7 +118,7 @@ pub fn spawn_session_if_needed(
                 Some(resurrection_layout),
                 client_attributes,
             ),
-            None => {
+            Err(_) => {
                 let new_session_layout = layout_for_new_session(&config, requested_layout);
 
                 spawn_new_session(

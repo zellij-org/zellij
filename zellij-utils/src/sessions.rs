@@ -345,12 +345,21 @@ pub fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
 }
 
 // if the session is resurrecable, the returned layout is the one to be used to resurrect it
-pub fn resurrection_layout(session_name_to_resurrect: &str) -> Option<Layout> {
+pub fn resurrection_layout(session_name_to_resurrect: &str) -> Result<Layout, String> {
     let layout_file_name = session_layout_cache_file_name(&session_name_to_resurrect);
     let raw_layout = match std::fs::read_to_string(&layout_file_name) {
         Ok(raw_layout) => raw_layout,
-        Err(_e) => {
-            return None;
+        Err(e) => {
+            log::error!(
+                "Failed to read resurrection layout file {}: {}",
+                layout_file_name.display(),
+                e
+            );
+            return Err(format!(
+                "Failed to read resurrection layout file {}: {}",
+                layout_file_name.display(),
+                e
+            ));
         },
     };
     match Layout::from_kdl(
@@ -359,10 +368,18 @@ pub fn resurrection_layout(session_name_to_resurrect: &str) -> Option<Layout> {
         None,
         None,
     ) {
-        Ok(layout) => Some(layout),
+        Ok(layout) => Ok(layout),
         Err(e) => {
-            log::error!("Failed to parse resurrection layout file: {}", e);
-            return None;
+            log::error!(
+                "Failed to parse resurrection layout file {}: {}",
+                layout_file_name.display(),
+                e
+            );
+            return Err(format!(
+                "Failed to parse resurrection layout file {}: {}.",
+                layout_file_name.display(),
+                e
+            ));
         },
     }
 }

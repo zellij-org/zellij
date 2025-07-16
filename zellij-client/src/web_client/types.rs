@@ -60,7 +60,7 @@ impl SessionManager for RealSessionManager {
         &self,
         session_name: &str,
     ) -> Option<zellij_utils::input::layout::Layout> {
-        zellij_utils::sessions::resurrection_layout(session_name)
+        zellij_utils::sessions::resurrection_layout(session_name).ok()
     }
 
     fn spawn_session_if_needed(
