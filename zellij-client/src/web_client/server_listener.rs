@@ -33,14 +33,14 @@ pub fn zellij_server_listener(
             move || {
                 let mut client_connection_bus =
                     ClientConnectionBus::new(&web_client_id, &connection_table);
-                let mut reconnect_to_session = match build_initial_connection(session_name, &config)
-                {
-                    Ok(initial_session_connection) => initial_session_connection,
-                    Err(e) => {
-                        log::error!("{}", e);
-                        return;
-                    },
-                };
+                let (mut reconnect_to_session, is_welcome_screen) =
+                    match build_initial_connection(session_name, &config) {
+                        Ok(initial_session_connection) => initial_session_connection,
+                        Err(e) => {
+                            log::error!("{}", e);
+                            return;
+                        },
+                    };
                 'reconnect_loop: loop {
                     let reconnect_info = reconnect_to_session.take();
                     let path = {
@@ -91,6 +91,7 @@ pub fn zellij_server_listener(
                         is_web_client,
                         os_input.clone(),
                         reconnect_info.as_ref().and_then(|r| r.layout.clone()),
+                        is_welcome_screen,
                     );
 
                     os_input.connect_to_server(&zellij_ipc_pipe);

@@ -79,6 +79,7 @@ pub enum ServerInstruction {
         Box<PluginAliases>,
         bool, // should launch setup wizard
         bool, // is_web_client
+        bool, // layout_is_welcome_screen
         ClientId,
     ),
     Render(Option<HashMap<ClientId, String>>),
@@ -668,6 +669,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 plugin_aliases,
                 should_launch_setup_wizard,
                 is_web_client,
+                layout_is_welcome_screen,
                 client_id,
             ) => {
                 let mut session = init_session(
@@ -762,10 +764,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         // intrusive
                         let setup_wizard = setup_wizard_floating_pane();
                         floating_panes.push(setup_wizard);
-                    } else if should_show_release_notes(runtime_config_options.show_release_notes) {
+                    } else if should_show_release_notes(
+                        runtime_config_options.show_release_notes,
+                        layout_is_welcome_screen,
+                    ) {
                         let about = about_floating_pane();
                         floating_panes.push(about);
-                    } else if should_show_startup_tip(runtime_config_options.show_startup_tips) {
+                    } else if should_show_startup_tip(
+                        runtime_config_options.show_startup_tips,
+                        layout_is_welcome_screen,
+                    ) {
                         let tip = tip_floating_pane();
                         floating_panes.push(tip);
                     }
@@ -1708,7 +1716,13 @@ fn tip_floating_pane() -> FloatingPaneLayout {
     about_pane
 }
 
-fn should_show_release_notes(should_show_release_notes_config: Option<bool>) -> bool {
+fn should_show_release_notes(
+    should_show_release_notes_config: Option<bool>,
+    layout_is_welcome_screen: bool,
+) -> bool {
+    if layout_is_welcome_screen {
+        return false;
+    }
     if let Some(should_show_release_notes_config) = should_show_release_notes_config {
         if !should_show_release_notes_config {
             // if we were explicitly told not to show release notes, we don't show them,
@@ -1731,8 +1745,15 @@ fn should_show_release_notes(should_show_release_notes_config: Option<bool>) -> 
     }
 }
 
-fn should_show_startup_tip(should_show_startup_tip_config: Option<bool>) -> bool {
-    should_show_startup_tip_config.unwrap_or(true)
+fn should_show_startup_tip(
+    should_show_startup_tip_config: Option<bool>,
+    layout_is_welcome_screen: bool,
+) -> bool {
+    if layout_is_welcome_screen {
+        false
+    } else {
+        should_show_startup_tip_config.unwrap_or(true)
+    }
 }
 
 #[cfg(not(feature = "singlepass"))]
