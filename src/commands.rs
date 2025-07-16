@@ -576,6 +576,8 @@ pub(crate) fn start_client(opts: CliArgs) {
             process::exit(1);
         },
     };
+    let layout_is_welcome_screen = opts.layout == Some(PathBuf::from("welcome"))
+        || config.options.default_layout == Some(PathBuf::from("welcome"));
 
     let mut reconnect_to_session: Option<ConnectToSession> = None;
     let os_input = get_os_input(get_client_os_input);
@@ -750,6 +752,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                 pane_id_to_focus,
                 is_a_reconnect,
                 should_create_detached,
+                layout_is_welcome_screen,
             );
         } else {
             if let Some(session_name) = opts.session.clone() {
@@ -765,6 +768,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     None,
                     is_a_reconnect,
                     should_create_detached,
+                    layout_is_welcome_screen,
                 );
             } else {
                 if let Some(session_name) = config_options.session_name.as_ref() {
@@ -806,6 +810,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 None,
                                 is_a_reconnect,
                                 should_create_detached,
+                                layout_is_welcome_screen,
                             );
                         },
                         _ => {
@@ -821,6 +826,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 None,
                                 is_a_reconnect,
                                 should_create_detached,
+                                layout_is_welcome_screen,
                             );
                         },
                     }
@@ -845,6 +851,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     None,
                     is_a_reconnect,
                     should_create_detached,
+                    layout_is_welcome_screen,
                 );
             }
         }

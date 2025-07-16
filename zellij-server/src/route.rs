@@ -1109,6 +1109,7 @@ pub(crate) fn route_thread_main(
                             plugin_aliases,
                             should_launch_setup_wizard,
                             is_web_client,
+                            layout_is_welcome_screen,
                         ) => {
                             let new_client_instruction = ServerInstruction::NewClient(
                                 client_attributes,
@@ -1119,6 +1120,7 @@ pub(crate) fn route_thread_main(
                                 plugin_aliases,
                                 should_launch_setup_wizard,
                                 is_web_client,
+                                layout_is_welcome_screen,
                                 client_id,
                             );
                             to_server
