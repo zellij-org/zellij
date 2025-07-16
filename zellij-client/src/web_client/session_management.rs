@@ -102,12 +102,15 @@ pub fn spawn_session_if_needed(
     } else {
         let force_run_commands = false;
         let resurrection_layout =
-            resurrection_layout(&session_name).ok().flatten().map(|mut resurrection_layout| {
-                if force_run_commands {
-                    resurrection_layout.recursively_add_start_suspended(Some(false));
-                }
-                resurrection_layout
-            });
+            resurrection_layout(&session_name)
+                .ok()
+                .flatten()
+                .map(|mut resurrection_layout| {
+                    if force_run_commands {
+                        resurrection_layout.recursively_add_start_suspended(Some(false));
+                    }
+                    resurrection_layout
+                });
 
         match resurrection_layout {
             Some(resurrection_layout) => spawn_new_session(

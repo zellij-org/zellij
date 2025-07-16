@@ -351,7 +351,7 @@ pub fn resurrection_layout(session_name_to_resurrect: &str) -> Result<Option<Lay
         Ok(raw_layout) => raw_layout,
         Err(_e) => {
             return Ok(None);
-        }
+        },
     };
     match Layout::from_kdl(
         &raw_layout,
