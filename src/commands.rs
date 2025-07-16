@@ -700,7 +700,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     session_name
                         .as_ref()
                         .and_then(|s| match resurrection_layout(&s) {
-                            Ok(layout) => Some(layout),
+                            Ok(layout) => layout,
                             Err(e) => {
                                 eprintln!("{}", e);
                                 process::exit(2);

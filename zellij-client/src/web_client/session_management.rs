@@ -102,7 +102,7 @@ pub fn spawn_session_if_needed(
     } else {
         let force_run_commands = false;
         let resurrection_layout =
-            resurrection_layout(&session_name).map(|mut resurrection_layout| {
+            resurrection_layout(&session_name).ok().flatten().map(|mut resurrection_layout| {
                 if force_run_commands {
                     resurrection_layout.recursively_add_start_suspended(Some(false));
                 }
@@ -110,7 +110,7 @@ pub fn spawn_session_if_needed(
             });
 
         match resurrection_layout {
-            Ok(resurrection_layout) => spawn_new_session(
+            Some(resurrection_layout) => spawn_new_session(
                 &session_name,
                 os_input.clone(),
                 config.clone(),
@@ -118,7 +118,7 @@ pub fn spawn_session_if_needed(
                 Some(resurrection_layout),
                 client_attributes,
             ),
-            Err(_) => {
+            None => {
                 let new_session_layout = layout_for_new_session(&config, requested_layout);
 
                 spawn_new_session(
