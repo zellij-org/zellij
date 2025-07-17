@@ -4276,7 +4276,17 @@ impl Tab {
             self.floating_panes
                 .stop_moving_pane_with_mouse(event.position);
         } else {
-            self.write_mouse_event_to_active_pane(event, client_id)?;
+            let active_pane_id = self
+                .get_active_pane_id(client_id)
+                .ok_or(anyhow!("Failed to find pane at position"))?;
+            let pane_id_at_position = self
+                .get_pane_at(&event.position, false)
+                .with_context(err_context)?
+                .ok_or_else(|| anyhow!("Failed to find pane at position"))?
+                .pid();
+            if active_pane_id == pane_id_at_position {
+                self.write_mouse_event_to_active_pane(event, client_id)?;
+            }
         }
         if leave_clipboard_message {
             Ok(MouseEffect::leave_clipboard_message())
