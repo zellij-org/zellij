@@ -272,7 +272,7 @@ fn subtract_isize_from_usize(u: usize, i: isize) -> usize {
 macro_rules! dump_screen {
     ($lines:expr) => {{
         let mut is_first = true;
-        let mut buf = "".to_owned();
+        let mut buf = String::with_capacity($lines.iter().map(|l| l.len()).sum());
 
         for line in &$lines {
             if line.is_canonical && !is_first {
@@ -281,8 +281,7 @@ macro_rules! dump_screen {
             let s: String = (&line.columns).into_iter().map(|x| x.character).collect();
             // Replace the spaces at the end of the line. Sometimes, the lines are
             // collected with spaces until the end of the panel.
-            let re = Regex::new("([^ ])[ ]*$").unwrap();
-            buf.push_str(&(re.replace(&s, "${1}")));
+            buf.push_str(&s.trim_end_matches(' '));
             is_first = false;
         }
         buf
