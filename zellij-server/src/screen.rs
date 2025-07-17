@@ -5115,7 +5115,8 @@ pub(crate) fn screen_thread_main(
                     // set the env variable
                     set_session_name(name.clone());
                     screen.unblock_input()?;
-                    let connected_client_ids: Vec<ClientId> = screen.active_tab_indices.keys().copied().collect();
+                    let connected_client_ids: Vec<ClientId> =
+                        screen.active_tab_indices.keys().copied().collect();
                     for client_id in connected_client_ids {
                         if let Some(os_input) = &mut screen.bus.os_input {
                             let _ = os_input.send_to_client(
@@ -5125,7 +5126,7 @@ pub(crate) fn screen_thread_main(
                         }
                     }
                 }
-            }
+            },
             ScreenInstruction::Reconfigure {
                 client_id,
                 keybinds,
