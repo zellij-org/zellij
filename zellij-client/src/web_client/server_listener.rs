@@ -142,6 +142,13 @@ pub fn zellij_server_listener(
                                     WebServerToWebClientControlMessage::LogError { lines },
                                 );
                             },
+                            Some((ServerToClientMsg::RenamedSession(new_session_name), _)) => {
+                                client_connection_bus.send_control(
+                                    WebServerToWebClientControlMessage::SwitchedSession {
+                                        new_session_name,
+                                    },
+                                );
+                            },
                             _ => {
                                 // server disconnected, stop trying to listen otherwise we retry
                                 // indefinitely and get 100% CPU

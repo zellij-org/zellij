@@ -61,6 +61,7 @@ pub(crate) enum ClientInstruction {
     QueryTerminalSize,
     WriteConfigToDisk { config: String },
     StartWebServer,
+    RenamedSession(String), // String -> new session name
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -86,6 +87,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
                 ClientInstruction::WriteConfigToDisk { config }
             },
             ServerToClientMsg::StartWebServer => ClientInstruction::StartWebServer,
+            ServerToClientMsg::RenamedSession(name) => ClientInstruction::RenamedSession(name),
         }
     }
 }
@@ -109,6 +111,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::QueryTerminalSize => ClientContext::QueryTerminalSize,
             ClientInstruction::WriteConfigToDisk { .. } => ClientContext::WriteConfigToDisk,
             ClientInstruction::StartWebServer => ClientContext::StartWebServer,
+            ClientInstruction::RenamedSession(..) => ClientContext::RenamedSession,
         }
     }
 }

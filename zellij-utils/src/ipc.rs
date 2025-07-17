@@ -116,6 +116,7 @@ pub enum ServerToClientMsg {
     QueryTerminalSize,
     WriteConfigToDisk { config: String },
     StartWebServer,
+    RenamedSession(String), // String -> new session name
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
