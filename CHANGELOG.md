@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: better command detection when serializing layouts for resurrection (https://github.com/zellij-org/zellij/pull/4287)
 * fix: slow startup on very large caches (https://github.com/zellij-org/zellij/pull/4292)
 * fix: don't show popups in the welcome screen (https://github.com/zellij-org/zellij/pull/4294)
+* fix: reap processes when using an external clipboard tool (https://github.com/zellij-org/zellij/pull/4298)
 
 ## [0.42.2] - 2025-04-15
 * refactor(terminal): track scroll_region as tuple rather than Option (https://github.com/zellij-org/zellij/pull/4082)
