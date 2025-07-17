@@ -133,10 +133,10 @@ impl App {
     }
 
     fn shortcuts_line2_text() -> (&'static str, Text) {
-        let text = "<r> - break right, <l> - break left";
+        let text = "<l> - break left, <r> - break right";
         let component = Text::new(text)
-            .color_substring(3, "<r>")
-            .color_substring(3, "<l>");
+            .color_substring(3, "<l>")
+            .color_substring(3, "<r>");
         (text, component)
     }
 
