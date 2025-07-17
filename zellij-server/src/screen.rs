@@ -5113,9 +5113,19 @@ pub(crate) fn screen_thread_main(
                         .with_context(err_context)?;
 
                     // set the env variable
-                    set_session_name(name);
+                    set_session_name(name.clone());
+                    screen.unblock_input()?;
+                    let connected_client_ids: Vec<ClientId> =
+                        screen.active_tab_indices.keys().copied().collect();
+                    for client_id in connected_client_ids {
+                        if let Some(os_input) = &mut screen.bus.os_input {
+                            let _ = os_input.send_to_client(
+                                client_id,
+                                ServerToClientMsg::RenamedSession(name.clone()),
+                            );
+                        }
+                    }
                 }
-                screen.unblock_input()?;
             },
             ScreenInstruction::Reconfigure {
                 client_id,

@@ -478,6 +478,7 @@ pub enum ClientContext {
     QueryTerminalSize,
     WriteConfigToDisk,
     StartWebServer,
+    RenamedSession,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
