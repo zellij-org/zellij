@@ -1285,6 +1285,7 @@ impl TryFrom<ProtobufSearchOption> for SearchOption {
             ProtobufSearchOption::CaseSensitivity => Ok(SearchOption::CaseSensitivity),
             ProtobufSearchOption::WholeWord => Ok(SearchOption::WholeWord),
             ProtobufSearchOption::Wrap => Ok(SearchOption::Wrap),
+            ProtobufSearchOption::Regex => Ok(SearchOption::Regex),
         }
     }
 }
@@ -1296,6 +1297,7 @@ impl TryFrom<SearchOption> for ProtobufSearchOption {
             SearchOption::CaseSensitivity => Ok(ProtobufSearchOption::CaseSensitivity),
             SearchOption::WholeWord => Ok(ProtobufSearchOption::WholeWord),
             SearchOption::Wrap => Ok(ProtobufSearchOption::Wrap),
+            SearchOption::Regex => Ok(ProtobufSearchOption::Regex),
         }
     }
 }

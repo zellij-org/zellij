@@ -421,3 +421,131 @@ pub fn searching_whole_word_case_insensitive() {
         format!("{:?}", terminal_pane.grid)
     );
 }
+
+#[test]
+pub fn searching_regex_simple() {
+    let mut terminal_pane = create_pane();
+    terminal_pane.update_search_term(r"t[o]r[t]or");
+    assert_snapshot!("grid_copy", format!("{:?}", terminal_pane.grid));
+
+    terminal_pane.toggle_search_regex();
+    assert_snapshot!(
+        "grid_copy_tortor_highlighted",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.toggle_search_regex();
+    assert_snapshot!("grid_copy", format!("{:?}", terminal_pane.grid));
+}
+
+#[test]
+pub fn searching_regex_case_insensitive() {
+    let mut terminal_pane = create_pane();
+    terminal_pane.update_search_term(r"(?i)quam");
+    assert_snapshot!(
+        "grid_copy_quam_highlighted",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.toggle_search_regex();
+    assert_snapshot!(
+        "grid_copy_quam_regex_highlighted",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.toggle_search_case_sensitivity();
+    assert_snapshot!(
+        "grid_copy_quam_regex_case_sensitive",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.toggle_search_regex();
+    assert_snapshot!(
+        "grid_copy_quam_highlighted",
+        format!("{:?}", terminal_pane.grid)
+    );
+}
+
+#[test]
+pub fn searching_regex_whole_word() {
+    let mut terminal_pane = create_pane();
+    terminal_pane.update_search_term(r"\bquam\b");
+    assert_snapshot!(
+        "grid_copy_quam_highlighted",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.toggle_search_regex();
+    assert_snapshot!(
+        "grid_copy_quam_regex_highlighted",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.toggle_search_whole_words();
+    assert_snapshot!(
+        "grid_copy_quam_regex_whole_word",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.toggle_search_regex();
+    assert_snapshot!(
+        "grid_copy_quam_highlighted",
+        format!("{:?}", terminal_pane.grid)
+    );
+}
+
+#[test]
+pub fn searching_regex_across_line_wrap() {
+    let mut terminal_pane = create_pane();
+    terminal_pane.update_search_term(r"aliquam.*fringilla");
+    // Spread across two lines
+    terminal_pane.grid.change_size(30, 60);
+    assert_snapshot!(
+        "grid_copy_multiline_highlighted",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.toggle_search_regex();
+    assert_snapshot!(
+        "grid_copy_multiline_regex_highlighted",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    // Spread across 4 lines
+    terminal_pane.grid.change_size(40, 4);
+    assert_snapshot!(
+        "grid_copy_multiline_regex_highlighted_narrow",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.search_up();
+    assert_snapshot!(
+        "grid_copy_multiline_regex_selected_narrow",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    // Wrap on
+    terminal_pane.toggle_search_wrap();
+    terminal_pane.search_down();
+    assert_snapshot!(
+        "grid_copy_multiline_regex_selected_wrap_narrow",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    // Wrap off
+    terminal_pane.toggle_search_wrap();
+    // Don't forget the current selection
+    terminal_pane.search_up();
+    assert_snapshot!(
+        "grid_copy_multiline_regex_selected_wrap_narrow",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    // Wrap on
+    terminal_pane.toggle_search_wrap();
+    terminal_pane.search_up();
+    assert_snapshot!(
+        "grid_copy_multiline_regex_selected_narrow",
+        format!("{:?}", terminal_pane.grid)
+    );
+}
