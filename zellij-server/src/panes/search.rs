@@ -2,6 +2,7 @@ use crate::panes::selection::Selection;
 use crate::panes::terminal_character::TerminalCharacter;
 use crate::panes::{Grid, Row};
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::fmt::Debug;
 use zellij_utils::input::actions::SearchDirection;
 use zellij_utils::position::Position;
@@ -91,7 +92,7 @@ pub struct SearchResult {
     // Which of the selections we found is currently 'active' (highlighted differently)
     pub active: Option<Selection>,
     // What we are looking for
-    pub needle: String,
+    pub needle: Vec<char>,
     // Does case matter?
     pub case_insensitive: bool,
     // Only search whole words, not parts inside a word
@@ -195,7 +196,7 @@ impl SearchResult {
                 source.get_next_two_chars(hidx, self.whole_word_only);
 
             // Get current needle character
-            let needle_char = self.needle.chars().nth(nidx).unwrap(); // Unwrapping is safe here
+            let needle_char: char = *self.needle.get(nidx).unwrap(); // Unwrapping is safe here
 
             // Check if needle and haystack match (with search-options)
             let chars_match = self.check_if_haystack_char_matches_needle(
@@ -355,7 +356,7 @@ impl SearchResult {
         &mut self,
         amount: usize,
         viewport: &[Row],
-        lines_below: &[Row],
+        lines_below: &VecDeque<Row>,
         grid_height: usize,
     ) -> bool {
         let mut found_something = false;
@@ -411,7 +412,7 @@ impl Grid {
     }
 
     pub fn set_search_string(&mut self, needle: &str) {
-        self.search_results.needle = needle.to_string();
+        self.search_results.needle = needle.chars().collect();
         self.search_viewport();
         // If the current viewport does not contain any hits,
         // we jump around until we find something. Starting
@@ -544,7 +545,62 @@ impl Grid {
         }
     }
 
+    fn line_contain_needle(&self, row: &Row, tail: &mut Vec<&Row>) -> bool {
+        let mut current_line = row;
+
+        while !tail.is_empty() {
+            if !self.search_results.search_row(0, current_line, tail).is_empty() {
+                return true;
+            }
+            current_line = tail.remove(0);
+        }
+
+        !self.search_results.search_row(0, current_line, tail).is_empty()
+    }
+
+    fn buffer_contains_needle<'a, F>(&self, lines: F, reverse: bool) -> bool
+    where
+        F: Iterator<Item = &'a Row>,
+    {
+        let mut tail: Vec<&Row> = vec![];
+        let mut first_row: Option<&Row> = None;
+        for line in lines {
+            if !line.is_canonical {
+                tail.push(&line);
+            } else {
+                if reverse {
+                    tail.reverse();
+                    if self.line_contain_needle(line, &mut tail) {
+                        return true;
+                    }
+                } else {
+                    // If not iterating in reverse we need to keep track of the first row
+                    if let Some(first_line) = first_row {
+                        if self.line_contain_needle(first_line, &mut tail) {
+                            return true;
+                        }
+                    }
+                    first_row = Some(line);
+                }
+
+                tail.clear();
+            }
+        }
+        false
+    }
+
     fn search_viewport_move(&mut self, dir: SearchDirection) -> bool {
+        // First check if the buffer contains the needle before moving viewport
+        // This saves a significant amount of time in the case where buffer does not contain the search string
+        let buffer_contains_needle = match dir {
+            SearchDirection::Down => self.buffer_contains_needle(&mut self.lines_below.iter(), false),
+            SearchDirection::Up => self.buffer_contains_needle(&mut self.lines_above.iter().rev(), true),
+        };
+
+        if !buffer_contains_needle {
+            return false;
+        }
+
         // We need to move the viewport
         let mut rows = 0;
         let mut found_something = false;
