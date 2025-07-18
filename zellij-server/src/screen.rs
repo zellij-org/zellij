@@ -13,6 +13,7 @@ use zellij_utils::data::{
     Direction, FloatingPaneCoordinates, KeyWithModifier, PaneManifest, PluginPermission, Resize,
     ResizeStrategy, SessionInfo, Styling, WebSharing,
 };
+use zellij_utils::shared::clean_string_from_control_and_linebreak;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::config::Config;
@@ -36,6 +37,7 @@ use crate::os_input_output::ResizeCache;
 use crate::pane_groups::PaneGroups;
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
+use crate::panes::terminal_pane::{BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END};
 use crate::session_layout_metadata::{PaneLayoutMetadata, SessionLayoutMetadata};
 
 use crate::{
@@ -1853,10 +1855,7 @@ impl Screen {
                                 active_tab.name.pop();
                             },
                             c => {
-                                // It only allows printable unicode
-                                if buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0xA0..=0xFF)) {
-                                    active_tab.name.push_str(c);
-                                }
+                                active_tab.name.push_str(&clean_string_from_control_and_linebreak(c));
                             },
                         }
                         self.log_and_report_session_state()
@@ -3552,13 +3551,12 @@ pub(crate) fn screen_thread_main(
                 }
                 let mut state_changed = false;
                 let client_input_mode = screen.get_client_input_mode(client_id);
-                // TODO: CONTINUE HERE
-                // this works, let's clean up, commit and then see if we can get the rename
-                // tab/pane to work with emojis and such
                 match client_input_mode {
                     Some(InputMode::RenameTab) => {
-                        screen.update_active_tab_name(raw_bytes, client_id)?;
-                        state_changed = true;
+                        if !(raw_bytes == BRACKETED_PASTE_BEGIN || raw_bytes == BRACKETED_PASTE_END) {
+                            screen.update_active_tab_name(raw_bytes, client_id)?;
+                            state_changed = true;
+                        }
                     }
                     _ => {
                         active_tab_and_connected_client_id!(
@@ -3567,16 +3565,20 @@ pub(crate) fn screen_thread_main(
                             |tab: &mut Tab, client_id: ClientId| {
                                 match client_input_mode {
                                     Some(InputMode::EnterSearch) => {
-                                        if let Err(e) = tab.update_search_term(raw_bytes, client_id) {
-                                            log::error!("{}", e);
+                                        if !(raw_bytes == BRACKETED_PASTE_BEGIN || raw_bytes == BRACKETED_PASTE_END) {
+                                            if let Err(e) = tab.update_search_term(raw_bytes, client_id) {
+                                                log::error!("{}", e);
+                                            }
                                         }
                                         state_changed = true;
                                     }
                                     Some(InputMode::RenamePane) => {
-                                        if let Err(e) = tab.update_active_pane_name(raw_bytes, client_id) {
-                                            log::error!("{}", e);
+                                        if !(raw_bytes == BRACKETED_PASTE_BEGIN || raw_bytes == BRACKETED_PASTE_END) {
+                                            if let Err(e) = tab.update_active_pane_name(raw_bytes, client_id) {
+                                                log::error!("{}", e);
+                                            }
+                                            state_changed = true;
                                         }
-                                        state_changed = true;
                                     }
                                     _ => {
                                         let write_result = match tab.is_sync_panes_active() {

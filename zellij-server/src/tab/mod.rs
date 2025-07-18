@@ -16,6 +16,7 @@ use zellij_utils::data::{
     Direction, KeyWithModifier, PaneInfo, PermissionStatus, PermissionType, PluginPermission,
     ResizeStrategy, WebSharing,
 };
+use zellij_utils::shared::clean_string_from_control_and_linebreak;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
@@ -4618,21 +4619,12 @@ impl Tab {
     pub fn update_active_pane_name(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
         let err_context =
             || format!("failed to update name of active pane to '{buf:?}' for client {client_id}");
-
-        // Only allow printable unicode, delete and backspace keys.
-        let is_updatable = buf
-            .iter()
-            .all(|u| matches!(u, 0x20..=0x7E | 0xA0..=0xFF | 0x08 | 0x7F));
-        if is_updatable {
-            let s = str::from_utf8(&buf).with_context(err_context)?;
-            self.get_active_pane_mut(client_id)
-                .with_context(|| format!("no active pane found for client {client_id}"))
-                .map(|active_pane| {
-                    active_pane.update_name(s);
-                })?;
-        } else {
-            log::error!("Failed to update pane name due to unprintable characters");
-        }
+        let s = str::from_utf8(&buf).with_context(err_context)?;
+        self.get_active_pane_mut(client_id)
+            .with_context(|| format!("no active pane found for client {client_id}"))
+            .map(|active_pane| {
+                active_pane.update_name(&clean_string_from_control_and_linebreak(s));
+            })?;
         Ok(())
     }
 
@@ -4704,6 +4696,9 @@ impl Tab {
     pub fn update_search_term(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             // It only allows terminating char(\0), printable unicode, delete and backspace keys.
+            // TODO: we should really remove this limitation to allow searching for emojis and
+            // other wide chars - currently the search mechanism itself ignores wide chars, so we
+            // should first fix that before removing this condition
             let is_updatable = buf
                 .iter()
                 .all(|u| matches!(u, 0x00 | 0x20..=0x7E | 0x08 | 0x7F));
