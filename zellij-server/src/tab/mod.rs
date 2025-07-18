@@ -16,12 +16,12 @@ use zellij_utils::data::{
     Direction, KeyWithModifier, PaneInfo, PermissionStatus, PermissionType, PluginPermission,
     ResizeStrategy, WebSharing,
 };
-use zellij_utils::shared::clean_string_from_control_and_linebreak;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::position::Position;
 use zellij_utils::position::{Column, Line};
+use zellij_utils::shared::clean_string_from_control_and_linebreak;
 
 use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;

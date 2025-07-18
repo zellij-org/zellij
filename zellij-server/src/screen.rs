@@ -13,7 +13,6 @@ use zellij_utils::data::{
     Direction, FloatingPaneCoordinates, KeyWithModifier, PaneManifest, PluginPermission, Resize,
     ResizeStrategy, SessionInfo, Styling, WebSharing,
 };
-use zellij_utils::shared::clean_string_from_control_and_linebreak;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::config::Config;
@@ -21,6 +20,7 @@ use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
+use zellij_utils::shared::clean_string_from_control_and_linebreak;
 use zellij_utils::{
     consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},
     envs::set_session_name,
@@ -1358,7 +1358,9 @@ impl Screen {
     }
 
     pub fn get_client_input_mode(&self, client_id: ClientId) -> Option<InputMode> {
-        self.get_active_tab(client_id).ok().and_then(|tab| tab.get_client_input_mode(client_id))
+        self.get_active_tab(client_id)
+            .ok()
+            .and_then(|tab| tab.get_client_input_mode(client_id))
     }
 
     pub fn get_first_client_id(&self) -> Option<ClientId> {
@@ -1855,7 +1857,9 @@ impl Screen {
                                 active_tab.name.pop();
                             },
                             c => {
-                                active_tab.name.push_str(&clean_string_from_control_and_linebreak(c));
+                                active_tab
+                                    .name
+                                    .push_str(&clean_string_from_control_and_linebreak(c));
                             },
                         }
                         self.log_and_report_session_state()
@@ -3553,11 +3557,12 @@ pub(crate) fn screen_thread_main(
                 let client_input_mode = screen.get_client_input_mode(client_id);
                 match client_input_mode {
                     Some(InputMode::RenameTab) => {
-                        if !(raw_bytes == BRACKETED_PASTE_BEGIN || raw_bytes == BRACKETED_PASTE_END) {
+                        if !(raw_bytes == BRACKETED_PASTE_BEGIN || raw_bytes == BRACKETED_PASTE_END)
+                        {
                             screen.update_active_tab_name(raw_bytes, client_id)?;
                             state_changed = true;
                         }
-                    }
+                    },
                     _ => {
                         active_tab_and_connected_client_id!(
                             screen,
@@ -3565,34 +3570,52 @@ pub(crate) fn screen_thread_main(
                             |tab: &mut Tab, client_id: ClientId| {
                                 match client_input_mode {
                                     Some(InputMode::EnterSearch) => {
-                                        if !(raw_bytes == BRACKETED_PASTE_BEGIN || raw_bytes == BRACKETED_PASTE_END) {
-                                            if let Err(e) = tab.update_search_term(raw_bytes, client_id) {
+                                        if !(raw_bytes == BRACKETED_PASTE_BEGIN
+                                            || raw_bytes == BRACKETED_PASTE_END)
+                                        {
+                                            if let Err(e) =
+                                                tab.update_search_term(raw_bytes, client_id)
+                                            {
                                                 log::error!("{}", e);
                                             }
                                         }
                                         state_changed = true;
-                                    }
+                                    },
                                     Some(InputMode::RenamePane) => {
-                                        if !(raw_bytes == BRACKETED_PASTE_BEGIN || raw_bytes == BRACKETED_PASTE_END) {
-                                            if let Err(e) = tab.update_active_pane_name(raw_bytes, client_id) {
+                                        if !(raw_bytes == BRACKETED_PASTE_BEGIN
+                                            || raw_bytes == BRACKETED_PASTE_END)
+                                        {
+                                            if let Err(e) =
+                                                tab.update_active_pane_name(raw_bytes, client_id)
+                                            {
                                                 log::error!("{}", e);
                                             }
                                             state_changed = true;
                                         }
-                                    }
+                                    },
                                     _ => {
                                         let write_result = match tab.is_sync_panes_active() {
-                                            true => tab.write_to_terminals_on_current_tab(&key_with_modifier, raw_bytes, is_kitty_keyboard_protocol, client_id),
-                                            false => tab.write_to_active_terminal(&key_with_modifier, raw_bytes, is_kitty_keyboard_protocol, client_id),
+                                            true => tab.write_to_terminals_on_current_tab(
+                                                &key_with_modifier,
+                                                raw_bytes,
+                                                is_kitty_keyboard_protocol,
+                                                client_id,
+                                            ),
+                                            false => tab.write_to_active_terminal(
+                                                &key_with_modifier,
+                                                raw_bytes,
+                                                is_kitty_keyboard_protocol,
+                                                client_id,
+                                            ),
                                         };
                                         if let Ok(true) = write_result {
                                             state_changed = true;
                                         }
-                                    }
+                                    },
                                 }
                             }
                         );
-                    }
+                    },
                 };
                 if state_changed {
                     screen.log_and_report_session_state()?;

@@ -39,15 +39,14 @@ pub fn clean_string_from_control_and_linebreak(input: &str) -> String {
     input
         .chars()
         .filter(|c| {
-            !c.is_control() && 
+            !c.is_control() &&
             *c != '\n' &&      // line feed
             *c != '\r' &&      // carriage return
             *c != '\u{2028}' && // line separator
-            *c != '\u{2029}'    // paragraph separator
+            *c != '\u{2029}' // paragraph separator
         })
         .collect()
 }
-
 
 pub fn adjust_to_size(s: &str, rows: usize, columns: usize) -> String {
     s.lines()
