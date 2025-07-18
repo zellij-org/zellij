@@ -125,7 +125,8 @@ impl InputHandler {
         config: Config,
         options: Options,
         send_client_instructions: SenderWithContext<ClientInstruction>,
-        mode: InputMode,
+        mode: InputMode, // TODO: we can probably get rid of this now that we're tracking it on the
+                         // server instead
         receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
     ) -> Self {
         InputHandler {

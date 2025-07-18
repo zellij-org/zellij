@@ -1355,6 +1355,10 @@ impl Screen {
         }
     }
 
+    pub fn get_client_input_mode(&self, client_id: ClientId) -> Option<InputMode> {
+        self.get_active_tab(client_id).ok().and_then(|tab| tab.get_client_input_mode(client_id))
+    }
+
     pub fn get_first_client_id(&self) -> Option<ClientId> {
         self.active_tab_indices.keys().next().copied()
     }
@@ -3547,24 +3551,51 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 let mut state_changed = false;
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| {
-                        let write_result = match tab.is_sync_panes_active() {
-                            true => tab.write_to_terminals_on_current_tab(&key_with_modifier, raw_bytes, is_kitty_keyboard_protocol, client_id),
-                            false => tab.write_to_active_terminal(&key_with_modifier, raw_bytes, is_kitty_keyboard_protocol, client_id),
-                        };
-                        if let Ok(true) = write_result {
-                            state_changed = true;
-                        }
-                        write_result
-                    },
-                    ?
-                );
+                let client_input_mode = screen.get_client_input_mode(client_id);
+                // TODO: CONTINUE HERE
+                // this works, let's clean up, commit and then see if we can get the rename
+                // tab/pane to work with emojis and such
+                match client_input_mode {
+                    Some(InputMode::RenameTab) => {
+                        screen.update_active_tab_name(raw_bytes, client_id)?;
+                        state_changed = true;
+                    }
+                    _ => {
+                        active_tab_and_connected_client_id!(
+                            screen,
+                            client_id,
+                            |tab: &mut Tab, client_id: ClientId| {
+                                match client_input_mode {
+                                    Some(InputMode::EnterSearch) => {
+                                        if let Err(e) = tab.update_search_term(raw_bytes, client_id) {
+                                            log::error!("{}", e);
+                                        }
+                                        state_changed = true;
+                                    }
+                                    Some(InputMode::RenamePane) => {
+                                        if let Err(e) = tab.update_active_pane_name(raw_bytes, client_id) {
+                                            log::error!("{}", e);
+                                        }
+                                        state_changed = true;
+                                    }
+                                    _ => {
+                                        let write_result = match tab.is_sync_panes_active() {
+                                            true => tab.write_to_terminals_on_current_tab(&key_with_modifier, raw_bytes, is_kitty_keyboard_protocol, client_id),
+                                            false => tab.write_to_active_terminal(&key_with_modifier, raw_bytes, is_kitty_keyboard_protocol, client_id),
+                                        };
+                                        if let Ok(true) = write_result {
+                                            state_changed = true;
+                                        }
+                                    }
+                                }
+                            }
+                        );
+                    }
+                };
                 if state_changed {
                     screen.log_and_report_session_state()?;
                 }
+                screen.unblock_input()?;
             },
             ScreenInstruction::Resize(client_id, strategy) => {
                 active_tab_and_connected_client_id!(

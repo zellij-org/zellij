@@ -5360,6 +5360,9 @@ impl Tab {
     pub fn get_display_area(&self) -> Size {
         self.display_area.borrow().clone()
     }
+    pub fn get_client_input_mode(&self, client_id: ClientId) -> Option<InputMode> {
+        self.mode_info.borrow().get(&client_id).map(|m| m.mode)
+    }
     fn new_scrollback_editor_pane(&self, pid: u32) -> TerminalPane {
         let next_terminal_position = self.get_next_terminal_position();
         let mut new_pane = TerminalPane::new(
