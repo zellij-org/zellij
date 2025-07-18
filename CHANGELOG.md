@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: reap processes when using an external clipboard tool (https://github.com/zellij-org/zellij/pull/4298)
 * fix: out of bounds mouse release events (https://github.com/zellij-org/zellij/pull/4300)
 * fix: account for emoji/widechars when double/triple-clicking to mark words (https://github.com/zellij-org/zellij/pull/4302)
+* fix: allow pasting and emojis in tab/pane names and pasting in search (https://github.com/zellij-org/zellij/pull/4303)
 
 ## [0.42.2] - 2025-04-15
 * refactor(terminal): track scroll_region as tuple rather than Option (https://github.com/zellij-org/zellij/pull/4082)
