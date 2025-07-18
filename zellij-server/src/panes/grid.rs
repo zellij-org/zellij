@@ -1981,8 +1981,10 @@ impl Grid {
         let position_row = self.viewport.get(position.line.0 as usize)?;
 
         let mut position_start = Position::new(position.line.0 as i32, 0);
-        let mut position_end =
-            Position::new(position.line.0 as i32, position_row.columns.len() as u16);
+        let mut position_end = Position::new(
+            position.line.0 as i32,
+            (position_row.columns.len() + position_row.excess_width()) as u16,
+        );
 
         let mut found_canonical_row_start = position_row.is_canonical;
         while !found_canonical_row_start {
@@ -3802,7 +3804,8 @@ impl Row {
         self.columns.len()
     }
     pub fn word_indices_around_character_index(&self, index: usize) -> Option<(usize, usize)> {
-        let character_at_index = self.columns.get(index)?;
+        let absolute_character_index = self.absolute_character_index(index);
+        let character_at_index = self.columns.get(absolute_character_index)?;
         if is_selection_boundary_character(character_at_index.character) {
             return Some((index, index + 1));
         }
@@ -3810,24 +3813,24 @@ impl Row {
             .columns
             .iter()
             .enumerate()
-            .skip(index)
+            .skip(absolute_character_index)
             .find_map(|(i, t_c)| {
                 if is_selection_boundary_character(t_c.character) {
-                    Some(i)
+                    Some(i + self.excess_width_until(i))
                 } else {
                     None
                 }
             })
-            .unwrap_or_else(|| self.columns.len());
+            .unwrap_or_else(|| self.columns.len() + self.excess_width());
         let start_position = self
             .columns
             .iter()
             .enumerate()
-            .take(index)
+            .take(absolute_character_index)
             .rev()
             .find_map(|(i, t_c)| {
                 if is_selection_boundary_character(t_c.character) {
-                    Some(i + 1)
+                    Some(i + 1 + self.excess_width_until(i))
                 } else {
                     None
                 }
@@ -3846,7 +3849,7 @@ impl Row {
             .rev()
             .find_map(|(i, t_c)| {
                 if is_selection_boundary_character(t_c.character) {
-                    Some(i + 1)
+                    Some(self.absolute_character_index(i + 1))
                 } else {
                     None
                 }
@@ -3859,7 +3862,7 @@ impl Row {
             .enumerate()
             .find_map(|(i, t_c)| {
                 if is_selection_boundary_character(t_c.character) {
-                    Some(i)
+                    Some(self.absolute_character_index(i))
                 } else {
                     None
                 }
