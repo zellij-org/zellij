@@ -101,10 +101,14 @@ fn account_for_races_in_snapshot(snapshot: String) -> String {
     // once that happens, we should be able to remove this hack (and adjust the snapshots for the
     // trailing spaces that we had to get rid of here)
     let base_replace = Regex::new(r"Alt <\[\]>  BASE \s*\n").unwrap();
-    let base_replace_tmux_mode = Regex::new(r"Alt \[\|SPACE\|Alt \]  BASE \s*\n").unwrap();
+    let base_replace_tmux_mode_1 = Regex::new(r"Alt \[\|SPACE\|Alt \]  BASE \s*\n").unwrap();
+    let base_replace_tmux_mode_2 = Regex::new(r"Alt \[\|Alt \]\|SPACE  BASE \s*\n").unwrap();
     let eol_arrow_replace = Regex::new(r"\s*\n").unwrap();
     let snapshot = base_replace.replace_all(&snapshot, "\n").to_string();
-    let snapshot = base_replace_tmux_mode
+    let snapshot = base_replace_tmux_mode_1
+        .replace_all(&snapshot, "\n")
+        .to_string();
+    let snapshot = base_replace_tmux_mode_2
         .replace_all(&snapshot, "\n")
         .to_string();
     let snapshot = eol_arrow_replace.replace_all(&snapshot, "\n").to_string();
