@@ -658,6 +658,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 }
                 Ok(PluginCommand::CloseFocus)
             },
+            Some(CommandName::CloseUnfocused) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    return Err("CloseUnfocused should not have a payload");
+                }
+                Ok(PluginCommand::CloseUnfocused)
+            },
             Some(CommandName::ToggleActiveTabSync) => {
                 if protobuf_plugin_command.payload.is_some() {
                     return Err("ToggleActiveTabSync should not have a payload");
@@ -2013,6 +2019,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             }),
             PluginCommand::CloseFocus => Ok(ProtobufPluginCommand {
                 name: CommandName::CloseFocus as i32,
+                payload: None,
+            }),
+            PluginCommand::CloseUnfocused => Ok(ProtobufPluginCommand {
+                name: CommandName::CloseUnfocused as i32,
                 payload: None,
             }),
             PluginCommand::ToggleActiveTabSync => Ok(ProtobufPluginCommand {

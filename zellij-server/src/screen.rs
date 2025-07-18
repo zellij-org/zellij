@@ -198,6 +198,7 @@ pub enum ScreenInstruction {
     HalfPageScrollDown(ClientId),
     ClearScroll(ClientId),
     CloseFocusedPane(ClientId),
+    CloseUnfocusedPanes(ClientId),
     ToggleActiveTerminalFullscreen(ClientId),
     TogglePaneFrames,
     SetSelectable(PaneId, bool),
@@ -498,6 +499,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::HalfPageScrollDown(..) => ScreenContext::HalfPageScrollDown,
             ScreenInstruction::ClearScroll(..) => ScreenContext::ClearScroll,
             ScreenInstruction::CloseFocusedPane(..) => ScreenContext::CloseFocusedPane,
+            ScreenInstruction::CloseUnfocusedPanes(..) => ScreenContext::CloseUnfocusedPanes,
             ScreenInstruction::ToggleActiveTerminalFullscreen(..) => {
                 ScreenContext::ToggleActiveTerminalFullscreen
             },
@@ -3930,6 +3932,16 @@ pub(crate) fn screen_thread_main(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.close_focused_pane(client_id), ?
+                );
+                screen.render(None)?;
+                screen.unblock_input()?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::CloseUnfocusedPanes(client_id) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.close_unfocused_panes(client_id), ?
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;

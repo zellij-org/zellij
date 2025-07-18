@@ -61,6 +61,7 @@ enum CommandName {
   TogglePaneEmbedOrEject = 45;
   UndoRenamePane = 46;
   CloseFocus = 47;
+  CloseUnfocused = 156;
   ToggleActiveTabSync = 48;
   CloseFocusedTab = 49;
   UndoRenameTab = 50;
@@ -222,11 +223,13 @@ message PluginCommand {
     OpenCommandPanePayload open_command_pane_background_payload = 66;
     RerunCommandPanePayload rerun_command_pane_payload = 67;
     ResizePaneIdWithDirectionPayload resize_pane_id_with_direction_payload = 68;
-    EditScrollbackForPaneWithIdPayload edit_scrollback_for_pane_with_id_payload = 69;
+    EditScrollbackForPaneWithIdPayload
+        edit_scrollback_for_pane_with_id_payload = 69;
     WriteToPaneIdPayload write_to_pane_id_payload = 70;
     WriteCharsToPaneIdPayload write_chars_to_pane_id_payload = 71;
     MovePaneWithPaneIdPayload move_pane_with_pane_id_payload = 72;
-    MovePaneWithPaneIdInDirectionPayload move_pane_with_pane_id_in_direction_payload = 73;
+    MovePaneWithPaneIdInDirectionPayload
+        move_pane_with_pane_id_in_direction_payload = 73;
     ClearScreenForPaneIdPayload clear_screen_for_pane_id_payload = 74;
     ScrollUpInPaneIdPayload scroll_up_in_pane_id_payload = 75;
     ScrollDownInPaneIdPayload scroll_down_in_pane_id_payload = 76;
@@ -235,7 +238,8 @@ message PluginCommand {
     PageScrollUpInPaneIdPayload page_scroll_up_in_pane_id_payload = 79;
     PageScrollDownInPaneIdPayload page_scroll_down_in_pane_id_payload = 80;
     TogglePaneIdFullscreenPayload toggle_pane_id_fullscreen_payload = 81;
-    TogglePaneEmbedOrEjectForPaneIdPayload toggle_pane_embed_or_eject_for_pane_id_payload = 82;
+    TogglePaneEmbedOrEjectForPaneIdPayload
+        toggle_pane_embed_or_eject_for_pane_id_payload = 82;
     CloseTabWithIndexPayload close_tab_with_index_payload = 83;
     BreakPanesToNewTabPayload break_panes_to_new_tab_payload = 84;
     BreakPanesToTabWithIndexPayload break_panes_to_tab_with_index_payload = 85;
@@ -245,26 +249,35 @@ message PluginCommand {
     ChangeHostFolderPayload change_host_folder_payload = 89;
     SetFloatingPanePinnedPayload set_floating_pane_pinned_payload = 90;
     StackPanesPayload stack_panes_payload = 91;
-    ChangeFloatingPanesCoordinatesPayload change_floating_panes_coordinates_payload = 92;
+    ChangeFloatingPanesCoordinatesPayload
+        change_floating_panes_coordinates_payload = 92;
     OpenCommandPaneNearPluginPayload open_command_pane_near_plugin_payload = 93;
     OpenTerminalNearPluginPayload open_terminal_near_plugin_payload = 94;
-    OpenTerminalFloatingNearPluginPayload open_terminal_floating_near_plugin_payload = 95;
-    OpenTerminalInPlaceOfPluginPayload open_terminal_in_place_of_plugin_payload = 96;
-    OpenCommandPaneFloatingNearPluginPayload open_command_pane_floating_near_plugin_payload = 97;
-    OpenCommandPaneInPlaceOfPluginPayload open_command_pane_in_place_of_plugin_payload = 98;
+    OpenTerminalFloatingNearPluginPayload
+        open_terminal_floating_near_plugin_payload = 95;
+    OpenTerminalInPlaceOfPluginPayload
+        open_terminal_in_place_of_plugin_payload = 96;
+    OpenCommandPaneFloatingNearPluginPayload
+        open_command_pane_floating_near_plugin_payload = 97;
+    OpenCommandPaneInPlaceOfPluginPayload
+        open_command_pane_in_place_of_plugin_payload = 98;
     OpenFileNearPluginPayload open_file_near_plugin_payload = 99;
-    OpenFileFloatingNearPluginPayload open_file_floating_near_plugin_payload = 100;
+    OpenFileFloatingNearPluginPayload open_file_floating_near_plugin_payload =
+        100;
     OpenFileInPlaceOfPluginPayload open_file_in_place_of_plugin_payload = 101;
     GroupAndUngroupPanesPayload group_and_ungroup_panes_payload = 102;
-    HighlightAndUnhighlightPanesPayload highlight_and_unhighlight_panes_payload = 103;
+    HighlightAndUnhighlightPanesPayload
+        highlight_and_unhighlight_panes_payload = 103;
     CloseMultiplePanesPayload close_multiple_panes_payload = 104;
     FloatMultiplePanesPayload float_multiple_panes_payload = 105;
     EmbedMultiplePanesPayload embed_multiple_panes_payload = 106;
-    SetSelfMouseSelectionSupportPayload set_self_mouse_selection_support_payload = 107;
+    SetSelfMouseSelectionSupportPayload
+        set_self_mouse_selection_support_payload = 107;
     GenerateWebLoginTokenPayload generate_web_login_token_payload = 108;
     RevokeWebLoginTokenPayload revoke_web_login_token_payload = 109;
     RenameWebLoginTokenPayload rename_web_login_token_payload = 110;
-    ReplacePaneWithExistingPanePayload replace_pane_with_existing_pane_payload = 111;
+    ReplacePaneWithExistingPanePayload replace_pane_with_existing_pane_payload =
+        111;
     NewTabPayload new_tab_payload = 112;
   }
 }
@@ -284,29 +297,19 @@ message RenameWebLoginTokenPayload {
   string new_name = 2;
 }
 
-message RevokeWebLoginTokenPayload {
-  string token_label = 1;
-}
+message RevokeWebLoginTokenPayload { string token_label = 1; }
 
-message GenerateWebLoginTokenPayload {
-  optional string token_label = 1;
-}
+message GenerateWebLoginTokenPayload { optional string token_label = 1; }
 
 message SetSelfMouseSelectionSupportPayload {
   bool support_mouse_selection = 1;
 }
 
-message EmbedMultiplePanesPayload {
-  repeated PaneId pane_ids = 1;
-}
+message EmbedMultiplePanesPayload { repeated PaneId pane_ids = 1; }
 
-message FloatMultiplePanesPayload {
-  repeated PaneId pane_ids = 1;
-}
+message FloatMultiplePanesPayload { repeated PaneId pane_ids = 1; }
 
-message CloseMultiplePanesPayload {
-  repeated PaneId pane_ids = 1;
-}
+message CloseMultiplePanesPayload { repeated PaneId pane_ids = 1; }
 
 message HighlightAndUnhighlightPanesPayload {
   repeated PaneId pane_ids_to_highlight = 1;
@@ -373,21 +376,18 @@ message OpenCommandPaneNearPluginPayload {
 }
 
 message ChangeFloatingPanesCoordinatesPayload {
-  repeated PaneIdAndFloatingPaneCoordinates pane_ids_and_floating_panes_coordinates = 1;
+  repeated PaneIdAndFloatingPaneCoordinates
+      pane_ids_and_floating_panes_coordinates = 1;
 }
 
-message StackPanesPayload {
-  repeated PaneId pane_ids = 1;
-}
+message StackPanesPayload { repeated PaneId pane_ids = 1; }
 
 message SetFloatingPanePinnedPayload {
   PaneId pane_id = 1;
   bool should_be_pinned = 2;
 }
 
-message ChangeHostFolderPayload {
-  string new_host_folder = 1;
-}
+message ChangeHostFolderPayload { string new_host_folder = 1; }
 
 message RebindKeysPayload {
   repeated KeyToRebind keys_to_rebind = 1;
@@ -413,9 +413,7 @@ message LoadNewPluginPayload {
   bool should_skip_plugin_cache = 4;
 }
 
-message ReloadPluginPayload {
-  uint32 plugin_id = 1;
-}
+message ReloadPluginPayload { uint32 plugin_id = 1; }
 
 message BreakPanesToTabWithIndexPayload {
   repeated PaneId pane_ids = 1;
@@ -429,54 +427,32 @@ message BreakPanesToNewTabPayload {
   optional string new_tab_name = 3;
 }
 
-message MovePaneWithPaneIdPayload {
-  PaneId pane_id = 1;
-}
+message MovePaneWithPaneIdPayload { PaneId pane_id = 1; }
 
 message MovePaneWithPaneIdInDirectionPayload {
   PaneId pane_id = 1;
   resize.MoveDirection direction = 2;
 }
 
-message ClearScreenForPaneIdPayload {
-  PaneId pane_id = 1;
-}
+message ClearScreenForPaneIdPayload { PaneId pane_id = 1; }
 
-message ScrollUpInPaneIdPayload {
-  PaneId pane_id = 1;
-}
+message ScrollUpInPaneIdPayload { PaneId pane_id = 1; }
 
-message ScrollDownInPaneIdPayload {
-  PaneId pane_id = 1;
-}
+message ScrollDownInPaneIdPayload { PaneId pane_id = 1; }
 
-message ScrollToTopInPaneIdPayload {
-  PaneId pane_id = 1;
-}
+message ScrollToTopInPaneIdPayload { PaneId pane_id = 1; }
 
-message ScrollToBottomInPaneIdPayload {
-  PaneId pane_id = 1;
-}
+message ScrollToBottomInPaneIdPayload { PaneId pane_id = 1; }
 
-message PageScrollUpInPaneIdPayload {
-  PaneId pane_id = 1;
-}
+message PageScrollUpInPaneIdPayload { PaneId pane_id = 1; }
 
-message PageScrollDownInPaneIdPayload {
-  PaneId pane_id = 1;
-}
+message PageScrollDownInPaneIdPayload { PaneId pane_id = 1; }
 
-message TogglePaneIdFullscreenPayload {
-  PaneId pane_id = 1;
-}
+message TogglePaneIdFullscreenPayload { PaneId pane_id = 1; }
 
-message TogglePaneEmbedOrEjectForPaneIdPayload {
-  PaneId pane_id = 1;
-}
+message TogglePaneEmbedOrEjectForPaneIdPayload { PaneId pane_id = 1; }
 
-message CloseTabWithIndexPayload {
-  uint32 tab_index = 1;
-}
+message CloseTabWithIndexPayload { uint32 tab_index = 1; }
 
 message WriteCharsToPaneIdPayload {
   string chars_to_write = 1;
@@ -488,9 +464,7 @@ message WriteToPaneIdPayload {
   PaneId pane_id = 2;
 }
 
-message EditScrollbackForPaneWithIdPayload {
-  PaneId pane_id = 1;
-}
+message EditScrollbackForPaneWithIdPayload { PaneId pane_id = 1; }
 
 message ResizePaneIdWithDirectionPayload {
   resize.Resize resize = 1;
@@ -502,26 +476,18 @@ message ReconfigurePayload {
   bool write_to_disk = 2;
 }
 
-message RerunCommandPanePayload {
-  uint32 terminal_pane_id = 1;
-}
+message RerunCommandPanePayload { uint32 terminal_pane_id = 1; }
 
-message HidePaneWithIdPayload {
-  PaneId pane_id = 1;
-}
+message HidePaneWithIdPayload { PaneId pane_id = 1; }
 
 message ShowPaneWithIdPayload {
   PaneId pane_id = 1;
   bool should_float_if_hidden = 2;
 }
 
-message NewTabsWithLayoutInfoPayload {
-  event.LayoutInfo layout_info = 1;
-}
+message NewTabsWithLayoutInfoPayload { event.LayoutInfo layout_info = 1; }
 
-message KillSessionsPayload {
-  repeated string session_names = 1;
-}
+message KillSessionsPayload { repeated string session_names = 1; }
 
 message CliPipeOutputPayload {
   string pipe_name = 1;
@@ -540,11 +506,11 @@ message MessageToPluginPayload {
 }
 
 message NewPluginArgs {
-    optional bool should_float = 1;
-    optional PaneId pane_id_to_replace = 2;
-    optional string pane_title = 3;
-    optional string cwd = 4;
-    bool skip_cache = 5;
+  optional bool should_float = 1;
+  optional PaneId pane_id_to_replace = 2;
+  optional string pane_title = 3;
+  optional string cwd = 4;
+  bool skip_cache = 5;
 }
 
 message PaneId {
@@ -570,13 +536,9 @@ message RequestPluginPermissionPayload {
   repeated plugin_permission.PermissionType permissions = 1;
 }
 
-message SubscribePayload {
-  event.EventNameList subscriptions = 1;
-}
+message SubscribePayload { event.EventNameList subscriptions = 1; }
 
-message UnsubscribePayload {
-  event.EventNameList subscriptions = 1;
-}
+message UnsubscribePayload { event.EventNameList subscriptions = 1; }
 
 message OpenFilePayload {
   file.File file_to_open = 1;
@@ -590,17 +552,11 @@ message OpenCommandPanePayload {
   repeated ContextItem context = 3;
 }
 
-message SwitchTabToPayload {
-  uint32 tab_index = 1;
-}
+message SwitchTabToPayload { uint32 tab_index = 1; }
 
-message SetTimeoutPayload {
-  double seconds = 1;
-}
+message SetTimeoutPayload { double seconds = 1; }
 
-message ExecCmdPayload {
-  repeated string command_line = 1;
-}
+message ExecCmdPayload { repeated string command_line = 1; }
 
 message RunCommandPayload {
   repeated string command_line = 1;
@@ -634,17 +590,11 @@ message ContextItem {
   string value = 2;
 }
 
-message PluginMessagePayload {
-  api.message.Message message = 1;
-}
+message PluginMessagePayload { api.message.Message message = 1; }
 
-message ResizePayload {
-  resize.Resize resize = 1;
-}
+message ResizePayload { resize.Resize resize = 1; }
 
-message MovePayload {
-  resize.MoveDirection direction = 1;
-}
+message MovePayload { resize.MoveDirection direction = 1; }
 
 message PaneIdAndFloatingPaneCoordinates {
   PaneId pane_id = 1;

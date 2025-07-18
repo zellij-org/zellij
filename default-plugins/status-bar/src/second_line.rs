@@ -148,6 +148,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             action_key_group(&km, &[&[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
                 &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
         (s("Close"), s("Close"), action_key(&km, &[A::CloseFocus, TO_NORMAL])),
+        (s("Close Other Panes"), s("Close Other Panes"), action_key(&km, &[A::CloseUnfocused, TO_NORMAL])),
         (s("Rename"), s("Rename"),
             action_key(&km, &[A::SwitchToMode(IM::RenamePane), A::PaneNameInput(vec![0])])),
         (s("Toggle Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
@@ -692,6 +693,10 @@ mod tests {
                         vec![Action::CloseFocus, TO_NORMAL],
                     ),
                     (
+                        KeyWithModifier::new(BareKey::Char('m')),
+                        vec![Action::CloseUnfocused, TO_NORMAL],
+                    ),
+                    (
                         KeyWithModifier::new(BareKey::Char('f')),
                         vec![Action::ToggleFocusFullscreen, TO_NORMAL],
                     ),
@@ -740,6 +745,10 @@ mod tests {
                     (
                         KeyWithModifier::new(BareKey::Char('x')),
                         vec![Action::CloseFocus, TO_NORMAL],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Char('m')),
+                        vec![Action::CloseUnfocused, TO_NORMAL],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char('f')),

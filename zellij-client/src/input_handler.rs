@@ -317,6 +317,7 @@ impl InputHandler {
                 should_break = true;
             },
             Action::CloseFocus
+            | Action::CloseUnfocused
             | Action::SwitchToMode(..)
             | Action::ClearScreen
             | Action::NewPane(..)

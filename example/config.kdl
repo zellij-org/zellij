@@ -27,6 +27,7 @@ keybinds {
         bind "d" { NewPane "Down"; SwitchToMode "Normal"; }
         bind "r" { NewPane "Right"; SwitchToMode "Normal"; }
         bind "x" { CloseFocus; SwitchToMode "Normal"; }
+        bind "o" { CloseUnfocused; SwitchToMode "Normal"; }
         bind "f" { ToggleFocusFullscreen; SwitchToMode "Normal"; }
         bind "z" { TogglePaneFrames; SwitchToMode "Normal"; }
         bind "w" { ToggleFloatingPanes; SwitchToMode "Normal"; }
@@ -127,6 +128,7 @@ keybinds {
         bind "o" { FocusNextPane; }
         bind "d" { Detach; }
         bind "x" { CloseFocus; SwitchToMode "Normal"; }
+        bind "o" { CloseUnfocused; SwitchToMode "Normal"; }
     }
     shared_except "locked" {
         bind "Ctrl g" { SwitchToMode "Locked"; }

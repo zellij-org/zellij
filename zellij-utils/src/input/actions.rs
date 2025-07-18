@@ -189,6 +189,7 @@ pub enum Action {
     ToggleFloatingPanes,
     /// Close the focus pane.
     CloseFocus,
+    CloseUnfocused,
     PaneNameInput(Vec<u8>),
     UndoRenamePane,
     /// Create a new tab, optionally with a specified tab layout.
