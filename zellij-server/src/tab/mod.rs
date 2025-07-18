@@ -21,6 +21,7 @@ use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::position::Position;
 use zellij_utils::position::{Column, Line};
+use zellij_utils::shared::clean_string_from_control_and_linebreak;
 
 use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
@@ -4618,21 +4619,12 @@ impl Tab {
     pub fn update_active_pane_name(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
         let err_context =
             || format!("failed to update name of active pane to '{buf:?}' for client {client_id}");
-
-        // Only allow printable unicode, delete and backspace keys.
-        let is_updatable = buf
-            .iter()
-            .all(|u| matches!(u, 0x20..=0x7E | 0xA0..=0xFF | 0x08 | 0x7F));
-        if is_updatable {
-            let s = str::from_utf8(&buf).with_context(err_context)?;
-            self.get_active_pane_mut(client_id)
-                .with_context(|| format!("no active pane found for client {client_id}"))
-                .map(|active_pane| {
-                    active_pane.update_name(s);
-                })?;
-        } else {
-            log::error!("Failed to update pane name due to unprintable characters");
-        }
+        let s = str::from_utf8(&buf).with_context(err_context)?;
+        self.get_active_pane_mut(client_id)
+            .with_context(|| format!("no active pane found for client {client_id}"))
+            .map(|active_pane| {
+                active_pane.update_name(&clean_string_from_control_and_linebreak(s));
+            })?;
         Ok(())
     }
 
@@ -4704,6 +4696,9 @@ impl Tab {
     pub fn update_search_term(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             // It only allows terminating char(\0), printable unicode, delete and backspace keys.
+            // TODO: we should really remove this limitation to allow searching for emojis and
+            // other wide chars - currently the search mechanism itself ignores wide chars, so we
+            // should first fix that before removing this condition
             let is_updatable = buf
                 .iter()
                 .all(|u| matches!(u, 0x00 | 0x20..=0x7E | 0x08 | 0x7F));
@@ -5359,6 +5354,9 @@ impl Tab {
     }
     pub fn get_display_area(&self) -> Size {
         self.display_area.borrow().clone()
+    }
+    pub fn get_client_input_mode(&self, client_id: ClientId) -> Option<InputMode> {
+        self.mode_info.borrow().get(&client_id).map(|m| m.mode)
     }
     fn new_scrollback_editor_pane(&self, pid: u32) -> TerminalPane {
         let next_terminal_position = self.get_next_terminal_position();
