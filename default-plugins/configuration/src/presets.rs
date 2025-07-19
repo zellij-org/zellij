@@ -33,6 +33,7 @@ keybinds clear-defaults=true {{
         bind "r" {{ NewPane "Right"; SwitchToMode "Locked"; }}
         bind "s" {{ NewPane "stacked"; SwitchToMode "Locked"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Locked"; }}
+        bind "o" {{ CloseUnfocused; SwitchToMode "Locked"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Locked"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Locked"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Locked"; }}
@@ -247,6 +248,7 @@ keybinds clear-defaults=true {{
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
         bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
+        bind "o" {{ CloseUnfocused; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
@@ -394,6 +396,7 @@ keybinds clear-defaults=true {{
         bind "d" {{ Detach; }}
         bind "Space" {{ NextSwapLayout; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
+        bind "o" {{ CloseUnfocused; SwitchToMode "Normal"; }}
     }}
     shared_except "locked" {{
         bind "{primary_modifier} g" {{ SwitchToMode "Locked"; }}
@@ -472,6 +475,7 @@ keybinds clear-defaults=true {{
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
         bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
+        bind "o" {{ CloseUnfocused; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
@@ -609,6 +613,7 @@ keybinds clear-defaults=true {{
         bind "d" {{ Detach; }}
         bind "Space" {{ NextSwapLayout; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
+        bind "m" {{ CloseUnfocused; SwitchToMode "Normal"; }}
     }}
     shared_except "locked" {{
         bind "{secondary_modifier} n" {{ NewPane; }}
@@ -668,6 +673,7 @@ keybinds clear-defaults=true {{
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
         bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
+        bind "o" {{ CloseUnfocused; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
@@ -807,6 +813,7 @@ keybinds clear-defaults=true {{
         bind "d" {{ Detach; }}
         bind "Space" {{ NextSwapLayout; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
+        bind "m" {{ CloseUnfocused; SwitchToMode "Normal"; }}
     }}
     shared_except "locked" {{
         bind "{primary_modifier} g" {{ SwitchToMode "Locked"; }}
@@ -871,6 +878,7 @@ keybinds clear-defaults=true {{
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
         bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
+        bind "o" {{ CloseUnfocused; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
@@ -1003,6 +1011,7 @@ keybinds clear-defaults=true {{
         bind "d" {{ Detach; }}
         bind "Space" {{ NextSwapLayout; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
+        bind "m" {{ CloseUnfocused; SwitchToMode "Normal"; }}
     }}
     shared_except "normal" "locked" {{
         bind "Enter" "Esc" {{ SwitchToMode "Normal"; }}
@@ -1049,6 +1058,7 @@ keybinds clear-defaults=true {{
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
         bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
+        bind "o" {{ CloseUnfocused; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
@@ -1196,6 +1206,7 @@ keybinds clear-defaults=true {{
         bind "d" {{ Detach; }}
         bind "Space" {{ NextSwapLayout; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
+        bind "m" {{ CloseUnfocused; SwitchToMode "Normal"; }}
     }}
     shared_except "locked" {{
         bind "{primary_modifier} g" {{ SwitchToMode "Locked"; }}

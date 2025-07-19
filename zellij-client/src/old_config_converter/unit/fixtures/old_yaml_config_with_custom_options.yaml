@@ -134,6 +134,8 @@ keybinds:
           key: [Char: 'r',]
         - action: [CloseFocus, SwitchToMode: Normal,]
           key: [Char: 'x',]
+        - action: [CloseUnfocused, SwitchToMode: Normal,]
+          key: [Char: 'm',]
         - action: [ToggleFocusFullscreen, SwitchToMode: Normal,]
           key: [Char: 'f',]
         - action: [TogglePaneFrames, SwitchToMode: Normal,]

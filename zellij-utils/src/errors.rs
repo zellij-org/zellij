@@ -272,6 +272,7 @@ pub enum ScreenContext {
     HalfPageScrollDown,
     ClearScroll,
     CloseFocusedPane,
+    CloseUnfocusedPanes,
     ToggleActiveSyncTab,
     ToggleActiveTerminalFullscreen,
     TogglePaneFrames,

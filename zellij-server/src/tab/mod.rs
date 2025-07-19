@@ -3541,6 +3541,60 @@ impl Tab {
         }
         Ok(())
     }
+    pub fn close_unfocused_panes(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = |pane_id| {
+            format!("failed to close non-focused pane (ID {pane_id:?}) for client {client_id}")
+        };
+
+        if self.floating_panes.panes_are_visible() {
+            if let Some(active_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
+                let inactive_panes: Vec<PaneId> = self
+                    .tiled_panes
+                    .panes
+                    .keys()
+                    .filter_map(|id| {
+                        if *id != active_floating_pane_id {
+                            Some(id.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                for inactive_pane_id in inactive_panes {
+                    self.close_pane(inactive_pane_id, false);
+
+                    self.senders
+                        .send_to_pty(PtyInstruction::ClosePane(inactive_pane_id))
+                        .with_context(|| err_context(inactive_pane_id))?;
+                }
+                return Ok(());
+            }
+        }
+        if let Some(active_pane_id) = self.tiled_panes.get_active_pane_id(client_id) {
+            let inactive_panes: Vec<PaneId> = self
+                .tiled_panes
+                .panes
+                .keys()
+                .filter_map(|id| {
+                    if *id != active_pane_id {
+                        Some(id.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            for inactive_pane_id in inactive_panes {
+                self.close_pane(inactive_pane_id, false);
+
+                self.senders
+                    .send_to_pty(PtyInstruction::ClosePane(inactive_pane_id))
+                    .with_context(|| err_context(inactive_pane_id))?;
+            }
+        }
+        Ok(())
+    }
     pub fn clear_active_terminal_screen(&mut self, client_id: ClientId) -> Result<()> {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.clear_screen();

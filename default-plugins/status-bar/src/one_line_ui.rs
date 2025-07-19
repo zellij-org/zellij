@@ -1268,6 +1268,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             action_key_group(&km, &[&[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
                 &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
         (s("Close"), s("Close"), single_action_key(&km, &[A::CloseFocus, TO_NORMAL])),
+        (s("Close Other Panes"), s("Close Other Panes"), single_action_key(&km, &[A::CloseUnfocused, TO_NORMAL])),
         (s("Rename"), s("Rename"),
             single_action_key(&km, &[A::SwitchToMode(IM::RenamePane), A::PaneNameInput(vec![0])])),
         (s("Toggle Fullscreen"), s("Fullscreen"), single_action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),

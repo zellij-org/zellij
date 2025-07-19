@@ -679,6 +679,14 @@ pub fn close_focus() {
     unsafe { host_run_plugin_command() };
 }
 
+/// Close the unfocused panes (maximize active pane)
+pub fn close_unfocused() {
+    let plugin_command = PluginCommand::CloseUnfocused;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Turn the `STDIN` synchronization of the current tab on or off
 pub fn toggle_active_tab_sync() {
     let plugin_command = PluginCommand::ToggleActiveTabSync;

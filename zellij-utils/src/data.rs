@@ -2404,6 +2404,7 @@ pub enum PluginCommand {
     TogglePaneEmbedOrEject,
     UndoRenamePane,
     CloseFocus,
+    CloseUnfocused,
     ToggleActiveTabSync,
     CloseFocusedTab,
     UndoRenameTab,

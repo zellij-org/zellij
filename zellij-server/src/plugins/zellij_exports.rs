@@ -211,6 +211,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::TogglePaneEmbedOrEject => toggle_pane_embed_or_eject(env),
                     PluginCommand::UndoRenamePane => undo_rename_pane(env),
                     PluginCommand::CloseFocus => close_focus(env),
+                    PluginCommand::CloseUnfocused => close_unfocused(env),
                     PluginCommand::ToggleActiveTabSync => toggle_active_tab_sync(env),
                     PluginCommand::CloseFocusedTab => close_focused_tab(env),
                     PluginCommand::UndoRenameTab => undo_rename_tab(env),
@@ -1753,6 +1754,12 @@ fn close_focus(env: &PluginEnv) {
     apply_action!(action, error_msg, env);
 }
 
+fn close_unfocused(env: &PluginEnv) {
+    let error_msg = || format!("failed to close other panes in plugin {}", env.name());
+    let action = Action::CloseUnfocused;
+    apply_action!(action, error_msg, env);
+}
+
 fn toggle_active_tab_sync(env: &PluginEnv) {
     let error_msg = || format!("failed to toggle active tab sync in plugin {}", env.name());
     let action = Action::ToggleActiveSyncTab;
@@ -2617,6 +2624,7 @@ fn check_command_permission(
         | PluginCommand::TogglePaneEmbedOrEjectForPaneId(..)
         | PluginCommand::UndoRenamePane
         | PluginCommand::CloseFocus
+        | PluginCommand::CloseUnfocused
         | PluginCommand::ToggleActiveTabSync
         | PluginCommand::CloseFocusedTab
         | PluginCommand::UndoRenameTab

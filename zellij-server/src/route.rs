@@ -459,6 +459,11 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::CloseFocusedPane(client_id))
                 .with_context(err_context)?;
         },
+        Action::CloseUnfocused => {
+            senders
+                .send_to_screen(ScreenInstruction::CloseUnfocusedPanes(client_id))
+                .with_context(err_context)?;
+        },
         Action::NewTab(
             tab_layout,
             floating_panes_layout,

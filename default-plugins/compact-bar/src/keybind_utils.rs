@@ -330,6 +330,7 @@ impl KeybindProcessor {
                     |action: &Action| matches!(action, Action::MoveFocus(Direction::Up)),
                     |action: &Action| matches!(action, Action::MoveFocus(Direction::Right)),
                     |action: &Action| matches!(action, Action::CloseFocus),
+                    |action: &Action| matches!(action, Action::CloseUnfocused),
                     |action: &Action| matches!(action, Action::SwitchToMode(InputMode::RenamePane)),
                     |action: &Action| matches!(action, Action::ToggleFocusFullscreen),
                     |action: &Action| matches!(action, Action::ToggleFloatingPanes),
