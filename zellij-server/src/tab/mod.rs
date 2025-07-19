@@ -3219,7 +3219,7 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 return;
             }
-            self.tiled_panes.move_pane_right(pane_id);
+            self.tiled_panes.move_pane_right(pane_id, None);
         }
     }
     pub fn move_active_pane_left(&mut self, client_id: ClientId) {
@@ -5278,24 +5278,9 @@ impl Tab {
         }
         self.swap_layouts.set_is_tiled_damaged(); // TODO: verify we can do all the below first
         if self.pane_is_stacked(root_pane_id) {
-            if let Some(lowest_pane_id_in_stack) = self
-                .tiled_panes
-                .pane_ids_in_stack_of_pane_id(&root_pane_id)
-                .last()
-            {
-                // we get lowest_pane_id_in_stack so that we can extract the pane below and re-add
-                // it to its own stack - this has the effect of making it the last pane in the
-                // stack so that the rest of the panes will later be added below it - which makes
-                // sense from the perspective of the user
-                if let Some(pane) = self.extract_pane(root_pane_id, true) {
-                    self.tiled_panes
-                        .add_pane_to_stack(&lowest_pane_id_in_stack, pane);
-                }
-            }
             for pane in panes_to_stack.drain(..) {
                 self.tiled_panes.add_pane_to_stack(&root_pane_id, pane);
             }
-            self.tiled_panes.expand_pane_in_stack(root_pane_id);
         } else {
             // + 1 for the root pane
             let mut stack_geoms = self

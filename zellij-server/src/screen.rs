@@ -2768,13 +2768,14 @@ impl Screen {
         }
     }
     pub fn stack_panes(&mut self, mut pane_ids_to_stack: Vec<PaneId>) -> Option<PaneId> {
-        // if successful, returns the pane id of the root pane
+        // if successful, returns the pane id of the last pane in the stack
         if pane_ids_to_stack.is_empty() {
             log::error!("Got an empty list of pane_ids to stack");
             return None;
         }
         let stack_size = pane_ids_to_stack.len();
         let root_pane_id = pane_ids_to_stack.remove(0);
+        let last_pane_id = pane_ids_to_stack.last();
         let Some(root_tab_id) = self
             .tabs
             .iter()
@@ -2824,7 +2825,7 @@ impl Screen {
         self.tabs
             .get_mut(&root_tab_id)
             .map(|t| t.stack_panes(root_pane_id, panes_to_stack));
-        return Some(root_pane_id);
+        return last_pane_id.copied();
     }
     pub fn change_floating_panes_coordinates(
         &mut self,
@@ -5470,8 +5471,8 @@ pub(crate) fn screen_thread_main(
                 screen.set_floating_pane_pinned(pane_id, should_be_pinned);
             },
             ScreenInstruction::StackPanes(pane_ids_to_stack, client_id) => {
-                if let Some(root_pane_id) = screen.stack_panes(pane_ids_to_stack) {
-                    let _ = screen.focus_pane_with_id(root_pane_id, false, client_id);
+                if let Some(last_pane_id) = screen.stack_panes(pane_ids_to_stack) {
+                    let _ = screen.focus_pane_with_id(last_pane_id, false, client_id);
                     let _ = screen.unblock_input();
                     let _ = screen.render(None);
                     let pane_group = screen.get_client_pane_group(&client_id);

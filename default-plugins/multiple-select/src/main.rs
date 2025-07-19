@@ -186,20 +186,28 @@ impl App {
     fn update_grouped_panes(&mut self, pane_manifest: &PaneManifest, own_client_id: ClientId) {
         self.grouped_panes.clear();
         let mut count = 0;
+        let mut panes_with_index = Vec::new();
 
         for (_tab_index, pane_infos) in &pane_manifest.panes {
             for pane_info in pane_infos {
-                if pane_info.index_in_pane_group.get(&own_client_id).is_some() {
+                if let Some(index_in_pane_group) = pane_info.index_in_pane_group.get(&own_client_id) {
                     let pane_id = if pane_info.is_plugin {
                         PaneId::Plugin(pane_info.id)
                     } else {
                         PaneId::Terminal(pane_info.id)
                     };
-                    self.grouped_panes.push(pane_id);
+                    panes_with_index.push((*index_in_pane_group, pane_id));
                     count += 1;
                 }
             }
         }
+
+        panes_with_index.sort_by_key(|(index, _)| *index);
+
+        for (_, pane_id) in panes_with_index {
+            self.grouped_panes.push(pane_id);
+        }
+
         if count == 0 {
             self.close_self();
         }
