@@ -2791,6 +2791,16 @@ impl Screen {
             log::error!("Failed to find tab for root_pane_id: {:?}", root_pane_id);
             return None;
         };
+        let root_pane_id_is_floating = self.tabs.get(&root_tab_id).map(|t| t.pane_id_is_floating(&root_pane_id)).unwrap_or(false);
+
+        if root_pane_id_is_floating {
+            self.tabs.get_mut(&root_tab_id).map(|tab| {
+                let _ = tab.toggle_pane_embed_or_floating_for_pane_id(
+                    root_pane_id,
+                    None
+                );
+            });
+        }
 
         let mut panes_to_stack = vec![];
         let target_tab_has_room_for_stack = self
