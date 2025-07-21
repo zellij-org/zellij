@@ -2791,14 +2791,15 @@ impl Screen {
             log::error!("Failed to find tab for root_pane_id: {:?}", root_pane_id);
             return None;
         };
-        let root_pane_id_is_floating = self.tabs.get(&root_tab_id).map(|t| t.pane_id_is_floating(&root_pane_id)).unwrap_or(false);
+        let root_pane_id_is_floating = self
+            .tabs
+            .get(&root_tab_id)
+            .map(|t| t.pane_id_is_floating(&root_pane_id))
+            .unwrap_or(false);
 
         if root_pane_id_is_floating {
             self.tabs.get_mut(&root_tab_id).map(|tab| {
-                let _ = tab.toggle_pane_embed_or_floating_for_pane_id(
-                    root_pane_id,
-                    None
-                );
+                let _ = tab.toggle_pane_embed_or_floating_for_pane_id(root_pane_id, None);
             });
         }
 
@@ -3140,7 +3141,6 @@ impl Screen {
                     self.size,
                 );
             }
-
         } else {
             {
                 let mut current_pane_group = self.current_pane_group.borrow_mut();
@@ -5521,7 +5521,12 @@ pub(crate) fn screen_thread_main(
                 for_all_clients,
                 client_id,
             ) => {
-                screen.group_and_ungroup_panes(pane_ids_to_group, pane_ids_to_ungroup, for_all_clients, client_id);
+                screen.group_and_ungroup_panes(
+                    pane_ids_to_group,
+                    pane_ids_to_ungroup,
+                    for_all_clients,
+                    client_id,
+                );
                 let _ = screen.log_and_report_session_state();
             },
             ScreenInstruction::TogglePaneInGroup(client_id) => {

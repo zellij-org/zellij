@@ -2751,24 +2751,26 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
-            PluginCommand::GroupAndUngroupPanes(panes_to_group, panes_to_ungroup, for_all_clients) => {
-                Ok(ProtobufPluginCommand {
-                    name: CommandName::GroupAndUngroupPanes as i32,
-                    payload: Some(Payload::GroupAndUngroupPanesPayload(
-                        GroupAndUngroupPanesPayload {
-                            pane_ids_to_group: panes_to_group
-                                .iter()
-                                .filter_map(|&p| p.try_into().ok())
-                                .collect(),
-                            pane_ids_to_ungroup: panes_to_ungroup
-                                .iter()
-                                .filter_map(|&p| p.try_into().ok())
-                                .collect(),
-                            for_all_clients,
-                        },
-                    )),
-                })
-            },
+            PluginCommand::GroupAndUngroupPanes(
+                panes_to_group,
+                panes_to_ungroup,
+                for_all_clients,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::GroupAndUngroupPanes as i32,
+                payload: Some(Payload::GroupAndUngroupPanesPayload(
+                    GroupAndUngroupPanesPayload {
+                        pane_ids_to_group: panes_to_group
+                            .iter()
+                            .filter_map(|&p| p.try_into().ok())
+                            .collect(),
+                        pane_ids_to_ungroup: panes_to_ungroup
+                            .iter()
+                            .filter_map(|&p| p.try_into().ok())
+                            .collect(),
+                        for_all_clients,
+                    },
+                )),
+            }),
             PluginCommand::StartWebServer => Ok(ProtobufPluginCommand {
                 name: CommandName::StartWebServer as i32,
                 payload: None,

@@ -444,14 +444,16 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         close_plugin_after_replace,
                         context,
                     ),
-                    PluginCommand::GroupAndUngroupPanes(panes_to_group, panes_to_ungroup, for_all_clients) => {
-                        group_and_ungroup_panes(
-                            env,
-                            panes_to_group.into_iter().map(|p| p.into()).collect(),
-                            panes_to_ungroup.into_iter().map(|p| p.into()).collect(),
-                            for_all_clients,
-                        )
-                    },
+                    PluginCommand::GroupAndUngroupPanes(
+                        panes_to_group,
+                        panes_to_ungroup,
+                        for_all_clients,
+                    ) => group_and_ungroup_panes(
+                        env,
+                        panes_to_group.into_iter().map(|p| p.into()).collect(),
+                        panes_to_ungroup.into_iter().map(|p| p.into()).collect(),
+                        for_all_clients,
+                    ),
                     PluginCommand::HighlightAndUnhighlightPanes(
                         panes_to_highlight,
                         panes_to_unhighlight,

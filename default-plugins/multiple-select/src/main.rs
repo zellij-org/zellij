@@ -62,7 +62,7 @@ impl ZellijPlugin for App {
 
     fn render(&mut self, rows: usize, cols: usize) {
         self.update_current_size(rows, cols);
-        
+
         if self.grouped_panes_count == 0 {
             self.render_no_panes_message(rows, cols);
         } else {
@@ -110,7 +110,7 @@ impl App {
         let base_x = cols.saturating_sub(message.len()) / 2;
         let base_y = rows / 2;
         print_text_with_coordinates(message_component, base_x, base_y, None, None);
-        
+
         let esc_message = "<ESC> - close";
         let esc_message_component = Text::new(esc_message).color_substring(3, "<ESC>");
         let esc_base_x = cols.saturating_sub(esc_message.len()) / 2;
@@ -143,9 +143,12 @@ impl App {
         let count_text = if self.grouped_panes_count == 1 {
             format!("GROUP ACTIONS ({} SELECTED PANE)", self.grouped_panes_count)
         } else {
-            format!("GROUP ACTIONS ({} SELECTED PANES)", self.grouped_panes_count)
+            format!(
+                "GROUP ACTIONS ({} SELECTED PANES)",
+                self.grouped_panes_count
+            )
         };
-        
+
         let component = Text::new(&count_text).color_all(2);
         (Box::leak(count_text.into_boxed_str()), component)
     }
@@ -222,7 +225,7 @@ impl App {
                     } else {
                         PaneId::Terminal(pane_info.id)
                     };
-                    
+
                     self.all_client_grouped_panes
                         .entry(*client_id)
                         .or_insert_with(Vec::new)
@@ -279,7 +282,9 @@ impl App {
     }
 
     fn all_clients_have_empty_groups(&self) -> bool {
-        self.all_client_grouped_panes.values().all(|panes| panes.is_empty())
+        self.all_client_grouped_panes
+            .values()
+            .all(|panes| panes.is_empty())
     }
 
     fn doherty_threshold_elapsed_since_highlight(&self) -> bool {
@@ -448,14 +453,15 @@ impl App {
     }
 
     pub fn ungroup_panes_in_zellij(&mut self) {
-        let all_grouped_panes: Vec<PaneId> = self.all_client_grouped_panes
+        let all_grouped_panes: Vec<PaneId> = self
+            .all_client_grouped_panes
             .values()
             .flat_map(|panes| panes.iter().cloned())
             .collect();
         let for_all_clients = true;
         group_and_ungroup_panes(vec![], all_grouped_panes, for_all_clients);
     }
-    
+
     pub fn close_self(&mut self) {
         self.closing = true;
         close_self();
