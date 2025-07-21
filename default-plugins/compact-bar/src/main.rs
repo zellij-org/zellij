@@ -58,6 +58,7 @@ struct State {
     tooltip_is_active: bool,
     persist: bool,
     is_first_run: bool,
+    own_tab_index: Option<usize>,
 }
 
 struct TabRenderData {
@@ -103,6 +104,14 @@ impl ZellijPlugin for State {
         } else if message.name == MSG_TOGGLE_TOOLTIP
             && message.is_private
             && self.toggle_tooltip_key.is_some()
+            && self.own_tab_index == Some(self.active_tab_idx.saturating_sub(1))
+        // only launch
+        // tooltip once
+        // even if there
+        // are a few
+        // instances of
+        // compact-bar
+        // running
         {
             self.toggle_persisted_tooltip(self.mode_info.mode);
         }
@@ -224,7 +233,6 @@ impl State {
             self.tabs = tabs;
             should_render
         } else {
-            eprintln!("Could not find active tab.");
             false
         }
     }
@@ -233,6 +241,7 @@ impl State {
         if self.toggle_tooltip_key.is_some() {
             let previous_tooltip_state = self.tooltip_is_active;
             self.tooltip_is_active = self.detect_tooltip_presence(&pane_manifest);
+            self.own_tab_index = self.find_own_tab_index(&pane_manifest);
             previous_tooltip_state != self.tooltip_is_active
         } else {
             false
@@ -319,6 +328,17 @@ impl State {
             }
         }
         false
+    }
+
+    fn find_own_tab_index(&self, pane_manifest: &PaneManifest) -> Option<usize> {
+        for (tab_index, panes) in &pane_manifest.panes {
+            for pane in panes {
+                if pane.is_plugin && Some(pane.id) == self.own_plugin_id {
+                    return Some(*tab_index);
+                }
+            }
+        }
+        None
     }
 
     fn handle_tab_click(&self, col: usize) {
@@ -539,7 +559,7 @@ fn bind_toggle_key_config(toggle_key: &str) -> String {
                 bind "{}" {{
                   MessagePlugin "compact-bar" {{
                       name "toggle_tooltip"
-                      toggle_tooltip_key "{}"
+                      tooltip "{}"
                   }}
                 }}
             }}
