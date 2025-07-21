@@ -2519,7 +2519,8 @@ pub enum PluginCommand {
     ShareCurrentSession,
     StopSharingCurrentSession,
     OpenFileInPlaceOfPlugin(FileToOpen, bool, Context), // bool -> close_plugin_after_replace
-    GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>),     // panes to group, panes to ungroup
+    GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, bool),     // panes to group, panes to ungroup,
+                                                              // bool -> for all clients
     HighlightAndUnhighlightPanes(Vec<PaneId>, Vec<PaneId>), // panes to highlight, panes to
     // unhighlight
     CloseMultiplePanes(Vec<PaneId>),

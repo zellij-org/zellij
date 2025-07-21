@@ -444,11 +444,12 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         close_plugin_after_replace,
                         context,
                     ),
-                    PluginCommand::GroupAndUngroupPanes(panes_to_group, panes_to_ungroup) => {
+                    PluginCommand::GroupAndUngroupPanes(panes_to_group, panes_to_ungroup, for_all_clients) => {
                         group_and_ungroup_panes(
                             env,
                             panes_to_group.into_iter().map(|p| p.into()).collect(),
                             panes_to_ungroup.into_iter().map(|p| p.into()).collect(),
+                            for_all_clients,
                         )
                     },
                     PluginCommand::HighlightAndUnhighlightPanes(
@@ -2270,12 +2271,14 @@ fn group_and_ungroup_panes(
     env: &PluginEnv,
     panes_to_group: Vec<PaneId>,
     panes_to_ungroup: Vec<PaneId>,
+    for_all_clients: bool,
 ) {
     let _ = env
         .senders
         .send_to_screen(ScreenInstruction::GroupAndUngroupPanes(
             panes_to_group,
             panes_to_ungroup,
+            for_all_clients,
             env.client_id,
         ));
 }

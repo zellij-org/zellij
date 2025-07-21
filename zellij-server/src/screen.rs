@@ -412,7 +412,7 @@ pub enum ScreenInstruction {
     ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
     AddHighlightPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional
     // message
-    GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, ClientId), // panes_to_group, panes_to_ungroup
+    GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, bool, ClientId), // panes_to_group, panes_to_ungroup, bool -> for all clients
     HighlightAndUnhighlightPanes(Vec<PaneId>, Vec<PaneId>, ClientId), // panes_to_highlight, panes_to_unhighlight
     FloatMultiplePanes(Vec<PaneId>, ClientId),
     EmbedMultiplePanes(Vec<PaneId>, ClientId),
@@ -3128,16 +3128,29 @@ impl Screen {
         &mut self,
         pane_ids_to_group: Vec<PaneId>,
         pane_ids_to_ungroup: Vec<PaneId>,
+        for_all_clients: bool,
         client_id: ClientId,
     ) {
-        {
-            let mut current_pane_group = self.current_pane_group.borrow_mut();
-            current_pane_group.group_and_ungroup_panes(
-                pane_ids_to_group,
-                pane_ids_to_ungroup,
-                self.size,
-                &client_id,
-            );
+        if for_all_clients {
+            {
+                let mut current_pane_group = self.current_pane_group.borrow_mut();
+                current_pane_group.group_and_ungroup_panes_for_all_clients(
+                    pane_ids_to_group,
+                    pane_ids_to_ungroup,
+                    self.size,
+                );
+            }
+
+        } else {
+            {
+                let mut current_pane_group = self.current_pane_group.borrow_mut();
+                current_pane_group.group_and_ungroup_panes(
+                    pane_ids_to_group,
+                    pane_ids_to_ungroup,
+                    self.size,
+                    &client_id,
+                );
+            }
         }
         self.retain_only_existing_panes_in_pane_groups();
         let _ = self.log_and_report_session_state();
@@ -5505,9 +5518,10 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::GroupAndUngroupPanes(
                 pane_ids_to_group,
                 pane_ids_to_ungroup,
+                for_all_clients,
                 client_id,
             ) => {
-                screen.group_and_ungroup_panes(pane_ids_to_group, pane_ids_to_ungroup, client_id);
+                screen.group_and_ungroup_panes(pane_ids_to_group, pane_ids_to_ungroup, for_all_clients, client_id);
                 let _ = screen.log_and_report_session_state();
             },
             ScreenInstruction::TogglePaneInGroup(client_id) => {
