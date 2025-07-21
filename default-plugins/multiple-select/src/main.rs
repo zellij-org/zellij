@@ -190,7 +190,8 @@ impl App {
 
         for (_tab_index, pane_infos) in &pane_manifest.panes {
             for pane_info in pane_infos {
-                if let Some(index_in_pane_group) = pane_info.index_in_pane_group.get(&own_client_id) {
+                if let Some(index_in_pane_group) = pane_info.index_in_pane_group.get(&own_client_id)
+                {
                     let pane_id = if pane_info.is_plugin {
                         PaneId::Plugin(pane_info.id)
                     } else {

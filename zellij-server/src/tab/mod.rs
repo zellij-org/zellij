@@ -3219,7 +3219,7 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 return;
             }
-            self.tiled_panes.move_pane_right(pane_id, None);
+            self.tiled_panes.move_pane_right(pane_id);
         }
     }
     pub fn move_active_pane_left(&mut self, client_id: ClientId) {
