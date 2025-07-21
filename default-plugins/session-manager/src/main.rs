@@ -249,6 +249,7 @@ impl State {
                         .new_plugin_instance_should_have_pane_title(
                             "Select folder for the new session...",
                         )
+                        .new_plugin_instance_should_be_focused()
                         .with_args(args),
                 );
                 should_render = true;

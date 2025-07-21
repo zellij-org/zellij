@@ -545,6 +545,7 @@ message NewPluginArgs {
     optional string pane_title = 3;
     optional string cwd = 4;
     bool skip_cache = 5;
+    optional bool should_focus = 6;
 }
 
 message PaneId {
