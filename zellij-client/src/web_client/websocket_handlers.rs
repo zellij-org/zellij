@@ -37,8 +37,8 @@ pub async fn ws_handler_terminal(
 }
 
 async fn handle_ws_control(socket: WebSocket, state: AppState) {
-    let config = SetConfigPayload::from(&state.config);
-    let set_config_msg = WebServerToWebClientControlMessage::SetConfig(config);
+    let payload = SetConfigPayload::from(&*state.config.lock().unwrap());
+    let set_config_msg = WebServerToWebClientControlMessage::SetConfig(payload);
 
     let (control_socket_tx, mut control_socket_rx) = socket.split();
 
@@ -136,7 +136,7 @@ async fn handle_ws_terminal(
         os_input.clone(),
         state.connection_table.clone(),
         session_name.map(|p| p.0),
-        state.config.clone(),
+        state.config.lock().unwrap().clone(),
         state.config_options.clone(),
         Some(state.config_file_path.clone()),
         web_client_id.clone(),
@@ -160,6 +160,8 @@ async fn handle_ws_terminal(
 
     let explicitly_disable_kitty_keyboard_protocol = state
         .config
+        .lock()
+        .unwrap()
         .options
         .support_kitty_keyboard_protocol
         .map(|e| !e)

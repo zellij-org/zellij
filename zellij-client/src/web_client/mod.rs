@@ -220,23 +220,22 @@ pub async fn serve_web_client(
         }
     });
 
-    tokio::spawn({
-        let server_handle = server_handle.clone();
-        let connection_table = connection_table.clone();
-        async move {
-            listen_to_web_server_instructions(server_handle, connection_table, &format!("{}", id))
-                .await;
-        }
-    });
-
     let state = AppState {
-        connection_table,
-        config,
+        connection_table: connection_table.clone(),
+        config: Arc::new(Mutex::new(config)),
         config_options,
         config_file_path,
         session_manager,
         client_os_api_factory,
     };
+
+    tokio::spawn({
+        let server_handle = server_handle.clone();
+        let state = state.clone();
+        async move {
+            listen_to_web_server_instructions(server_handle, state, &format!("{}", id)).await;
+        }
+    });
 
     let app = Router::new()
         .route("/ws/control", any(ws_handler_control))

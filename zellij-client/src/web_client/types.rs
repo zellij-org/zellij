@@ -164,7 +164,7 @@ impl ClientConnectionBus {
 #[derive(Clone)]
 pub struct AppState {
     pub connection_table: Arc<Mutex<ConnectionTable>>,
-    pub config: Config,
+    pub config: Arc<Mutex<Config>>,
     pub config_options: Options,
     pub config_file_path: PathBuf,
     pub session_manager: Arc<dyn SessionManager>,
