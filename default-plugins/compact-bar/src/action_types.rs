@@ -34,6 +34,7 @@ pub enum ActionType {
     NewTab,
     Detach,
     Quit,
+    NewStackedPane,
     Other(String), // Fallback for unhandled actions
 }
 
@@ -75,6 +76,7 @@ impl ActionType {
             },
             ActionType::SwitchToMode(input_mode) => format!("{:?}", input_mode),
             ActionType::TogglePaneEmbedOrFloating => "Float or embed".to_string(),
+            ActionType::NewStackedPane => "New stacked pane".to_string(),
             ActionType::ToggleFocusFullscreen => "Toggle fullscreen".to_string(),
             ActionType::ToggleFloatingPanes => "Show/hide floating panes".to_string(),
             ActionType::CloseFocus => "Close pane".to_string(),
@@ -101,6 +103,7 @@ impl ActionType {
             Action::Search(_) => ActionType::Search,
             Action::NewPane(Some(_), _, _) => ActionType::NewPaneWithDirection,
             Action::NewPane(None, _, _) => ActionType::NewPaneWithoutDirection,
+            Action::NewStackedPane(_, _) => ActionType::NewStackedPane,
             Action::BreakPaneLeft | Action::BreakPaneRight => ActionType::BreakPaneLeftOrRight,
             Action::GoToPreviousTab | Action::GoToNextTab => ActionType::GoToAdjacentTab,
             Action::ScrollUp | Action::ScrollDown => ActionType::Scroll,
