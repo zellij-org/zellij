@@ -715,6 +715,7 @@ pub(crate) fn plugin_thread_main(
                             &mut wasm_bridge,
                             &plugin_aliases,
                             floating_pane_coordinates,
+                            None,
                         );
                     },
                     None => {
@@ -777,6 +778,7 @@ pub(crate) fn plugin_thread_main(
                                 &mut wasm_bridge,
                                 &plugin_aliases,
                                 floating_pane_coordinates,
+                                None,
                             );
                         },
                         None => {
@@ -842,6 +844,7 @@ pub(crate) fn plugin_thread_main(
                             &mut wasm_bridge,
                             &plugin_aliases,
                             floating_pane_coordinates,
+                            message.new_plugin_args.and_then(|n| n.should_focus),
                         );
                     },
                     (None, Some(destination_plugin_id)) => {
@@ -1047,6 +1050,7 @@ fn pipe_to_specific_plugins(
     wasm_bridge: &mut WasmBridge,
     plugin_aliases: &PluginAliases,
     floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+    should_focus: Option<bool>,
 ) {
     let is_private = true;
     let size = Size::default();
@@ -1069,6 +1073,7 @@ fn pipe_to_specific_plugins(
                 pane_id_to_replace.clone(),
                 cli_client_id,
                 floating_pane_coordinates,
+                should_focus.unwrap_or(false),
             );
             for (plugin_id, client_id) in all_plugin_ids {
                 pipe_messages.push((

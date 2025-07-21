@@ -468,6 +468,7 @@ impl NewPluginScreen {
                         .new_plugin_instance_should_have_pane_title(
                             "Select a .wasm file to load as a plugin...",
                         )
+                        .new_plugin_instance_should_be_focused()
                         .with_args(args),
                 );
             },

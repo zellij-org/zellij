@@ -660,6 +660,8 @@ pub struct NewPluginArgs {
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag="5")]
     pub skip_cache: bool,
+    #[prost(bool, optional, tag="6")]
+    pub should_focus: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

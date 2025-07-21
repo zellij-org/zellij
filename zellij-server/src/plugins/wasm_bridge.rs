@@ -1427,6 +1427,7 @@ impl WasmBridge {
         pane_id_to_replace: Option<PaneId>,
         cli_client_id: Option<ClientId>,
         floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+        should_focus: bool,
     ) -> Vec<(PluginId, Option<ClientId>)> {
         let run_plugin = run_plugin_or_alias.get_run_plugin();
         match run_plugin {
@@ -1453,8 +1454,6 @@ impl WasmBridge {
                     ) {
                         Ok((plugin_id, client_id)) => {
                             let start_suppressed = false;
-                            let should_focus = Some(false); // we should not focus plugins that
-                                                            // were started from another plugin
                             drop(self.senders.send_to_screen(ScreenInstruction::AddPlugin(
                                 Some(should_float),
                                 should_be_open_in_place,
@@ -1466,7 +1465,7 @@ impl WasmBridge {
                                 cwd,
                                 start_suppressed,
                                 floating_pane_coordinates,
-                                should_focus,
+                                Some(should_focus),
                                 Some(client_id),
                             )));
                             vec![(plugin_id, Some(client_id))]

@@ -971,6 +971,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                 pane_title: protobuf_new_plugin_args.pane_title,
                                 cwd: protobuf_new_plugin_args.cwd.map(|cwd| PathBuf::from(cwd)),
                                 skip_cache: protobuf_new_plugin_args.skip_cache,
+                                should_focus: protobuf_new_plugin_args.should_focus,
                             })
                         }),
                         destination_plugin_id,
@@ -2260,6 +2261,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                                 pane_title: m_t_p.pane_title,
                                 cwd: m_t_p.cwd.map(|cwd| cwd.display().to_string()),
                                 skip_cache: m_t_p.skip_cache,
+                                should_focus: m_t_p.should_focus,
                             }
                         }),
                         destination_plugin_id: message_to_plugin.destination_plugin_id,
