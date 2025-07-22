@@ -173,8 +173,10 @@ pub enum PtyInstruction {
     Reconfigure {
         client_id: ClientId,
         default_editor: Option<PathBuf>,
+        post_command_discovery_hook: Option<String>,
     },
     ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
+    ReportPluginCwd(PluginId, PathBuf),
     Exit,
 }
 
@@ -198,6 +200,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::ListClientsMetadata(..) => PtyContext::ListClientsMetadata,
             PtyInstruction::Reconfigure { .. } => PtyContext::Reconfigure,
             PtyInstruction::ListClientsToPlugin(..) => PtyContext::ListClientsToPlugin,
+            PtyInstruction::ReportPluginCwd(..) => PtyContext::ReportPluginCwd,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -211,6 +214,8 @@ pub(crate) struct Pty {
     debug_to_file: bool,
     task_handles: HashMap<u32, JoinHandle<()>>, // terminal_id to join-handle
     default_editor: Option<PathBuf>,
+    post_command_discovery_hook: Option<String>,
+    plugin_cwds: HashMap<u32, PathBuf>, // plugin_id -> cwd
 }
 
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
@@ -233,7 +238,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         Some(TerminalAction::RunCommand(run_command)) => (
                             run_command.hold_on_close,
                             Some(run_command.clone()),
-                            Some(name.unwrap_or_else(|| run_command.to_string())),
+                            if run_command.use_terminal_title {
+                                None
+                            } else {
+                                Some(name.unwrap_or_else(|| run_command.to_string()))
+                            },
                             None,
                         ),
                         Some(TerminalAction::OpenFile(open_file_payload)) => {
@@ -359,7 +368,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     Some(TerminalAction::RunCommand(run_command)) => (
                         run_command.hold_on_close,
                         Some(run_command.clone()),
-                        Some(name.unwrap_or_else(|| run_command.to_string())),
+                        if run_command.use_terminal_title {
+                            None
+                        } else {
+                            Some(name.unwrap_or_else(|| run_command.to_string()))
+                        },
                     ),
                     _ => (false, None, name),
                 };
@@ -666,6 +679,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     .with_context(err_context)
                     .non_fatal();
             },
+            PtyInstruction::ReportPluginCwd(plugin_id, cwd) => {
+                pty.plugin_cwds.insert(plugin_id, cwd);
+            },
             PtyInstruction::LogLayoutToHd(mut session_layout_metadata) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
@@ -718,9 +734,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             },
             PtyInstruction::Reconfigure {
                 default_editor,
+                post_command_discovery_hook,
                 client_id: _,
             } => {
-                pty.reconfigure(default_editor);
+                pty.reconfigure(default_editor, post_command_discovery_hook);
             },
             PtyInstruction::Exit => break,
         }
@@ -733,6 +750,7 @@ impl Pty {
         bus: Bus<PtyInstruction>,
         debug_to_file: bool,
         default_editor: Option<PathBuf>,
+        post_command_discovery_hook: Option<String>,
     ) -> Self {
         Pty {
             active_panes: HashMap::new(),
@@ -742,6 +760,8 @@ impl Pty {
             task_handles: HashMap::new(),
             default_editor,
             originating_plugins: HashMap::new(),
+            post_command_discovery_hook,
+            plugin_cwds: HashMap::new(),
         }
     }
     pub fn get_default_terminal(
@@ -790,27 +810,31 @@ impl Pty {
                     .active_panes
                     .get(&client_id)
                     .and_then(|pane| match pane {
-                        PaneId::Plugin(..) => None,
-                        PaneId::Terminal(id) => self.id_to_child_pid.get(id),
+                        PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
+                        PaneId::Terminal(id) => self.id_to_child_pid.get(id).and_then(|&id| {
+                            self.bus
+                                .os_input
+                                .as_ref()
+                                .and_then(|input| input.get_cwd(Pid::from_raw(id)))
+                        }),
                     })
-                    .and_then(|&id| {
-                        self.bus
-                            .os_input
-                            .as_ref()
-                            .and_then(|input| input.get_cwd(Pid::from_raw(id)))
-                    });
             };
         };
     }
-    fn fill_cwd_from_pane_id(&self, terminal_action: &mut TerminalAction, pane_id: &u32) {
+    fn fill_cwd_from_pane_id(&self, terminal_action: &mut TerminalAction, pane_id: &PaneId) {
         if let TerminalAction::RunCommand(run_command) = terminal_action {
             if run_command.cwd.is_none() {
-                run_command.cwd = self.id_to_child_pid.get(pane_id).and_then(|&id| {
-                    self.bus
-                        .os_input
-                        .as_ref()
-                        .and_then(|input| input.get_cwd(Pid::from_raw(id)))
-                });
+                run_command.cwd = match pane_id {
+                    PaneId::Terminal(terminal_pane_id) => {
+                        self.id_to_child_pid.get(terminal_pane_id).and_then(|&id| {
+                            self.bus
+                                .os_input
+                                .as_ref()
+                                .and_then(|input| input.get_cwd(Pid::from_raw(id)))
+                        })
+                    },
+                    PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
+                };
             };
         };
     }
@@ -836,9 +860,7 @@ impl Pty {
             ClientTabIndexOrPaneId::PaneId(pane_id) => {
                 let mut terminal_action =
                     terminal_action.unwrap_or_else(|| self.get_default_terminal(None, None));
-                if let PaneId::Terminal(terminal_pane_id) = pane_id {
-                    self.fill_cwd_from_pane_id(&mut terminal_action, &terminal_pane_id);
-                }
+                self.fill_cwd_from_pane_id(&mut terminal_action, &pane_id);
                 terminal_action
             },
         };
@@ -1412,7 +1434,7 @@ impl Pty {
             .filter_map(|id| self.id_to_child_pid.get(&id))
             .map(|pid| Pid::from_raw(*pid))
             .collect();
-        let pids_to_cwds = self
+        let (pids_to_cwds, pids_to_cmds) = self
             .bus
             .os_input
             .as_ref()
@@ -1422,7 +1444,7 @@ impl Pty {
             .bus
             .os_input
             .as_ref()
-            .map(|os_input| os_input.get_all_cmds_by_ppid())
+            .map(|os_input| os_input.get_all_cmds_by_ppid(&self.post_command_discovery_hook))
             .unwrap_or_default();
 
         for terminal_id in terminal_ids {
@@ -1430,10 +1452,15 @@ impl Pty {
             let cwd = process_id
                 .as_ref()
                 .and_then(|pid| pids_to_cwds.get(&Pid::from_raw(**pid)));
-            let cmd = process_id
+            let cmd_sysinfo = process_id
+                .as_ref()
+                .and_then(|pid| pids_to_cmds.get(&Pid::from_raw(**pid)));
+            let cmd_ps = process_id
                 .as_ref()
                 .and_then(|pid| ppids_to_cmds.get(&format!("{}", pid)));
-            if let Some(cmd) = cmd {
+            if let Some(cmd) = cmd_ps {
+                terminal_ids_to_commands.insert(terminal_id, cmd.clone());
+            } else if let Some(cmd) = cmd_sysinfo {
                 terminal_ids_to_commands.insert(terminal_id, cmd.clone());
             }
             if let Some(cwd) = cwd {
@@ -1464,18 +1491,24 @@ impl Pty {
             self.active_panes
                 .get(&client_id)
                 .and_then(|pane| match pane {
-                    PaneId::Plugin(..) => None,
-                    PaneId::Terminal(id) => self.id_to_child_pid.get(id),
-                })
-                .and_then(|&id| {
-                    self.bus
-                        .os_input
-                        .as_ref()
-                        .and_then(|input| input.get_cwd(Pid::from_raw(id)))
+                    PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
+                    PaneId::Terminal(id) => self.id_to_child_pid.get(id).and_then(|&id| {
+                        self.bus
+                            .os_input
+                            .as_ref()
+                            .and_then(|input| input.get_cwd(Pid::from_raw(id)))
+                    }),
                 })
         };
 
         let cwd = cwd.or_else(get_focused_cwd);
+        let focused_plugin_id = self
+            .active_panes
+            .get(&client_id)
+            .and_then(|pane| match pane {
+                PaneId::Plugin(plugin_id) => Some(*plugin_id),
+                _ => None,
+            });
 
         if let RunPluginOrAlias::Alias(alias) = &mut run {
             let cwd = get_focused_cwd();
@@ -1491,14 +1524,20 @@ impl Pty {
             client_id,
             size,
             cwd,
+            focused_plugin_id,
             skip_cache,
             should_focus_plugin,
             floating_pane_coordinates,
         ))?;
         Ok(())
     }
-    pub fn reconfigure(&mut self, default_editor: Option<PathBuf>) {
+    pub fn reconfigure(
+        &mut self,
+        default_editor: Option<PathBuf>,
+        post_command_discovery_hook: Option<String>,
+    ) {
         self.default_editor = default_editor;
+        self.post_command_discovery_hook = post_command_discovery_hook;
     }
 }
 

@@ -16,7 +16,7 @@ pub use super::generated_api::api::{
         HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
         ListTokensResponse, LoadNewPluginPayload, MessageToPluginPayload,
         MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload, MovePayload,
-        NewPluginArgs as ProtobufNewPluginArgs, NewTabsWithLayoutInfoPayload,
+        NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload, NewTabsWithLayoutInfoPayload,
         OpenCommandPaneFloatingNearPluginPayload, OpenCommandPaneInPlaceOfPluginPayload,
         OpenCommandPaneNearPluginPayload, OpenCommandPanePayload,
         OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
@@ -474,11 +474,18 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for NewTabsWithLayout"),
             },
-            Some(CommandName::NewTab) => {
-                if protobuf_plugin_command.payload.is_some() {
-                    return Err("NewTab should not have a payload");
-                }
-                Ok(PluginCommand::NewTab)
+            Some(CommandName::NewTab) => match protobuf_plugin_command.payload {
+                Some(Payload::NewTabPayload(protobuf_new_tab_payload)) => {
+                    Ok(PluginCommand::NewTab {
+                        name: protobuf_new_tab_payload.name,
+                        cwd: protobuf_new_tab_payload.cwd,
+                    })
+                },
+                None => Ok(PluginCommand::NewTab {
+                    name: None,
+                    cwd: None,
+                }),
+                _ => Err("Mismatched payload for NewTab"),
             },
             Some(CommandName::GoToNextTab) => {
                 if protobuf_plugin_command.payload.is_some() {
@@ -964,6 +971,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                 pane_title: protobuf_new_plugin_args.pane_title,
                                 cwd: protobuf_new_plugin_args.cwd.map(|cwd| PathBuf::from(cwd)),
                                 skip_cache: protobuf_new_plugin_args.skip_cache,
+                                should_focus: protobuf_new_plugin_args.should_focus,
                             })
                         }),
                         destination_plugin_id,
@@ -1583,6 +1591,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                             .into_iter()
                             .filter_map(|p| p.try_into().ok())
                             .collect(),
+                        group_and_ungroup_panes_payload.for_all_clients,
                     ))
                 },
                 _ => Err("Mismatched payload for GroupAndUngroupPanes"),
@@ -1886,9 +1895,9 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::NewTabsWithLayout as i32,
                 payload: Some(Payload::NewTabsWithLayoutPayload(raw_layout)),
             }),
-            PluginCommand::NewTab => Ok(ProtobufPluginCommand {
+            PluginCommand::NewTab { name, cwd } => Ok(ProtobufPluginCommand {
                 name: CommandName::NewTab as i32,
-                payload: None,
+                payload: Some(Payload::NewTabPayload(NewTabPayload { name, cwd })),
             }),
             PluginCommand::GoToNextTab => Ok(ProtobufPluginCommand {
                 name: CommandName::GoToNextTab as i32,
@@ -2253,6 +2262,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                                 pane_title: m_t_p.pane_title,
                                 cwd: m_t_p.cwd.map(|cwd| cwd.display().to_string()),
                                 skip_cache: m_t_p.skip_cache,
+                                should_focus: m_t_p.should_focus,
                             }
                         }),
                         destination_plugin_id: message_to_plugin.destination_plugin_id,
@@ -2741,23 +2751,26 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
-            PluginCommand::GroupAndUngroupPanes(panes_to_group, panes_to_ungroup) => {
-                Ok(ProtobufPluginCommand {
-                    name: CommandName::GroupAndUngroupPanes as i32,
-                    payload: Some(Payload::GroupAndUngroupPanesPayload(
-                        GroupAndUngroupPanesPayload {
-                            pane_ids_to_group: panes_to_group
-                                .iter()
-                                .filter_map(|&p| p.try_into().ok())
-                                .collect(),
-                            pane_ids_to_ungroup: panes_to_ungroup
-                                .iter()
-                                .filter_map(|&p| p.try_into().ok())
-                                .collect(),
-                        },
-                    )),
-                })
-            },
+            PluginCommand::GroupAndUngroupPanes(
+                panes_to_group,
+                panes_to_ungroup,
+                for_all_clients,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::GroupAndUngroupPanes as i32,
+                payload: Some(Payload::GroupAndUngroupPanesPayload(
+                    GroupAndUngroupPanesPayload {
+                        pane_ids_to_group: panes_to_group
+                            .iter()
+                            .filter_map(|&p| p.try_into().ok())
+                            .collect(),
+                        pane_ids_to_ungroup: panes_to_ungroup
+                            .iter()
+                            .filter_map(|&p| p.try_into().ok())
+                            .collect(),
+                        for_all_clients,
+                    },
+                )),
+            }),
             PluginCommand::StartWebServer => Ok(ProtobufPluginCommand {
                 name: CommandName::StartWebServer as i32,
                 payload: None,

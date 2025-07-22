@@ -265,7 +265,13 @@ message PluginCommand {
     RevokeWebLoginTokenPayload revoke_web_login_token_payload = 109;
     RenameWebLoginTokenPayload rename_web_login_token_payload = 110;
     ReplacePaneWithExistingPanePayload replace_pane_with_existing_pane_payload = 111;
+    NewTabPayload new_tab_payload = 112;
   }
+}
+
+message NewTabPayload {
+  optional string name = 1;
+  optional string cwd = 2;
 }
 
 message ReplacePaneWithExistingPanePayload {
@@ -310,6 +316,7 @@ message HighlightAndUnhighlightPanesPayload {
 message GroupAndUngroupPanesPayload {
   repeated PaneId pane_ids_to_group = 1;
   repeated PaneId pane_ids_to_ungroup = 2;
+  bool for_all_clients = 3;
 }
 
 message OpenFileInPlaceOfPluginPayload {
@@ -539,6 +546,7 @@ message NewPluginArgs {
     optional string pane_title = 3;
     optional string cwd = 4;
     bool skip_cache = 5;
+    optional bool should_focus = 6;
 }
 
 message PaneId {

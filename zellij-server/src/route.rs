@@ -257,10 +257,14 @@ pub(crate) fn route_action(
         },
         Action::NewPane(direction, name, start_suppressed) => {
             let shell = default_shell.clone();
-            senders.send_to_pty(PtyInstruction::SpawnTerminal(
+            let new_pane_placement = match direction {
+                Some(direction) => NewPanePlacement::Tiled(Some(direction)),
+                None => NewPanePlacement::NoPreference,
+            };
+            let _ = senders.send_to_pty(PtyInstruction::SpawnTerminal(
                 shell,
                 name,
-                NewPanePlacement::Tiled(direction),
+                new_pane_placement,
                 start_suppressed,
                 ClientTabIndexOrPaneId::ClientId(client_id),
             ));
@@ -462,6 +466,7 @@ pub(crate) fn route_action(
             swap_floating_layouts,
             tab_name,
             should_change_focus_to_new_tab,
+            cwd,
         ) => {
             let shell = default_shell.clone();
             let swap_tiled_layouts =
@@ -471,7 +476,7 @@ pub(crate) fn route_action(
             let is_web_client = false; // actions cannot be initiated directly from the web
             senders
                 .send_to_screen(ScreenInstruction::NewTab(
-                    None,
+                    cwd,
                     shell,
                     tab_layout,
                     floating_panes_layout,
@@ -1108,6 +1113,7 @@ pub(crate) fn route_thread_main(
                             plugin_aliases,
                             should_launch_setup_wizard,
                             is_web_client,
+                            layout_is_welcome_screen,
                         ) => {
                             let new_client_instruction = ServerInstruction::NewClient(
                                 client_attributes,
@@ -1118,6 +1124,7 @@ pub(crate) fn route_thread_main(
                                 plugin_aliases,
                                 should_launch_setup_wizard,
                                 is_web_client,
+                                layout_is_welcome_screen,
                                 client_id,
                             );
                             to_server

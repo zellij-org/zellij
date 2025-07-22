@@ -348,7 +348,7 @@ pub enum ScreenContext {
     UpdateSessionInfos,
     ReplacePane,
     NewInPlacePluginPane,
-    DumpLayoutToHd,
+    SerializeLayoutForResurrection,
     RenameSession,
     DumpLayoutToPlugin,
     ListClientsMetadata,
@@ -412,6 +412,7 @@ pub enum PtyContext {
     ListClientsMetadata,
     Reconfigure,
     ListClientsToPlugin,
+    ReportPluginCwd,
     Exit,
 }
 
@@ -477,6 +478,7 @@ pub enum ClientContext {
     QueryTerminalSize,
     WriteConfigToDisk,
     StartWebServer,
+    RenamedSession,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.

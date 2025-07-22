@@ -722,7 +722,7 @@ pub enum CliAction {
         name: Option<String>,
 
         /// Change the working directory of the new tab
-        #[clap(short, long, value_parser, requires("layout"))]
+        #[clap(short, long, value_parser)]
         cwd: Option<PathBuf>,
     },
     /// Move the focused tab in the specified direction. [right|left]

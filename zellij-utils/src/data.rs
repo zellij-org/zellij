@@ -1,3 +1,4 @@
+use crate::home::default_layout_dir;
 use crate::input::actions::Action;
 use crate::input::config::ConversionError;
 use crate::input::keybinds::Keybinds;
@@ -1672,6 +1673,34 @@ impl LayoutInfo {
             LayoutInfo::Stringified(_stringified) => false,
         }
     }
+    pub fn from_config(
+        layout_dir: &Option<PathBuf>,
+        default_layout: &Option<PathBuf>,
+    ) -> Option<Self> {
+        match default_layout {
+            Some(default_layout) => {
+                if default_layout.extension().is_some() || default_layout.components().count() > 1 {
+                    let Some(layout_dir) = layout_dir
+                        .as_ref()
+                        .map(|l| l.clone())
+                        .or_else(default_layout_dir)
+                    else {
+                        return None;
+                    };
+                    Some(LayoutInfo::File(
+                        layout_dir.join(default_layout).display().to_string(),
+                    ))
+                } else if default_layout.starts_with("http://")
+                    || default_layout.starts_with("https://")
+                {
+                    Some(LayoutInfo::Url(default_layout.display().to_string()))
+                } else {
+                    Some(LayoutInfo::BuiltIn(default_layout.display().to_string()))
+                }
+            },
+            None => None,
+        }
+    }
 }
 
 use std::hash::{Hash, Hasher};
@@ -1959,6 +1988,7 @@ pub struct NewPluginArgs {
     pub pane_title: Option<String>,
     pub cwd: Option<PathBuf>,
     pub skip_cache: bool,
+    pub should_focus: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -2046,6 +2076,11 @@ impl MessageToPlugin {
     pub fn new_plugin_instance_should_skip_cache(mut self) -> Self {
         let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.skip_cache = true;
+        self
+    }
+    pub fn new_plugin_instance_should_be_focused(mut self) -> Self {
+        let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        new_plugin_args.should_focus = Some(true);
         self
     }
 }
@@ -2344,7 +2379,10 @@ pub enum PluginCommand {
     ShowSelf(bool), // bool - should float if hidden
     SwitchToMode(InputMode),
     NewTabsWithLayout(String), // raw kdl layout
-    NewTab,
+    NewTab {
+        name: Option<String>,
+        cwd: Option<String>,
+    },
     GoToNextTab,
     GoToPreviousTab,
     Resize(Resize),
@@ -2481,7 +2519,8 @@ pub enum PluginCommand {
     ShareCurrentSession,
     StopSharingCurrentSession,
     OpenFileInPlaceOfPlugin(FileToOpen, bool, Context), // bool -> close_plugin_after_replace
-    GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>),     // panes to group, panes to ungroup
+    GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, bool), // panes to group, panes to ungroup,
+    // bool -> for all clients
     HighlightAndUnhighlightPanes(Vec<PaneId>, Vec<PaneId>), // panes to highlight, panes to
     // unhighlight
     CloseMultiplePanes(Vec<PaneId>),

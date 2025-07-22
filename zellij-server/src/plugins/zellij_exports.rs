@@ -179,7 +179,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::NewTabsWithLayoutInfo(layout_info) => {
                         new_tabs_with_layout_info(env, layout_info)?
                     },
-                    PluginCommand::NewTab => new_tab(env),
+                    PluginCommand::NewTab { name, cwd } => new_tab(env, name, cwd),
                     PluginCommand::GoToNextTab => go_to_next_tab(env),
                     PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
                     PluginCommand::Resize(resize_payload) => resize(env, resize_payload),
@@ -444,13 +444,16 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         close_plugin_after_replace,
                         context,
                     ),
-                    PluginCommand::GroupAndUngroupPanes(panes_to_group, panes_to_ungroup) => {
-                        group_and_ungroup_panes(
-                            env,
-                            panes_to_group.into_iter().map(|p| p.into()).collect(),
-                            panes_to_ungroup.into_iter().map(|p| p.into()).collect(),
-                        )
-                    },
+                    PluginCommand::GroupAndUngroupPanes(
+                        panes_to_group,
+                        panes_to_ungroup,
+                        for_all_clients,
+                    ) => group_and_ungroup_panes(
+                        env,
+                        panes_to_group.into_iter().map(|p| p.into()).collect(),
+                        panes_to_ungroup.into_iter().map(|p| p.into()).collect(),
+                        for_all_clients,
+                    ),
                     PluginCommand::HighlightAndUnhighlightPanes(
                         panes_to_highlight,
                         panes_to_unhighlight,
@@ -816,6 +819,7 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
+            use_terminal_title: true,
             ..Default::default()
         })
     });
@@ -833,6 +837,7 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
+            use_terminal_title: true,
             ..Default::default()
         })
     });
@@ -857,6 +862,7 @@ fn open_terminal_floating(
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
+            use_terminal_title: true,
             ..Default::default()
         })
     });
@@ -878,6 +884,7 @@ fn open_terminal_floating_near_plugin(
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
+            use_terminal_title: true,
             ..Default::default()
         })
     });
@@ -898,6 +905,7 @@ fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
+            use_terminal_title: true,
             ..Default::default()
         })
     });
@@ -919,6 +927,7 @@ fn open_terminal_in_place_of_plugin(
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
+            use_terminal_title: true,
             ..Default::default()
         })
     });
@@ -947,6 +956,7 @@ fn open_command_pane_in_place_of_plugin(
     let hold_on_close = true;
     let hold_on_start = false;
     let name = None;
+    let use_terminal_title = false; // TODO: support this
     let run_command_action = RunCommandAction {
         command,
         args,
@@ -959,6 +969,7 @@ fn open_command_pane_in_place_of_plugin(
             env.client_id,
             context,
         )),
+        use_terminal_title,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
     let _ = env
@@ -984,6 +995,7 @@ fn open_command_pane(
     let hold_on_close = true;
     let hold_on_start = false;
     let name = None;
+    let use_terminal_title = false; // TODO: support this
     let run_command_action = RunCommandAction {
         command,
         args,
@@ -996,6 +1008,7 @@ fn open_command_pane(
             env.client_id,
             context,
         )),
+        use_terminal_title,
     };
     let action = Action::NewTiledPane(direction, Some(run_command_action), name);
     apply_action!(action, error_msg, env);
@@ -1013,6 +1026,7 @@ fn open_command_pane_near_plugin(
     let hold_on_close = true;
     let hold_on_start = false;
     let name = None;
+    let use_terminal_title = false; // TODO: support this
     let run_command_action = RunCommandAction {
         command,
         args,
@@ -1025,6 +1039,7 @@ fn open_command_pane_near_plugin(
             env.client_id,
             context,
         )),
+        use_terminal_title,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
@@ -1050,6 +1065,7 @@ fn open_command_pane_floating(
     let hold_on_close = true;
     let hold_on_start = false;
     let name = None;
+    let use_terminal_title = false; // TODO: support this
     let run_command_action = RunCommandAction {
         command,
         args,
@@ -1062,6 +1078,7 @@ fn open_command_pane_floating(
             env.client_id,
             context,
         )),
+        use_terminal_title,
     };
     let action = Action::NewFloatingPane(Some(run_command_action), name, floating_pane_coordinates);
     apply_action!(action, error_msg, env);
@@ -1080,6 +1097,7 @@ fn open_command_pane_floating_near_plugin(
     let hold_on_close = true;
     let hold_on_start = false;
     let name = None;
+    let use_terminal_title = false; // TODO: support this
     let run_command_action = RunCommandAction {
         command,
         args,
@@ -1092,6 +1110,7 @@ fn open_command_pane_floating_near_plugin(
             env.client_id,
             context,
         )),
+        use_terminal_title,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
@@ -1116,6 +1135,7 @@ fn open_command_pane_in_place(
     let hold_on_close = true;
     let hold_on_start = false;
     let name = None;
+    let use_terminal_title = false; // TODO: support this
     let run_command_action = RunCommandAction {
         command,
         args,
@@ -1128,6 +1148,7 @@ fn open_command_pane_in_place(
             env.client_id,
             context,
         )),
+        use_terminal_title,
     };
     let action = Action::NewInPlacePane(Some(run_command_action), name);
     apply_action!(action, error_msg, env);
@@ -1149,6 +1170,7 @@ fn open_command_pane_background(
     let hold_on_start = false;
     let start_suppressed = true;
     let name = None;
+    let use_terminal_title = false; // TODO: support this
     let run_command_action = RunCommandAction {
         command,
         args,
@@ -1161,6 +1183,7 @@ fn open_command_pane_background(
             env.client_id,
             context,
         )),
+        use_terminal_title,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
@@ -1431,6 +1454,7 @@ fn new_tabs_with_layout_info(env: &PluginEnv, layout_info: LayoutInfo) -> Result
 fn apply_layout(env: &PluginEnv, layout: Layout) {
     let mut tabs_to_open = vec![];
     let tabs = layout.tabs();
+    let cwd = None; // TODO: add this to the plugin API
     if tabs.is_empty() {
         let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
         let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
@@ -1441,6 +1465,7 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
             swap_floating_layouts,
             None,
             true,
+            cwd,
         );
         tabs_to_open.push(action);
     } else {
@@ -1458,6 +1483,7 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
                 swap_floating_layouts,
                 tab_name,
                 should_focus_tab,
+                cwd.clone(),
             );
             tabs_to_open.push(action);
         }
@@ -1468,8 +1494,9 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
     }
 }
 
-fn new_tab(env: &PluginEnv) {
-    let action = Action::NewTab(None, vec![], None, None, None, true);
+fn new_tab(env: &PluginEnv, name: Option<String>, cwd: Option<String>) {
+    let cwd = cwd.map(|c| PathBuf::from(c));
+    let action = Action::NewTab(None, vec![], None, None, name, true, cwd);
     let error_msg = || format!("Failed to open new tab");
     apply_action!(action, error_msg, env);
 }
@@ -2113,6 +2140,7 @@ fn break_panes_to_new_tab(
     let default_shell = env.default_shell.clone().or_else(|| {
         Some(TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
+            use_terminal_title: true,
             ..Default::default()
         }))
     });
@@ -2197,6 +2225,7 @@ fn load_new_plugin(
                     client_id,
                     size,
                     cwd,
+                    None,
                     skip_cache,
                     None,
                     None,
@@ -2244,12 +2273,14 @@ fn group_and_ungroup_panes(
     env: &PluginEnv,
     panes_to_group: Vec<PaneId>,
     panes_to_ungroup: Vec<PaneId>,
+    for_all_clients: bool,
 ) {
     let _ = env
         .senders
         .send_to_screen(ScreenInstruction::GroupAndUngroupPanes(
             panes_to_group,
             panes_to_ungroup,
+            for_all_clients,
             env.client_id,
         ));
 }
@@ -2554,7 +2585,7 @@ fn check_command_permission(
         | PluginCommand::SwitchToMode(..)
         | PluginCommand::NewTabsWithLayout(..)
         | PluginCommand::NewTabsWithLayoutInfo(..)
-        | PluginCommand::NewTab
+        | PluginCommand::NewTab { .. }
         | PluginCommand::GoToNextTab
         | PluginCommand::GoToPreviousTab
         | PluginCommand::Resize(..)

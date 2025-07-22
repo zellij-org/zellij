@@ -1,5 +1,4 @@
 use crate::os_input_output::ClientOsApi;
-use crate::report_changes_in_config_file;
 use crate::web_client::control_message::WebServerToWebClientControlMessage;
 use crate::web_client::session_management::build_initial_connection;
 use crate::web_client::types::{ClientConnectionBus, ConnectionTable, SessionManager};
@@ -34,13 +33,14 @@ pub fn zellij_server_listener(
             move || {
                 let mut client_connection_bus =
                     ClientConnectionBus::new(&web_client_id, &connection_table);
-                let mut reconnect_to_session = match build_initial_connection(session_name) {
-                    Ok(initial_session_connection) => initial_session_connection,
-                    Err(e) => {
-                        log::error!("{}", e);
-                        return;
-                    },
-                };
+                let (mut reconnect_to_session, is_welcome_screen) =
+                    match build_initial_connection(session_name, &config) {
+                        Ok(initial_session_connection) => initial_session_connection,
+                        Err(e) => {
+                            log::error!("{}", e);
+                            return;
+                        },
+                    };
                 'reconnect_loop: loop {
                     let reconnect_info = reconnect_to_session.take();
                     let path = {
@@ -91,14 +91,11 @@ pub fn zellij_server_listener(
                         is_web_client,
                         os_input.clone(),
                         reconnect_info.as_ref().and_then(|r| r.layout.clone()),
+                        is_welcome_screen,
                     );
 
                     os_input.connect_to_server(&zellij_ipc_pipe);
                     os_input.send_to_server(first_message);
-
-                    let mut args_for_report = CliArgs::default();
-                    args_for_report.config = config_file_path.clone();
-                    report_changes_in_config_file(&args_for_report, &os_input);
 
                     client_connection_bus.send_control(
                         WebServerToWebClientControlMessage::SwitchedSession {
@@ -143,6 +140,13 @@ pub fn zellij_server_listener(
                             Some((ServerToClientMsg::LogError(lines), _)) => {
                                 client_connection_bus.send_control(
                                     WebServerToWebClientControlMessage::LogError { lines },
+                                );
+                            },
+                            Some((ServerToClientMsg::RenamedSession(new_session_name), _)) => {
+                                client_connection_bus.send_control(
+                                    WebServerToWebClientControlMessage::SwitchedSession {
+                                        new_session_name,
+                                    },
                                 );
                             },
                             _ => {

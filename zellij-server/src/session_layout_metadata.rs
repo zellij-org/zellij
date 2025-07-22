@@ -144,14 +144,39 @@ impl SessionLayoutMetadata {
     fn pane_count(&self) -> usize {
         let mut pane_count = 0;
         for tab in &self.tabs {
-            for _tiled_pane in &tab.tiled_panes {
-                pane_count += 1;
+            for tiled_pane in &tab.tiled_panes {
+                if !self.should_exclude_from_count(tiled_pane) {
+                    pane_count += 1;
+                }
             }
-            for _floating_pane in &tab.floating_panes {
-                pane_count += 1;
+            for floating_pane in &tab.floating_panes {
+                if !self.should_exclude_from_count(floating_pane) {
+                    pane_count += 1;
+                }
             }
         }
         pane_count
+    }
+    fn should_exclude_from_count(&self, pane: &PaneLayoutMetadata) -> bool {
+        if let Some(Run::Plugin(run_plugin)) = &pane.run {
+            let location_string = run_plugin.location_string();
+            if location_string == "zellij:about" {
+                return true;
+            }
+            if location_string == "zellij:session-manager" {
+                return true;
+            }
+            if location_string == "zellij:plugin-manager" {
+                return true;
+            }
+            if location_string == "zellij:configuration-manager" {
+                return true;
+            }
+            if location_string == "zellij:share" {
+                return true;
+            }
+        }
+        false
     }
     fn is_default_shell(
         default_shell: Option<&PathBuf>,

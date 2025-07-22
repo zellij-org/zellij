@@ -775,6 +775,27 @@ impl WasmBridge {
         }
         Ok(())
     }
+    pub fn get_plugin_cwd(&self, plugin_id: PluginId, client_id: ClientId) -> Option<PathBuf> {
+        self.plugin_map
+            .lock()
+            .unwrap()
+            .running_plugins()
+            .iter()
+            .find_map(|(p_id, c_id, running_plugin)| {
+                if p_id == &plugin_id && c_id == &client_id {
+                    let plugin_cwd = running_plugin
+                        .lock()
+                        .unwrap()
+                        .store
+                        .data()
+                        .plugin_cwd
+                        .clone();
+                    Some(plugin_cwd)
+                } else {
+                    None
+                }
+            })
+    }
     pub fn change_plugin_host_dir(
         &mut self,
         new_host_dir: PathBuf,
@@ -793,12 +814,6 @@ impl WasmBridge {
             .running_plugins_and_subscriptions()
             .iter()
             .cloned()
-            .filter(|(plugin_id, _client_id, _running_plugin, _subscriptions)| {
-                // TODO: cache this somehow in this case...
-                !&self
-                    .cached_events_for_pending_plugins
-                    .contains_key(&plugin_id)
-            })
             .collect();
         task::spawn({
             let senders = self.senders.clone();
@@ -1412,6 +1427,7 @@ impl WasmBridge {
         pane_id_to_replace: Option<PaneId>,
         cli_client_id: Option<ClientId>,
         floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+        should_focus: bool,
     ) -> Vec<(PluginId, Option<ClientId>)> {
         let run_plugin = run_plugin_or_alias.get_run_plugin();
         match run_plugin {
@@ -1438,8 +1454,6 @@ impl WasmBridge {
                     ) {
                         Ok((plugin_id, client_id)) => {
                             let start_suppressed = false;
-                            let should_focus = Some(false); // we should not focus plugins that
-                                                            // were started from another plugin
                             drop(self.senders.send_to_screen(ScreenInstruction::AddPlugin(
                                 Some(should_float),
                                 should_be_open_in_place,
@@ -1451,7 +1465,7 @@ impl WasmBridge {
                                 cwd,
                                 start_suppressed,
                                 floating_pane_coordinates,
-                                should_focus,
+                                Some(should_focus),
                                 Some(client_id),
                             )));
                             vec![(plugin_id, Some(client_id))]

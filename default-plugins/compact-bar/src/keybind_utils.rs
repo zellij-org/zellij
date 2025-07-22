@@ -50,7 +50,6 @@ impl KeybindProcessor {
                             let should_add_brackets_to_keys = mode != InputMode::Normal;
 
                             // Check if this is switching to normal mode
-                            // let is_switching_to_locked = matches!(first_action, Action::SwitchToMode(InputMode::Normal));
                             let is_switching_to_locked =
                                 matches!(first_action, Action::SwitchToMode(InputMode::Locked));
 
@@ -334,6 +333,7 @@ impl KeybindProcessor {
                     |action: &Action| matches!(action, Action::ToggleFocusFullscreen),
                     |action: &Action| matches!(action, Action::ToggleFloatingPanes),
                     |action: &Action| matches!(action, Action::TogglePaneEmbedOrFloating),
+                    |action: &Action| matches!(action, Action::NewStackedPane(None, None)),
                     |action: &Action| {
                         matches!(action, Action::NewPane(Some(Direction::Right), None, false))
                     },
@@ -348,7 +348,10 @@ impl KeybindProcessor {
                     |action: &Action| matches!(action, Action::GoToPreviousTab),
                     |action: &Action| matches!(action, Action::GoToNextTab),
                     |action: &Action| {
-                        matches!(action, Action::NewTab(None, _, None, None, None, true))
+                        matches!(
+                            action,
+                            Action::NewTab(None, _, None, None, None, true, None)
+                        )
                     },
                     |action: &Action| matches!(action, Action::CloseTab),
                     |action: &Action| matches!(action, Action::SwitchToMode(InputMode::RenameTab)),

@@ -696,11 +696,10 @@ impl Action {
                 Some(node)
             },
             Action::UndoRenamePane => Some(KdlNode::new("UndoRenamePane")),
-            Action::NewTab(_, _, _, _, name, should_change_focus_to_new_tab) => {
-                log::warn!("Converting new tab action without arguments, original action saved to .bak.kdl file");
+            Action::NewTab(_, _, _, _, name, should_change_focus_to_new_tab, cwd) => {
                 let mut node = KdlNode::new("NewTab");
+                let mut children = KdlDocument::new();
                 if let Some(name) = name {
-                    let mut children = KdlDocument::new();
                     let mut name_node = KdlNode::new("name");
                     if !should_change_focus_to_new_tab {
                         let mut should_change_focus_to_new_tab_node =
@@ -712,6 +711,13 @@ impl Action {
                     }
                     name_node.push(name.clone());
                     children.nodes_mut().push(name_node);
+                }
+                if let Some(cwd) = cwd {
+                    let mut cwd_node = KdlNode::new("cwd");
+                    cwd_node.push(cwd.display().to_string());
+                    children.nodes_mut().push(cwd_node);
+                }
+                if name.is_some() || cwd.is_some() {
                     node.set_children(children);
                 }
                 Some(node)
@@ -1472,7 +1478,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "NewTab" => {
                 let command_metadata = action_children.iter().next();
                 if command_metadata.is_none() {
-                    return Ok(Action::NewTab(None, vec![], None, None, None, true));
+                    return Ok(Action::NewTab(None, vec![], None, None, None, true, None));
                 }
 
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -1508,7 +1514,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     &raw_layout,
                     path_to_raw_layout,
                     swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())),
-                    cwd,
+                    cwd.clone(),
                 )
                 .map_err(|e| {
                     ConfigError::new_kdl_error(
@@ -1540,6 +1546,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         swap_floating_layouts,
                         name,
                         should_change_focus_to_new_tab,
+                        cwd,
                     ))
                 } else {
                     let (layout, floating_panes_layout) = layout.new_tab();
@@ -1552,6 +1559,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         swap_floating_layouts,
                         name,
                         should_change_focus_to_new_tab,
+                        cwd,
                     ))
                 }
             },
@@ -2391,6 +2399,9 @@ impl Options {
         let enforce_https_for_localhost =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "enforce_https_for_localhost")
                 .map(|(v, _)| v);
+        let post_command_discovery_hook =
+            kdl_property_first_arg_as_string_or_error!(kdl_options, "post_command_discovery_hook")
+                .map(|(hook, _entry)| hook.to_string());
 
         Ok(Options {
             simplified_ui,
@@ -2431,6 +2442,7 @@ impl Options {
             web_server_cert,
             web_server_key,
             enforce_https_for_localhost,
+            post_command_discovery_hook,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -3554,6 +3566,36 @@ impl Options {
             None
         }
     }
+    fn post_command_discovery_hook_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// A command to run (will be wrapped with sh -c and provided the RESURRECT_COMMAND env variable) ",
+            "// after Zellij attempts to discover a command inside a pane when resurrecting sessions, the STDOUT",
+            "// of this command will be used instead of the discovered RESURRECT_COMMAND",
+            "// can be useful for removing wrappers around commands",
+            "// Note: be sure to escape backslashes and similar characters properly",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("post_command_discovery_hook");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(post_command_discovery_hook) = &self.post_command_discovery_hook {
+            let mut node = create_node(&post_command_discovery_hook);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("echo $RESURRECT_COMMAND | sed <your_regex_here>");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
@@ -3675,6 +3717,11 @@ impl Options {
         }
         if let Some(web_server_port) = self.web_server_port_to_kdl(add_comments) {
             nodes.push(web_server_port);
+        }
+        if let Some(post_command_discovery_hook) =
+            self.post_command_discovery_hook_to_kdl(add_comments)
+        {
+            nodes.push(post_command_discovery_hook);
         }
         nodes
     }

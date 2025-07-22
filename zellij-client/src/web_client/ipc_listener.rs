@@ -5,6 +5,7 @@ use axum_server::Handle;
 use tokio::io::AsyncReadExt;
 use tokio::net::{UnixListener, UnixStream};
 use zellij_utils::consts::WEBSERVER_SOCKET_PATH;
+use zellij_utils::ipc::ClientToServerMsg;
 use zellij_utils::web_server_commands::InstructionForWebServer;
 
 pub async fn create_webserver_receiver(
@@ -86,6 +87,16 @@ pub async fn listen_to_web_server_instructions(server_handle: Handle, state: App
                                             );
                                         },
                                     }
+                                }
+                                if let Some(os_input) = connection_table
+                                    .lock()
+                                    .unwrap()
+                                    .get_client_os_api(&client_id)
+                                {
+                                    // notify the zellij server of the config change
+                                    os_input.send_to_server(
+                                        ClientToServerMsg::ConfigWrittenToDisk(new_config.clone()),
+                                    );
                                 }
                             }
                             // Continue loop to recreate receiver for next message

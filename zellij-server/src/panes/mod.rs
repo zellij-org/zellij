@@ -1,5 +1,6 @@
 pub mod alacritty_functions;
 pub mod grid;
+pub mod hyperlink_tracker;
 pub mod link_handler;
 pub mod selection;
 pub mod sixel;
@@ -9,7 +10,7 @@ mod active_panes;
 pub mod floating_panes;
 mod plugin_pane;
 mod search;
-mod terminal_pane;
+pub mod terminal_pane;
 mod tiled_panes;
 
 pub use active_panes::*;

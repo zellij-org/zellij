@@ -21,16 +21,17 @@ pub fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
         Ok(files) => {
             let mut sessions = Vec::new();
             files.for_each(|file| {
-                let file = file.unwrap();
-                let file_name = file.file_name().into_string().unwrap();
-                let ctime = std::fs::metadata(&file.path())
-                    .ok()
-                    .and_then(|f| f.created().ok())
-                    .and_then(|d| d.elapsed().ok())
-                    .unwrap_or_default();
-                let duration = Duration::from_secs(ctime.as_secs());
-                if file.file_type().unwrap().is_socket() && assert_socket(&file_name) {
-                    sessions.push((file_name, duration));
+                if let Ok(file) = file {
+                    let file_name = file.file_name().into_string().unwrap();
+                    let ctime = std::fs::metadata(&file.path())
+                        .ok()
+                        .and_then(|f| f.created().ok())
+                        .and_then(|d| d.elapsed().ok())
+                        .unwrap_or_default();
+                    let duration = Duration::from_secs(ctime.as_secs());
+                    if file.file_type().unwrap().is_socket() && assert_socket(&file_name) {
+                        sessions.push((file_name, duration));
+                    }
                 }
             });
             Ok(sessions)
@@ -40,7 +41,7 @@ pub fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
     }
 }
 
-pub fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
+pub fn get_resurrectable_sessions() -> Vec<(String, Duration)> {
     match fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
         Ok(files_in_session_info_folder) => {
             let files_that_are_folders = files_in_session_info_folder
@@ -50,29 +51,11 @@ pub fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
                 .filter_map(|folder_name| {
                     let layout_file_name =
                         session_layout_cache_file_name(&folder_name.display().to_string());
-                    let raw_layout = match std::fs::read_to_string(&layout_file_name) {
-                        Ok(raw_layout) => raw_layout,
-                        Err(_e) => {
-                            return None;
-                        },
-                    };
                     let ctime = match std::fs::metadata(&layout_file_name)
                         .and_then(|metadata| metadata.created())
                     {
                         Ok(created) => Some(created),
                         Err(_e) => None,
-                    };
-                    let layout = match Layout::from_kdl(
-                        &raw_layout,
-                        Some(layout_file_name.display().to_string()),
-                        None,
-                        None,
-                    ) {
-                        Ok(layout) => layout,
-                        Err(e) => {
-                            log::error!("Failed to parse resurrection layout file: {}", e);
-                            return None;
-                        },
                     };
                     let elapsed_duration = ctime
                         .map(|ctime| {
@@ -82,7 +65,7 @@ pub fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
                     let session_name = folder_name
                         .file_name()
                         .map(|f| std::path::PathBuf::from(f).display().to_string())?;
-                    Some((session_name, elapsed_duration, layout))
+                    Some((session_name, elapsed_duration))
                 })
                 .collect()
         },
@@ -291,7 +274,7 @@ pub fn list_sessions(no_formatting: bool, short: bool, reverse: bool) {
             let resurrectable_sessions = get_resurrectable_sessions();
             let mut all_sessions: HashMap<String, (Duration, bool)> = resurrectable_sessions
                 .iter()
-                .map(|(name, timestamp, _layout)| (name.clone(), (timestamp.clone(), true)))
+                .map(|(name, timestamp)| (name.clone(), (timestamp.clone(), true)))
                 .collect();
             for (session_name, duration) in running_sessions {
                 all_sessions.insert(session_name.clone(), (duration, false));
@@ -362,17 +345,34 @@ pub fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
 }
 
 // if the session is resurrecable, the returned layout is the one to be used to resurrect it
-pub fn resurrection_layout(session_name_to_resurrect: &str) -> Option<Layout> {
-    let resurrectable_sessions = get_resurrectable_sessions();
-    resurrectable_sessions
-        .iter()
-        .find_map(|(name, _timestamp, layout)| {
-            if name == session_name_to_resurrect {
-                Some(layout.clone())
-            } else {
-                None
-            }
-        })
+pub fn resurrection_layout(session_name_to_resurrect: &str) -> Result<Option<Layout>, String> {
+    let layout_file_name = session_layout_cache_file_name(&session_name_to_resurrect);
+    let raw_layout = match std::fs::read_to_string(&layout_file_name) {
+        Ok(raw_layout) => raw_layout,
+        Err(_e) => {
+            return Ok(None);
+        },
+    };
+    match Layout::from_kdl(
+        &raw_layout,
+        Some(layout_file_name.display().to_string()),
+        None,
+        None,
+    ) {
+        Ok(layout) => Ok(Some(layout)),
+        Err(e) => {
+            log::error!(
+                "Failed to parse resurrection layout file {}: {}",
+                layout_file_name.display(),
+                e
+            );
+            return Err(format!(
+                "Failed to parse resurrection layout file {}: {}.",
+                layout_file_name.display(),
+                e
+            ));
+        },
+    }
 }
 
 pub fn assert_session(name: &str) {

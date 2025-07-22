@@ -90,7 +90,7 @@ pub(crate) fn delete_all_sessions(yes: bool, force: bool) {
     } else {
         resurrectable_sessions
             .iter()
-            .filter(|(name, _, _)| !active_sessions.contains(name))
+            .filter(|(name, _)| !active_sessions.contains(name))
             .cloned()
             .collect()
     };
@@ -576,6 +576,8 @@ pub(crate) fn start_client(opts: CliArgs) {
             process::exit(1);
         },
     };
+    let layout_is_welcome_screen = opts.layout == Some(PathBuf::from("welcome"))
+        || config.options.default_layout == Some(PathBuf::from("welcome"));
 
     let mut reconnect_to_session: Option<ConnectToSession> = None;
     let os_input = get_os_input(get_client_os_input);
@@ -697,7 +699,15 @@ pub(crate) fn start_client(opts: CliArgs) {
                     .and_then(|s| session_exists(&s).ok())
                     .unwrap_or(false);
                 let resurrection_layout =
-                    session_name.as_ref().and_then(|s| resurrection_layout(&s));
+                    session_name
+                        .as_ref()
+                        .and_then(|s| match resurrection_layout(&s) {
+                            Ok(layout) => layout,
+                            Err(e) => {
+                                eprintln!("{}", e);
+                                process::exit(2);
+                            },
+                        });
                 if (create || should_create_detached)
                     && !session_exists
                     && resurrection_layout.is_none()
@@ -750,6 +760,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                 pane_id_to_focus,
                 is_a_reconnect,
                 should_create_detached,
+                layout_is_welcome_screen,
             );
         } else {
             if let Some(session_name) = opts.session.clone() {
@@ -765,6 +776,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     None,
                     is_a_reconnect,
                     should_create_detached,
+                    layout_is_welcome_screen,
                 );
             } else {
                 if let Some(session_name) = config_options.session_name.as_ref() {
@@ -806,6 +818,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 None,
                                 is_a_reconnect,
                                 should_create_detached,
+                                layout_is_welcome_screen,
                             );
                         },
                         _ => {
@@ -821,6 +834,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 None,
                                 is_a_reconnect,
                                 should_create_detached,
+                                layout_is_welcome_screen,
                             );
                         },
                     }
@@ -845,6 +859,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     None,
                     is_a_reconnect,
                     should_create_detached,
+                    layout_is_welcome_screen,
                 );
             }
         }

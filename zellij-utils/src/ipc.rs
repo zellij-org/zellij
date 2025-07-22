@@ -80,6 +80,7 @@ pub enum ClientToServerMsg {
         Box<PluginAliases>,
         bool, // should launch setup wizard
         bool, // is_web_client
+        bool, // layout_is_welcome_screen
     ),
     AttachClient(
         ClientAttributes,
@@ -115,6 +116,7 @@ pub enum ServerToClientMsg {
     QueryTerminalSize,
     WriteConfigToDisk { config: String },
     StartWebServer,
+    RenamedSession(String), // String -> new session name
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

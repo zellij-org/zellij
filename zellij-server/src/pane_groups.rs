@@ -94,6 +94,35 @@ impl PaneGroups {
             self.launch_plugin(screen_size, client_id);
         }
     }
+    pub fn group_and_ungroup_panes_for_all_clients(
+        &mut self,
+        pane_ids_to_group: Vec<PaneId>,
+        pane_ids_to_ungroup: Vec<PaneId>,
+        screen_size: Size,
+    ) {
+        let previous_groups = self.clone_inner();
+        let mut should_launch = false;
+        let all_connected_clients: Vec<ClientId> = self.panes_in_group.keys().copied().collect();
+
+        for client_id in &all_connected_clients {
+            let client_pane_group = self
+                .panes_in_group
+                .entry(*client_id)
+                .or_insert_with(|| vec![]);
+            client_pane_group.append(&mut pane_ids_to_group.clone());
+            client_pane_group.retain(|p| !pane_ids_to_ungroup.contains(p));
+
+            if self.should_launch_plugin(&previous_groups, &client_id) {
+                should_launch = true;
+            }
+        }
+
+        if should_launch {
+            if let Some(first_client) = all_connected_clients.first() {
+                self.launch_plugin(screen_size, first_client);
+            }
+        }
+    }
     pub fn override_groups_with(&mut self, new_pane_groups: HashMap<ClientId, Vec<PaneId>>) {
         self.panes_in_group = new_pane_groups;
     }

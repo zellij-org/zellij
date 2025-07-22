@@ -61,6 +61,7 @@ pub(crate) enum ClientInstruction {
     QueryTerminalSize,
     WriteConfigToDisk { config: String },
     StartWebServer,
+    RenamedSession(String), // String -> new session name
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -86,6 +87,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
                 ClientInstruction::WriteConfigToDisk { config }
             },
             ServerToClientMsg::StartWebServer => ClientInstruction::StartWebServer,
+            ServerToClientMsg::RenamedSession(name) => ClientInstruction::RenamedSession(name),
         }
     }
 }
@@ -109,6 +111,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::QueryTerminalSize => ClientContext::QueryTerminalSize,
             ClientInstruction::WriteConfigToDisk { .. } => ClientContext::WriteConfigToDisk,
             ClientInstruction::StartWebServer => ClientContext::StartWebServer,
+            ClientInstruction::RenamedSession(..) => ClientContext::RenamedSession,
         }
     }
 }
@@ -217,6 +220,7 @@ pub fn start_client(
     pane_id_to_focus: Option<(u32, bool)>, // (pane_id, is_plugin)
     is_a_reconnect: bool,
     start_detached_and_exit: bool,
+    layout_is_welcome_screen: bool,
 ) -> Option<ConnectToSession> {
     if start_detached_and_exit {
         start_server_detached(os_input, opts, config, config_options, info, layout);
@@ -339,6 +343,7 @@ pub fn start_client(
                     Box::new(config.plugins.clone()),
                     is_web_client,
                     should_launch_setup_wizard,
+                    layout_is_welcome_screen,
                 ),
                 ipc_pipe,
             )
@@ -741,6 +746,7 @@ pub fn start_server_detached(
                     Box::new(config.plugins.clone()),
                     is_web_client,
                     should_launch_setup_wizard,
+                    false,
                 ),
                 ipc_pipe,
             )
