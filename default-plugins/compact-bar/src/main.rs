@@ -59,6 +59,7 @@ struct State {
     persist: bool,
     is_first_run: bool,
     own_tab_index: Option<usize>,
+    own_client_id: u16,
 }
 
 struct TabRenderData {
@@ -72,10 +73,12 @@ register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
+        let plugin_ids = get_plugin_ids();
+        self.own_plugin_id = Some(plugin_ids.plugin_id);
+        self.own_client_id = plugin_ids.client_id;
         self.initialize_configuration(configuration);
         self.setup_subscriptions();
         self.configure_keybinds();
-        self.own_plugin_id = Some(get_plugin_ids().plugin_id);
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -104,14 +107,10 @@ impl ZellijPlugin for State {
         } else if message.name == MSG_TOGGLE_TOOLTIP
             && message.is_private
             && self.toggle_tooltip_key.is_some()
+            // only launch once per plugin instance
             && self.own_tab_index == Some(self.active_tab_idx.saturating_sub(1))
-        // only launch
-        // tooltip once
-        // even if there
-        // are a few
-        // instances of
-        // compact-bar
-        // running
+            // only launch once per client of plugin instance
+            && Some(format!("{}", self.own_client_id)) == message.payload
         {
             self.toggle_persisted_tooltip(self.mode_info.mode);
         }
@@ -166,7 +165,7 @@ impl State {
     fn configure_keybinds(&self) {
         if !self.is_tooltip && self.toggle_tooltip_key.is_some() {
             if let Some(toggle_key) = &self.toggle_tooltip_key {
-                reconfigure(bind_toggle_key_config(toggle_key), false);
+                reconfigure(bind_toggle_key_config(toggle_key, self.own_client_id), false);
             }
         }
     }
@@ -551,7 +550,7 @@ impl State {
     }
 }
 
-fn bind_toggle_key_config(toggle_key: &str) -> String {
+fn bind_toggle_key_config(toggle_key: &str, client_id: u16) -> String {
     format!(
         r#"
         keybinds {{
@@ -560,11 +559,12 @@ fn bind_toggle_key_config(toggle_key: &str) -> String {
                   MessagePlugin "compact-bar" {{
                       name "toggle_tooltip"
                       tooltip "{}"
+                      payload "{}"
                   }}
                 }}
             }}
         }}
     "#,
-        toggle_key, toggle_key
+        toggle_key, toggle_key, client_id
     )
 }
