@@ -1,6 +1,5 @@
 ---
 source: src/tests/e2e/cases.rs
-assertion_line: 239
 expression: last_snapshot
 ---
  Zellij 
@@ -22,4 +21,4 @@ expression: last_snapshot
 │      │
 │      │
 └──────┘
-...     
+ Ctrl +
