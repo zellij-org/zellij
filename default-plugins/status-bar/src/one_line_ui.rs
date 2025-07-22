@@ -993,7 +993,10 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             let len = std::cmp::max(max_len.saturating_sub(3), 3);
             LinePart { part, len }
         } else {
-            LinePart { part: "".to_owned(), len: 0 }
+            LinePart {
+                part: "".to_owned(),
+                len: 0,
+            }
         }
     }
 }
