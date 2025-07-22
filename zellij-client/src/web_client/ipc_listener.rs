@@ -88,7 +88,8 @@ pub async fn listen_to_web_server_instructions(server_handle: Handle, state: App
                                         },
                                     }
                                 }
-                                if let Some(os_input) = connection_table
+                                if let Some(os_input) = state
+                                    .connection_table
                                     .lock()
                                     .unwrap()
                                     .get_client_os_api(&client_id)
