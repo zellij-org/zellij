@@ -48,7 +48,7 @@ pub async fn listen_to_web_server_instructions(server_handle: Handle, state: App
                             let set_config_payload = SetConfigPayload::from(&new_config);
 
                             let mut config = state.config.lock().unwrap();
-                            *config = new_config;
+                            *config = new_config.clone();
 
                             let client_ids: Vec<String> = {
                                 let connection_table_lock = state.connection_table.lock().unwrap();
