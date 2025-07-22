@@ -982,15 +982,11 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             short_line
         } else if max_len >= 3 {
             let part = serialize_text(
-                &Text::new(format!(
-                    "{:>width$}",
-                    "...",
-                    width = max_len.saturating_sub(3)
-                ))
-                .color_range(0, ..)
-                .opaque(),
+                &Text::new(format!("{:>width$}", "...", width = max_len))
+                    .color_range(0, ..)
+                    .opaque(),
             );
-            let len = std::cmp::max(max_len.saturating_sub(3), 3);
+            let len = max_len;
             LinePart { part, len }
         } else {
             LinePart {
