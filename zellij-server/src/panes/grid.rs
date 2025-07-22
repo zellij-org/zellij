@@ -1315,7 +1315,7 @@ impl Grid {
                 // the state is corrupted
                 return;
             }
-            if scroll_region_bottom == self.height - 1 && scroll_region_top == 0 {
+            if scroll_region_bottom == self.height.saturating_sub(1) && scroll_region_top == 0 {
                 if self.alternate_screen_state.is_none() {
                     self.transfer_rows_to_lines_above(1);
                 } else {
@@ -1547,7 +1547,7 @@ impl Grid {
         if y >= scroll_region_top && y <= scroll_region_bottom {
             self.cursor.y = std::cmp::min(scroll_region_bottom, y + y_offset);
         } else {
-            self.cursor.y = std::cmp::min(self.height - 1, y + y_offset);
+            self.cursor.y = std::cmp::min(self.height.saturating_sub(1), y + y_offset);
         }
         self.pad_lines_until(self.cursor.y, pad_character.clone());
         self.pad_current_line_until(self.cursor.x, pad_character);

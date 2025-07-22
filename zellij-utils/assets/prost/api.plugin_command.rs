@@ -292,6 +292,8 @@ pub struct GroupAndUngroupPanesPayload {
     pub pane_ids_to_group: ::prost::alloc::vec::Vec<PaneId>,
     #[prost(message, repeated, tag="2")]
     pub pane_ids_to_ungroup: ::prost::alloc::vec::Vec<PaneId>,
+    #[prost(bool, tag="3")]
+    pub for_all_clients: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -11,6 +11,7 @@ pub struct App {
     total_tabs_in_session: Option<usize>,
     grouped_panes: Vec<PaneId>,
     grouped_panes_count: usize,
+    all_client_grouped_panes: BTreeMap<ClientId, Vec<PaneId>>,
     mode_info: ModeInfo,
     closing: bool,
     highlighted_at: Option<Instant>,
@@ -47,6 +48,8 @@ impl ZellijPlugin for App {
         if self.closing {
             return false;
         }
+        intercept_key_presses(); // we do this here so that all clients (even those connected after
+                                 // load) will have their keys intercepted
         match event {
             Event::ModeUpdate(mode_info) => self.handle_mode_update(mode_info),
             Event::PaneUpdate(pane_manifest) => self.handle_pane_update(pane_manifest),
@@ -59,13 +62,18 @@ impl ZellijPlugin for App {
 
     fn render(&mut self, rows: usize, cols: usize) {
         self.update_current_size(rows, cols);
-        let ui_width = self.calculate_ui_width();
-        self.update_baseline_ui_width(ui_width);
-        let base_x = cols.saturating_sub(self.baseline_ui_width) / 2;
-        let base_y = rows.saturating_sub(8) / 2;
-        self.render_header(base_x, base_y);
-        self.render_shortcuts(base_x, base_y + 2);
-        self.render_controls(base_x, base_y + 7);
+
+        if self.grouped_panes_count == 0 {
+            self.render_no_panes_message(rows, cols);
+        } else {
+            let ui_width = self.calculate_ui_width();
+            self.update_baseline_ui_width(ui_width);
+            let base_x = cols.saturating_sub(self.baseline_ui_width) / 2;
+            let base_y = rows.saturating_sub(8) / 2;
+            self.render_header(base_x, base_y);
+            self.render_shortcuts(base_x, base_y + 2);
+            self.render_controls(base_x, base_y + 7);
+        }
     }
 }
 
@@ -88,12 +96,26 @@ impl App {
         let controls_width = group_controls_length(&self.mode_info);
 
         let header_width = Self::header_text().0.len();
-        let shortcuts_max_width = Self::shortcuts_max_width();
+        let shortcuts_max_width = self.shortcuts_max_width();
 
         std::cmp::max(
             controls_width,
             std::cmp::max(header_width, shortcuts_max_width),
         )
+    }
+
+    fn render_no_panes_message(&self, rows: usize, cols: usize) {
+        let message = "PANES SELECTED FOR OTHER CLIENT";
+        let message_component = Text::new(message).color_all(2);
+        let base_x = cols.saturating_sub(message.len()) / 2;
+        let base_y = rows / 2;
+        print_text_with_coordinates(message_component, base_x, base_y, None, None);
+
+        let esc_message = "<ESC> - close";
+        let esc_message_component = Text::new(esc_message).color_substring(3, "<ESC>");
+        let esc_base_x = cols.saturating_sub(esc_message.len()) / 2;
+        let esc_base_y = base_y + 2;
+        print_text_with_coordinates(esc_message_component, esc_base_x, esc_base_y, None, None);
     }
 
     fn header_text() -> (&'static str, Text) {
@@ -104,10 +126,10 @@ impl App {
         (header_text, header_text_component)
     }
 
-    fn shortcuts_max_width() -> usize {
+    fn shortcuts_max_width(&self) -> usize {
         std::cmp::max(
             std::cmp::max(
-                Self::group_actions_text().0.len(),
+                self.group_actions_text().0.len(),
                 Self::shortcuts_line1_text().0.len(),
             ),
             std::cmp::max(
@@ -117,10 +139,18 @@ impl App {
         )
     }
 
-    fn group_actions_text() -> (&'static str, Text) {
-        let text = "GROUP ACTIONS";
-        let component = Text::new(text).color_all(2);
-        (text, component)
+    fn group_actions_text(&self) -> (&'static str, Text) {
+        let count_text = if self.grouped_panes_count == 1 {
+            format!("GROUP ACTIONS ({} SELECTED PANE)", self.grouped_panes_count)
+        } else {
+            format!(
+                "GROUP ACTIONS ({} SELECTED PANES)",
+                self.grouped_panes_count
+            )
+        };
+
+        let component = Text::new(&count_text).color_all(2);
+        (Box::leak(count_text.into_boxed_str()), component)
     }
 
     fn shortcuts_line1_text() -> (&'static str, Text) {
@@ -164,7 +194,8 @@ impl App {
             return false;
         };
 
-        self.update_grouped_panes(&pane_manifest, own_client_id);
+        self.update_all_client_grouped_panes(&pane_manifest);
+        self.update_own_grouped_panes(&pane_manifest, own_client_id);
         self.update_tab_info(&pane_manifest);
         self.total_tabs_in_session = Some(pane_manifest.panes.keys().count());
 
@@ -183,7 +214,28 @@ impl App {
         false
     }
 
-    fn update_grouped_panes(&mut self, pane_manifest: &PaneManifest, own_client_id: ClientId) {
+    fn update_all_client_grouped_panes(&mut self, pane_manifest: &PaneManifest) {
+        self.all_client_grouped_panes.clear();
+
+        for (_tab_index, pane_infos) in &pane_manifest.panes {
+            for pane_info in pane_infos {
+                for (client_id, _index_in_pane_group) in &pane_info.index_in_pane_group {
+                    let pane_id = if pane_info.is_plugin {
+                        PaneId::Plugin(pane_info.id)
+                    } else {
+                        PaneId::Terminal(pane_info.id)
+                    };
+
+                    self.all_client_grouped_panes
+                        .entry(*client_id)
+                        .or_insert_with(Vec::new)
+                        .push(pane_id);
+                }
+            }
+        }
+    }
+
+    fn update_own_grouped_panes(&mut self, pane_manifest: &PaneManifest, own_client_id: ClientId) {
         self.grouped_panes.clear();
         let mut count = 0;
         let mut panes_with_index = Vec::new();
@@ -209,20 +261,15 @@ impl App {
             self.grouped_panes.push(pane_id);
         }
 
-        if count == 0 {
+        if self.all_clients_have_empty_groups() {
             self.close_self();
         }
 
         let previous_count = self.grouped_panes_count;
         self.grouped_panes_count = count;
         if let Some(own_plugin_id) = self.own_plugin_id {
-            let title = if count == 1 {
-                "SELECTED PANE"
-            } else {
-                "SELECTED PANES"
-            };
             if previous_count != count {
-                rename_plugin_pane(own_plugin_id, format!("{} {}", count, title));
+                rename_plugin_pane(own_plugin_id, "Multiple Pane Select".to_string());
             }
             if previous_count != 0 && count != 0 && previous_count != count {
                 if self.doherty_threshold_elapsed_since_highlight() {
@@ -232,6 +279,12 @@ impl App {
                 }
             }
         }
+    }
+
+    fn all_clients_have_empty_groups(&self) -> bool {
+        self.all_client_grouped_panes
+            .values()
+            .all(|panes| panes.is_empty())
     }
 
     fn doherty_threshold_elapsed_since_highlight(&self) -> bool {
@@ -266,7 +319,7 @@ impl App {
             BareKey::Char('c') => self.close_grouped_panes(),
             BareKey::Tab => self.next_coordinates(),
             BareKey::Esc => {
-                self.ungroup_panes_in_zellij(&self.grouped_panes.clone());
+                self.ungroup_panes_in_zellij();
                 self.close_self();
             },
             _ => return false,
@@ -290,7 +343,7 @@ impl App {
 
     fn render_shortcuts(&self, base_x: usize, base_y: usize) {
         let mut running_y = base_y;
-        print_text_with_coordinates(Self::group_actions_text().1, base_x, running_y, None, None);
+        print_text_with_coordinates(self.group_actions_text().1, base_x, running_y, None, None);
         running_y += 1;
 
         print_text_with_coordinates(
@@ -337,28 +390,28 @@ impl App {
         self.execute_action_and_close(|pane_ids| {
             break_panes_to_new_tab(pane_ids, None, true);
         });
-        self.ungroup_panes_in_zellij(&self.grouped_panes.clone());
+        self.ungroup_panes_in_zellij();
     }
 
     pub fn stack_grouped_panes(&mut self) {
         self.execute_action_and_close(|pane_ids| {
             stack_panes(pane_ids.to_vec());
         });
-        self.ungroup_panes_in_zellij(&self.grouped_panes.clone());
+        self.ungroup_panes_in_zellij();
     }
 
     pub fn float_grouped_panes(&mut self) {
         self.execute_action_and_close(|pane_ids| {
             float_multiple_panes(pane_ids.to_vec());
         });
-        self.ungroup_panes_in_zellij(&self.grouped_panes.clone());
+        self.ungroup_panes_in_zellij();
     }
 
     pub fn embed_grouped_panes(&mut self) {
         self.execute_action_and_close(|pane_ids| {
             embed_multiple_panes(pane_ids.to_vec());
         });
-        self.ungroup_panes_in_zellij(&self.grouped_panes.clone());
+        self.ungroup_panes_in_zellij();
     }
 
     pub fn break_grouped_panes_right(&mut self) {
@@ -385,7 +438,7 @@ impl App {
         let pane_ids = self.grouped_panes.clone();
 
         if own_tab_index > 0 {
-            break_panes_to_tab_with_index(&pane_ids, own_tab_index - 1, true);
+            break_panes_to_tab_with_index(&pane_ids, own_tab_index.saturating_sub(1), true);
         } else {
             break_panes_to_new_tab(&pane_ids, None, true);
         }
@@ -399,9 +452,16 @@ impl App {
         });
     }
 
-    pub fn ungroup_panes_in_zellij(&mut self, pane_ids: &[PaneId]) {
-        group_and_ungroup_panes(vec![], pane_ids.to_vec());
+    pub fn ungroup_panes_in_zellij(&mut self) {
+        let all_grouped_panes: Vec<PaneId> = self
+            .all_client_grouped_panes
+            .values()
+            .flat_map(|panes| panes.iter().cloned())
+            .collect();
+        let for_all_clients = true;
+        group_and_ungroup_panes(vec![], all_grouped_panes, for_all_clients);
     }
+
     pub fn close_self(&mut self) {
         self.closing = true;
         close_self();
