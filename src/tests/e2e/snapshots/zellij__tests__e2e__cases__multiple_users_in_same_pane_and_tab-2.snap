@@ -1,6 +1,5 @@
 ---
 source: src/tests/e2e/cases.rs
-assertion_line: 1741
 expression: second_runner_snapshot
 ---
  Zellij (multiple_users_in_same_pane_and_tab)  Tab #1 [ ]
@@ -26,4 +25,4 @@ expression: second_runner_snapshot
 │                                                                                                                      │
 │                                                                                                                      │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT       ... 
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT        ...

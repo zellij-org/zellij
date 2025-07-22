@@ -980,18 +980,19 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
         }
         if short_line.len <= max_len {
             short_line
-        } else {
+        } else if max_len >= 3 {
             let part = serialize_text(
-                &Text::new(format!(
-                    "{:>width$}",
-                    "...",
-                    width = max_len.saturating_sub(3)
-                ))
-                .color_range(0, ..)
-                .opaque(),
+                &Text::new(format!("{:>width$}", "...", width = max_len))
+                    .color_range(0, ..)
+                    .opaque(),
             );
-            let len = max_len.saturating_sub(3);
+            let len = max_len;
             LinePart { part, len }
+        } else {
+            LinePart {
+                part: "".to_owned(),
+                len: 0,
+            }
         }
     }
 }
