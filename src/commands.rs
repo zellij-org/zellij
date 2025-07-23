@@ -195,7 +195,14 @@ pub(crate) fn start_web_server(
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn start_web_server(_opts: CliArgs, _run_daemonized: bool) {
+pub(crate) fn start_web_server(
+    _opts: CliArgs,
+    _run_daemonized: bool,
+    _ip: Option<IpAddr>,
+    _port: Option<u16>,
+    _cert: Option<PathBuf>,
+    _key: Option<PathBuf>,
+) {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot run web server!"
     );
