@@ -67,6 +67,10 @@ pub fn start_web_client(
     config_options: Options,
     config_file_path: Option<PathBuf>,
     run_daemonized: bool,
+    custom_ip: Option<IpAddr>,
+    custom_port: Option<u16>,
+    custom_server_cert: Option<PathBuf>,
+    custom_server_key: Option<PathBuf>,
 ) {
     std::panic::set_hook({
         Box::new(move |info| {
@@ -87,12 +91,15 @@ pub fn start_web_client(
             std::process::exit(2);
         })
     });
-    let web_server_ip = config_options
-        .web_server_ip
-        .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
-    let web_server_port = config_options.web_server_port.unwrap_or_else(|| 8082);
-    let web_server_cert = &config.options.web_server_cert;
-    let web_server_key = &config.options.web_server_key;
+    let web_server_ip = custom_ip.unwrap_or_else(|| {
+        config_options
+            .web_server_ip
+            .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))
+    });
+    let web_server_port =
+        custom_port.unwrap_or_else(|| config_options.web_server_port.unwrap_or_else(|| 8082));
+    let web_server_cert = custom_server_cert.or_else(|| config.options.web_server_cert.clone());
+    let web_server_key = custom_server_key.or_else(|| config.options.web_server_key.clone());
     let has_https_certificate = web_server_cert.is_some() && web_server_key.is_some();
 
     if let Err(e) = should_use_https(
@@ -274,8 +281,8 @@ pub async fn serve_web_client(
 fn daemonize_web_server(
     web_server_ip: IpAddr,
     web_server_port: u16,
-    web_server_cert: &Option<PathBuf>,
-    web_server_key: &Option<PathBuf>,
+    web_server_cert: Option<PathBuf>,
+    web_server_key: Option<PathBuf>,
 ) -> (Runtime, std::net::TcpListener, Option<RustlsConfig>) {
     let (mut exit_message_tx, exit_message_rx) = pipe().unwrap();
     let (mut exit_status_tx, mut exit_status_rx) = pipe().unwrap();
