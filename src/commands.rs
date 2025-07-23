@@ -1,4 +1,5 @@
 use dialoguer::Confirm;
+use std::net::IpAddr;
 use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 
 #[cfg(feature = "web_server_capability")]
@@ -159,7 +160,14 @@ pub(crate) fn start_server(path: PathBuf, debug: bool) {
 }
 
 #[cfg(feature = "web_server_capability")]
-pub(crate) fn start_web_server(opts: CliArgs, run_daemonized: bool) {
+pub(crate) fn start_web_server(
+    opts: CliArgs,
+    run_daemonized: bool,
+    ip: Option<IpAddr>,
+    port: Option<u16>,
+    cert: Option<PathBuf>,
+    key: Option<PathBuf>,
+) {
     // TODO: move this outside of this function
     let (config, _layout, config_options, _config_without_layout, _config_options_without_layout) =
         match Setup::from_cli_args(&opts) {
@@ -174,12 +182,27 @@ pub(crate) fn start_web_server(opts: CliArgs, run_daemonized: bool) {
                 process::exit(1);
             },
         };
-
-    start_web_client_impl(config, config_options, opts.config, run_daemonized);
+    start_web_client_impl(
+        config,
+        config_options,
+        opts.config,
+        run_daemonized,
+        ip,
+        port,
+        cert,
+        key,
+    );
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn start_web_server(_opts: CliArgs, _run_daemonized: bool) {
+pub(crate) fn start_web_server(
+    _opts: CliArgs,
+    _run_daemonized: bool,
+    _ip: Option<IpAddr>,
+    _port: Option<u16>,
+    _cert: Option<PathBuf>,
+    _key: Option<PathBuf>,
+) {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot run web server!"
     );

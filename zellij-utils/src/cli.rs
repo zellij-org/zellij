@@ -6,6 +6,7 @@ use crate::{
 };
 use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
+use std::net::IpAddr;
 use std::path::PathBuf;
 use url::Url;
 
@@ -144,6 +145,38 @@ pub struct WebCli {
     /// List token names and their creation dates (cannot show actual tokens)
     #[clap(long, value_parser, exclusive(true), display_order = 8)]
     pub list_tokens: bool,
+    /// The ip address to listen on locally for connections (defaults to 127.0.0.1)
+    #[clap(
+        long,
+        value_parser,
+        conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
+        display_order = 9
+    )]
+    pub ip: Option<IpAddr>,
+    /// The port to listen on locally for connections (defaults to 8082)
+    #[clap(
+        long,
+        value_parser,
+        conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
+        display_order = 10
+    )]
+    pub port: Option<u16>,
+    /// The path to the SSL certificate (required if not listening on 127.0.0.1)
+    #[clap(
+        long,
+        value_parser,
+        conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
+        display_order = 11
+    )]
+    pub cert: Option<PathBuf>,
+    /// The path to the SSL key (required if not listening on 127.0.0.1)
+    #[clap(
+        long,
+        value_parser,
+        conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
+        display_order = 12
+    )]
+    pub key: Option<PathBuf>,
 }
 
 impl WebCli {

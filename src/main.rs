@@ -231,7 +231,14 @@ fn main() {
     } else if let Some(Command::Web(web_opts)) = &opts.command {
         if web_opts.get_start() {
             let daemonize = web_opts.daemonize;
-            commands::start_web_server(opts, daemonize);
+            commands::start_web_server(
+                opts.clone(),
+                daemonize,
+                web_opts.ip,
+                web_opts.port,
+                web_opts.cert.clone(),
+                web_opts.key.clone(),
+            );
         } else if web_opts.stop {
             match commands::stop_web_server() {
                 Ok(()) => {
