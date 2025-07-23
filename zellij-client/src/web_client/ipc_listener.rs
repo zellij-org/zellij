@@ -1,7 +1,7 @@
+use crate::web_client::types::AppState;
+
 use super::control_message::{SetConfigPayload, WebServerToWebClientControlMessage};
-use super::types::ConnectionTable;
 use axum_server::Handle;
-use std::sync::{Arc, Mutex};
 use tokio::io::AsyncReadExt;
 use tokio::net::{UnixListener, UnixStream};
 use zellij_utils::consts::WEBSERVER_SOCKET_PATH;
@@ -33,11 +33,7 @@ pub async fn receive_webserver_instruction(
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
 }
 
-pub async fn listen_to_web_server_instructions(
-    server_handle: Handle,
-    connection_table: Arc<Mutex<ConnectionTable>>,
-    id: &str,
-) {
+pub async fn listen_to_web_server_instructions(server_handle: Handle, state: AppState, id: &str) {
     loop {
         let receiver = create_webserver_receiver(id).await;
         match receiver {
@@ -51,8 +47,11 @@ pub async fn listen_to_web_server_instructions(
                         InstructionForWebServer::ConfigWrittenToDisk(new_config) => {
                             let set_config_payload = SetConfigPayload::from(&new_config);
 
+                            let mut config = state.config.lock().unwrap();
+                            *config = new_config.clone();
+
                             let client_ids: Vec<String> = {
-                                let connection_table_lock = connection_table.lock().unwrap();
+                                let connection_table_lock = state.connection_table.lock().unwrap();
                                 connection_table_lock
                                     .client_id_to_channels
                                     .keys()
@@ -71,7 +70,8 @@ pub async fn listen_to_web_server_instructions(
                             };
 
                             for client_id in client_ids {
-                                if let Some(control_tx) = connection_table
+                                if let Some(control_tx) = state
+                                    .connection_table
                                     .lock()
                                     .unwrap()
                                     .get_client_control_tx(&client_id)
@@ -88,7 +88,8 @@ pub async fn listen_to_web_server_instructions(
                                         },
                                     }
                                 }
-                                if let Some(os_input) = connection_table
+                                if let Some(os_input) = state
+                                    .connection_table
                                     .lock()
                                     .unwrap()
                                     .get_client_os_api(&client_id)
