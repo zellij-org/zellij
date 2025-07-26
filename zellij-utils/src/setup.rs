@@ -619,7 +619,7 @@ impl Setup {
                 std::process::exit(1);
             },
         };
-        let mut out = std::io::stdout();
+        let mut out = CompletionBuffer::new(shell);
         clap_complete::generate(shell, &mut CliArgs::command(), "zellij", &mut out);
         // add shell dependent extra completion
         match shell {
@@ -737,6 +737,96 @@ fn merge_attach_command_options(
         cli_config_options
     };
     cli_config_options
+}
+
+struct CompletionBuffer {
+    script_start: String,
+    layout_case: String,
+    layout_call: String,
+    shell: Shell,
+}
+impl Write for CompletionBuffer {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if let Ok(mut completion) = String::from_utf8(buf.to_vec()) {
+            if completion.contains(&self.script_start) {
+                completion = completion.replace(&self.script_start, &self.layout_function());
+            } else if completion.starts_with(&self.layout_case) {
+                completion = completion.replace(&self.layout_case, &self.layout_call);
+            }
+            print!("{completion}");
+        }
+        return Ok(buf.len());
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl CompletionBuffer {
+    fn new(shell: Shell) -> Self {
+        let mut script_start = String::new();
+        let mut layout_case = String::new();
+        let mut layout_call = String::new();
+        if shell == Shell::Bash {
+            script_start = "local i cur prev opts cmds\n".to_string();
+            layout_case = "--layout)".to_string();
+            layout_call = r#"
+                --layout)
+                    layout=$(_zellij_layouts)
+                    COMPREPLY=($(compgen -f -- "$layout/${cur}"))
+                "#
+            .to_string();
+        } else if shell == Shell::Zsh {
+            script_start = "autoload -U is-at-least".to_string();
+            layout_case = ":LAYOUT:_files".to_string();
+            layout_call = ":LAYOUT:_zellij_layouts".to_string();
+        }
+        Self {
+            script_start,
+            layout_case,
+            shell,
+            layout_call,
+        }
+    }
+
+    pub fn layout_function(&self) -> String {
+        if self.shell == Shell::Bash {
+            return r#"
+
+local i cur prev opts cmds
+
+function _zellij_layouts() {
+    local -a layouts
+
+    layout=$(cat $HOME/.config/zellij/config.kdl | awk 'match($0, /layout_dir.*"(.*)"/, l) { last = l[1] } END { print last }' | tr -d "\'")
+    [[ $layout = "/path/to/my/layout_dir" ]] && layout=$HOME/.config/zellij/layouts
+    echo $layout
+}           
+
+                "#
+            .to_string();
+        } else if self.shell == Shell::Zsh {
+            return r#"
+autoload -U is-at-least
+        
+
+function _zellij_layouts() {
+    local -a layouts
+
+    layout=$(cat $HOME/.config/zellij/config.kdl | awk 'match($0, /layout_dir.*"(.*)"/, l) { last = l[1] } END { print last }' | tr -d "\'")
+    [[ $layout = "/path/to/my/layout_dir" ]] && layout=$HOME/.config/zellij/layouts
+
+    layouts=()
+    layouts+=($( eval ls "$layout" 2>/dev/null | xargs -n1 basename | cut -d. -f1 ))
+    _describe '_zellij_layouts' layouts
+}           
+                           
+                "#
+            .to_string();
+        }
+        return "".to_string();
+    }
 }
 
 #[cfg(test)]
