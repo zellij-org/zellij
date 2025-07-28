@@ -46,7 +46,7 @@ pub fn should_use_https(
 pub fn parse_cookies<T>(request: &Request<T>) -> HashMap<String, String> {
     let mut cookies = HashMap::new();
 
-    if let Some(cookie_header) = request.headers().get("cookie") {
+    for cookie_header in request.headers().get_all("cookie") {
         if let Ok(cookie_str) = cookie_header.to_str() {
             for cookie_part in cookie_str.split(';') {
                 if let Ok(cookie) = Cookie::parse(cookie_part.trim()) {
