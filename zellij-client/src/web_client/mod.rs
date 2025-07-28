@@ -54,9 +54,7 @@ use uuid::Uuid;
 use websocket_handlers::{ws_handler_control, ws_handler_terminal};
 
 use zellij_utils::{
-    cli::CliArgs,
     consts::WEBSERVER_SOCKET_PATH,
-    ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     web_server_commands::{
         create_webserver_sender, send_webserver_instruction, InstructionForWebServer,
     },
