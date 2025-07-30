@@ -2,7 +2,8 @@
  * Input handling for terminal events
  */
 
-import { encode_kitty_key } from './keyboard.js';
+import { encode_kitty_key } from "./keyboard.js";
+import { isMac } from "./utils.js";
 
 /**
  * Set up all input handlers for the terminal
@@ -13,14 +14,19 @@ export function setupInputHandlers(term, sendFunction) {
     // Mouse tracking state
     let prev_col = 0;
     let prev_row = 0;
-    
+
     // Custom key event handler
     term.attachCustomKeyEventHandler((ev) => {
         if (ev.type === "keydown") {
             if (ev.key == "V" && ev.ctrlKey && ev.shiftKey) {
-              // pass ctrl-shift-v onwards so that paste is interpreted by xterm.js
-              return;
+                // pass ctrl-shift-v onwards so that paste is interpreted by xterm.js
+                return;
             }
+            if (isMac() && ev.key == "v" && ev.metaKey) {
+                // pass cmd-v onwards so that paste is interpreted by xterm.js
+                return;
+            }
+
             let modifiers_count = 0;
             let shift_keycode = 16;
             let alt_keycode = 17;
@@ -107,7 +113,7 @@ export function setupInputHandlers(term, sendFunction) {
     });
 
     // Context menu handler
-    document.addEventListener('contextmenu', function(event) {
+    document.addEventListener("contextmenu", function (event) {
         if (event.altKey) {
             // this is so that when the user does an alt-right-click to ungroup panes, the context menu will not appear
             event.preventDefault();
@@ -118,7 +124,7 @@ export function setupInputHandlers(term, sendFunction) {
     term.onData((data) => {
         sendFunction(data);
     });
-    
+
     term.onBinary((data) => {
         const buffer = new Uint8Array(data.length);
         for (let i = 0; i < data.length; ++i) {
