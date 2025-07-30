@@ -9,3 +9,10 @@
 export function is_https() {
     return document.location.protocol === "https:";
 }
+
+export function isMac() {
+    if (navigator.userAgentData && navigator.userAgentData.platform) {
+        return navigator.userAgentData.platform === "macOS";
+    }
+    return navigator.platform.toUpperCase().includes("MAC");
+}
