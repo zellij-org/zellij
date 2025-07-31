@@ -2,7 +2,7 @@
  * Terminal initialization and management
  */
 
-import { build_link_handler } from './links.js';
+import { build_link_handler } from "./links.js";
 
 /**
  * Initialize the terminal with all required addons and configuration
@@ -20,7 +20,10 @@ export function initTerminal() {
     const clipboardAddon = new ClipboardAddon.ClipboardAddon();
 
     const { linkHandler, activateLink } = build_link_handler();
-    const webLinksAddon = new WebLinksAddon.WebLinksAddon(activateLink, linkHandler);
+    const webLinksAddon = new WebLinksAddon.WebLinksAddon(
+        activateLink,
+        linkHandler
+    );
     term.options.linkHandler = linkHandler;
 
     const webglAddon = new WebglAddon.WebglAddon();
@@ -34,5 +37,6 @@ export function initTerminal() {
     term.loadAddon(webglAddon);
     term.open(document.getElementById("terminal"));
     fitAddon.fit();
+    term.focus();
     return { term, fitAddon };
 }

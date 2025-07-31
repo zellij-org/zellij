@@ -91,7 +91,6 @@ export function setupInputHandlers(term, sendFunction) {
     // Mouse movement handler
     let terminal_element = document.getElementById("terminal");
     terminal_element.addEventListener("mousemove", function (event) {
-        window.term.focus();
         // this is a hack around: https://github.com/xtermjs/xterm.js/issues/1062
         // in short, xterm.js doesn't listen to mousemove at all and so even though
         // we send it a request for AnyEvent mouse handling, we don't get motion events in return
