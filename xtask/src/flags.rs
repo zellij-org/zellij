@@ -28,6 +28,8 @@ xflags::xflags! {
             cmd cross {
                 /// Target-triple to compile the application for
                 required triple: OsString
+                /// Compile without web server support
+                optional --no-web
             }
         }
 
@@ -163,6 +165,7 @@ pub struct E2e {
 #[derive(Debug)]
 pub struct Cross {
     pub triple: OsString,
+    pub no_web: bool,
 }
 
 #[derive(Debug)]
