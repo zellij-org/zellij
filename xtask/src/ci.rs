@@ -2,6 +2,7 @@
 use crate::{
     build,
     flags::{self, CiCmd, Cross, E2e},
+    metadata,
 };
 use anyhow::Context;
 use std::{
@@ -163,9 +164,29 @@ fn cross_compile(sh: &Shell, target: &OsString, no_web: bool) -> anyhow::Result<
 
     cross()
         .and_then(|cross| {
-            cmd!(sh, "{cross} build --verbose --release --target {target}")
-                .run()
-                .map_err(anyhow::Error::new)
+            if no_web {
+                match metadata::get_no_web_features(sh, ".")
+                    .context("Failed to check web features for cross compilation")?
+                {
+                    Some(features) => {
+                        let mut cmd = cmd!(sh, "{cross} build --verbose --release --target {target} --no-default-features");
+                        if !features.is_empty() {
+                            cmd = cmd.arg("--features").arg(features);
+                        }
+                        cmd.run().map_err(anyhow::Error::new)
+                    },
+                    None => {
+                        // Main crate doesn't have web_server_capability, build normally
+                        cmd!(sh, "{cross} build --verbose --release --target {target}")
+                            .run()
+                            .map_err(anyhow::Error::new)
+                    },
+                }
+            } else {
+                cmd!(sh, "{cross} build --verbose --release --target {target}")
+                    .run()
+                    .map_err(anyhow::Error::new)
+            }
         })
         .with_context(err_context)
 }
