@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+#[allow(unused_imports)]
 use std::io::prelude::*;
 use zellij_tile::prelude::*;
 
@@ -7,6 +8,7 @@ use zellij_tile::prelude::*;
 // it is not (and should not!) be included in the mainline executable
 // it's included here for convenience so that it will be built by the CI
 
+#[allow(dead_code)]
 #[derive(Default)]
 struct State {
     received_events: Vec<Event>,

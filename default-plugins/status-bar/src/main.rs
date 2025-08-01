@@ -700,10 +700,6 @@ pub mod tests {
         );
     }
 
-    fn get_palette() -> Palette {
-        Palette::default()
-    }
-
     #[test]
     fn style_key_with_modifier_only_chars() {
         let keyvec = vec![

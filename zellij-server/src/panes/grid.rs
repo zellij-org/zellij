@@ -1,5 +1,4 @@
 use super::sixel::{PixelRect, SixelGrid, SixelImageStore};
-use regex::Regex;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;

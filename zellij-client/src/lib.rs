@@ -61,6 +61,7 @@ pub(crate) enum ClientInstruction {
     QueryTerminalSize,
     WriteConfigToDisk { config: String },
     StartWebServer,
+    #[allow(dead_code)] // we need the session name here even though we're not currently using it
     RenamedSession(String), // String -> new session name
 }
 

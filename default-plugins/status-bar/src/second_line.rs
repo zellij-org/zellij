@@ -531,10 +531,6 @@ mod tests {
         string.to_string()
     }
 
-    fn get_palette() -> Palette {
-        Palette::default()
-    }
-
     #[test]
     fn full_length_shortcut_with_key() {
         let keyvec = vec![KeyWithModifier::new(BareKey::Char('a'))];

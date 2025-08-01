@@ -1,8 +1,8 @@
 use crate::shared::{calculate_list_bounds, render_list_tip};
-use crate::state::{refresh_directory, ROOT};
+use crate::state::refresh_directory;
 use pretty_bytes::converter::convert as pretty_bytes;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 
@@ -56,17 +56,6 @@ impl FileListView {
 
     pub fn clear_selected(&mut self) {
         self.cursor_hist.remove(&self.path);
-    }
-
-    pub fn get_relative_path(&self) -> PathBuf {
-        if let Some(initial_cwd_part) = self.path.iter().next() {
-            self.path
-                .strip_prefix(initial_cwd_part)
-                .unwrap_or(&self.path)
-                .to_path_buf()
-        } else {
-            PathBuf::new()
-        }
     }
 
     pub fn update_files(
@@ -190,19 +179,6 @@ impl FsEntry {
         match self {
             FsEntry::Dir(_p) => None,
             FsEntry::File(_, size) => Some(*size),
-        }
-    }
-
-    pub fn get_pathbuf_without_root_prefix(&self) -> PathBuf {
-        match self {
-            FsEntry::Dir(p) => p
-                .strip_prefix(ROOT)
-                .map(|p| p.to_path_buf())
-                .unwrap_or_else(|_| p.clone()),
-            FsEntry::File(p, _) => p
-                .strip_prefix(ROOT)
-                .map(|p| p.to_path_buf())
-                .unwrap_or_else(|_| p.clone()),
         }
     }
 

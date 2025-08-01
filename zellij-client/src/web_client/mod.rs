@@ -171,6 +171,7 @@ pub fn start_web_client(
     ));
 }
 
+#[allow(dead_code)]
 async fn listen_to_config_file_changes(config_file_path: PathBuf, instance_id: &str) {
     let socket_path = WEBSERVER_SOCKET_PATH.join(instance_id);
 
