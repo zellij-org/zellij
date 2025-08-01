@@ -3,7 +3,6 @@ mod search_view;
 mod shared;
 mod state;
 
-use crate::file_list_view::FsEntry;
 use shared::{render_current_path, render_instruction_line, render_search_term};
 use state::{refresh_directory, State};
 use std::collections::BTreeMap;
@@ -58,7 +57,7 @@ impl ZellijPlugin for State {
                 self.update_files(paths);
                 should_render = true;
             },
-            Event::HostFolderChanged(new_host_folder) => {
+            Event::HostFolderChanged(_new_host_folder) => {
                 scan_host_folder(&"/host");
                 should_render = true;
             },

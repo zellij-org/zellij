@@ -59,8 +59,11 @@ pub(crate) enum ClientInstruction {
     UnblockCliPipeInput(()), // String -> pipe name
     CliPipeOutput((), ()),   // String -> pipe name, String -> output
     QueryTerminalSize,
-    WriteConfigToDisk { config: String },
+    WriteConfigToDisk {
+        config: String,
+    },
     StartWebServer,
+    #[allow(dead_code)] // we need the session name here even though we're not currently using it
     RenamedSession(String), // String -> new session name
 }
 

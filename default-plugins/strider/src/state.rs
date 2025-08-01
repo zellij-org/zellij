@@ -7,8 +7,6 @@ use std::{
 };
 use zellij_tile::prelude::*;
 
-pub const ROOT: &str = "/host";
-
 #[derive(Default)]
 pub struct State {
     pub file_list_view: FileListView,

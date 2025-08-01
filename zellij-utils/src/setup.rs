@@ -1,6 +1,7 @@
 #[cfg(not(target_family = "wasm"))]
 use crate::consts::ASSET_MAP;
 use crate::input::theme::Themes;
+#[allow(unused_imports)]
 use crate::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
     consts::{
