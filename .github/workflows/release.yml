@@ -6,9 +6,25 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-release:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: create_release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && '' || github.ref }}
+          release_name: Release ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          prerelease: false
+
+  build-release-normal:
     needs: create-release
-    name: build-release
+    name: build-release-normal
     runs-on: ${{ matrix.os }}
     env:
       RUST_BACKTRACE: 1
@@ -62,129 +78,146 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
           target: "${{ matrix.target }},wasm32-wasip1"
-          # Just to make sure the cache doesn't interfere with the build here
           cache: false
           rustflags: ""
 
-      - name: Build release binary (normal)
+      - name: Build release binary
         run: cargo xtask ci cross ${{ matrix.target }}
 
-      - name: Preserve normal binary and build no-web variant
+      - name: Create artifact
+        id: make-artifact
         run: |
-          # Copy the normal binary to a safe location outside target/
-          mkdir -p ./release-artifacts
-          cp "target/${{ matrix.target }}/release/zellij" "./release-artifacts/zellij-normal"
-          
-          # Clean and build the no-web version
-          cargo clean
-          cargo xtask ci cross ${{ matrix.target }} --no-web
-          
-          # Copy the no-web binary to our safe location too
-          cp "target/${{ matrix.target }}/release/zellij" "./release-artifacts/zellij-no-web"
+          asset_name="zellij-${{ matrix.target }}.tar.gz"
+          tar cvzf "${asset_name}" -C "target/${{ matrix.target }}/release" zellij
+          echo "asset_name=${asset_name}" >> "$GITHUB_OUTPUT"
 
-      # this breaks on aarch64 and this if conditional isn't working for some reason: TODO: investigate
-      #- name: Strip release binary
-      #  if: runner.target != 'aarch64-unknown-linux-musl' && runner.target != 'aarch64-apple-darwin'
-      #  run: strip "target/${{ matrix.target }}/release/zellij"
-
-      - name: Create artifacts for both variants
-        id: make-artifacts
-        working-directory: ./release-artifacts
+      - name: Create checksum
+        id: make-checksum
         run: |
-          # Create normal version artifact
-          normal_name="zellij-${{ matrix.target }}.tar.gz"
-          cp zellij-normal zellij
-          tar cvzf "${normal_name}" zellij
-          rm zellij
-          echo "normal_name=${normal_name}" >> "$GITHUB_OUTPUT"
-          
-          # Create no-web version artifact
-          noweb_name="zellij-no-web-${{ matrix.target }}.tar.gz"
-          cp zellij-no-web zellij
-          tar cvzf "${noweb_name}" zellij
-          rm zellij
-          echo "noweb_name=${noweb_name}" >> "$GITHUB_OUTPUT"
-
-      - name: Create checksums
-        id: make-checksums
-        working-directory: ./release-artifacts
-        run: |
-          normal_checksum="zellij-${{ matrix.target }}.sha256sum"
-          noweb_checksum="zellij-no-web-${{ matrix.target }}.sha256sum"
-          
-          # Create checksum for normal version
-          cp zellij-normal zellij
+          checksum_name="zellij-${{ matrix.target }}.sha256sum"
           if [[ "$RUNNER_OS" != "macOS" ]]; then
-            sha256sum zellij > "${normal_checksum}"
+            sha256sum "target/${{ matrix.target }}/release/zellij" > "${checksum_name}"
           else
-            shasum -a 256 zellij > "${normal_checksum}"
+            shasum -a 256 "target/${{ matrix.target }}/release/zellij" > "${checksum_name}"
           fi
-          rm zellij
-          
-          # Create checksum for no-web version
-          cp zellij-no-web zellij
-          if [[ "$RUNNER_OS" != "macOS" ]]; then
-            sha256sum zellij > "${noweb_checksum}"
-          else
-            shasum -a 256 zellij > "${noweb_checksum}"
-          fi
-          rm zellij
+          echo "checksum_name=${checksum_name}" >> "$GITHUB_OUTPUT"
 
-          echo "normal_checksum=${normal_checksum}" >> "$GITHUB_OUTPUT"
-          echo "noweb_checksum=${noweb_checksum}" >> "$GITHUB_OUTPUT"
-
-      - name: Upload normal release archive
+      - name: Upload release archive
         uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./release-artifacts/${{ steps.make-artifacts.outputs.normal_name }}
+          asset_path: ${{ steps.make-artifact.outputs.asset_name }}
           asset_name: zellij-${{matrix.target}}.tar.gz
           asset_content_type: application/octet-stream
 
-      - name: Upload normal checksum
+      - name: Upload checksum
         uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./release-artifacts/${{ steps.make-checksums.outputs.normal_checksum }}
+          asset_path: ${{ steps.make-checksum.outputs.checksum_name }}
           asset_name: zellij-${{matrix.target}}.sha256sum
           asset_content_type: text/plain
 
-      - name: Upload no-web release archive
+  build-release-noweb:
+    needs: create-release
+    name: build-release-noweb
+    runs-on: ${{ matrix.os }}
+    env:
+      RUST_BACKTRACE: 1
+    strategy:
+      matrix:
+        build:
+          - linux musl x64
+          - linux musl aarch64
+          - macos x64
+          - macos aarch64
+        include:
+          - build: linux musl x64
+            os: ubuntu-latest
+            rust: stable
+            target: x86_64-unknown-linux-musl
+          - build: linux musl aarch64
+            os: ubuntu-latest
+            rust: stable
+            target: aarch64-unknown-linux-musl
+          - build: macos x64
+            os: macos-latest
+            rust: stable
+            target: x86_64-apple-darwin
+          - build: macos aarch64
+            os: macos-latest
+            rust: stable
+            target: aarch64-apple-darwin
+    steps:
+      - name: Set release tag
+        run: |
+          if [ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]; then
+            echo "RELEASE_TAG=main" >> "$GITHUB_ENV"
+          else
+            echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}"  >> "$GITHUB_ENV"
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install musl-tools
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get install -y --no-install-recommends musl-tools
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          target: "${{ matrix.target }},wasm32-wasip1"
+          cache: false
+          rustflags: ""
+
+      - name: Build release binary (no-web)
+        run: cargo xtask ci cross ${{ matrix.target }} --no-web
+
+      - name: Create artifact
+        id: make-artifact
+        run: |
+          asset_name="zellij-no-web-${{ matrix.target }}.tar.gz"
+          tar cvzf "${asset_name}" -C "target/${{ matrix.target }}/release" zellij
+          echo "asset_name=${asset_name}" >> "$GITHUB_OUTPUT"
+
+      - name: Create checksum
+        id: make-checksum
+        run: |
+          checksum_name="zellij-no-web-${{ matrix.target }}.sha256sum"
+          if [[ "$RUNNER_OS" != "macOS" ]]; then
+            sha256sum "target/${{ matrix.target }}/release/zellij" > "${checksum_name}"
+          else
+            shasum -a 256 "target/${{ matrix.target }}/release/zellij" > "${checksum_name}"
+          fi
+          echo "checksum_name=${checksum_name}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release archive
         uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./release-artifacts/${{ steps.make-artifacts.outputs.noweb_name }}
+          asset_path: ${{ steps.make-artifact.outputs.asset_name }}
           asset_name: zellij-no-web-${{matrix.target}}.tar.gz
           asset_content_type: application/octet-stream
 
-      - name: Upload no-web checksum
+      - name: Upload checksum
         uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./release-artifacts/${{ steps.make-checksums.outputs.noweb_checksum }}
+          asset_path: ${{ steps.make-checksum.outputs.checksum_name }}
           asset_name: zellij-no-web-${{matrix.target}}.sha256sum
           asset_content_type: text/plain
-
-  create-release:
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    steps:
-      - name: create_release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && '' || github.ref }}
-          release_name: Release ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
-          draft: ${{ github.event_name == 'workflow_dispatch' }}
-          prerelease: false

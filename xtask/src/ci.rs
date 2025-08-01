@@ -2,6 +2,7 @@
 use crate::{
     build,
     flags::{self, CiCmd, Cross, E2e},
+    metadata,
 };
 use anyhow::Context;
 use std::{
@@ -38,7 +39,7 @@ pub fn main(sh: &Shell, flags: flags::Ci) -> anyhow::Result<()> {
             test: true,
             args,
         }) => e2e_test(sh, args),
-        CiCmd::Cross(Cross { triple }) => cross_compile(sh, &triple),
+        CiCmd::Cross(Cross { triple, no_web }) => cross_compile(sh, &triple, no_web),
     }
     .context(err_context)
 }
@@ -134,7 +135,7 @@ fn e2e_test(sh: &Shell, args: Vec<OsString>) -> anyhow::Result<()> {
         .context(err_context)
 }
 
-fn cross_compile(sh: &Shell, target: &OsString) -> anyhow::Result<()> {
+fn cross_compile(sh: &Shell, target: &OsString, no_web: bool) -> anyhow::Result<()> {
     let err_context = || format!("failed to cross-compile for {target:?}");
 
     crate::cargo()
@@ -155,7 +156,7 @@ fn cross_compile(sh: &Shell, target: &OsString) -> anyhow::Result<()> {
             release: true,
             no_plugins: false,
             plugins_only: true,
-            no_web: false,
+            no_web,
         },
     )
     .and_then(|_| build::manpage(sh))
@@ -163,9 +164,29 @@ fn cross_compile(sh: &Shell, target: &OsString) -> anyhow::Result<()> {
 
     cross()
         .and_then(|cross| {
-            cmd!(sh, "{cross} build --verbose --release --target {target}")
-                .run()
-                .map_err(anyhow::Error::new)
+            if no_web {
+                match metadata::get_no_web_features(sh, ".")
+                    .context("Failed to check web features for cross compilation")?
+                {
+                    Some(features) => {
+                        let mut cmd = cmd!(sh, "{cross} build --verbose --release --target {target} --no-default-features");
+                        if !features.is_empty() {
+                            cmd = cmd.arg("--features").arg(features);
+                        }
+                        cmd.run().map_err(anyhow::Error::new)
+                    },
+                    None => {
+                        // Main crate doesn't have web_server_capability, build normally
+                        cmd!(sh, "{cross} build --verbose --release --target {target}")
+                            .run()
+                            .map_err(anyhow::Error::new)
+                    },
+                }
+            } else {
+                cmd!(sh, "{cross} build --verbose --release --target {target}")
+                    .run()
+                    .map_err(anyhow::Error::new)
+            }
         })
         .with_context(err_context)
 }
