@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 #[derive(Clone)]
 pub struct ActivePanes {
     active_panes: HashMap<ClientId, PaneId>,
+    last_panes: HashMap<ClientId, PaneId>,
     os_api: Box<dyn ServerOsApi>,
 }
 
@@ -20,11 +21,15 @@ impl ActivePanes {
         let os_api = os_api.clone();
         ActivePanes {
             active_panes: HashMap::new(),
+            last_panes: HashMap::new(),
             os_api,
         }
     }
     pub fn get(&self, client_id: &ClientId) -> Option<&PaneId> {
         self.active_panes.get(client_id)
+    }
+    pub fn get_last(&self, client_id: &ClientId) -> Option<&PaneId> {
+        self.last_panes.get(client_id)
     }
     pub fn insert(
         &mut self,
@@ -35,6 +40,13 @@ impl ActivePanes {
         self.unfocus_pane_for_client(client_id, panes);
         self.active_panes.insert(client_id, pane_id);
         self.focus_pane(pane_id, panes);
+    }
+    pub fn set_last_pane(
+        &mut self,
+        client_id: ClientId,
+        pane_id: PaneId,
+    ) {
+        self.last_panes.insert(client_id, pane_id);
     }
     pub fn clear(&mut self, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
         for pane_id in self.active_panes.values() {

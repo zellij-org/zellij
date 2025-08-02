@@ -159,6 +159,7 @@ enum CommandName {
   InterceptKeyPresses = 143;
   ClearKeyPressesIntercepts = 144;
   ReplacePaneWithExistingPane = 155;
+  FocusLastPane = 156;
 }
 
 message PluginCommand {
