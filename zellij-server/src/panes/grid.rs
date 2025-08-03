@@ -3142,8 +3142,14 @@ impl Perform for Grid {
         } else if c == 'u' && intermediates == &[b'>'] {
             // Zellij only supports the first "progressive enhancement" layer of the kitty keyboard
             // protocol
+            // 0 disables, everything else enables.
+            let count = next_param_or(0);
             if !self.explicitly_disable_kitty_keyboard_protocol {
-                self.supports_kitty_keyboard_protocol = true;
+                if count > 0 {
+                    self.supports_kitty_keyboard_protocol = true;
+                } else {
+                    self.supports_kitty_keyboard_protocol = false;
+                }
             }
         } else if c == 'u' && intermediates == &[b'<'] {
             // Zellij only supports the first "progressive enhancement" layer of the kitty keyboard
