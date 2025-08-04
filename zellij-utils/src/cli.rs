@@ -49,10 +49,6 @@ pub struct CliArgs {
     #[clap(long, value_parser, hide = true, overrides_with = "server")]
     pub server: Option<PathBuf>,
 
-    /// Run a web server
-    #[clap(long, value_parser, hide = true, overrides_with = "server")]
-    pub web: Option<String>,
-
     /// Specify name of a new session
     #[clap(long, short, overrides_with = "session", value_parser = validate_session)]
     pub session: Option<String>,
@@ -94,7 +90,7 @@ pub enum Command {
     #[clap(name = "setup", value_parser)]
     Setup(Setup),
 
-    /// Setup zellij and check its configuration
+    /// Run a web server to serve terminal sessions
     #[clap(name = "web", value_parser)]
     Web(WebCli),
 
