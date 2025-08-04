@@ -34,7 +34,7 @@ impl<'a> MainScreen<'a> {
     const WARNING_TEXT: &'static str =
         "[*] Connection unencrypted. Consider using an SSL certificate.";
     const MORE_INFO_TEXT: &'static str = "More info: ";
-    const SSL_URL: &'static str = "https://zellij.dev/documentation/web-server-ssl";
+    const SSL_URL: &'static str = "https://zellij.dev/documentation/web-client.html#https";
     const HELP_TEXT_WITH_CLICK: &'static str = "Help: Click or Shift-Click to open in browser";
     const HELP_TEXT_SHIFT_ONLY: &'static str = "Help: Shift-Click to open in browser";
     pub fn new(
