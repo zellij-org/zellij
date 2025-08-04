@@ -198,7 +198,7 @@ impl Page {
                     Text::new(
                         "Starting this version, it's possible to add toggle-able key tooltips",
                     )
-                    .color_range(3, 37..=60),
+                    .color_range(3, 37..=58),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
                     Text::new("when using the compact-bar.").color_substring(3, "compact-bar"),
