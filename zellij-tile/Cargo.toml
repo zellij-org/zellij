@@ -1,6 +1,6 @@
 [package]
 name = "zellij-tile"
-version = "0.43.0"
+version = "0.44.0"
 authors = ["Brooks J Rady <b.j.rady@gmail.com>"]
 edition = "2021"
 description = "A small client-side library for writing Zellij plugins"

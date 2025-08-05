@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.43.0] - 2025-08-05
 * feat: multiple select and bulk pane actions (https://github.com/zellij-org/zellij/pull/4169 and https://github.com/zellij-org/zellij/pull/4171, https://github.com/zellij-org/zellij/pull/4221 and https://github.com/zellij-org/zellij/pull/4286)
 * feat: add an optional key tooltip to show the current keybindings for the compact bar (https://github.com/zellij-org/zellij/pull/4225 and https://github.com/zellij-org/zellij/pull/4279)
 * feat: web-client, allowing users to share sessions in the browser (https://github.com/zellij-org/zellij/pull/4242, https://github.com/zellij-org/zellij/pull/4257 and https://github.com/zellij-org/zellij/pull/4278)
