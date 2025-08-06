@@ -1,7 +1,10 @@
-pub use super::generated_api::api::pipe_message::{
-    Arg as ProtobufArg, PipeMessage as ProtobufPipeMessage, PipeSource as ProtobufPipeSource,
+pub use super::generated_api::api::{
+    event::PaneId as ProtobufPaneId,
+    pipe_message::{
+        Arg as ProtobufArg, PipeMessage as ProtobufPipeMessage, PipeSource as ProtobufPipeSource,
+    },
 };
-use crate::data::{PipeMessage, PipeSource};
+use crate::data::{PaneId, PipeMessage, PipeSource};
 
 use std::convert::TryFrom;
 
@@ -30,12 +33,19 @@ impl TryFrom<ProtobufPipeMessage> for PipeMessage {
             .map(|arg| (arg.key, arg.value))
             .collect();
         let is_private = protobuf_pipe_message.is_private;
+        let client_id = protobuf_pipe_message.client_id.map(|id| id as u16);
+        let pane_id = match protobuf_pipe_message.pane_id {
+            Some(id) => Some(PaneId::try_from(id)?),
+            None => None,
+        };
         Ok(PipeMessage {
+            pane_id,
             source,
             name,
             payload,
             args,
             is_private,
+            client_id,
         })
     }
 }
@@ -60,7 +70,14 @@ impl TryFrom<PipeMessage> for ProtobufPipeMessage {
             .map(|(key, value)| ProtobufArg { key, value })
             .collect();
         let is_private = pipe_message.is_private;
+        let client_id = pipe_message.client_id.map(|id| id as u32);
+        let pane_id = match pipe_message.pane_id {
+            Some(id) => Some(ProtobufPaneId::try_from(id)?),
+            None => None,
+        };
+
         Ok(ProtobufPipeMessage {
+            pane_id,
             source,
             cli_source_id,
             plugin_source_id,
@@ -68,6 +85,7 @@ impl TryFrom<PipeMessage> for ProtobufPipeMessage {
             payload,
             args,
             is_private,
+            client_id,
         })
     }
 }
