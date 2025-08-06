@@ -27,17 +27,21 @@ pub async fn serve_html(request: Request) -> Html<String> {
     html
 }
 
-pub async fn login_handler(Json(login_request): Json<LoginRequest>) -> impl IntoResponse {
+pub async fn login_handler(
+    State(state): State<AppState>,
+    Json(login_request): Json<LoginRequest>,
+) -> impl IntoResponse {
     match create_session_token(
         &login_request.auth_token,
         login_request.remember_me.unwrap_or(false),
     ) {
         Ok(session_token) => {
+            let is_https = state.is_https;
             let cookie = if login_request.remember_me.unwrap_or(false) {
                 // Persistent cookie for remember_me
                 Cookie::build(("session_token", session_token))
                     .http_only(true)
-                    .secure(true)
+                    .secure(is_https)
                     .same_site(SameSite::Strict)
                     .path("/")
                     .max_age(time::Duration::weeks(4))
@@ -46,7 +50,7 @@ pub async fn login_handler(Json(login_request): Json<LoginRequest>) -> impl Into
                 // Session cookie - NO max_age means it expires when browser closes/refreshes
                 Cookie::build(("session_token", session_token))
                     .http_only(true)
-                    .secure(true)
+                    .secure(is_https)
                     .same_site(SameSite::Strict)
                     .path("/")
                     .build()
