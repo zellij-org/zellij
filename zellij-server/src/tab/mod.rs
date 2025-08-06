@@ -4619,7 +4619,14 @@ impl Tab {
         self.get_active_pane_mut(client_id)
             .with_context(|| format!("no active pane found for client {client_id}"))
             .map(|active_pane| {
-                active_pane.update_name(&clean_string_from_control_and_linebreak(s));
+                let to_update = match s {
+                    "\u{007F}" | "\u{0008}" => {
+                        // delete and backspace keys
+                        s
+                    },
+                    _ => &clean_string_from_control_and_linebreak(s),
+                };
+                active_pane.update_name(&to_update);
             })?;
         Ok(())
     }
