@@ -174,6 +174,7 @@ pub struct AppState {
     pub config_file_path: PathBuf,
     pub session_manager: Arc<dyn SessionManager>,
     pub client_os_api_factory: Arc<dyn ClientOsApiFactory>,
+    pub is_https: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -20,22 +20,36 @@ pub async fn auth_middleware(request: Request, next: Next) -> Result<Response, S
         },
         Ok(false) | Err(_) => {
             // revoke session_token as if it exists it's no longer valid
-            let clear_cookie = Cookie::build(("session_token", ""))
-                .http_only(true)
-                .secure(true)
-                .same_site(SameSite::Strict)
-                .path("/")
-                .max_age(time::Duration::seconds(0))
-                .build();
-
             let mut response = Response::builder()
                 .status(StatusCode::UNAUTHORIZED)
                 .body(Body::empty())
                 .unwrap();
 
-            response
-                .headers_mut()
-                .insert(SET_COOKIE, clear_cookie.to_string().parse().unwrap());
+            // Clear both secure and non-secure versions
+            // in case the user was on http before and is now on https
+            // or vice versa
+            let clear_cookies = [
+                Cookie::build(("session_token", ""))
+                    .http_only(true)
+                    .secure(false)
+                    .same_site(SameSite::Strict)
+                    .path("/")
+                    .max_age(time::Duration::seconds(0))
+                    .build(),
+                Cookie::build(("session_token", ""))
+                    .http_only(true)
+                    .secure(true)
+                    .same_site(SameSite::Strict)
+                    .path("/")
+                    .max_age(time::Duration::seconds(0))
+                    .build(),
+            ];
+
+            for cookie in clear_cookies {
+                response
+                    .headers_mut()
+                    .append(SET_COOKIE, cookie.to_string().parse().unwrap());
+            }
 
             Ok(response)
         },

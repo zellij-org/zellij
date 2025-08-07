@@ -229,6 +229,7 @@ pub async fn serve_web_client(
         }
     });
 
+    let is_https = rustls_config.is_some();
     let state = AppState {
         connection_table: connection_table.clone(),
         config: Arc::new(Mutex::new(config)),
@@ -236,6 +237,7 @@ pub async fn serve_web_client(
         config_file_path,
         session_manager,
         client_os_api_factory,
+        is_https,
     };
 
     tokio::spawn({
