@@ -10,8 +10,7 @@ use std::{
 use wasmtime::{Instance, Store};
 use wasmtime_wasi::preview1::WasiP1Ctx;
 use wasmtime_wasi::{
-    HostInputStream, HostOutputStream, StdinStream, StdoutStream, StreamError, StreamResult,
-    Subscribe,
+    InputStream, OutputStream, Pollable, StdinStream, StdoutStream, StreamError, StreamResult,
 };
 
 use crate::{thread_bus::ThreadSenders, ClientId};
@@ -320,7 +319,7 @@ pub struct PluginEnv {
 pub struct VecDequeInputStream(pub Arc<Mutex<VecDeque<u8>>>);
 
 impl StdinStream for VecDequeInputStream {
-    fn stream(&self) -> Box<dyn wasmtime_wasi::HostInputStream> {
+    fn stream(&self) -> Box<dyn wasmtime_wasi::InputStream> {
         Box::new(self.clone())
     }
 
@@ -329,7 +328,7 @@ impl StdinStream for VecDequeInputStream {
     }
 }
 
-impl HostInputStream for VecDequeInputStream {
+impl InputStream for VecDequeInputStream {
     fn read(&mut self, size: usize) -> StreamResult<Bytes> {
         let mut inner = self.0.lock().unwrap();
         let len = std::cmp::min(size, inner.len());
@@ -338,7 +337,7 @@ impl HostInputStream for VecDequeInputStream {
 }
 
 #[async_trait::async_trait]
-impl Subscribe for VecDequeInputStream {
+impl Pollable for VecDequeInputStream {
     async fn ready(&mut self) {}
 }
 
@@ -351,7 +350,7 @@ impl<T> Clone for WriteOutputStream<T> {
 }
 
 impl<T: Write + Send + 'static> StdoutStream for WriteOutputStream<T> {
-    fn stream(&self) -> Box<dyn HostOutputStream> {
+    fn stream(&self) -> Box<dyn OutputStream> {
         Box::new((*self).clone())
     }
 
@@ -360,7 +359,7 @@ impl<T: Write + Send + 'static> StdoutStream for WriteOutputStream<T> {
     }
 }
 
-impl<T: Write + Send + 'static> HostOutputStream for WriteOutputStream<T> {
+impl<T: Write + Send + 'static> OutputStream for WriteOutputStream<T> {
     fn write(&mut self, bytes: Bytes) -> StreamResult<()> {
         self.0
             .lock()
@@ -383,7 +382,7 @@ impl<T: Write + Send + 'static> HostOutputStream for WriteOutputStream<T> {
 }
 
 #[async_trait::async_trait]
-impl<T: Send + 'static> Subscribe for WriteOutputStream<T> {
+impl<T: Send + 'static> Pollable for WriteOutputStream<T> {
     async fn ready(&mut self) {}
 }
 
