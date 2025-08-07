@@ -67,17 +67,17 @@ pub fn adjust_to_size(s: &str, rows: usize, columns: usize) -> String {
 }
 
 pub fn make_terminal_title(pane_title: &str) -> String {
-    // if we receive a title, we display it, otherwise we display the session name
-    if pane_title.is_empty() {
-        format!(
-            "\u{1b}]0;Zellij {}\u{07}",
-            get_session_name()
-                .map(|n| format!("({}) ", n))
-                .unwrap_or_default()
-        )
-    } else {
-        format!("\u{1b}]0;{}\u{07}", pane_title,)
-    }
+    format!(
+        "\u{1b}]0;{}{}\u{07}",
+        get_session_name()
+            .map(|n| if pane_title.is_empty() {
+                format!("{}", n)
+            } else {
+                format!("{} | ", n)
+            })
+            .unwrap_or_default(),
+        pane_title
+    )
 }
 
 // Colors
