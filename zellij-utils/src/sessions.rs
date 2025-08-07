@@ -65,7 +65,11 @@ pub fn get_resurrectable_sessions() -> Vec<(String, Duration)> {
                     let session_name = folder_name
                         .file_name()
                         .map(|f| std::path::PathBuf::from(f).display().to_string())?;
-                    Some((session_name, elapsed_duration))
+                    if std::path::Path::new(&layout_file_name).exists() {
+                        Some((session_name, elapsed_duration))
+                    } else {
+                        None
+                    }
                 })
                 .collect()
         },
