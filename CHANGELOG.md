@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * fix: pane rename backspace regression (https://github.com/zellij-org/zellij/pull/4346)
+* fix: Zellij Web login issue with safari (https://github.com/zellij-org/zellij/pull/4345)
 
 ## [0.43.0] - 2025-08-05
 * feat: multiple select and bulk pane actions (https://github.com/zellij-org/zellij/pull/4169 and https://github.com/zellij-org/zellij/pull/4171, https://github.com/zellij-org/zellij/pull/4221 and https://github.com/zellij-org/zellij/pull/4286)
