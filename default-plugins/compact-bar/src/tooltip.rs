@@ -29,7 +29,7 @@ impl<'a> TooltipRenderer<'a> {
                 // if it does
                 if base_x + x + total_element_width > cols {
                     let remaining_space = cols.saturating_sub(base_x + x);
-                    let ellipsis = Text::new("...");
+                    let ellipsis = Text::new("...").opaque();
                     print_text_with_coordinates(
                         ellipsis,
                         base_x + x,
@@ -43,7 +43,7 @@ impl<'a> TooltipRenderer<'a> {
                 print_text_with_coordinates(text, base_x + x, base_y + y, None, None);
                 print_ribbon_with_coordinates(
                     ribbon,
-                    base_x + x + text_width + 1,
+                    base_x + x + text_width,
                     base_y + y,
                     None,
                     None,
@@ -80,15 +80,25 @@ impl<'a> TooltipRenderer<'a> {
         let mut components = Vec::new();
         let mut max_columns = 0;
 
+        let mut is_first = true;
         for (key, description) in actions {
-            let text = Text::new(&key).color_all(3);
+            let text = if is_first {
+                Text::new(format!("{} ", &key)).color_all(3).opaque()
+            } else {
+                Text::new(format!(" {} ", &key)).color_all(3).opaque()
+            };
             let ribbon = Text::new(&description);
 
-            let line_length = key.chars().count() + 1 + description.chars().count();
+            let line_length = if is_first {
+                key.chars().count() + description.chars().count()
+            } else {
+                key.chars().count() + 1 + description.chars().count()
+            };
 
             components.push((text, ribbon, running_x, y));
             running_x += line_length + 5;
             max_columns = max_columns.max(running_x);
+            is_first = false;
         }
 
         let total_rows = 1;
