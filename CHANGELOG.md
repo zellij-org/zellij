@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.43.1] - 2025-08-08
 * fix: pane rename backspace regression (https://github.com/zellij-org/zellij/pull/4346)
 * fix: Zellij Web login issue with safari (https://github.com/zellij-org/zellij/pull/4345)
 * fix: terminal title regression (https://github.com/zellij-org/zellij/pull/4352)
