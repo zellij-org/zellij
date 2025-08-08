@@ -33,6 +33,8 @@ Zellij is designed around the philosophy that one must not sacrifice simplicity 
 
 Zellij is geared toward beginner and power users alike - allowing deep customizability, personal automation through [layouts](https://zellij.dev/documentation/layouts.html), true multiplayer collaboration, unique UX features such as floating and stacked panes, and a [plugin system](https://zellij.dev/documentation/plugins.html) allowing one to create plugins in any language that compiles to WebAssembly.
 
+Zellij includes a built-in [web-client](https://zellij.dev/tutorials/web-client/), making a terminal optional.
+
 You can get started by [installing](https://zellij.dev/documentation/installation.html) Zellij and checking out the [Screencasts & Tutorials](https://zellij.dev/screencasts/).
 
 For more details about our future plans, read about upcoming features in our [roadmap](#roadmap).
@@ -86,7 +88,7 @@ These are issues that are either being actively worked on or are planned for the
 
 ***If you'll click on the image, you'll be led to an SVG version of it on the website where you can directly click on every issue***
 
-[![roadmap](https://github.com/zellij-org/zellij/assets/795598/9c5b573b-20f5-41c6-908b-6b21c5fd456e)](https://zellij.dev/roadmap)
+[![roadmap](https://github.com/user-attachments/assets/bb55d213-4a68-4c84-ae72-7db5c9bf94fb)](https://zellij.dev/roadmap)
 
 ## Origin of the Name
 [From Wikipedia, the free encyclopedia](https://en.wikipedia.org/wiki/Zellij)
