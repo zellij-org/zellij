@@ -631,6 +631,11 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::QueryTabNames(client_id))
                 .with_context(err_context)?;
         },
+        Action::QueryPaneInfo => {
+            senders
+                .send_to_screen(ScreenInstruction::QueryPaneInfo(client_id))
+                .with_context(err_context)?;
+        },
         Action::NewTiledPluginPane(run_plugin, name, skip_cache, cwd) => {
             senders
                 .send_to_screen(ScreenInstruction::NewTiledPluginPane(

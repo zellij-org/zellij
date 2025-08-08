@@ -275,6 +275,7 @@ pub enum ScreenInstruction {
     PreviousSwapLayout(ClientId),
     NextSwapLayout(ClientId),
     QueryTabNames(ClientId),
+    QueryPaneInfo(ClientId),
     NewTiledPluginPane(
         RunPluginOrAlias,
         Option<String>,
@@ -564,6 +565,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
             ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
             ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
+            ScreenInstruction::QueryPaneInfo(..) => ScreenContext::QueryPaneInfo,
             ScreenInstruction::NewTiledPluginPane(..) => ScreenContext::NewTiledPluginPane,
             ScreenInstruction::NewFloatingPluginPane(..) => ScreenContext::NewFloatingPluginPane,
             ScreenInstruction::StartOrReloadPluginPane(..) => {
@@ -4604,6 +4606,48 @@ pub(crate) fn screen_thread_main(
                     .bus
                     .senders
                     .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
+            },
+            ScreenInstruction::QueryPaneInfo(client_id) => {
+                // Find the active pane for this client
+                let active_tab = screen.get_active_tab(client_id);
+                
+                if let Ok(tab) = active_tab {
+                    let active_pane_id = tab.get_active_pane_id(client_id);
+                    
+                    if let Some(pane_id) = active_pane_id {
+                        let pane_name = tab.get_pane_with_id(pane_id)
+                            .and_then(|p| p.current_title())
+                            .unwrap_or_else(|| String::from(""));
+                        
+                        let info = vec![
+                            format!("ZELLIJ_TAB_NAME={}", tab.name),
+                            format!("ZELLIJ_TAB_INDEX={}", tab.index),
+                            format!("ZELLIJ_PANE_ID={}", pane_id.to_string()),
+                            format!("ZELLIJ_PANE_NAME={}", pane_name),
+                        ];
+                        
+                        screen
+                            .bus
+                            .senders
+                            .send_to_server(ServerInstruction::Log(info, client_id))?;
+                    } else {
+                        screen
+                            .bus
+                            .senders
+                            .send_to_server(ServerInstruction::Log(
+                                vec![String::from("No active pane found")],
+                                client_id
+                            ))?;
+                    }
+                } else {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_server(ServerInstruction::Log(
+                            vec![String::from("No active tab found")],
+                            client_id
+                        ))?;
+                }
             },
             ScreenInstruction::NewTiledPluginPane(
                 run_plugin,
