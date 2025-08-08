@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: resurrection listing regression (https://github.com/zellij-org/zellij/pull/4354)
 * fix: tooltip keybinding backgrounds (https://github.com/zellij-org/zellij/pull/4356)
 * fix: default to session name for window/tab title in Zellij Web (https://github.com/zellij-org/zellij/pull/4357)
+* fix: handle omitted flags in the push sequence of the KKP (https://github.com/zellij-org/zellij/pull/4334)
 
 ## [0.43.0] - 2025-08-05
 * feat: multiple select and bulk pane actions (https://github.com/zellij-org/zellij/pull/4169 and https://github.com/zellij-org/zellij/pull/4171, https://github.com/zellij-org/zellij/pull/4221 and https://github.com/zellij-org/zellij/pull/4286)
