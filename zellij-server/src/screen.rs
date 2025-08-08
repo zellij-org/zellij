@@ -37,7 +37,7 @@ use crate::os_input_output::ResizeCache;
 use crate::pane_groups::PaneGroups;
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
-use crate::panes::terminal_pane::{BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END};
+use crate::panes::terminal_pane::{PaneId, BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END};
 use crate::session_layout_metadata::{PaneLayoutMetadata, SessionLayoutMetadata};
 
 use crate::{
@@ -4616,13 +4616,18 @@ pub(crate) fn screen_thread_main(
                     
                     if let Some(pane_id) = active_pane_id {
                         let pane_name = tab.get_pane_with_id(pane_id)
-                            .and_then(|p| p.current_title())
+                            .map(|p| p.current_title())
                             .unwrap_or_else(|| String::from(""));
+                        
+                        let pane_id_str = match pane_id {
+                            PaneId::Terminal(id) => format!("Terminal({})", id),
+                            PaneId::Plugin(id) => format!("Plugin({})", id),
+                        };
                         
                         let info = vec![
                             format!("ZELLIJ_TAB_NAME={}", tab.name),
                             format!("ZELLIJ_TAB_INDEX={}", tab.index),
-                            format!("ZELLIJ_PANE_ID={}", pane_id.to_string()),
+                            format!("ZELLIJ_PANE_ID={}", pane_id_str),
                             format!("ZELLIJ_PANE_NAME={}", pane_name),
                         ];
                         
