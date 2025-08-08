@@ -178,9 +178,7 @@ impl Pane for TerminalPane {
         self.reflow_lines();
     }
     fn set_geom(&mut self, position_and_size: PaneGeom) {
-        let is_pinned = self.geom.is_pinned;
         self.geom = position_and_size;
-        self.geom.is_pinned = is_pinned;
         self.reflow_lines();
         self.render_full_viewport();
     }
