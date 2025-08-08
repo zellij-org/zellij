@@ -18,6 +18,7 @@ document.addEventListener("DOMContentLoaded", async (event) => {
     
     setupInputHandlers(term, sendAnsiKey);
 
+    document.title = sessionName;
     const websockets = initWebSockets(webClientId, sessionName, term, fitAddon, sendAnsiKey);
     
     // Update sendAnsiKey to use the actual WebSocket function returned by initWebSockets
