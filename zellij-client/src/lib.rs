@@ -14,6 +14,7 @@ use log::info;
 use std::env::current_exe;
 use std::io::{self, Write};
 use std::net::{IpAddr, Ipv4Addr};
+use std::os::unix::io::AsFd;
 use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -241,7 +242,7 @@ pub fn start_client(
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
     let enter_kitty_keyboard_mode = "\u{1b}[>1u";
-    os_input.unset_raw_mode(0).unwrap();
+    os_input.unset_raw_mode(io::stdin().as_fd()).unwrap();
 
     if !is_a_reconnect {
         // we don't do this for a reconnect because our controlling terminal already has the
@@ -269,7 +270,7 @@ pub fn start_client(
         .theme_config(config_options.theme.as_ref())
         .unwrap_or_else(|| os_input.load_palette().into());
 
-    let full_screen_ws = os_input.get_terminal_size_using_fd(0);
+    let full_screen_ws = os_input.get_terminal_size_using_fd(io::stdin().as_fd());
     let client_attributes = ClientAttributes {
         size: full_screen_ws,
         style: Style {
@@ -358,7 +359,7 @@ pub fn start_client(
 
     let mut command_is_executing = CommandIsExecuting::new();
 
-    os_input.set_raw_mode(0);
+    os_input.set_raw_mode(io::stdin().as_fd());
     let _ = os_input
         .get_stdout_writer()
         .write(bracketed_paste.as_bytes())
@@ -379,7 +380,7 @@ pub fn start_client(
         let send_client_instructions = send_client_instructions.clone();
         let os_input = os_input.clone();
         Box::new(move |info| {
-            if let Ok(()) = os_input.unset_raw_mode(0) {
+            if let Ok(()) = os_input.unset_raw_mode(io::stdin().as_fd()) {
                 handle_panic(info, &send_client_instructions);
             }
         })
@@ -436,7 +437,7 @@ pub fn start_client(
                         let os_api = os_input.clone();
                         move || {
                             os_api.send_to_server(ClientToServerMsg::TerminalResize(
-                                os_api.get_terminal_size_using_fd(0),
+                                os_api.get_terminal_size_using_fd(io::stdin().as_fd()),
                             ));
                         }
                     }),
@@ -490,7 +491,7 @@ pub fn start_client(
         .unwrap();
 
     let handle_error = |backtrace: String| {
-        os_input.unset_raw_mode(0).unwrap();
+        os_input.unset_raw_mode(io::stdin().as_fd()).unwrap();
         let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
         let restore_snapshot = "\u{1b}[?1049l";
         os_input.disable_mouse().non_fatal();
@@ -609,7 +610,7 @@ pub fn start_client(
             },
             ClientInstruction::QueryTerminalSize => {
                 os_input.send_to_server(ClientToServerMsg::TerminalResize(
-                    os_input.get_terminal_size_using_fd(0),
+                    os_input.get_terminal_size_using_fd(io::stdin().as_fd()),
                 ));
             },
             ClientInstruction::WriteConfigToDisk { config } => {
@@ -667,7 +668,7 @@ pub fn start_client(
 
         os_input.disable_mouse().non_fatal();
         info!("{}", exit_msg);
-        os_input.unset_raw_mode(0).unwrap();
+        os_input.unset_raw_mode(io::stdin().as_fd()).unwrap();
         let mut stdout = os_input.get_stdout_writer();
         let exit_kitty_keyboard_mode = "\u{1b}[<1u";
         if !explicitly_disable_kitty_keyboard_protocol {

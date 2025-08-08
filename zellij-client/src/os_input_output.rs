@@ -12,7 +12,7 @@ use nix::sys::termios;
 use signal_hook::{consts::signal::*, iterator::Signals};
 use std::io::prelude::*;
 use std::io::IsTerminal;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{AsRawFd, BorrowedFd};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{io, thread, time};
@@ -30,7 +30,7 @@ const ENABLE_MOUSE_SUPPORT: &str =
 const DISABLE_MOUSE_SUPPORT: &str =
     "\u{1b}[?1006l\u{1b}[?1015l\u{1b}[?1003l\u{1b}[?1002l\u{1b}[?1000l";
 
-fn into_raw_mode(pid: RawFd) {
+fn into_raw_mode(pid: BorrowedFd) {
     let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
     termios::cfmakeraw(&mut tio);
     match termios::tcsetattr(pid, termios::SetArg::TCSANOW, &tio) {
@@ -39,11 +39,11 @@ fn into_raw_mode(pid: RawFd) {
     };
 }
 
-fn unset_raw_mode(pid: RawFd, orig_termios: termios::Termios) -> Result<(), nix::Error> {
+fn unset_raw_mode(pid: BorrowedFd, orig_termios: termios::Termios) -> Result<(), nix::Error> {
     termios::tcsetattr(pid, termios::SetArg::TCSANOW, &orig_termios)
 }
 
-pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> Size {
+pub(crate) fn get_terminal_size_using_fd(fd: BorrowedFd) -> Size {
     // TODO: do this with the nix ioctl
     use libc::ioctl;
     use libc::TIOCGWINSZ;
@@ -60,7 +60,7 @@ pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> Size {
     // useless conversion.
     #[allow(clippy::useless_conversion)]
     unsafe {
-        ioctl(fd, TIOCGWINSZ.into(), &mut winsize)
+        ioctl(fd.as_raw_fd(), TIOCGWINSZ.into(), &mut winsize)
     };
 
     // fallback to default values when rows/cols == 0: https://github.com/zellij-org/zellij/issues/1551
@@ -98,13 +98,13 @@ impl std::fmt::Debug for ClientOsInputOutput {
 /// Zellij client requires.
 pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
     /// Returns the size of the terminal associated to file descriptor `fd`.
-    fn get_terminal_size_using_fd(&self, fd: RawFd) -> Size;
+    fn get_terminal_size_using_fd(&self, fd: BorrowedFd) -> Size;
     /// Set the terminal associated to file descriptor `fd` to
     /// [raw mode](https://en.wikipedia.org/wiki/Terminal_mode).
-    fn set_raw_mode(&mut self, fd: RawFd);
+    fn set_raw_mode(&mut self, fd: BorrowedFd);
     /// Set the terminal associated to file descriptor `fd` to
     /// [cooked mode](https://en.wikipedia.org/wiki/Terminal_mode).
-    fn unset_raw_mode(&self, fd: RawFd) -> Result<(), nix::Error>;
+    fn unset_raw_mode(&self, fd: BorrowedFd) -> Result<(), nix::Error>;
     /// Returns the writer that allows writing to standard output.
     fn get_stdout_writer(&self) -> Box<dyn io::Write>;
     /// Returns a BufReader that allows to read from STDIN line by line, also locks STDIN
@@ -139,13 +139,13 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
 }
 
 impl ClientOsApi for ClientOsInputOutput {
-    fn get_terminal_size_using_fd(&self, fd: RawFd) -> Size {
+    fn get_terminal_size_using_fd(&self, fd: BorrowedFd) -> Size {
         get_terminal_size_using_fd(fd)
     }
-    fn set_raw_mode(&mut self, fd: RawFd) {
+    fn set_raw_mode(&mut self, fd: BorrowedFd) {
         into_raw_mode(fd);
     }
-    fn unset_raw_mode(&self, fd: RawFd) -> Result<(), nix::Error> {
+    fn unset_raw_mode(&self, fd: BorrowedFd) -> Result<(), nix::Error> {
         match &self.orig_termios {
             Some(orig_termios) => {
                 let orig_termios = orig_termios.lock().unwrap();
@@ -328,7 +328,7 @@ impl Clone for Box<dyn ClientOsApi> {
 }
 
 pub fn get_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
-    let current_termios = termios::tcgetattr(0).ok();
+    let current_termios = termios::tcgetattr(io::stdin()).ok();
     let orig_termios = current_termios.map(|termios| Arc::new(Mutex::new(termios)));
     let reading_from_stdin = Arc::new(Mutex::new(None));
     Ok(ClientOsInputOutput {

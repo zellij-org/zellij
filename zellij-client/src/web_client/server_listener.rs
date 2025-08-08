@@ -5,6 +5,8 @@ use crate::web_client::types::{ClientConnectionBus, ConnectionTable, SessionMana
 use crate::web_client::utils::terminal_init_messages;
 
 use std::{
+    io,
+    os::unix::io::AsFd,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -59,7 +61,7 @@ pub fn zellij_server_listener(
 
                     reload_config_from_disk(&mut config, &mut config_options, &config_file_path);
 
-                    let full_screen_ws = os_input.get_terminal_size_using_fd(0);
+                    let full_screen_ws = os_input.get_terminal_size_using_fd(io::stdin().as_fd());
                     let mut sent_init_messages = false;
 
                     let palette = config

@@ -1,6 +1,10 @@
 use crate::{panes::PaneId, ClientId};
 
-use async_std::{fs::File as AsyncFile, io::ReadExt, os::unix::io::FromRawFd};
+use async_std::{
+    fs::File as AsyncFile,
+    io::ReadExt,
+    os::unix::io::{AsRawFd, FromRawFd},
+};
 use interprocess::local_socket::LocalSocketStream;
 use nix::{
     pty::{openpty, OpenptyResult, Winsize},
@@ -36,8 +40,12 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     env,
     fs::File,
+    io,
     io::Write,
-    os::unix::{io::RawFd, process::CommandExt},
+    os::unix::{
+        io::{AsFd, BorrowedFd, OwnedFd, RawFd},
+        process::CommandExt,
+    },
     path::PathBuf,
     process::{Child, Command},
     sync::{Arc, Mutex},
@@ -47,7 +55,7 @@ pub use async_trait::async_trait;
 pub use nix::unistd::Pid;
 
 fn set_terminal_size_using_fd(
-    fd: RawFd,
+    fd: BorrowedFd,
     columns: u16,
     rows: u16,
     width_in_pixels: Option<u16>,
@@ -70,7 +78,7 @@ fn set_terminal_size_using_fd(
     // useless conversion.
     #[allow(clippy::useless_conversion)]
     unsafe {
-        ioctl(fd, TIOCSWINSZ.into(), &winsize)
+        ioctl(fd.as_raw_fd(), TIOCSWINSZ.into(), &winsize)
     };
 }
 
@@ -157,7 +165,7 @@ fn handle_openpty(
     cmd: RunCommand,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
     terminal_id: u32,
-) -> Result<(RawFd, RawFd)> {
+) -> Result<(OwnedFd, i32)> {
     let err_context = |cmd: &RunCommand| {
         format!(
             "failed to open PTY for command '{}'",
@@ -167,7 +175,7 @@ fn handle_openpty(
 
     // primary side of pty and child fd
     let pid_primary = open_pty_res.master;
-    let pid_secondary = open_pty_res.slave;
+    let pid_secondary = open_pty_res.slave.as_raw_fd();
 
     if command_exists(&cmd) {
         let mut child = unsafe {
@@ -226,7 +234,7 @@ fn handle_terminal(
     orig_termios: Option<termios::Termios>,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     terminal_id: u32,
-) -> Result<(RawFd, RawFd)> {
+) -> Result<(OwnedFd, i32)> {
     let err_context = || "failed to spawn child terminal".to_string();
 
     // Create a pipe to allow the child the communicate the shell's pid to its
@@ -238,7 +246,7 @@ fn handle_terminal(
                 handle_terminal(failover_cmd, None, orig_termios, quit_cb, terminal_id)
                     .with_context(err_context)
             },
-            None => Err::<(i32, i32), _>(e)
+            None => Err::<(OwnedFd, i32), _>(e)
                 .context("failed to start pty")
                 .with_context(err_context)
                 .to_log(),
@@ -285,7 +293,7 @@ fn spawn_terminal(
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit_status
     default_editor: Option<PathBuf>,
     terminal_id: u32,
-) -> Result<(RawFd, RawFd)> {
+) -> Result<(OwnedFd, i32)> {
     // returns the terminal_id, the primary fd and the
     // secondary fd
     let mut failover_cmd_args = None;
@@ -423,7 +431,7 @@ impl ClientSender {
 pub struct ServerOsInputOutput {
     orig_termios: Arc<Mutex<Option<termios::Termios>>>,
     client_senders: Arc<Mutex<HashMap<ClientId, ClientSender>>>,
-    terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<RawFd>>>>, // A value of None means the
+    terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<OwnedFd>>>>, // A value of None means the
     // terminal_id exists but is
     // not connected to an fd (eg.
     // a command pane with a
@@ -478,7 +486,7 @@ pub trait ServerOsApi: Send + Sync {
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
         default_editor: Option<PathBuf>,
-    ) -> Result<(u32, RawFd, RawFd)>;
+    ) -> Result<(u32, OwnedFd, i32)>;
     // reserves a terminal id without actually opening a terminal
     fn reserve_terminal_id(&self) -> Result<u32> {
         unimplemented!()
@@ -523,7 +531,7 @@ pub trait ServerOsApi: Send + Sync {
         terminal_id: u32,
         run_command: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
-    ) -> Result<(RawFd, RawFd)>;
+    ) -> Result<(OwnedFd, i32)>;
     fn clear_terminal_id(&self, terminal_id: u32) -> Result<()>;
     fn cache_resizes(&mut self) {}
     fn apply_cached_resizes(&mut self) {}
@@ -558,7 +566,13 @@ impl ServerOsApi for ServerOsInputOutput {
         {
             Some(Some(fd)) => {
                 if cols > 0 && rows > 0 {
-                    set_terminal_size_using_fd(*fd, cols, rows, width_in_pixels, height_in_pixels);
+                    set_terminal_size_using_fd(
+                        (*fd).as_fd(),
+                        cols,
+                        rows,
+                        width_in_pixels,
+                        height_in_pixels,
+                    );
                 }
             },
             _ => {
@@ -575,7 +589,7 @@ impl ServerOsApi for ServerOsInputOutput {
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
         default_editor: Option<PathBuf>,
-    ) -> Result<(u32, RawFd, RawFd)> {
+    ) -> Result<(u32, OwnedFd, i32)> {
         let err_context = || "failed to spawn terminal".to_string();
 
         let orig_termios = self
@@ -612,7 +626,7 @@ impl ServerOsApi for ServerOsInputOutput {
                     self.terminal_id_to_raw_fd
                         .lock()
                         .to_anyhow()?
-                        .insert(terminal_id, Some(pid_primary));
+                        .insert(terminal_id, Some(pid_primary.try_clone()?));
                     Ok((terminal_id, pid_primary, pid_secondary))
                 })
                 .with_context(err_context)
@@ -663,7 +677,7 @@ impl ServerOsApi for ServerOsInputOutput {
             .with_context(err_context)?
             .get(&terminal_id)
         {
-            Some(Some(fd)) => unistd::write(*fd, buf).with_context(err_context),
+            Some(Some(fd)) => unistd::write(fd, buf).with_context(err_context),
             _ => Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
         }
     }
@@ -677,7 +691,7 @@ impl ServerOsApi for ServerOsInputOutput {
             .with_context(err_context)?
             .get(&terminal_id)
         {
-            Some(Some(fd)) => termios::tcdrain(*fd).with_context(err_context),
+            Some(Some(fd)) => termios::tcdrain(fd).with_context(err_context),
             _ => Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
         }
     }
@@ -845,7 +859,7 @@ impl ServerOsApi for ServerOsInputOutput {
         terminal_id: u32,
         run_command: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
-    ) -> Result<(RawFd, RawFd)> {
+    ) -> Result<(OwnedFd, i32)> {
         let default_editor = None; // no need for a default editor when running an explicit command
         self.orig_termios
             .lock()
@@ -863,7 +877,7 @@ impl ServerOsApi for ServerOsInputOutput {
                 self.terminal_id_to_raw_fd
                     .lock()
                     .to_anyhow()?
-                    .insert(terminal_id, Some(pid_primary));
+                    .insert(terminal_id, Some(pid_primary.try_clone()?));
                 Ok((pid_primary, pid_secondary))
             })
             .with_context(|| format!("failed to rerun command in terminal id {}", terminal_id))
@@ -906,7 +920,7 @@ impl Clone for Box<dyn ServerOsApi> {
 }
 
 pub fn get_server_os_input() -> Result<ServerOsInputOutput, nix::Error> {
-    let current_termios = termios::tcgetattr(0).ok();
+    let current_termios = termios::tcgetattr(io::stdin()).ok();
     if current_termios.is_none() {
         log::warn!("Starting a server without a controlling terminal, using the default termios configuration.");
     }
