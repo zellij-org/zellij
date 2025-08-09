@@ -1,6 +1,6 @@
 [package]
 name = "zellij-utils"
-version = "0.44.0"
+version.workspace = true
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
 edition.workspace = true
 description = "A utility library for Zellij client and server"
