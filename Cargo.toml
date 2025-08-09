@@ -1,15 +1,15 @@
 [package]
 name = "zellij"
-version = "0.44.0"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
-edition = "2021"
 description = "A terminal workspace with batteries included"
-license = "MIT"
-repository = "https://github.com/zellij-org/zellij"
 homepage = "https://zellij.dev"
 include = ["src/**/*", "assets/layouts/*", "assets/config/*", "LICENSE.md", "README.md", "!**/*_test.*", "!**/tests/**/*"]
-# NOTE: When updating this, modify `channel` in `rust-toolchain.toml` accordingly
-rust-version = "1.84"
+# See 'workspace.package' for concrete values
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -58,6 +58,14 @@ members = [
     "xtask",
     ".",
 ]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/zellij-org/zellij"
+version = "0.44.0"
+# NOTE: When updating this, modify `channel` in `rust-toolchain.toml` accordingly
+rust-version = "1.84"
 
 [workspace.dependencies]
 ansi_term = { version = "0.12.1", default-features = false }
