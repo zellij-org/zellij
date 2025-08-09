@@ -570,6 +570,9 @@ pub trait Pane {
     fn toggle_search_wrap(&mut self) {
         // No-op by default (only terminal-panes currently have search capability)
     }
+    fn toggle_search_regex(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
     fn clear_search(&mut self) {
         // No-op by default (only terminal-panes currently have search capability)
     }
@@ -4742,6 +4745,12 @@ impl Tab {
     pub fn toggle_search_whole_words(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.toggle_search_whole_words();
+        }
+    }
+
+    pub fn toggle_search_regex(&mut self, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.toggle_search_regex();
         }
     }
 
