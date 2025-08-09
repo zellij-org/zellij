@@ -101,6 +101,8 @@ pub mod action {
         MoveTabPayload(i32),
         #[prost(message, tag="49")]
         MouseEventPayload(super::MouseEventPayload),
+        #[prost(message, tag="50")]
+        QueryPaneInfoPayload(super::QueryPaneInfoPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -305,6 +307,12 @@ pub struct NameAndValue {
     #[prost(string, tag="2")]
     pub value: ::prost::alloc::string::String,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct QueryPaneInfoPayload {
+    #[prost(uint32, tag="1")]
+    pub pane_id: u32,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum SearchDirection {
@@ -453,7 +461,7 @@ pub enum ActionName {
     PreviousSwapLayout = 64,
     NextSwapLayout = 65,
     QueryTabNames = 66,
-    QueryPaneInfo = 92,
+    QueryPaneInfoPayload = 92,
     NewTiledPluginPane = 67,
     NewFloatingPluginPane = 68,
     StartOrReloadPlugin = 69,
@@ -549,7 +557,7 @@ impl ActionName {
             ActionName::PreviousSwapLayout => "PreviousSwapLayout",
             ActionName::NextSwapLayout => "NextSwapLayout",
             ActionName::QueryTabNames => "QueryTabNames",
-            ActionName::QueryPaneInfo => "QueryPaneInfo",
+            ActionName::QueryPaneInfoPayload => "QueryPaneInfoPayload",
             ActionName::NewTiledPluginPane => "NewTiledPluginPane",
             ActionName::NewFloatingPluginPane => "NewFloatingPluginPane",
             ActionName::StartOrReloadPlugin => "StartOrReloadPlugin",
@@ -642,7 +650,7 @@ impl ActionName {
             "PreviousSwapLayout" => Some(Self::PreviousSwapLayout),
             "NextSwapLayout" => Some(Self::NextSwapLayout),
             "QueryTabNames" => Some(Self::QueryTabNames),
-            "QueryPaneInfo" => Some(Self::QueryPaneInfo),
+            "QueryPaneInfoPayload" => Some(Self::QueryPaneInfoPayload),
             "NewTiledPluginPane" => Some(Self::NewTiledPluginPane),
             "NewFloatingPluginPane" => Some(Self::NewFloatingPluginPane),
             "StartOrReloadPlugin" => Some(Self::StartOrReloadPlugin),

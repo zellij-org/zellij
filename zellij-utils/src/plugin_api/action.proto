@@ -53,6 +53,7 @@ message Action {
     CliPipePayload message_payload = 47;
     MoveTabDirection move_tab_payload = 48;
     MouseEventPayload mouse_event_payload = 49;
+    QueryPaneInfoPayload query_pane_info_payload = 50;
   }
 }
 
@@ -221,7 +222,7 @@ enum ActionName {
     PreviousSwapLayout = 64;
     NextSwapLayout = 65;
     QueryTabNames = 66;
-    QueryPaneInfo = 92;
+    QueryPaneInfoPayload = 92;
     NewTiledPluginPane = 67;
     NewFloatingPluginPane = 68;
     StartOrReloadPlugin = 69;
@@ -283,4 +284,8 @@ message PluginConfiguration {
 message NameAndValue {
   string name = 1;
   string value = 2;
+}
+
+message QueryPaneInfoPayload {
+  uint32 pane_id = 1;
 }
