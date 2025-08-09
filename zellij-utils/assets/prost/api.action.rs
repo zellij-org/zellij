@@ -3,7 +3,7 @@
 pub struct Action {
     #[prost(enumeration="ActionName", tag="1")]
     pub name: i32,
-    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49")]
+    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50")]
     pub optional_payload: ::core::option::Option<action::OptionalPayload>,
 }
 /// Nested message and enum types in `Action`.
@@ -101,6 +101,8 @@ pub mod action {
         MoveTabPayload(i32),
         #[prost(message, tag="49")]
         MouseEventPayload(super::MouseEventPayload),
+        #[prost(message, tag="50")]
+        RenameTabByIndexPayload(super::RenameTabByIndexPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -305,6 +307,14 @@ pub struct NameAndValue {
     #[prost(string, tag="2")]
     pub value: ::prost::alloc::string::String,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenameTabByIndexPayload {
+    #[prost(uint32, tag="1")]
+    pub tab_index: u32,
+    #[prost(string, tag="2")]
+    pub new_name: ::prost::alloc::string::String,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum SearchDirection {
@@ -453,6 +463,7 @@ pub enum ActionName {
     PreviousSwapLayout = 64,
     NextSwapLayout = 65,
     QueryTabNames = 66,
+    RenameTabByIndex = 93,
     NewTiledPluginPane = 67,
     NewFloatingPluginPane = 68,
     StartOrReloadPlugin = 69,
@@ -548,6 +559,7 @@ impl ActionName {
             ActionName::PreviousSwapLayout => "PreviousSwapLayout",
             ActionName::NextSwapLayout => "NextSwapLayout",
             ActionName::QueryTabNames => "QueryTabNames",
+            ActionName::RenameTabByIndex => "RenameTabByIndex",
             ActionName::NewTiledPluginPane => "NewTiledPluginPane",
             ActionName::NewFloatingPluginPane => "NewFloatingPluginPane",
             ActionName::StartOrReloadPlugin => "StartOrReloadPlugin",
@@ -640,6 +652,7 @@ impl ActionName {
             "PreviousSwapLayout" => Some(Self::PreviousSwapLayout),
             "NextSwapLayout" => Some(Self::NextSwapLayout),
             "QueryTabNames" => Some(Self::QueryTabNames),
+            "RenameTabByIndex" => Some(Self::RenameTabByIndex),
             "NewTiledPluginPane" => Some(Self::NewTiledPluginPane),
             "NewFloatingPluginPane" => Some(Self::NewFloatingPluginPane),
             "StartOrReloadPlugin" => Some(Self::StartOrReloadPlugin),

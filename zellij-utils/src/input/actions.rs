@@ -214,6 +214,7 @@ pub enum Action {
     ToggleTab,
     TabNameInput(Vec<u8>),
     UndoRenameTab,
+    RenameTabByIndex(usize, String),
     MoveTab(Direction),
     /// Run specified command in new pane.
     Run(RunCommandAction),
@@ -521,10 +522,16 @@ impl Action {
             CliAction::CloseTab => Ok(vec![Action::CloseTab]),
             CliAction::GoToTab { index } => Ok(vec![Action::GoToTab(index)]),
             CliAction::GoToTabName { name, create } => Ok(vec![Action::GoToTabName(name, create)]),
-            CliAction::RenameTab { name } => Ok(vec![
-                Action::TabNameInput(vec![0]),
-                Action::TabNameInput(name.as_bytes().to_vec()),
-            ]),
+            CliAction::RenameTab { name, tab_index } => {
+                if let Some(index) = tab_index {
+                    Ok(vec![Action::RenameTabByIndex(index, name)])
+                } else {
+                    Ok(vec![
+                        Action::TabNameInput(vec![0]),
+                        Action::TabNameInput(name.as_bytes().to_vec()),
+                    ])
+                }
+            },
             CliAction::UndoRenameTab => Ok(vec![Action::UndoRenameTab]),
             CliAction::NewTab {
                 name,

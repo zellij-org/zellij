@@ -536,6 +536,11 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::UndoRenameTab(client_id))
                 .with_context(err_context)?;
         },
+        Action::RenameTabByIndex(tab_index, new_name) => {
+            senders
+                .send_to_screen(ScreenInstruction::RenameTabByIndex(tab_index, new_name, client_id))
+                .with_context(err_context)?;
+        },
         Action::MoveTab(direction) => {
             let screen_instr = match direction {
                 Direction::Left => ScreenInstruction::MoveTabLeft(client_id),
