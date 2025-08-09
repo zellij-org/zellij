@@ -65,7 +65,7 @@ license = "MIT"
 repository = "https://github.com/zellij-org/zellij"
 version = "0.44.0"
 # NOTE: When updating this, modify `channel` in `rust-toolchain.toml` accordingly
-rust-version = "1.84"
+rust-version = "1.89"
 
 [workspace.dependencies]
 ansi_term = { version = "0.12.1", default-features = false }
