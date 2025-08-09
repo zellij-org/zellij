@@ -4,7 +4,7 @@ version = "0.44.0"
 authors = ["denis <denismaximov98@gmail.com>"]
 edition = "2021"
 description = "A utility library for Zellij plugins"
-license = "MIT"
+license.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
