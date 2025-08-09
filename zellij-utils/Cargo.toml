@@ -59,9 +59,6 @@ tokio = { workspace = true }
 insta = { version = "1.6.0", features = ["backtrace"] }
 expect-test = "1.4.1"
 
-[build-dependencies]
-prost-build = "0.11.9"
-
 [features]
 # If this feature is NOT set (default):
 #   - builtin plugins (status-bar, tab-bar, ...) are loaded directly from the application binary
