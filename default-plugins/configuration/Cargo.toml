@@ -3,7 +3,7 @@ name = "configuration"
 version = "0.1.0"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition = "2021"
-license = "MIT"
+license.workspace = true
 
 [dependencies]
 ansi_term = "0.12.1"

@@ -3,7 +3,7 @@ name = "tab-bar"
 version = "0.1.0"
 authors = ["Jonah Caplan <jonahcaplan@gmail.com>"]
 edition = "2021"
-license = "MIT"
+license.workspace = true
 
 [dependencies]
 colored = "2"

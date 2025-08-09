@@ -3,7 +3,7 @@ name = "status-bar"
 version = "0.1.0"
 authors = ["Brooks J Rady <b.j.rady@gmail.com>"]
 edition = "2021"
-license = "MIT"
+license.workspace = true
 
 [dependencies]
 colored = "2"
