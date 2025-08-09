@@ -2,7 +2,7 @@
 name = "strider"
 version = "0.2.0"
 authors = ["Brooks J Rady <b.j.rady@gmail.com>"]
-edition = "2021"
+edition.workspace = true
 description = "A simplified ranger clone written as a Zellij plugin"
 license.workspace = true
 
