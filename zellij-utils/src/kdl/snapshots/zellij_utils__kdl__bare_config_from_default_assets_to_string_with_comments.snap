@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
+assertion_line: 6484
 expression: fake_config_stringified
 ---
 keybinds clear-defaults=true {
@@ -518,6 +519,10 @@ web_client {
 // default is true
 // advanced_mouse_actions false
  
+// Whether to automatically focus panes when mouse hovers over them
+// default is false
+// focus_follows_mouse false
+ 
 // The ip address the web server should listen on when it starts
 // Default: "127.0.0.1"
 // (Requires restart)
@@ -534,3 +539,4 @@ web_client {
 // can be useful for removing wrappers around commands
 // Note: be sure to escape backslashes and similar characters properly
 // post_command_discovery_hook "echo $RESURRECT_COMMAND | sed <your_regex_here>"
+

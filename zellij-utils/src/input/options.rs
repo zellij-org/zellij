@@ -220,6 +220,12 @@ pub struct Options {
     #[serde(default)]
     pub advanced_mouse_actions: Option<bool>,
 
+    /// Whether to automatically focus panes when mouse hovers over them
+    /// default is false
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub focus_follows_mouse: Option<bool>,
+
     // these are intentionally excluded from the CLI options as they must be specified in the
     // configuration file
     pub web_server_ip: Option<IpAddr>,
@@ -315,6 +321,7 @@ impl Options {
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
+        let focus_follows_mouse = other.focus_follows_mouse.or(self.focus_follows_mouse);
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
@@ -362,6 +369,7 @@ impl Options {
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            focus_follows_mouse,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -433,6 +441,7 @@ impl Options {
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
+        let focus_follows_mouse = other.focus_follows_mouse.or(self.focus_follows_mouse);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
             .web_server_cert
@@ -479,6 +488,7 @@ impl Options {
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            focus_follows_mouse,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -556,6 +566,7 @@ impl From<CliOptions> for Options {
             show_startup_tips: opts.show_startup_tips,
             show_release_notes: opts.show_release_notes,
             advanced_mouse_actions: opts.advanced_mouse_actions,
+            focus_follows_mouse: opts.focus_follows_mouse,
             web_server_ip: opts.web_server_ip,
             web_server_port: opts.web_server_port,
             web_server_cert: opts.web_server_cert,

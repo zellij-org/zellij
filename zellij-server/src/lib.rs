@@ -400,6 +400,7 @@ impl SessionMetaData {
                         .options
                         .advanced_mouse_actions
                         .unwrap_or(true),
+                    focus_follows_mouse: new_config.options.focus_follows_mouse.unwrap_or(false),
                 })
                 .unwrap();
             self.senders
