@@ -15,7 +15,7 @@ use std::time::Duration;
 use uuid::Uuid;
 use zellij_utils::{
     channels::SenderWithContext,
-    data::{Direction, Event, InputMode, PluginCapabilities, ResizeStrategy},
+    data::{Direction, Event, InputMode, KeyWithModifier, PluginCapabilities, ResizeStrategy},
     errors::prelude::*,
     input::{
         actions::{Action, SearchDirection, SearchOption},
@@ -43,6 +43,10 @@ pub(crate) fn route_action(
     mut seen_cli_pipes: Option<&mut HashSet<String>>,
     client_keybinds: Keybinds,
     default_mode: InputMode,
+    // If action is triggered by a key msg, these args will be populated
+    key_with_modifier: Option<KeyWithModifier>,
+    raw_bytes: Option<Vec<u8>>,
+    is_kitty_keyboard_protocol: Option<bool>,
 ) -> Result<bool> {
     let mut should_break = false;
     let err_context = || format!("failed to route action for client {client_id}");
@@ -568,6 +572,16 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::Copy(client_id))
                 .with_context(err_context)?;
         },
+        Action::SmartCopy => {
+            senders
+                .send_to_screen(ScreenInstruction::SmartCopy(
+                    key_with_modifier,
+                    raw_bytes,
+                    is_kitty_keyboard_protocol,
+                    client_id,
+                ))
+                .with_context(err_context)?;
+        },
         Action::Confirm => {
             senders
                 .send_to_screen(ScreenInstruction::ConfirmPrompt(client_id))
@@ -978,7 +992,7 @@ pub(crate) fn route_thread_main(
                                             .get_actions_for_key_in_mode_or_default_action(
                                                 &input_mode,
                                                 &key,
-                                                raw_bytes,
+                                                raw_bytes.clone(),
                                                 default_input_mode,
                                                 is_kitty_keyboard_protocol,
                                             )
@@ -1001,6 +1015,9 @@ pub(crate) fn route_thread_main(
                                                     .default_mode
                                                     .unwrap_or(InputMode::Normal)
                                                     .clone(),
+                                                Some(key.clone()),
+                                                Some(raw_bytes.clone()),
+                                                Some(is_kitty_keyboard_protocol.clone()),
                                             )? {
                                                 should_break = true;
                                             }
@@ -1036,6 +1053,9 @@ pub(crate) fn route_thread_main(
                                         .default_mode
                                         .unwrap_or(InputMode::Normal)
                                         .clone(),
+                                    None,
+                                    None,
+                                    None,
                                 )? {
                                     should_break = true;
                                 }
