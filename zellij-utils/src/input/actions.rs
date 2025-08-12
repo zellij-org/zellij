@@ -225,6 +225,7 @@ pub enum Action {
     // should_open_in_place, skip_cache, Option<PathBuf> is cwd
     MouseEvent(MouseEvent),
     Copy,
+    SmartCopy,
     /// Confirm a prompt
     Confirm,
     /// Deny a prompt
