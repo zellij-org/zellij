@@ -20,7 +20,8 @@ use zellij_utils::{
     channels::SenderWithContext,
     data::{
         BareKey, ConnectToSession, Direction, Event, GetFocusedPaneInfoResponse, InputMode,
-        KeyModifier, ListPanesResponse, ListTabsResponse, NewPanePlacement, PaneListEntry,
+        KeyModifier, KeyWithModifier, ListPanesResponse, ListTabsResponse, NewPanePlacement,
+        PaneListEntry,
         ResizeStrategy, TabInfo, UnblockCondition,
     },
     envs,

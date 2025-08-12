@@ -686,6 +686,12 @@ pub enum ScreenInstruction {
     ChangeModeForAllClients(InputMode, Option<InputMode>, Option<NotificationEnd>),
     MouseEvent(MouseEvent, ClientId, Option<NotificationEnd>),
     Copy(ClientId, Option<NotificationEnd>),
+    SmartCopy(
+        Option<KeyWithModifier>, // key_with_modifier
+        Option<Vec<u8>>,         // raw_bytes
+        Option<bool>,            // is_kitty_keyboard_protocol
+        ClientId,
+    ),
     AddClient(
         ClientId,
         bool,                // is_web_client
@@ -1443,6 +1449,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ScrollDownAt(..) => ScreenContext::ScrollDownAt,
             ScreenInstruction::MouseEvent(..) => ScreenContext::MouseEvent,
             ScreenInstruction::Copy(..) => ScreenContext::Copy,
+            ScreenInstruction::SmartCopy(..) => ScreenContext::SmartCopy,
             ScreenInstruction::ToggleTab(..) => ScreenContext::ToggleTab,
             ScreenInstruction::AddClient(..) => ScreenContext::AddClient,
             ScreenInstruction::RemoveClient(..) => ScreenContext::RemoveClient,
@@ -13296,9 +13303,54 @@ pub(crate) fn screen_thread_main(
                     .copy_selection(client_id), ?);
                 screen.render(None)?;
             },
+            ScreenInstruction::SmartCopy(
+                key_with_modifier,
+                raw_bytes,
+                is_kitty_keyboard_protocol,
+                client_id,
+            ) => {
+                let mut state_changed = false;
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| -> Result<()> {
+                        if tab.has_selection(client_id) {
+                            tab.copy_selection(client_id)?;
+                            tab.reset_selection(client_id);
+                        } else if let (Some(raw_bytes), Some(is_kitty_keyboard_protocol)) =
+                            (raw_bytes, is_kitty_keyboard_protocol)
+                        {
+                            // If there's no selection, pass through the key to pane
+                            let write_result = match tab.is_sync_panes_active() {
+                                true => tab.write_to_terminals_on_current_tab(
+                                    &key_with_modifier,
+                                    raw_bytes,
+                                    is_kitty_keyboard_protocol,
+                                    client_id,
+                                ),
+                                false => tab.write_to_active_terminal(
+                                    &key_with_modifier,
+                                    raw_bytes,
+                                    is_kitty_keyboard_protocol,
+                                    client_id,
+                                ),
+                            };
+                            if let Ok(true) = write_result {
+                                state_changed = true;
+                            }
+                        }
+                        Ok(())
+                    },
+                    ?
+                );
+                if state_changed {
+                    screen.log_and_report_session_state()?;
+                }
+                screen.unblock_input()?;
+                screen.render(None)?;
+            },
             ScreenInstruction::SessionEnding => {
                 screen.end_mirrors_with_the_session();
-            },
             ScreenInstruction::Exit => {
                 screen.close_all_mirror_subscribers(
                     zellij_utils::data::MirrorClosedReason::SessionEnding,
