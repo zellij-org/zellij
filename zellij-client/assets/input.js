@@ -26,6 +26,12 @@ export function setupInputHandlers(term, sendFunction) {
                 // pass cmd-v onwards so that paste is interpreted by xterm.js
                 return;
             }
+            if (isMac() && ev.key == "Meta") {
+                // avoid processing the meta key on it's on
+                // otherwise it ends up causing an "m" character to be printed on bash and zsh
+                // did not investigate this further but this seems a reasonable fix for now
+                return;
+            }
 
             let modifiers_count = 0;
             let shift_keycode = 16;

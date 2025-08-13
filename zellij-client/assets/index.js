@@ -1,8 +1,8 @@
-import { initConnectionHandlers } from './connection.js';
-import { initAuthentication } from './auth.js';
-import { initTerminal } from './terminal.js';
-import { setupInputHandlers } from './input.js';
-import { initWebSockets } from './websockets.js';
+import { initConnectionHandlers } from "./connection.js";
+import { initAuthentication } from "./auth.js";
+import { initTerminal } from "./terminal.js";
+import { setupInputHandlers } from "./input.js";
+import { initWebSockets } from "./websockets.js";
 
 document.addEventListener("DOMContentLoaded", async (event) => {
     initConnectionHandlers();
@@ -15,15 +15,21 @@ document.addEventListener("DOMContentLoaded", async (event) => {
     let sendAnsiKey = (ansiKey) => {
         // This will be replaced by the WebSocket module
     };
-    
+
     setupInputHandlers(term, sendAnsiKey);
 
     document.title = sessionName;
-    const websockets = initWebSockets(webClientId, sessionName, term, fitAddon, sendAnsiKey);
-    
+    const websockets = initWebSockets(
+        webClientId,
+        sessionName,
+        term,
+        fitAddon,
+        sendAnsiKey
+    );
+
     // Update sendAnsiKey to use the actual WebSocket function returned by initWebSockets
     sendAnsiKey = websockets.sendAnsiKey;
-    
+
     // Update the input handlers with the correct sendAnsiKey function
     setupInputHandlers(term, sendAnsiKey);
 });
