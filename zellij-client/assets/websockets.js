@@ -2,8 +2,8 @@
  * WebSocket management for terminal and control connections
  */
 
-import { is_https } from './utils.js';
-import { handleReconnection, markConnectionEstablished } from './connection.js';
+import { getBaseUrl } from "./utils.js";
+import { handleReconnection, markConnectionEstablished } from "./connection.js";
 
 /**
  * Initialize both terminal and control WebSocket connections
@@ -14,72 +14,79 @@ import { handleReconnection, markConnectionEstablished } from './connection.js';
  * @param {function} sendAnsiKey - Function to send ANSI key sequences
  * @returns {object} Object containing WebSocket instances and cleanup function
  */
-export function initWebSockets(webClientId, sessionName, term, fitAddon, sendAnsiKey) {
+export function initWebSockets(
+    webClientId,
+    sessionName,
+    term,
+    fitAddon,
+    sendAnsiKey
+) {
     let ownWebClientId = "";
     let wsTerminal;
     let wsControl;
-    
-    const wsUrlPrefix = is_https() ? "wss" : "ws";
-    const url = sessionName === ""
-        ? `${wsUrlPrefix}://${window.location.host}/ws/terminal`
-        : `${wsUrlPrefix}://${window.location.host}/ws/terminal/${sessionName}`;
-    
+
+    const base_url = getBaseUrl("ws");
+    const url =
+        sessionName === ""
+            ? `${base_url}/ws/terminal`
+            : `${base_url}/ws/terminal/${sessionName}`;
+
     const queryString = `?web_client_id=${encodeURIComponent(webClientId)}`;
     const wsTerminalUrl = `${url}${queryString}`;
-    
+
     wsTerminal = new WebSocket(wsTerminalUrl);
-    
+
     wsTerminal.onopen = function () {
         markConnectionEstablished();
     };
-    
+
     wsTerminal.onmessage = function (event) {
         if (ownWebClientId == "") {
             ownWebClientId = webClientId;
-            const wsControlUrl = `${wsUrlPrefix}://${window.location.host}/ws/control`;
+            const wsControlUrl = `${base_url}/ws/control`;
             wsControl = new WebSocket(wsControlUrl);
             startWsControl(wsControl, term, fitAddon, ownWebClientId);
         }
 
         let data = event.data;
-        
-        if (typeof data === 'string') {
+
+        if (typeof data === "string") {
             // Handle ANSI title change sequences
             const titleRegex = /\x1b\]0;([^\x07\x1b]*?)(?:\x07|\x1b\\)/g;
             let match;
             while ((match = titleRegex.exec(data)) !== null) {
                 document.title = match[1];
             }
-            
-            if (data.includes('\x1b[0 q')) {
+
+            if (data.includes("\x1b[0 q")) {
                 const shouldBlink = term.options.cursorBlink;
                 const cursorStyle = term.options.cursorStyle;
                 let replacement;
                 switch (cursorStyle) {
-                    case 'block':
-                        replacement = shouldBlink ? '\x1b[1 q' : '\x1b[2 q';
+                    case "block":
+                        replacement = shouldBlink ? "\x1b[1 q" : "\x1b[2 q";
                         break;
-                    case 'underline':
-                        replacement = shouldBlink ? '\x1b[3 q' : '\x1b[4 q';
+                    case "underline":
+                        replacement = shouldBlink ? "\x1b[3 q" : "\x1b[4 q";
                         break;
-                    case 'bar':
-                        replacement = shouldBlink ? '\x1b[5 q' : '\x1b[6 q';
+                    case "bar":
+                        replacement = shouldBlink ? "\x1b[5 q" : "\x1b[6 q";
                         break;
                     default:
-                        replacement = '\x1b[2 q';
+                        replacement = "\x1b[2 q";
                         break;
                 }
                 data = data.replace(/\x1b\[0 q/g, replacement);
             }
         }
-        
+
         term.write(data);
     };
-    
+
     wsTerminal.onclose = function () {
         handleReconnection();
     };
-    
+
     // Update sendAnsiKey to use the actual WebSocket
     const originalSendAnsiKey = sendAnsiKey;
     sendAnsiKey = (ansiKey) => {
@@ -87,10 +94,15 @@ export function initWebSockets(webClientId, sessionName, term, fitAddon, sendAns
             wsTerminal.send(ansiKey);
         }
     };
-    
+
     // Setup resize handler
-    setupResizeHandler(term, fitAddon, () => wsControl, () => ownWebClientId);
-    
+    setupResizeHandler(
+        term,
+        fitAddon,
+        () => wsControl,
+        () => ownWebClientId
+    );
+
     return {
         wsTerminal,
         getWsControl: () => wsControl,
@@ -103,7 +115,7 @@ export function initWebSockets(webClientId, sessionName, term, fitAddon, sendAns
             if (wsControl) {
                 wsControl.close();
             }
-        }
+        },
     };
 }
 
@@ -129,7 +141,7 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId) {
             })
         );
     };
-    
+
     wsControl.onmessage = function (event) {
         const msg = JSON.parse(event.data);
         if (msg.type === "SetConfig") {
@@ -139,20 +151,20 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId) {
                 cursor_blink,
                 mac_option_is_meta,
                 cursor_style,
-                cursor_inactive_style
+                cursor_inactive_style,
             } = msg;
             term.options.fontFamily = font;
             term.options.theme = theme;
-            if (cursor_blink !== 'undefined') {
+            if (cursor_blink !== "undefined") {
                 term.options.cursorBlink = cursor_blink;
             }
-            if (mac_option_is_meta !== 'undefined') {
+            if (mac_option_is_meta !== "undefined") {
                 term.options.macOptionIsMeta = mac_option_is_meta;
             }
-            if (cursor_style !== 'undefined') {
+            if (cursor_style !== "undefined") {
                 term.options.cursorStyle = cursor_style;
             }
-            if (cursor_inactive_style !== 'undefined') {
+            if (cursor_inactive_style !== "undefined") {
                 term.options.cursorInactiveStyle = cursor_inactive_style;
             }
             const body = document.querySelector("body");
@@ -227,7 +239,12 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId) {
  * @param {function} getWsControl - Function that returns control WebSocket
  * @param {function} getOwnWebClientId - Function that returns own web client ID
  */
-export function setupResizeHandler(term, fitAddon, getWsControl, getOwnWebClientId) {
+export function setupResizeHandler(
+    term,
+    fitAddon,
+    getWsControl,
+    getOwnWebClientId
+) {
     addEventListener("resize", (event) => {
         const ownWebClientId = getOwnWebClientId();
         if (ownWebClientId === "") {
