@@ -1017,7 +1017,7 @@ pub(crate) fn route_thread_main(
                                                     .clone(),
                                                 Some(key.clone()),
                                                 Some(raw_bytes.clone()),
-                                                Some(is_kitty_keyboard_protocol.clone()),
+                                                Some(is_kitty_keyboard_protocol),
                                             )? {
                                                 should_break = true;
                                             }
