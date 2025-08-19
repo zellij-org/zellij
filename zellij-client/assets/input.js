@@ -26,35 +26,8 @@ export function setupInputHandlers(term, sendFunction) {
                 // pass cmd-v onwards so that paste is interpreted by xterm.js
                 return;
             }
-            if (isMac() && ev.key == "Meta") {
-                // avoid processing the meta key on it's on
-                // otherwise it ends up causing an "m" character to be printed on bash and zsh
-                // did not investigate this further but this seems a reasonable fix for now
-                return;
-            }
 
-            let modifiers_count = 0;
-            let shift_keycode = 16;
-            let alt_keycode = 17;
-            let ctrl_keycode = 18;
-            if (ev.altKey) {
-                modifiers_count += 1;
-            }
-            if (ev.ctrlKey) {
-                modifiers_count += 1;
-            }
-            if (ev.shiftKey) {
-                modifiers_count += 1;
-            }
-            if (ev.metaKey) {
-                modifiers_count += 1;
-            }
-            if (
-                (modifiers_count > 1 || ev.metaKey) &&
-                ev.keyCode != shift_keycode &&
-                ev.keyCode != alt_keycode &&
-                ev.keyCode != ctrl_keycode
-            ) {
+            if (hasModifiersToHandle(ev)) {
                 ev.preventDefault();
                 encode_kitty_key(ev, sendFunction);
                 return false;
@@ -137,4 +110,26 @@ export function setupInputHandlers(term, sendFunction) {
         }
         sendFunction(buffer);
     });
+}
+
+/**
+ * Check if a key event has modifiers and is not a modifier key itself
+ * @param {KeyboardEvent} ev - The keyboard event
+ * @returns {boolean} - True if the key has modifiers that need special handling
+ */
+function hasModifiersToHandle(ev) {
+    // Use key property for simpler modifier key detection
+    const MODIFIER_KEYS = ["Shift", "Control", "Alt", "Meta"];
+
+    // Count active modifiers
+    const modifiers_count = [
+        ev.altKey,
+        ev.ctrlKey,
+        ev.shiftKey,
+        ev.metaKey,
+    ].filter(Boolean).length;
+
+    // Check if we have multiple modifiers or meta key, and it's not a modifier key itself
+    const isModifierKey = MODIFIER_KEYS.includes(ev.key);
+    return (modifiers_count > 1 || ev.metaKey) && !isModifierKey;
 }
