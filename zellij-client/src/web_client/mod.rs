@@ -33,7 +33,6 @@ use nix::sys::stat::{umask, Mode};
 use interprocess::unnamed_pipe::pipe;
 use std::io::{prelude::*, BufRead, BufReader};
 use tokio::runtime::Runtime;
-use tower_http::cors::CorsLayer;
 use zellij_utils::input::{
     config::{watch_config_file_changes, Config},
     options::Options,
@@ -259,7 +258,6 @@ pub async fn serve_web_client(
         .route("/assets/{*path}", get(get_static_asset))
         .route("/command/login", post(login_handler))
         .route("/info/version", get(version_handler))
-        .layer(CorsLayer::permissive()) // TODO: configure properly
         .with_state(state);
 
     match rustls_config {
