@@ -599,6 +599,10 @@ impl Pane for TerminalPane {
         self.grid.reset_selection();
     }
 
+    fn has_selection(&self, _client_id: ClientId) -> bool {
+        self.grid.has_selection()
+    }
+
     fn get_selected_text(&self, _client_id: ClientId) -> Option<String> {
         self.grid.get_selected_text()
     }

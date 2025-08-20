@@ -1268,6 +1268,7 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::NewInPlacePluginPane(..)
             | Action::Deny
             | Action::Copy
+            | Action::SmartCopy
             | Action::DumpLayout
             | Action::CliPipe { .. }
             | Action::ListClients

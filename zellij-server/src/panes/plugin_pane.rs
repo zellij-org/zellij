@@ -633,6 +633,14 @@ impl Pane for PluginPane {
         self.supports_mouse_selection
     }
 
+    fn has_selection(&self, client_id: ClientId) -> bool {
+        if let Some(grid) = self.grids.get(&client_id) {
+            grid.has_selection()
+        } else {
+            false
+        }
+    }
+
     fn get_selected_text(&self, client_id: ClientId) -> Option<String> {
         if let Some(grid) = self.grids.get(&client_id) {
             grid.get_selected_text()
