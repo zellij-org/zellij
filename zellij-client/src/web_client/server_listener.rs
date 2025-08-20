@@ -125,7 +125,7 @@ pub fn zellij_server_listener(
                                 continue 'reconnect_loop;
                             },
                             Some((ServerToClientMsg::WriteConfigToDisk { config }, _)) => {
-                                handle_config_write(&os_input, config);
+                                // handle_config_write(&os_input, config);
                             },
                             Some((ServerToClientMsg::QueryTerminalSize, _)) => {
                                 client_connection_bus.send_control(
@@ -189,21 +189,21 @@ fn handle_exit_reason(client_connection_bus: &mut ClientConnectionBus, exit_reas
     client_connection_bus.close_connection();
 }
 
-fn handle_config_write(os_input: &Box<dyn ClientOsApi>, config: String) {
-    match Config::write_config_to_disk(config, &CliArgs::default()) {
-        Ok(written_config) => {
-            let _ = os_input.send_to_server(ClientToServerMsg::ConfigWrittenToDisk(written_config));
-        },
-        Err(e) => {
-            let error_path = e
-                .as_ref()
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(String::new);
-            log::error!("Failed to write config to disk: {}", error_path);
-            let _ = os_input.send_to_server(ClientToServerMsg::FailedToWriteConfigToDisk(e));
-        },
-    }
-}
+// fn handle_config_write(os_input: &Box<dyn ClientOsApi>, config: String) {
+//     match Config::write_config_to_disk(config, &CliArgs::default()) {
+//         Ok(written_config) => {
+//             let _ = os_input.send_to_server(ClientToServerMsg::ConfigWrittenToDisk(written_config));
+//         },
+//         Err(e) => {
+//             let error_path = e
+//                 .as_ref()
+//                 .map(|p| p.display().to_string())
+//                 .unwrap_or_else(String::new);
+//             log::error!("Failed to write config to disk: {}", error_path);
+//             let _ = os_input.send_to_server(ClientToServerMsg::FailedToWriteConfigToDisk(e));
+//         },
+//     }
+// }
 
 fn reload_config_from_disk(
     config_without_layout: &mut Config,

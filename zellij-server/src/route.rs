@@ -1188,10 +1188,10 @@ pub(crate) fn route_thread_main(
                             let _ = to_server.send(ServerInstruction::DetachSession(client_id));
                             should_break = true;
                         },
-                        ClientToServerMsg::ConfigWrittenToDisk(config) => {
-                            let _ = to_server
-                                .send(ServerInstruction::ConfigWrittenToDisk(client_id, config));
-                        },
+//                         ClientToServerMsg::ConfigWrittenToDisk(config) => {
+//                             let _ = to_server
+//                                 .send(ServerInstruction::ConfigWrittenToDisk(client_id, config));
+//                         },
                         ClientToServerMsg::FailedToWriteConfigToDisk(failed_path) => {
                             let _ = to_server.send(ServerInstruction::FailedToWriteConfigToDisk(
                                 client_id,

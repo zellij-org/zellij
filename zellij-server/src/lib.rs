@@ -116,7 +116,7 @@ pub enum ServerInstruction {
         config: String,
         write_config_to_disk: bool,
     },
-    ConfigWrittenToDisk(ClientId, Config),
+    // ConfigWrittenToDisk(ClientId, Config),
     FailedToWriteConfigToDisk(ClientId, Option<PathBuf>), // Pathbuf - file we failed to write
     RebindKeys {
         client_id: ClientId,
@@ -161,7 +161,7 @@ impl From<&ServerInstruction> for ServerContext {
                 ServerContext::ChangeModeForAllClients
             },
             ServerInstruction::Reconfigure { .. } => ServerContext::Reconfigure,
-            ServerInstruction::ConfigWrittenToDisk(..) => ServerContext::ConfigWrittenToDisk,
+            // ServerInstruction::ConfigWrittenToDisk(..) => ServerContext::ConfigWrittenToDisk,
             ServerInstruction::FailedToWriteConfigToDisk(..) => {
                 ServerContext::FailedToWriteConfigToDisk
             },
@@ -1257,22 +1257,22 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     }
                 }
             },
-            ServerInstruction::ConfigWrittenToDisk(client_id, new_config) => {
-                let changes = session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .session_configuration
-                    .new_saved_config(client_id, new_config);
-                let config_was_written_to_disk = true;
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .propagate_configuration_changes(changes, config_was_written_to_disk);
-            },
+//             ServerInstruction::ConfigWrittenToDisk(client_id, new_config) => {
+//                 let changes = session_data
+//                     .write()
+//                     .unwrap()
+//                     .as_mut()
+//                     .unwrap()
+//                     .session_configuration
+//                     .new_saved_config(client_id, new_config);
+//                 let config_was_written_to_disk = true;
+//                 session_data
+//                     .write()
+//                     .unwrap()
+//                     .as_mut()
+//                     .unwrap()
+//                     .propagate_configuration_changes(changes, config_was_written_to_disk);
+//             },
             ServerInstruction::FailedToWriteConfigToDisk(_client_id, file_path) => {
                 session_data
                     .write()

@@ -95,7 +95,7 @@ pub enum ClientToServerMsg {
     ClientExited,
     KillSession,
     ConnStatus,
-    ConfigWrittenToDisk(Config),
+    // ConfigWrittenToDisk(Config),
     FailedToWriteConfigToDisk(Option<PathBuf>),
     WebServerStarted(String), // String -> base_url
     FailedToStartWebServer(String),

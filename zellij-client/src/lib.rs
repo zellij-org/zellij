@@ -430,7 +430,7 @@ pub fn start_client(
             let os_input = os_input.clone();
             let opts = opts.clone();
             move || {
-                report_changes_in_config_file(&opts, &os_input);
+                // report_changes_in_config_file(&opts, &os_input);
                 os_input.handle_signals(
                     Box::new({
                         let os_api = os_input.clone();
@@ -615,8 +615,8 @@ pub fn start_client(
             ClientInstruction::WriteConfigToDisk { config } => {
                 match Config::write_config_to_disk(config, &opts) {
                     Ok(written_config) => {
-                        let _ = os_input
-                            .send_to_server(ClientToServerMsg::ConfigWrittenToDisk(written_config));
+//                         let _ = os_input
+//                             .send_to_server(ClientToServerMsg::ConfigWrittenToDisk(written_config));
                     },
                     Err(e) => {
                         let error_path = e
@@ -764,20 +764,20 @@ pub fn start_server_detached(
     os_input.send_to_server(first_msg);
 }
 
-pub fn report_changes_in_config_file(opts: &CliArgs, os_input: &Box<dyn ClientOsApi>) {
-    if let Some(config_file_path) = Config::config_file_path(&opts) {
-        let os_input = os_input.clone();
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async move {
-                watch_config_file_changes(config_file_path, move |new_config| {
-                    let os_input = os_input.clone();
-                    async move {
-                        os_input.send_to_server(ClientToServerMsg::ConfigWrittenToDisk(new_config));
-                    }
-                })
-                .await;
-            });
-        });
-    }
-}
+// pub fn report_changes_in_config_file(opts: &CliArgs, os_input: &Box<dyn ClientOsApi>) {
+//     if let Some(config_file_path) = Config::config_file_path(&opts) {
+//         let os_input = os_input.clone();
+//         std::thread::spawn(move || {
+//             let rt = tokio::runtime::Runtime::new().unwrap();
+//             rt.block_on(async move {
+//                 watch_config_file_changes(config_file_path, move |new_config| {
+//                     let os_input = os_input.clone();
+//                     async move {
+//                         os_input.send_to_server(ClientToServerMsg::ConfigWrittenToDisk(new_config));
+//                     }
+//                 })
+//                 .await;
+//             });
+//         });
+//     }
+// }
