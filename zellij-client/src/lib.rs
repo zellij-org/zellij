@@ -59,9 +59,9 @@ pub(crate) enum ClientInstruction {
     UnblockCliPipeInput(()), // String -> pipe name
     CliPipeOutput((), ()),   // String -> pipe name, String -> output
     QueryTerminalSize,
-    WriteConfigToDisk {
-        config: String,
-    },
+//     WriteConfigToDisk {
+//         config: String,
+//     },
     StartWebServer,
     #[allow(dead_code)] // we need the session name here even though we're not currently using it
     RenamedSession(String), // String -> new session name
@@ -112,7 +112,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::UnblockCliPipeInput(..) => ClientContext::UnblockCliPipeInput,
             ClientInstruction::CliPipeOutput(..) => ClientContext::CliPipeOutput,
             ClientInstruction::QueryTerminalSize => ClientContext::QueryTerminalSize,
-            ClientInstruction::WriteConfigToDisk { .. } => ClientContext::WriteConfigToDisk,
+            // ClientInstruction::WriteConfigToDisk { .. } => ClientContext::WriteConfigToDisk,
             ClientInstruction::StartWebServer => ClientContext::StartWebServer,
             ClientInstruction::RenamedSession(..) => ClientContext::RenamedSession,
         }
@@ -612,23 +612,23 @@ pub fn start_client(
                     os_input.get_terminal_size_using_fd(0),
                 ));
             },
-            ClientInstruction::WriteConfigToDisk { config } => {
-                match Config::write_config_to_disk(config, &opts) {
-                    Ok(written_config) => {
-//                         let _ = os_input
-//                             .send_to_server(ClientToServerMsg::ConfigWrittenToDisk(written_config));
-                    },
-                    Err(e) => {
-                        let error_path = e
-                            .as_ref()
-                            .map(|p| p.display().to_string())
-                            .unwrap_or_else(String::new);
-                        log::error!("Failed to write config to disk: {}", error_path);
-                        let _ = os_input
-                            .send_to_server(ClientToServerMsg::FailedToWriteConfigToDisk(e));
-                    },
-                }
-            },
+//             ClientInstruction::WriteConfigToDisk { config } => {
+//                 match Config::write_config_to_disk(config, &opts) {
+//                     Ok(written_config) => {
+// //                         let _ = os_input
+// //                             .send_to_server(ClientToServerMsg::ConfigWrittenToDisk(written_config));
+//                     },
+//                     Err(e) => {
+//                         let error_path = e
+//                             .as_ref()
+//                             .map(|p| p.display().to_string())
+//                             .unwrap_or_else(String::new);
+//                         log::error!("Failed to write config to disk: {}", error_path);
+// //                         let _ = os_input
+// //                             .send_to_server(ClientToServerMsg::FailedToWriteConfigToDisk(e));
+//                     },
+//                 }
+//             },
             ClientInstruction::StartWebServer => {
                 let web_server_base_url = web_server_base_url(
                     web_server_ip,

@@ -1192,12 +1192,12 @@ pub(crate) fn route_thread_main(
 //                             let _ = to_server
 //                                 .send(ServerInstruction::ConfigWrittenToDisk(client_id, config));
 //                         },
-                        ClientToServerMsg::FailedToWriteConfigToDisk(failed_path) => {
-                            let _ = to_server.send(ServerInstruction::FailedToWriteConfigToDisk(
-                                client_id,
-                                failed_path,
-                            ));
-                        },
+//                         ClientToServerMsg::FailedToWriteConfigToDisk(failed_path) => {
+//                             let _ = to_server.send(ServerInstruction::FailedToWriteConfigToDisk(
+//                                 client_id,
+//                                 failed_path,
+//                             ));
+//                         },
                         ClientToServerMsg::WebServerStarted(base_url) => {
                             let _ = to_server.send(ServerInstruction::WebServerStarted(base_url));
                         },
