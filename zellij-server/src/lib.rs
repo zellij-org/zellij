@@ -1233,14 +1233,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 if let Some(new_config) = new_config {
                     if write_config_to_disk {
                         let clear_defaults = true;
-                        send_to_client!(
-                            client_id,
-                            os_input,
-                            ServerToClientMsg::WriteConfigToDisk {
-                                config: new_config.to_string(clear_defaults)
-                            },
-                            session_state
-                        );
+//                         send_to_client!(
+//                             client_id,
+//                             os_input,
+//                             ServerToClientMsg::WriteConfigToDisk {
+//                                 config: new_config.to_string(clear_defaults)
+//                             },
+//                             session_state
+//                         );
                     }
 
                     if runtime_config_changed {
@@ -1299,14 +1299,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 if let Some(new_config) = new_config {
                     if write_config_to_disk {
                         let clear_defaults = true;
-                        send_to_client!(
-                            client_id,
-                            os_input,
-                            ServerToClientMsg::WriteConfigToDisk {
-                                config: new_config.to_string(clear_defaults)
-                            },
-                            session_state
-                        );
+//                         send_to_client!(
+//                             client_id,
+//                             os_input,
+//                             ServerToClientMsg::WriteConfigToDisk {
+//                                 config: new_config.to_string(clear_defaults)
+//                             },
+//                             session_state
+//                         );
                     }
 
                     if runtime_config_changed {

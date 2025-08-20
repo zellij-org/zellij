@@ -114,7 +114,7 @@ pub enum ServerToClientMsg {
     UnblockCliPipeInput(String),   // String -> pipe name
     CliPipeOutput(String, String), // String -> pipe name, String -> Output
     QueryTerminalSize,
-    WriteConfigToDisk { config: String },
+    // WriteConfigToDisk { config: String },
     StartWebServer,
     RenamedSession(String), // String -> new session name
 }

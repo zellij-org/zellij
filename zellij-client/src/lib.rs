@@ -86,9 +86,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
                 ClientInstruction::CliPipeOutput((), ())
             },
             ServerToClientMsg::QueryTerminalSize => ClientInstruction::QueryTerminalSize,
-            ServerToClientMsg::WriteConfigToDisk { config } => {
-                ClientInstruction::WriteConfigToDisk { config }
-            },
+//             ServerToClientMsg::WriteConfigToDisk { config } => {
+//                 ClientInstruction::WriteConfigToDisk { config }
+//             },
             ServerToClientMsg::StartWebServer => ClientInstruction::StartWebServer,
             ServerToClientMsg::RenamedSession(name) => ClientInstruction::RenamedSession(name),
         }

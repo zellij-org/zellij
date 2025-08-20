@@ -124,9 +124,9 @@ pub fn zellij_server_listener(
                                 reconnect_to_session = Some(connect_to_session);
                                 continue 'reconnect_loop;
                             },
-                            Some((ServerToClientMsg::WriteConfigToDisk { config }, _)) => {
-                                // handle_config_write(&os_input, config);
-                            },
+//                             Some((ServerToClientMsg::WriteConfigToDisk { config }, _)) => {
+//                                 // handle_config_write(&os_input, config);
+//                             },
                             Some((ServerToClientMsg::QueryTerminalSize, _)) => {
                                 client_connection_bus.send_control(
                                     WebServerToWebClientControlMessage::QueryTerminalSize,
