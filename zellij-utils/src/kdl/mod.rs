@@ -2377,6 +2377,9 @@ impl Options {
         let advanced_mouse_actions =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "advanced_mouse_actions")
                 .map(|(v, _)| v);
+        let focus_follows_mouse =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "focus_follows_mouse")
+                .map(|(v, _)| v);
         let web_server_ip =
             match kdl_property_first_arg_as_string_or_error!(kdl_options, "web_server_ip") {
                 Some((string, entry)) => Some(IpAddr::from_str(string).map_err(|_| {
@@ -2437,6 +2440,7 @@ impl Options {
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            focus_follows_mouse,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -3510,6 +3514,33 @@ impl Options {
             None
         }
     }
+    fn focus_follows_mouse_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            " ",
+            "// Whether to automatically focus panes when mouse hovers over them",
+            "// default is false",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("focus_follows_mouse");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(focus_follows_mouse) = self.focus_follows_mouse {
+            let mut node = create_node(focus_follows_mouse);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn web_server_ip_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
@@ -3711,6 +3742,9 @@ impl Options {
         }
         if let Some(advanced_mouse_actions) = self.advanced_mouse_actions_to_kdl(add_comments) {
             nodes.push(advanced_mouse_actions);
+        }
+        if let Some(focus_follows_mouse) = self.focus_follows_mouse_to_kdl(add_comments) {
+            nodes.push(focus_follows_mouse);
         }
         if let Some(web_server_ip) = self.web_server_ip_to_kdl(add_comments) {
             nodes.push(web_server_ip);

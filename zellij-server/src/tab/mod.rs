@@ -158,6 +158,7 @@ pub struct MouseEffect {
     pub group_toggle: Option<PaneId>,
     pub group_add: Option<PaneId>,
     pub ungroup: bool,
+    pub focus_changed: Option<PaneId>,
 }
 
 impl MouseEffect {
@@ -168,6 +169,7 @@ impl MouseEffect {
             group_toggle: None,
             group_add: None,
             ungroup: false,
+            focus_changed: None,
         }
     }
     pub fn leave_clipboard_message() -> Self {
@@ -177,6 +179,7 @@ impl MouseEffect {
             group_toggle: None,
             group_add: None,
             ungroup: false,
+            focus_changed: None,
         }
     }
     pub fn state_changed_and_leave_clipboard_message() -> Self {
@@ -186,6 +189,7 @@ impl MouseEffect {
             group_toggle: None,
             group_add: None,
             ungroup: false,
+            focus_changed: None,
         }
     }
     pub fn group_toggle(pane_id: PaneId) -> Self {
@@ -195,6 +199,7 @@ impl MouseEffect {
             group_toggle: Some(pane_id),
             group_add: None,
             ungroup: false,
+            focus_changed: None,
         }
     }
     pub fn group_add(pane_id: PaneId) -> Self {
@@ -204,6 +209,7 @@ impl MouseEffect {
             group_toggle: None,
             group_add: Some(pane_id),
             ungroup: false,
+            focus_changed: None,
         }
     }
     pub fn ungroup() -> Self {
@@ -213,6 +219,17 @@ impl MouseEffect {
             group_toggle: None,
             group_add: None,
             ungroup: true,
+            focus_changed: None,
+        }
+    }
+    pub fn focus_changed(pane_id: PaneId) -> Self {
+        MouseEffect {
+            state_changed: true,
+            leave_clipboard_message: true,
+            group_toggle: None,
+            group_add: None,
+            ungroup: false,
+            focus_changed: Some(pane_id),
         }
     }
 }
@@ -269,6 +286,7 @@ pub(crate) struct Tab {
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
+    focus_follows_mouse: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
     connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
     // the below are the configured values - the ones that will be set if and when the web server
@@ -694,6 +712,7 @@ impl Tab {
         current_pane_group: Rc<RefCell<PaneGroups>>,
         currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
         advanced_mouse_actions: bool,
+        focus_follows_mouse: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
     ) -> Self {
@@ -796,6 +815,7 @@ impl Tab {
             current_pane_group,
             currently_marking_pane_group,
             advanced_mouse_actions,
+            focus_follows_mouse,
             connected_clients_in_app,
             web_server_ip,
             web_server_port,
@@ -4405,6 +4425,18 @@ impl Tab {
                 let pane_is_selectable = pane.selectable();
                 if self.advanced_mouse_actions && pane_is_selectable {
                     self.mouse_hover_pane_id.insert(client_id, pane_id);
+
+                    // Focus-follows-mouse logic
+                    if self.focus_follows_mouse {
+                        let current_active_pane = self.get_active_pane_id(client_id);
+                        if current_active_pane != Some(pane_id) {
+                            if let Err(e) = self.focus_pane_with_id(pane_id, false, client_id) {
+                                log::error!("Failed to focus pane in focus-follows-mouse: {}", e);
+                            } else {
+                                return Ok(MouseEffect::focus_changed(pane_id));
+                            }
+                        }
+                    }
                 } else if self.advanced_mouse_actions {
                     self.mouse_hover_pane_id.remove(&client_id);
                 }
@@ -5224,6 +5256,9 @@ impl Tab {
     }
     pub fn update_advanced_mouse_actions(&mut self, advanced_mouse_actions: bool) {
         self.advanced_mouse_actions = advanced_mouse_actions;
+    }
+    pub fn update_focus_follows_mouse(&mut self, focus_follows_mouse: bool) {
+        self.focus_follows_mouse = focus_follows_mouse;
     }
     pub fn update_web_sharing(&mut self, web_sharing: WebSharing) {
         let old_value = self.web_sharing;

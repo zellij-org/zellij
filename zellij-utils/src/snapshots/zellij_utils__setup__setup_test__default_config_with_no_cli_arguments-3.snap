@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
+assertion_line: 757
 expression: "format!(\"{:#?}\", options)"
 ---
 Options {
@@ -36,6 +37,7 @@ Options {
     show_startup_tips: None,
     show_release_notes: None,
     advanced_mouse_actions: None,
+    focus_follows_mouse: None,
     web_server_ip: None,
     web_server_port: None,
     web_server_cert: None,

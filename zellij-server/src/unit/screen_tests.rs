@@ -302,6 +302,7 @@ fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
         false,
         web_sharing,
         advanced_mouse_actions,
+        false, // focus_follows_mouse
         web_server_ip,
         web_server_port,
     );

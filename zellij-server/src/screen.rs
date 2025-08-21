@@ -375,6 +375,7 @@ pub enum ScreenInstruction {
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
         advanced_mouse_actions: bool,
+        focus_follows_mouse: bool,
     },
     RerunCommandPane(u32), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
@@ -745,6 +746,7 @@ pub(crate) struct Screen {
     web_sharing: WebSharing,
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
+    focus_follows_mouse: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
     // the below are the configured values - the ones that will be set if and when the web server
     // is brought online
@@ -779,6 +781,7 @@ impl Screen {
         web_clients_allowed: bool,
         web_sharing: WebSharing,
         advanced_mouse_actions: bool,
+        focus_follows_mouse: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
     ) -> Self {
@@ -830,6 +833,7 @@ impl Screen {
             current_pane_group: Rc::new(RefCell::new(current_pane_group)),
             currently_marking_pane_group: Rc::new(RefCell::new(HashMap::new())),
             advanced_mouse_actions,
+            focus_follows_mouse,
             web_server_ip,
             web_server_port,
         }
@@ -1466,6 +1470,7 @@ impl Screen {
             self.current_pane_group.clone(),
             self.currently_marking_pane_group.clone(),
             self.advanced_mouse_actions,
+            self.focus_follows_mouse,
             self.web_server_ip,
             self.web_server_port,
         );
@@ -2680,6 +2685,7 @@ impl Screen {
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
         advanced_mouse_actions: bool,
+        focus_follows_mouse: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
@@ -2695,6 +2701,7 @@ impl Screen {
         self.copy_options.copy_on_select = copy_on_select;
         self.draw_pane_frames = pane_frames;
         self.advanced_mouse_actions = advanced_mouse_actions;
+        self.focus_follows_mouse = focus_follows_mouse;
         self.default_mode_info
             .update_arrow_fonts(should_support_arrow_fonts);
         self.default_mode_info
@@ -2715,6 +2722,7 @@ impl Screen {
             tab.set_pane_frames(pane_frames);
             tab.update_arrow_fonts(should_support_arrow_fonts);
             tab.update_advanced_mouse_actions(advanced_mouse_actions);
+            tab.update_focus_follows_mouse(focus_follows_mouse);
         }
 
         // client specific configuration
@@ -2872,6 +2880,10 @@ impl Screen {
                     if self.advanced_mouse_actions {
                         self.clear_pane_group(&client_id);
                     }
+                }
+                if let Some(_pane_id) = mouse_effect.focus_changed {
+                    // Focus change is already handled in the tab, no additional action needed
+                    // The state_changed flag will trigger a re-render
                 }
                 if mouse_effect.state_changed {
                     let _ = self.log_and_report_session_state();
@@ -3268,6 +3280,7 @@ pub(crate) fn screen_thread_main(
         .unwrap_or(false);
     let web_sharing = config_options.web_sharing.unwrap_or_else(Default::default);
     let advanced_mouse_actions = config_options.advanced_mouse_actions.unwrap_or(true);
+    let focus_follows_mouse = config_options.focus_follows_mouse.unwrap_or(false);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -3304,6 +3317,7 @@ pub(crate) fn screen_thread_main(
         web_clients_allowed,
         web_sharing,
         advanced_mouse_actions,
+        focus_follows_mouse,
         web_server_ip,
         web_server_port,
     );
@@ -5224,6 +5238,7 @@ pub(crate) fn screen_thread_main(
                 stacked_resize,
                 default_editor,
                 advanced_mouse_actions,
+                focus_follows_mouse,
             } => {
                 screen
                     .reconfigure(
@@ -5242,6 +5257,7 @@ pub(crate) fn screen_thread_main(
                         stacked_resize,
                         default_editor,
                         advanced_mouse_actions,
+                        focus_follows_mouse,
                         client_id,
                     )
                     .non_fatal();
