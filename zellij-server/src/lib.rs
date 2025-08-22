@@ -32,6 +32,9 @@ use std::{
 use zellij_utils::envs;
 use zellij_utils::pane_size::Size;
 
+use zellij_utils::setup::{find_default_config_dir, get_layout_dir, Setup};
+use zellij_utils::input::cli_assets::CliAssets;
+
 use wasmtime::{Config as WasmtimeConfig, Engine, Strategy};
 
 use crate::{
@@ -72,8 +75,8 @@ pub type ClientId = u16;
 pub enum ServerInstruction {
     NewClient(
         ClientAttributes,
+        CliAssets,
         Box<CliArgs>,
-        Box<Config>,  // represents the saved config
         Box<Options>, // represents the runtime configuration options
         Box<Layout>,
         Box<PluginAliases>,
@@ -91,7 +94,7 @@ pub enum ServerInstruction {
     DetachSession(Vec<ClientId>),
     AttachClient(
         ClientAttributes,
-        Config,              // represents the saved config
+        CliAssets,
         Options,             // represents the runtime configuration options
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
@@ -662,8 +665,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             ServerInstruction::NewClient(
                 // TODO: rename to FirstClientConnected?
                 client_attributes,
+                cli_assets,
                 opts,
-                config,
                 runtime_config_options,
                 layout,
                 plugin_aliases,
@@ -672,16 +675,36 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 layout_is_welcome_screen,
                 client_id,
             ) => {
+
+                // TODO(REFACTOR): - instead of passing opts (cli_args under the hood), pass all
+                // the stuff we need (see commend in AttachClient)
+
+//                 let (
+//                     config,
+//                     layout,
+//                     config_options,
+//                     mut config_without_layout,
+//                     mut config_options_without_layout,
+//                 ) = match Setup::from_cli_args(&opts) {
+//                     Ok(results) => results,
+//                     Err(e) => {
+//                         // TODO: default config somehow...?
+//                         unimplemented!();
+//                     },
+//                 };
+
+                let config = Config::from(&cli_assets);
+
                 let mut session = init_session(
                     os_input.clone(),
                     to_server.clone(),
                     client_attributes.clone(),
                     SessionOptions {
                         opts,
-                        layout: layout.clone(),
+                        layout: layout.clone(), // TODO: no box
                         config_options: runtime_config_options.clone(),
                     },
-                    *config.clone(),
+                    config.clone(),
                     plugin_aliases,
                     client_id,
                 );
@@ -689,10 +712,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 runtime_configuration.options = *runtime_config_options.clone();
                 session
                     .session_configuration
-                    .set_client_saved_configuration(client_id, *config.clone());
+                    .set_client_saved_configuration(client_id, config.clone());
                 session
                     .session_configuration
-                    .set_client_runtime_configuration(client_id, *runtime_configuration);
+                    .set_client_runtime_configuration(client_id, runtime_configuration);
                 let default_input_mode = runtime_config_options.default_mode.unwrap_or_default();
                 session
                     .current_input_modes
@@ -799,13 +822,57 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             },
             ServerInstruction::AttachClient(
                 attrs,
-                config,
+                cli_assets,
                 runtime_config_options,
                 tab_position_to_focus,
                 pane_id_to_focus,
                 is_web_client,
                 client_id,
             ) => {
+
+                // TODO(REFACTOR): things we need instead of opts:
+                // 1. opts.config (config_file_path)
+                // 2. are we running with setup --clean (so that we only use the default config)
+                // 3. opts.config_dir
+                // 4. the cli config Options (also the attach command options)
+                // 5. opts.layout (the path to the layout if any, including layout_dir)
+                // 6. the theme (and the theme dir)
+                //
+                // CONTINUE HERE -
+                // 1. get all of these things maybe as a CliAssets struct? and then -> DONE
+                // 2. find out what we need to create in this function (just config?) - DONE
+                // 3. follow the cursed from_cli_args function and find out what it does, then
+                //    rewrite it to use the cli_assets - DONE (Config::from(cli_assets))
+                // 4. go to zellij-client/src/lib.rs and get properly construct the CliAssets <==
+                //    CONTINUE HERE
+                // 5. do the same flow for NewClient
+                // 6. fix web_client/session_managements.rs to also construct cli_assets
+                //
+
+//                 let (
+//                     config,
+//                     layout,
+//                     config_options,
+//                     mut config_without_layout,
+//                     mut config_options_without_layout,
+//                 ) = match Setup::from_cli_args(&opts) {
+//                     Ok(results) => results,
+//                     Err(e) => {
+//                         // TODO: default config somehow...?
+//                         unimplemented!();
+//                     },
+//                 };
+
+                let config = Config::from(&cli_assets);
+                // TODO(REFACTOR): here we changed merge_from_cli to merge - I *think* this is more
+                // correct, but it's technically a behavior change... need to play with this a
+                // little to make sure it works properly
+                let runtime_config_options = match cli_assets.explicit_cli_options {
+                    Some(explicit_cli_options) => config.options.merge(explicit_cli_options),
+                    None => config.options.clone()
+                };
+
+
                 let mut rlock = session_data.write().unwrap();
                 let session_data = rlock.as_mut().unwrap();
 

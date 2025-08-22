@@ -71,7 +71,7 @@ pub fn get_default_data_dir() -> PathBuf {
 }
 
 #[cfg(not(test))]
-fn get_default_themes() -> Themes {
+pub fn get_default_themes() -> Themes {
     let mut themes = Themes::default();
     for file in ZELLIJ_DEFAULT_THEMES.files() {
         if let Some(content) = file.contents_utf8() {
@@ -86,7 +86,7 @@ fn get_default_themes() -> Themes {
 }
 
 #[cfg(test)]
-fn get_default_themes() -> Themes {
+pub fn get_default_themes() -> Themes {
     Themes::default()
 }
 

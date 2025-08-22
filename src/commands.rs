@@ -599,6 +599,10 @@ pub(crate) fn start_client(opts: CliArgs) {
             process::exit(1);
         },
     };
+
+    // TODO(REFACTOR): FROM HERE ON DOWN, WE SHOULD NOT USE THE CONFIG DIRECTLY BUT RATHER PASS THE PATH TO
+    // THE SERVER AND HAVE IT DO WHATEVER WE DO HERE
+
     let layout_is_welcome_screen = opts.layout == Some(PathBuf::from("welcome"))
         || config.options.default_layout == Some(PathBuf::from("welcome"));
 

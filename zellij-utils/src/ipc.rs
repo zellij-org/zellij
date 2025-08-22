@@ -4,7 +4,7 @@ use crate::{
     data::{ClientId, ConnectToSession, KeyWithModifier, Style},
     errors::{get_current_ctx, prelude::*, ErrorContext},
     input::config::Config,
-    input::{actions::Action, layout::Layout, options::Options, plugins::PluginAliases},
+    input::{actions::Action, layout::Layout, options::Options, plugins::PluginAliases, cli_assets::CliAssets},
     pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::LocalSocketStream;
@@ -73,8 +73,8 @@ pub enum ClientToServerMsg {
     TerminalResize(Size),
     NewClient(
         ClientAttributes,
+        CliAssets,
         Box<CliArgs>,
-        Box<Config>,  // represents the saved configuration
         Box<Options>, // represents the runtime configuration
         Box<Layout>,
         Box<PluginAliases>,
@@ -84,7 +84,7 @@ pub enum ClientToServerMsg {
     ),
     AttachClient(
         ClientAttributes,
-        Config,              // represents the saved configuration
+        CliAssets,
         Options,             // represents the runtime configuration
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane id to focus

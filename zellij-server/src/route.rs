@@ -1106,8 +1106,8 @@ pub(crate) fn route_thread_main(
                         },
                         ClientToServerMsg::NewClient(
                             client_attributes,
+                            cli_assets,
                             cli_args,
-                            config,
                             runtime_config_options,
                             layout,
                             plugin_aliases,
@@ -1117,8 +1117,8 @@ pub(crate) fn route_thread_main(
                         ) => {
                             let new_client_instruction = ServerInstruction::NewClient(
                                 client_attributes,
+                                cli_assets,
                                 cli_args,
-                                config,
                                 runtime_config_options,
                                 layout,
                                 plugin_aliases,
@@ -1133,7 +1133,7 @@ pub(crate) fn route_thread_main(
                         },
                         ClientToServerMsg::AttachClient(
                             client_attributes,
-                            config,
+                            cli_assets,
                             runtime_config_options,
                             tab_position_to_focus,
                             pane_id_to_focus,
@@ -1149,7 +1149,7 @@ pub(crate) fn route_thread_main(
                             if should_allow_connection {
                                 let attach_client_instruction = ServerInstruction::AttachClient(
                                     client_attributes,
-                                    config,
+                                    cli_assets,
                                     runtime_config_options,
                                     tab_position_to_focus,
                                     pane_id_to_focus,

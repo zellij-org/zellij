@@ -500,6 +500,8 @@ impl Options {
 #[derive(Clone, Default, Debug, PartialEq, Args, Serialize, Deserialize)]
 /// Options that can be set through cli flags
 /// boolean flags end up toggling boolean options in `Options`
+// TODO(REFACTOR): remove this whole thing and just have options, deprecate the disable_mouse_mode
+// and no_pane_frames arguments in favor of --mouse-mode false and --pane-frames false
 pub struct CliOptions {
     /// Disable handling of mouse events
     #[clap(long, conflicts_with("mouse-mode"), value_parser)]

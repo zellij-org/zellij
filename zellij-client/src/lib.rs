@@ -14,7 +14,7 @@ use log::info;
 use std::env::current_exe;
 use std::io::{self, Write};
 use std::net::{IpAddr, Ipv4Addr};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -36,6 +36,7 @@ use zellij_utils::{
     input::{
         config::{watch_config_file_changes, Config},
         options::Options,
+        cli_assets::CliAssets,
     },
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     pane_size::Size,
@@ -214,6 +215,7 @@ pub(crate) enum InputInstruction {
 
 pub fn start_client(
     mut os_input: Box<dyn ClientOsApi>,
+    // TODO(REFACTOR): change name to cli_args
     opts: CliArgs,
     config: Config,          // saved to disk (or default?)
     config_options: Options, // CLI options merged into (getting priority over) saved config options
@@ -265,11 +267,14 @@ pub fn start_client(
     envs::set_zellij("0".to_string());
     config.env.set_vars();
 
+    // TODO(REFACTOR): MOVE THIS TO THE SERVER SIDE
     let palette = config
         .theme_config(config_options.theme.as_ref())
         .unwrap_or_else(|| os_input.load_palette().into());
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
+
+    // TODO(REFACTOR): MOVE THIS TO THE SERVER SIDE
     let client_attributes = ClientAttributes {
         size: full_screen_ws,
         style: Style {
@@ -278,6 +283,7 @@ pub fn start_client(
             hide_session_name: config.ui.pane_frames.hide_session_name,
         },
     };
+
     let web_server_ip = config_options
         .web_server_ip
         .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
@@ -294,6 +300,14 @@ pub fn start_client(
         sock_dir
     };
 
+    let cli_assets = CliAssets {
+        config_file_path: opts.config.clone(),
+        config_dir: opts.config_dir.clone(),
+        should_ignore_config: opts.is_setup_clean(),
+        explicit_cli_options: opts.options(),
+        layout: opts.layout.clone(),
+    };
+
     let (first_msg, ipc_pipe) = match info {
         ClientInfo::Attach(name, config_options) => {
             envs::set_session_name(name.clone());
@@ -304,7 +318,7 @@ pub fn start_client(
             (
                 ClientToServerMsg::AttachClient(
                     client_attributes,
-                    config.clone(),
+                    cli_assets,
                     config_options.clone(),
                     tab_position_to_focus,
                     pane_id_to_focus,
@@ -315,6 +329,16 @@ pub fn start_client(
         },
         ClientInfo::New(name) | ClientInfo::Resurrect(name, _) => {
             envs::set_session_name(name.clone());
+
+
+            let cli_assets = CliAssets {
+                config_file_path: opts.config.clone(),
+                config_dir: opts.config_dir.clone(),
+                should_ignore_config: opts.is_setup_clean(),
+                explicit_cli_options: opts.options(),
+                layout: opts.layout.clone(),
+            };
+
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
 
@@ -325,6 +349,7 @@ pub fn start_client(
                 }
             }
 
+            // TODO(REFACTOR): consider moving this and derivatives to the server
             let successfully_written_config =
                 Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &opts);
             // if we successfully wrote the config to disk, it means two things:
@@ -339,8 +364,8 @@ pub fn start_client(
             (
                 ClientToServerMsg::NewClient(
                     client_attributes,
+                    cli_assets,
                     Box::new(opts.clone()),
-                    Box::new(config.clone()),
                     Box::new(config_options.clone()),
                     Box::new(layout.unwrap()),
                     Box::new(config.plugins.clone()),
@@ -726,6 +751,15 @@ pub fn start_server_detached(
     let (first_msg, ipc_pipe) = match info {
         ClientInfo::New(name) | ClientInfo::Resurrect(name, _) => {
             envs::set_session_name(name.clone());
+
+            let cli_assets = CliAssets {
+                config_file_path: opts.config.clone(),
+                config_dir: opts.config_dir.clone(),
+                should_ignore_config: opts.is_setup_clean(),
+                explicit_cli_options: opts.options(),
+                layout: opts.layout.clone(),
+            };
+
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
 
@@ -742,8 +776,8 @@ pub fn start_server_detached(
             (
                 ClientToServerMsg::NewClient(
                     client_attributes,
+                    cli_assets,
                     Box::new(opts),
-                    Box::new(config.clone()),
                     Box::new(config_options.clone()),
                     Box::new(layout.unwrap()),
                     Box::new(config.plugins.clone()),

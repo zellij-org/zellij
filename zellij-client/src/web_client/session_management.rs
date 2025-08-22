@@ -10,6 +10,7 @@ use zellij_utils::{
         config::{Config, ConfigError},
         layout::Layout,
         options::Options,
+        cli_assets::CliAssets,
     },
     ipc::{ClientAttributes, ClientToServerMsg},
     sessions::{generate_unique_session_name, resurrection_layout, session_exists},
@@ -95,6 +96,7 @@ pub fn spawn_session_if_needed(
     session_name: &str,
     path: String,
     client_attributes: ClientAttributes,
+    config_file_path: Option<PathBuf>,
     config: &Config,
     config_options: &Options,
     is_web_client: bool,
@@ -106,6 +108,7 @@ pub fn spawn_session_if_needed(
         ipc_pipe_and_first_message_for_existing_session(
             path,
             client_attributes,
+            config_file_path,
             &config,
             &config_options,
             is_web_client,
@@ -127,6 +130,7 @@ pub fn spawn_session_if_needed(
             Some(resurrection_layout) => spawn_new_session(
                 &session_name,
                 os_input.clone(),
+                config_file_path,
                 config.clone(),
                 config_options.clone(),
                 Some(resurrection_layout),
@@ -139,6 +143,7 @@ pub fn spawn_session_if_needed(
                 spawn_new_session(
                     &session_name,
                     os_input.clone(),
+                    config_file_path,
                     config.clone(),
                     config_options.clone(),
                     new_session_layout.ok().map(|(l, _c)| l),
@@ -153,6 +158,7 @@ pub fn spawn_session_if_needed(
 fn spawn_new_session(
     name: &str,
     mut os_input: Box<dyn ClientOsApi>,
+    config_file_path: Option<PathBuf>,
     mut config: Config,
     config_opts: Options,
     layout: Option<Layout>,
@@ -179,6 +185,15 @@ fn spawn_new_session(
     );
     let should_launch_setup_wizard = successfully_written_config;
     let cli_args = CliArgs::default();
+
+    // TODO(REFACTOR): THIS IS WRONG!!!111oneoneone
+    let cli_assets = CliAssets {
+        config_file_path: cli_args.config.clone(),
+        config_dir: cli_args.config_dir.clone(),
+        should_ignore_config: cli_args.is_setup_clean(),
+        explicit_cli_options: cli_args.options(),
+        layout: cli_args.layout.clone(),
+    };
     config.options.web_server = Some(true);
     config.options.web_sharing = Some(WebSharing::On);
     let is_web_client = true;
@@ -186,8 +201,8 @@ fn spawn_new_session(
     (
         ClientToServerMsg::NewClient(
             client_attributes,
+            cli_assets,
             Box::new(cli_args),
-            Box::new(config.clone()),
             Box::new(config_opts.clone()),
             Box::new(layout.unwrap()),
             Box::new(config.plugins.clone()),
@@ -202,6 +217,7 @@ fn spawn_new_session(
 fn ipc_pipe_and_first_message_for_existing_session(
     session_name: String,
     client_attributes: ClientAttributes,
+    config_file_path: Option<PathBuf>,
     config: &Config,
     config_options: &Options,
     is_web_client: bool,
@@ -213,9 +229,15 @@ fn ipc_pipe_and_first_message_for_existing_session(
         sock_dir.push(session_name);
         sock_dir
     };
+
+    let cli_assets = {
+        // TODO(REFACTOR): implement
+        unimplemented!()
+    };
+
     let first_message = ClientToServerMsg::AttachClient(
         client_attributes,
-        config.clone(),
+        cli_assets,
         config_options.clone(),
         None,
         None,

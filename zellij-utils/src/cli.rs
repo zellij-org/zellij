@@ -2,7 +2,7 @@ use crate::data::{Direction, InputMode, Resize};
 use crate::setup::Setup;
 use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
-    input::{layout::PluginUserConfiguration, options::CliOptions},
+    input::{layout::PluginUserConfiguration, options::{CliOptions, Options}},
 };
 use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -78,6 +78,23 @@ pub struct CliArgs {
     /// Specify emitting additional debug information
     #[clap(short, long, value_parser)]
     pub debug: bool,
+}
+
+impl CliArgs {
+    pub fn is_setup_clean(&self) -> bool {
+        if let Some(Command::Setup(ref setup)) = &self.command {
+            if setup.clean {
+                return true
+            }
+        }
+        false
+    }
+    pub fn options(&self) -> Option<Options> {
+        if let Some(Command::Options(cli_options)) = &self.command {
+            return Some(cli_options.options.clone())
+        }
+        None
+    }
 }
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
