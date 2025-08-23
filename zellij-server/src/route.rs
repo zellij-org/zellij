@@ -1128,9 +1128,7 @@ pub(crate) fn route_thread_main(
                                 .with_context(err_context)?;
                         },
                         ClientToServerMsg::AttachClient(
-                            client_attributes,
                             cli_assets,
-                            runtime_config_options,
                             tab_position_to_focus,
                             pane_id_to_focus,
                             is_web_client,
@@ -1144,9 +1142,7 @@ pub(crate) fn route_thread_main(
                             let should_allow_connection = !is_web_client || allow_web_connections;
                             if should_allow_connection {
                                 let attach_client_instruction = ServerInstruction::AttachClient(
-                                    client_attributes,
                                     cli_assets,
-                                    runtime_config_options,
                                     tab_position_to_focus,
                                     pane_id_to_focus,
                                     is_web_client,

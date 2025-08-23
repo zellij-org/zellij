@@ -81,9 +81,7 @@ pub enum ClientToServerMsg {
         bool, // layout_is_welcome_screen
     ),
     AttachClient(
-        ClientAttributes,
         CliAssets,
-        Options,             // represents the runtime configuration
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane id to focus
         bool,                // is_web_client

@@ -91,9 +91,7 @@ pub enum ServerInstruction {
     KillSession,
     DetachSession(Vec<ClientId>),
     AttachClient(
-        ClientAttributes,
         CliAssets,
-        Options,             // represents the runtime configuration options
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
         bool,                // is_web_client
@@ -817,9 +815,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap();
             },
             ServerInstruction::AttachClient(
-                attrs,
                 cli_assets,
-                runtime_config_options,
                 tab_position_to_focus,
                 pane_id_to_focus,
                 is_web_client,
@@ -871,6 +867,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     None => config.options.clone()
                 };
 
+                let client_attributes = ClientAttributes {
+                    size: cli_assets.terminal_window_size,
+                    style: Style {
+                        colors: config
+                            .theme_config(runtime_config_options.theme.as_ref())
+                            .unwrap_or_else(|| default_palette().into()),
+                        rounded_corners: config.ui.pane_frames.rounded_corners,
+                        hide_session_name: config.ui.pane_frames.hide_session_name,
+                    },
+                };
 
                 let mut rlock = session_data.write().unwrap();
                 let session_data = rlock.as_mut().unwrap();
@@ -891,7 +897,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
                 session_state.write().unwrap().set_client_data(
                     client_id,
-                    attrs.size,
+                    client_attributes.size,
                     is_web_client,
                 );
                 let min_size = session_state
@@ -919,7 +925,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let default_mode = config.options.default_mode.unwrap_or_default();
                 let mode_info = get_mode_info(
                     default_mode,
-                    &attrs,
+                    &client_attributes,
                     session_data.capabilities,
                     &session_data
                         .session_configuration

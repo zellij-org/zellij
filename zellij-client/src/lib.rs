@@ -267,22 +267,7 @@ pub fn start_client(
     envs::set_zellij("0".to_string());
     config.env.set_vars();
 
-    // TODO(REFACTOR): MOVE THIS TO THE SERVER SIDE
-    let palette = config
-        .theme_config(config_options.theme.as_ref())
-        .unwrap_or_else(|| os_input.load_palette().into());
-
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
-
-    // TODO(REFACTOR): MOVE THIS TO THE SERVER SIDE
-    let client_attributes = ClientAttributes {
-        size: full_screen_ws,
-        style: Style {
-            colors: palette,
-            rounded_corners: config.ui.pane_frames.rounded_corners,
-            hide_session_name: config.ui.pane_frames.hide_session_name,
-        },
-    };
 
     let web_server_ip = config_options
         .web_server_ip
@@ -300,15 +285,6 @@ pub fn start_client(
         sock_dir
     };
 
-    let cli_assets = CliAssets {
-        config_file_path: opts.config.clone(),
-        config_dir: opts.config_dir.clone(),
-        should_ignore_config: opts.is_setup_clean(),
-        explicit_cli_options: opts.options(),
-        layout: opts.layout.clone(),
-        terminal_window_size: full_screen_ws,
-    };
-
     let (first_msg, ipc_pipe) = match info {
         ClientInfo::Attach(name, config_options) => {
             envs::set_session_name(name.clone());
@@ -316,11 +292,17 @@ pub fn start_client(
             let ipc_pipe = create_ipc_pipe();
             let is_web_client = false;
 
+            let cli_assets = CliAssets {
+                config_file_path: opts.config.clone(),
+                config_dir: opts.config_dir.clone(),
+                should_ignore_config: opts.is_setup_clean(),
+                explicit_cli_options: Some(config_options),
+                layout: opts.layout.clone(),
+                terminal_window_size: full_screen_ws,
+            };
             (
                 ClientToServerMsg::AttachClient(
-                    client_attributes,
                     cli_assets,
-                    config_options.clone(),
                     tab_position_to_focus,
                     pane_id_to_focus,
                     is_web_client,
@@ -336,7 +318,7 @@ pub fn start_client(
                 config_file_path: opts.config.clone(),
                 config_dir: opts.config_dir.clone(),
                 should_ignore_config: opts.is_setup_clean(),
-                explicit_cli_options: opts.options(),
+                explicit_cli_options: Some(config_options.clone()),
                 layout: opts.layout.clone(),
                 terminal_window_size: full_screen_ws,
             };
@@ -453,7 +435,6 @@ pub fn start_client(
         .name("signal_listener".to_string())
         .spawn({
             let os_input = os_input.clone();
-            let opts = opts.clone();
             move || {
                 // report_changes_in_config_file(&opts, &os_input);
                 os_input.handle_signals(
@@ -725,20 +706,6 @@ pub fn start_server_detached(
     config.env.set_vars();
 
     let should_start_web_server = config_options.web_server.map(|w| w).unwrap_or(false);
-
-    let palette = config
-        .theme_config(config_options.theme.as_ref())
-        .unwrap_or_else(|| os_input.load_palette().into());
-
-    let client_attributes = ClientAttributes {
-        size: Size { rows: 50, cols: 50 }, // just so size is not 0, it doesn't matter because we
-        // immediately detach
-        style: Style {
-            colors: palette,
-            rounded_corners: config.ui.pane_frames.rounded_corners,
-            hide_session_name: config.ui.pane_frames.hide_session_name,
-        },
-    };
 
     let create_ipc_pipe = || -> std::path::PathBuf {
         let mut sock_dir = ZELLIJ_SOCK_DIR.clone();

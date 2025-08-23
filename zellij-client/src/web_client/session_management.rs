@@ -235,9 +235,7 @@ fn ipc_pipe_and_first_message_for_existing_session(
     };
 
     let first_message = ClientToServerMsg::AttachClient(
-        client_attributes,
         cli_assets,
-        config_options.clone(),
         None,
         None,
         is_web_client,
