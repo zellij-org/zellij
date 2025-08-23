@@ -299,6 +299,9 @@ pub fn start_client(
                 explicit_cli_options: Some(config_options),
                 layout: opts.layout.clone(),
                 terminal_window_size: full_screen_ws,
+                data_dir: opts.data_dir.clone(),
+                is_debug: opts.debug,
+                max_panes: opts.max_panes,
             };
             (
                 ClientToServerMsg::AttachClient(
@@ -321,6 +324,9 @@ pub fn start_client(
                 explicit_cli_options: Some(config_options.clone()),
                 layout: opts.layout.clone(),
                 terminal_window_size: full_screen_ws,
+                data_dir: opts.data_dir.clone(),
+                is_debug: opts.debug,
+                max_panes: opts.max_panes,
             };
 
             os_input.update_session_name(name);
@@ -348,7 +354,6 @@ pub fn start_client(
             (
                 ClientToServerMsg::NewClient(
                     cli_assets,
-                    Box::new(opts.clone()),
                     Box::new(layout.unwrap()),
                     Box::new(config.plugins.clone()),
                     is_web_client,
@@ -727,6 +732,9 @@ pub fn start_server_detached(
                 layout: opts.layout.clone(),
                 terminal_window_size: Size { cols: 50, rows: 50 }, // static number until a
                                                                      // client connects
+                data_dir: opts.data_dir.clone(),
+                is_debug: opts.debug,
+                max_panes: opts.max_panes,
             };
 
             os_input.update_session_name(name);
@@ -745,7 +753,6 @@ pub fn start_server_detached(
             (
                 ClientToServerMsg::NewClient(
                     cli_assets,
-                    Box::new(opts),
                     Box::new(layout.unwrap()),
                     Box::new(config.plugins.clone()),
                     is_web_client,

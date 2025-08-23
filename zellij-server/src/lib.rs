@@ -75,7 +75,6 @@ pub type ClientId = u16;
 pub enum ServerInstruction {
     NewClient(
         CliAssets,
-        Box<CliArgs>,
         Box<Layout>,
         Box<PluginAliases>,
         bool, // should launch setup wizard
@@ -160,7 +159,6 @@ impl From<&ServerInstruction> for ServerContext {
                 ServerContext::ChangeModeForAllClients
             },
             ServerInstruction::Reconfigure { .. } => ServerContext::Reconfigure,
-            // ServerInstruction::ConfigWrittenToDisk(..) => ServerContext::ConfigWrittenToDisk,
             ServerInstruction::FailedToWriteConfigToDisk(..) => {
                 ServerContext::FailedToWriteConfigToDisk
             },
@@ -661,7 +659,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             ServerInstruction::NewClient(
                 // TODO: rename to FirstClientConnected?
                 cli_assets,
-                opts,
                 layout,
                 plugin_aliases,
                 should_launch_setup_wizard,
@@ -670,10 +667,19 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 client_id,
             ) => {
 
+                // TODO: CONTINUE HERE (23/08)
+                // 1. remove opts and instead put all the debug, max_terminals, etc. stuff in
+                //    CliAssets (maybe deprecate max_terminals?)
+                // 2. do the same with layout
+                // 3. see if we can do the same with plugin_aliases, should_launch_setup_wizard and
+                //    all that stuff
+                // 4. once done, go back to the CONTINUE HERE in the AttachClient and continue the
+                //    bulletins there
+
                 let config = Config::from(&cli_assets);
 
-                let runtime_config_options = match cli_assets.explicit_cli_options {
-                    Some(explicit_cli_options) => config.options.merge(explicit_cli_options),
+                let runtime_config_options = match &cli_assets.explicit_cli_options {
+                    Some(explicit_cli_options) => config.options.merge(explicit_cli_options.clone()),
                     None => config.options.clone()
                 };
 
@@ -693,11 +699,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     os_input.clone(),
                     to_server.clone(),
                     client_attributes.clone(),
-                    SessionOptions {
-                        opts,
-                        layout: layout.clone(), // TODO: no box
-                        config_options: Box::new(runtime_config_options.clone()), // TODO: no box
-                    },
+                    Box::new(runtime_config_options.clone()), // TODO: no box
+                    layout.clone(), // TODO: no box
+                    cli_assets,
                     config.clone(),
                     plugin_aliases,
                     client_id,
@@ -832,8 +836,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 //
                 // CONTINUE HERE -
                 // * pass all the other stuff from the client that doesn't need to be there and do
-                // it here (eg.ClientAttributes and such) <== CONTINUE HERE (already started,
-                // follow compilation errors)
+                // it here (eg.ClientAttributes and such) 
+                // * move stuff from the NewClient instruction to the server (see CONTINUE HERE) in
+                // the NewClient above
                 // * make sure the start_server_detached thing still works
                 // * get config live reloading  to work again (also for the web server)
                 // * refactor
@@ -1496,26 +1501,17 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     drop(std::fs::remove_file(&socket_path));
 }
 
-pub struct SessionOptions {
-    pub opts: Box<CliArgs>,
-    pub config_options: Box<Options>,
-    pub layout: Box<Layout>,
-}
-
 fn init_session(
     os_input: Box<dyn ServerOsApi>,
     to_server: SenderWithContext<ServerInstruction>,
     client_attributes: ClientAttributes,
-    options: SessionOptions,
+    config_options: Box<Options>,
+    layout: Box<Layout>,
+    cli_assets: CliAssets,
     mut config: Config,
     plugin_aliases: Box<PluginAliases>,
     client_id: ClientId,
 ) -> SessionMetaData {
-    let SessionOptions {
-        opts,
-        config_options,
-        layout,
-    } = options;
     config.options = config.options.merge(*config_options.clone());
 
     let _ = SCROLL_BUFFER_SIZE.set(
@@ -1545,7 +1541,7 @@ fn init_session(
     let to_background_jobs = SenderWithContext::new(to_background_jobs);
 
     // Determine and initialize the data directory
-    let data_dir = opts.data_dir.unwrap_or_else(get_default_data_dir);
+    let data_dir = cli_assets.data_dir.unwrap_or_else(get_default_data_dir);
 
     let capabilities = PluginCapabilities {
         arrow_fonts: config_options.simplified_ui.unwrap_or_default(),
@@ -1591,7 +1587,7 @@ fn init_session(
                     Some(&to_background_jobs),
                     Some(os_input.clone()),
                 ),
-                opts.debug,
+                cli_assets.is_debug,
                 config_options.scrollback_editor.clone(),
                 config_options.post_command_discovery_hook.clone(),
             );
@@ -1614,10 +1610,10 @@ fn init_session(
                 Some(&to_background_jobs),
                 Some(os_input.clone()),
             );
-            let max_panes = opts.max_panes;
+            let max_panes = cli_assets.max_panes;
 
             let client_attributes_clone = client_attributes.clone();
-            let debug = opts.debug;
+            let debug = cli_assets.is_debug;
             let layout = layout.clone();
             let config = config.clone();
             move || {

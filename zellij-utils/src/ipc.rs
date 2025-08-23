@@ -73,7 +73,6 @@ pub enum ClientToServerMsg {
     TerminalResize(Size),
     NewClient(
         CliAssets,
-        Box<CliArgs>,
         Box<Layout>,
         Box<PluginAliases>,
         bool, // should launch setup wizard

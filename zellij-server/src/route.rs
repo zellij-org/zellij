@@ -1106,7 +1106,6 @@ pub(crate) fn route_thread_main(
                         },
                         ClientToServerMsg::NewClient(
                             cli_assets,
-                            cli_args,
                             layout,
                             plugin_aliases,
                             should_launch_setup_wizard,
@@ -1115,7 +1114,6 @@ pub(crate) fn route_thread_main(
                         ) => {
                             let new_client_instruction = ServerInstruction::NewClient(
                                 cli_assets,
-                                cli_args,
                                 layout,
                                 plugin_aliases,
                                 should_launch_setup_wizard,

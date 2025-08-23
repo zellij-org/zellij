@@ -15,4 +15,7 @@ pub struct CliAssets {
     pub explicit_cli_options: Option<Options>,
     pub layout: Option<PathBuf>,
     pub terminal_window_size: Size,
+    pub data_dir: Option<PathBuf>,
+    pub is_debug: bool,
+    pub max_panes: Option<usize>,
 }
