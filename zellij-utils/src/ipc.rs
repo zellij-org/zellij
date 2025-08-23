@@ -72,10 +72,8 @@ pub enum ClientToServerMsg {
     ColorRegisters(Vec<(usize, String)>),
     TerminalResize(Size),
     NewClient(
-        ClientAttributes,
         CliAssets,
         Box<CliArgs>,
-        Box<Options>, // represents the runtime configuration
         Box<Layout>,
         Box<PluginAliases>,
         bool, // should launch setup wizard

@@ -306,6 +306,7 @@ pub fn start_client(
         should_ignore_config: opts.is_setup_clean(),
         explicit_cli_options: opts.options(),
         layout: opts.layout.clone(),
+        terminal_window_size: full_screen_ws,
     };
 
     let (first_msg, ipc_pipe) = match info {
@@ -337,6 +338,7 @@ pub fn start_client(
                 should_ignore_config: opts.is_setup_clean(),
                 explicit_cli_options: opts.options(),
                 layout: opts.layout.clone(),
+                terminal_window_size: full_screen_ws,
             };
 
             os_input.update_session_name(name);
@@ -363,10 +365,8 @@ pub fn start_client(
 
             (
                 ClientToServerMsg::NewClient(
-                    client_attributes,
                     cli_assets,
                     Box::new(opts.clone()),
-                    Box::new(config_options.clone()),
                     Box::new(layout.unwrap()),
                     Box::new(config.plugins.clone()),
                     is_web_client,
@@ -758,6 +758,8 @@ pub fn start_server_detached(
                 should_ignore_config: opts.is_setup_clean(),
                 explicit_cli_options: opts.options(),
                 layout: opts.layout.clone(),
+                terminal_window_size: Size { cols: 50, rows: 50 }, // static number until a
+                                                                     // client connects
             };
 
             os_input.update_session_name(name);
@@ -775,10 +777,8 @@ pub fn start_server_detached(
 
             (
                 ClientToServerMsg::NewClient(
-                    client_attributes,
                     cli_assets,
                     Box::new(opts),
-                    Box::new(config_options.clone()),
                     Box::new(layout.unwrap()),
                     Box::new(config.plugins.clone()),
                     is_web_client,

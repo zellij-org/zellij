@@ -51,7 +51,7 @@ use zellij_utils::{
     consts::{
         DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
-    data::{ConnectToSession, Event, InputMode, KeyWithModifier, PluginCapabilities, WebSharing},
+    data::{ConnectToSession, Event, InputMode, KeyWithModifier, PluginCapabilities, WebSharing, Style},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
     input::{
@@ -65,7 +65,7 @@ use zellij_utils::{
         plugins::PluginAliases,
     },
     ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
-    shared::{default_palette, web_server_base_url},
+    shared::{web_server_base_url, default_palette},
 };
 
 pub type ClientId = u16;
@@ -74,10 +74,8 @@ pub type ClientId = u16;
 #[derive(Debug, Clone)]
 pub enum ServerInstruction {
     NewClient(
-        ClientAttributes,
         CliAssets,
         Box<CliArgs>,
-        Box<Options>, // represents the runtime configuration options
         Box<Layout>,
         Box<PluginAliases>,
         bool, // should launch setup wizard
@@ -664,10 +662,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         match instruction {
             ServerInstruction::NewClient(
                 // TODO: rename to FirstClientConnected?
-                client_attributes,
                 cli_assets,
                 opts,
-                runtime_config_options,
                 layout,
                 plugin_aliases,
                 should_launch_setup_wizard,
@@ -676,24 +672,24 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 client_id,
             ) => {
 
-                // TODO(REFACTOR): - instead of passing opts (cli_args under the hood), pass all
-                // the stuff we need (see commend in AttachClient)
-
-//                 let (
-//                     config,
-//                     layout,
-//                     config_options,
-//                     mut config_without_layout,
-//                     mut config_options_without_layout,
-//                 ) = match Setup::from_cli_args(&opts) {
-//                     Ok(results) => results,
-//                     Err(e) => {
-//                         // TODO: default config somehow...?
-//                         unimplemented!();
-//                     },
-//                 };
-
                 let config = Config::from(&cli_assets);
+
+                let runtime_config_options = match cli_assets.explicit_cli_options {
+                    Some(explicit_cli_options) => config.options.merge(explicit_cli_options),
+                    None => config.options.clone()
+                };
+
+                let client_attributes = ClientAttributes {
+                    size: cli_assets.terminal_window_size,
+                    style: Style {
+                        colors: config
+                            .theme_config(runtime_config_options.theme.as_ref())
+                            .unwrap_or_else(|| default_palette().into()),
+                        rounded_corners: config.ui.pane_frames.rounded_corners,
+                        hide_session_name: config.ui.pane_frames.hide_session_name,
+                    },
+                };
+
 
                 let mut session = init_session(
                     os_input.clone(),
@@ -702,14 +698,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     SessionOptions {
                         opts,
                         layout: layout.clone(), // TODO: no box
-                        config_options: runtime_config_options.clone(),
+                        config_options: Box::new(runtime_config_options.clone()), // TODO: no box
                     },
                     config.clone(),
                     plugin_aliases,
                     client_id,
                 );
                 let mut runtime_configuration = config.clone();
-                runtime_configuration.options = *runtime_config_options.clone();
+                runtime_configuration.options = runtime_config_options.clone();
                 session
                     .session_configuration
                     .set_client_saved_configuration(client_id, config.clone());
@@ -839,14 +835,17 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // 6. the theme (and the theme dir)
                 //
                 // CONTINUE HERE -
-                // 1. get all of these things maybe as a CliAssets struct? and then -> DONE
-                // 2. find out what we need to create in this function (just config?) - DONE
-                // 3. follow the cursed from_cli_args function and find out what it does, then
-                //    rewrite it to use the cli_assets - DONE (Config::from(cli_assets))
-                // 4. go to zellij-client/src/lib.rs and get properly construct the CliAssets <==
-                //    CONTINUE HERE
-                // 5. do the same flow for NewClient
-                // 6. fix web_client/session_managements.rs to also construct cli_assets
+                // * pass all the other stuff from the client that doesn't need to be there and do
+                // it here (eg.ClientAttributes and such) <== CONTINUE HERE (already started,
+                // follow compilation errors)
+                // * make sure the start_server_detached thing still works
+                // * get config live reloading  to work again (also for the web server)
+                // * refactor
+                // * do a  go-over to see if we missed anything, test thoroughly and commit
+                // * fix web_client/session_managements.rs to also construct cli_assets -
+                //    placeholder, do later
+                //
+                // 
                 //
 
 //                 let (

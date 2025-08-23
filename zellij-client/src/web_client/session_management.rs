@@ -193,6 +193,7 @@ fn spawn_new_session(
         should_ignore_config: cli_args.is_setup_clean(),
         explicit_cli_options: cli_args.options(),
         layout: cli_args.layout.clone(),
+        terminal_window_size: client_attributes.size,
     };
     config.options.web_server = Some(true);
     config.options.web_sharing = Some(WebSharing::On);
@@ -200,10 +201,8 @@ fn spawn_new_session(
 
     (
         ClientToServerMsg::NewClient(
-            client_attributes,
             cli_assets,
             Box::new(cli_args),
-            Box::new(config_opts.clone()),
             Box::new(layout.unwrap()),
             Box::new(config.plugins.clone()),
             should_launch_setup_wizard,

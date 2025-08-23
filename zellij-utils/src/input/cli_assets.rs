@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
 use crate::input::options::Options;
+use crate::pane_size::Size;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CliAssets {
@@ -13,4 +14,5 @@ pub struct CliAssets {
     pub should_ignore_config: bool,
     pub explicit_cli_options: Option<Options>,
     pub layout: Option<PathBuf>,
+    pub terminal_window_size: Size,
 }

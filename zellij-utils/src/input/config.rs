@@ -18,7 +18,7 @@ use super::theme::{Themes, UiConfig};
 use super::web_client::WebClientConfig;
 use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariables;
-use crate::{home, setup::{self, find_default_config_dir}};
+use crate::{home, setup::{self, find_default_config_dir, get_default_themes, get_theme_dir}};
 use crate::input::layout::Layout;
 
 const DEFAULT_CONFIG_FILE_NAME: &str = "config.kdl";
@@ -204,11 +204,14 @@ impl From<&CliAssets> for Config {
             }
         }.map(|(_layout, config)| config).unwrap_or_else(|_| config);
 
+        config_with_merged_layout_opts.themes = config_with_merged_layout_opts.themes.merge(get_default_themes());
 
-        if let Some(theme_dir) = cli_assets.explicit_cli_options.as_ref().and_then(|o| o.theme_dir.as_ref()) {
-            if let Ok(themes) = Themes::from_dir(theme_dir.clone()) {
-                config_with_merged_layout_opts.themes = config_with_merged_layout_opts.themes.merge(themes);
-            }
+        let user_theme_dir = cli_assets.explicit_cli_options.as_ref().and_then(|o| o.theme_dir.clone()).or_else(|| {
+            get_theme_dir(config_with_merged_layout_opts.options.theme_dir.clone()).or_else(find_default_config_dir)
+                .filter(|dir| dir.exists())
+        });
+        if let Some(themes) = user_theme_dir.and_then(|u| Themes::from_dir(u).ok()) {
+            config_with_merged_layout_opts.themes = config_with_merged_layout_opts.themes.merge(themes);
         }
 
         config_with_merged_layout_opts

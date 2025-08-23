@@ -1105,10 +1105,8 @@ pub(crate) fn route_thread_main(
                             .with_context(err_context)?;
                         },
                         ClientToServerMsg::NewClient(
-                            client_attributes,
                             cli_assets,
                             cli_args,
-                            runtime_config_options,
                             layout,
                             plugin_aliases,
                             should_launch_setup_wizard,
@@ -1116,10 +1114,8 @@ pub(crate) fn route_thread_main(
                             layout_is_welcome_screen,
                         ) => {
                             let new_client_instruction = ServerInstruction::NewClient(
-                                client_attributes,
                                 cli_assets,
                                 cli_args,
-                                runtime_config_options,
                                 layout,
                                 plugin_aliases,
                                 should_launch_setup_wizard,
