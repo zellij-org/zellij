@@ -355,7 +355,6 @@ pub fn start_client(
                 ClientToServerMsg::NewClient(
                     cli_assets,
                     Box::new(layout.unwrap()),
-                    Box::new(config.plugins.clone()),
                     is_web_client,
                     should_launch_setup_wizard,
                     layout_is_welcome_screen,
@@ -754,7 +753,6 @@ pub fn start_server_detached(
                 ClientToServerMsg::NewClient(
                     cli_assets,
                     Box::new(layout.unwrap()),
-                    Box::new(config.plugins.clone()),
                     is_web_client,
                     should_launch_setup_wizard,
                     false,

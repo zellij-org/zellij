@@ -206,7 +206,6 @@ fn spawn_new_session(
         ClientToServerMsg::NewClient(
             cli_assets,
             Box::new(layout.unwrap()),
-            Box::new(config.plugins.clone()),
             should_launch_setup_wizard,
             is_web_client,
             is_welcome_screen,

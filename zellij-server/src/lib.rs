@@ -76,7 +76,6 @@ pub enum ServerInstruction {
     NewClient(
         CliAssets,
         Box<Layout>,
-        Box<PluginAliases>,
         bool, // should launch setup wizard
         bool, // is_web_client
         bool, // layout_is_welcome_screen
@@ -660,7 +659,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // TODO: rename to FirstClientConnected?
                 cli_assets,
                 layout,
-                plugin_aliases,
                 should_launch_setup_wizard,
                 is_web_client,
                 layout_is_welcome_screen,
@@ -669,10 +667,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
                 // TODO: CONTINUE HERE (23/08)
                 // 1. remove opts and instead put all the debug, max_terminals, etc. stuff in
-                //    CliAssets (maybe deprecate max_terminals?)
+                //    CliAssets (maybe deprecate max_terminals?) - DONE
                 // 2. do the same with layout
                 // 3. see if we can do the same with plugin_aliases, should_launch_setup_wizard and
-                //    all that stuff
+                //    all that stuff <== WORKING ON THIS - removed plugin_aliases, need to follow
+                //    compiler errors and then run and test
                 // 4. once done, go back to the CONTINUE HERE in the AttachClient and continue the
                 //    bulletins there
 
@@ -703,7 +702,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     layout.clone(), // TODO: no box
                     cli_assets,
                     config.clone(),
-                    plugin_aliases,
+                    config.plugins.clone(),
                     client_id,
                 );
                 let mut runtime_configuration = config.clone();
@@ -1509,7 +1508,7 @@ fn init_session(
     layout: Box<Layout>,
     cli_assets: CliAssets,
     mut config: Config,
-    plugin_aliases: Box<PluginAliases>,
+    plugin_aliases: PluginAliases,
     client_id: ClientId,
 ) -> SessionMetaData {
     config.options = config.options.merge(*config_options.clone());
