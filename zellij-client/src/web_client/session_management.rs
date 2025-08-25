@@ -179,11 +179,6 @@ fn spawn_new_session(
 
     spawn_server(&*zellij_ipc_pipe, debug).unwrap();
 
-    let successfully_written_config = Config::write_config_to_disk_if_it_does_not_exist(
-        config.to_string(true),
-        &Default::default(),
-    );
-    let should_launch_setup_wizard = successfully_written_config;
     let cli_args = CliArgs::default();
 
     // TODO(REFACTOR): THIS IS WRONG!!!111oneoneone
@@ -206,7 +201,6 @@ fn spawn_new_session(
         ClientToServerMsg::NewClient(
             cli_assets,
             Box::new(layout.unwrap()),
-            should_launch_setup_wizard,
             is_web_client,
             is_welcome_screen,
         ),

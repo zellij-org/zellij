@@ -76,7 +76,6 @@ pub enum ServerInstruction {
     NewClient(
         CliAssets,
         Box<Layout>,
-        bool, // should launch setup wizard
         bool, // is_web_client
         bool, // layout_is_welcome_screen
         ClientId,
@@ -659,7 +658,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // TODO: rename to FirstClientConnected?
                 cli_assets,
                 layout,
-                should_launch_setup_wizard,
                 is_web_client,
                 layout_is_welcome_screen,
                 client_id,
@@ -676,6 +674,18 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 //    bulletins there
 
                 let config = Config::from(&cli_assets);
+
+                let successfully_written_config =
+                    Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &cli_assets.config_file_path);
+                // if we successfully wrote the config to disk, it means two things:
+                // 1. It did not exist beforehand
+                // 2. The config folder is writeable
+                //
+                // If these two are true, we should launch the setup wizard, if even one of them is
+                // false, we should never launch it.
+                let should_launch_setup_wizard = successfully_written_config;
+
+
 
                 let runtime_config_options = match &cli_assets.explicit_cli_options {
                     Some(explicit_cli_options) => config.options.merge(explicit_cli_options.clone()),

@@ -74,7 +74,6 @@ pub enum ClientToServerMsg {
     NewClient(
         CliAssets,
         Box<Layout>,
-        bool, // should launch setup wizard
         bool, // is_web_client
         bool, // layout_is_welcome_screen
     ),

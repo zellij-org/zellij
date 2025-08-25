@@ -1107,14 +1107,12 @@ pub(crate) fn route_thread_main(
                         ClientToServerMsg::NewClient(
                             cli_assets,
                             layout,
-                            should_launch_setup_wizard,
                             is_web_client,
                             layout_is_welcome_screen,
                         ) => {
                             let new_client_instruction = ServerInstruction::NewClient(
                                 cli_assets,
                                 layout,
-                                should_launch_setup_wizard,
                                 is_web_client,
                                 layout_is_welcome_screen,
                                 client_id,

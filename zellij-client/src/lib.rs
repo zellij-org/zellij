@@ -293,7 +293,7 @@ pub fn start_client(
             let is_web_client = false;
 
             let cli_assets = CliAssets {
-                config_file_path: opts.config.clone(),
+                config_file_path: Config::config_file_path(&opts),
                 config_dir: opts.config_dir.clone(),
                 should_ignore_config: opts.is_setup_clean(),
                 explicit_cli_options: Some(config_options),
@@ -318,7 +318,7 @@ pub fn start_client(
 
 
             let cli_assets = CliAssets {
-                config_file_path: opts.config.clone(),
+                config_file_path: Config::config_file_path(&opts),
                 config_dir: opts.config_dir.clone(),
                 should_ignore_config: opts.is_setup_clean(),
                 explicit_cli_options: Some(config_options.clone()),
@@ -339,16 +339,6 @@ pub fn start_client(
                 }
             }
 
-            // TODO(REFACTOR): consider moving this and derivatives to the server
-            let successfully_written_config =
-                Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &opts);
-            // if we successfully wrote the config to disk, it means two things:
-            // 1. It did not exist beforehand
-            // 2. The config folder is writeable
-            //
-            // If these two are true, we should launch the setup wizard, if even one of them is
-            // false, we should never launch it.
-            let should_launch_setup_wizard = successfully_written_config;
             let is_web_client = false;
 
             (
@@ -356,7 +346,6 @@ pub fn start_client(
                     cli_assets,
                     Box::new(layout.unwrap()),
                     is_web_client,
-                    should_launch_setup_wizard,
                     layout_is_welcome_screen,
                 ),
                 ipc_pipe,
@@ -724,7 +713,7 @@ pub fn start_server_detached(
             envs::set_session_name(name.clone());
 
             let cli_assets = CliAssets {
-                config_file_path: opts.config.clone(),
+                config_file_path: Config::config_file_path(&opts),
                 config_dir: opts.config_dir.clone(),
                 should_ignore_config: opts.is_setup_clean(),
                 explicit_cli_options: opts.options(),
@@ -755,7 +744,6 @@ pub fn start_server_detached(
                     Box::new(layout.unwrap()),
                     is_web_client,
                     should_launch_setup_wizard,
-                    false,
                 ),
                 ipc_pipe,
             )
