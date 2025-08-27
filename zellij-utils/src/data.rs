@@ -1675,11 +1675,11 @@ impl LayoutInfo {
     }
     pub fn from_config(
         layout_dir: &Option<PathBuf>,
-        default_layout: &Option<PathBuf>,
+        layout_path: &Option<PathBuf>,
     ) -> Option<Self> {
-        match default_layout {
-            Some(default_layout) => {
-                if default_layout.extension().is_some() || default_layout.components().count() > 1 {
+        match layout_path {
+            Some(layout_path) => {
+                if layout_path.extension().is_some() || layout_path.components().count() > 1 {
                     let Some(layout_dir) = layout_dir
                         .as_ref()
                         .map(|l| l.clone())
@@ -1688,14 +1688,14 @@ impl LayoutInfo {
                         return None;
                     };
                     Some(LayoutInfo::File(
-                        layout_dir.join(default_layout).display().to_string(),
+                        layout_dir.join(layout_path).display().to_string(),
                     ))
-                } else if default_layout.starts_with("http://")
-                    || default_layout.starts_with("https://")
+                } else if layout_path.starts_with("http://")
+                    || layout_path.starts_with("https://")
                 {
-                    Some(LayoutInfo::Url(default_layout.display().to_string()))
+                    Some(LayoutInfo::Url(layout_path.display().to_string()))
                 } else {
-                    Some(LayoutInfo::BuiltIn(default_layout.display().to_string()))
+                    Some(LayoutInfo::BuiltIn(layout_path.display().to_string()))
                 }
             },
             None => None,

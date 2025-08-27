@@ -1106,15 +1106,11 @@ pub(crate) fn route_thread_main(
                         },
                         ClientToServerMsg::NewClient(
                             cli_assets,
-                            layout,
                             is_web_client,
-                            layout_is_welcome_screen,
                         ) => {
                             let new_client_instruction = ServerInstruction::NewClient(
                                 cli_assets,
-                                layout,
                                 is_web_client,
-                                layout_is_welcome_screen,
                                 client_id,
                             );
                             to_server

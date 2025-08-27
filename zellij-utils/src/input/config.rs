@@ -21,7 +21,7 @@ use crate::envs::EnvironmentVariables;
 use crate::{home, setup::{self, find_default_config_dir, get_default_themes, get_theme_dir}};
 use crate::input::layout::Layout;
 
-const DEFAULT_CONFIG_FILE_NAME: &str = "config.kdl";
+pub const DEFAULT_CONFIG_FILE_NAME: &str = "config.kdl";
 
 type ConfigResult = Result<Config, ConfigError>;
 
@@ -176,36 +176,39 @@ impl From<&CliAssets> for Config {
                 .or_else(|| {
                     cli_assets.config_dir.clone().or_else(find_default_config_dir).map(|dir| dir.join("layouts"))
                 });
+            cli_assets.layout.as_ref().and_then(|layout_info| Layout::from_layout_info_with_config(&layout_dir, layout_info, Some(config.clone())).ok())
             // the chosen layout can either be a path relative to the layout_dir or a name of one
             // of our assets, this distinction is made when parsing the layout - TODO: ideally, this
             // logic should not be split up and all the decisions should happen here
-            let chosen_layout = cli_assets
-                .layout
-                .clone()
-                .or_else(|| {
-                    cli_assets.explicit_cli_options
-                        .as_ref()
-                        .and_then(|explicit_cli_options| explicit_cli_options.default_layout.clone())
-                })
-                .or_else(|| config.options.default_layout.clone());
-            if let Some(layout_url) = chosen_layout
-                .as_ref()
-                .and_then(|l| l.to_str())
-                .and_then(|l| {
-                    if l.starts_with("http://") || l.starts_with("https://") {
-                        Some(l)
-                    } else {
-                        None
-                    }
-                })
-            {
-                Layout::from_url(layout_url, config.clone())
-            } else {
-                // we merge-override the config here because the layout might contain configuration
-                // that needs to take precedence
-                Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir.clone(), config.clone())
-            }
-        }.map(|(_layout, config)| config).unwrap_or_else(|_| config);
+//             let chosen_layout = cli_assets
+//                 .layout
+//                 .clone()
+//                 .or_else(|| {
+//                     cli_assets.explicit_cli_options
+//                         .as_ref()
+//                         .and_then(|explicit_cli_options| explicit_cli_options.default_layout.clone())
+//                 })
+//                 .or_else(|| config.options.default_layout.clone());
+//             if let Some(layout_url) = chosen_layout
+//                 .as_ref()
+//                 .and_then(|l| l.to_str())
+//                 .and_then(|l| {
+//                     if l.starts_with("http://") || l.starts_with("https://") {
+//                         Some(l)
+//                     } else {
+//                         None
+//                     }
+//                 })
+//             {
+//                 Layout::from_url(layout_url, config.clone())
+//             } else {
+//                 // we merge-override the config here because the layout might contain configuration
+//                 // that needs to take precedence
+//                 Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir.clone(), config.clone())
+//             }
+        }.map(|(_layout, config)| config).unwrap_or_else(|| config);
+        // TODO: CONTINUE HERE (25/08 afternoon) - follow compilation errors in changing layout ipc
+        // to layout_info
 
         config_with_merged_layout_opts.themes = config_with_merged_layout_opts.themes.merge(get_default_themes());
 

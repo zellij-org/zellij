@@ -73,9 +73,7 @@ pub enum ClientToServerMsg {
     TerminalResize(Size),
     NewClient(
         CliAssets,
-        Box<Layout>,
         bool, // is_web_client
-        bool, // layout_is_welcome_screen
     ),
     AttachClient(
         CliAssets,

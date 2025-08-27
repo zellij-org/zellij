@@ -51,7 +51,7 @@ use zellij_utils::{
     consts::{
         DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
-    data::{ConnectToSession, Event, InputMode, KeyWithModifier, PluginCapabilities, WebSharing, Style},
+    data::{ConnectToSession, Event, InputMode, KeyWithModifier, PluginCapabilities, WebSharing, Style, LayoutInfo},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
     input::{
@@ -75,9 +75,7 @@ pub type ClientId = u16;
 pub enum ServerInstruction {
     NewClient(
         CliAssets,
-        Box<Layout>,
         bool, // is_web_client
-        bool, // layout_is_welcome_screen
         ClientId,
     ),
     Render(Option<HashMap<ClientId, String>>),
@@ -657,23 +655,30 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             ServerInstruction::NewClient(
                 // TODO: rename to FirstClientConnected?
                 cli_assets,
-                layout,
                 is_web_client,
-                layout_is_welcome_screen,
                 client_id,
             ) => {
 
                 // TODO: CONTINUE HERE (23/08)
                 // 1. remove opts and instead put all the debug, max_terminals, etc. stuff in
                 //    CliAssets (maybe deprecate max_terminals?) - DONE
-                // 2. do the same with layout
-                // 3. see if we can do the same with plugin_aliases, should_launch_setup_wizard and
-                //    all that stuff <== WORKING ON THIS - removed plugin_aliases, need to follow
-                //    compiler errors and then run and test
+                // 2. see if we can do the same with plugin_aliases, should_launch_setup_wizard and
+                //    all that stuff 
+                //    compiler errors and then run and test - DONE
+                // 3. do the same with layout <=== WORKING ON THIS TODO: CONTINUE HERE (26/08
+                //    evening), this seems to work, test this (there are some test cases in
+                //    mental-load), then fix the web-client stuff
                 // 4. once done, go back to the CONTINUE HERE in the AttachClient and continue the
                 //    bulletins there
 
-                let config = Config::from(&cli_assets);
+                let (config, layout) = cli_assets.load_config_and_layout();
+//                 let config = Config::from(&cli_assets);
+//                 let layout = Layout::from(&cli_assets);
+                // TODO: CONTINUE HERE (BEFORE LUNCH): remove layout and layout_is_welcome_screen
+                // from NewClient, then implement all the things in Layout::from(cli_args) (eg.
+                // might need to add resurrection_layout to cli_assets and stuff)
+                let layout_is_welcome_screen = cli_assets.layout == Some(LayoutInfo::BuiltIn("welcome".to_owned()))
+                    || config.options.default_layout == Some(PathBuf::from("welcome"));
 
                 let successfully_written_config =
                     Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &cli_assets.config_file_path);
@@ -709,8 +714,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     to_server.clone(),
                     client_attributes.clone(),
                     Box::new(runtime_config_options.clone()), // TODO: no box
-                    layout.clone(), // TODO: no box
-                    cli_assets,
+                    Box::new(layout.clone()), // TODO: no box
+                    cli_assets.clone(),
                     config.clone(),
                     config.plugins.clone(),
                     client_id,
@@ -743,7 +748,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         ..Default::default()
                     })
                 });
-                let cwd = runtime_config_options.default_cwd;
+                let cwd = cli_assets.cwd.or_else(|| runtime_config_options.default_cwd);
 
                 let spawn_tabs = |tab_layout,
                                   floating_panes_layout,
@@ -868,7 +873,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 //                     Ok(results) => results,
 //                     Err(e) => {
 //                         // TODO: default config somehow...?
-//                         unimplemented!();
 //                     },
 //                 };
 

@@ -187,11 +187,14 @@ fn spawn_new_session(
         config_dir: cli_args.config_dir.clone(),
         should_ignore_config: cli_args.is_setup_clean(),
         explicit_cli_options: cli_args.options(),
-        layout: cli_args.layout.clone(),
+        // layout: cli_args.layout.clone(),
+        layout: None,
         terminal_window_size: client_attributes.size,
         data_dir: cli_args.data_dir.clone(),
         is_debug: cli_args.debug,
         max_panes: cli_args.max_panes,
+        force_run_layout_commands: false,
+        cwd: None,
     };
     config.options.web_server = Some(true);
     config.options.web_sharing = Some(WebSharing::On);
@@ -200,9 +203,7 @@ fn spawn_new_session(
     (
         ClientToServerMsg::NewClient(
             cli_assets,
-            Box::new(layout.unwrap()),
             is_web_client,
-            is_welcome_screen,
         ),
         zellij_ipc_pipe,
     )
