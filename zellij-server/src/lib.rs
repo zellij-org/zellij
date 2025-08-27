@@ -57,7 +57,7 @@ use zellij_utils::{
     input::{
         actions::Action,
         command::{RunCommand, TerminalAction},
-        config::Config,
+        config::{Config, watch_config_file_changes},
         get_mode_info,
         keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, PluginAlias, Run, RunPluginOrAlias},
@@ -110,7 +110,7 @@ pub enum ServerInstruction {
         config: String,
         write_config_to_disk: bool,
     },
-    // ConfigWrittenToDisk(ClientId, Config),
+    ConfigWrittenToDisk(Config),
     FailedToWriteConfigToDisk(ClientId, Option<PathBuf>), // Pathbuf - file we failed to write
     RebindKeys {
         client_id: ClientId,
@@ -166,6 +166,7 @@ impl From<&ServerInstruction> for ServerContext {
             },
             ServerInstruction::WebServerStarted(..) => ServerContext::WebServerStarted,
             ServerInstruction::FailedToStartWebServer(..) => ServerContext::FailedToStartWebServer,
+            ServerInstruction::ConfigWrittenToDisk(..) => ServerContext::ConfigWrittenToDisk,
             ServerInstruction::SendWebClientsForbidden(..) => {
                 ServerContext::SendWebClientsForbidden
             },
@@ -182,7 +183,7 @@ impl ErrorInstruction for ServerInstruction {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SessionConfiguration {
     runtime_config: HashMap<ClientId, Config>, // if present, overrides the saved_config
-    saved_config: HashMap<ClientId, Config>,   // the config as it is on disk (not guaranteed),
+    saved_config: Config,   // the config as it is on disk (not guaranteed),
                                                // when changed, this resets the runtime config to
                                                // be identical to it and override any previous
                                                // changes
@@ -191,11 +192,9 @@ pub(crate) struct SessionConfiguration {
 impl SessionConfiguration {
     pub fn new_saved_config(
         &mut self,
-        client_id: ClientId,
         new_saved_config: Config,
     ) -> Vec<(ClientId, Config)> {
-        self.saved_config
-            .insert(client_id, new_saved_config.clone());
+        self.saved_config = new_saved_config.clone();
 
         let mut config_changes = vec![];
         for (client_id, current_runtime_config) in self.runtime_config.iter_mut() {
@@ -206,8 +205,9 @@ impl SessionConfiguration {
         }
         config_changes
     }
-    pub fn set_client_saved_configuration(&mut self, client_id: ClientId, client_config: Config) {
-        self.saved_config.insert(client_id, client_config);
+    pub fn set_saved_configuration(&mut self, config: Config) {
+        // TODO(REFACTOR): find way to merge this with new_saved_config?
+        self.saved_config = config;
     }
     pub fn set_client_runtime_configuration(&mut self, client_id: ClientId, client_config: Config) {
         self.runtime_config.insert(client_id, client_config);
@@ -215,21 +215,21 @@ impl SessionConfiguration {
     pub fn get_client_keybinds(&self, client_id: &ClientId) -> Keybinds {
         self.runtime_config
             .get(client_id)
-            .or_else(|| self.saved_config.get(client_id))
+            .or_else(|| Some(&self.saved_config))
             .map(|c| c.keybinds.clone())
             .unwrap_or_default()
     }
     pub fn get_client_default_input_mode(&self, client_id: &ClientId) -> InputMode {
         self.runtime_config
             .get(client_id)
-            .or_else(|| self.saved_config.get(client_id))
+            .or_else(|| Some(&self.saved_config))
             .and_then(|c| c.options.default_mode.clone())
             .unwrap_or_default()
     }
     pub fn get_client_configuration(&self, client_id: &ClientId) -> Config {
         self.runtime_config
             .get(client_id)
-            .or_else(|| self.saved_config.get(client_id))
+            .or_else(|| Some(&self.saved_config))
             .cloned()
             .unwrap_or_default()
     }
@@ -267,9 +267,7 @@ impl SessionConfiguration {
         let mut config_changed = false;
 
         if self.runtime_config.get(client_id).is_none() {
-            if let Some(saved_config) = self.saved_config.get(client_id) {
-                self.runtime_config.insert(*client_id, saved_config.clone());
-            }
+            self.runtime_config.insert(*client_id, self.saved_config.clone());
         }
         match self.runtime_config.get_mut(client_id) {
             Some(config) => {
@@ -724,7 +722,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 runtime_configuration.options = runtime_config_options.clone();
                 session
                     .session_configuration
-                    .set_client_saved_configuration(client_id, config.clone());
+                    .set_saved_configuration(config.clone());
                 session
                     .session_configuration
                     .set_client_runtime_configuration(client_id, runtime_configuration);
@@ -888,9 +886,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
                 let mut runtime_configuration = config.clone();
                 runtime_configuration.options = runtime_config_options.clone();
-                session_data
-                    .session_configuration
-                    .set_client_saved_configuration(client_id, config.clone());
+//                 session_data
+//                     .session_configuration
+//                     .set_client_saved_configuration(client_id, config.clone());
                 session_data
                     .session_configuration
                     .set_client_runtime_configuration(client_id, runtime_configuration);
@@ -1334,22 +1332,22 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     }
                 }
             },
-//             ServerInstruction::ConfigWrittenToDisk(client_id, new_config) => {
-//                 let changes = session_data
-//                     .write()
-//                     .unwrap()
-//                     .as_mut()
-//                     .unwrap()
-//                     .session_configuration
-//                     .new_saved_config(client_id, new_config);
-//                 let config_was_written_to_disk = true;
-//                 session_data
-//                     .write()
-//                     .unwrap()
-//                     .as_mut()
-//                     .unwrap()
-//                     .propagate_configuration_changes(changes, config_was_written_to_disk);
-//             },
+            ServerInstruction::ConfigWrittenToDisk(new_config) => {
+                let changes = session_data
+                    .write()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .session_configuration
+                    .new_saved_config(new_config);
+                let config_was_written_to_disk = true;
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .propagate_configuration_changes(changes, config_was_written_to_disk);
+            },
             ServerInstruction::FailedToWriteConfigToDisk(_client_id, file_path) => {
                 session_data
                     .write()
@@ -1722,6 +1720,9 @@ fn init_session(
             }
         })
         .unwrap();
+    if let Some(config_file_path) = cli_assets.config_file_path.clone() {
+        report_changes_in_config_file(config_file_path, to_server.clone());
+    }
 
     SessionMetaData {
         senders: ThreadSenders {
@@ -1822,6 +1823,23 @@ fn should_show_startup_tip(
     } else {
         should_show_startup_tip_config.unwrap_or(true)
     }
+}
+
+
+pub fn report_changes_in_config_file(config_file_path: PathBuf, to_server: SenderWithContext<ServerInstruction>) {
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let to_server = to_server.clone();
+            watch_config_file_changes(config_file_path, move |new_config| {
+                let to_server = to_server.clone();
+                async move {
+                    to_server.send(ServerInstruction::ConfigWrittenToDisk(new_config));
+                }
+            })
+            .await;
+        });
+    });
 }
 
 #[cfg(not(feature = "singlepass"))]

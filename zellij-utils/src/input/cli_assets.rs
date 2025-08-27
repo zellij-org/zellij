@@ -21,6 +21,8 @@ use crate::{
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CliAssets {
+    // TODO(REFACTOR): config_file_path seems to always be there including for the default, maybe
+    // make it not-option?
     pub config_file_path: Option<PathBuf>,
     pub config_dir: Option<PathBuf>,
     pub should_ignore_config: bool,

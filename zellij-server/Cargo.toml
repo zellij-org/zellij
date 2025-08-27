@@ -47,6 +47,7 @@ uuid = { workspace = true }
 vte = { workspace = true }
 wasmtime-wasi = { version = "29.0.1", default-features = false, features = ["preview1"] } # Keep in sync with wasmtime
 zellij-utils = { workspace = true }
+tokio = { workspace = true }
 
 [dependencies.wasmtime]
 version = "29.0.1" # Keep in sync with wasmtime-wasi
