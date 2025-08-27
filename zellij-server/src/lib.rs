@@ -325,6 +325,7 @@ pub(crate) struct SessionMetaData {
     plugin_thread: Option<thread::JoinHandle<()>>,
     pty_writer_thread: Option<thread::JoinHandle<()>>,
     background_jobs_thread: Option<thread::JoinHandle<()>>,
+    config_file_path: PathBuf,
 }
 
 impl SessionMetaData {
@@ -1304,33 +1305,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .session_configuration
                     .reconfigure_runtime_config(&client_id, config);
-
-                if let Some(new_config) = new_config {
-                    if write_config_to_disk {
-                        let clear_defaults = true;
-//                         send_to_client!(
-//                             client_id,
-//                             os_input,
-//                             ServerToClientMsg::WriteConfigToDisk {
-//                                 config: new_config.to_string(clear_defaults)
-//                             },
-//                             session_state
-//                         );
-                    }
-
-                    if runtime_config_changed {
-                        let config_was_written_to_disk = false;
-                        session_data
-                            .write()
-                            .unwrap()
-                            .as_mut()
-                            .unwrap()
-                            .propagate_configuration_changes(
-                                vec![(client_id, new_config)],
-                                config_was_written_to_disk,
-                            );
-                    }
-                }
+                update_new_saved_config(new_config, write_config_to_disk, runtime_config_changed, &session_data, client_id);
             },
             ServerInstruction::ConfigWrittenToDisk(new_config) => {
                 let changes = session_data
@@ -1371,32 +1346,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .session_configuration
                     .rebind_keys(&client_id, keys_to_rebind, keys_to_unbind);
-                if let Some(new_config) = new_config {
-                    if write_config_to_disk {
-                        let clear_defaults = true;
-//                         send_to_client!(
-//                             client_id,
-//                             os_input,
-//                             ServerToClientMsg::WriteConfigToDisk {
-//                                 config: new_config.to_string(clear_defaults)
-//                             },
-//                             session_state
-//                         );
-                    }
 
-                    if runtime_config_changed {
-                        let config_was_written_to_disk = false;
-                        session_data
-                            .write()
-                            .unwrap()
-                            .as_mut()
-                            .unwrap()
-                            .propagate_configuration_changes(
-                                vec![(client_id, new_config)],
-                                config_was_written_to_disk,
-                            );
-                    }
-                }
+                update_new_saved_config(new_config, write_config_to_disk, runtime_config_changed, &session_data, client_id);
             },
             ServerInstruction::StartWebServer(client_id) => {
                 if cfg!(feature = "web_server_capability") {
@@ -1749,6 +1700,8 @@ fn init_session(
         web_sharing: config.options.web_sharing.unwrap_or(WebSharing::Off),
         #[cfg(not(feature = "web_server_capability"))]
         web_sharing: WebSharing::Disabled,
+        config_file_path: cli_assets.config_file_path.unwrap(), // TODO(REFACTOR): no unwrap when
+                                                                // this is not an Option anymore
     }
 }
 
@@ -1826,7 +1779,7 @@ fn should_show_startup_tip(
 }
 
 
-pub fn report_changes_in_config_file(config_file_path: PathBuf, to_server: SenderWithContext<ServerInstruction>) {
+fn report_changes_in_config_file(config_file_path: PathBuf, to_server: SenderWithContext<ServerInstruction>) {
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
@@ -1840,6 +1793,66 @@ pub fn report_changes_in_config_file(config_file_path: PathBuf, to_server: Sende
             .await;
         });
     });
+}
+
+fn update_new_saved_config(
+    new_config: Option<Config>,
+    write_config_to_disk: bool,
+    runtime_config_changed: bool,
+    session_data: &Arc<RwLock<Option<SessionMetaData>>>,
+    client_id: ClientId
+) {
+    if let Some(new_config) = new_config {
+        if write_config_to_disk {
+            let clear_defaults = true;
+            let config_file_path = session_data.read().unwrap().as_ref().unwrap().config_file_path.clone();
+
+            match Config::write_config_to_disk(new_config.to_string(clear_defaults), &config_file_path) {
+                Ok(written_config) => {
+                    let changes = session_data
+                        .write()
+                        .unwrap()
+                        .as_mut()
+                        .unwrap()
+                        .session_configuration
+                        .new_saved_config(written_config);
+                    let config_was_written_to_disk = true;
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_mut()
+                        .unwrap()
+                        .propagate_configuration_changes(changes, config_was_written_to_disk);
+                },
+                Err(e) => {
+                    let error_path = e
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(String::new);
+                    log::error!("Failed to write config to disk: {}", error_path);
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_plugin(PluginInstruction::FailedToWriteConfigToDisk { file_path: e })
+                        .unwrap();
+                },
+            }
+        } else if runtime_config_changed {
+            let config_was_written_to_disk = false;
+            session_data
+                .write()
+                .unwrap()
+                .as_mut()
+                .unwrap()
+                .propagate_configuration_changes(
+                    vec![(client_id, new_config)],
+                    config_was_written_to_disk,
+                );
+        }
+    }
 }
 
 #[cfg(not(feature = "singlepass"))]
