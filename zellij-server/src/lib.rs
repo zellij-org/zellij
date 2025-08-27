@@ -851,21 +851,25 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // * pass all the other stuff from the client that doesn't need to be there and do
                 // it here (eg.ClientAttributes and such) 
                 // * move stuff from the NewClient instruction to the server (see CONTINUE HERE) in
-                // the NewClient above
-                // * make sure the start_server_detached thing still works
+                // the NewClient above - DONE
+                // * make sure the start_server_detached thing still works - DONE
                 // * get config live reloading  to work again (also for the web server)
-                // * refactor
-                // * do a  go-over to see if we missed anything, test thoroughly and commit
                 // * fix web_client/session_managements.rs to also construct cli_assets -
                 //    placeholder, do later
+                // * refactor
+                // * do a  go-over to see if we missed anything, test thoroughly and commit
                 //
                 // 
                 //
 
-                let config = Config::from(&cli_assets);
+                // let config = Config::from(&cli_assets);
+                // let (config, _layout) = cli_assets.load_config_and_layout();
                 // TODO(REFACTOR): here we changed merge_from_cli to merge - I *think* this is more
                 // correct, but it's technically a behavior change... need to play with this a
                 // little to make sure it works properly
+                let mut rlock = session_data.write().unwrap();
+                let session_data = rlock.as_mut().unwrap();
+                let config = session_data.session_configuration.saved_config.clone();
                 let runtime_config_options = match cli_assets.explicit_cli_options {
                     Some(explicit_cli_options) => config.options.merge(explicit_cli_options),
                     None => config.options.clone()
@@ -882,8 +886,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     },
                 };
 
-                let mut rlock = session_data.write().unwrap();
-                let session_data = rlock.as_mut().unwrap();
 
                 let mut runtime_configuration = config.clone();
                 runtime_configuration.options = runtime_config_options.clone();
