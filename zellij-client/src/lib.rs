@@ -401,8 +401,6 @@ pub fn start_client(
                 cwd: layout_cwd,
             };
 
-            log::info!("cli_assets: {:#?}", cli_assets);
-
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
 

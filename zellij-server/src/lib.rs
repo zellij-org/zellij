@@ -863,19 +863,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // 
                 //
 
-//                 let (
-//                     config,
-//                     layout,
-//                     config_options,
-//                     mut config_without_layout,
-//                     mut config_options_without_layout,
-//                 ) = match Setup::from_cli_args(&opts) {
-//                     Ok(results) => results,
-//                     Err(e) => {
-//                         // TODO: default config somehow...?
-//                     },
-//                 };
-
                 let config = Config::from(&cli_assets);
                 // TODO(REFACTOR): here we changed merge_from_cli to merge - I *think* this is more
                 // correct, but it's technically a behavior change... need to play with this a

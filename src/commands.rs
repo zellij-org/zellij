@@ -613,7 +613,6 @@ pub(crate) fn start_client(opts: CliArgs) {
     loop {
         let os_input = os_input.clone();
         let mut config = config.clone();
-        // let mut layout = layout.clone();
         let mut config_options = config_options.clone();
         let mut opts = opts.clone();
         let mut is_a_reconnect = false;
@@ -734,16 +733,6 @@ pub(crate) fn start_client(opts: CliArgs) {
                 client.set_cwd(new_session_cwd);
             }
 
-            log::info!("client: {:#?}", client);
-
-//             let layout_info = match &client {
-//                 ClientInfo::Attach(_, _) => None,
-//                 ClientInfo::New(_) => None,
-//                 ClientInfo::Resurrect(_session_name, path_to_resurrection_layout, force_run_layout_commands) => {
-//                     Some(LayoutInfo::File(path_to_resurrection_layout.display().to_string()))
-//                 },
-//             };
-
             let tab_position_to_focus = reconnect_to_session
                 .as_ref()
                 .and_then(|r| r.tab_position.clone());
@@ -756,7 +745,6 @@ pub(crate) fn start_client(opts: CliArgs) {
                 config,
                 config_options,
                 client,
-                // layout_info,
                 tab_position_to_focus,
                 pane_id_to_focus,
                 is_a_reconnect,
@@ -772,7 +760,6 @@ pub(crate) fn start_client(opts: CliArgs) {
                     config,
                     config_options,
                     ClientInfo::New(session_name, layout_info, new_session_cwd),
-                    // Some(layout),
                     None,
                     None,
                     is_a_reconnect,
@@ -801,20 +788,12 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 config_options.clone(),
                                 true,
                             );
-//                             let attach_layout = match &client {
-//                                 ClientInfo::Attach(_, _) => None,
-//                                 ClientInfo::New(_) => Some(layout),
-//                                 ClientInfo::Resurrect(_, resurrection_layout) => {
-//                                     Some(resurrection_layout.clone())
-//                                 },
-//                             };
                             reconnect_to_session = start_client_impl(
                                 Box::new(os_input),
                                 opts,
                                 config,
                                 config_options,
                                 client,
-                                // attach_layout,
                                 None,
                                 None,
                                 is_a_reconnect,
