@@ -108,6 +108,7 @@ pub enum ServerToClientMsg {
     // WriteConfigToDisk { config: String },
     StartWebServer,
     RenamedSession(String), // String -> new session name
+    ConfigFileUpdated,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

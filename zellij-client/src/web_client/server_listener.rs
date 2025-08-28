@@ -1,5 +1,5 @@
 use crate::os_input_output::ClientOsApi;
-use crate::web_client::control_message::WebServerToWebClientControlMessage;
+use crate::web_client::control_message::{WebServerToWebClientControlMessage, SetConfigPayload};
 use crate::web_client::session_management::build_initial_connection;
 use crate::web_client::types::{ClientConnectionBus, ConnectionTable, SessionManager};
 use crate::web_client::utils::terminal_init_messages;
@@ -150,6 +150,53 @@ pub fn zellij_server_listener(
                                         new_session_name,
                                     },
                                 );
+                            },
+                            Some((ServerToClientMsg::ConfigFileUpdated, _)) => {
+
+                                if let Some(config_file_path) = &config_file_path {
+                                    if let Ok(new_config) = Config::from_path(&config_file_path, Some(config.clone())) {
+                                        let set_config_payload = SetConfigPayload::from(&new_config);
+
+                                        let client_ids: Vec<String> = {
+                                            let connection_table_lock = connection_table.lock().unwrap();
+                                            connection_table_lock
+                                                .client_id_to_channels
+                                                .keys()
+                                                .cloned()
+                                                .collect()
+                                        };
+
+                                        let config_message =
+                                            WebServerToWebClientControlMessage::SetConfig(set_config_payload);
+                                        let config_msg_json = match serde_json::to_string(&config_message) {
+                                            Ok(json) => json,
+                                            Err(e) => {
+                                                log::error!("Failed to serialize config message: {}", e);
+                                                continue;
+                                            },
+                                        };
+
+                                        for client_id in client_ids {
+                                            if let Some(control_tx) = connection_table
+                                                .lock()
+                                                .unwrap()
+                                                .get_client_control_tx(&client_id)
+                                            {
+                                                let ws_message = config_msg_json.clone();
+                                                match control_tx.send(ws_message.into()) {
+                                                    Ok(_) => {}, // no-op
+                                                    Err(e) => {
+                                                        log::error!(
+                                                            "Failed to send config update to client {}: {}",
+                                                            client_id,
+                                                            e
+                                                        );
+                                                    },
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             },
                             _ => {
                                 // server disconnected, stop trying to listen otherwise we retry

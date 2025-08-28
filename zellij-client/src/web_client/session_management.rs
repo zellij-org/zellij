@@ -15,6 +15,7 @@ use zellij_utils::{
     ipc::{ClientAttributes, ClientToServerMsg},
     sessions::{generate_unique_session_name, resurrection_layout, session_exists},
     setup::{find_default_config_dir, get_layout_dir},
+    consts::session_layout_cache_file_name,
 };
 
 pub fn build_initial_connection(
@@ -106,12 +107,10 @@ pub fn spawn_session_if_needed(
 ) -> (ClientToServerMsg, PathBuf) {
     if session_exists(&session_name).unwrap_or(false) {
         ipc_pipe_and_first_message_for_existing_session(
-            path,
+            session_name,
             client_attributes,
             config_file_path,
-            &config,
-            &config_options,
-            is_web_client,
+            config_options.clone(),
         )
     } else {
         let force_run_commands = false;
@@ -133,12 +132,11 @@ pub fn spawn_session_if_needed(
                 config_file_path,
                 config.clone(),
                 config_options.clone(),
-                Some(resurrection_layout),
+                Some(LayoutInfo::File(session_layout_cache_file_name(&session_name).display().to_string())),
                 client_attributes,
                 is_welcome_screen,
             ),
             None => {
-                let new_session_layout = layout_for_new_session(&config, requested_layout);
 
                 spawn_new_session(
                     &session_name,
@@ -146,7 +144,7 @@ pub fn spawn_session_if_needed(
                     config_file_path,
                     config.clone(),
                     config_options.clone(),
-                    new_session_layout.ok().map(|(l, _c)| l),
+                    requested_layout,
                     client_attributes,
                     is_welcome_screen,
                 )
@@ -160,8 +158,8 @@ fn spawn_new_session(
     mut os_input: Box<dyn ClientOsApi>,
     config_file_path: Option<PathBuf>,
     mut config: Config,
-    config_opts: Options,
-    layout: Option<Layout>,
+    mut config_opts: Options,
+    layout_info: Option<LayoutInfo>,
     client_attributes: ClientAttributes,
     is_welcome_screen: bool,
 ) -> (ClientToServerMsg, PathBuf) {
@@ -179,25 +177,22 @@ fn spawn_new_session(
 
     spawn_server(&*zellij_ipc_pipe, debug).unwrap();
 
-    let cli_args = CliArgs::default();
-
-    // TODO(REFACTOR): THIS IS WRONG!!!111oneoneone
+    // TODO: CONTINUE HERE (27/08 evening): test this
+    config_opts.web_server = Some(true);
+    config_opts.web_sharing = Some(WebSharing::On);
     let cli_assets = CliAssets {
-        config_file_path: cli_args.config.clone(),
-        config_dir: cli_args.config_dir.clone(),
-        should_ignore_config: cli_args.is_setup_clean(),
-        explicit_cli_options: cli_args.options(),
-        // layout: cli_args.layout.clone(),
-        layout: None,
+        config_file_path,
+        config_dir: None,
+        should_ignore_config: false,
+        explicit_cli_options: Some(config_opts),
+        layout: layout_info,
         terminal_window_size: client_attributes.size,
-        data_dir: cli_args.data_dir.clone(),
-        is_debug: cli_args.debug,
-        max_panes: cli_args.max_panes,
+        data_dir: None,
+        is_debug: false,
+        max_panes: None,
         force_run_layout_commands: false,
         cwd: None,
     };
-    config.options.web_server = Some(true);
-    config.options.web_sharing = Some(WebSharing::On);
     let is_web_client = true;
 
     (
@@ -210,12 +205,20 @@ fn spawn_new_session(
 }
 
 fn ipc_pipe_and_first_message_for_existing_session(
-    session_name: String,
+    session_name: &str,
     client_attributes: ClientAttributes,
     config_file_path: Option<PathBuf>,
-    config: &Config,
-    config_options: &Options,
-    is_web_client: bool,
+    mut config_opts: Options,
+    // layout_info: Option<LayoutInfo>,
+
+
+
+//     session_name: String,
+//     client_attributes: ClientAttributes,
+//     config_file_path: Option<PathBuf>,
+//     config: &Config,
+//     config_options: &Options,
+//     is_web_client: bool,
 ) -> (ClientToServerMsg, PathBuf) {
     let zellij_ipc_pipe: PathBuf = {
         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
@@ -225,10 +228,22 @@ fn ipc_pipe_and_first_message_for_existing_session(
         sock_dir
     };
 
-    let cli_assets = {
-        // TODO(REFACTOR): implement
-        unimplemented!()
+    config_opts.web_server = Some(true);
+    config_opts.web_sharing = Some(WebSharing::On);
+    let cli_assets = CliAssets {
+        config_file_path,
+        config_dir: None,
+        should_ignore_config: false,
+        explicit_cli_options: Some(config_opts),
+        layout: None,
+        terminal_window_size: client_attributes.size,
+        data_dir: None,
+        is_debug: false,
+        max_panes: None,
+        force_run_layout_commands: false,
+        cwd: None,
     };
+    let is_web_client = true;
 
     let first_message = ClientToServerMsg::AttachClient(
         cli_assets,

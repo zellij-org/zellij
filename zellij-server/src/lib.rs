@@ -853,9 +853,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // * move stuff from the NewClient instruction to the server (see CONTINUE HERE) in
                 // the NewClient above - DONE
                 // * make sure the start_server_detached thing still works - DONE
-                // * get config live reloading  to work again (also for the web server)
+                // * get config live reloading  to work again (also for the web server) - DONE
                 // * fix web_client/session_managements.rs to also construct cli_assets -
-                //    placeholder, do later
+                //    placeholder, do later <=== COONTINUE HERE (before call)
                 // * refactor
                 // * do a  go-over to see if we missed anything, test thoroughly and commit
                 //
@@ -1324,6 +1324,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .as_mut()
                     .unwrap()
                     .propagate_configuration_changes(changes, config_was_written_to_disk);
+                let client_ids = session_state.read().unwrap().client_ids();
+                for client_id in client_ids {
+                    send_to_client!(
+                        client_id,
+                        os_input,
+                        ServerToClientMsg::ConfigFileUpdated,
+                        session_state
+                    );
+                }
             },
             ServerInstruction::FailedToWriteConfigToDisk(_client_id, file_path) => {
                 session_data

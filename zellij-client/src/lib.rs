@@ -66,6 +66,7 @@ pub(crate) enum ClientInstruction {
     StartWebServer,
     #[allow(dead_code)] // we need the session name here even though we're not currently using it
     RenamedSession(String), // String -> new session name
+    ConfigFileUpdated,
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -92,6 +93,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
 //             },
             ServerToClientMsg::StartWebServer => ClientInstruction::StartWebServer,
             ServerToClientMsg::RenamedSession(name) => ClientInstruction::RenamedSession(name),
+            ServerToClientMsg::ConfigFileUpdated => ClientInstruction::ConfigFileUpdated,
         }
     }
 }
@@ -116,6 +118,7 @@ impl From<&ClientInstruction> for ClientContext {
             // ClientInstruction::WriteConfigToDisk { .. } => ClientContext::WriteConfigToDisk,
             ClientInstruction::StartWebServer => ClientContext::StartWebServer,
             ClientInstruction::RenamedSession(..) => ClientContext::RenamedSession,
+            ClientInstruction::ConfigFileUpdated => ClientContext::ConfigFileUpdated,
         }
     }
 }

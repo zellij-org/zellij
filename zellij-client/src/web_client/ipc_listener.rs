@@ -44,6 +44,7 @@ pub async fn listen_to_web_server_instructions(server_handle: Handle, state: App
                             server_handle.shutdown();
                             break;
                         },
+                        // TODO(REFACTOR): no longer needed, remove this
                         InstructionForWebServer::ConfigWrittenToDisk(new_config) => {
                             let set_config_payload = SetConfigPayload::from(&new_config);
 
