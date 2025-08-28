@@ -253,7 +253,10 @@ impl Config {
     pub fn default_config_file_path() -> Option<PathBuf> {
         home::find_default_config_dir().map(|config_dir| config_dir.join(DEFAULT_CONFIG_FILE_NAME))
     }
-    pub fn write_config_to_disk(config: String, config_file_path: &PathBuf) -> Result<Config, Option<PathBuf>> {
+    pub fn write_config_to_disk(
+        config: String,
+        config_file_path: &PathBuf,
+    ) -> Result<Config, Option<PathBuf>> {
         // if we fail, try to return the PathBuf of the file we were not able to write to
         let config_file_path = config_file_path.clone();
         Config::from_kdl(&config, None)
@@ -295,7 +298,10 @@ impl Config {
             })
     }
     // returns true if the config was not previouly written to disk and we successfully wrote it
-    pub fn write_config_to_disk_if_it_does_not_exist(config: String, config_file_path: &Option<PathBuf>) -> bool {
+    pub fn write_config_to_disk_if_it_does_not_exist(
+        config: String,
+        config_file_path: &Option<PathBuf>,
+    ) -> bool {
         let Some(config_file_path) = config_file_path.clone() else {
             log::error!("Could not find file path to write config");
             return false;
@@ -355,7 +361,9 @@ impl Config {
             },
         }
     }
-    fn backup_current_config(config_file_path: &PathBuf) -> Result<Option<PathBuf>, Option<PathBuf>> {
+    fn backup_current_config(
+        config_file_path: &PathBuf,
+    ) -> Result<Option<PathBuf>, Option<PathBuf>> {
         // if we fail, try to return the PathBuf of the file we were not able to write to
         // if let Some(config_file_path) = Config::config_file_path(&opts) {
         match std::fs::read_to_string(&config_file_path) {

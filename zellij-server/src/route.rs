@@ -1104,10 +1104,7 @@ pub(crate) fn route_thread_main(
                             )
                             .with_context(err_context)?;
                         },
-                        ClientToServerMsg::FirstClientConnected(
-                            cli_assets,
-                            is_web_client,
-                        ) => {
+                        ClientToServerMsg::FirstClientConnected(cli_assets, is_web_client) => {
                             let new_client_instruction = ServerInstruction::FirstClientConnected(
                                 cli_assets,
                                 is_web_client,

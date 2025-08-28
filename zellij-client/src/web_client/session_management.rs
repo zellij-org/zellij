@@ -3,16 +3,12 @@ use crate::spawn_server;
 
 use std::{fs, path::PathBuf};
 use zellij_utils::{
+    consts::session_layout_cache_file_name,
     data::{ConnectToSession, LayoutInfo, WebSharing},
     envs,
-    input::{
-        config::Config,
-        options::Options,
-        cli_assets::CliAssets,
-    },
+    input::{cli_assets::CliAssets, config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg},
     sessions::{generate_unique_session_name, resurrection_layout, session_exists},
-    consts::session_layout_cache_file_name,
 };
 
 pub fn build_initial_connection(
@@ -66,10 +62,7 @@ pub fn spawn_session_if_needed(
     } else {
         // we still parse the resurrection layout here even though we don't use it just in case
         // it's corrupted
-        let resurrection_layout =
-            resurrection_layout(&session_name)
-                .ok()
-                .flatten();
+        let resurrection_layout = resurrection_layout(&session_name).ok().flatten();
 
         if resurrection_layout.is_some() {
             spawn_new_session(
@@ -77,7 +70,11 @@ pub fn spawn_session_if_needed(
                 os_input.clone(),
                 config_file_path,
                 config_options.clone(),
-                Some(LayoutInfo::File(session_layout_cache_file_name(&session_name).display().to_string())),
+                Some(LayoutInfo::File(
+                    session_layout_cache_file_name(&session_name)
+                        .display()
+                        .to_string(),
+                )),
                 client_attributes,
             )
         } else {
@@ -133,10 +130,7 @@ fn spawn_new_session(
     let is_web_client = true;
 
     (
-        ClientToServerMsg::FirstClientConnected(
-            cli_assets,
-            is_web_client,
-        ),
+        ClientToServerMsg::FirstClientConnected(cli_assets, is_web_client),
         zellij_ipc_pipe,
     )
 }
@@ -172,11 +166,6 @@ fn ipc_pipe_and_first_message_for_existing_session(
     };
     let is_web_client = true;
 
-    let first_message = ClientToServerMsg::AttachClient(
-        cli_assets,
-        None,
-        None,
-        is_web_client,
-    );
+    let first_message = ClientToServerMsg::AttachClient(cli_assets, None, None, is_web_client);
     (first_message, zellij_ipc_pipe)
 }

@@ -1,11 +1,11 @@
 pub mod actions;
+pub mod cli_assets;
 pub mod command;
 pub mod config;
 pub mod keybinds;
 pub mod layout;
 pub mod mouse;
 pub mod options;
-pub mod cli_assets;
 pub mod permission;
 pub mod plugins;
 pub mod theme;

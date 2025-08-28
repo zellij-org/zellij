@@ -84,14 +84,14 @@ impl CliArgs {
     pub fn is_setup_clean(&self) -> bool {
         if let Some(Command::Setup(ref setup)) = &self.command {
             if setup.clean {
-                return true
+                return true;
             }
         }
         false
     }
     pub fn options(&self) -> Option<Options> {
         if let Some(Command::Options(options)) = &self.command {
-            return Some(options.clone())
+            return Some(options.clone());
         }
         None
     }

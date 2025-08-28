@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex};
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::http::Request;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use zellij_utils::input::layout::Layout;
 use zellij_utils::input::cli_assets::CliAssets;
+use zellij_utils::input::layout::Layout;
 use zellij_utils::{consts::VERSION, input::config::Config, input::options::Options};
 
 use crate::os_input_output::ClientOsApi;
@@ -1312,12 +1312,7 @@ impl SessionManager for MockSessionManager {
             force_run_layout_commands: false,
             cwd: None,
         };
-        let first_message = ClientToServerMsg::AttachClient(
-            cli_assets,
-            None,
-            None,
-            true,
-        );
+        let first_message = ClientToServerMsg::AttachClient(cli_assets, None, None, true);
 
         (first_message, mock_ipc_path)
     }

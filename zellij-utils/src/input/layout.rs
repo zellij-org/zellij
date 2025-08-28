@@ -1417,9 +1417,15 @@ impl Layout {
         Layout::from_kdl(
             &Self::stringified_default_from_assets().unwrap(),
             None,
-            Some(("", Self::stringified_default_swap_from_assets().unwrap().as_str())),
-            None
-        ).unwrap()
+            Some((
+                "",
+                Self::stringified_default_swap_from_assets()
+                    .unwrap()
+                    .as_str(),
+            )),
+            None,
+        )
+        .unwrap()
     }
     pub fn from_str(
         raw: &str,

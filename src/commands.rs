@@ -700,7 +700,12 @@ pub(crate) fn start_client(opts: CliArgs) {
                         if force_run_commands {
                             resurrection_layout.recursively_add_start_suspended(Some(false));
                         }
-                        ClientInfo::Resurrect(session_name.clone(), session_layout_cache_file_name(session_name.as_ref()), force_run_commands, new_session_cwd.clone())
+                        ClientInfo::Resurrect(
+                            session_name.clone(),
+                            session_layout_cache_file_name(session_name.as_ref()),
+                            force_run_commands,
+                            new_session_cwd.clone(),
+                        )
                     },
                     _ => attach_with_session_name(
                         session_name,

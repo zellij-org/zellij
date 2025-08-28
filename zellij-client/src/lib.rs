@@ -27,21 +27,17 @@ use crate::{
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
 };
 use termwiz::input::InputEvent;
+use zellij_utils::cli::CliArgs;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{set_permissions, ZELLIJ_SOCK_DIR},
     data::{ClientId, ConnectToSession, KeyWithModifier, LayoutInfo},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
-    input::{
-        config::Config,
-        options::Options,
-        cli_assets::CliAssets,
-    },
+    input::{cli_assets::CliAssets, config::Config, options::Options},
     ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
     pane_size::Size,
 };
-use zellij_utils::cli::CliArgs;
 
 /// Instructions related to the client-side application
 #[derive(Debug, Clone)]
@@ -200,14 +196,14 @@ impl ClientInfo {
     pub fn set_layout_info(&mut self, new_layout_info: LayoutInfo) {
         match self {
             ClientInfo::New(_, layout_info, _) => *layout_info = Some(new_layout_info),
-            _ => {}
+            _ => {},
         }
     }
     pub fn set_cwd(&mut self, new_cwd: PathBuf) {
         match self {
             ClientInfo::New(_, _, cwd) => *cwd = Some(new_cwd),
             ClientInfo::Resurrect(_, _, _, cwd) => *cwd = Some(new_cwd),
-            _ => {}
+            _ => {},
         }
     }
 }
@@ -303,12 +299,16 @@ pub fn start_client(
                 config_dir: cli_args.config_dir.clone(),
                 should_ignore_config: cli_args.is_setup_clean(),
                 configuration_options: Some(config_options.clone()),
-                layout: cli_args.layout.as_ref()
-                    .and_then(|l| LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone())))
+                layout: cli_args
+                    .layout
+                    .as_ref()
+                    .and_then(|l| {
+                        LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone()))
+                    })
                     .or_else(|| {
                         LayoutInfo::from_config(
                             &config_options.layout_dir,
-                            &config_options.default_layout
+                            &config_options.default_layout,
                         )
                     }),
                 terminal_window_size: full_screen_ws,
@@ -358,13 +358,10 @@ pub fn start_client(
             let is_web_client = false;
 
             (
-                ClientToServerMsg::FirstClientConnected(
-                    cli_assets,
-                    is_web_client,
-                ),
+                ClientToServerMsg::FirstClientConnected(cli_assets, is_web_client),
                 ipc_pipe,
             )
-        }
+        },
         ClientInfo::New(name, layout_info, layout_cwd) => {
             envs::set_session_name(name.clone());
 
@@ -374,12 +371,16 @@ pub fn start_client(
                 should_ignore_config: cli_args.is_setup_clean(),
                 configuration_options: Some(config_options.clone()),
                 layout: layout_info.or_else(|| {
-                        cli_args.layout.as_ref()
-                        .and_then(|l| LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone())))
+                    cli_args
+                        .layout
+                        .as_ref()
+                        .and_then(|l| {
+                            LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone()))
+                        })
                         .or_else(|| {
                             LayoutInfo::from_config(
                                 &config_options.layout_dir,
-                                &config_options.default_layout
+                                &config_options.default_layout,
                             )
                         })
                 }),
@@ -404,10 +405,7 @@ pub fn start_client(
             let is_web_client = false;
 
             (
-                ClientToServerMsg::FirstClientConnected(
-                    cli_assets,
-                    is_web_client,
-                ),
+                ClientToServerMsg::FirstClientConnected(cli_assets, is_web_client),
                 ipc_pipe,
             )
         },
@@ -760,7 +758,7 @@ pub fn start_server_detached(
                 configuration_options: Some(config_options.clone()),
                 layout: Some(LayoutInfo::File(path_to_layout.display().to_string())),
                 terminal_window_size: Size { cols: 50, rows: 50 }, // static number until a
-                                                                     // client connects
+                // client connects
                 data_dir: cli_args.data_dir.clone(),
                 is_debug: cli_args.debug,
                 max_panes: cli_args.max_panes,
@@ -781,13 +779,10 @@ pub fn start_server_detached(
             let is_web_client = false;
 
             (
-                ClientToServerMsg::FirstClientConnected(
-                    cli_assets,
-                    is_web_client,
-                ),
+                ClientToServerMsg::FirstClientConnected(cli_assets, is_web_client),
                 ipc_pipe,
             )
-        }
+        },
         ClientInfo::New(name, layout_info, layout_cwd) => {
             envs::set_session_name(name.clone());
 
@@ -797,17 +792,21 @@ pub fn start_server_detached(
                 should_ignore_config: cli_args.is_setup_clean(),
                 configuration_options: cli_args.options(),
                 layout: layout_info.or_else(|| {
-                    cli_args.layout.as_ref()
-                    .and_then(|l| LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone())))
-                    .or_else(|| {
-                        LayoutInfo::from_config(
-                            &config_options.layout_dir,
-                            &config_options.default_layout
-                        )
-                    })
+                    cli_args
+                        .layout
+                        .as_ref()
+                        .and_then(|l| {
+                            LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone()))
+                        })
+                        .or_else(|| {
+                            LayoutInfo::from_config(
+                                &config_options.layout_dir,
+                                &config_options.default_layout,
+                            )
+                        })
                 }),
                 terminal_window_size: Size { cols: 50, rows: 50 }, // static number until a
-                                                                     // client connects
+                // client connects
                 data_dir: cli_args.data_dir.clone(),
                 is_debug: cli_args.debug,
                 max_panes: cli_args.max_panes,
@@ -827,10 +826,7 @@ pub fn start_server_detached(
             let is_web_client = false;
 
             (
-                ClientToServerMsg::FirstClientConnected(
-                    cli_assets,
-                    is_web_client,
-                ),
+                ClientToServerMsg::FirstClientConnected(cli_assets, is_web_client),
                 ipc_pipe,
             )
         },

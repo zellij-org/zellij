@@ -1690,8 +1690,7 @@ impl LayoutInfo {
                     Some(LayoutInfo::File(
                         layout_dir.join(layout_path).display().to_string(),
                     ))
-                } else if layout_path.starts_with("http://")
-                    || layout_path.starts_with("https://")
+                } else if layout_path.starts_with("http://") || layout_path.starts_with("https://")
                 {
                     Some(LayoutInfo::Url(layout_path.display().to_string()))
                 } else {
