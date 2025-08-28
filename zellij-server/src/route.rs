@@ -1104,27 +1104,10 @@ pub(crate) fn route_thread_main(
                             )
                             .with_context(err_context)?;
                         },
-                        ClientToServerMsg::NewClient(
-                            client_attributes,
-                            cli_args,
-                            config,
-                            runtime_config_options,
-                            layout,
-                            plugin_aliases,
-                            should_launch_setup_wizard,
-                            is_web_client,
-                            layout_is_welcome_screen,
-                        ) => {
-                            let new_client_instruction = ServerInstruction::NewClient(
-                                client_attributes,
-                                cli_args,
-                                config,
-                                runtime_config_options,
-                                layout,
-                                plugin_aliases,
-                                should_launch_setup_wizard,
+                        ClientToServerMsg::FirstClientConnected(cli_assets, is_web_client) => {
+                            let new_client_instruction = ServerInstruction::FirstClientConnected(
+                                cli_assets,
                                 is_web_client,
-                                layout_is_welcome_screen,
                                 client_id,
                             );
                             to_server
@@ -1132,9 +1115,7 @@ pub(crate) fn route_thread_main(
                                 .with_context(err_context)?;
                         },
                         ClientToServerMsg::AttachClient(
-                            client_attributes,
-                            config,
-                            runtime_config_options,
+                            cli_assets,
                             tab_position_to_focus,
                             pane_id_to_focus,
                             is_web_client,
@@ -1148,9 +1129,7 @@ pub(crate) fn route_thread_main(
                             let should_allow_connection = !is_web_client || allow_web_connections;
                             if should_allow_connection {
                                 let attach_client_instruction = ServerInstruction::AttachClient(
-                                    client_attributes,
-                                    config,
-                                    runtime_config_options,
+                                    cli_assets,
                                     tab_position_to_focus,
                                     pane_id_to_focus,
                                     is_web_client,
@@ -1187,16 +1166,6 @@ pub(crate) fn route_thread_main(
                         ClientToServerMsg::DetachSession(client_id) => {
                             let _ = to_server.send(ServerInstruction::DetachSession(client_id));
                             should_break = true;
-                        },
-                        ClientToServerMsg::ConfigWrittenToDisk(config) => {
-                            let _ = to_server
-                                .send(ServerInstruction::ConfigWrittenToDisk(client_id, config));
-                        },
-                        ClientToServerMsg::FailedToWriteConfigToDisk(failed_path) => {
-                            let _ = to_server.send(ServerInstruction::FailedToWriteConfigToDisk(
-                                client_id,
-                                failed_path,
-                            ));
                         },
                         ClientToServerMsg::WebServerStarted(base_url) => {
                             let _ = to_server.send(ServerInstruction::WebServerStarted(base_url));

@@ -21,6 +21,8 @@ use zellij_utils::sessions::{
     SessionNameMatch,
 };
 
+use zellij_utils::consts::session_layout_cache_file_name;
+
 #[cfg(feature = "web_server_capability")]
 use zellij_client::web_client::start_web_client as start_web_client_impl;
 
@@ -36,15 +38,14 @@ use miette::{Report, Result};
 use zellij_server::{os_input_output::get_server_os_input, start_server as start_server_impl};
 use zellij_utils::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
-    data::{ConnectToSession, LayoutInfo},
+    data::ConnectToSession,
     envs,
     input::{
         actions::Action,
         config::{Config, ConfigError},
-        layout::Layout,
         options::Options,
     },
-    setup::{find_default_config_dir, get_layout_dir, Setup},
+    setup::Setup,
 };
 
 pub(crate) use zellij_utils::sessions::list_sessions;
@@ -213,7 +214,7 @@ pub(crate) fn start_web_server(
 }
 
 fn create_new_client() -> ClientInfo {
-    ClientInfo::New(generate_unique_session_name_or_exit())
+    ClientInfo::New(generate_unique_session_name_or_exit(), None, None)
 }
 
 #[cfg(feature = "web_server_capability")]
@@ -534,7 +535,7 @@ fn attach_with_session_name(
             if session_exists(session).unwrap() {
                 ClientInfo::Attach(session_name.unwrap(), config_options)
             } else {
-                ClientInfo::New(session_name.unwrap())
+                ClientInfo::New(session_name.unwrap(), None, None)
             }
         },
         Some(prefix) => match match_session_name(prefix).unwrap() {
@@ -583,7 +584,7 @@ pub(crate) fn start_client(opts: CliArgs) {
     convert_old_yaml_files(&opts);
     let (
         config,
-        layout,
+        _layout,
         config_options,
         mut config_without_layout,
         mut config_options_without_layout,
@@ -599,19 +600,18 @@ pub(crate) fn start_client(opts: CliArgs) {
             process::exit(1);
         },
     };
-    let layout_is_welcome_screen = opts.layout == Some(PathBuf::from("welcome"))
-        || config.options.default_layout == Some(PathBuf::from("welcome"));
 
     let mut reconnect_to_session: Option<ConnectToSession> = None;
     let os_input = get_os_input(get_client_os_input);
     loop {
         let os_input = os_input.clone();
-        let mut config = config.clone();
-        let mut layout = layout.clone();
+        let config = config.clone();
         let mut config_options = config_options.clone();
         let mut opts = opts.clone();
         let mut is_a_reconnect = false;
         let mut should_create_detached = false;
+        let mut layout_info = None;
+        let mut new_session_cwd = None;
 
         if let Some(reconnect_to_session) = &reconnect_to_session {
             // this is integration code to make session reconnects work with this existing,
@@ -639,53 +639,11 @@ pub(crate) fn start_client(opts: CliArgs) {
             }
 
             if let Some(reconnect_layout) = &reconnect_to_session.layout {
-                let layout_dir = config.options.layout_dir.clone().or_else(|| {
-                    get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir))
-                });
-                let new_session_layout = match reconnect_layout {
-                    LayoutInfo::BuiltIn(layout_name) => Layout::from_default_assets(
-                        &PathBuf::from(layout_name),
-                        layout_dir.clone(),
-                        config_without_layout.clone(),
-                    ),
-                    LayoutInfo::File(layout_name) => Layout::from_path_or_default(
-                        Some(&PathBuf::from(layout_name)),
-                        layout_dir.clone(),
-                        config_without_layout.clone(),
-                    ),
-                    LayoutInfo::Url(url) => Layout::from_url(&url, config_without_layout.clone()),
-                    LayoutInfo::Stringified(stringified_layout) => Layout::from_stringified_layout(
-                        &stringified_layout,
-                        config_without_layout.clone(),
-                    ),
-                };
-                match new_session_layout {
-                    Ok(new_session_layout) => {
-                        // here we make sure to override both the layout and the config, but we do
-                        // this with an instance of the config before it was merged with the
-                        // layout configuration of the previous iteration of the loop, since we do
-                        // not want it to mix with the config of this session
-                        let (new_layout, new_layout_config) = new_session_layout;
-                        layout = new_layout;
-                        if let Some(cwd) = reconnect_to_session.cwd.as_ref() {
-                            layout.add_cwd_to_layout(cwd);
-                        }
-                        let mut new_config = config_without_layout.clone();
-                        let _ = new_config.merge(new_layout_config.clone());
-                        config = new_config;
-                        config_options =
-                            config_options_without_layout.merge(new_layout_config.options);
-                    },
-                    Err(e) => {
-                        log::error!("Failed to parse new session layout: {:?}", e);
-                    },
-                }
-            } else {
-                if let Some(cwd) = reconnect_to_session.cwd.as_ref() {
-                    config_options.default_cwd = Some(cwd.clone());
-                }
+                layout_info = Some(reconnect_layout.clone());
             }
-
+            if let Some(cwd) = &reconnect_to_session.cwd {
+                new_session_cwd = Some(cwd.clone());
+            }
             is_a_reconnect = true;
         }
 
@@ -710,7 +668,7 @@ pub(crate) fn start_client(opts: CliArgs) {
             };
             should_create_detached = create_background;
 
-            let client = if let Some(idx) = index {
+            let mut client = if let Some(idx) = index {
                 attach_with_session_index(
                     config_options.clone(),
                     idx,
@@ -742,7 +700,12 @@ pub(crate) fn start_client(opts: CliArgs) {
                         if force_run_commands {
                             resurrection_layout.recursively_add_start_suspended(Some(false));
                         }
-                        ClientInfo::Resurrect(session_name.clone(), resurrection_layout)
+                        ClientInfo::Resurrect(
+                            session_name.clone(),
+                            session_layout_cache_file_name(session_name.as_ref()),
+                            force_run_commands,
+                            new_session_cwd.clone(),
+                        )
                     },
                     _ => attach_with_session_name(
                         session_name,
@@ -758,13 +721,13 @@ pub(crate) fn start_client(opts: CliArgs) {
                 }
             }
 
-            let attach_layout = match &client {
-                ClientInfo::Attach(_, _) => None,
-                ClientInfo::New(_) => Some(layout),
-                ClientInfo::Resurrect(_session_name, layout_to_resurrect) => {
-                    Some(layout_to_resurrect.clone())
-                },
-            };
+            if let Some(layout_info) = layout_info {
+                client.set_layout_info(layout_info);
+            }
+
+            if let Some(new_session_cwd) = new_session_cwd {
+                client.set_cwd(new_session_cwd);
+            }
 
             let tab_position_to_focus = reconnect_to_session
                 .as_ref()
@@ -778,12 +741,10 @@ pub(crate) fn start_client(opts: CliArgs) {
                 config,
                 config_options,
                 client,
-                attach_layout,
                 tab_position_to_focus,
                 pane_id_to_focus,
                 is_a_reconnect,
                 should_create_detached,
-                layout_is_welcome_screen,
             );
         } else {
             if let Some(session_name) = opts.session.clone() {
@@ -793,13 +754,11 @@ pub(crate) fn start_client(opts: CliArgs) {
                     opts,
                     config,
                     config_options,
-                    ClientInfo::New(session_name),
-                    Some(layout),
+                    ClientInfo::New(session_name, layout_info, new_session_cwd),
                     None,
                     None,
                     is_a_reconnect,
                     should_create_detached,
-                    layout_is_welcome_screen,
                 );
             } else {
                 if let Some(session_name) = config_options.session_name.as_ref() {
@@ -823,25 +782,16 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 config_options.clone(),
                                 true,
                             );
-                            let attach_layout = match &client {
-                                ClientInfo::Attach(_, _) => None,
-                                ClientInfo::New(_) => Some(layout),
-                                ClientInfo::Resurrect(_, resurrection_layout) => {
-                                    Some(resurrection_layout.clone())
-                                },
-                            };
                             reconnect_to_session = start_client_impl(
                                 Box::new(os_input),
                                 opts,
                                 config,
                                 config_options,
                                 client,
-                                attach_layout,
                                 None,
                                 None,
                                 is_a_reconnect,
                                 should_create_detached,
-                                layout_is_welcome_screen,
                             );
                         },
                         _ => {
@@ -851,13 +801,11 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 opts,
                                 config,
                                 config_options.clone(),
-                                ClientInfo::New(session_name.clone()),
-                                Some(layout),
+                                ClientInfo::New(session_name.clone(), layout_info, new_session_cwd),
                                 None,
                                 None,
                                 is_a_reconnect,
                                 should_create_detached,
-                                layout_is_welcome_screen,
                             );
                         },
                     }
@@ -876,13 +824,11 @@ pub(crate) fn start_client(opts: CliArgs) {
                     opts,
                     config,
                     config_options,
-                    ClientInfo::New(session_name),
-                    Some(layout),
+                    ClientInfo::New(session_name, layout_info, new_session_cwd),
                     None,
                     None,
                     is_a_reconnect,
                     should_create_detached,
-                    layout_is_welcome_screen,
                 );
             }
         }

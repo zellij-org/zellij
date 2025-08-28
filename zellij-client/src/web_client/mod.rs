@@ -33,10 +33,7 @@ use nix::sys::stat::{umask, Mode};
 use interprocess::unnamed_pipe::pipe;
 use std::io::{prelude::*, BufRead, BufReader};
 use tokio::runtime::Runtime;
-use zellij_utils::input::{
-    config::{watch_config_file_changes, Config},
-    options::Options,
-};
+use zellij_utils::input::{config::Config, options::Options};
 
 use authentication::auth_middleware;
 use http_handlers::{
@@ -51,13 +48,6 @@ use types::{
 use utils::should_use_https;
 use uuid::Uuid;
 use websocket_handlers::{ws_handler_control, ws_handler_terminal};
-
-use zellij_utils::{
-    consts::WEBSERVER_SOCKET_PATH,
-    web_server_commands::{
-        create_webserver_sender, send_webserver_instruction, InstructionForWebServer,
-    },
-};
 
 pub fn start_web_client(
     config: Config,
@@ -170,25 +160,6 @@ pub fn start_web_client(
     ));
 }
 
-#[allow(dead_code)]
-async fn listen_to_config_file_changes(config_file_path: PathBuf, instance_id: &str) {
-    let socket_path = WEBSERVER_SOCKET_PATH.join(instance_id);
-
-    watch_config_file_changes(config_file_path, move |new_config| {
-        let socket_path = socket_path.clone();
-        async move {
-            if let Ok(mut sender) = create_webserver_sender(&socket_path.to_string_lossy()) {
-                let _ = send_webserver_instruction(
-                    &mut sender,
-                    InstructionForWebServer::ConfigWrittenToDisk(new_config),
-                );
-                drop(sender);
-            }
-        }
-    })
-    .await;
-}
-
 pub async fn serve_web_client(
     config: Config,
     config_options: Options,
@@ -219,15 +190,6 @@ pub async fn serve_web_client(
         .take(5)
         .collect();
 
-    #[cfg(not(test))]
-    tokio::spawn({
-        let config_file_path = config_file_path.clone();
-        let id_string = format!("{}", id);
-        async move {
-            listen_to_config_file_changes(config_file_path, &id_string).await;
-        }
-    });
-
     let is_https = rustls_config.is_some();
     let state = AppState {
         connection_table: connection_table.clone(),
@@ -241,9 +203,8 @@ pub async fn serve_web_client(
 
     tokio::spawn({
         let server_handle = server_handle.clone();
-        let state = state.clone();
         async move {
-            listen_to_web_server_instructions(server_handle, state, &format!("{}", id)).await;
+            listen_to_web_server_instructions(server_handle, &format!("{}", id)).await;
         }
     });
 

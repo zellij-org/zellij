@@ -71,7 +71,7 @@ pub fn get_default_data_dir() -> PathBuf {
 }
 
 #[cfg(not(test))]
-fn get_default_themes() -> Themes {
+pub fn get_default_themes() -> Themes {
     let mut themes = Themes::default();
     for file in ZELLIJ_DEFAULT_THEMES.files() {
         if let Some(content) = file.contents_utf8() {
@@ -86,7 +86,7 @@ fn get_default_themes() -> Themes {
 }
 
 #[cfg(test)]
-fn get_default_themes() -> Themes {
+pub fn get_default_themes() -> Themes {
     Themes::default()
 }
 
@@ -744,7 +744,7 @@ fn merge_attach_command_options(
 mod setup_test {
     use super::Setup;
     use crate::cli::{CliArgs, Command};
-    use crate::input::options::{CliOptions, Options};
+    use crate::input::options::Options;
     use insta::assert_snapshot;
     use std::path::PathBuf;
 
@@ -759,11 +759,8 @@ mod setup_test {
     #[test]
     fn cli_arguments_override_config_options() {
         let mut cli_args = CliArgs::default();
-        cli_args.command = Some(Command::Options(CliOptions {
-            options: Options {
-                simplified_ui: Some(true),
-                ..Default::default()
-            },
+        cli_args.command = Some(Command::Options(Options {
+            simplified_ui: Some(true),
             ..Default::default()
         }));
         let (_config, _layout, options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
@@ -787,11 +784,8 @@ mod setup_test {
             "{}/src/test-fixtures/layout-with-options.kdl",
             env!("CARGO_MANIFEST_DIR")
         )));
-        cli_args.command = Some(Command::Options(CliOptions {
-            options: Options {
-                pane_frames: Some(true),
-                ..Default::default()
-            },
+        cli_args.command = Some(Command::Options(Options {
+            pane_frames: Some(true),
             ..Default::default()
         }));
         let (_config, layout, options, _, _) = Setup::from_cli_args(&cli_args).unwrap();

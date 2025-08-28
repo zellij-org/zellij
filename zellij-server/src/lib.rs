@@ -32,6 +32,8 @@ use std::{
 use zellij_utils::envs;
 use zellij_utils::pane_size::Size;
 
+use zellij_utils::input::cli_assets::CliAssets;
+
 use wasmtime::{Config as WasmtimeConfig, Engine, Strategy};
 
 use crate::{
@@ -44,17 +46,19 @@ use crate::{
 use route::route_thread_main;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
-    cli::CliArgs,
     consts::{
         DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
-    data::{ConnectToSession, Event, InputMode, KeyWithModifier, PluginCapabilities, WebSharing},
+    data::{
+        ConnectToSession, Event, InputMode, KeyWithModifier, LayoutInfo, PluginCapabilities, Style,
+        WebSharing,
+    },
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
     input::{
         actions::Action,
         command::{RunCommand, TerminalAction},
-        config::Config,
+        config::{watch_config_file_changes, Config},
         get_mode_info,
         keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, PluginAlias, Run, RunPluginOrAlias},
@@ -70,16 +74,9 @@ pub type ClientId = u16;
 /// Instructions related to server-side application
 #[derive(Debug, Clone)]
 pub enum ServerInstruction {
-    NewClient(
-        ClientAttributes,
-        Box<CliArgs>,
-        Box<Config>,  // represents the saved config
-        Box<Options>, // represents the runtime configuration options
-        Box<Layout>,
-        Box<PluginAliases>,
-        bool, // should launch setup wizard
+    FirstClientConnected(
+        CliAssets,
         bool, // is_web_client
-        bool, // layout_is_welcome_screen
         ClientId,
     ),
     Render(Option<HashMap<ClientId, String>>),
@@ -90,9 +87,7 @@ pub enum ServerInstruction {
     KillSession,
     DetachSession(Vec<ClientId>),
     AttachClient(
-        ClientAttributes,
-        Config,              // represents the saved config
-        Options,             // represents the runtime configuration options
+        CliAssets,
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
         bool,                // is_web_client
@@ -116,7 +111,7 @@ pub enum ServerInstruction {
         config: String,
         write_config_to_disk: bool,
     },
-    ConfigWrittenToDisk(ClientId, Config),
+    ConfigWrittenToDisk(Config),
     FailedToWriteConfigToDisk(ClientId, Option<PathBuf>), // Pathbuf - file we failed to write
     RebindKeys {
         client_id: ClientId,
@@ -135,7 +130,7 @@ pub enum ServerInstruction {
 impl From<&ServerInstruction> for ServerContext {
     fn from(server_instruction: &ServerInstruction) -> Self {
         match *server_instruction {
-            ServerInstruction::NewClient(..) => ServerContext::NewClient,
+            ServerInstruction::FirstClientConnected(..) => ServerContext::NewClient,
             ServerInstruction::Render(..) => ServerContext::Render,
             ServerInstruction::UnblockInputThread => ServerContext::UnblockInputThread,
             ServerInstruction::ClientExit(..) => ServerContext::ClientExit,
@@ -161,7 +156,6 @@ impl From<&ServerInstruction> for ServerContext {
                 ServerContext::ChangeModeForAllClients
             },
             ServerInstruction::Reconfigure { .. } => ServerContext::Reconfigure,
-            ServerInstruction::ConfigWrittenToDisk(..) => ServerContext::ConfigWrittenToDisk,
             ServerInstruction::FailedToWriteConfigToDisk(..) => {
                 ServerContext::FailedToWriteConfigToDisk
             },
@@ -173,6 +167,7 @@ impl From<&ServerInstruction> for ServerContext {
             },
             ServerInstruction::WebServerStarted(..) => ServerContext::WebServerStarted,
             ServerInstruction::FailedToStartWebServer(..) => ServerContext::FailedToStartWebServer,
+            ServerInstruction::ConfigWrittenToDisk(..) => ServerContext::ConfigWrittenToDisk,
             ServerInstruction::SendWebClientsForbidden(..) => {
                 ServerContext::SendWebClientsForbidden
             },
@@ -189,20 +184,15 @@ impl ErrorInstruction for ServerInstruction {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SessionConfiguration {
     runtime_config: HashMap<ClientId, Config>, // if present, overrides the saved_config
-    saved_config: HashMap<ClientId, Config>,   // the config as it is on disk (not guaranteed),
+    saved_config: Config,                      // the config as it is on disk (not guaranteed),
                                                // when changed, this resets the runtime config to
                                                // be identical to it and override any previous
                                                // changes
 }
 
 impl SessionConfiguration {
-    pub fn new_saved_config(
-        &mut self,
-        client_id: ClientId,
-        new_saved_config: Config,
-    ) -> Vec<(ClientId, Config)> {
-        self.saved_config
-            .insert(client_id, new_saved_config.clone());
+    pub fn change_saved_config(&mut self, new_saved_config: Config) -> Vec<(ClientId, Config)> {
+        self.saved_config = new_saved_config.clone();
 
         let mut config_changes = vec![];
         for (client_id, current_runtime_config) in self.runtime_config.iter_mut() {
@@ -213,8 +203,8 @@ impl SessionConfiguration {
         }
         config_changes
     }
-    pub fn set_client_saved_configuration(&mut self, client_id: ClientId, client_config: Config) {
-        self.saved_config.insert(client_id, client_config);
+    pub fn set_saved_configuration(&mut self, config: Config) {
+        self.saved_config = config;
     }
     pub fn set_client_runtime_configuration(&mut self, client_id: ClientId, client_config: Config) {
         self.runtime_config.insert(client_id, client_config);
@@ -222,21 +212,21 @@ impl SessionConfiguration {
     pub fn get_client_keybinds(&self, client_id: &ClientId) -> Keybinds {
         self.runtime_config
             .get(client_id)
-            .or_else(|| self.saved_config.get(client_id))
+            .or_else(|| Some(&self.saved_config))
             .map(|c| c.keybinds.clone())
             .unwrap_or_default()
     }
     pub fn get_client_default_input_mode(&self, client_id: &ClientId) -> InputMode {
         self.runtime_config
             .get(client_id)
-            .or_else(|| self.saved_config.get(client_id))
+            .or_else(|| Some(&self.saved_config))
             .and_then(|c| c.options.default_mode.clone())
             .unwrap_or_default()
     }
     pub fn get_client_configuration(&self, client_id: &ClientId) -> Config {
         self.runtime_config
             .get(client_id)
-            .or_else(|| self.saved_config.get(client_id))
+            .or_else(|| Some(&self.saved_config))
             .cloned()
             .unwrap_or_default()
     }
@@ -274,9 +264,8 @@ impl SessionConfiguration {
         let mut config_changed = false;
 
         if self.runtime_config.get(client_id).is_none() {
-            if let Some(saved_config) = self.saved_config.get(client_id) {
-                self.runtime_config.insert(*client_id, saved_config.clone());
-            }
+            self.runtime_config
+                .insert(*client_id, self.saved_config.clone());
         }
         match self.runtime_config.get_mut(client_id) {
             Some(config) => {
@@ -334,6 +323,7 @@ pub(crate) struct SessionMetaData {
     plugin_thread: Option<thread::JoinHandle<()>>,
     pty_writer_thread: Option<thread::JoinHandle<()>>,
     background_jobs_thread: Option<thread::JoinHandle<()>>,
+    config_file_path: Option<PathBuf>,
 }
 
 impl SessionMetaData {
@@ -659,40 +649,61 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
-            ServerInstruction::NewClient(
-                // TODO: rename to FirstClientConnected?
-                client_attributes,
-                opts,
-                config,
-                runtime_config_options,
-                layout,
-                plugin_aliases,
-                should_launch_setup_wizard,
-                is_web_client,
-                layout_is_welcome_screen,
-                client_id,
-            ) => {
+            ServerInstruction::FirstClientConnected(cli_assets, is_web_client, client_id) => {
+                let (config, layout) = cli_assets.load_config_and_layout();
+                let layout_is_welcome_screen = cli_assets.layout
+                    == Some(LayoutInfo::BuiltIn("welcome".to_owned()))
+                    || config.options.default_layout == Some(PathBuf::from("welcome"));
+
+                let successfully_written_config = Config::write_config_to_disk_if_it_does_not_exist(
+                    config.to_string(true),
+                    &cli_assets.config_file_path,
+                );
+                // if we successfully wrote the config to disk, it means two things:
+                // 1. It did not exist beforehand
+                // 2. The config folder is writeable
+                //
+                // If these two are true, we should launch the setup wizard, if even one of them is
+                // false, we should never launch it.
+                let should_launch_setup_wizard = successfully_written_config;
+
+                let runtime_config_options = match &cli_assets.configuration_options {
+                    Some(configuration_options) => {
+                        config.options.merge(configuration_options.clone())
+                    },
+                    None => config.options.clone(),
+                };
+
+                let client_attributes = ClientAttributes {
+                    size: cli_assets.terminal_window_size,
+                    style: Style {
+                        colors: config
+                            .theme_config(runtime_config_options.theme.as_ref())
+                            .unwrap_or_else(|| default_palette().into()),
+                        rounded_corners: config.ui.pane_frames.rounded_corners,
+                        hide_session_name: config.ui.pane_frames.hide_session_name,
+                    },
+                };
+
                 let mut session = init_session(
                     os_input.clone(),
                     to_server.clone(),
                     client_attributes.clone(),
-                    SessionOptions {
-                        opts,
-                        layout: layout.clone(),
-                        config_options: runtime_config_options.clone(),
-                    },
-                    *config.clone(),
-                    plugin_aliases,
+                    Box::new(runtime_config_options.clone()), // TODO: no box
+                    Box::new(layout.clone()),                 // TODO: no box
+                    cli_assets.clone(),
+                    config.clone(),
+                    config.plugins.clone(),
                     client_id,
                 );
                 let mut runtime_configuration = config.clone();
-                runtime_configuration.options = *runtime_config_options.clone();
+                runtime_configuration.options = runtime_config_options.clone();
                 session
                     .session_configuration
-                    .set_client_saved_configuration(client_id, *config.clone());
+                    .set_saved_configuration(config.clone());
                 session
                     .session_configuration
-                    .set_client_runtime_configuration(client_id, *runtime_configuration);
+                    .set_client_runtime_configuration(client_id, runtime_configuration);
                 let default_input_mode = runtime_config_options.default_mode.unwrap_or_default();
                 session
                     .current_input_modes
@@ -713,7 +724,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         ..Default::default()
                     })
                 });
-                let cwd = runtime_config_options.default_cwd;
+                let cwd = cli_assets
+                    .cwd
+                    .or_else(|| runtime_config_options.default_cwd);
 
                 let spawn_tabs = |tab_layout,
                                   floating_panes_layout,
@@ -798,9 +811,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap();
             },
             ServerInstruction::AttachClient(
-                attrs,
-                config,
-                runtime_config_options,
+                cli_assets,
                 tab_position_to_focus,
                 pane_id_to_focus,
                 is_web_client,
@@ -808,12 +819,25 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             ) => {
                 let mut rlock = session_data.write().unwrap();
                 let session_data = rlock.as_mut().unwrap();
+                let config = session_data.session_configuration.saved_config.clone();
+                let runtime_config_options = match cli_assets.configuration_options {
+                    Some(configuration_options) => config.options.merge(configuration_options),
+                    None => config.options.clone(),
+                };
+
+                let client_attributes = ClientAttributes {
+                    size: cli_assets.terminal_window_size,
+                    style: Style {
+                        colors: config
+                            .theme_config(runtime_config_options.theme.as_ref())
+                            .unwrap_or_else(|| default_palette().into()),
+                        rounded_corners: config.ui.pane_frames.rounded_corners,
+                        hide_session_name: config.ui.pane_frames.hide_session_name,
+                    },
+                };
 
                 let mut runtime_configuration = config.clone();
                 runtime_configuration.options = runtime_config_options.clone();
-                session_data
-                    .session_configuration
-                    .set_client_saved_configuration(client_id, config.clone());
                 session_data
                     .session_configuration
                     .set_client_runtime_configuration(client_id, runtime_configuration);
@@ -825,7 +849,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
                 session_state.write().unwrap().set_client_data(
                     client_id,
-                    attrs.size,
+                    client_attributes.size,
                     is_web_client,
                 );
                 let min_size = session_state
@@ -853,7 +877,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let default_mode = config.options.default_mode.unwrap_or_default();
                 let mode_info = get_mode_info(
                     default_mode,
-                    &attrs,
+                    &client_attributes,
                     session_data.capabilities,
                     &session_data
                         .session_configuration
@@ -1229,42 +1253,22 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .session_configuration
                     .reconfigure_runtime_config(&client_id, config);
-
-                if let Some(new_config) = new_config {
-                    if write_config_to_disk {
-                        let clear_defaults = true;
-                        send_to_client!(
-                            client_id,
-                            os_input,
-                            ServerToClientMsg::WriteConfigToDisk {
-                                config: new_config.to_string(clear_defaults)
-                            },
-                            session_state
-                        );
-                    }
-
-                    if runtime_config_changed {
-                        let config_was_written_to_disk = false;
-                        session_data
-                            .write()
-                            .unwrap()
-                            .as_mut()
-                            .unwrap()
-                            .propagate_configuration_changes(
-                                vec![(client_id, new_config)],
-                                config_was_written_to_disk,
-                            );
-                    }
-                }
+                update_new_saved_config(
+                    new_config,
+                    write_config_to_disk,
+                    runtime_config_changed,
+                    &session_data,
+                    client_id,
+                );
             },
-            ServerInstruction::ConfigWrittenToDisk(client_id, new_config) => {
+            ServerInstruction::ConfigWrittenToDisk(new_config) => {
                 let changes = session_data
                     .write()
                     .unwrap()
                     .as_mut()
                     .unwrap()
                     .session_configuration
-                    .new_saved_config(client_id, new_config);
+                    .change_saved_config(new_config);
                 let config_was_written_to_disk = true;
                 session_data
                     .write()
@@ -1272,6 +1276,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .as_mut()
                     .unwrap()
                     .propagate_configuration_changes(changes, config_was_written_to_disk);
+                let client_ids = session_state.read().unwrap().client_ids();
+                for client_id in client_ids {
+                    send_to_client!(
+                        client_id,
+                        os_input,
+                        ServerToClientMsg::ConfigFileUpdated,
+                        session_state
+                    );
+                }
             },
             ServerInstruction::FailedToWriteConfigToDisk(_client_id, file_path) => {
                 session_data
@@ -1296,32 +1309,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .session_configuration
                     .rebind_keys(&client_id, keys_to_rebind, keys_to_unbind);
-                if let Some(new_config) = new_config {
-                    if write_config_to_disk {
-                        let clear_defaults = true;
-                        send_to_client!(
-                            client_id,
-                            os_input,
-                            ServerToClientMsg::WriteConfigToDisk {
-                                config: new_config.to_string(clear_defaults)
-                            },
-                            session_state
-                        );
-                    }
 
-                    if runtime_config_changed {
-                        let config_was_written_to_disk = false;
-                        session_data
-                            .write()
-                            .unwrap()
-                            .as_mut()
-                            .unwrap()
-                            .propagate_configuration_changes(
-                                vec![(client_id, new_config)],
-                                config_was_written_to_disk,
-                            );
-                    }
-                }
+                update_new_saved_config(
+                    new_config,
+                    write_config_to_disk,
+                    runtime_config_changed,
+                    &session_data,
+                    client_id,
+                );
             },
             ServerInstruction::StartWebServer(client_id) => {
                 if cfg!(feature = "web_server_capability") {
@@ -1424,26 +1419,17 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     drop(std::fs::remove_file(&socket_path));
 }
 
-pub struct SessionOptions {
-    pub opts: Box<CliArgs>,
-    pub config_options: Box<Options>,
-    pub layout: Box<Layout>,
-}
-
 fn init_session(
     os_input: Box<dyn ServerOsApi>,
     to_server: SenderWithContext<ServerInstruction>,
     client_attributes: ClientAttributes,
-    options: SessionOptions,
+    config_options: Box<Options>,
+    layout: Box<Layout>,
+    cli_assets: CliAssets,
     mut config: Config,
-    plugin_aliases: Box<PluginAliases>,
+    plugin_aliases: PluginAliases,
     client_id: ClientId,
 ) -> SessionMetaData {
-    let SessionOptions {
-        opts,
-        config_options,
-        layout,
-    } = options;
     config.options = config.options.merge(*config_options.clone());
 
     let _ = SCROLL_BUFFER_SIZE.set(
@@ -1473,7 +1459,7 @@ fn init_session(
     let to_background_jobs = SenderWithContext::new(to_background_jobs);
 
     // Determine and initialize the data directory
-    let data_dir = opts.data_dir.unwrap_or_else(get_default_data_dir);
+    let data_dir = cli_assets.data_dir.unwrap_or_else(get_default_data_dir);
 
     let capabilities = PluginCapabilities {
         arrow_fonts: config_options.simplified_ui.unwrap_or_default(),
@@ -1519,7 +1505,7 @@ fn init_session(
                     Some(&to_background_jobs),
                     Some(os_input.clone()),
                 ),
-                opts.debug,
+                cli_assets.is_debug,
                 config_options.scrollback_editor.clone(),
                 config_options.post_command_discovery_hook.clone(),
             );
@@ -1542,10 +1528,10 @@ fn init_session(
                 Some(&to_background_jobs),
                 Some(os_input.clone()),
             );
-            let max_panes = opts.max_panes;
+            let max_panes = cli_assets.max_panes;
 
             let client_attributes_clone = client_attributes.clone();
-            let debug = opts.debug;
+            let debug = cli_assets.is_debug;
             let layout = layout.clone();
             let config = config.clone();
             move || {
@@ -1654,6 +1640,9 @@ fn init_session(
             }
         })
         .unwrap();
+    if let Some(config_file_path) = cli_assets.config_file_path.clone() {
+        report_changes_in_config_file(config_file_path, to_server.clone());
+    }
 
     SessionMetaData {
         senders: ThreadSenders {
@@ -1680,6 +1669,7 @@ fn init_session(
         web_sharing: config.options.web_sharing.unwrap_or(WebSharing::Off),
         #[cfg(not(feature = "web_server_capability"))]
         web_sharing: WebSharing::Disabled,
+        config_file_path: cli_assets.config_file_path,
     }
 }
 
@@ -1753,6 +1743,110 @@ fn should_show_startup_tip(
         false
     } else {
         should_show_startup_tip_config.unwrap_or(true)
+    }
+}
+
+fn report_changes_in_config_file(
+    config_file_path: PathBuf,
+    to_server: SenderWithContext<ServerInstruction>,
+) {
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let to_server = to_server.clone();
+            watch_config_file_changes(config_file_path, move |new_config| {
+                let to_server = to_server.clone();
+                async move {
+                    let _ = to_server.send(ServerInstruction::ConfigWrittenToDisk(new_config));
+                }
+            })
+            .await;
+        });
+    });
+}
+
+fn update_new_saved_config(
+    new_config: Option<Config>,
+    write_config_to_disk: bool,
+    runtime_config_changed: bool,
+    session_data: &Arc<RwLock<Option<SessionMetaData>>>,
+    client_id: ClientId,
+) {
+    if let Some(new_config) = new_config {
+        if write_config_to_disk {
+            let clear_defaults = true;
+            let config_file_path = session_data
+                .read()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .config_file_path
+                .clone();
+
+            let Some(config_file_path) = config_file_path.as_ref() else {
+                log::error!("No config file path found.");
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_plugin(PluginInstruction::FailedToWriteConfigToDisk {
+                        file_path: None,
+                    })
+                    .unwrap();
+                return;
+            };
+            match Config::write_config_to_disk(
+                new_config.to_string(clear_defaults),
+                &config_file_path,
+            ) {
+                Ok(written_config) => {
+                    let changes = session_data
+                        .write()
+                        .unwrap()
+                        .as_mut()
+                        .unwrap()
+                        .session_configuration
+                        .change_saved_config(written_config);
+                    let config_was_written_to_disk = true;
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_mut()
+                        .unwrap()
+                        .propagate_configuration_changes(changes, config_was_written_to_disk);
+                },
+                Err(e) => {
+                    let error_path = e
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(String::new);
+                    log::error!("Failed to write config to disk: {}", error_path);
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_plugin(PluginInstruction::FailedToWriteConfigToDisk {
+                            file_path: e,
+                        })
+                        .unwrap();
+                },
+            }
+        } else if runtime_config_changed {
+            let config_was_written_to_disk = false;
+            session_data
+                .write()
+                .unwrap()
+                .as_mut()
+                .unwrap()
+                .propagate_configuration_changes(
+                    vec![(client_id, new_config)],
+                    config_was_written_to_disk,
+                );
+        }
     }
 }
 

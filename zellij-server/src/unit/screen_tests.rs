@@ -562,6 +562,7 @@ impl MockScreen {
             layout,
             current_input_modes: self.session_metadata.current_input_modes.clone(),
             web_sharing: WebSharing::Off,
+            config_file_path: self.session_metadata.config_file_path.clone(),
         }
     }
 }
@@ -621,6 +622,7 @@ impl MockScreen {
             session_configuration: Default::default(),
             current_input_modes: HashMap::new(),
             web_sharing: WebSharing::Off,
+            config_file_path: None,
         };
 
         let os_input = FakeInputOutput::default();

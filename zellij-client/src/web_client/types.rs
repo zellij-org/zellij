@@ -37,14 +37,11 @@ pub trait SessionManager: Send + Sync + std::fmt::Debug {
     fn spawn_session_if_needed(
         &self,
         session_name: &str,
-        path: String,
         client_attributes: ClientAttributes,
-        config: &Config,
+        config_file_path: Option<PathBuf>,
         config_options: &Options,
-        is_web_client: bool,
         os_input: Box<dyn ClientOsApi>,
         requested_layout: Option<LayoutInfo>,
-        is_welcome_screen: bool,
     ) -> (ClientToServerMsg, PathBuf);
 }
 
@@ -69,25 +66,19 @@ impl SessionManager for RealSessionManager {
     fn spawn_session_if_needed(
         &self,
         session_name: &str,
-        path: String,
         client_attributes: ClientAttributes,
-        config: &Config,
+        config_file_path: Option<PathBuf>,
         config_options: &Options,
-        is_web_client: bool,
         os_input: Box<dyn ClientOsApi>,
         requested_layout: Option<LayoutInfo>,
-        is_welcome_screen: bool,
     ) -> (ClientToServerMsg, PathBuf) {
         crate::web_client::session_management::spawn_session_if_needed(
             session_name,
-            path,
             client_attributes,
-            config,
+            config_file_path,
             config_options,
-            is_web_client,
             os_input,
             requested_layout,
-            is_welcome_screen,
         )
     }
 }

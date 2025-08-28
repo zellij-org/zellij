@@ -1,10 +1,8 @@
 //! IPC stuff for starting to split things into a client and server model.
 use crate::{
-    cli::CliArgs,
     data::{ClientId, ConnectToSession, KeyWithModifier, Style},
     errors::{get_current_ctx, prelude::*, ErrorContext},
-    input::config::Config,
-    input::{actions::Action, layout::Layout, options::Options, plugins::PluginAliases},
+    input::{actions::Action, cli_assets::CliAssets},
     pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::LocalSocketStream;
@@ -16,7 +14,6 @@ use std::{
     io::{self, Write},
     marker::PhantomData,
     os::unix::io::{AsRawFd, FromRawFd},
-    path::PathBuf,
 };
 
 type SessionId = u64;
@@ -71,21 +68,12 @@ pub enum ClientToServerMsg {
     ForegroundColor(String),
     ColorRegisters(Vec<(usize, String)>),
     TerminalResize(Size),
-    NewClient(
-        ClientAttributes,
-        Box<CliArgs>,
-        Box<Config>,  // represents the saved configuration
-        Box<Options>, // represents the runtime configuration
-        Box<Layout>,
-        Box<PluginAliases>,
-        bool, // should launch setup wizard
+    FirstClientConnected(
+        CliAssets,
         bool, // is_web_client
-        bool, // layout_is_welcome_screen
     ),
     AttachClient(
-        ClientAttributes,
-        Config,              // represents the saved configuration
-        Options,             // represents the runtime configuration
+        CliAssets,
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane id to focus
         bool,                // is_web_client
@@ -95,8 +83,6 @@ pub enum ClientToServerMsg {
     ClientExited,
     KillSession,
     ConnStatus,
-    ConfigWrittenToDisk(Config),
-    FailedToWriteConfigToDisk(Option<PathBuf>),
     WebServerStarted(String), // String -> base_url
     FailedToStartWebServer(String),
 }
@@ -114,9 +100,9 @@ pub enum ServerToClientMsg {
     UnblockCliPipeInput(String),   // String -> pipe name
     CliPipeOutput(String, String), // String -> pipe name, String -> Output
     QueryTerminalSize,
-    WriteConfigToDisk { config: String },
     StartWebServer,
     RenamedSession(String), // String -> new session name
+    ConfigFileUpdated,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -230,7 +230,7 @@ pub(crate) fn plugin_thread_main(
     capabilities: PluginCapabilities,
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
-    plugin_aliases: Box<PluginAliases>,
+    plugin_aliases: PluginAliases,
     default_mode: InputMode,
     default_keybinds: Keybinds,
     background_plugins: HashSet<RunPluginOrAlias>,

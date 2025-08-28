@@ -19,7 +19,7 @@ use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariables;
 use crate::{home, setup};
 
-const DEFAULT_CONFIG_FILE_NAME: &str = "config.kdl";
+pub const DEFAULT_CONFIG_FILE_NAME: &str = "config.kdl";
 
 type ConfigResult = Result<Config, ConfigError>;
 
@@ -243,26 +243,29 @@ impl Config {
         opts.config.clone().or_else(|| {
             opts.config_dir
                 .clone()
-                .or_else(home::find_default_config_dir)
+                .or_else(|| {
+                    home::try_create_home_config_dir();
+                    home::find_default_config_dir()
+                })
                 .map(|config_dir| config_dir.join(DEFAULT_CONFIG_FILE_NAME))
         })
     }
     pub fn default_config_file_path() -> Option<PathBuf> {
         home::find_default_config_dir().map(|config_dir| config_dir.join(DEFAULT_CONFIG_FILE_NAME))
     }
-    pub fn write_config_to_disk(config: String, opts: &CliArgs) -> Result<Config, Option<PathBuf>> {
+    pub fn write_config_to_disk(
+        config: String,
+        config_file_path: &PathBuf,
+    ) -> Result<Config, Option<PathBuf>> {
         // if we fail, try to return the PathBuf of the file we were not able to write to
+        let config_file_path = config_file_path.clone();
         Config::from_kdl(&config, None)
             .map_err(|e| {
                 log::error!("Failed to parse config: {}", e);
                 None
             })
             .and_then(|parsed_config| {
-                let backed_up_file_name = Config::backup_current_config(&opts)?;
-                let config_file_path = Config::config_file_path(&opts).ok_or_else(|| {
-                    log::error!("Config file path not found");
-                    None
-                })?;
+                let backed_up_file_name = Config::backup_current_config(&config_file_path)?;
                 let config = match backed_up_file_name {
                     Some(backed_up_file_name) => {
                         format!(
@@ -295,31 +298,28 @@ impl Config {
             })
     }
     // returns true if the config was not previouly written to disk and we successfully wrote it
-    pub fn write_config_to_disk_if_it_does_not_exist(config: String, opts: &CliArgs) -> bool {
-        if opts.config.is_none() {
-            // if a config file path wasn't explicitly specified, we try to create the default
-            // config folder
-            home::try_create_home_config_dir();
-        }
-        match Config::config_file_path(opts) {
-            Some(config_file_path) => {
-                if config_file_path.exists() {
+    pub fn write_config_to_disk_if_it_does_not_exist(
+        config: String,
+        config_file_path: &Option<PathBuf>,
+    ) -> bool {
+        let Some(config_file_path) = config_file_path.clone() else {
+            log::error!("Could not find file path to write config");
+            return false;
+        };
+        if config_file_path.exists() {
+            false
+        } else {
+            if let Err(e) = std::fs::write(&config_file_path, config.as_bytes()) {
+                log::error!("Failed to write config to disk: {}", e);
+                return false;
+            }
+            match std::fs::read_to_string(&config_file_path) {
+                Ok(written_config) => written_config == config,
+                Err(e) => {
+                    log::error!("Failed to read written config: {}", e);
                     false
-                } else {
-                    if let Err(e) = std::fs::write(&config_file_path, config.as_bytes()) {
-                        log::error!("Failed to write config to disk: {}", e);
-                        return false;
-                    }
-                    match std::fs::read_to_string(&config_file_path) {
-                        Ok(written_config) => written_config == config,
-                        Err(e) => {
-                            log::error!("Failed to read written config: {}", e);
-                            false
-                        },
-                    }
-                }
-            },
-            None => false,
+                },
+            }
         }
     }
     fn find_free_backup_file_name(config_file_path: &PathBuf) -> Option<PathBuf> {
@@ -361,47 +361,45 @@ impl Config {
             },
         }
     }
-    fn backup_current_config(opts: &CliArgs) -> Result<Option<PathBuf>, Option<PathBuf>> {
+    fn backup_current_config(
+        config_file_path: &PathBuf,
+    ) -> Result<Option<PathBuf>, Option<PathBuf>> {
         // if we fail, try to return the PathBuf of the file we were not able to write to
-        if let Some(config_file_path) = Config::config_file_path(&opts) {
-            match std::fs::read_to_string(&config_file_path) {
-                Ok(current_config) => {
-                    let Some(backup_config_path) =
-                        Config::find_free_backup_file_name(&config_file_path)
-                    else {
-                        log::error!("Failed to find a file name to back up the configuration to, ran out of files.");
-                        return Err(None);
-                    };
-                    if Config::backup_config_with_written_content_confirmation(
-                        &current_config,
-                        &config_file_path,
-                        &backup_config_path,
-                    ) {
-                        Ok(Some(backup_config_path))
-                    } else {
-                        log::error!(
-                            "Failed to back up config file: {}",
-                            backup_config_path.display()
-                        );
-                        Err(Some(backup_config_path))
-                    }
-                },
-                Err(e) => {
-                    if e.kind() == std::io::ErrorKind::NotFound {
-                        Ok(None)
-                    } else {
-                        log::error!(
-                            "Failed to read current config {}: {}",
-                            config_file_path.display(),
-                            e
-                        );
-                        Err(Some(config_file_path))
-                    }
-                },
-            }
-        } else {
-            log::error!("No config file path found?");
-            Err(None)
+        // if let Some(config_file_path) = Config::config_file_path(&opts) {
+        match std::fs::read_to_string(&config_file_path) {
+            Ok(current_config) => {
+                let Some(backup_config_path) =
+                    Config::find_free_backup_file_name(&config_file_path)
+                else {
+                    log::error!("Failed to find a file name to back up the configuration to, ran out of files.");
+                    return Err(None);
+                };
+                if Config::backup_config_with_written_content_confirmation(
+                    &current_config,
+                    &config_file_path,
+                    &backup_config_path,
+                ) {
+                    Ok(Some(backup_config_path))
+                } else {
+                    log::error!(
+                        "Failed to back up config file: {}",
+                        backup_config_path.display()
+                    );
+                    Err(Some(backup_config_path))
+                }
+            },
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    Ok(None)
+                } else {
+                    log::error!(
+                        "Failed to read current config {}: {}",
+                        config_file_path.display(),
+                        e
+                    );
+                    Err(Some(config_file_path.clone()))
+                }
+            },
         }
     }
     fn autogen_config_message(backed_up_file_name: PathBuf) -> String {

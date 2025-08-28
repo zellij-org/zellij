@@ -14,7 +14,7 @@ use log::info;
 use std::env::current_exe;
 use std::io::{self, Write};
 use std::net::{IpAddr, Ipv4Addr};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -27,20 +27,17 @@ use crate::{
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
 };
 use termwiz::input::InputEvent;
+use zellij_utils::cli::CliArgs;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{set_permissions, ZELLIJ_SOCK_DIR},
-    data::{ClientId, ConnectToSession, KeyWithModifier, Style},
+    data::{ClientId, ConnectToSession, KeyWithModifier, LayoutInfo},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
-    input::{
-        config::{watch_config_file_changes, Config},
-        options::Options,
-    },
-    ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
+    input::{cli_assets::CliAssets, config::Config, options::Options},
+    ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
     pane_size::Size,
 };
-use zellij_utils::{cli::CliArgs, input::layout::Layout};
 
 /// Instructions related to the client-side application
 #[derive(Debug, Clone)]
@@ -59,12 +56,10 @@ pub(crate) enum ClientInstruction {
     UnblockCliPipeInput(()), // String -> pipe name
     CliPipeOutput((), ()),   // String -> pipe name, String -> output
     QueryTerminalSize,
-    WriteConfigToDisk {
-        config: String,
-    },
     StartWebServer,
     #[allow(dead_code)] // we need the session name here even though we're not currently using it
     RenamedSession(String), // String -> new session name
+    ConfigFileUpdated,
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -86,11 +81,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
                 ClientInstruction::CliPipeOutput((), ())
             },
             ServerToClientMsg::QueryTerminalSize => ClientInstruction::QueryTerminalSize,
-            ServerToClientMsg::WriteConfigToDisk { config } => {
-                ClientInstruction::WriteConfigToDisk { config }
-            },
             ServerToClientMsg::StartWebServer => ClientInstruction::StartWebServer,
             ServerToClientMsg::RenamedSession(name) => ClientInstruction::RenamedSession(name),
+            ServerToClientMsg::ConfigFileUpdated => ClientInstruction::ConfigFileUpdated,
         }
     }
 }
@@ -112,9 +105,9 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::UnblockCliPipeInput(..) => ClientContext::UnblockCliPipeInput,
             ClientInstruction::CliPipeOutput(..) => ClientContext::CliPipeOutput,
             ClientInstruction::QueryTerminalSize => ClientContext::QueryTerminalSize,
-            ClientInstruction::WriteConfigToDisk { .. } => ClientContext::WriteConfigToDisk,
             ClientInstruction::StartWebServer => ClientContext::StartWebServer,
             ClientInstruction::RenamedSession(..) => ClientContext::RenamedSession,
+            ClientInstruction::ConfigFileUpdated => ClientContext::ConfigFileUpdated,
         }
     }
 }
@@ -126,9 +119,9 @@ impl ErrorInstruction for ClientInstruction {
 }
 
 #[cfg(feature = "web_server_capability")]
-fn spawn_web_server(opts: &CliArgs) -> Result<String, String> {
+fn spawn_web_server(cli_args: &CliArgs) -> Result<String, String> {
     let mut cmd = Command::new(current_exe().map_err(|e| e.to_string())?);
-    if let Some(config_file_path) = Config::config_file_path(opts) {
+    if let Some(config_file_path) = Config::config_file_path(cli_args) {
         let config_file_path_exists = Path::new(&config_file_path).exists();
         if !config_file_path_exists {
             return Err(format!(
@@ -157,7 +150,7 @@ fn spawn_web_server(opts: &CliArgs) -> Result<String, String> {
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-fn spawn_web_server(_opts: &CliArgs) -> Result<String, String> {
+fn spawn_web_server(_cli_args: &CliArgs) -> Result<String, String> {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot run web server!"
     );
@@ -188,16 +181,29 @@ pub fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
 #[derive(Debug, Clone)]
 pub enum ClientInfo {
     Attach(String, Options),
-    New(String),
-    Resurrect(String, Layout),
+    New(String, Option<LayoutInfo>, Option<PathBuf>), // PathBuf -> explicit cwd
+    Resurrect(String, PathBuf, bool, Option<PathBuf>), // (name, path_to_layout, force_run_commands, cwd)
 }
 
 impl ClientInfo {
     pub fn get_session_name(&self) -> &str {
         match self {
             Self::Attach(ref name, _) => name,
-            Self::New(ref name) => name,
-            Self::Resurrect(ref name, _) => name,
+            Self::New(ref name, _layout_info, _layout_cwd) => name,
+            Self::Resurrect(ref name, _, _, _) => name,
+        }
+    }
+    pub fn set_layout_info(&mut self, new_layout_info: LayoutInfo) {
+        match self {
+            ClientInfo::New(_, layout_info, _) => *layout_info = Some(new_layout_info),
+            _ => {},
+        }
+    }
+    pub fn set_cwd(&mut self, new_cwd: PathBuf) {
+        match self {
+            ClientInfo::New(_, _, cwd) => *cwd = Some(new_cwd),
+            ClientInfo::Resurrect(_, _, _, cwd) => *cwd = Some(new_cwd),
+            _ => {},
         }
     }
 }
@@ -214,19 +220,17 @@ pub(crate) enum InputInstruction {
 
 pub fn start_client(
     mut os_input: Box<dyn ClientOsApi>,
-    opts: CliArgs,
+    cli_args: CliArgs,
     config: Config,          // saved to disk (or default?)
     config_options: Options, // CLI options merged into (getting priority over) saved config options
     info: ClientInfo,
-    layout: Option<Layout>,
     tab_position_to_focus: Option<usize>,
     pane_id_to_focus: Option<(u32, bool)>, // (pane_id, is_plugin)
     is_a_reconnect: bool,
     start_detached_and_exit: bool,
-    layout_is_welcome_screen: bool,
 ) -> Option<ConnectToSession> {
     if start_detached_and_exit {
-        start_server_detached(os_input, opts, config, config_options, info, layout);
+        start_server_detached(os_input, cli_args, config, config_options, info);
         return None;
     }
     info!("Starting Zellij client!");
@@ -265,19 +269,8 @@ pub fn start_client(
     envs::set_zellij("0".to_string());
     config.env.set_vars();
 
-    let palette = config
-        .theme_config(config_options.theme.as_ref())
-        .unwrap_or_else(|| os_input.load_palette().into());
-
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
-    let client_attributes = ClientAttributes {
-        size: full_screen_ws,
-        style: Style {
-            colors: palette,
-            rounded_corners: config.ui.pane_frames.rounded_corners,
-            hide_session_name: config.ui.pane_frames.hide_session_name,
-        },
-    };
+
     let web_server_ip = config_options
         .web_server_ip
         .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
@@ -301,11 +294,33 @@ pub fn start_client(
             let ipc_pipe = create_ipc_pipe();
             let is_web_client = false;
 
+            let cli_assets = CliAssets {
+                config_file_path: Config::config_file_path(&cli_args),
+                config_dir: cli_args.config_dir.clone(),
+                should_ignore_config: cli_args.is_setup_clean(),
+                configuration_options: Some(config_options.clone()),
+                layout: cli_args
+                    .layout
+                    .as_ref()
+                    .and_then(|l| {
+                        LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone()))
+                    })
+                    .or_else(|| {
+                        LayoutInfo::from_config(
+                            &config_options.layout_dir,
+                            &config_options.default_layout,
+                        )
+                    }),
+                terminal_window_size: full_screen_ws,
+                data_dir: cli_args.data_dir.clone(),
+                is_debug: cli_args.debug,
+                max_panes: cli_args.max_panes,
+                force_run_layout_commands: false,
+                cwd: None,
+            };
             (
                 ClientToServerMsg::AttachClient(
-                    client_attributes,
-                    config.clone(),
-                    config_options.clone(),
+                    cli_assets,
                     tab_position_to_focus,
                     pane_id_to_focus,
                     is_web_client,
@@ -313,41 +328,84 @@ pub fn start_client(
                 ipc_pipe,
             )
         },
-        ClientInfo::New(name) | ClientInfo::Resurrect(name, _) => {
+        ClientInfo::Resurrect(name, path_to_layout, force_run_commands, cwd) => {
             envs::set_session_name(name.clone());
+
+            let cli_assets = CliAssets {
+                config_file_path: Config::config_file_path(&cli_args),
+                config_dir: cli_args.config_dir.clone(),
+                should_ignore_config: cli_args.is_setup_clean(),
+                configuration_options: Some(config_options.clone()),
+                layout: Some(LayoutInfo::File(path_to_layout.display().to_string())),
+                terminal_window_size: full_screen_ws,
+                data_dir: cli_args.data_dir.clone(),
+                is_debug: cli_args.debug,
+                max_panes: cli_args.max_panes,
+                force_run_layout_commands: force_run_commands,
+                cwd,
+            };
+
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
 
-            spawn_server(&*ipc_pipe, opts.debug).unwrap();
+            spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
             if should_start_web_server {
-                if let Err(e) = spawn_web_server(&opts) {
+                if let Err(e) = spawn_web_server(&cli_args) {
                     log::error!("Failed to start web server: {}", e);
                 }
             }
 
-            let successfully_written_config =
-                Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &opts);
-            // if we successfully wrote the config to disk, it means two things:
-            // 1. It did not exist beforehand
-            // 2. The config folder is writeable
-            //
-            // If these two are true, we should launch the setup wizard, if even one of them is
-            // false, we should never launch it.
-            let should_launch_setup_wizard = successfully_written_config;
             let is_web_client = false;
 
             (
-                ClientToServerMsg::NewClient(
-                    client_attributes,
-                    Box::new(opts.clone()),
-                    Box::new(config.clone()),
-                    Box::new(config_options.clone()),
-                    Box::new(layout.unwrap()),
-                    Box::new(config.plugins.clone()),
-                    is_web_client,
-                    should_launch_setup_wizard,
-                    layout_is_welcome_screen,
-                ),
+                ClientToServerMsg::FirstClientConnected(cli_assets, is_web_client),
+                ipc_pipe,
+            )
+        },
+        ClientInfo::New(name, layout_info, layout_cwd) => {
+            envs::set_session_name(name.clone());
+
+            let cli_assets = CliAssets {
+                config_file_path: Config::config_file_path(&cli_args),
+                config_dir: cli_args.config_dir.clone(),
+                should_ignore_config: cli_args.is_setup_clean(),
+                configuration_options: Some(config_options.clone()),
+                layout: layout_info.or_else(|| {
+                    cli_args
+                        .layout
+                        .as_ref()
+                        .and_then(|l| {
+                            LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone()))
+                        })
+                        .or_else(|| {
+                            LayoutInfo::from_config(
+                                &config_options.layout_dir,
+                                &config_options.default_layout,
+                            )
+                        })
+                }),
+                terminal_window_size: full_screen_ws,
+                data_dir: cli_args.data_dir.clone(),
+                is_debug: cli_args.debug,
+                max_panes: cli_args.max_panes,
+                force_run_layout_commands: false,
+                cwd: layout_cwd,
+            };
+
+            os_input.update_session_name(name);
+            let ipc_pipe = create_ipc_pipe();
+
+            spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
+            if should_start_web_server {
+                if let Err(e) = spawn_web_server(&cli_args) {
+                    log::error!("Failed to start web server: {}", e);
+                }
+            }
+
+            let is_web_client = false;
+
+            (
+                ClientToServerMsg::FirstClientConnected(cli_assets, is_web_client),
                 ipc_pipe,
             )
         },
@@ -428,9 +486,7 @@ pub fn start_client(
         .name("signal_listener".to_string())
         .spawn({
             let os_input = os_input.clone();
-            let opts = opts.clone();
             move || {
-                report_changes_in_config_file(&opts, &os_input);
                 os_input.handle_signals(
                     Box::new({
                         let os_api = os_input.clone();
@@ -612,23 +668,6 @@ pub fn start_client(
                     os_input.get_terminal_size_using_fd(0),
                 ));
             },
-            ClientInstruction::WriteConfigToDisk { config } => {
-                match Config::write_config_to_disk(config, &opts) {
-                    Ok(written_config) => {
-                        let _ = os_input
-                            .send_to_server(ClientToServerMsg::ConfigWrittenToDisk(written_config));
-                    },
-                    Err(e) => {
-                        let error_path = e
-                            .as_ref()
-                            .map(|p| p.display().to_string())
-                            .unwrap_or_else(String::new);
-                        log::error!("Failed to write config to disk: {}", error_path);
-                        let _ = os_input
-                            .send_to_server(ClientToServerMsg::FailedToWriteConfigToDisk(e));
-                    },
-                }
-            },
             ClientInstruction::StartWebServer => {
                 let web_server_base_url = web_server_base_url(
                     web_server_ip,
@@ -636,7 +675,7 @@ pub fn start_client(
                     has_certificate,
                     enforce_https_for_localhost,
                 );
-                match spawn_web_server(&opts) {
+                match spawn_web_server(&cli_args) {
                     Ok(_) => {
                         let _ = os_input.send_to_server(ClientToServerMsg::WebServerStarted(
                             web_server_base_url,
@@ -690,30 +729,15 @@ pub fn start_client(
 
 pub fn start_server_detached(
     mut os_input: Box<dyn ClientOsApi>,
-    opts: CliArgs,
+    cli_args: CliArgs,
     config: Config,
     config_options: Options,
     info: ClientInfo,
-    layout: Option<Layout>,
 ) {
     envs::set_zellij("0".to_string());
     config.env.set_vars();
 
     let should_start_web_server = config_options.web_server.map(|w| w).unwrap_or(false);
-
-    let palette = config
-        .theme_config(config_options.theme.as_ref())
-        .unwrap_or_else(|| os_input.load_palette().into());
-
-    let client_attributes = ClientAttributes {
-        size: Size { rows: 50, cols: 50 }, // just so size is not 0, it doesn't matter because we
-        // immediately detach
-        style: Style {
-            colors: palette,
-            rounded_corners: config.ui.pane_frames.rounded_corners,
-            hide_session_name: config.ui.pane_frames.hide_session_name,
-        },
-    };
 
     let create_ipc_pipe = || -> std::path::PathBuf {
         let mut sock_dir = ZELLIJ_SOCK_DIR.clone();
@@ -724,33 +748,85 @@ pub fn start_server_detached(
     };
 
     let (first_msg, ipc_pipe) = match info {
-        ClientInfo::New(name) | ClientInfo::Resurrect(name, _) => {
+        ClientInfo::Resurrect(name, path_to_layout, force_run_commands, cwd) => {
             envs::set_session_name(name.clone());
+
+            let cli_assets = CliAssets {
+                config_file_path: Config::config_file_path(&cli_args),
+                config_dir: cli_args.config_dir.clone(),
+                should_ignore_config: cli_args.is_setup_clean(),
+                configuration_options: Some(config_options.clone()),
+                layout: Some(LayoutInfo::File(path_to_layout.display().to_string())),
+                terminal_window_size: Size { cols: 50, rows: 50 }, // static number until a
+                // client connects
+                data_dir: cli_args.data_dir.clone(),
+                is_debug: cli_args.debug,
+                max_panes: cli_args.max_panes,
+                force_run_layout_commands: force_run_commands,
+                cwd,
+            };
+
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
 
-            spawn_server(&*ipc_pipe, opts.debug).unwrap();
+            spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
             if should_start_web_server {
-                if let Err(e) = spawn_web_server(&opts) {
+                if let Err(e) = spawn_web_server(&cli_args) {
                     log::error!("Failed to start web server: {}", e);
                 }
             }
-            let should_launch_setup_wizard = false; // no setup wizard when starting a detached
-                                                    // server
+
             let is_web_client = false;
 
             (
-                ClientToServerMsg::NewClient(
-                    client_attributes,
-                    Box::new(opts),
-                    Box::new(config.clone()),
-                    Box::new(config_options.clone()),
-                    Box::new(layout.unwrap()),
-                    Box::new(config.plugins.clone()),
-                    is_web_client,
-                    should_launch_setup_wizard,
-                    false,
-                ),
+                ClientToServerMsg::FirstClientConnected(cli_assets, is_web_client),
+                ipc_pipe,
+            )
+        },
+        ClientInfo::New(name, layout_info, layout_cwd) => {
+            envs::set_session_name(name.clone());
+
+            let cli_assets = CliAssets {
+                config_file_path: Config::config_file_path(&cli_args),
+                config_dir: cli_args.config_dir.clone(),
+                should_ignore_config: cli_args.is_setup_clean(),
+                configuration_options: cli_args.options(),
+                layout: layout_info.or_else(|| {
+                    cli_args
+                        .layout
+                        .as_ref()
+                        .and_then(|l| {
+                            LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone()))
+                        })
+                        .or_else(|| {
+                            LayoutInfo::from_config(
+                                &config_options.layout_dir,
+                                &config_options.default_layout,
+                            )
+                        })
+                }),
+                terminal_window_size: Size { cols: 50, rows: 50 }, // static number until a
+                // client connects
+                data_dir: cli_args.data_dir.clone(),
+                is_debug: cli_args.debug,
+                max_panes: cli_args.max_panes,
+                force_run_layout_commands: false,
+                cwd: layout_cwd,
+            };
+
+            os_input.update_session_name(name);
+            let ipc_pipe = create_ipc_pipe();
+
+            spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
+            if should_start_web_server {
+                if let Err(e) = spawn_web_server(&cli_args) {
+                    log::error!("Failed to start web server: {}", e);
+                }
+            }
+            let is_web_client = false;
+
+            (
+                ClientToServerMsg::FirstClientConnected(cli_assets, is_web_client),
                 ipc_pipe,
             )
         },
@@ -762,22 +838,4 @@ pub fn start_server_detached(
 
     os_input.connect_to_server(&*ipc_pipe);
     os_input.send_to_server(first_msg);
-}
-
-pub fn report_changes_in_config_file(opts: &CliArgs, os_input: &Box<dyn ClientOsApi>) {
-    if let Some(config_file_path) = Config::config_file_path(&opts) {
-        let os_input = os_input.clone();
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async move {
-                watch_config_file_changes(config_file_path, move |new_config| {
-                    let os_input = os_input.clone();
-                    async move {
-                        os_input.send_to_server(ClientToServerMsg::ConfigWrittenToDisk(new_config));
-                    }
-                })
-                .await;
-            });
-        });
-    }
 }

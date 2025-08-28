@@ -479,6 +479,7 @@ pub enum ClientContext {
     WriteConfigToDisk,
     StartWebServer,
     RenamedSession,
+    ConfigFileUpdated,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
