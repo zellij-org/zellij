@@ -71,7 +71,7 @@ pub type ClientId = u16;
 /// Instructions related to server-side application
 #[derive(Debug, Clone)]
 pub enum ServerInstruction {
-    NewClient(
+    FirstClientConnected(
         CliAssets,
         bool, // is_web_client
         ClientId,
@@ -127,7 +127,7 @@ pub enum ServerInstruction {
 impl From<&ServerInstruction> for ServerContext {
     fn from(server_instruction: &ServerInstruction) -> Self {
         match *server_instruction {
-            ServerInstruction::NewClient(..) => ServerContext::NewClient,
+            ServerInstruction::FirstClientConnected(..) => ServerContext::NewClient,
             ServerInstruction::Render(..) => ServerContext::Render,
             ServerInstruction::UnblockInputThread => ServerContext::UnblockInputThread,
             ServerInstruction::ClientExit(..) => ServerContext::ClientExit,
@@ -182,13 +182,13 @@ impl ErrorInstruction for ServerInstruction {
 pub(crate) struct SessionConfiguration {
     runtime_config: HashMap<ClientId, Config>, // if present, overrides the saved_config
     saved_config: Config,   // the config as it is on disk (not guaranteed),
-                                               // when changed, this resets the runtime config to
-                                               // be identical to it and override any previous
-                                               // changes
+                            // when changed, this resets the runtime config to
+                            // be identical to it and override any previous
+                            // changes
 }
 
 impl SessionConfiguration {
-    pub fn new_saved_config(
+    pub fn change_saved_config(
         &mut self,
         new_saved_config: Config,
     ) -> Vec<(ClientId, Config)> {
@@ -204,7 +204,6 @@ impl SessionConfiguration {
         config_changes
     }
     pub fn set_saved_configuration(&mut self, config: Config) {
-        // TODO(REFACTOR): find way to merge this with new_saved_config?
         self.saved_config = config;
     }
     pub fn set_client_runtime_configuration(&mut self, client_id: ClientId, client_config: Config) {
@@ -323,7 +322,7 @@ pub(crate) struct SessionMetaData {
     plugin_thread: Option<thread::JoinHandle<()>>,
     pty_writer_thread: Option<thread::JoinHandle<()>>,
     background_jobs_thread: Option<thread::JoinHandle<()>>,
-    config_file_path: PathBuf,
+    config_file_path: Option<PathBuf>,
 }
 
 impl SessionMetaData {
@@ -649,8 +648,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
-            ServerInstruction::NewClient(
-                // TODO: rename to FirstClientConnected?
+            ServerInstruction::FirstClientConnected(
                 cli_assets,
                 is_web_client,
                 client_id,
@@ -1264,7 +1262,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .as_mut()
                     .unwrap()
                     .session_configuration
-                    .new_saved_config(new_config);
+                    .change_saved_config(new_config);
                 let config_was_written_to_disk = true;
                 session_data
                     .write()
@@ -1659,8 +1657,7 @@ fn init_session(
         web_sharing: config.options.web_sharing.unwrap_or(WebSharing::Off),
         #[cfg(not(feature = "web_server_capability"))]
         web_sharing: WebSharing::Disabled,
-        config_file_path: cli_assets.config_file_path.unwrap(), // TODO(REFACTOR): no unwrap when
-                                                                // this is not an Option anymore
+        config_file_path: cli_assets.config_file_path,
     }
 }
 
@@ -1766,6 +1763,18 @@ fn update_new_saved_config(
             let clear_defaults = true;
             let config_file_path = session_data.read().unwrap().as_ref().unwrap().config_file_path.clone();
 
+            let Some(config_file_path) = config_file_path.as_ref() else {
+                log::error!("No config file path found.");
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_plugin(PluginInstruction::FailedToWriteConfigToDisk { file_path: None })
+                    .unwrap();
+                return;
+            };
             match Config::write_config_to_disk(new_config.to_string(clear_defaults), &config_file_path) {
                 Ok(written_config) => {
                     let changes = session_data
@@ -1774,7 +1783,7 @@ fn update_new_saved_config(
                         .as_mut()
                         .unwrap()
                         .session_configuration
-                        .new_saved_config(written_config);
+                        .change_saved_config(written_config);
                     let config_was_written_to_disk = true;
                     session_data
                         .write()

@@ -57,7 +57,6 @@ pub fn zellij_server_listener(
                         sock_dir.to_str().unwrap().to_owned()
                     };
 
-                    // TODO(REFACTOR): why are we doing this?
                     reload_config_from_disk(&mut config, &mut config_options, &config_file_path);
 
                     let full_screen_ws = os_input.get_terminal_size_using_fd(0);

@@ -123,9 +123,9 @@ impl ErrorInstruction for ClientInstruction {
 }
 
 #[cfg(feature = "web_server_capability")]
-fn spawn_web_server(opts: &CliArgs) -> Result<String, String> {
+fn spawn_web_server(cli_args: &CliArgs) -> Result<String, String> {
     let mut cmd = Command::new(current_exe().map_err(|e| e.to_string())?);
-    if let Some(config_file_path) = Config::config_file_path(opts) {
+    if let Some(config_file_path) = Config::config_file_path(cli_args) {
         let config_file_path_exists = Path::new(&config_file_path).exists();
         if !config_file_path_exists {
             return Err(format!(
@@ -154,7 +154,7 @@ fn spawn_web_server(opts: &CliArgs) -> Result<String, String> {
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-fn spawn_web_server(_opts: &CliArgs) -> Result<String, String> {
+fn spawn_web_server(_cli_args: &CliArgs) -> Result<String, String> {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot run web server!"
     );
@@ -224,8 +224,7 @@ pub(crate) enum InputInstruction {
 
 pub fn start_client(
     mut os_input: Box<dyn ClientOsApi>,
-    // TODO(REFACTOR): change name to cli_args
-    opts: CliArgs,
+    cli_args: CliArgs,
     config: Config,          // saved to disk (or default?)
     config_options: Options, // CLI options merged into (getting priority over) saved config options
     info: ClientInfo,
@@ -235,7 +234,7 @@ pub fn start_client(
     start_detached_and_exit: bool,
 ) -> Option<ConnectToSession> {
     if start_detached_and_exit {
-        start_server_detached(os_input, opts, config, config_options, info);
+        start_server_detached(os_input, cli_args, config, config_options, info);
         return None;
     }
     info!("Starting Zellij client!");
@@ -300,11 +299,11 @@ pub fn start_client(
             let is_web_client = false;
 
             let cli_assets = CliAssets {
-                config_file_path: Config::config_file_path(&opts),
-                config_dir: opts.config_dir.clone(),
-                should_ignore_config: opts.is_setup_clean(),
+                config_file_path: Config::config_file_path(&cli_args),
+                config_dir: cli_args.config_dir.clone(),
+                should_ignore_config: cli_args.is_setup_clean(),
                 configuration_options: Some(config_options.clone()),
-                layout: opts.layout.as_ref()
+                layout: cli_args.layout.as_ref()
                     .and_then(|l| LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone())))
                     .or_else(|| {
                         LayoutInfo::from_config(
@@ -313,9 +312,9 @@ pub fn start_client(
                         )
                     }),
                 terminal_window_size: full_screen_ws,
-                data_dir: opts.data_dir.clone(),
-                is_debug: opts.debug,
-                max_panes: opts.max_panes,
+                data_dir: cli_args.data_dir.clone(),
+                is_debug: cli_args.debug,
+                max_panes: cli_args.max_panes,
                 force_run_layout_commands: false,
                 cwd: None,
             };
@@ -330,21 +329,18 @@ pub fn start_client(
             )
         },
         ClientInfo::Resurrect(name, path_to_layout, force_run_commands, cwd) => {
-            // TODO(REFACTOR): merge this with New below, the only difference is the
-            // stringified_layout in
-            // the CliAssets
             envs::set_session_name(name.clone());
 
             let cli_assets = CliAssets {
-                config_file_path: Config::config_file_path(&opts),
-                config_dir: opts.config_dir.clone(),
-                should_ignore_config: opts.is_setup_clean(),
+                config_file_path: Config::config_file_path(&cli_args),
+                config_dir: cli_args.config_dir.clone(),
+                should_ignore_config: cli_args.is_setup_clean(),
                 configuration_options: Some(config_options.clone()),
                 layout: Some(LayoutInfo::File(path_to_layout.display().to_string())),
                 terminal_window_size: full_screen_ws,
-                data_dir: opts.data_dir.clone(),
-                is_debug: opts.debug,
-                max_panes: opts.max_panes,
+                data_dir: cli_args.data_dir.clone(),
+                is_debug: cli_args.debug,
+                max_panes: cli_args.max_panes,
                 force_run_layout_commands: force_run_commands,
                 cwd,
             };
@@ -352,9 +348,9 @@ pub fn start_client(
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
 
-            spawn_server(&*ipc_pipe, opts.debug).unwrap();
+            spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
             if should_start_web_server {
-                if let Err(e) = spawn_web_server(&opts) {
+                if let Err(e) = spawn_web_server(&cli_args) {
                     log::error!("Failed to start web server: {}", e);
                 }
             }
@@ -362,7 +358,7 @@ pub fn start_client(
             let is_web_client = false;
 
             (
-                ClientToServerMsg::NewClient(
+                ClientToServerMsg::FirstClientConnected(
                     cli_assets,
                     is_web_client,
                 ),
@@ -373,12 +369,12 @@ pub fn start_client(
             envs::set_session_name(name.clone());
 
             let cli_assets = CliAssets {
-                config_file_path: Config::config_file_path(&opts),
-                config_dir: opts.config_dir.clone(),
-                should_ignore_config: opts.is_setup_clean(),
+                config_file_path: Config::config_file_path(&cli_args),
+                config_dir: cli_args.config_dir.clone(),
+                should_ignore_config: cli_args.is_setup_clean(),
                 configuration_options: Some(config_options.clone()),
                 layout: layout_info.or_else(|| {
-                        opts.layout.as_ref()
+                        cli_args.layout.as_ref()
                         .and_then(|l| LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone())))
                         .or_else(|| {
                             LayoutInfo::from_config(
@@ -388,9 +384,9 @@ pub fn start_client(
                         })
                 }),
                 terminal_window_size: full_screen_ws,
-                data_dir: opts.data_dir.clone(),
-                is_debug: opts.debug,
-                max_panes: opts.max_panes,
+                data_dir: cli_args.data_dir.clone(),
+                is_debug: cli_args.debug,
+                max_panes: cli_args.max_panes,
                 force_run_layout_commands: false,
                 cwd: layout_cwd,
             };
@@ -398,9 +394,9 @@ pub fn start_client(
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
 
-            spawn_server(&*ipc_pipe, opts.debug).unwrap();
+            spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
             if should_start_web_server {
-                if let Err(e) = spawn_web_server(&opts) {
+                if let Err(e) = spawn_web_server(&cli_args) {
                     log::error!("Failed to start web server: {}", e);
                 }
             }
@@ -408,7 +404,7 @@ pub fn start_client(
             let is_web_client = false;
 
             (
-                ClientToServerMsg::NewClient(
+                ClientToServerMsg::FirstClientConnected(
                     cli_assets,
                     is_web_client,
                 ),
@@ -681,7 +677,7 @@ pub fn start_client(
                     has_certificate,
                     enforce_https_for_localhost,
                 );
-                match spawn_web_server(&opts) {
+                match spawn_web_server(&cli_args) {
                     Ok(_) => {
                         let _ = os_input.send_to_server(ClientToServerMsg::WebServerStarted(
                             web_server_base_url,
@@ -735,7 +731,7 @@ pub fn start_client(
 
 pub fn start_server_detached(
     mut os_input: Box<dyn ClientOsApi>,
-    opts: CliArgs,
+    cli_args: CliArgs,
     config: Config,
     config_options: Options,
     info: ClientInfo,
@@ -755,23 +751,19 @@ pub fn start_server_detached(
 
     let (first_msg, ipc_pipe) = match info {
         ClientInfo::Resurrect(name, path_to_layout, force_run_commands, cwd) => {
-
-            // TODO(REFACTOR): merge this with New below, the only difference is the
-            // stringified_layout in
-            // the CliAssets
             envs::set_session_name(name.clone());
 
             let cli_assets = CliAssets {
-                config_file_path: Config::config_file_path(&opts),
-                config_dir: opts.config_dir.clone(),
-                should_ignore_config: opts.is_setup_clean(),
+                config_file_path: Config::config_file_path(&cli_args),
+                config_dir: cli_args.config_dir.clone(),
+                should_ignore_config: cli_args.is_setup_clean(),
                 configuration_options: Some(config_options.clone()),
                 layout: Some(LayoutInfo::File(path_to_layout.display().to_string())),
                 terminal_window_size: Size { cols: 50, rows: 50 }, // static number until a
                                                                      // client connects
-                data_dir: opts.data_dir.clone(),
-                is_debug: opts.debug,
-                max_panes: opts.max_panes,
+                data_dir: cli_args.data_dir.clone(),
+                is_debug: cli_args.debug,
+                max_panes: cli_args.max_panes,
                 force_run_layout_commands: force_run_commands,
                 cwd,
             };
@@ -779,9 +771,9 @@ pub fn start_server_detached(
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
 
-            spawn_server(&*ipc_pipe, opts.debug).unwrap();
+            spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
             if should_start_web_server {
-                if let Err(e) = spawn_web_server(&opts) {
+                if let Err(e) = spawn_web_server(&cli_args) {
                     log::error!("Failed to start web server: {}", e);
                 }
             }
@@ -789,7 +781,7 @@ pub fn start_server_detached(
             let is_web_client = false;
 
             (
-                ClientToServerMsg::NewClient(
+                ClientToServerMsg::FirstClientConnected(
                     cli_assets,
                     is_web_client,
                 ),
@@ -800,12 +792,12 @@ pub fn start_server_detached(
             envs::set_session_name(name.clone());
 
             let cli_assets = CliAssets {
-                config_file_path: Config::config_file_path(&opts),
-                config_dir: opts.config_dir.clone(),
-                should_ignore_config: opts.is_setup_clean(),
-                configuration_options: opts.options(),
+                config_file_path: Config::config_file_path(&cli_args),
+                config_dir: cli_args.config_dir.clone(),
+                should_ignore_config: cli_args.is_setup_clean(),
+                configuration_options: cli_args.options(),
                 layout: layout_info.or_else(|| {
-                    opts.layout.as_ref()
+                    cli_args.layout.as_ref()
                     .and_then(|l| LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone())))
                     .or_else(|| {
                         LayoutInfo::from_config(
@@ -816,9 +808,9 @@ pub fn start_server_detached(
                 }),
                 terminal_window_size: Size { cols: 50, rows: 50 }, // static number until a
                                                                      // client connects
-                data_dir: opts.data_dir.clone(),
-                is_debug: opts.debug,
-                max_panes: opts.max_panes,
+                data_dir: cli_args.data_dir.clone(),
+                is_debug: cli_args.debug,
+                max_panes: cli_args.max_panes,
                 force_run_layout_commands: false,
                 cwd: layout_cwd,
             };
@@ -826,16 +818,16 @@ pub fn start_server_detached(
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
 
-            spawn_server(&*ipc_pipe, opts.debug).unwrap();
+            spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
             if should_start_web_server {
-                if let Err(e) = spawn_web_server(&opts) {
+                if let Err(e) = spawn_web_server(&cli_args) {
                     log::error!("Failed to start web server: {}", e);
                 }
             }
             let is_web_client = false;
 
             (
-                ClientToServerMsg::NewClient(
+                ClientToServerMsg::FirstClientConnected(
                     cli_assets,
                     is_web_client,
                 ),

@@ -133,7 +133,7 @@ fn spawn_new_session(
     let is_web_client = true;
 
     (
-        ClientToServerMsg::NewClient(
+        ClientToServerMsg::FirstClientConnected(
             cli_assets,
             is_web_client,
         ),

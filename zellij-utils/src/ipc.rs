@@ -68,7 +68,7 @@ pub enum ClientToServerMsg {
     ForegroundColor(String),
     ColorRegisters(Vec<(usize, String)>),
     TerminalResize(Size),
-    NewClient(
+    FirstClientConnected(
         CliAssets,
         bool, // is_web_client
     ),
