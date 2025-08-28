@@ -33,10 +33,7 @@ use nix::sys::stat::{umask, Mode};
 use interprocess::unnamed_pipe::pipe;
 use std::io::{prelude::*, BufRead, BufReader};
 use tokio::runtime::Runtime;
-use zellij_utils::input::{
-    config::Config,
-    options::Options,
-};
+use zellij_utils::input::{config::Config, options::Options};
 
 use authentication::auth_middleware;
 use http_handlers::{
