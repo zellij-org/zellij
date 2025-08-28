@@ -4,9 +4,9 @@ use std::path::PathBuf;
 use crate::input::options::Options;
 use crate::pane_size::Size;
 use crate::{
-    home::{self, find_default_config_dir},
+    home::find_default_config_dir,
     input::{
-        config::{Config, DEFAULT_CONFIG_FILE_NAME},
+        config::Config,
         layout::Layout,
         theme::Themes,
     },
@@ -15,14 +15,10 @@ use crate::{
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CliAssets {
-    // TODO(REFACTOR): config_file_path seems to always be there including for the default, maybe
-    // make it not-option?
     pub config_file_path: Option<PathBuf>,
     pub config_dir: Option<PathBuf>,
     pub should_ignore_config: bool,
-    // TODO(REFACTOR): these seem to be config_options (merged from all places) rather than
-    // explicit_cli_options... if they are, rename it to match and maybe make it a not-option
-    pub explicit_cli_options: Option<Options>,
+    pub configuration_options: Option<Options>, // merged from everywhere: there are the source of truth
     pub layout: Option<LayoutInfo>,
     pub terminal_window_size: Size,
     pub data_dir: Option<PathBuf>,
@@ -41,31 +37,12 @@ impl CliAssets {
                 let default_config = Config::from_default_assets().unwrap_or_else(|_| Default::default());
                 Config::from_path(path, Some(default_config.clone())).unwrap_or_else(|_| default_config)
             } else {
-                // TODO(REFACTOR): we should be able to remove this and just go with either
-                // config_file_path or None (default) because we now do the config_dir calculation
-                // and such on the server side
-                let config_dir = self
-                    .config_dir
-                    .clone()
-                    .or_else(home::find_default_config_dir);
-
-                if let Some(ref config) = config_dir {
-                    let path = config.join(DEFAULT_CONFIG_FILE_NAME);
-                    if path.exists() {
-                        let default_config = Config::from_default_assets().unwrap_or_else(|_| Default::default());
-                        Config::from_path(&path, Some(default_config)).unwrap_or_else(|_| Default::default())
-                    } else {
-                        Config::from_default_assets().unwrap_or_else(|_| Default::default())
-                    }
-                } else {
-                    Config::from_default_assets().unwrap_or_else(|_| Default::default())
-                }
+                Config::from_default_assets().unwrap_or_else(|_| Default::default())
             }
         };
 
-
         let (mut layout, mut config_with_merged_layout_opts) = {
-            let layout_dir = self.explicit_cli_options.as_ref().and_then(|e| e.layout_dir.clone())
+            let layout_dir = self.configuration_options.as_ref().and_then(|e| e.layout_dir.clone())
                 .or_else(|| config.options.layout_dir.clone())
                 .or_else(|| {
                     self.config_dir.clone().or_else(find_default_config_dir).map(|dir| dir.join("layouts"))
@@ -79,7 +56,7 @@ impl CliAssets {
 
         config_with_merged_layout_opts.themes = config_with_merged_layout_opts.themes.merge(get_default_themes());
 
-        let user_theme_dir = self.explicit_cli_options.as_ref().and_then(|o| o.theme_dir.clone()).or_else(|| {
+        let user_theme_dir = self.configuration_options.as_ref().and_then(|o| o.theme_dir.clone()).or_else(|| {
             get_theme_dir(config_with_merged_layout_opts.options.theme_dir.clone()).or_else(find_default_config_dir)
                 .filter(|dir| dir.exists())
         });

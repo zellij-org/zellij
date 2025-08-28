@@ -2,7 +2,7 @@ use crate::data::{Direction, InputMode, Resize};
 use crate::setup::Setup;
 use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
-    input::{layout::PluginUserConfiguration, options::{CliOptions, Options}},
+    input::{layout::PluginUserConfiguration, options::Options},
 };
 use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -90,8 +90,8 @@ impl CliArgs {
         false
     }
     pub fn options(&self) -> Option<Options> {
-        if let Some(Command::Options(cli_options)) = &self.command {
-            return Some(cli_options.options.clone())
+        if let Some(Command::Options(options)) = &self.command {
+            return Some(options.clone())
         }
         None
     }
@@ -101,7 +101,7 @@ impl CliArgs {
 pub enum Command {
     /// Change the behaviour of zellij
     #[clap(name = "options", value_parser)]
-    Options(CliOptions),
+    Options(Options),
 
     /// Setup zellij and check its configuration
     #[clap(name = "setup", value_parser)]
@@ -208,7 +208,7 @@ impl WebCli {
 pub enum SessionCommand {
     /// Change the behaviour of zellij
     #[clap(name = "options")]
-    Options(CliOptions),
+    Options(Options),
 }
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]

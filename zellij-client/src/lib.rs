@@ -303,7 +303,7 @@ pub fn start_client(
                 config_file_path: Config::config_file_path(&opts),
                 config_dir: opts.config_dir.clone(),
                 should_ignore_config: opts.is_setup_clean(),
-                explicit_cli_options: Some(config_options.clone()),
+                configuration_options: Some(config_options.clone()),
                 layout: opts.layout.as_ref()
                     .and_then(|l| LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone())))
                     .or_else(|| {
@@ -339,7 +339,7 @@ pub fn start_client(
                 config_file_path: Config::config_file_path(&opts),
                 config_dir: opts.config_dir.clone(),
                 should_ignore_config: opts.is_setup_clean(),
-                explicit_cli_options: Some(config_options.clone()),
+                configuration_options: Some(config_options.clone()),
                 layout: Some(LayoutInfo::File(path_to_layout.display().to_string())),
                 terminal_window_size: full_screen_ws,
                 data_dir: opts.data_dir.clone(),
@@ -376,7 +376,7 @@ pub fn start_client(
                 config_file_path: Config::config_file_path(&opts),
                 config_dir: opts.config_dir.clone(),
                 should_ignore_config: opts.is_setup_clean(),
-                explicit_cli_options: Some(config_options.clone()),
+                configuration_options: Some(config_options.clone()),
                 layout: layout_info.or_else(|| {
                         opts.layout.as_ref()
                         .and_then(|l| LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone())))
@@ -765,7 +765,7 @@ pub fn start_server_detached(
                 config_file_path: Config::config_file_path(&opts),
                 config_dir: opts.config_dir.clone(),
                 should_ignore_config: opts.is_setup_clean(),
-                explicit_cli_options: Some(config_options.clone()),
+                configuration_options: Some(config_options.clone()),
                 layout: Some(LayoutInfo::File(path_to_layout.display().to_string())),
                 terminal_window_size: Size { cols: 50, rows: 50 }, // static number until a
                                                                      // client connects
@@ -803,7 +803,7 @@ pub fn start_server_detached(
                 config_file_path: Config::config_file_path(&opts),
                 config_dir: opts.config_dir.clone(),
                 should_ignore_config: opts.is_setup_clean(),
-                explicit_cli_options: opts.options(),
+                configuration_options: opts.options(),
                 layout: layout_info.or_else(|| {
                     opts.layout.as_ref()
                     .and_then(|l| LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone())))

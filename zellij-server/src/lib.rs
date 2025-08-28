@@ -671,8 +671,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
 
 
-                let runtime_config_options = match &cli_assets.explicit_cli_options {
-                    Some(explicit_cli_options) => config.options.merge(explicit_cli_options.clone()),
+                let runtime_config_options = match &cli_assets.configuration_options {
+                    Some(configuration_options) => config.options.merge(configuration_options.clone()),
                     None => config.options.clone()
                 };
 
@@ -821,8 +821,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let mut rlock = session_data.write().unwrap();
                 let session_data = rlock.as_mut().unwrap();
                 let config = session_data.session_configuration.saved_config.clone();
-                let runtime_config_options = match cli_assets.explicit_cli_options {
-                    Some(explicit_cli_options) => config.options.merge(explicit_cli_options),
+                let runtime_config_options = match cli_assets.configuration_options {
+                    Some(configuration_options) => config.options.merge(configuration_options),
                     None => config.options.clone()
                 };
 

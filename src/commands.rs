@@ -601,9 +601,6 @@ pub(crate) fn start_client(opts: CliArgs) {
         },
     };
 
-    // TODO(REFACTOR): FROM HERE ON DOWN, WE SHOULD NOT USE THE CONFIG DIRECTLY BUT RATHER PASS THE PATH TO
-    // THE SERVER AND HAVE IT DO WHATEVER WE DO HERE
-
     let mut reconnect_to_session: Option<ConnectToSession> = None;
     let os_input = get_os_input(get_client_os_input);
     loop {
@@ -627,8 +624,6 @@ pub(crate) fn start_client(opts: CliArgs) {
                 &opts,
             );
             if reconnect_to_session.name.is_some() {
-                // TODO(REFACTOR): consider doing a ClientInfo::Attach instead of this roundabout
-                // way
                 opts.command = Some(Command::Sessions(Sessions::Attach {
                     session_name: reconnect_to_session.name.clone(),
                     create: true,
