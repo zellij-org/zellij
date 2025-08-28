@@ -9,6 +9,7 @@ use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::http::Request;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use zellij_utils::input::layout::Layout;
+use zellij_utils::input::cli_assets::CliAssets;
 use zellij_utils::{consts::VERSION, input::config::Config, input::options::Options};
 
 use crate::os_input_output::ClientOsApi;
@@ -1290,24 +1291,32 @@ impl SessionManager for MockSessionManager {
     fn spawn_session_if_needed(
         &self,
         session_name: &str,
-        _path: String,
         client_attributes: ClientAttributes,
-        config: &Config,
+        config_file_path: Option<PathBuf>,
         config_options: &Options,
-        is_web_client: bool,
         _os_input: Box<dyn ClientOsApi>,
         _requested_layout: Option<LayoutInfo>,
-        _is_welcome_screen: bool,
     ) -> (ClientToServerMsg, PathBuf) {
         let mock_ipc_path = PathBuf::from(format!("/tmp/mock_zellij_{}", session_name));
 
+        let cli_assets = CliAssets {
+            config_file_path,
+            config_dir: None,
+            should_ignore_config: false,
+            configuration_options: Some(config_options.clone()),
+            layout: None,
+            terminal_window_size: client_attributes.size,
+            data_dir: None,
+            is_debug: false,
+            max_panes: None,
+            force_run_layout_commands: false,
+            cwd: None,
+        };
         let first_message = ClientToServerMsg::AttachClient(
-            client_attributes,
-            config.clone(),
-            config_options.clone(),
+            cli_assets,
             None,
             None,
-            is_web_client,
+            true,
         );
 
         (first_message, mock_ipc_path)
