@@ -185,7 +185,7 @@ fn start_zellij_without_frames(channel: &mut ssh2::Channel) {
     channel
         .write_all(
             format!(
-                "{} {} --session {} --data-dir {} options --show-release-notes false --show-startup-tips false --no-pane-frames\n",
+                "{} {} --session {} --data-dir {} options --show-release-notes false --show-startup-tips false --pane-frames false\n",
                 SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
             )
             .as_bytes(),
