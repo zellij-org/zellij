@@ -32,7 +32,6 @@ use std::{
 use zellij_utils::envs;
 use zellij_utils::pane_size::Size;
 
-use zellij_utils::setup::{find_default_config_dir, get_layout_dir, Setup};
 use zellij_utils::input::cli_assets::CliAssets;
 
 use wasmtime::{Config as WasmtimeConfig, Engine, Strategy};
@@ -47,7 +46,6 @@ use crate::{
 use route::route_thread_main;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
-    cli::CliArgs,
     consts::{
         DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
@@ -657,25 +655,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 is_web_client,
                 client_id,
             ) => {
-
-                // TODO: CONTINUE HERE (23/08)
-                // 1. remove opts and instead put all the debug, max_terminals, etc. stuff in
-                //    CliAssets (maybe deprecate max_terminals?) - DONE
-                // 2. see if we can do the same with plugin_aliases, should_launch_setup_wizard and
-                //    all that stuff 
-                //    compiler errors and then run and test - DONE
-                // 3. do the same with layout <=== WORKING ON THIS TODO: CONTINUE HERE (26/08
-                //    evening), this seems to work, test this (there are some test cases in
-                //    mental-load), then fix the web-client stuff
-                // 4. once done, go back to the CONTINUE HERE in the AttachClient and continue the
-                //    bulletins there
-
                 let (config, layout) = cli_assets.load_config_and_layout();
-//                 let config = Config::from(&cli_assets);
-//                 let layout = Layout::from(&cli_assets);
-                // TODO: CONTINUE HERE (BEFORE LUNCH): remove layout and layout_is_welcome_screen
-                // from NewClient, then implement all the things in Layout::from(cli_args) (eg.
-                // might need to add resurrection_layout to cli_assets and stuff)
                 let layout_is_welcome_screen = cli_assets.layout == Some(LayoutInfo::BuiltIn("welcome".to_owned()))
                     || config.options.default_layout == Some(PathBuf::from("welcome"));
 
@@ -838,35 +818,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 is_web_client,
                 client_id,
             ) => {
-
-                // TODO(REFACTOR): things we need instead of opts:
-                // 1. opts.config (config_file_path)
-                // 2. are we running with setup --clean (so that we only use the default config)
-                // 3. opts.config_dir
-                // 4. the cli config Options (also the attach command options)
-                // 5. opts.layout (the path to the layout if any, including layout_dir)
-                // 6. the theme (and the theme dir)
-                //
-                // CONTINUE HERE -
-                // * pass all the other stuff from the client that doesn't need to be there and do
-                // it here (eg.ClientAttributes and such) 
-                // * move stuff from the NewClient instruction to the server (see CONTINUE HERE) in
-                // the NewClient above - DONE
-                // * make sure the start_server_detached thing still works - DONE
-                // * get config live reloading  to work again (also for the web server) - DONE
-                // * fix web_client/session_managements.rs to also construct cli_assets -
-                //    placeholder, do later <=== COONTINUE HERE (before call)
-                // * refactor
-                // * do a  go-over to see if we missed anything, test thoroughly and commit
-                //
-                // 
-                //
-
-                // let config = Config::from(&cli_assets);
-                // let (config, _layout) = cli_assets.load_config_and_layout();
-                // TODO(REFACTOR): here we changed merge_from_cli to merge - I *think* this is more
-                // correct, but it's technically a behavior change... need to play with this a
-                // little to make sure it works properly
                 let mut rlock = session_data.write().unwrap();
                 let session_data = rlock.as_mut().unwrap();
                 let config = session_data.session_configuration.saved_config.clone();
@@ -889,9 +840,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
                 let mut runtime_configuration = config.clone();
                 runtime_configuration.options = runtime_config_options.clone();
-//                 session_data
-//                     .session_configuration
-//                     .set_client_saved_configuration(client_id, config.clone());
                 session_data
                     .session_configuration
                     .set_client_runtime_configuration(client_id, runtime_configuration);
@@ -1798,7 +1746,7 @@ fn report_changes_in_config_file(config_file_path: PathBuf, to_server: SenderWit
             watch_config_file_changes(config_file_path, move |new_config| {
                 let to_server = to_server.clone();
                 async move {
-                    to_server.send(ServerInstruction::ConfigWrittenToDisk(new_config));
+                    let _ = to_server.send(ServerInstruction::ConfigWrittenToDisk(new_config));
                 }
             })
             .await;

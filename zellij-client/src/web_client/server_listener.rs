@@ -33,7 +33,7 @@ pub fn zellij_server_listener(
             move || {
                 let mut client_connection_bus =
                     ClientConnectionBus::new(&web_client_id, &connection_table);
-                let (mut reconnect_to_session, is_welcome_screen) =
+                let mut reconnect_to_session =
                     match build_initial_connection(session_name, &config) {
                         Ok(initial_session_connection) => initial_session_connection,
                         Err(e) => {
@@ -82,18 +82,13 @@ pub fn zellij_server_listener(
                         .unwrap()
                         .to_owned();
 
-                    let is_web_client = true;
                     let (first_message, zellij_ipc_pipe) = session_manager.spawn_session_if_needed(
                         &session_name,
-                        path,
                         client_attributes,
                         config_file_path.clone(),
-                        &config,
                         &config_options,
-                        is_web_client,
                         os_input.clone(),
                         reconnect_info.as_ref().and_then(|r| r.layout.clone()),
-                        is_welcome_screen,
                     );
 
                     os_input.connect_to_server(&zellij_ipc_pipe);
@@ -126,9 +121,6 @@ pub fn zellij_server_listener(
                                 reconnect_to_session = Some(connect_to_session);
                                 continue 'reconnect_loop;
                             },
-//                             Some((ServerToClientMsg::WriteConfigToDisk { config }, _)) => {
-//                                 // handle_config_write(&os_input, config);
-//                             },
                             Some((ServerToClientMsg::QueryTerminalSize, _)) => {
                                 client_connection_bus.send_control(
                                     WebServerToWebClientControlMessage::QueryTerminalSize,

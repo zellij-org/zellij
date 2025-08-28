@@ -30,18 +30,18 @@ use termwiz::input::InputEvent;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{set_permissions, ZELLIJ_SOCK_DIR},
-    data::{ClientId, ConnectToSession, KeyWithModifier, Style, LayoutInfo},
+    data::{ClientId, ConnectToSession, KeyWithModifier, LayoutInfo},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{
-        config::{watch_config_file_changes, Config},
+        config::Config,
         options::Options,
         cli_assets::CliAssets,
     },
-    ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
     pane_size::Size,
 };
-use zellij_utils::{cli::CliArgs, input::layout::Layout};
+use zellij_utils::cli::CliArgs;
 
 /// Instructions related to the client-side application
 #[derive(Debug, Clone)]
@@ -60,9 +60,6 @@ pub(crate) enum ClientInstruction {
     UnblockCliPipeInput(()), // String -> pipe name
     CliPipeOutput((), ()),   // String -> pipe name, String -> output
     QueryTerminalSize,
-//     WriteConfigToDisk {
-//         config: String,
-//     },
     StartWebServer,
     #[allow(dead_code)] // we need the session name here even though we're not currently using it
     RenamedSession(String), // String -> new session name
@@ -88,9 +85,6 @@ impl From<ServerToClientMsg> for ClientInstruction {
                 ClientInstruction::CliPipeOutput((), ())
             },
             ServerToClientMsg::QueryTerminalSize => ClientInstruction::QueryTerminalSize,
-//             ServerToClientMsg::WriteConfigToDisk { config } => {
-//                 ClientInstruction::WriteConfigToDisk { config }
-//             },
             ServerToClientMsg::StartWebServer => ClientInstruction::StartWebServer,
             ServerToClientMsg::RenamedSession(name) => ClientInstruction::RenamedSession(name),
             ServerToClientMsg::ConfigFileUpdated => ClientInstruction::ConfigFileUpdated,
@@ -115,7 +109,6 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::UnblockCliPipeInput(..) => ClientContext::UnblockCliPipeInput,
             ClientInstruction::CliPipeOutput(..) => ClientContext::CliPipeOutput,
             ClientInstruction::QueryTerminalSize => ClientContext::QueryTerminalSize,
-            // ClientInstruction::WriteConfigToDisk { .. } => ClientContext::WriteConfigToDisk,
             ClientInstruction::StartWebServer => ClientContext::StartWebServer,
             ClientInstruction::RenamedSession(..) => ClientContext::RenamedSession,
             ClientInstruction::ConfigFileUpdated => ClientContext::ConfigFileUpdated,
@@ -236,12 +229,10 @@ pub fn start_client(
     config: Config,          // saved to disk (or default?)
     config_options: Options, // CLI options merged into (getting priority over) saved config options
     info: ClientInfo,
-    // layout: Option<LayoutInfo>, // TODO: CONTINUE HERE(now) - we can get rid of this, right?
     tab_position_to_focus: Option<usize>,
     pane_id_to_focus: Option<(u32, bool)>, // (pane_id, is_plugin)
     is_a_reconnect: bool,
     start_detached_and_exit: bool,
-    layout_is_welcome_screen: bool,
 ) -> Option<ConnectToSession> {
     if start_detached_and_exit {
         start_server_detached(os_input, opts, config, config_options, info);
@@ -684,23 +675,6 @@ pub fn start_client(
                     os_input.get_terminal_size_using_fd(0),
                 ));
             },
-//             ClientInstruction::WriteConfigToDisk { config } => {
-//                 match Config::write_config_to_disk(config, &opts) {
-//                     Ok(written_config) => {
-// //                         let _ = os_input
-// //                             .send_to_server(ClientToServerMsg::ConfigWrittenToDisk(written_config));
-//                     },
-//                     Err(e) => {
-//                         let error_path = e
-//                             .as_ref()
-//                             .map(|p| p.display().to_string())
-//                             .unwrap_or_else(String::new);
-//                         log::error!("Failed to write config to disk: {}", error_path);
-// //                         let _ = os_input
-// //                             .send_to_server(ClientToServerMsg::FailedToWriteConfigToDisk(e));
-//                     },
-//                 }
-//             },
             ClientInstruction::StartWebServer => {
                 let web_server_base_url = web_server_base_url(
                     web_server_ip,
@@ -879,21 +853,3 @@ pub fn start_server_detached(
     os_input.connect_to_server(&*ipc_pipe);
     os_input.send_to_server(first_msg);
 }
-
-// pub fn report_changes_in_config_file(opts: &CliArgs, os_input: &Box<dyn ClientOsApi>) {
-//     if let Some(config_file_path) = Config::config_file_path(&opts) {
-//         let os_input = os_input.clone();
-//         std::thread::spawn(move || {
-//             let rt = tokio::runtime::Runtime::new().unwrap();
-//             rt.block_on(async move {
-//                 watch_config_file_changes(config_file_path, move |new_config| {
-//                     let os_input = os_input.clone();
-//                     async move {
-//                         os_input.send_to_server(ClientToServerMsg::ConfigWrittenToDisk(new_config));
-//                     }
-//                 })
-//                 .await;
-//             });
-//         });
-//     }
-// }

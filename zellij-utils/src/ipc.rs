@@ -1,10 +1,8 @@
 //! IPC stuff for starting to split things into a client and server model.
 use crate::{
-    cli::CliArgs,
     data::{ClientId, ConnectToSession, KeyWithModifier, Style},
     errors::{get_current_ctx, prelude::*, ErrorContext},
-    input::config::Config,
-    input::{actions::Action, layout::Layout, options::Options, plugins::PluginAliases, cli_assets::CliAssets},
+    input::{actions::Action, cli_assets::CliAssets},
     pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::LocalSocketStream;
@@ -16,7 +14,6 @@ use std::{
     io::{self, Write},
     marker::PhantomData,
     os::unix::io::{AsRawFd, FromRawFd},
-    path::PathBuf,
 };
 
 type SessionId = u64;

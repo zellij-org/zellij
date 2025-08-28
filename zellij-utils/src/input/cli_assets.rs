@@ -1,22 +1,16 @@
-use crate::cli::Command;
-use crate::data::{InputMode, WebSharing, LayoutInfo};
-use clap::{ArgEnum, Args};
+use crate::data::LayoutInfo;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::str::FromStr;
 use crate::input::options::Options;
 use crate::pane_size::Size;
 use crate::{
-    data::{Direction},
-    home::{self, default_layout_dir, find_default_config_dir},
+    home::{self, find_default_config_dir},
     input::{
-        command::RunCommand,
-        config::{Config, ConfigError, DEFAULT_CONFIG_FILE_NAME},
+        config::{Config, DEFAULT_CONFIG_FILE_NAME},
         layout::Layout,
-        theme::{Themes, UiConfig},
+        theme::Themes,
     },
-    pane_size::{Constraint, Dimension, PaneGeom},
-    setup::{self, get_default_themes, get_theme_dir}
+    setup::{get_default_themes, get_theme_dir}
 };
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

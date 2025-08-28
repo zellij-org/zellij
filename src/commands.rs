@@ -38,15 +38,14 @@ use miette::{Report, Result};
 use zellij_server::{os_input_output::get_server_os_input, start_server as start_server_impl};
 use zellij_utils::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
-    data::{ConnectToSession, LayoutInfo},
+    data::ConnectToSession,
     envs,
     input::{
         actions::Action,
         config::{Config, ConfigError},
-        layout::Layout,
         options::Options,
     },
-    setup::{find_default_config_dir, get_layout_dir, Setup},
+    setup::Setup,
 };
 
 pub(crate) use zellij_utils::sessions::list_sessions;
@@ -585,7 +584,7 @@ pub(crate) fn start_client(opts: CliArgs) {
     convert_old_yaml_files(&opts);
     let (
         config,
-        layout,
+        _layout,
         config_options,
         mut config_without_layout,
         mut config_options_without_layout,
@@ -605,14 +604,11 @@ pub(crate) fn start_client(opts: CliArgs) {
     // TODO(REFACTOR): FROM HERE ON DOWN, WE SHOULD NOT USE THE CONFIG DIRECTLY BUT RATHER PASS THE PATH TO
     // THE SERVER AND HAVE IT DO WHATEVER WE DO HERE
 
-    let layout_is_welcome_screen = opts.layout == Some(PathBuf::from("welcome"))
-        || config.options.default_layout == Some(PathBuf::from("welcome"));
-
     let mut reconnect_to_session: Option<ConnectToSession> = None;
     let os_input = get_os_input(get_client_os_input);
     loop {
         let os_input = os_input.clone();
-        let mut config = config.clone();
+        let config = config.clone();
         let mut config_options = config_options.clone();
         let mut opts = opts.clone();
         let mut is_a_reconnect = false;
@@ -749,7 +745,6 @@ pub(crate) fn start_client(opts: CliArgs) {
                 pane_id_to_focus,
                 is_a_reconnect,
                 should_create_detached,
-                layout_is_welcome_screen,
             );
         } else {
             if let Some(session_name) = opts.session.clone() {
@@ -764,7 +759,6 @@ pub(crate) fn start_client(opts: CliArgs) {
                     None,
                     is_a_reconnect,
                     should_create_detached,
-                    layout_is_welcome_screen,
                 );
             } else {
                 if let Some(session_name) = config_options.session_name.as_ref() {
@@ -798,7 +792,6 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 None,
                                 is_a_reconnect,
                                 should_create_detached,
-                                layout_is_welcome_screen,
                             );
                         },
                         _ => {
@@ -814,7 +807,6 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 None,
                                 is_a_reconnect,
                                 should_create_detached,
-                                layout_is_welcome_screen,
                             );
                         },
                     }
@@ -839,7 +831,6 @@ pub(crate) fn start_client(opts: CliArgs) {
                     None,
                     is_a_reconnect,
                     should_create_detached,
-                    layout_is_welcome_screen,
                 );
             }
         }
