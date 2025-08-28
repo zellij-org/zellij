@@ -163,25 +163,6 @@ pub fn start_web_client(
     ));
 }
 
-// #[allow(dead_code)]
-// async fn listen_to_config_file_changes(config_file_path: PathBuf, instance_id: &str) {
-//     let socket_path = WEBSERVER_SOCKET_PATH.join(instance_id);
-// 
-//     watch_config_file_changes(config_file_path, move |new_config| {
-//         let socket_path = socket_path.clone();
-//         async move {
-//             if let Ok(mut sender) = create_webserver_sender(&socket_path.to_string_lossy()) {
-//                 let _ = send_webserver_instruction(
-//                     &mut sender,
-//                     InstructionForWebServer::ConfigWrittenToDisk(new_config),
-//                 );
-//                 drop(sender);
-//             }
-//         }
-//     })
-//     .await;
-// }
-
 pub async fn serve_web_client(
     config: Config,
     config_options: Options,
@@ -211,15 +192,6 @@ pub async fn serve_web_client(
         .chars()
         .take(5)
         .collect();
-
-//     #[cfg(not(test))]
-//     tokio::spawn({
-//         let config_file_path = config_file_path.clone();
-//         let id_string = format!("{}", id);
-//         async move {
-//             listen_to_config_file_changes(config_file_path, &id_string).await;
-//         }
-//     });
 
     let is_https = rustls_config.is_some();
     let state = AppState {

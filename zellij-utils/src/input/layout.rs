@@ -1253,8 +1253,6 @@ impl Layout {
         layout_info: &LayoutInfo,
         config: Option<Config>,
     ) -> Result<(Layout, Config), ConfigError> {
-        // TODO: same as above but add this line:
-
         let mut should_start_layout_commands_suspended = false;
         let (path_to_raw_layout, raw_layout, raw_swap_layouts) = match layout_info {
             LayoutInfo::File(layout_name_without_extension) => {

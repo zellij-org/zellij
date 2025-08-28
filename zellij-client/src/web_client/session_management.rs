@@ -115,7 +115,6 @@ fn spawn_new_session(
 
     spawn_server(&*zellij_ipc_pipe, debug).unwrap();
 
-    // TODO: CONTINUE HERE (27/08 evening): test this
     config_opts.web_server = Some(true);
     config_opts.web_sharing = Some(WebSharing::On);
     let cli_assets = CliAssets {

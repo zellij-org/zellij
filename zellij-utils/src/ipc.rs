@@ -83,8 +83,6 @@ pub enum ClientToServerMsg {
     ClientExited,
     KillSession,
     ConnStatus,
-    // ConfigWrittenToDisk(Config),
-    // FailedToWriteConfigToDisk(Option<PathBuf>),
     WebServerStarted(String), // String -> base_url
     FailedToStartWebServer(String),
 }
@@ -102,7 +100,6 @@ pub enum ServerToClientMsg {
     UnblockCliPipeInput(String),   // String -> pipe name
     CliPipeOutput(String, String), // String -> pipe name, String -> Output
     QueryTerminalSize,
-    // WriteConfigToDisk { config: String },
     StartWebServer,
     RenamedSession(String), // String -> new session name
     ConfigFileUpdated,

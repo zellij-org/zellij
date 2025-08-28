@@ -493,7 +493,6 @@ pub fn start_client(
         .spawn({
             let os_input = os_input.clone();
             move || {
-                // report_changes_in_config_file(&opts, &os_input);
                 os_input.handle_signals(
                     Box::new({
                         let os_api = os_input.clone();
@@ -740,7 +739,6 @@ pub fn start_server_detached(
     config: Config,
     config_options: Options,
     info: ClientInfo,
-    // layout: Option<LayoutInfo>,
 ) {
     envs::set_zellij("0".to_string());
     config.env.set_vars();
