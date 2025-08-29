@@ -3,7 +3,10 @@ use crate::{
     os_input_output::ClientOsApi, stdin_ansi_parser::AnsiStdinInstruction, ClientId,
     ClientInstruction, CommandIsExecuting, InputInstruction,
 };
-use termwiz::input::{InputEvent, Modifiers, MouseButtons, MouseEvent as TermwizMouseEvent};
+use termwiz::input::{
+    InputEvent, KeyCodeEncodeModes, KeyboardEncoding, Modifiers, MouseButtons,
+    MouseEvent as TermwizMouseEvent,
+};
 use zellij_utils::{
     channels::{Receiver, SenderWithContext, OPENCALLS},
     data::{InputMode, KeyWithModifier},
@@ -159,21 +162,37 @@ impl InputHandler {
                 break;
             }
             match self.receive_input_instructions.recv() {
-                Ok((InputInstruction::KeyEvent(input_event, raw_bytes), _error_context)) => {
+                Ok((InputInstruction::KeyEvent(input_event), _error_context)) => {
                     match input_event {
                         InputEvent::Key(key_event) => {
+                            log::info!("InputEvent::Key: {:?}", key_event);
+                            let key_code_encode_modes = KeyCodeEncodeModes {
+                                encoding: KeyboardEncoding::Xterm,
+                                application_cursor_keys: false,
+                                newline_mode: false,
+                                modify_other_keys: None,
+                            };
+
+                            let raw_bytes: Vec<u8> = key_event
+                                .key
+                                .encode(key_event.modifiers, key_code_encode_modes, true)
+                                .unwrap()
+                                .into_bytes();
                             let key = cast_termwiz_key(
                                 key_event,
                                 &raw_bytes,
                                 Some((&self.config.keybinds, &self.mode)),
                             );
+
                             self.handle_key(&key, raw_bytes, false);
                         },
                         InputEvent::Mouse(mouse_event) => {
+                            log::info!("InputEvent::Mouse: {:?}", mouse_event);
                             let mouse_event = from_termwiz(&mut self.mouse_old_event, mouse_event);
                             self.handle_mouse_event(&mouse_event);
                         },
                         InputEvent::Paste(pasted_text) => {
+                            log::info!("InputEvent::Paste: {:?}", pasted_text);
                             if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
                                 self.dispatch_action(
                                     Action::Write(None, bracketed_paste_start.clone(), false),
@@ -211,10 +230,11 @@ impl InputHandler {
                     }
                 },
                 Ok((
-                    InputInstruction::KeyWithModifierEvent(key_with_modifier, raw_bytes),
+                    InputInstruction::KeyWithModifierEvent(key_with_modifier),
                     _error_context,
                 )) => {
-                    self.handle_key(&key_with_modifier, raw_bytes, true);
+                    log::info!("InputInstruction::KeyWithModifierEvent: {:?}", key_with_modifier);
+                    self.handle_key(&key_with_modifier, key_with_modifier.serialize_kitty().unwrap().as_bytes().to_vec(), true);
                 },
                 Ok((
                     InputInstruction::AnsiStdinInstructions(ansi_stdin_instructions),
@@ -249,6 +269,7 @@ impl InputHandler {
     ) {
         // we interpret the keys into actions on the server side so that we can change the
         // keybinds at runtime
+        log::info!("send_to_server ClientToServerMsg::Key: key: {:?}, raw_bytes: {:?}, is_kitty_keyboard_protocol: {:?}", key.clone(), raw_bytes, is_kitty_keyboard_protocol);
         self.os_input.send_to_server(ClientToServerMsg::Key(
             key.clone(),
             raw_bytes,
@@ -350,9 +371,12 @@ impl InputHandler {
                     self.mouse_mode_active = true;
                 }
             },
-            _ => self
-                .os_input
-                .send_to_server(ClientToServerMsg::Action(action, None, client_id)),
+            _ => {
+                log::info!("send_to_server, ClientToServerMsg::Action: {:?}", action);
+                self
+                    .os_input
+                    .send_to_server(ClientToServerMsg::Action(action, None, client_id));
+            }
         }
 
         should_break

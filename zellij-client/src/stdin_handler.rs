@@ -63,6 +63,7 @@ pub(crate) fn stdin_loop(
     loop {
         match os_input.read_from_stdin() {
             Ok(buf) => {
+                log::info!("RECEIVED ON STDIN: {:?}", String::from_utf8_lossy(&buf));
                 {
                     // here we check if we need to parse specialized ANSI instructions sent over STDIN
                     // this happens either on startup (see above) or on SIGWINCH
@@ -95,10 +96,10 @@ pub(crate) fn stdin_loop(
                         Some(key_with_modifier) => {
                             send_input_instructions
                                 .send(InputInstruction::KeyWithModifierEvent(
-                                    key_with_modifier,
-                                    current_buffer.drain(..).collect(),
+                                    key_with_modifier
                                 ))
                                 .unwrap();
+                            current_buffer.drain(..);
                             continue;
                         },
                         None => {},
@@ -117,30 +118,26 @@ pub(crate) fn stdin_loop(
 
                 let event_count = events.len();
                 for (i, input_event) in events.into_iter().enumerate() {
-                    if holding_mouse && is_mouse_press_or_hold(&input_event) && i == event_count - 1
-                    {
-                        let mut poller = os_input.stdin_poller();
-                        loop {
-                            if poller.ready() {
-                                break;
-                            }
-                            send_input_instructions
-                                .send(InputInstruction::KeyEvent(
-                                    input_event.clone(),
-                                    current_buffer.clone(),
-                                ))
-                                .unwrap();
-                        }
-                    }
-
-                    holding_mouse = is_mouse_press_or_hold(&input_event);
+//                     if holding_mouse && is_mouse_press_or_hold(&input_event) && i == event_count - 1
+//                     {
+//                         let mut poller = os_input.stdin_poller();
+//                         loop {
+//                             if poller.ready() {
+//                                 break;
+//                             }
+//                             send_input_instructions
+//                                 .send(InputInstruction::KeyEvent(input_event.clone()))
+//                                 .unwrap();
+//                         }
+//                     }
+// 
+//                     holding_mouse = is_mouse_press_or_hold(&input_event);
 
                     send_input_instructions
-                        .send(InputInstruction::KeyEvent(
-                            input_event,
-                            current_buffer.drain(..).collect(),
-                        ))
+                        .send(InputInstruction::KeyEvent(input_event))
                         .unwrap();
+
+                    current_buffer.drain(..);
                 }
             },
             Err(e) => {
