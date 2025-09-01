@@ -750,6 +750,8 @@ pub enum CliAction {
     /// Renames the focused pane
     RenameTab {
         name: String,
+        #[clap(long)]
+        tab_index: Option<usize>,
     },
     /// Remove a previously set tab name
     UndoRenameTab,

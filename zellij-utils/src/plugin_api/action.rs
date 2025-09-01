@@ -7,6 +7,7 @@ pub use super::generated_api::api::{
         NameAndValue as ProtobufNameAndValue, NewFloatingPanePayload, NewPanePayload,
         NewPluginPanePayload, NewTiledPanePayload, PaneIdAndShouldFloat,
         PluginConfiguration as ProtobufPluginConfiguration, Position as ProtobufPosition,
+        RenameTabByIndexPayload,
         RunCommandAction as ProtobufRunCommandAction, ScrollAtPayload,
         SearchDirection as ProtobufSearchDirection, SearchOption as ProtobufSearchOption,
         SwitchToModePayload, WriteCharsPayload, WritePayload,
@@ -360,6 +361,13 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::UndoRenameTab) => match protobuf_action.optional_payload {
                 Some(_) => Err("UndoRenameTab should not have a payload"),
                 None => Ok(Action::UndoRenameTab),
+            },
+            Some(ProtobufActionName::RenameTabByIndex) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::RenameTabByIndexPayload(payload)) => {
+                    Ok(Action::RenameTabByIndex(payload.tab_index as usize, payload.new_name))
+                },
+                None => Err("RenameTabByIndex requires a payload"),
+                _ => Err("RenameTabByIndex received wrong payload type"),
             },
             Some(ProtobufActionName::MoveTab) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::MoveTabPayload(move_tab_payload)) => {
@@ -1035,6 +1043,15 @@ impl TryFrom<Action> for ProtobufAction {
             Action::UndoRenameTab => Ok(ProtobufAction {
                 name: ProtobufActionName::UndoRenameTab as i32,
                 optional_payload: None,
+            }),
+            Action::RenameTabByIndex(tab_index, new_name) => Ok(ProtobufAction {
+                name: ProtobufActionName::RenameTabByIndex as i32,
+                optional_payload: Some(OptionalPayload::RenameTabByIndexPayload(
+                    RenameTabByIndexPayload {
+                        tab_index: tab_index as u32,
+                        new_name,
+                    }
+                )),
             }),
             Action::MoveTab(direction) => {
                 let direction: ProtobufMoveTabDirection = direction.try_into()?;

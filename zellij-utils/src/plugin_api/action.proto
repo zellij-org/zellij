@@ -53,6 +53,7 @@ message Action {
     CliPipePayload message_payload = 47;
     MoveTabDirection move_tab_payload = 48;
     MouseEventPayload mouse_event_payload = 49;
+    RenameTabByIndexPayload rename_tab_by_index_payload = 50;
   }
 }
 
@@ -221,6 +222,7 @@ enum ActionName {
     PreviousSwapLayout = 64;
     NextSwapLayout = 65;
     QueryTabNames = 66;
+    RenameTabByIndex = 93;
     NewTiledPluginPane = 67;
     NewFloatingPluginPane = 68;
     StartOrReloadPlugin = 69;
@@ -282,4 +284,9 @@ message PluginConfiguration {
 message NameAndValue {
   string name = 1;
   string value = 2;
+}
+
+message RenameTabByIndexPayload {
+  uint32 tab_index = 1;
+  string new_name = 2;
 }

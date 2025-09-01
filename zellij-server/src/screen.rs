@@ -242,6 +242,7 @@ pub enum ScreenInstruction {
     ToggleTab(ClientId),
     UpdateTabName(Vec<u8>, ClientId),
     UndoRenameTab(ClientId),
+    RenameTabByIndex(usize, String, ClientId),
     MoveTabLeft(ClientId),
     MoveTabRight(ClientId),
     TerminalResize(Size),
@@ -518,6 +519,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::GoToTabName(..) => ScreenContext::GoToTabName,
             ScreenInstruction::UpdateTabName(..) => ScreenContext::UpdateTabName,
             ScreenInstruction::UndoRenameTab(..) => ScreenContext::UndoRenameTab,
+            ScreenInstruction::RenameTabByIndex(..) => ScreenContext::RenameTabByIndex,
             ScreenInstruction::MoveTabLeft(..) => ScreenContext::MoveTabLeft,
             ScreenInstruction::MoveTabRight(..) => ScreenContext::MoveTabRight,
             ScreenInstruction::TerminalResize(..) => ScreenContext::TerminalResize,
@@ -4335,6 +4337,25 @@ pub(crate) fn screen_thread_main(
                 screen.undo_active_rename_tab(client_id)?;
                 screen.unblock_input()?;
                 screen.render(None)?;
+            },
+            ScreenInstruction::RenameTabByIndex(tab_index, new_name, client_id) => {
+                let err_context = || format!("failed to rename tab at index {tab_index}");
+                
+                if let Some(tab) = screen.tabs.get_mut(&tab_index) {
+                    tab.name = new_name;
+                    screen.log_and_report_session_state()
+                        .context("failed to rename tab")?;
+                    screen.render(None)?;
+                    screen.unblock_input()?;
+                } else {
+                    log::error!("Tab index {} not found", tab_index);
+                    let _ = screen.bus.senders.send_to_server(
+                        ServerInstruction::LogError(
+                            vec![format!("Tab index {} not found", tab_index)],
+                            client_id
+                        )
+                    );
+                }
             },
             ScreenInstruction::MoveTabLeft(client_id) => {
                 if pending_tab_ids.is_empty() {
