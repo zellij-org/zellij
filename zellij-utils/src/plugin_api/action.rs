@@ -546,7 +546,7 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("QueryTabNames should not have a payload"),
                 None => Ok(Action::QueryTabNames),
             },
-            Some(ProtobufActionName::QueryPaneInfoPayload) => match protobuf_action.optional_payload {
+            Some(ProtobufActionName::QueryPaneInfo) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::QueryPaneInfoPayload(payload)) => {
                     Ok(Action::QueryPaneInfo(payload.pane_id))
                 },
@@ -1150,7 +1150,7 @@ impl TryFrom<Action> for ProtobufAction {
                 optional_payload: None,
             }),
             Action::QueryPaneInfo(pane_id) => Ok(ProtobufAction {
-                name: ProtobufActionName::QueryPaneInfoPayload as i32,
+                name: ProtobufActionName::QueryPaneInfo as i32,
                 optional_payload: Some(OptionalPayload::QueryPaneInfoPayload(
                     QueryPaneInfoPayload {
                         pane_id: pane_id,

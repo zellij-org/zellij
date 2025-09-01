@@ -4607,6 +4607,15 @@ pub(crate) fn screen_thread_main(
                     .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
             },
             ScreenInstruction::QueryPaneInfo(raw_pane_id, client_id) => {
+                #[derive(serde::Serialize)]
+                struct PaneInfo {
+                    tab_name: String,
+                    tab_index: usize,
+                    pane_id: u32,
+                    pane_type: String,
+                    pane_name: String,
+                }
+                
                 let target_pane_id = PaneId::Terminal(raw_pane_id);
                 let mut pane_info = None;
                 
@@ -4617,17 +4626,22 @@ pub(crate) fn screen_thread_main(
                             .map(|p| p.current_title())
                             .unwrap_or_else(|| String::from(""));
                         
-                        let pane_id_str = match target_pane_id {
-                            PaneId::Terminal(id) => format!("Terminal({})", id),
-                            PaneId::Plugin(id) => format!("Plugin({})", id),
+                        let pane_type = match target_pane_id {
+                            PaneId::Terminal(_) => "terminal",
+                            PaneId::Plugin(_) => "plugin",
                         };
                         
-                        pane_info = Some(vec![
-                            format!("ZELLIJ_TAB_NAME={}", tab.name),
-                            format!("ZELLIJ_TAB_INDEX={}", tab.index),
-                            format!("ZELLIJ_PANE_ID={}", pane_id_str),
-                            format!("ZELLIJ_PANE_NAME={}", pane_name),
-                        ]);
+                        let info = PaneInfo {
+                            tab_name: tab.name.clone(),
+                            tab_index: tab.index,
+                            pane_id: raw_pane_id,
+                            pane_type: pane_type.to_string(),
+                            pane_name,
+                        };
+                        
+                        let json = serde_json::to_string_pretty(&info)
+                            .unwrap_or_else(|e| format!("Error serializing pane info: {}", e));
+                        pane_info = Some(vec![json]);
                         break;
                     }
                 }
