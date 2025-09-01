@@ -242,6 +242,8 @@ pub enum Action {
     NextSwapLayout,
     /// Query all tab names
     QueryTabNames,
+    /// Query information about the current pane and its tab
+    QueryPaneInfo(u32),
     /// Open a new tiled (embedded, non-floating) plugin pane
     NewTiledPluginPane(RunPluginOrAlias, Option<String>, bool, Option<PathBuf>), // String is an optional name, bool is
     // skip_cache, Option<PathBuf> is cwd
@@ -657,6 +659,18 @@ impl Action {
             CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
             CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
+            CliAction::QueryPaneInfo => {
+                // Read ZELLIJ_PANE_ID from environment
+                match std::env::var("ZELLIJ_PANE_ID") {
+                    Ok(pane_id_str) => {
+                        match pane_id_str.parse::<u32>() {
+                            Ok(pane_id) => Ok(vec![Action::QueryPaneInfo(pane_id)]),
+                            Err(_) => Err("Invalid ZELLIJ_PANE_ID: not a number".to_string()),
+                        }
+                    },
+                    Err(_) => Err("ZELLIJ_PANE_ID environment variable not set - run this command from within a Zellij session".to_string()),
+                }
+            },
             CliAction::StartOrReloadPlugin { url, configuration } => {
                 let current_dir = get_current_dir();
                 let run_plugin_or_alias = RunPluginOrAlias::from_url(

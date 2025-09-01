@@ -37,13 +37,12 @@ use crate::os_input_output::ResizeCache;
 use crate::pane_groups::PaneGroups;
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
-use crate::panes::terminal_pane::{BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END};
+use crate::panes::terminal_pane::{PaneId, BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END};
 use crate::session_layout_metadata::{PaneLayoutMetadata, SessionLayoutMetadata};
 
 use crate::{
     output::Output,
     panes::sixel::SixelImageStore,
-    panes::PaneId,
     plugins::{PluginId, PluginInstruction, PluginRenderAsset},
     pty::{get_default_shell, ClientTabIndexOrPaneId, NewPanePlacement, PtyInstruction, VteBytes},
     tab::{SuppressedPanes, Tab},
@@ -275,6 +274,7 @@ pub enum ScreenInstruction {
     PreviousSwapLayout(ClientId),
     NextSwapLayout(ClientId),
     QueryTabNames(ClientId),
+    QueryPaneInfo(u32, ClientId),
     NewTiledPluginPane(
         RunPluginOrAlias,
         Option<String>,
@@ -564,6 +564,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
             ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
             ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
+            ScreenInstruction::QueryPaneInfo(..) => ScreenContext::QueryPaneInfo,
             ScreenInstruction::NewTiledPluginPane(..) => ScreenContext::NewTiledPluginPane,
             ScreenInstruction::NewFloatingPluginPane(..) => ScreenContext::NewFloatingPluginPane,
             ScreenInstruction::StartOrReloadPluginPane(..) => {
@@ -4604,6 +4605,52 @@ pub(crate) fn screen_thread_main(
                     .bus
                     .senders
                     .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
+            },
+            ScreenInstruction::QueryPaneInfo(raw_pane_id, client_id) => {
+                #[derive(serde::Serialize)]
+                struct PaneInfo {
+                    tab_name: String,
+                    tab_index: usize,
+                    pane_id: u32,
+                    pane_type: String,
+                    pane_name: String,
+                }
+                
+                let target_pane_id = PaneId::Terminal(raw_pane_id);
+                let mut pane_info = None;
+                
+                // Search through all tabs to find the one containing this pane
+                for tab in screen.get_tabs_mut().values() {
+                    if tab.get_all_pane_ids().contains(&target_pane_id) {
+                        let pane_name = tab.get_pane_with_id(target_pane_id)
+                            .map(|p| p.current_title())
+                            .unwrap_or_else(|| String::from(""));
+                        
+                        let pane_type = match target_pane_id {
+                            PaneId::Terminal(_) => "terminal",
+                            PaneId::Plugin(_) => "plugin",
+                        };
+                        
+                        let info = PaneInfo {
+                            tab_name: tab.name.clone(),
+                            tab_index: tab.index,
+                            pane_id: raw_pane_id,
+                            pane_type: pane_type.to_string(),
+                            pane_name,
+                        };
+                        
+                        let json = serde_json::to_string_pretty(&info)
+                            .unwrap_or_else(|e| format!("Error serializing pane info: {}", e));
+                        pane_info = Some(vec![json]);
+                        break;
+                    }
+                }
+                
+                let info = pane_info.unwrap_or_else(|| vec![format!("Pane with ID {} not found", raw_pane_id)]);
+                screen
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::Log(info, client_id))?;
             },
             ScreenInstruction::NewTiledPluginPane(
                 run_plugin,

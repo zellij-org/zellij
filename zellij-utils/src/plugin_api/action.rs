@@ -7,6 +7,7 @@ pub use super::generated_api::api::{
         NameAndValue as ProtobufNameAndValue, NewFloatingPanePayload, NewPanePayload,
         NewPluginPanePayload, NewTiledPanePayload, PaneIdAndShouldFloat,
         PluginConfiguration as ProtobufPluginConfiguration, Position as ProtobufPosition,
+        QueryPaneInfoPayload,
         RunCommandAction as ProtobufRunCommandAction, ScrollAtPayload,
         SearchDirection as ProtobufSearchDirection, SearchOption as ProtobufSearchOption,
         SwitchToModePayload, WriteCharsPayload, WritePayload,
@@ -544,6 +545,13 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::QueryTabNames) => match protobuf_action.optional_payload {
                 Some(_) => Err("QueryTabNames should not have a payload"),
                 None => Ok(Action::QueryTabNames),
+            },
+            Some(ProtobufActionName::QueryPaneInfo) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::QueryPaneInfoPayload(payload)) => {
+                    Ok(Action::QueryPaneInfo(payload.pane_id))
+                },
+                None => Err("QueryPaneInfo requires a pane_id payload"),
+                _ => Err("QueryPaneInfo received wrong payload type"),
             },
             Some(ProtobufActionName::NewTiledPluginPane) => {
                 match protobuf_action.optional_payload {
@@ -1140,6 +1148,14 @@ impl TryFrom<Action> for ProtobufAction {
             Action::QueryTabNames => Ok(ProtobufAction {
                 name: ProtobufActionName::QueryTabNames as i32,
                 optional_payload: None,
+            }),
+            Action::QueryPaneInfo(pane_id) => Ok(ProtobufAction {
+                name: ProtobufActionName::QueryPaneInfo as i32,
+                optional_payload: Some(OptionalPayload::QueryPaneInfoPayload(
+                    QueryPaneInfoPayload {
+                        pane_id: pane_id,
+                    }
+                )),
             }),
             Action::NewTiledPluginPane(run_plugin, pane_name, skip_plugin_cache, _cwd) => {
                 Ok(ProtobufAction {
