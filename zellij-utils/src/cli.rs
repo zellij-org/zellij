@@ -533,6 +533,13 @@ pub enum CliAction {
     MoveFocus {
         direction: Direction,
     },
+    /// Focus the pane with the specified ID
+    FocusPaneWithId {
+        id: u32,
+        /// Whether the pane should float if it was hidden
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        floating: bool,
+    },
     /// Move focus to the pane or tab (if on screen edge) in the specified direction
     /// [right|left|up|down]
     MoveFocusOrTab {

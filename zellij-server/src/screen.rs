@@ -5050,7 +5050,14 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::FocusPaneWithId(pane_id, should_float_if_hidden, client_id) => {
+                let client_id = if screen.get_active_tab(client_id).is_ok() {
+                    client_id
+                } else {
+                    screen.get_first_client_id().unwrap_or(client_id)
+                };
                 screen.focus_pane_with_id(pane_id, should_float_if_hidden, client_id)?;
+                screen.render(None)?;
+                screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::RenamePane(pane_id, new_name) => {
