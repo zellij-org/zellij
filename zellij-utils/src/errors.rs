@@ -322,6 +322,7 @@ pub enum ScreenContext {
     SearchToggleCaseSensitivity,
     SearchToggleWholeWord,
     SearchToggleWrap,
+    SearchToggleRegex,
     AddRedPaneFrameColorOverride,
     ClearPaneFrameColorOverride,
     PreviousSwapLayout,

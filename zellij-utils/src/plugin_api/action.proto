@@ -88,6 +88,7 @@ enum SearchOption {
   CaseSensitivity = 0;
   WholeWord = 1;
   Wrap = 2;
+  Regex = 3;
 }
 
 enum MoveTabDirection {

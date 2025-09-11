@@ -1,6 +1,7 @@
 use crate::panes::selection::Selection;
 use crate::panes::terminal_character::TerminalCharacter;
 use crate::panes::{Grid, Row};
+use regex::Regex;
 use std::borrow::Cow;
 use std::fmt::Debug;
 use zellij_utils::input::actions::SearchDirection;
@@ -98,6 +99,8 @@ pub struct SearchResult {
     pub whole_word_only: bool, // TODO
     // Jump from the bottom to the top (or vice versa), if we run out of lines to search
     pub wrap_search: bool,
+    // Use regex for search
+    pub regex_search: bool,
 }
 
 impl SearchResult {
@@ -141,7 +144,7 @@ impl SearchResult {
     }
 
     pub fn has_modifiers_set(&self) -> bool {
-        self.wrap_search || self.whole_word_only || self.case_insensitive
+        self.wrap_search || self.whole_word_only || self.case_insensitive || self.regex_search
     }
 
     fn check_if_haystack_char_matches_needle(
@@ -151,27 +154,35 @@ impl SearchResult {
         haystack_char: char,
         prev_haystack_char: Option<char>,
     ) -> bool {
-        let mut chars_match = if self.case_insensitive {
-            // Case insensitive search
-            // Currently only ascii, as this whole search-function is very sub-optimal anyways
-            haystack_char.to_ascii_lowercase() == needle_char.to_ascii_lowercase()
+        // Regular character-by-character search
+        if !self.regex_search {
+            let mut chars_match = if self.case_insensitive {
+                // Case insensitive search
+                // Currently only ascii, as this whole search-function is very sub-optimal anyways
+                haystack_char.to_ascii_lowercase() == needle_char.to_ascii_lowercase()
+            } else {
+                // Case sensitive search
+                haystack_char == needle_char
+            };
+
+            // Whole-word search
+            // It's a match only, if the first haystack char that is _not_ a hit, is a word-boundary
+            if chars_match
+                && self.whole_word_only
+                && nidx == 0
+                && !is_word_boundary(&prev_haystack_char)
+            {
+                // Start of the match is not a word boundary, so this is not a hit
+                chars_match = false;
+            }
+
+            chars_match
         } else {
-            // Case sensitive search
-            haystack_char == needle_char
-        };
-
-        // Whole-word search
-        // It's a match only, if the first haystack char that is _not_ a hit, is a word-boundary
-        if chars_match
-            && self.whole_word_only
-            && nidx == 0
-            && !is_word_boundary(&prev_haystack_char)
-        {
-            // Start of the match is not a word boundary, so this is not a hit
-            chars_match = false;
+            // For regex search, we don't use this function's logic
+            // This is just a placeholder to avoid compiler errors
+            // The actual regex matching is done in search_row
+            false
         }
-
-        chars_match
     }
 
     /// Search a row and its tail.
@@ -179,6 +190,71 @@ impl SearchResult {
     pub(crate) fn search_row(&self, mut ridx: usize, row: &Row, tail: &[&Row]) -> Vec<Selection> {
         let mut res = Vec::new();
         if self.needle.is_empty() || row.columns.is_empty() {
+            return res;
+        }
+
+        // Handle regex search differently
+        if self.regex_search {
+            // Convert row to a string for regex matching
+            let mut row_text = String::new();
+            let mut char_positions = Vec::new();
+            
+            // Build a string from the row and track character positions
+            for (idx, tc) in row.columns.iter().enumerate() {
+                row_text.push(tc.character);
+                char_positions.push((ridx, idx));
+            }
+            
+            // Add tail rows if needed
+            for (tail_idx, tail_row) in tail.iter().enumerate() {
+                for (idx, tc) in tail_row.columns.iter().enumerate() {
+                    row_text.push(tc.character);
+                    char_positions.push((ridx + tail_idx + 1, idx));
+                }
+            }
+            
+            // Create regex pattern - handle case sensitivity
+            let regex = if self.case_insensitive {
+                Regex::new(&format!("(?i){}", &self.needle))
+            } else {
+                Regex::new(&self.needle)
+            };
+            
+            // If regex is invalid, return empty results
+            let regex = match regex {
+                Ok(r) => r,
+                Err(_) => return res,
+            };
+            
+            // Find all matches
+            for m in regex.find_iter(&row_text) {
+                if self.whole_word_only {
+                    // Check word boundaries for whole word search
+                    let start_pos = m.start();
+                    let end_pos = m.end();
+                    
+                    let start_boundary = start_pos == 0 || 
+                        is_word_boundary(&row_text.chars().nth(start_pos - 1));
+                    let end_boundary = end_pos >= row_text.len() || 
+                        is_word_boundary(&row_text.chars().nth(end_pos));
+                    
+                    if !start_boundary || !end_boundary {
+                        continue;
+                    }
+                }
+                
+                // Create selection for this match
+                if m.start() < char_positions.len() && m.end() <= char_positions.len() {
+                    let (start_line, start_col) = char_positions[m.start()];
+                    let (end_line, end_col) = char_positions[m.end() - 1];
+                    
+                    let mut selection = Selection::default();
+                    selection.start(Position::new(start_line as i32, start_col as u16));
+                    selection.end(Position::new(end_line as i32, (end_col + 1) as u16));
+                    res.push(selection);
+                }
+            }
+            
             return res;
         }
 
@@ -478,6 +554,19 @@ impl Grid {
         // Maybe the selection we had is now gone
         self.search_results.unset_active_selection_if_nonexistent();
     }
+
+    pub fn toggle_search_regex(&mut self) {
+        self.search_results.regex_search = !self.search_results.regex_search;
+        for line in self.search_results.selections.drain(..) {
+            self.output_buffer
+                .update_lines(line.start.line() as usize, line.end.line() as usize);
+        }
+        self.search_results.active = None;
+        self.search_viewport();
+        // Maybe the selection we had is now gone
+        self.search_results.unset_active_selection_if_nonexistent();
+    }
+
 
     fn search_scrollbuffer(&mut self, dir: SearchDirection) {
         let first_sel = self.search_results.selections.first();

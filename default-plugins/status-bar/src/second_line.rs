@@ -242,6 +242,8 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             action_key(&km, &[A::SearchToggleOption(SOpt::Wrap)])),
         (s("Whole words"), s("Whole"),
             action_key(&km, &[A::SearchToggleOption(SOpt::WholeWord)])),
+        (s("Regex"), s("Regex"),
+            action_key(&km, &[A::SearchToggleOption(SOpt::Regex)])),
     ]} else if mi.mode == IM::Session { vec![
         (s("Detach"), s("Detach"), action_key(&km, &[Action::Detach])),
         (s("Session Manager"), s("Manager"), action_key(&km, &[A::LaunchOrFocusPlugin(Default::default(), true, true, false, false), TO_NORMAL])), // not entirely accurate
