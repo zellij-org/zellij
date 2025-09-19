@@ -432,10 +432,10 @@ mod web_client_tests {
             let messages = mock_api.get_sent_messages();
             for msg in messages {
                 match msg {
-                    ClientToServerMsg::TerminalResize(_) => {
+                    ClientToServerMsg::TerminalResize { new_size: _ } => {
                         found_resize = true;
                     },
-                    ClientToServerMsg::Key(_, _, _) | ClientToServerMsg::Action(_, _, _) => {
+                    ClientToServerMsg::Key{..} | ClientToServerMsg::Action { action: _, terminal_id: _, client_id: _ } => {
                         found_terminal_input = true;
                     },
                     _ => {},
@@ -869,7 +869,7 @@ mod web_client_tests {
         for (_, mock_api) in mock_apis.iter() {
             let messages = mock_api.get_sent_messages();
             for msg in messages {
-                if matches!(msg, ClientToServerMsg::TerminalResize(_)) {
+                if matches!(msg, ClientToServerMsg::TerminalResize{..}) {
                     total_resize_messages = total_resize_messages.saturating_add(1);
                 }
             }
@@ -1312,7 +1312,7 @@ impl SessionManager for MockSessionManager {
             force_run_layout_commands: false,
             cwd: None,
         };
-        let first_message = ClientToServerMsg::AttachClient(cli_assets, None, None, true);
+        let first_message = ClientToServerMsg::AttachClient{cli_assets, tab_position_to_focus: None, pane_to_focus: None, is_web_client: true};
 
         (first_message, mock_ipc_path)
     }

@@ -62,7 +62,7 @@ async fn handle_ws_control(socket: WebSocket, state: AppState) {
         };
         let client_msg = match deserialized_msg.payload {
             WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
-                ClientToServerMsg::TerminalResize(size)
+                ClientToServerMsg::TerminalResize { new_size: size }
             },
         };
 

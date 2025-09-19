@@ -50,8 +50,8 @@ fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
     let move_focus_keys = action_key_group(
         &pane_keymap,
         &[
-            &[Action::MoveFocusOrTab(Direction::Left)],
-            &[Action::MoveFocusOrTab(Direction::Right)],
+            &[Action::MoveFocusOrTab{direction: Direction::Left}],
+            &[Action::MoveFocusOrTab{direction: Direction::Right}],
         ],
     );
 

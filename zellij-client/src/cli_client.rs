@@ -104,8 +104,8 @@ fn pipe_client(
             .insert("_zellij_id".to_owned(), Uuid::new_v4().to_string());
     }
     let create_msg = |payload: Option<String>| -> ClientToServerMsg {
-        ClientToServerMsg::Action(
-            Action::CliPipe {
+        ClientToServerMsg::Action {
+            action: Action::CliPipe {
                 pipe_id: pipe_id.clone(),
                 name: name.clone(),
                 payload,
@@ -119,9 +119,9 @@ fn pipe_client(
                 cwd: cwd.clone(),
                 pane_title: pane_title.clone(),
             },
-            pane_id,
-            None,
-        )
+            terminal_id: pane_id,
+            client_id: None,
+        }
     };
     let is_piped = !os_input.stdin_is_terminal();
     loop {
@@ -151,7 +151,7 @@ fn pipe_client(
         loop {
             // wait for a response and act accordingly
             match os_input.recv_from_server() {
-                Some((ServerToClientMsg::UnblockCliPipeInput(pipe_name), _)) => {
+                Some((ServerToClientMsg::UnblockCliPipeInput { pipe_name }, _)) => {
                     // unblock this pipe, meaning we need to stop waiting for a response and read
                     // once more from STDIN
                     if pipe_name == pipe_id {
@@ -164,7 +164,7 @@ fn pipe_client(
                         }
                     }
                 },
-                Some((ServerToClientMsg::CliPipeOutput(pipe_name, output), _)) => {
+                Some((ServerToClientMsg::CliPipeOutput { pipe_name, output }, _)) => {
                     // send data to STDOUT, this *does not* mean we need to unblock the input
                     let err_context = "Failed to write to stdout";
                     if pipe_name == pipe_id {
@@ -176,15 +176,15 @@ fn pipe_client(
                         stdout.flush().context(err_context).non_fatal();
                     }
                 },
-                Some((ServerToClientMsg::Log(log_lines), _)) => {
+                Some((ServerToClientMsg::Log { lines: log_lines }, _)) => {
                     log_lines.iter().for_each(|line| println!("{line}"));
                     process::exit(0);
                 },
-                Some((ServerToClientMsg::LogError(log_lines), _)) => {
+                Some((ServerToClientMsg::LogError { lines: log_lines }, _)) => {
                     log_lines.iter().for_each(|line| eprintln!("{line}"));
                     process::exit(2);
                 },
-                Some((ServerToClientMsg::Exit(exit_reason), _)) => match exit_reason {
+                Some((ServerToClientMsg::Exit { exit_reason }, _)) => match exit_reason {
                     ExitReason::Error(e) => {
                         eprintln!("{}", e);
                         process::exit(2);
@@ -204,22 +204,22 @@ fn individual_messages_client(
     action: Action,
     pane_id: Option<u32>,
 ) {
-    let msg = ClientToServerMsg::Action(action, pane_id, None);
+    let msg = ClientToServerMsg::Action { action, terminal_id: pane_id, client_id: None };
     os_input.send_to_server(msg);
     loop {
         match os_input.recv_from_server() {
             Some((ServerToClientMsg::UnblockInputThread, _)) => {
                 break;
             },
-            Some((ServerToClientMsg::Log(log_lines), _)) => {
+            Some((ServerToClientMsg::Log { lines: log_lines }, _)) => {
                 log_lines.iter().for_each(|line| println!("{line}"));
                 break;
             },
-            Some((ServerToClientMsg::LogError(log_lines), _)) => {
+            Some((ServerToClientMsg::LogError { lines: log_lines }, _)) => {
                 log_lines.iter().for_each(|line| eprintln!("{line}"));
                 process::exit(2);
             },
-            Some((ServerToClientMsg::Exit(exit_reason), _)) => match exit_reason {
+            Some((ServerToClientMsg::Exit { exit_reason }, _)) => match exit_reason {
                 ExitReason::Error(e) => {
                     eprintln!("{}", e);
                     process::exit(2);

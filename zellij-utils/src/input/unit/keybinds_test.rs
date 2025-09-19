@@ -21,7 +21,7 @@ fn can_define_keybindings_in_configfile() {
     );
     assert_eq!(
         ctrl_g_normal_mode_action,
-        Some(&vec![Action::SwitchToMode(InputMode::Locked)]),
+        Some(&vec![Action::SwitchToMode{input_mode: InputMode::Locked}]),
         "Keybinding successfully defined in config"
     );
 }
@@ -46,12 +46,12 @@ fn can_define_multiple_keybinds_for_same_action() {
     );
     assert_eq!(
         alt_h_normal_mode_action,
-        Some(&vec![Action::MoveFocusOrTab(Direction::Left)]),
+        Some(&vec![Action::MoveFocusOrTab{direction: Direction::Left}]),
         "First keybinding successfully defined in config"
     );
     assert_eq!(
         alt_left_normal_mode_action,
-        Some(&vec![Action::MoveFocusOrTab(Direction::Left)]),
+        Some(&vec![Action::MoveFocusOrTab{direction: Direction::Left}]),
         "Second keybinding successfully defined in config"
     );
 }
@@ -73,7 +73,7 @@ fn can_define_series_of_actions_for_same_keybinding() {
         z_in_pane_mode,
         Some(&vec![
             Action::TogglePaneFrames,
-            Action::SwitchToMode(InputMode::Normal)
+            Action::SwitchToMode{input_mode: InputMode::Normal}
         ]),
         "Action series successfully defined"
     );
@@ -95,7 +95,7 @@ fn keybindings_bind_order_is_preserved() {
         .get_actions_for_key_in_mode(&InputMode::Pane, &KeyWithModifier::new(BareKey::Char('z')));
     assert_eq!(
         z_in_pane_mode,
-        Some(&vec![Action::SwitchToMode(InputMode::Resize)]),
+        Some(&vec![Action::SwitchToMode{input_mode: InputMode::Resize}]),
         "Second keybinding was applied"
     );
 }
@@ -121,13 +121,13 @@ fn uppercase_and_lowercase_keybindings_are_distinct() {
         z_in_pane_mode,
         Some(&vec![
             Action::TogglePaneFrames,
-            Action::SwitchToMode(InputMode::Normal)
+            Action::SwitchToMode{input_mode: InputMode::Normal}
         ]),
         "Lowercase z successfully bound"
     );
     assert_eq!(
         uppercase_z_in_pane_mode,
-        Some(&vec![Action::SwitchToMode(InputMode::Resize)]),
+        Some(&vec![Action::SwitchToMode{input_mode: InputMode::Resize}]),
         "Uppercase z successfully bound"
     );
 }
@@ -155,7 +155,7 @@ fn can_override_keybindings() {
         .get_actions_for_key_in_mode(&InputMode::Pane, &KeyWithModifier::new(BareKey::Char('z')));
     assert_eq!(
         z_in_pane_mode,
-        Some(&vec![Action::SwitchToMode(InputMode::Resize)]),
+        Some(&vec![Action::SwitchToMode{input_mode: InputMode::Resize}]),
         "Keybinding from config overrode keybinding from default config"
     );
 }
@@ -190,13 +190,13 @@ fn can_add_to_default_keybindings() {
         z_in_pane_mode,
         Some(&vec![
             Action::TogglePaneFrames,
-            Action::SwitchToMode(InputMode::Normal)
+            Action::SwitchToMode{input_mode: InputMode::Normal}
         ]),
         "Keybinding from default config bound"
     );
     assert_eq!(
         r_in_pane_mode,
-        Some(&vec![Action::SwitchToMode(InputMode::Resize)]),
+        Some(&vec![Action::SwitchToMode{input_mode: InputMode::Resize}]),
         "Keybinding from custom config bound as well"
     );
 }
@@ -249,12 +249,12 @@ fn can_clear_default_keybindings() {
     );
     assert_eq!(
         r_in_pane_mode,
-        Some(&vec![Action::SwitchToMode(InputMode::Resize)]),
+        Some(&vec![Action::SwitchToMode{input_mode: InputMode::Resize}]),
         "Keybinding from pane mode in custom config still bound"
     );
     assert_eq!(
         ctrl_r_in_normal_mode,
-        Some(&vec![Action::SwitchToMode(InputMode::Locked)]),
+        Some(&vec![Action::SwitchToMode{input_mode: InputMode::Locked}]),
         "Keybinding from normal mode in custom config still bound"
     );
 }
@@ -292,7 +292,7 @@ fn can_clear_default_keybindings_per_single_mode() {
         .get_actions_for_key_in_mode(&InputMode::Pane, &KeyWithModifier::new(BareKey::Char('r')));
     assert_eq!(
         ctrl_g_normal_mode_action,
-        Some(&vec![Action::SwitchToMode(InputMode::Locked)]),
+        Some(&vec![Action::SwitchToMode{input_mode: InputMode::Locked}]),
         "Keybind in different mode from default config not cleared"
     );
     assert_eq!(
@@ -301,7 +301,7 @@ fn can_clear_default_keybindings_per_single_mode() {
     );
     assert_eq!(
         r_in_pane_mode,
-        Some(&vec![Action::SwitchToMode(InputMode::Resize)]),
+        Some(&vec![Action::SwitchToMode{input_mode: InputMode::Resize}]),
         "Keybinding from pane mode in custom config still bound"
     );
 }
@@ -363,7 +363,7 @@ fn can_unbind_multiple_keys_globally() {
     );
     assert_eq!(
         t_in_pane_mode,
-        Some(&vec![Action::SwitchToMode(InputMode::Tab)]),
+        Some(&vec![Action::SwitchToMode{input_mode: InputMode::Tab}]),
         "Keybinding from custom config still bound"
     );
 }
@@ -411,7 +411,7 @@ fn can_unbind_multiple_keys_per_single_mode() {
         .get_actions_for_key_in_mode(&InputMode::Pane, &KeyWithModifier::new(BareKey::Char('t')));
     assert_eq!(
         ctrl_g_normal_mode_action,
-        Some(&vec![Action::SwitchToMode(InputMode::Locked)]),
+        Some(&vec![Action::SwitchToMode{input_mode: InputMode::Locked}]),
         "Keybind in different mode not cleared"
     );
     assert_eq!(
@@ -429,7 +429,7 @@ fn can_unbind_multiple_keys_per_single_mode() {
     );
     assert_eq!(
         t_in_pane_mode,
-        Some(&vec![Action::SwitchToMode(InputMode::Tab)]),
+        Some(&vec![Action::SwitchToMode{input_mode: InputMode::Tab}]),
         "Keybinding from custom config still bound"
     );
 }
@@ -451,7 +451,7 @@ fn can_define_shared_keybinds_for_all_modes() {
         );
         assert_eq!(
             action_in_mode,
-            Some(&vec![Action::SwitchToMode(InputMode::Locked)]),
+            Some(&vec![Action::SwitchToMode{input_mode: InputMode::Locked}]),
             "Keybind bound in mode"
         );
     }
@@ -477,7 +477,7 @@ fn can_define_shared_keybinds_with_exclusion() {
         } else {
             assert_eq!(
                 action_in_mode,
-                Some(&vec![Action::SwitchToMode(InputMode::Locked)]),
+                Some(&vec![Action::SwitchToMode{input_mode: InputMode::Locked}]),
                 "Keybind bound in mode"
             );
         }
@@ -502,7 +502,7 @@ fn can_define_shared_keybinds_with_inclusion() {
         if mode == InputMode::Normal || mode == InputMode::Resize || mode == InputMode::Pane {
             assert_eq!(
                 action_in_mode,
-                Some(&vec![Action::SwitchToMode(InputMode::Locked)]),
+                Some(&vec![Action::SwitchToMode{input_mode: InputMode::Locked}]),
                 "Keybind bound in included mode"
             );
         } else {

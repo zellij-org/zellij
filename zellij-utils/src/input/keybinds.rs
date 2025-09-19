@@ -77,14 +77,14 @@ impl Keybinds {
     ) -> Action {
         match *mode {
             InputMode::Locked => {
-                Action::Write(key_with_modifier.cloned(), raw_bytes, key_is_kitty_protocol)
+                Action::Write { key_with_modifier: key_with_modifier.cloned(), bytes: raw_bytes, is_kitty_keyboard_protocol: key_is_kitty_protocol }
             },
             mode if mode == default_input_mode => {
-                Action::Write(key_with_modifier.cloned(), raw_bytes, key_is_kitty_protocol)
+                Action::Write { key_with_modifier: key_with_modifier.cloned(), bytes: raw_bytes, is_kitty_keyboard_protocol: key_is_kitty_protocol }
             },
-            InputMode::RenameTab => Action::TabNameInput(raw_bytes),
-            InputMode::RenamePane => Action::PaneNameInput(raw_bytes),
-            InputMode::EnterSearch => Action::SearchInput(raw_bytes),
+            InputMode::RenameTab => Action::TabNameInput { input: raw_bytes },
+            InputMode::RenamePane => Action::PaneNameInput { input: raw_bytes },
+            InputMode::EnterSearch => Action::SearchInput { input: raw_bytes },
             _ => Action::NoOp,
         }
     }
@@ -124,11 +124,11 @@ fn handle_ctrl_j(
     if mode_keybindings.get(&ctrl_j).is_some() {
         mode_keybindings.get(&ctrl_j).cloned()
     } else {
-        Some(vec![Action::Write(
-            Some(ctrl_j),
-            raw_bytes.to_vec().clone(),
-            key_is_kitty_protocol,
-        )])
+        Some(vec![Action::Write {
+            key_with_modifier: Some(ctrl_j),
+            bytes: raw_bytes.to_vec().clone(),
+            is_kitty_keyboard_protocol: key_is_kitty_protocol,
+        }])
     }
 }
 

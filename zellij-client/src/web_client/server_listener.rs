@@ -102,12 +102,12 @@ pub fn zellij_server_listener(
                     loop {
                         match os_input.recv_from_server() {
                             Some((ServerToClientMsg::UnblockInputThread, _)) => {},
-                            Some((ServerToClientMsg::Exit(exit_reason), _)) => {
+                            Some((ServerToClientMsg::Exit{exit_reason}, _)) => {
                                 handle_exit_reason(&mut client_connection_bus, exit_reason);
                                 os_input.send_to_server(ClientToServerMsg::ClientExited);
                                 break;
                             },
-                            Some((ServerToClientMsg::Render(bytes), _)) => {
+                            Some((ServerToClientMsg::Render{content: bytes}, _)) => {
                                 if !sent_init_messages {
                                     for message in terminal_init_messages() {
                                         client_connection_bus.send_stdout(message.to_owned())
@@ -116,7 +116,7 @@ pub fn zellij_server_listener(
                                 }
                                 client_connection_bus.send_stdout(bytes);
                             },
-                            Some((ServerToClientMsg::SwitchSession(connect_to_session), _)) => {
+                            Some((ServerToClientMsg::SwitchSession{connect_to_session}, _)) => {
                                 reconnect_to_session = Some(connect_to_session);
                                 continue 'reconnect_loop;
                             },
@@ -125,17 +125,17 @@ pub fn zellij_server_listener(
                                     WebServerToWebClientControlMessage::QueryTerminalSize,
                                 );
                             },
-                            Some((ServerToClientMsg::Log(lines), _)) => {
+                            Some((ServerToClientMsg::Log{lines}, _)) => {
                                 client_connection_bus.send_control(
                                     WebServerToWebClientControlMessage::Log { lines },
                                 );
                             },
-                            Some((ServerToClientMsg::LogError(lines), _)) => {
+                            Some((ServerToClientMsg::LogError{lines}, _)) => {
                                 client_connection_bus.send_control(
                                     WebServerToWebClientControlMessage::LogError { lines },
                                 );
                             },
-                            Some((ServerToClientMsg::RenamedSession(new_session_name), _)) => {
+                            Some((ServerToClientMsg::RenamedSession{name: new_session_name}, _)) => {
                                 client_connection_bus.send_control(
                                     WebServerToWebClientControlMessage::SwitchedSession {
                                         new_session_name,

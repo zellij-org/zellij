@@ -1583,14 +1583,14 @@ fn serialize_mode_update_event_with_non_default_values() {
                 InputMode::Locked,
                 vec![(
                     KeyWithModifier::new(BareKey::Char('b')).with_alt_modifier(),
-                    vec![Action::SwitchToMode(InputMode::Normal)],
+                    vec![Action::SwitchToMode{input_mode: InputMode::Normal}],
                 )],
             ),
             (
                 InputMode::Tab,
                 vec![(
                     KeyWithModifier::new(BareKey::Up).with_alt_modifier(),
-                    vec![Action::SwitchToMode(InputMode::Pane)],
+                    vec![Action::SwitchToMode{input_mode: InputMode::Pane}],
                 )],
             ),
             (
@@ -1599,13 +1599,13 @@ fn serialize_mode_update_event_with_non_default_values() {
                     (
                         KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
                         vec![
-                            Action::SwitchToMode(InputMode::Tmux),
-                            Action::Write(None, vec![10], false),
+                            Action::SwitchToMode{input_mode: InputMode::Tmux},
+                            Action::Write{key_with_modifier: None, bytes: vec![10], is_kitty_keyboard_protocol: false},
                         ],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char('a')),
-                        vec![Action::WriteChars("foo".to_owned())],
+                        vec![Action::WriteChars{chars: "foo".to_owned()}],
                     ),
                 ],
             ),

@@ -915,7 +915,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         send_to_client!(
                             client_id,
                             os_input,
-                            ServerToClientMsg::UnblockCliPipeInput(pipe_name.clone()),
+                            ServerToClientMsg::UnblockCliPipeInput{pipe_name: pipe_name.clone()},
                             session_state
                         );
                     },
@@ -926,7 +926,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             send_to_client!(
                                 client_id,
                                 os_input,
-                                ServerToClientMsg::UnblockCliPipeInput(pipe_name.clone()),
+                                ServerToClientMsg::UnblockCliPipeInput{pipe_name: pipe_name.clone()},
                                 session_state
                             );
                         }
@@ -940,7 +940,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         send_to_client!(
                             client_id,
                             os_input,
-                            ServerToClientMsg::CliPipeOutput(pipe_name.clone(), output.clone()),
+                            ServerToClientMsg::CliPipeOutput{pipe_name: pipe_name.clone(), output: output.clone()},
                             session_state
                         );
                     },
@@ -951,7 +951,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             send_to_client!(
                                 client_id,
                                 os_input,
-                                ServerToClientMsg::CliPipeOutput(pipe_name.clone(), output.clone()),
+                                ServerToClientMsg::CliPipeOutput{pipe_name: pipe_name.clone(), output: output.clone()},
                                 session_state
                             );
                         }
@@ -960,7 +960,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             },
             ServerInstruction::ClientExit(client_id) => {
                 let _ =
-                    os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                    os_input.send_to_client(client_id, ServerToClientMsg::Exit{exit_reason: ExitReason::Normal});
                 remove_client!(client_id, os_input, session_state);
                 if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
                     session_data
@@ -1036,7 +1036,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             ServerInstruction::SendWebClientsForbidden(client_id) => {
                 let _ = os_input.send_to_client(
                     client_id,
-                    ServerToClientMsg::Exit(ExitReason::WebClientsForbidden),
+                    ServerToClientMsg::Exit{exit_reason: ExitReason::WebClientsForbidden},
                 );
                 remove_client!(client_id, os_input, session_state);
                 if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
@@ -1054,7 +1054,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let client_ids = session_state.read().unwrap().client_ids();
                 for client_id in client_ids {
                     let _ = os_input
-                        .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                        .send_to_client(client_id, ServerToClientMsg::Exit{exit_reason: ExitReason::Normal});
                     remove_client!(client_id, os_input, session_state);
                 }
                 break;
@@ -1070,14 +1070,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .collect();
                 for client_id in client_ids {
                     let _ = os_input
-                        .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                        .send_to_client(client_id, ServerToClientMsg::Exit{exit_reason: ExitReason::Normal});
                     remove_client!(client_id, os_input, session_state);
                 }
             },
             ServerInstruction::DetachSession(client_ids) => {
                 for client_id in client_ids {
                     let _ = os_input
-                        .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                        .send_to_client(client_id, ServerToClientMsg::Exit{exit_reason: ExitReason::Normal});
                     remove_client!(client_id, os_input, session_state);
                     if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
                     {
@@ -1120,14 +1120,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         send_to_client!(
                             *client_id,
                             os_input,
-                            ServerToClientMsg::Render(client_render_instruction.clone()),
+                            ServerToClientMsg::Render{content: client_render_instruction.clone()},
                             session_state
                         );
                     }
                 } else {
                     for client_id in client_ids {
                         let _ = os_input
-                            .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                            .send_to_client(client_id, ServerToClientMsg::Exit{exit_reason: ExitReason::Normal});
                         remove_client!(client_id, os_input, session_state);
                     }
                     break;
@@ -1138,7 +1138,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 for client_id in client_ids {
                     let _ = os_input.send_to_client(
                         client_id,
-                        ServerToClientMsg::Exit(ExitReason::Error(backtrace.clone())),
+                        ServerToClientMsg::Exit{exit_reason: ExitReason::Error(backtrace.clone())},
                     );
                     remove_client!(client_id, os_input, session_state);
                 }
@@ -1152,7 +1152,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 send_to_client!(
                     client_id,
                     os_input,
-                    ServerToClientMsg::Log(lines_to_log),
+                    ServerToClientMsg::Log{lines: lines_to_log},
                     session_state
                 );
             },
@@ -1160,7 +1160,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 send_to_client!(
                     client_id,
                     os_input,
-                    ServerToClientMsg::LogError(lines_to_log),
+                    ServerToClientMsg::LogError{lines: lines_to_log},
                     session_state
                 );
             },
@@ -1212,7 +1212,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     send_to_client!(
                         client_id,
                         os_input,
-                        ServerToClientMsg::SwitchSession(connect_to_session),
+                        ServerToClientMsg::SwitchSession{connect_to_session},
                         session_state
                     );
                     remove_client!(client_id, os_input, session_state);
@@ -1371,7 +1371,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         for client_id in web_client_ids {
                             let _ = os_input.send_to_client(
                                 client_id,
-                                ServerToClientMsg::Exit(ExitReason::WebClientsForbidden),
+                                ServerToClientMsg::Exit{exit_reason: ExitReason::WebClientsForbidden},
                             );
                             remove_client!(client_id, os_input, session_state);
                         }

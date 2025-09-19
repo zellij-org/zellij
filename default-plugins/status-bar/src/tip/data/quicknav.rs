@@ -62,7 +62,7 @@ struct Keygroups<'a> {
 
 fn add_keybinds(help: &ModeInfo) -> Keygroups {
     let normal_keymap = help.get_mode_keybinds();
-    let new_pane_keys = action_key(&normal_keymap, &[Action::NewPane(None, None, false)]);
+    let new_pane_keys = action_key(&normal_keymap, &[Action::NewPane{direction: None, pane_name: None, start_suppressed: false}]);
     let new_pane = if new_pane_keys.is_empty() {
         vec![Style::new().bold().paint("UNBOUND")]
     } else {
@@ -72,8 +72,8 @@ fn add_keybinds(help: &ModeInfo) -> Keygroups {
     let mut resize_keys = action_key_group(
         &normal_keymap,
         &[
-            &[Action::Resize(Resize::Increase, None)],
-            &[Action::Resize(Resize::Decrease, None)],
+            &[Action::Resize{resize: Resize::Increase, direction: None}],
+            &[Action::Resize{resize: Resize::Decrease, direction: None}],
         ],
     );
     if resize_keys.contains(&KeyWithModifier::new(BareKey::Char('=')).with_alt_modifier())
@@ -90,12 +90,12 @@ fn add_keybinds(help: &ModeInfo) -> Keygroups {
     let move_focus_keys = action_key_group(
         &normal_keymap,
         &[
-            &[Action::MoveFocus(Direction::Left)],
-            &[Action::MoveFocusOrTab(Direction::Left)],
-            &[Action::MoveFocus(Direction::Down)],
-            &[Action::MoveFocus(Direction::Up)],
-            &[Action::MoveFocus(Direction::Right)],
-            &[Action::MoveFocusOrTab(Direction::Right)],
+            &[Action::MoveFocus{direction: Direction::Left}],
+            &[Action::MoveFocusOrTab{direction: Direction::Left}],
+            &[Action::MoveFocus{direction: Direction::Down}],
+            &[Action::MoveFocus{direction: Direction::Up}],
+            &[Action::MoveFocus{direction: Direction::Right}],
+            &[Action::MoveFocusOrTab{direction: Direction::Right}],
         ],
     );
     // Let's see if we have some pretty groups in common here

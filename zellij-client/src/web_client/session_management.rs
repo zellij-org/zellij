@@ -130,7 +130,7 @@ fn spawn_new_session(
     let is_web_client = true;
 
     (
-        ClientToServerMsg::FirstClientConnected(cli_assets, is_web_client),
+        ClientToServerMsg::FirstClientConnected{cli_assets, is_web_client},
         zellij_ipc_pipe,
     )
 }
@@ -166,6 +166,6 @@ fn ipc_pipe_and_first_message_for_existing_session(
     };
     let is_web_client = true;
 
-    let first_message = ClientToServerMsg::AttachClient(cli_assets, None, None, is_web_client);
+    let first_message = ClientToServerMsg::AttachClient{cli_assets, tab_position_to_focus: None, pane_to_focus: None, is_web_client};
     (first_message, zellij_ipc_pipe)
 }

@@ -389,7 +389,7 @@ impl ClientSender {
             for msg in client_buffer_receiver.iter() {
                 sender.send(msg).with_context(err_context).non_fatal();
             }
-            let _ = sender.send(ServerToClientMsg::Exit(ExitReason::Disconnect));
+            let _ = sender.send(ServerToClientMsg::Exit { exit_reason: ExitReason::Disconnect });
         });
         ClientSender {
             client_id,

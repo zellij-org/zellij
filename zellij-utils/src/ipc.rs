@@ -47,6 +47,18 @@ pub struct PixelDimensions {
     pub character_cell_size: Option<SizeInPixels>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct PaneReference {
+    pub pane_id: u32,
+    pub is_plugin: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct ColorRegister {
+    pub index: usize,
+    pub color: String,
+}
+
 impl PixelDimensions {
     pub fn merge(&mut self, other: PixelDimensions) {
         if let Some(text_area_size) = other.text_area_size {
@@ -62,46 +74,87 @@ impl PixelDimensions {
 #[allow(clippy::large_enum_variant)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClientToServerMsg {
-    DetachSession(Vec<ClientId>),
-    TerminalPixelDimensions(PixelDimensions),
-    BackgroundColor(String),
-    ForegroundColor(String),
-    ColorRegisters(Vec<(usize, String)>),
-    TerminalResize(Size),
-    FirstClientConnected(
-        CliAssets,
-        bool, // is_web_client
-    ),
-    AttachClient(
-        CliAssets,
-        Option<usize>,       // tab position to focus
-        Option<(u32, bool)>, // (pane_id, is_plugin) => pane id to focus
-        bool,                // is_web_client
-    ),
-    Action(Action, Option<u32>, Option<ClientId>), // u32 is the terminal id
-    Key(KeyWithModifier, Vec<u8>, bool),           // key, raw_bytes, is_kitty_keyboard_protocol
+    DetachSession {
+        client_ids: Vec<ClientId>,
+    },
+    TerminalPixelDimensions {
+        pixel_dimensions: PixelDimensions,
+    },
+    BackgroundColor {
+        color: String,
+    },
+    ForegroundColor {
+        color: String,
+    },
+    ColorRegisters {
+        color_registers: Vec<ColorRegister>,
+    },
+    TerminalResize {
+        new_size: Size,
+    },
+    FirstClientConnected {
+        cli_assets: CliAssets,
+        is_web_client: bool,
+    },
+    AttachClient {
+        cli_assets: CliAssets,
+        tab_position_to_focus: Option<usize>,
+        pane_to_focus: Option<PaneReference>,
+        is_web_client: bool,
+    },
+    Action {
+        action: Action,
+        terminal_id: Option<u32>,
+        client_id: Option<ClientId>,
+    },
+    Key {
+        key: KeyWithModifier,
+        raw_bytes: Vec<u8>,
+        is_kitty_keyboard_protocol: bool,
+    },
     ClientExited,
     KillSession,
     ConnStatus,
-    WebServerStarted(String), // String -> base_url
-    FailedToStartWebServer(String),
+    WebServerStarted {
+        base_url: String,
+    },
+    FailedToStartWebServer {
+        error: String,
+    },
 }
 
 // Types of messages sent from the server to the client
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerToClientMsg {
-    Render(String),
+    Render {
+        content: String,
+    },
     UnblockInputThread,
-    Exit(ExitReason),
+    Exit {
+        exit_reason: ExitReason,
+    },
     Connected,
-    Log(Vec<String>),
-    LogError(Vec<String>),
-    SwitchSession(ConnectToSession),
-    UnblockCliPipeInput(String),   // String -> pipe name
-    CliPipeOutput(String, String), // String -> pipe name, String -> Output
+    Log {
+        lines: Vec<String>,
+    },
+    LogError {
+        lines: Vec<String>,
+    },
+    SwitchSession {
+        connect_to_session: ConnectToSession,
+    },
+    UnblockCliPipeInput {
+        pipe_name: String,
+    },
+    CliPipeOutput {
+        pipe_name: String,
+        output: String,
+    },
     QueryTerminalSize,
     StartWebServer,
-    RenamedSession(String), // String -> new session name
+    RenamedSession {
+        name: String,
+    },
     ConfigFileUpdated,
 }
 

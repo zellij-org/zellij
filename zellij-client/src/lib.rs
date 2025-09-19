@@ -65,24 +65,24 @@ pub(crate) enum ClientInstruction {
 impl From<ServerToClientMsg> for ClientInstruction {
     fn from(instruction: ServerToClientMsg) -> Self {
         match instruction {
-            ServerToClientMsg::Exit(e) => ClientInstruction::Exit(e),
-            ServerToClientMsg::Render(buffer) => ClientInstruction::Render(buffer),
+            ServerToClientMsg::Exit { exit_reason } => ClientInstruction::Exit(exit_reason),
+            ServerToClientMsg::Render { content } => ClientInstruction::Render(content),
             ServerToClientMsg::UnblockInputThread => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::Connected => ClientInstruction::Connected,
-            ServerToClientMsg::Log(log_lines) => ClientInstruction::Log(log_lines),
-            ServerToClientMsg::LogError(log_lines) => ClientInstruction::LogError(log_lines),
-            ServerToClientMsg::SwitchSession(connect_to_session) => {
+            ServerToClientMsg::Log { lines } => ClientInstruction::Log(lines),
+            ServerToClientMsg::LogError { lines } => ClientInstruction::LogError(lines),
+            ServerToClientMsg::SwitchSession { connect_to_session } => {
                 ClientInstruction::SwitchSession(connect_to_session)
             },
-            ServerToClientMsg::UnblockCliPipeInput(_pipe_name) => {
+            ServerToClientMsg::UnblockCliPipeInput { .. } => {
                 ClientInstruction::UnblockCliPipeInput(())
             },
-            ServerToClientMsg::CliPipeOutput(_pipe_name, _output) => {
+            ServerToClientMsg::CliPipeOutput { .. } => {
                 ClientInstruction::CliPipeOutput((), ())
             },
             ServerToClientMsg::QueryTerminalSize => ClientInstruction::QueryTerminalSize,
             ServerToClientMsg::StartWebServer => ClientInstruction::StartWebServer,
-            ServerToClientMsg::RenamedSession(name) => ClientInstruction::RenamedSession(name),
+            ServerToClientMsg::RenamedSession { name } => ClientInstruction::RenamedSession(name),
             ServerToClientMsg::ConfigFileUpdated => ClientInstruction::ConfigFileUpdated,
         }
     }
@@ -319,12 +319,12 @@ pub fn start_client(
                 cwd: None,
             };
             (
-                ClientToServerMsg::AttachClient(
+                ClientToServerMsg::AttachClient {
                     cli_assets,
                     tab_position_to_focus,
-                    pane_id_to_focus,
+                    pane_to_focus: pane_id_to_focus.map(|(pane_id, is_plugin)| zellij_utils::ipc::PaneReference { pane_id, is_plugin }),
                     is_web_client,
-                ),
+                },
                 ipc_pipe,
             )
         },
@@ -358,7 +358,7 @@ pub fn start_client(
             let is_web_client = false;
 
             (
-                ClientToServerMsg::FirstClientConnected(cli_assets, is_web_client),
+                ClientToServerMsg::FirstClientConnected { cli_assets, is_web_client },
                 ipc_pipe,
             )
         },
@@ -405,7 +405,7 @@ pub fn start_client(
             let is_web_client = false;
 
             (
-                ClientToServerMsg::FirstClientConnected(cli_assets, is_web_client),
+                ClientToServerMsg::FirstClientConnected { cli_assets, is_web_client },
                 ipc_pipe,
             )
         },
@@ -491,19 +491,19 @@ pub fn start_client(
                     Box::new({
                         let os_api = os_input.clone();
                         move || {
-                            os_api.send_to_server(ClientToServerMsg::TerminalResize(
-                                os_api.get_terminal_size_using_fd(0),
-                            ));
+                            os_api.send_to_server(ClientToServerMsg::TerminalResize {
+                                new_size: os_api.get_terminal_size_using_fd(0),
+                            });
                         }
                     }),
                     Box::new({
                         let os_api = os_input.clone();
                         move || {
-                            os_api.send_to_server(ClientToServerMsg::Action(
-                                on_force_close.into(),
-                                None,
-                                None,
-                            ));
+                            os_api.send_to_server(ClientToServerMsg::Action {
+                                action: on_force_close.into(),
+                                terminal_id: None,
+                                client_id: None,
+                            });
                         }
                     }),
                 );
@@ -520,7 +520,7 @@ pub fn start_client(
                 match os_input.recv_from_server() {
                     Some((instruction, err_ctx)) => {
                         err_ctx.update_thread_ctx();
-                        if let ServerToClientMsg::Exit(_) = instruction {
+                        if let ServerToClientMsg::Exit { .. } = instruction {
                             should_break = true;
                         }
                         send_client_instructions.send(instruction.into()).unwrap();
@@ -664,9 +664,9 @@ pub fn start_client(
                 synchronised_output = enabled;
             },
             ClientInstruction::QueryTerminalSize => {
-                os_input.send_to_server(ClientToServerMsg::TerminalResize(
-                    os_input.get_terminal_size_using_fd(0),
-                ));
+                os_input.send_to_server(ClientToServerMsg::TerminalResize {
+                    new_size: os_input.get_terminal_size_using_fd(0),
+                });
             },
             ClientInstruction::StartWebServer => {
                 let web_server_base_url = web_server_base_url(
@@ -677,14 +677,14 @@ pub fn start_client(
                 );
                 match spawn_web_server(&cli_args) {
                     Ok(_) => {
-                        let _ = os_input.send_to_server(ClientToServerMsg::WebServerStarted(
-                            web_server_base_url,
-                        ));
+                        let _ = os_input.send_to_server(ClientToServerMsg::WebServerStarted {
+                            base_url: web_server_base_url,
+                        });
                     },
                     Err(e) => {
                         log::error!("Failed to start web_server: {}", e);
                         let _ =
-                            os_input.send_to_server(ClientToServerMsg::FailedToStartWebServer(e));
+                            os_input.send_to_server(ClientToServerMsg::FailedToStartWebServer { error: e });
                     },
                 }
             },
@@ -779,7 +779,7 @@ pub fn start_server_detached(
             let is_web_client = false;
 
             (
-                ClientToServerMsg::FirstClientConnected(cli_assets, is_web_client),
+                ClientToServerMsg::FirstClientConnected { cli_assets, is_web_client },
                 ipc_pipe,
             )
         },
@@ -826,7 +826,7 @@ pub fn start_server_detached(
             let is_web_client = false;
 
             (
-                ClientToServerMsg::FirstClientConnected(cli_assets, is_web_client),
+                ClientToServerMsg::FirstClientConnected { cli_assets, is_web_client },
                 ipc_pipe,
             )
         },
