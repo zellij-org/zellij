@@ -11,10 +11,23 @@ use nix::unistd::dup;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Error, Formatter},
-    io::{self, Write},
+    io::{self, Write, Read},
     marker::PhantomData,
     os::unix::io::{AsRawFd, FromRawFd},
 };
+
+// Toggle for development - set to true to use protobuf serialization
+const USE_PROTOBUF: bool = false;
+
+// Protobuf imports
+use prost::Message;
+use crate::client_server_contract::client_server_contract::{
+    ClientToServerMsg as ProtoClientToServerMsg,
+    ServerToClientMsg as ProtoServerToClientMsg,
+};
+
+mod protobuf_conversion;
+mod enum_conversions;
 
 type SessionId = u64;
 
@@ -233,14 +246,16 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     /// Sends an event, along with the current [`ErrorContext`], on this [`IpcSenderWithContext`]'s socket.
     pub fn send(&mut self, msg: T) -> Result<()> {
         let err_ctx = get_current_ctx();
+
+        // Use MessagePack for now - protobuf sending handled by separate methods
         if rmp_serde::encode::write(&mut self.sender, &(msg, err_ctx)).is_err() {
-            Err(anyhow!("failed to send message to client"))
-        } else {
-            if let Err(e) = self.sender.flush() {
-                log::error!("Failed to flush ipc sender: {}", e);
-            }
-            Ok(())
+            return Err(anyhow!("failed to send message to client"));
         }
+
+        if let Err(e) = self.sender.flush() {
+            log::error!("Failed to flush ipc sender: {}", e);
+        }
+        Ok(())
     }
 
     /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
@@ -275,6 +290,7 @@ where
 
     /// Receives an event, along with the current [`ErrorContext`], on this [`IpcReceiverWithContext`]'s socket.
     pub fn recv(&mut self) -> Option<(T, ErrorContext)> {
+        // Use MessagePack for now - protobuf receiving handled by separate methods
         match rmp_serde::decode::from_read(&mut self.receiver) {
             Ok(msg) => Some(msg),
             Err(e) => {
@@ -290,5 +306,97 @@ where
         let dup_sock = dup(sock_fd).unwrap();
         let socket = unsafe { LocalSocketStream::from_raw_fd(dup_sock) };
         IpcSenderWithContext::new(socket)
+    }
+}
+
+// Protobuf wire format utilities
+fn read_protobuf_message<T: Message + Default>(
+    reader: &mut impl Read
+) -> Result<T> {
+    // Read length-prefixed protobuf message
+    let mut len_bytes = [0u8; 4];
+    reader.read_exact(&mut len_bytes)?;
+    let len = u32::from_le_bytes(len_bytes) as usize;
+
+    let mut buf = vec![0u8; len];
+    reader.read_exact(&mut buf)?;
+
+    T::decode(&buf[..]).map_err(Into::into)
+}
+
+fn write_protobuf_message<T: Message>(
+    writer: &mut impl Write,
+    msg: &T
+) -> Result<()> {
+    let encoded = msg.encode_to_vec();
+    let len = encoded.len() as u32;
+
+    writer.write_all(&len.to_le_bytes())?;
+    writer.write_all(&encoded)?;
+    Ok(())
+}
+
+// Protobuf helper functions
+pub fn send_protobuf_client_to_server(
+    sender: &mut IpcSenderWithContext<ClientToServerMsg>,
+    msg: ClientToServerMsg,
+) -> Result<()> {
+    let proto_msg: ProtoClientToServerMsg = msg.into();
+    write_protobuf_message(&mut sender.sender, &proto_msg)?;
+    if let Err(e) = sender.sender.flush() {
+        log::error!("Failed to flush ipc sender: {}", e);
+    }
+    Ok(())
+}
+
+pub fn send_protobuf_server_to_client(
+    sender: &mut IpcSenderWithContext<ServerToClientMsg>,
+    msg: ServerToClientMsg,
+) -> Result<()> {
+    let proto_msg: ProtoServerToClientMsg = msg.into();
+    write_protobuf_message(&mut sender.sender, &proto_msg)?;
+    if let Err(e) = sender.sender.flush() {
+        log::error!("Failed to flush ipc sender: {}", e);
+    }
+    Ok(())
+}
+
+pub fn recv_protobuf_client_to_server(
+    receiver: &mut IpcReceiverWithContext<ClientToServerMsg>
+) -> Option<(ClientToServerMsg, ErrorContext)> {
+    match read_protobuf_message::<ProtoClientToServerMsg>(&mut receiver.receiver) {
+        Ok(proto_msg) => {
+            match proto_msg.try_into() {
+                Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
+                Err(e) => {
+                    warn!("Error converting protobuf message: {:?}", e);
+                    None
+                }
+            }
+        },
+        Err(e) => {
+            warn!("Error reading protobuf message: {:?}", e);
+            None
+        },
+    }
+}
+
+pub fn recv_protobuf_server_to_client(
+    receiver: &mut IpcReceiverWithContext<ServerToClientMsg>
+) -> Option<(ServerToClientMsg, ErrorContext)> {
+    match read_protobuf_message::<ProtoServerToClientMsg>(&mut receiver.receiver) {
+        Ok(proto_msg) => {
+            match proto_msg.try_into() {
+                Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
+                Err(e) => {
+                    warn!("Error converting protobuf message: {:?}", e);
+                    None
+                }
+            }
+        },
+        Err(e) => {
+            warn!("Error reading protobuf message: {:?}", e);
+            None
+        },
     }
 }

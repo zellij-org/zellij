@@ -1,0 +1,908 @@
+syntax = "proto3";
+package client_server_contract;
+
+message Size {
+  uint32 cols = 1;
+  uint32 rows = 2;
+}
+
+message PixelDimensions {
+  optional SizeInPixels text_area_size = 1;
+  optional SizeInPixels character_cell_size = 2;
+}
+
+message SizeInPixels {
+  uint32 width = 1;
+  uint32 height = 2;
+}
+
+message PaneReference {
+  uint32 pane_id = 1;
+  bool is_plugin = 2;
+}
+
+message ColorRegister {
+  uint32 index = 1;
+  string color = 2;
+}
+
+message KeyWithModifier {
+  BareKey bare_key = 1;
+  repeated KeyModifier key_modifiers = 2;
+  optional string character = 3; // Only set when bare_key is CHAR
+}
+
+enum BareKey {
+  BARE_KEY_UNSPECIFIED = 0;
+  BARE_KEY_PAGE_DOWN = 1;
+  BARE_KEY_PAGE_UP = 2;
+  BARE_KEY_LEFT = 3;
+  BARE_KEY_DOWN = 4;
+  BARE_KEY_UP = 5;
+  BARE_KEY_RIGHT = 6;
+  BARE_KEY_HOME = 7;
+  BARE_KEY_END = 8;
+  BARE_KEY_BACKSPACE = 9;
+  BARE_KEY_DELETE = 10;
+  BARE_KEY_INSERT = 11;
+  BARE_KEY_F1 = 12;
+  BARE_KEY_F2 = 13;
+  BARE_KEY_F3 = 14;
+  BARE_KEY_F4 = 15;
+  BARE_KEY_F5 = 16;
+  BARE_KEY_F6 = 17;
+  BARE_KEY_F7 = 18;
+  BARE_KEY_F8 = 19;
+  BARE_KEY_F9 = 20;
+  BARE_KEY_F10 = 21;
+  BARE_KEY_F11 = 22;
+  BARE_KEY_F12 = 23;
+  BARE_KEY_CHAR = 24;
+  BARE_KEY_TAB = 25;
+  BARE_KEY_ESC = 26;
+  BARE_KEY_ENTER = 27;
+  BARE_KEY_CAPS_LOCK = 28;
+  BARE_KEY_SCROLL_LOCK = 29;
+  BARE_KEY_NUM_LOCK = 30;
+  BARE_KEY_PRINT_SCREEN = 31;
+  BARE_KEY_PAUSE = 32;
+  BARE_KEY_MENU = 33;
+}
+
+message CharKey {
+  string character = 1;
+}
+
+message FunctionKey {
+  uint32 function_number = 1;
+}
+
+enum KeyModifier {
+  KEY_MODIFIER_UNSPECIFIED = 0;
+  KEY_MODIFIER_CTRL = 1;
+  KEY_MODIFIER_ALT = 2;
+  KEY_MODIFIER_SHIFT = 3;
+  KEY_MODIFIER_SUPER = 4;
+}
+
+message Style {
+  Styling colors = 1;
+  bool rounded_corners = 2;
+  bool hide_session_name = 3;
+}
+
+message Styling {
+  PaletteColor base = 1;
+  PaletteColor background = 2;
+  PaletteColor emphasis_0 = 3;
+  PaletteColor emphasis_1 = 4;
+  PaletteColor emphasis_2 = 5;
+  PaletteColor emphasis_3 = 6;
+}
+
+message PaletteColor {
+  oneof color_type {
+    RgbColor rgb = 1;
+    uint32 eight_bit = 2;
+    AnsiCode ansi = 3;
+  }
+}
+
+message RgbColor {
+  uint32 r = 1;
+  uint32 g = 2;
+  uint32 b = 3;
+}
+
+enum AnsiCode {
+  ANSI_CODE_UNSPECIFIED = 0;
+  BLACK = 1;
+  RED = 2;
+  GREEN = 3;
+  YELLOW = 4;
+  BLUE = 5;
+  MAGENTA = 6;
+  CYAN = 7;
+  WHITE = 8;
+  BRIGHT_BLACK = 9;
+  BRIGHT_RED = 10;
+  BRIGHT_GREEN = 11;
+  BRIGHT_YELLOW = 12;
+  BRIGHT_BLUE = 13;
+  BRIGHT_MAGENTA = 14;
+  BRIGHT_CYAN = 15;
+  BRIGHT_WHITE = 16;
+}
+
+message Action {
+  oneof action_type {
+    QuitAction quit = 1;
+    WriteAction write = 2;
+    WriteCharsAction write_chars = 3;
+    SwitchToModeAction switch_to_mode = 4;
+    SwitchModeForAllClientsAction switch_mode_for_all_clients = 5;
+    ResizeAction resize = 6;
+    FocusNextPaneAction focus_next_pane = 7;
+    FocusPreviousPaneAction focus_previous_pane = 8;
+    SwitchFocusAction switch_focus = 9;
+    MoveFocusAction move_focus = 10;
+    MoveFocusOrTabAction move_focus_or_tab = 11;
+    MovePaneAction move_pane = 12;
+    MovePaneBackwardsAction move_pane_backwards = 13;
+    ClearScreenAction clear_screen = 14;
+    DumpScreenAction dump_screen = 15;
+    DumpLayoutAction dump_layout = 16;
+    EditScrollbackAction edit_scrollback = 17;
+    ScrollUpAction scroll_up = 18;
+    ScrollUpAtAction scroll_up_at = 19;
+    ScrollDownAction scroll_down = 20;
+    ScrollDownAtAction scroll_down_at = 21;
+    ScrollToBottomAction scroll_to_bottom = 22;
+    ScrollToTopAction scroll_to_top = 23;
+    PageScrollUpAction page_scroll_up = 24;
+    PageScrollDownAction page_scroll_down = 25;
+    HalfPageScrollUpAction half_page_scroll_up = 26;
+    HalfPageScrollDownAction half_page_scroll_down = 27;
+    ToggleFocusFullscreenAction toggle_focus_fullscreen = 28;
+    TogglePaneFramesAction toggle_pane_frames = 29;
+    ToggleActiveSyncTabAction toggle_active_sync_tab = 30;
+    NewPaneAction new_pane = 31;
+    EditFileAction edit_file = 32;
+    NewFloatingPaneAction new_floating_pane = 33;
+    NewTiledPaneAction new_tiled_pane = 34;
+    NewInPlacePaneAction new_in_place_pane = 35;
+    NewStackedPaneAction new_stacked_pane = 36;
+    TogglePaneEmbedOrFloatingAction toggle_pane_embed_or_floating = 37;
+    ToggleFloatingPanesAction toggle_floating_panes = 38;
+    CloseFocusAction close_focus = 39;
+    PaneNameInputAction pane_name_input = 40;
+    UndoRenamePaneAction undo_rename_pane = 41;
+    NewTabAction new_tab = 42;
+    NoOpAction no_op = 43;
+    GoToNextTabAction go_to_next_tab = 44;
+    GoToPreviousTabAction go_to_previous_tab = 45;
+    CloseTabAction close_tab = 46;
+    GoToTabAction go_to_tab = 47;
+    GoToTabNameAction go_to_tab_name = 48;
+    ToggleTabAction toggle_tab = 49;
+    TabNameInputAction tab_name_input = 50;
+    UndoRenameTabAction undo_rename_tab = 51;
+    MoveTabAction move_tab = 52;
+    RunAction run = 53;
+    DetachAction detach = 54;
+    LaunchOrFocusPluginAction launch_or_focus_plugin = 55;
+    LaunchPluginAction launch_plugin = 56;
+    MouseEventAction mouse_event = 57;
+    CopyAction copy = 58;
+    ConfirmAction confirm = 59;
+    DenyAction deny = 60;
+    SkipConfirmAction skip_confirm = 61;
+    SearchInputAction search_input = 62;
+    SearchAction search = 63;
+    SearchToggleOptionAction search_toggle_option = 64;
+    ToggleMouseModeAction toggle_mouse_mode = 65;
+    PreviousSwapLayoutAction previous_swap_layout = 66;
+    NextSwapLayoutAction next_swap_layout = 67;
+    QueryTabNamesAction query_tab_names = 68;
+    NewTiledPluginPaneAction new_tiled_plugin_pane = 69;
+    NewFloatingPluginPaneAction new_floating_plugin_pane = 70;
+    NewInPlacePluginPaneAction new_in_place_plugin_pane = 71;
+    StartOrReloadPluginAction start_or_reload_plugin = 72;
+    CloseTerminalPaneAction close_terminal_pane = 73;
+    ClosePluginPaneAction close_plugin_pane = 74;
+    FocusTerminalPaneWithIdAction focus_terminal_pane_with_id = 75;
+    FocusPluginPaneWithIdAction focus_plugin_pane_with_id = 76;
+    RenameTerminalPaneAction rename_terminal_pane = 77;
+    RenamePluginPaneAction rename_plugin_pane = 78;
+    RenameTabAction rename_tab = 79;
+    BreakPaneAction break_pane = 80;
+    BreakPaneRightAction break_pane_right = 81;
+    BreakPaneLeftAction break_pane_left = 82;
+    RenameSessionAction rename_session = 83;
+    CliPipeAction cli_pipe = 84;
+    KeybindPipeAction keybind_pipe = 85;
+    ListClientsAction list_clients = 86;
+    TogglePanePinnedAction toggle_pane_pinned = 87;
+    StackPanesAction stack_panes = 88;
+    ChangeFloatingPaneCoordinatesAction change_floating_pane_coordinates = 89;
+    TogglePaneInGroupAction toggle_pane_in_group = 90;
+    ToggleGroupMarkingAction toggle_group_marking = 91;
+  }
+}
+
+// Action message definitions (all 91 variants)
+
+// Simple action types (no data)
+message QuitAction {}
+message FocusNextPaneAction {}
+message FocusPreviousPaneAction {}
+message SwitchFocusAction {}
+message MovePaneBackwardsAction {}
+message ClearScreenAction {}
+message DumpLayoutAction {}
+message EditScrollbackAction {}
+message ScrollUpAction {}
+message ScrollDownAction {}
+message ScrollToBottomAction {}
+message ScrollToTopAction {}
+message PageScrollUpAction {}
+message PageScrollDownAction {}
+message HalfPageScrollUpAction {}
+message HalfPageScrollDownAction {}
+message ToggleFocusFullscreenAction {}
+message TogglePaneFramesAction {}
+message ToggleActiveSyncTabAction {}
+message TogglePaneEmbedOrFloatingAction {}
+message ToggleFloatingPanesAction {}
+message CloseFocusAction {}
+message UndoRenamePaneAction {}
+message NoOpAction {}
+message GoToNextTabAction {}
+message GoToPreviousTabAction {}
+message CloseTabAction {}
+message ToggleTabAction {}
+message UndoRenameTabAction {}
+message DetachAction {}
+message CopyAction {}
+message ConfirmAction {}
+message DenyAction {}
+message ToggleMouseModeAction {}
+message PreviousSwapLayoutAction {}
+message NextSwapLayoutAction {}
+message QueryTabNamesAction {}
+message BreakPaneAction {}
+message BreakPaneRightAction {}
+message BreakPaneLeftAction {}
+message ListClientsAction {}
+message TogglePanePinnedAction {}
+message TogglePaneInGroupAction {}
+message ToggleGroupMarkingAction {}
+
+// Complex action types (with data)
+message WriteAction {
+  optional KeyWithModifier key_with_modifier = 1;
+  repeated uint32 bytes = 2;
+  bool is_kitty_keyboard_protocol = 3;
+}
+
+message WriteCharsAction {
+  string chars = 1;
+}
+
+message SwitchToModeAction {
+  InputMode input_mode = 1;
+}
+
+message SwitchModeForAllClientsAction {
+  InputMode input_mode = 1;
+}
+
+message ResizeAction {
+  ResizeType resize = 1;
+  optional Direction direction = 2;
+}
+
+message MoveFocusAction {
+  Direction direction = 1;
+}
+
+message MoveFocusOrTabAction {
+  Direction direction = 1;
+}
+
+message MovePaneAction {
+  optional Direction direction = 1;
+}
+
+message DumpScreenAction {
+  string file_path = 1;
+  bool include_scrollback = 2;
+}
+
+message ScrollUpAtAction {
+  Position position = 1;
+}
+
+message ScrollDownAtAction {
+  Position position = 1;
+}
+
+message NewPaneAction {
+  optional Direction direction = 1;
+  optional string pane_name = 2;
+  bool start_suppressed = 3;
+}
+
+message EditFileAction {
+  OpenFilePayload payload = 1;
+  optional Direction direction = 2;
+  bool floating = 3;
+  bool in_place = 4;
+  bool start_suppressed = 5;
+  optional FloatingPaneCoordinates coordinates = 6;
+}
+
+message NewFloatingPaneAction {
+  optional RunCommandAction command = 1;
+  optional string pane_name = 2;
+  optional FloatingPaneCoordinates coordinates = 3;
+}
+
+message NewTiledPaneAction {
+  optional Direction direction = 1;
+  optional RunCommandAction command = 2;
+  optional string pane_name = 3;
+}
+
+message NewInPlacePaneAction {
+  optional RunCommandAction command = 1;
+  optional string pane_name = 2;
+}
+
+message NewStackedPaneAction {
+  optional RunCommandAction command = 1;
+  optional string pane_name = 2;
+}
+
+message PaneNameInputAction {
+  repeated uint32 input = 1;
+}
+
+message NewTabAction {
+  optional TiledPaneLayout tiled_layout = 1;
+  repeated FloatingPaneLayout floating_layouts = 2;
+  repeated SwapTiledLayout swap_tiled_layouts = 3;
+  repeated SwapFloatingLayout swap_floating_layouts = 4;
+  optional string tab_name = 5;
+  bool should_change_focus_to_new_tab = 6;
+  optional string cwd = 7;
+}
+
+message GoToTabAction {
+  uint32 index = 1;
+}
+
+message GoToTabNameAction {
+  string name = 1;
+  bool create = 2;
+}
+
+message TabNameInputAction {
+  repeated uint32 input = 1;
+}
+
+message MoveTabAction {
+  Direction direction = 1;
+}
+
+message RunAction {
+  RunCommandAction command = 1;
+}
+
+message LaunchOrFocusPluginAction {
+  RunPluginOrAlias plugin = 1;
+  bool should_float = 2;
+  bool move_to_focused_tab = 3;
+  bool should_open_in_place = 4;
+  bool skip_cache = 5;
+}
+
+message LaunchPluginAction {
+  RunPluginOrAlias plugin = 1;
+  bool should_float = 2;
+  bool should_open_in_place = 3;
+  bool skip_cache = 4;
+  optional string cwd = 5;
+}
+
+message MouseEventAction {
+  MouseEvent event = 1;
+}
+
+message SkipConfirmAction {
+  Action action = 1;
+}
+
+message SearchInputAction {
+  repeated uint32 input = 1;
+}
+
+message SearchAction {
+  SearchDirection direction = 1;
+}
+
+message SearchToggleOptionAction {
+  SearchOption option = 1;
+}
+
+message NewTiledPluginPaneAction {
+  RunPluginOrAlias plugin = 1;
+  optional string pane_name = 2;
+  bool skip_cache = 3;
+  optional string cwd = 4;
+}
+
+message NewFloatingPluginPaneAction {
+  RunPluginOrAlias plugin = 1;
+  optional string pane_name = 2;
+  bool skip_cache = 3;
+  optional string cwd = 4;
+  optional FloatingPaneCoordinates coordinates = 5;
+}
+
+message NewInPlacePluginPaneAction {
+  RunPluginOrAlias plugin = 1;
+  optional string pane_name = 2;
+  bool skip_cache = 3;
+}
+
+message StartOrReloadPluginAction {
+  RunPluginOrAlias plugin = 1;
+}
+
+message CloseTerminalPaneAction {
+  uint32 pane_id = 1;
+}
+
+message ClosePluginPaneAction {
+  uint32 pane_id = 1;
+}
+
+message FocusTerminalPaneWithIdAction {
+  uint32 pane_id = 1;
+  bool should_float_if_hidden = 2;
+}
+
+message FocusPluginPaneWithIdAction {
+  uint32 pane_id = 1;
+  bool should_float_if_hidden = 2;
+}
+
+message RenameTerminalPaneAction {
+  uint32 pane_id = 1;
+  repeated uint32 name = 2;
+}
+
+message RenamePluginPaneAction {
+  uint32 pane_id = 1;
+  repeated uint32 name = 2;
+}
+
+message RenameTabAction {
+  uint32 tab_index = 1;
+  repeated uint32 name = 2;
+}
+
+message RenameSessionAction {
+  string name = 1;
+}
+
+message CliPipeAction {
+  string pipe_id = 1;
+  optional string name = 2;
+  optional string payload = 3;
+  map<string, string> args = 4;
+  optional string plugin = 5;
+  map<string, string> configuration = 6;
+  bool launch_new = 7;
+  bool skip_cache = 8;
+  optional bool floating = 9;
+  optional bool in_place = 10;
+  optional string cwd = 11;
+  optional string pane_title = 12;
+}
+
+message KeybindPipeAction {
+  optional string name = 1;
+  optional string payload = 2;
+  map<string, string> args = 3;
+  optional string plugin = 4;
+  optional uint32 plugin_id = 5;
+  map<string, string> configuration = 6;
+  bool launch_new = 7;
+  bool skip_cache = 8;
+  optional bool floating = 9;
+  optional bool in_place = 10;
+  optional string cwd = 11;
+  optional string pane_title = 12;
+}
+
+message StackPanesAction {
+  repeated PaneId pane_ids = 1;
+}
+
+message ChangeFloatingPaneCoordinatesAction {
+  PaneId pane_id = 1;
+  FloatingPaneCoordinates coordinates = 2;
+}
+
+// Supporting enums and messages
+enum InputMode {
+  INPUT_MODE_UNSPECIFIED = 0;
+  INPUT_MODE_NORMAL = 1;
+  INPUT_MODE_LOCKED = 2;
+  INPUT_MODE_RESIZE = 3;
+  INPUT_MODE_PANE = 4;
+  INPUT_MODE_TAB = 5;
+  INPUT_MODE_SCROLL = 6;
+  INPUT_MODE_ENTER_SEARCH = 7;
+  INPUT_MODE_SEARCH = 8;
+  INPUT_MODE_RENAME_TAB = 9;
+  INPUT_MODE_RENAME_PANE = 10;
+  INPUT_MODE_SESSION = 11;
+  INPUT_MODE_MOVE = 12;
+  INPUT_MODE_PROMPT = 13;
+  INPUT_MODE_TMUX = 14;
+}
+
+enum Direction {
+  DIRECTION_UNSPECIFIED = 0;
+  DIRECTION_LEFT = 1;
+  DIRECTION_RIGHT = 2;
+  DIRECTION_UP = 3;
+  DIRECTION_DOWN = 4;
+}
+
+enum ResizeType {
+  RESIZE_TYPE_UNSPECIFIED = 0;
+  RESIZE_TYPE_INCREASE = 1;
+  RESIZE_TYPE_DECREASE = 2;
+}
+
+message Position {
+  int32 line = 1;    // Changed from uint32 to int32 to support negative line numbers
+  uint64 column = 2; // Changed from uint32 to uint64 to support large column numbers
+}
+
+message CliAssets {
+  optional string config_file_path = 1;
+  optional string config_dir = 2;
+  bool should_ignore_config = 3;
+  optional Options configuration_options = 4;
+  optional LayoutInfo layout = 5;
+  Size terminal_window_size = 6;
+  optional string data_dir = 7;
+  bool is_debug = 8;
+  optional uint32 max_panes = 9;
+  bool force_run_layout_commands = 10;
+  optional string cwd = 11;
+}
+
+message LayoutInfo {
+  oneof layout_type {
+    string file_path = 1;
+    string builtin_name = 2;
+    string url = 3;
+    string stringified = 4;
+  }
+}
+
+message ConnectToSession {
+  optional string name = 1;
+  optional uint32 tab_position = 2;
+  optional PaneIdWithPlugin pane_id = 3;
+  optional LayoutInfo layout = 4;
+  optional string cwd = 5;
+}
+
+message PaneIdWithPlugin {
+  uint32 pane_id = 1;
+  bool is_plugin = 2;
+}
+
+enum ExitReason {
+  EXIT_REASON_UNSPECIFIED = 0;
+  EXIT_REASON_NORMAL = 1;
+  EXIT_REASON_NORMAL_DETACHED = 2;
+  EXIT_REASON_FORCE_DETACHED = 3;
+  EXIT_REASON_CANNOT_ATTACH = 4;
+  EXIT_REASON_DISCONNECT = 5;
+  EXIT_REASON_WEB_CLIENTS_FORBIDDEN = 6;
+  EXIT_REASON_ERROR = 7;
+}
+
+// Additional supporting types for Action messages
+
+message OpenFilePayload {
+  string file_to_open = 1;
+  optional uint32 line_number = 2;
+  optional string cwd = 3;                             // Renumbered after removing column_number
+  optional OriginatingPlugin originating_plugin = 4;   // Added missing originating_plugin field
+}
+
+message FloatingPaneCoordinates {
+  optional FloatingCoordinate x = 1;
+  optional FloatingCoordinate y = 2;
+  optional FloatingCoordinate width = 3;
+  optional FloatingCoordinate height = 4;
+  optional bool pinned = 5;  // Added missing pinned field
+}
+
+message FloatingCoordinate {
+  oneof coordinate_type {
+    uint32 fixed = 1;
+    float percent = 2;
+  }
+}
+
+message RunCommandAction {
+  string command = 1;
+  repeated string args = 2;
+  optional string cwd = 3;
+  optional Direction direction = 4;                    // Added missing direction field
+  bool hold_on_close = 5;                              // Renumbered
+  bool hold_on_start = 6;                              // Renumbered
+  optional OriginatingPlugin originating_plugin = 7;   // Added missing originating_plugin field
+  bool use_terminal_title = 8;                         // Added missing use_terminal_title field
+}
+
+message TiledPaneLayout {
+  SplitDirection children_split_direction = 1;
+  optional string name = 2;
+  repeated TiledPaneLayout children = 3;
+  optional SplitSize split_size = 4;
+  optional Run run = 5;
+  bool borderless = 6;
+  optional string focus = 7;
+  bool exclude_from_sync = 8;
+  bool run_instructions_to_ignore = 9;
+}
+
+message FloatingPaneLayout {
+  optional string name = 1;
+  optional PercentOrFixed height = 2;
+  optional PercentOrFixed width = 3;
+  optional PercentOrFixed x = 4;
+  optional PercentOrFixed y = 5;
+  optional Run run = 6;
+  bool borderless = 7;
+  optional string focus = 8;
+  bool already_running = 9;
+}
+
+message SwapTiledLayout {
+  repeated LayoutConstraintTiledPair constraint_map = 1;
+  optional string name = 2;
+}
+
+message SwapFloatingLayout {
+  repeated LayoutConstraintFloatingPair constraint_map = 1;
+  optional string name = 2;
+}
+
+message LayoutConstraintTiledPair {
+  LayoutConstraintWithValue constraint = 1;
+  TiledPaneLayout layout = 2;
+}
+
+message LayoutConstraintFloatingPair {
+  LayoutConstraintWithValue constraint = 1;
+  repeated FloatingPaneLayout layouts = 2;
+}
+
+
+message RunPluginOrAlias {
+  oneof plugin_type {
+    RunPlugin plugin = 1;
+    string alias = 2;
+  }
+}
+
+message RunPlugin {
+  bool _allow_exec_host_cmd = 1;
+  RunPluginLocationData location = 2;
+  PluginUserConfiguration configuration = 3;
+  optional string initial_cwd = 4;
+}
+
+message MouseEvent {
+  MouseEventType event_type = 1;
+  bool left = 2;
+  bool right = 3;
+  bool middle = 4;
+  bool wheel_up = 5;
+  bool wheel_down = 6;
+  bool shift = 7;
+  bool alt = 8;
+  bool ctrl = 9;
+  Position position = 10;
+}
+
+enum MouseEventType {
+  MOUSE_EVENT_TYPE_UNSPECIFIED = 0;
+  MOUSE_EVENT_TYPE_PRESS = 1;
+  MOUSE_EVENT_TYPE_RELEASE = 2;
+  MOUSE_EVENT_TYPE_MOTION = 3;
+}
+
+// Note: Old MousePressEvent, MouseReleaseEvent, MouseHoldEvent, MouseScrollEvent,
+// MouseButton, and ScrollDirection removed - replaced with unified MouseEvent structure
+
+enum SearchDirection {
+  SEARCH_DIRECTION_UNSPECIFIED = 0;
+  SEARCH_DIRECTION_DOWN = 1;   // Changed from FORWARD to match Rust enum
+  SEARCH_DIRECTION_UP = 2;     // Changed from BACKWARD to match Rust enum
+}
+
+enum SearchOption {
+  SEARCH_OPTION_UNSPECIFIED = 0;
+  SEARCH_OPTION_CASE_SENSITIVITY = 1;  // Changed from CASE_SENSITIVE to match Rust enum
+  SEARCH_OPTION_WHOLE_WORD = 2;        // Changed from WHOLE_WORDS to match Rust enum
+  SEARCH_OPTION_WRAP = 3;              // Unchanged - already matches
+}
+
+message PaneId {
+  oneof pane_type {
+    uint32 terminal = 1;
+    uint32 plugin = 2;
+  }
+}
+
+// Additional missing supporting types
+
+enum SplitDirection {
+  SPLIT_DIRECTION_UNSPECIFIED = 0;
+  SPLIT_DIRECTION_HORIZONTAL = 1;
+  SPLIT_DIRECTION_VERTICAL = 2;
+}
+
+message SplitSize {
+  oneof size_type {
+    uint32 percent = 1; // 1 to 100
+    uint32 fixed = 2;   // absolute number
+  }
+}
+
+message PercentOrFixed {
+  oneof size_type {
+    uint32 percent = 1; // 1 to 100
+    uint32 fixed = 2;   // absolute number
+  }
+}
+
+enum LayoutConstraint {
+  LAYOUT_CONSTRAINT_UNSPECIFIED = 0;
+  LAYOUT_CONSTRAINT_MAX_PANES = 1;
+  LAYOUT_CONSTRAINT_MIN_PANES = 2;
+  LAYOUT_CONSTRAINT_EXACT_PANES = 3;
+  LAYOUT_CONSTRAINT_NO_CONSTRAINT = 4;
+}
+
+message LayoutConstraintWithValue {
+  LayoutConstraint constraint_type = 1;
+  optional uint32 value = 2; // Only used for MAX_PANES, MIN_PANES, EXACT_PANES
+}
+
+message PluginUserConfiguration {
+  map<string, string> configuration = 1;
+}
+
+enum RunPluginLocation {
+  RUN_PLUGIN_LOCATION_UNSPECIFIED = 0;
+  RUN_PLUGIN_LOCATION_FILE = 1;
+  RUN_PLUGIN_LOCATION_ZELLIJ = 2;
+  RUN_PLUGIN_LOCATION_REMOTE = 3;
+}
+
+message RunPluginLocationData {
+  RunPluginLocation location_type = 1;
+  oneof location_data {
+    string file_path = 2;      // For FILE
+    PluginTag zellij_tag = 3;  // For ZELLIJ
+    string remote_url = 4;     // For REMOTE
+  }
+}
+
+message PluginTag {
+  string tag = 1;
+}
+
+message OriginatingPlugin {
+  uint32 plugin_id = 1;
+  uint32 client_id = 2;  // ClientId is u16, but using uint32 for protobuf compatibility
+  map<string, string> context = 3;  // Context is BTreeMap<String, String>
+}
+
+message Run {
+  oneof run_type {
+    RunCommandAction command = 1;
+    RunPluginOrAlias plugin = 2;
+    RunEditFileAction edit_file = 3;
+    string cwd = 4;
+  }
+}
+
+message RunEditFileAction {
+  string file_path = 1;
+  optional uint32 line_number = 2;
+  optional string cwd = 3;
+}
+
+// Config Options message - comprehensive configuration structure
+
+message Options {
+  optional bool simplified_ui = 1;
+  optional string theme = 2;
+  optional InputMode default_mode = 3;
+  optional string default_shell = 4;
+  optional string default_cwd = 5;
+  optional string default_layout = 6;
+  optional string layout_dir = 7;
+  optional string theme_dir = 8;
+  optional bool mouse_mode = 9;
+  optional bool pane_frames = 10;
+  optional bool mirror_session = 11;
+  optional OnForceClose on_force_close = 12;
+  optional uint32 scroll_buffer_size = 13;
+  optional string copy_command = 14;
+  optional Clipboard copy_clipboard = 15;
+  optional bool copy_on_select = 16;
+  optional string scrollback_editor = 17;
+  optional string session_name = 18;
+  optional bool attach_to_session = 19;
+  optional bool auto_layout = 20;
+  optional bool session_serialization = 21;
+  optional bool serialize_pane_viewport = 22;
+  optional uint32 scrollback_lines_to_serialize = 23;
+  optional bool styled_underlines = 24;
+  optional uint64 serialization_interval = 25;
+  optional bool disable_session_metadata = 26;
+  optional bool support_kitty_keyboard_protocol = 27;
+  optional bool web_server = 28;
+  optional WebSharing web_sharing = 29;
+  optional bool stacked_resize = 30;
+  optional bool show_startup_tips = 31;
+  optional bool show_release_notes = 32;
+  optional bool advanced_mouse_actions = 33;
+  optional string web_server_ip = 34;
+  optional uint32 web_server_port = 35;
+  optional string web_server_cert = 36;
+  optional string web_server_key = 37;
+  optional bool enforce_https_for_localhost = 38;
+  optional string post_command_discovery_hook = 39;
+}
+
+enum OnForceClose {
+  ON_FORCE_CLOSE_UNSPECIFIED = 0;
+  ON_FORCE_CLOSE_QUIT = 1;
+  ON_FORCE_CLOSE_DETACH = 2;
+}
+
+enum Clipboard {
+  CLIPBOARD_UNSPECIFIED = 0;
+  CLIPBOARD_SYSTEM = 1;
+  CLIPBOARD_PRIMARY = 2;
+}
+
+enum StackDirection {
+  STACK_DIRECTION_UNSPECIFIED = 0;
+  STACK_DIRECTION_HORIZONTAL = 1;
+  STACK_DIRECTION_VERTICAL = 2;
+}
+
+enum WebSharing {
+  WEB_SHARING_UNSPECIFIED = 0;
+  WEB_SHARING_ON = 1;
+  WEB_SHARING_OFF = 2;
+  WEB_SHARING_DISABLED = 3;
+}
