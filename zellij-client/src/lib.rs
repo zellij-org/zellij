@@ -516,9 +516,11 @@ pub fn start_client(
         .spawn({
             let os_input = os_input.clone();
             let mut should_break = false;
+            let mut consecutive_unknown_messages_received = 0;
             move || loop {
                 match os_input.recv_from_server() {
                     Some((instruction, err_ctx)) => {
+                        consecutive_unknown_messages_received = 0;
                         err_ctx.update_thread_ctx();
                         if let ServerToClientMsg::Exit { .. } = instruction {
                             should_break = true;
@@ -529,16 +531,19 @@ pub fn start_client(
                         }
                     },
                     None => {
+                        consecutive_unknown_messages_received += 1;
                         send_client_instructions
                             .send(ClientInstruction::UnblockInputThread)
                             .unwrap();
-                        log::error!("Received empty message from server");
+                        log::error!("Received unknown message from server");
                         send_client_instructions
                             .send(ClientInstruction::Error(
-                                "Received empty message from server".to_string(),
+                                "Received empty unknown from server".to_string(),
                             ))
                             .unwrap();
-                        break;
+                        if consecutive_unknown_messages_received >= 1000 {
+                            break;
+                        }
                     },
                 }
             }
