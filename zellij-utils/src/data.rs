@@ -2084,7 +2084,7 @@ impl MessageToPlugin {
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ConnectToSession {
     pub name: Option<String>,
     pub tab_position: Option<usize>,

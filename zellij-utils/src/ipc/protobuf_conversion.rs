@@ -227,8 +227,13 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
                 server_to_client_msg::Message::UnblockInputThread(UnblockInputThreadMsg {})
             },
             ServerToClientMsg::Exit { exit_reason } => {
+                let (proto_exit_reason, payload) = match exit_reason {
+                    ExitReason::Error(ref msg) => (ProtoExitReason::Error, Some(msg.clone())),
+                    other => (ProtoExitReason::from(other), None),
+                };
                 server_to_client_msg::Message::Exit(ExitMsg {
-                    exit_reason: ProtoExitReason::from(exit_reason) as i32,
+                    exit_reason: proto_exit_reason as i32,
+                    payload,
                 })
             },
             ServerToClientMsg::Connected => {
@@ -297,11 +302,18 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
                 Ok(ServerToClientMsg::UnblockInputThread)
             },
             Some(server_to_client_msg::Message::Exit(exit)) => {
-                Ok(ServerToClientMsg::Exit {
-                    exit_reason: ProtoExitReason::from_i32(exit.exit_reason)
-                        .ok_or_else(|| anyhow!("Invalid exit_reason"))?
-                        .try_into()?,
-                })
+                let proto_exit_reason = ProtoExitReason::from_i32(exit.exit_reason)
+                    .ok_or_else(|| anyhow!("Invalid exit_reason"))?;
+
+                let exit_reason = match proto_exit_reason {
+                    ProtoExitReason::Error => {
+                        let error_msg = exit.payload.unwrap_or_else(|| "Protobuf error".to_string());
+                        ExitReason::Error(error_msg)
+                    },
+                    other => other.try_into()?,
+                };
+
+                Ok(ServerToClientMsg::Exit { exit_reason })
             },
             Some(server_to_client_msg::Message::Connected(_)) => {
                 Ok(ServerToClientMsg::Connected)
@@ -1373,7 +1385,7 @@ impl From<ExitReason> for ProtoExitReason {
             ExitReason::CannotAttach => ProtoExitReason::CannotAttach,
             ExitReason::Disconnect => ProtoExitReason::Disconnect,
             ExitReason::WebClientsForbidden => ProtoExitReason::WebClientsForbidden,
-            ExitReason::Error(_) => ProtoExitReason::Error,
+            ExitReason::Error(_msg) => ProtoExitReason::Error,
         }
     }
 }
@@ -1826,8 +1838,12 @@ impl From<crate::input::layout::TiledPaneLayout> for crate::client_server_contra
             run: layout.run.map(|r| r.into()),
             borderless: layout.borderless,
             focus: layout.focus.map(|f| f.to_string()),
-            exclude_from_sync: layout.exclude_from_sync.unwrap_or(false),
-            run_instructions_to_ignore: false, // simplified for now
+            exclude_from_sync: layout.exclude_from_sync,
+            children_are_stacked: layout.children_are_stacked,
+            external_children_index: layout.external_children_index.map(|l| l as u32),
+            is_expanded_in_stack: layout.is_expanded_in_stack,
+            hide_floating_panes: layout.hide_floating_panes,
+            pane_initial_contents: layout.pane_initial_contents,
         }
     }
 }
@@ -1840,10 +1856,12 @@ impl From<crate::input::layout::FloatingPaneLayout> for crate::client_server_con
             width: layout.width.map(|w| w.into()),
             x: layout.x.map(|x| x.into()),
             y: layout.y.map(|y| y.into()),
+            pinned: layout.pinned,
             run: layout.run.map(|r| r.into()),
-            borderless: false, // Not in original struct
-            focus: layout.focus.map(|f| f.to_string()),
+            focus: layout.focus,
             already_running: layout.already_running,
+            pane_initial_contents: layout.pane_initial_contents,
+            logical_position: layout.logical_position.map(|l| l as u32),
         }
     }
 }
@@ -1925,7 +1943,19 @@ impl From<crate::input::layout::RunPlugin> for crate::client_server_contract::cl
             allow_exec_host_cmd: plugin._allow_exec_host_cmd,
             location: Some(plugin.location.into()),
             configuration: Some(plugin.configuration.into()),
-            initial_cwd: plugin.initial_cwd.map(|p| p.to_string_lossy().to_string()),
+            initial_cwd: plugin.initial_cwd.map(|p| p.display().to_string()),
+        }
+    }
+}
+
+// PluginAlias conversion
+impl From<crate::input::layout::PluginAlias> for crate::client_server_contract::client_server_contract::PluginAlias {
+    fn from(plugin: crate::input::layout::PluginAlias) -> Self {
+        Self {
+            name: plugin.name,
+            configuration: plugin.configuration.map(|c| c.into()),
+            initial_cwd: plugin.initial_cwd.map(|i| i.display().to_string()),
+            run_plugin: plugin.run_plugin.map(|r| r.into()),
         }
     }
 }
@@ -1965,7 +1995,7 @@ impl From<crate::input::layout::RunPluginOrAlias> for crate::client_server_contr
                 plugin_type: Some(PluginType::Plugin(run_plugin.into())),
             },
             crate::input::layout::RunPluginOrAlias::Alias(alias) => Self {
-                plugin_type: Some(PluginType::Alias(alias.name)),
+                plugin_type: Some(PluginType::Alias(alias.into())),
             },
         }
     }
@@ -2090,12 +2120,12 @@ impl TryFrom<crate::client_server_contract::client_server_contract::TiledPaneLay
         let children: Result<Vec<_>> = layout.children.into_iter().map(|c| c.try_into()).collect();
         let run = layout.run.map(|r| r.try_into()).transpose()?;
 
-        let split_size = layout.split_size.map(|size| {
+        let split_size = layout.split_size.and_then(|size| {
             use crate::client_server_contract::client_server_contract::split_size::SizeType;
             match size.size_type {
-                Some(SizeType::Percent(percent)) => SplitSize::Percent(percent as usize),
-                Some(SizeType::Fixed(fixed)) => SplitSize::Fixed(fixed as usize),
-                None => SplitSize::Percent(50), // default
+                Some(SizeType::Percent(percent)) => Some(SplitSize::Percent(percent as usize)),
+                Some(SizeType::Fixed(fixed)) => Some(SplitSize::Fixed(fixed as usize)),
+                None => None,
             }
         });
 
@@ -2107,13 +2137,13 @@ impl TryFrom<crate::client_server_contract::client_server_contract::TiledPaneLay
             run,
             borderless: layout.borderless,
             focus: layout.focus.map(|f| f == "true"), // Convert string to bool
-            external_children_index: None, // not available in protobuf
-            children_are_stacked: false, // not available in protobuf
-            is_expanded_in_stack: false, // not available in protobuf
-            exclude_from_sync: Some(layout.exclude_from_sync),
-            run_instructions_to_ignore: vec![], // not a vector field in protobuf, it's a bool
-            hide_floating_panes: false, // not available in protobuf
-            pane_initial_contents: None, // not available in protobuf
+            external_children_index: layout.external_children_index.map(|l| l as usize),
+            children_are_stacked: layout.children_are_stacked,
+            is_expanded_in_stack: layout.is_expanded_in_stack,
+            exclude_from_sync: layout.exclude_from_sync,
+            run_instructions_to_ignore: vec![], // not represented in protobuf
+            hide_floating_panes: layout.hide_floating_panes,
+            pane_initial_contents: layout.pane_initial_contents,
         })
     }
 }
@@ -2135,12 +2165,12 @@ impl TryFrom<crate::client_server_contract::client_server_contract::FloatingPane
             width,
             x,
             y,
-            pinned: None, // protobuf doesn't have this field
+            pinned: layout.pinned,
             run,
-            focus: layout.focus.map(|f| f == "true"), // Convert string to bool
+            focus: layout.focus,
             already_running: layout.already_running,
-            pane_initial_contents: None, // protobuf doesn't have this field
-            logical_position: None, // protobuf doesn't have this field
+            pane_initial_contents: layout.pane_initial_contents,
+            logical_position: layout.logical_position.map(|p| p as usize),
         })
     }
 }
@@ -2228,6 +2258,23 @@ impl TryFrom<crate::client_server_contract::client_server_contract::RunPlugin> f
     }
 }
 
+// PluginAlias reverse conversion
+impl TryFrom<crate::client_server_contract::client_server_contract::PluginAlias> for crate::input::layout::PluginAlias {
+    type Error = anyhow::Error;
+
+    fn try_from(plugin_alias: crate::client_server_contract::client_server_contract::PluginAlias) -> Result<Self> {
+        let run_plugin = plugin_alias.run_plugin.and_then(|r| r.try_into().ok());
+        let configuration = plugin_alias.configuration.and_then(|c| c.try_into().ok());
+        let initial_cwd = plugin_alias.initial_cwd.map(std::path::PathBuf::from);
+        Ok(crate::input::layout::PluginAlias {
+            name: plugin_alias.name,
+            configuration,
+            initial_cwd,
+            run_plugin,
+        })
+    }
+}
+
 // RunPluginLocation reverse conversion
 impl TryFrom<crate::client_server_contract::client_server_contract::RunPluginLocationData> for crate::input::layout::RunPluginLocation {
     type Error = anyhow::Error;
@@ -2278,13 +2325,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::RunPluginOrA
             PluginType::Plugin(run_plugin) => {
                 Ok(crate::input::layout::RunPluginOrAlias::RunPlugin(run_plugin.try_into()?))
             },
-            PluginType::Alias(alias_name) => {
-                Ok(crate::input::layout::RunPluginOrAlias::Alias(crate::input::layout::PluginAlias {
-                    name: alias_name,
-                    configuration: None,
-                    initial_cwd: None,
-                    run_plugin: None,
-                }))
+            PluginType::Alias(plugin_alias) => {
+                Ok(crate::input::layout::RunPluginOrAlias::Alias(plugin_alias.try_into()?))
             },
         }
     }

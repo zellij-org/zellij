@@ -664,8 +664,13 @@ message TiledPaneLayout {
   optional Run run = 5;
   bool borderless = 6;
   optional string focus = 7;
-  bool exclude_from_sync = 8;
-  bool run_instructions_to_ignore = 9;
+  optional bool exclude_from_sync = 8;
+  bool children_are_stacked = 9;
+  optional uint32 external_children_index = 10;
+  bool is_expanded_in_stack = 11;
+  bool hide_floating_panes = 12;
+  optional string pane_initial_contents = 13;
+  // NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
 }
 
 message FloatingPaneLayout {
@@ -674,10 +679,12 @@ message FloatingPaneLayout {
   optional PercentOrFixed width = 3;
   optional PercentOrFixed x = 4;
   optional PercentOrFixed y = 5;
-  optional Run run = 6;
-  bool borderless = 7;
-  optional string focus = 8;
+  optional bool pinned = 6;
+  optional Run run = 7;
+  optional bool focus = 8;
   bool already_running = 9;
+  optional string pane_initial_contents = 10;
+  optional uint32 logical_position = 11;
 }
 
 message SwapTiledLayout {
@@ -704,7 +711,7 @@ message LayoutConstraintFloatingPair {
 message RunPluginOrAlias {
   oneof plugin_type {
     RunPlugin plugin = 1;
-    string alias = 2;
+    PluginAlias alias = 2;
   }
 }
 
@@ -713,6 +720,13 @@ message RunPlugin {
   RunPluginLocationData location = 2;
   PluginUserConfiguration configuration = 3;
   optional string initial_cwd = 4;
+}
+
+message PluginAlias {
+  string name = 1;
+  optional PluginUserConfiguration configuration = 2;
+  optional string initial_cwd = 3;
+  optional RunPlugin run_plugin = 4;
 }
 
 message MouseEvent {

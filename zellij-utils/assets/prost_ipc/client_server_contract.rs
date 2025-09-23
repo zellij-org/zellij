@@ -1080,10 +1080,19 @@ pub struct TiledPaneLayout {
     pub borderless: bool,
     #[prost(string, optional, tag="7")]
     pub focus: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(bool, tag="8")]
-    pub exclude_from_sync: bool,
+    #[prost(bool, optional, tag="8")]
+    pub exclude_from_sync: ::core::option::Option<bool>,
     #[prost(bool, tag="9")]
-    pub run_instructions_to_ignore: bool,
+    pub children_are_stacked: bool,
+    #[prost(uint32, optional, tag="10")]
+    pub external_children_index: ::core::option::Option<u32>,
+    #[prost(bool, tag="11")]
+    pub is_expanded_in_stack: bool,
+    #[prost(bool, tag="12")]
+    pub hide_floating_panes: bool,
+    /// NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
+    #[prost(string, optional, tag="13")]
+    pub pane_initial_contents: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1098,14 +1107,18 @@ pub struct FloatingPaneLayout {
     pub x: ::core::option::Option<PercentOrFixed>,
     #[prost(message, optional, tag="5")]
     pub y: ::core::option::Option<PercentOrFixed>,
-    #[prost(message, optional, tag="6")]
+    #[prost(bool, optional, tag="6")]
+    pub pinned: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="7")]
     pub run: ::core::option::Option<Run>,
-    #[prost(bool, tag="7")]
-    pub borderless: bool,
-    #[prost(string, optional, tag="8")]
-    pub focus: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="8")]
+    pub focus: ::core::option::Option<bool>,
     #[prost(bool, tag="9")]
     pub already_running: bool,
+    #[prost(string, optional, tag="10")]
+    pub pane_initial_contents: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint32, optional, tag="11")]
+    pub logical_position: ::core::option::Option<u32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1152,8 +1165,8 @@ pub mod run_plugin_or_alias {
     pub enum PluginType {
         #[prost(message, tag="1")]
         Plugin(super::RunPlugin),
-        #[prost(string, tag="2")]
-        Alias(::prost::alloc::string::String),
+        #[prost(message, tag="2")]
+        Alias(super::PluginAlias),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1167,6 +1180,18 @@ pub struct RunPlugin {
     pub configuration: ::core::option::Option<PluginUserConfiguration>,
     #[prost(string, optional, tag="4")]
     pub initial_cwd: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginAlias {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub configuration: ::core::option::Option<PluginUserConfiguration>,
+    #[prost(string, optional, tag="3")]
+    pub initial_cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag="4")]
+    pub run_plugin: ::core::option::Option<RunPlugin>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2194,6 +2219,8 @@ pub struct UnblockInputThreadMsg {
 pub struct ExitMsg {
     #[prost(enumeration="ExitReason", tag="1")]
     pub exit_reason: i32,
+    #[prost(string, optional, tag="2")]
+    pub payload: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Empty message
 #[allow(clippy::derive_partial_eq_without_eq)]

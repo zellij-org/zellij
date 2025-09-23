@@ -29,6 +29,9 @@ use crate::client_server_contract::client_server_contract::{
 mod protobuf_conversion;
 mod enum_conversions;
 
+#[cfg(test)]
+mod tests;
+
 type SessionId = u64;
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Hash)]
@@ -85,7 +88,7 @@ impl PixelDimensions {
 
 // Types of messages sent from the client to the server
 #[allow(clippy::large_enum_variant)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ClientToServerMsg {
     DetachSession {
         client_ids: Vec<ClientId>,
@@ -137,7 +140,7 @@ pub enum ClientToServerMsg {
 }
 
 // Types of messages sent from the server to the client
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ServerToClientMsg {
     Render {
         content: String,
@@ -171,7 +174,7 @@ pub enum ServerToClientMsg {
     ConfigFileUpdated,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ExitReason {
     Normal,
     NormalDetached,
