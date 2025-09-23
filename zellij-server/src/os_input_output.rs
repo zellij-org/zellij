@@ -387,9 +387,9 @@ impl ClientSender {
         std::thread::spawn(move || {
             let err_context = || format!("failed to send message to client {client_id}");
             for msg in client_buffer_receiver.iter() {
-                sender.send(msg).with_context(err_context).non_fatal();
+                sender.send_server_msg(msg).with_context(err_context).non_fatal();
             }
-            let _ = sender.send(ServerToClientMsg::Exit { exit_reason: ExitReason::Disconnect });
+            let _ = sender.send_server_msg(ServerToClientMsg::Exit { exit_reason: ExitReason::Disconnect });
         });
         ClientSender {
             client_id,

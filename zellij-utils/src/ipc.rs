@@ -16,9 +16,6 @@ use std::{
     os::unix::io::{AsRawFd, FromRawFd},
 };
 
-// Toggle for development - set to true to use protobuf serialization
-const USE_PROTOBUF: bool = false;
-
 // Protobuf imports
 use prost::Message;
 use crate::client_server_contract::client_server_contract::{
@@ -246,20 +243,26 @@ impl<T: Serialize> IpcSenderWithContext<T> {
         }
     }
 
-    /// Sends an event, along with the current [`ErrorContext`], on this [`IpcSenderWithContext`]'s socket.
-    pub fn send(&mut self, msg: T) -> Result<()> {
+    pub fn send_client_msg(&mut self, msg: ClientToServerMsg) -> Result<()> {
         let err_ctx = get_current_ctx();
-
-        // Use MessagePack for now - protobuf sending handled by separate methods
-        if rmp_serde::encode::write(&mut self.sender, &(msg, err_ctx)).is_err() {
-            return Err(anyhow!("failed to send message to client"));
-        }
-
+        let proto_msg: ProtoClientToServerMsg = msg.into();
+        write_protobuf_message(&mut self.sender, &proto_msg)?;
         if let Err(e) = self.sender.flush() {
             log::error!("Failed to flush ipc sender: {}", e);
         }
         Ok(())
     }
+
+    pub fn send_server_msg(&mut self, msg: ServerToClientMsg) -> Result<()> {
+        let err_ctx = get_current_ctx();
+        let proto_msg: ProtoServerToClientMsg = msg.into();
+        write_protobuf_message(&mut self.sender, &proto_msg)?;
+        if let Err(e) = self.sender.flush() {
+            log::error!("Failed to flush ipc sender: {}", e);
+        }
+        Ok(())
+    }
+
 
     /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
     pub fn get_receiver<F>(&self) -> IpcReceiverWithContext<F>
@@ -272,6 +275,7 @@ impl<T: Serialize> IpcSenderWithContext<T> {
         IpcReceiverWithContext::new(socket)
     }
 }
+
 
 /// Receives messages on a stream socket, along with an [`ErrorContext`].
 pub struct IpcReceiverWithContext<T> {
@@ -291,15 +295,39 @@ where
         }
     }
 
-    /// Receives an event, along with the current [`ErrorContext`], on this [`IpcReceiverWithContext`]'s socket.
-    pub fn recv(&mut self) -> Option<(T, ErrorContext)> {
-        // Use MessagePack for now - protobuf receiving handled by separate methods
-        match rmp_serde::decode::from_read(&mut self.receiver) {
-            Ok(msg) => Some(msg),
-            Err(e) => {
-                warn!("Error in IpcReceiver.recv(): {:?}", e);
-                None
+    pub fn recv_client_msg(&mut self) -> Option<(ClientToServerMsg, ErrorContext)> {
+        match read_protobuf_message::<ProtoClientToServerMsg>(&mut self.receiver) {
+            Ok(proto_msg) => {
+                match proto_msg.try_into() {
+                    Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
+                    Err(e) => {
+                        warn!("Error converting protobuf to ClientToServerMsg: {:?}", e);
+                        None
+                    }
+                }
             },
+            Err(e) => {
+                warn!("Error in protobuf IpcReceiver.recv_client_msg(): {:?}", e);
+                None
+            }
+        }
+    }
+
+    pub fn recv_server_msg(&mut self) -> Option<(ServerToClientMsg, ErrorContext)> {
+        match read_protobuf_message::<ProtoServerToClientMsg>(&mut self.receiver) {
+            Ok(proto_msg) => {
+                match proto_msg.try_into() {
+                    Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
+                    Err(e) => {
+                        warn!("Error converting protobuf to ServerToClientMsg: {:?}", e);
+                        None
+                    }
+                }
+            },
+            Err(e) => {
+                warn!("Error in protobuf IpcReceiver.recv_server_msg(): {:?}", e);
+                None
+            }
         }
     }
 
@@ -311,6 +339,7 @@ where
         IpcSenderWithContext::new(socket)
     }
 }
+
 
 // Protobuf wire format utilities
 fn read_protobuf_message<T: Message + Default>(

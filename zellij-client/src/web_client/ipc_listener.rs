@@ -1,8 +1,10 @@
 use axum_server::Handle;
 use tokio::io::AsyncReadExt;
+use zellij_utils::prost::Message;
 use tokio::net::{UnixListener, UnixStream};
 use zellij_utils::consts::WEBSERVER_SOCKET_PATH;
 use zellij_utils::web_server_commands::InstructionForWebServer;
+use zellij_utils::web_server_contract::web_server_contract::InstructionForWebServer as ProtoInstructionForWebServer;
 
 pub async fn create_webserver_receiver(
     id: &str,
@@ -22,10 +24,21 @@ pub async fn create_webserver_receiver(
 pub async fn receive_webserver_instruction(
     receiver: &mut UnixStream,
 ) -> std::io::Result<InstructionForWebServer> {
-    let mut buffer = Vec::new();
-    receiver.read_to_end(&mut buffer).await?;
-    let cursor = std::io::Cursor::new(buffer);
-    rmp_serde::decode::from_read(cursor)
+    // Read length prefix (4 bytes)
+    let mut len_bytes = [0u8; 4];
+    receiver.read_exact(&mut len_bytes).await?;
+    let len = u32::from_le_bytes(len_bytes) as usize;
+
+    // Read protobuf message
+    let mut buffer = vec![0u8; len];
+    receiver.read_exact(&mut buffer).await?;
+
+    // Decode protobuf message
+    let proto_instruction = ProtoInstructionForWebServer::decode(&buffer[..])
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+    // Convert to Rust type
+    proto_instruction.try_into()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
 }
 

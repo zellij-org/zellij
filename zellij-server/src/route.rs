@@ -958,7 +958,7 @@ pub(crate) fn route_thread_main(
     let err_context = || format!("failed to handle instruction for client {client_id}");
     let mut seen_cli_pipes = HashSet::new();
     'route_loop: loop {
-        match receiver.recv() {
+        match receiver.recv_client_msg() {
             Some((instruction, err_ctx)) => {
                 err_ctx.update_thread_ctx();
                 let mut handle_instruction = |instruction: ClientToServerMsg,

@@ -1,0 +1,15 @@
+syntax = "proto3";
+package web_server_contract;
+
+message InstructionForWebServer {
+  oneof instruction {
+    ShutdownWebServerMsg shutdown_web_server = 1;
+    // Future commands can be added here
+    // RestartWebServerMsg restart_web_server = 2;
+    // ReloadConfigMsg reload_config = 3;
+  }
+}
+
+message ShutdownWebServerMsg {
+  // Empty for now, but allows for future parameters like graceful timeout
+}

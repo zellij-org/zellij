@@ -224,7 +224,7 @@ impl ClientOsApi for ClientOsInputOutput {
     fn send_to_server(&self, msg: ClientToServerMsg) {
         match self.send_instructions_to_server.lock().unwrap().as_mut() {
             Some(sender) => {
-                let _ = sender.send(msg);
+                let _ = sender.send_client_msg(msg);
             },
             None => {
                 log::warn!("Server not ready, dropping message.");
@@ -237,7 +237,7 @@ impl ClientOsApi for ClientOsInputOutput {
             .unwrap()
             .as_mut()
             .unwrap()
-            .recv()
+            .recv_server_msg()
     }
     fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, quit_cb: Box<dyn Fn()>) {
         let mut sigwinch_cb_timestamp = time::Instant::now();
