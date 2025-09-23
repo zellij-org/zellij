@@ -536,12 +536,12 @@ pub fn start_client(
                             .send(ClientInstruction::UnblockInputThread)
                             .unwrap();
                         log::error!("Received unknown message from server");
-                        send_client_instructions
-                            .send(ClientInstruction::Error(
-                                "Received empty unknown from server".to_string(),
-                            ))
-                            .unwrap();
                         if consecutive_unknown_messages_received >= 1000 {
+                            send_client_instructions
+                                .send(ClientInstruction::Error(
+                                    "Received empty unknown from server".to_string(),
+                                ))
+                                .unwrap();
                             break;
                         }
                     },
