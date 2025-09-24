@@ -350,6 +350,10 @@ fn write_protobuf_message<T: Message>(writer: &mut impl Write, msg: &T) -> Resul
     let encoded = msg.encode_to_vec();
     let len = encoded.len() as u32;
 
+    // we measure the length of the message and transmit it first so that the reader will be able
+    // to first read exactly 4 bytes (representing this length) and then read that amount of bytes
+    // as the actual message - this is so that we are able to distinct whole messages over the wire
+    // stream
     writer.write_all(&len.to_le_bytes())?;
     writer.write_all(&encoded)?;
     Ok(())

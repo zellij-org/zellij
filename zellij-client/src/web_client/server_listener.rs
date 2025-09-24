@@ -202,7 +202,7 @@ pub fn zellij_server_listener(
                             },
                             None => {
                                 if unknown_message_count >= 1000 {
-                                    log::info!("Error: Received more than 1000 consecutive unknown server messages, disconnecting.");
+                                    log::error!("Error: Received more than 1000 consecutive unknown server messages, disconnecting.");
                                     // this probably means we're in an infinite loop, let's
                                     // disconnect so as not to cause 100% CPU
                                     break;
