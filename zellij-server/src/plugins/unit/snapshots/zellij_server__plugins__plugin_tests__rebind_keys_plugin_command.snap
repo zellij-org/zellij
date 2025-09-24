@@ -1,6 +1,5 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 8552
 expression: "format!(\"{:#?}\", rebind_event)"
 ---
 Some(
@@ -18,9 +17,9 @@ Some(
                     },
                 },
                 [
-                    SwitchToMode(
-                        Normal,
-                    ),
+                    SwitchToMode {
+                        input_mode: Normal,
+                    },
                 ],
             ),
             (
@@ -34,9 +33,9 @@ Some(
                     },
                 },
                 [
-                    SwitchToMode(
-                        Locked,
-                    ),
+                    SwitchToMode {
+                        input_mode: Locked,
+                    },
                 ],
             ),
             (
@@ -50,9 +49,9 @@ Some(
                     },
                 },
                 [
-                    SwitchToMode(
-                        Locked,
-                    ),
+                    SwitchToMode {
+                        input_mode: Locked,
+                    },
                 ],
             ),
             (
@@ -66,9 +65,9 @@ Some(
                     },
                 },
                 [
-                    SwitchToMode(
-                        Locked,
-                    ),
+                    SwitchToMode {
+                        input_mode: Locked,
+                    },
                 ],
             ),
             (
@@ -82,9 +81,9 @@ Some(
                     },
                 },
                 [
-                    SwitchToMode(
-                        Locked,
-                    ),
+                    SwitchToMode {
+                        input_mode: Locked,
+                    },
                 ],
             ),
             (
@@ -98,9 +97,9 @@ Some(
                     },
                 },
                 [
-                    SwitchToMode(
-                        Locked,
-                    ),
+                    SwitchToMode {
+                        input_mode: Locked,
+                    },
                 ],
             ),
             (
@@ -114,9 +113,9 @@ Some(
                     },
                 },
                 [
-                    SwitchToMode(
-                        Locked,
-                    ),
+                    SwitchToMode {
+                        input_mode: Locked,
+                    },
                 ],
             ),
             (
@@ -130,9 +129,9 @@ Some(
                     },
                 },
                 [
-                    SwitchToMode(
-                        Locked,
-                    ),
+                    SwitchToMode {
+                        input_mode: Locked,
+                    },
                 ],
             ),
         ],

@@ -5141,7 +5141,9 @@ pub(crate) fn screen_thread_main(
                     if let Some(os_input) = &mut screen.bus.os_input {
                         let _ = os_input.send_to_client(
                             client_id,
-                            ServerToClientMsg::LogError(vec![error_text.to_owned()]),
+                            ServerToClientMsg::LogError {
+                                lines: vec![error_text.to_owned()],
+                            },
                         );
                     }
                 } else if screen.resurrectable_sessions.contains_key(&name) {
@@ -5151,7 +5153,9 @@ pub(crate) fn screen_thread_main(
                     if let Some(os_input) = &mut screen.bus.os_input {
                         let _ = os_input.send_to_client(
                             client_id,
-                            ServerToClientMsg::LogError(vec![error_text.to_owned()]),
+                            ServerToClientMsg::LogError {
+                                lines: vec![error_text.to_owned()],
+                            },
                         );
                     }
                 } else {
@@ -5201,7 +5205,7 @@ pub(crate) fn screen_thread_main(
                         if let Some(os_input) = &mut screen.bus.os_input {
                             let _ = os_input.send_to_client(
                                 client_id,
-                                ServerToClientMsg::RenamedSession(name.clone()),
+                                ServerToClientMsg::RenamedSession { name: name.clone() },
                             );
                         }
                     }

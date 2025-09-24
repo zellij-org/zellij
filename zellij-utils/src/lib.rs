@@ -1,4 +1,5 @@
 pub mod cli;
+pub mod client_server_contract;
 pub mod consts;
 pub mod data;
 pub mod envs;
@@ -30,6 +31,8 @@ pub mod sessions;
 pub mod web_authentication_tokens;
 #[cfg(all(not(target_family = "wasm"), feature = "web_server_capability"))]
 pub mod web_server_commands;
+#[cfg(all(not(target_family = "wasm"), feature = "web_server_capability"))]
+pub mod web_server_contract;
 
 // TODO(hartan): Remove this re-export for the next minor release.
 pub use ::prost;

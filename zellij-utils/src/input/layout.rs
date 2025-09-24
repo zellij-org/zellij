@@ -237,7 +237,7 @@ pub enum Run {
     Plugin(RunPluginOrAlias),
     #[serde(rename = "command")]
     Command(RunCommand),
-    EditFile(PathBuf, Option<usize>, Option<PathBuf>), // TODO: merge this with TerminalAction::OpenFile
+    EditFile(PathBuf, Option<usize>, Option<PathBuf>),
     Cwd(PathBuf),
 }
 

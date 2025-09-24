@@ -49,7 +49,9 @@ pub fn one_line_ui(
 }
 
 fn to_base_mode(base_mode: InputMode) -> Action {
-    Action::SwitchToMode(base_mode)
+    Action::SwitchToMode {
+        input_mode: base_mode,
+    }
 }
 
 fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<KeyShortcut>> {
@@ -69,7 +71,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                 KeyAction::Unlock,
                 to_char(action_key(
                     locked_binds,
-                    &[Action::SwitchToMode(InputMode::Normal)],
+                    &[Action::SwitchToMode {
+                        input_mode: InputMode::Normal,
+                    }],
                 )),
             )],
         ),
@@ -81,7 +85,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Unlock,
                     to_char(action_key(
                         normal_binds,
-                        &[Action::SwitchToMode(InputMode::Locked)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Locked,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -89,7 +95,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Pane,
                     to_char(action_key(
                         normal_binds,
-                        &[Action::SwitchToMode(InputMode::Pane)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Pane,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -97,7 +105,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Tab,
                     to_char(action_key(
                         normal_binds,
-                        &[Action::SwitchToMode(InputMode::Tab)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Tab,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -105,7 +115,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Resize,
                     to_char(action_key(
                         normal_binds,
-                        &[Action::SwitchToMode(InputMode::Resize)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Resize,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -113,7 +125,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Move,
                     to_char(action_key(
                         normal_binds,
-                        &[Action::SwitchToMode(InputMode::Move)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Move,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -121,7 +135,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Search,
                     to_char(action_key(
                         normal_binds,
-                        &[Action::SwitchToMode(InputMode::Scroll)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Scroll,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -129,7 +145,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Session,
                     to_char(action_key(
                         normal_binds,
-                        &[Action::SwitchToMode(InputMode::Session)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Session,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -147,7 +165,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Unlock,
                     to_char(action_key(
                         pane_binds,
-                        &[Action::SwitchToMode(InputMode::Locked)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Locked,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -155,7 +175,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Pane,
                     to_char(action_key(
                         pane_binds,
-                        &[Action::SwitchToMode(InputMode::Normal)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Normal,
+                        }],
                     )),
                 ),
             ],
@@ -168,7 +190,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Unlock,
                     to_char(action_key(
                         tab_binds,
-                        &[Action::SwitchToMode(InputMode::Locked)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Locked,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -176,7 +200,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Tab,
                     to_char(action_key(
                         tab_binds,
-                        &[Action::SwitchToMode(InputMode::Normal)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Normal,
+                        }],
                     )),
                 ),
             ],
@@ -189,7 +215,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Unlock,
                     to_char(action_key(
                         resize_binds,
-                        &[Action::SwitchToMode(InputMode::Locked)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Locked,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -197,7 +225,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Resize,
                     to_char(action_key(
                         resize_binds,
-                        &[Action::SwitchToMode(InputMode::Normal)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Normal,
+                        }],
                     )),
                 ),
             ],
@@ -210,7 +240,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Unlock,
                     to_char(action_key(
                         move_binds,
-                        &[Action::SwitchToMode(InputMode::Locked)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Locked,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -218,7 +250,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Move,
                     to_char(action_key(
                         move_binds,
-                        &[Action::SwitchToMode(InputMode::Normal)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Normal,
+                        }],
                     )),
                 ),
             ],
@@ -231,7 +265,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Unlock,
                     to_char(action_key(
                         scroll_binds,
-                        &[Action::SwitchToMode(InputMode::Locked)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Locked,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -239,7 +275,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Search,
                     to_char(action_key(
                         scroll_binds,
-                        &[Action::SwitchToMode(InputMode::Normal)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Normal,
+                        }],
                     )),
                 ),
             ],
@@ -252,7 +290,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Unlock,
                     to_char(action_key(
                         session_binds,
-                        &[Action::SwitchToMode(InputMode::Locked)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Locked,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -260,7 +300,9 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Session,
                     to_char(action_key(
                         session_binds,
-                        &[Action::SwitchToMode(InputMode::Normal)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Normal,
+                        }],
                     )),
                 ),
             ],
@@ -285,7 +327,9 @@ fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                 KeyAction::Lock,
                 to_char(action_key(
                     locked_binds,
-                    &[Action::SwitchToMode(InputMode::Normal)],
+                    &[Action::SwitchToMode {
+                        input_mode: InputMode::Normal,
+                    }],
                 )),
             )],
         ),
@@ -297,7 +341,9 @@ fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Lock,
                     to_char(action_key(
                         normal_binds,
-                        &[Action::SwitchToMode(InputMode::Locked)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Locked,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -305,7 +351,9 @@ fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Pane,
                     to_char(action_key(
                         normal_binds,
-                        &[Action::SwitchToMode(InputMode::Pane)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Pane,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -313,7 +361,9 @@ fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Tab,
                     to_char(action_key(
                         normal_binds,
-                        &[Action::SwitchToMode(InputMode::Tab)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Tab,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -321,7 +371,9 @@ fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Resize,
                     to_char(action_key(
                         normal_binds,
-                        &[Action::SwitchToMode(InputMode::Resize)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Resize,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -329,7 +381,9 @@ fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Move,
                     to_char(action_key(
                         normal_binds,
-                        &[Action::SwitchToMode(InputMode::Move)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Move,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -337,7 +391,9 @@ fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Search,
                     to_char(action_key(
                         normal_binds,
-                        &[Action::SwitchToMode(InputMode::Scroll)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Scroll,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -345,7 +401,9 @@ fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                     KeyAction::Session,
                     to_char(action_key(
                         normal_binds,
-                        &[Action::SwitchToMode(InputMode::Session)],
+                        &[Action::SwitchToMode {
+                            input_mode: InputMode::Session,
+                        }],
                     )),
                 ),
                 KeyShortcut::new(
@@ -362,7 +420,9 @@ fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                 KeyAction::Pane,
                 to_char(action_key(
                     pane_binds,
-                    &[Action::SwitchToMode(InputMode::Normal)],
+                    &[Action::SwitchToMode {
+                        input_mode: InputMode::Normal,
+                    }],
                 )),
             )],
         ),
@@ -373,7 +433,9 @@ fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                 KeyAction::Tab,
                 to_char(action_key(
                     tab_binds,
-                    &[Action::SwitchToMode(InputMode::Normal)],
+                    &[Action::SwitchToMode {
+                        input_mode: InputMode::Normal,
+                    }],
                 )),
             )],
         ),
@@ -384,7 +446,9 @@ fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                 KeyAction::Resize,
                 to_char(action_key(
                     resize_binds,
-                    &[Action::SwitchToMode(InputMode::Normal)],
+                    &[Action::SwitchToMode {
+                        input_mode: InputMode::Normal,
+                    }],
                 )),
             )],
         ),
@@ -395,7 +459,9 @@ fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                 KeyAction::Move,
                 to_char(action_key(
                     move_binds,
-                    &[Action::SwitchToMode(InputMode::Normal)],
+                    &[Action::SwitchToMode {
+                        input_mode: InputMode::Normal,
+                    }],
                 )),
             )],
         ),
@@ -406,7 +472,9 @@ fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                 KeyAction::Search,
                 to_char(action_key(
                     scroll_binds,
-                    &[Action::SwitchToMode(InputMode::Normal)],
+                    &[Action::SwitchToMode {
+                        input_mode: InputMode::Normal,
+                    }],
                 )),
             )],
         ),
@@ -417,7 +485,9 @@ fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
                 KeyAction::Session,
                 to_char(action_key(
                     session_binds,
-                    &[Action::SwitchToMode(InputMode::Normal)],
+                    &[Action::SwitchToMode {
+                        input_mode: InputMode::Normal,
+                    }],
                 )),
             )],
         ),
@@ -699,7 +769,14 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
     let binds = &help.get_mode_keybinds();
     let should_show_focus_and_resize_shortcuts = should_show_focus_and_resize_shortcuts(tab_info);
     // New Pane
-    let new_pane_action_key = action_key(binds, &[Action::NewPane(None, None, false)]);
+    let new_pane_action_key = action_key(
+        binds,
+        &[Action::NewPane {
+            direction: None,
+            pane_name: None,
+            start_suppressed: false,
+        }],
+    );
     let mut new_pane_key_to_display = new_pane_action_key
         .iter()
         .find(|k| k.is_key_with_alt_modifier(BareKey::Char('n')))
@@ -712,12 +789,24 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
         };
 
     // Resize
-    let resize_increase_action_key = action_key(binds, &[Action::Resize(Resize::Increase, None)]);
+    let resize_increase_action_key = action_key(
+        binds,
+        &[Action::Resize {
+            resize: Resize::Increase,
+            direction: None,
+        }],
+    );
     let resize_increase_key = resize_increase_action_key
         .iter()
         .find(|k| k.bare_key == BareKey::Char('+'))
         .or_else(|| resize_increase_action_key.iter().next());
-    let resize_decrease_action_key = action_key(binds, &[Action::Resize(Resize::Decrease, None)]);
+    let resize_decrease_action_key = action_key(
+        binds,
+        &[Action::Resize {
+            resize: Resize::Decrease,
+            direction: None,
+        }],
+    );
     let resize_decrease_key = resize_decrease_action_key
         .iter()
         .find(|k| k.bare_key == BareKey::Char('-'))
@@ -734,7 +823,12 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
     let mut move_focus_shortcuts: Vec<KeyWithModifier> = vec![];
 
     // Left
-    let move_focus_left_action_key = action_key(binds, &[Action::MoveFocusOrTab(Direction::Left)]);
+    let move_focus_left_action_key = action_key(
+        binds,
+        &[Action::MoveFocusOrTab {
+            direction: Direction::Left,
+        }],
+    );
     let move_focus_left_key = move_focus_left_action_key
         .iter()
         .find(|k| k.bare_key == BareKey::Left)
@@ -743,7 +837,12 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
         move_focus_shortcuts.push(move_focus_left_key.clone());
     }
     // Down
-    let move_focus_left_action_key = action_key(binds, &[Action::MoveFocus(Direction::Down)]);
+    let move_focus_left_action_key = action_key(
+        binds,
+        &[Action::MoveFocus {
+            direction: Direction::Down,
+        }],
+    );
     let move_focus_left_key = move_focus_left_action_key
         .iter()
         .find(|k| k.bare_key == BareKey::Down)
@@ -752,7 +851,12 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
         move_focus_shortcuts.push(move_focus_left_key.clone());
     }
     // Up
-    let move_focus_left_action_key = action_key(binds, &[Action::MoveFocus(Direction::Up)]);
+    let move_focus_left_action_key = action_key(
+        binds,
+        &[Action::MoveFocus {
+            direction: Direction::Up,
+        }],
+    );
     let move_focus_left_key = move_focus_left_action_key
         .iter()
         .find(|k| k.bare_key == BareKey::Up)
@@ -761,7 +865,12 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
         move_focus_shortcuts.push(move_focus_left_key.clone());
     }
     // Right
-    let move_focus_left_action_key = action_key(binds, &[Action::MoveFocusOrTab(Direction::Right)]);
+    let move_focus_left_action_key = action_key(
+        binds,
+        &[Action::MoveFocusOrTab {
+            direction: Direction::Right,
+        }],
+    );
     let move_focus_left_key = move_focus_left_action_key
         .iter()
         .find(|k| k.bare_key == BareKey::Right)
@@ -1264,20 +1373,20 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
     }
 
     if mi.mode == IM::Pane { vec![
-        (s("New"), s("New"), single_action_key(&km, &[A::NewPane(None, None, false), TO_NORMAL])),
+        (s("New"), s("New"), single_action_key(&km, &[A::NewPane{direction: None, pane_name: None, start_suppressed: false}, TO_NORMAL])),
         (s("Change Focus"), s("Move"),
-            action_key_group(&km, &[&[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
-                &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
+            action_key_group(&km, &[&[A::MoveFocus{direction: Dir::Left}], &[A::MoveFocus{direction: Dir::Down}],
+                &[A::MoveFocus{direction: Dir::Up}], &[A::MoveFocus{direction: Dir::Right}]])),
         (s("Close"), s("Close"), single_action_key(&km, &[A::CloseFocus, TO_NORMAL])),
         (s("Rename"), s("Rename"),
-            single_action_key(&km, &[A::SwitchToMode(IM::RenamePane), A::PaneNameInput(vec![0])])),
+            single_action_key(&km, &[A::SwitchToMode{input_mode: IM::RenamePane}, A::PaneNameInput{input: vec![0]}])),
         (s("Toggle Fullscreen"), s("Fullscreen"), single_action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
         (s("Toggle Floating"), s("Floating"),
             single_action_key(&km, &[A::ToggleFloatingPanes, TO_NORMAL])),
         (s("Toggle Embed"), s("Embed"), single_action_key(&km, &[A::TogglePaneEmbedOrFloating, TO_NORMAL])),
-        (s("Split Right"), s("Right"), single_action_key(&km, &[A::NewPane(Some(Direction::Right), None, false), TO_NORMAL])),
-        (s("Split Down"), s("Down"), single_action_key(&km, &[A::NewPane(Some(Direction::Down), None, false), TO_NORMAL])),
-        (s("Stack"), s("Stack"), single_action_key(&km, &[A::NewStackedPane(None, None), TO_NORMAL])),
+        (s("Split Right"), s("Right"), single_action_key(&km, &[A::NewPane{direction: Some(Direction::Right), pane_name: None, start_suppressed: false}, TO_NORMAL])),
+        (s("Split Down"), s("Down"), single_action_key(&km, &[A::NewPane{direction: Some(Direction::Down), pane_name: None, start_suppressed: false}, TO_NORMAL])),
+        (s("Stack"), s("Stack"), single_action_key(&km, &[A::NewStackedPane{command: None, pane_name: None}, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_basemode_key),
     ]} else if mi.mode == IM::Tab {
         // With the default bindings, "Move focus" for tabs is tricky: It binds all the arrow keys
@@ -1297,11 +1406,11 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         };
 
         vec![
-        (s("New"), s("New"), single_action_key(&km, &[A::NewTab(None, vec![], None, None, None, true, None), TO_NORMAL])),
+        (s("New"), s("New"), single_action_key(&km, &[A::NewTab{tiled_layout: None, floating_layouts: vec![], swap_tiled_layouts: None, swap_floating_layouts: None, tab_name: None, should_change_focus_to_new_tab: true, cwd: None}, TO_NORMAL])),
         (s("Change focus"), s("Move"), focus_keys),
         (s("Close"), s("Close"), single_action_key(&km, &[A::CloseTab, TO_NORMAL])),
         (s("Rename"), s("Rename"),
-            single_action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
+            single_action_key(&km, &[A::SwitchToMode{input_mode: IM::RenameTab}, A::TabNameInput{input: vec![0]}])),
         (s("Sync"), s("Sync"), single_action_key(&km, &[A::ToggleActiveSyncTab, TO_NORMAL])),
         (s("Break pane to new tab"), s("Break out"), single_action_key(&km, &[A::BreakPane, TO_NORMAL])),
         (s("Break pane left/right"), s("Break"), action_key_group(&km, &[
@@ -1313,30 +1422,30 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
     ]} else if mi.mode == IM::Resize { vec![
         (s("Increase/Decrease size"), s("Increase/Decrease"),
             action_key_group(&km, &[
-                &[A::Resize(Resize::Increase, None)],
-                &[A::Resize(Resize::Decrease, None)]
+                &[A::Resize{resize: Resize::Increase, direction: None}],
+                &[A::Resize{resize: Resize::Decrease, direction: None}]
             ])),
         (s("Increase to"), s("Increase"), action_key_group(&km, &[
-            &[A::Resize(Resize::Increase, Some(Dir::Left))],
-            &[A::Resize(Resize::Increase, Some(Dir::Down))],
-            &[A::Resize(Resize::Increase, Some(Dir::Up))],
-            &[A::Resize(Resize::Increase, Some(Dir::Right))]
+            &[A::Resize{resize: Resize::Increase, direction: Some(Dir::Left)}],
+            &[A::Resize{resize: Resize::Increase, direction: Some(Dir::Down)}],
+            &[A::Resize{resize: Resize::Increase, direction: Some(Dir::Up)}],
+            &[A::Resize{resize: Resize::Increase, direction: Some(Dir::Right)}]
             ])),
         (s("Decrease from"), s("Decrease"), action_key_group(&km, &[
-            &[A::Resize(Resize::Decrease, Some(Dir::Left))],
-            &[A::Resize(Resize::Decrease, Some(Dir::Down))],
-            &[A::Resize(Resize::Decrease, Some(Dir::Up))],
-            &[A::Resize(Resize::Decrease, Some(Dir::Right))]
+            &[A::Resize{resize: Resize::Decrease, direction: Some(Dir::Left)}],
+            &[A::Resize{resize: Resize::Decrease, direction: Some(Dir::Down)}],
+            &[A::Resize{resize: Resize::Decrease, direction: Some(Dir::Up)}],
+            &[A::Resize{resize: Resize::Decrease, direction: Some(Dir::Right)}]
             ])),
         (s("Select pane"), s("Select"), to_basemode_key),
     ]} else if mi.mode == IM::Move { vec![
         (s("Switch Location"), s("Move"), action_key_group(&km, &[
-            &[Action::MovePane(Some(Dir::Left))], &[Action::MovePane(Some(Dir::Down))],
-            &[Action::MovePane(Some(Dir::Up))], &[Action::MovePane(Some(Dir::Right))]])),
+            &[Action::MovePane{direction: Some(Dir::Left)}], &[Action::MovePane{direction: Some(Dir::Down)}],
+            &[Action::MovePane{direction: Some(Dir::Up)}], &[Action::MovePane{direction: Some(Dir::Right)}]])),
         (s("When done"), s("Back"), to_basemode_key),
     ]} else if mi.mode == IM::Scroll { vec![
         (s("Enter search term"), s("Search"),
-            action_key(&km, &[A::SwitchToMode(IM::EnterSearch), A::SearchInput(vec![0])])),
+            action_key(&km, &[A::SwitchToMode{input_mode: IM::EnterSearch}, A::SearchInput{input: vec![0]}])),
         (s("Scroll"), s("Scroll"),
             action_key_group(&km, &[&[Action::ScrollDown], &[Action::ScrollUp]])),
         (s("Scroll page"), s("Scroll"),
@@ -1347,26 +1456,26 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             single_action_key(&km, &[Action::EditScrollback, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_basemode_key),
     ]} else if mi.mode == IM::EnterSearch { vec![
-        (s("When done"), s("Done"), action_key(&km, &[A::SwitchToMode(IM::Search)])),
+        (s("When done"), s("Done"), action_key(&km, &[A::SwitchToMode{input_mode: IM::Search}])),
         (s("Cancel"), s("Cancel"),
-            action_key(&km, &[A::SearchInput(vec![27]), A::SwitchToMode(IM::Scroll)])),
+            action_key(&km, &[A::SearchInput{input: vec![27]}, A::SwitchToMode{input_mode: IM::Scroll}])),
     ]} else if mi.mode == IM::Search { vec![
         (s("Enter Search term"), s("Search"),
-            action_key(&km, &[A::SwitchToMode(IM::EnterSearch), A::SearchInput(vec![0])])),
+            action_key(&km, &[A::SwitchToMode{input_mode: IM::EnterSearch}, A::SearchInput{input: vec![0]}])),
         (s("Scroll"), s("Scroll"),
             action_key_group(&km, &[&[Action::ScrollDown], &[Action::ScrollUp]])),
         (s("Scroll page"), s("Scroll"),
             action_key_group(&km, &[&[Action::PageScrollDown], &[Action::PageScrollUp]])),
         (s("Scroll half page"), s("Scroll"),
             action_key_group(&km, &[&[Action::HalfPageScrollDown], &[Action::HalfPageScrollUp]])),
-        (s("Search down"), s("Down"), action_key(&km, &[A::Search(SDir::Down)])),
-        (s("Search up"), s("Up"), action_key(&km, &[A::Search(SDir::Up)])),
+        (s("Search down"), s("Down"), action_key(&km, &[A::Search{direction: SDir::Down}])),
+        (s("Search up"), s("Up"), action_key(&km, &[A::Search{direction: SDir::Up}])),
         (s("Case sensitive"), s("Case"),
-            action_key(&km, &[A::SearchToggleOption(SOpt::CaseSensitivity)])),
+            action_key(&km, &[A::SearchToggleOption{option: SOpt::CaseSensitivity}])),
         (s("Wrap"), s("Wrap"),
-            action_key(&km, &[A::SearchToggleOption(SOpt::Wrap)])),
+            action_key(&km, &[A::SearchToggleOption{option: SOpt::Wrap}])),
         (s("Whole words"), s("Whole"),
-            action_key(&km, &[A::SearchToggleOption(SOpt::WholeWord)])),
+            action_key(&km, &[A::SearchToggleOption{option: SOpt::WholeWord}])),
     ]} else if mi.mode == IM::Session { vec![
         (s("Detach"), s("Detach"), action_key(&km, &[Action::Detach])),
         (s("Session Manager"), s("Manager"), session_manager_key(&km)),
@@ -1377,14 +1486,14 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Select pane"), s("Select"), to_basemode_key),
     ]} else if mi.mode == IM::Tmux { vec![
         (s("Move focus"), s("Move"), action_key_group(&km, &[
-            &[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
-            &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
-        (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(Some(Dir::Down), None, false), TO_NORMAL])),
-        (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(Some(Dir::Right), None, false), TO_NORMAL])),
+            &[A::MoveFocus{direction: Dir::Left}], &[A::MoveFocus{direction: Dir::Down}],
+            &[A::MoveFocus{direction: Dir::Up}], &[A::MoveFocus{direction: Dir::Right}]])),
+        (s("Split down"), s("Down"), action_key(&km, &[A::NewPane{direction: Some(Dir::Down), pane_name: None, start_suppressed: false}, TO_NORMAL])),
+        (s("Split right"), s("Right"), action_key(&km, &[A::NewPane{direction: Some(Dir::Right), pane_name: None, start_suppressed: false}, TO_NORMAL])),
         (s("Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
-        (s("New tab"), s("New"), action_key(&km, &[A::NewTab(None, vec![], None, None, None, true, None), TO_NORMAL])),
+        (s("New tab"), s("New"), action_key(&km, &[A::NewTab{tiled_layout: None, floating_layouts: vec![], swap_tiled_layouts: None, swap_floating_layouts: None, tab_name: None, should_change_focus_to_new_tab: true, cwd: None}, TO_NORMAL])),
         (s("Rename tab"), s("Rename"),
-            action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
+            action_key(&km, &[A::SwitchToMode{input_mode: IM::RenameTab}, A::TabNameInput{input: vec![0]}])),
         (s("Previous Tab"), s("Previous"), action_key(&km, &[A::GoToPreviousTab, TO_NORMAL])),
         (s("Next Tab"), s("Next"), action_key(&km, &[A::GoToNextTab, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_basemode_key),

@@ -99,15 +99,26 @@ pub fn zellij_server_listener(
                         },
                     );
 
+                    let mut unknown_message_count = 0;
                     loop {
-                        match os_input.recv_from_server() {
-                            Some((ServerToClientMsg::UnblockInputThread, _)) => {},
-                            Some((ServerToClientMsg::Exit(exit_reason), _)) => {
+                        let msg = os_input.recv_from_server();
+                        if msg.is_some() {
+                            unknown_message_count = 0;
+                        } else {
+                            unknown_message_count += 1;
+                        }
+                        match msg.map(|m| m.0) {
+                            Some(ServerToClientMsg::UnblockInputThread) => {},
+                            Some(ServerToClientMsg::Connected) => {},
+                            Some(ServerToClientMsg::CliPipeOutput { .. } ) => {},
+                            Some(ServerToClientMsg::UnblockCliPipeInput { .. } ) => {},
+                            Some(ServerToClientMsg::StartWebServer { .. } ) => {},
+                            Some(ServerToClientMsg::Exit{exit_reason}) => {
                                 handle_exit_reason(&mut client_connection_bus, exit_reason);
                                 os_input.send_to_server(ClientToServerMsg::ClientExited);
                                 break;
                             },
-                            Some((ServerToClientMsg::Render(bytes), _)) => {
+                            Some(ServerToClientMsg::Render{content: bytes}) => {
                                 if !sent_init_messages {
                                     for message in terminal_init_messages() {
                                         client_connection_bus.send_stdout(message.to_owned())
@@ -116,33 +127,33 @@ pub fn zellij_server_listener(
                                 }
                                 client_connection_bus.send_stdout(bytes);
                             },
-                            Some((ServerToClientMsg::SwitchSession(connect_to_session), _)) => {
+                            Some(ServerToClientMsg::SwitchSession{connect_to_session}) => {
                                 reconnect_to_session = Some(connect_to_session);
                                 continue 'reconnect_loop;
                             },
-                            Some((ServerToClientMsg::QueryTerminalSize, _)) => {
+                            Some(ServerToClientMsg::QueryTerminalSize) => {
                                 client_connection_bus.send_control(
                                     WebServerToWebClientControlMessage::QueryTerminalSize,
                                 );
                             },
-                            Some((ServerToClientMsg::Log(lines), _)) => {
+                            Some(ServerToClientMsg::Log{lines}) => {
                                 client_connection_bus.send_control(
                                     WebServerToWebClientControlMessage::Log { lines },
                                 );
                             },
-                            Some((ServerToClientMsg::LogError(lines), _)) => {
+                            Some(ServerToClientMsg::LogError{lines}) => {
                                 client_connection_bus.send_control(
                                     WebServerToWebClientControlMessage::LogError { lines },
                                 );
                             },
-                            Some((ServerToClientMsg::RenamedSession(new_session_name), _)) => {
+                            Some(ServerToClientMsg::RenamedSession{name: new_session_name}) => {
                                 client_connection_bus.send_control(
                                     WebServerToWebClientControlMessage::SwitchedSession {
                                         new_session_name,
                                     },
                                 );
                             },
-                            Some((ServerToClientMsg::ConfigFileUpdated, _)) => {
+                            Some(ServerToClientMsg::ConfigFileUpdated) => {
 
                                 if let Some(config_file_path) = &config_file_path {
                                     if let Ok(new_config) = Config::from_path(&config_file_path, Some(config.clone())) {
@@ -189,10 +200,13 @@ pub fn zellij_server_listener(
                                     }
                                 }
                             },
-                            _ => {
-                                // server disconnected, stop trying to listen otherwise we retry
-                                // indefinitely and get 100% CPU
-                                break;
+                            None => {
+                                if unknown_message_count >= 1000 {
+                                    log::error!("Error: Received more than 1000 consecutive unknown server messages, disconnecting.");
+                                    // this probably means we're in an infinite loop, let's
+                                    // disconnect so as not to cause 100% CPU
+                                    break;
+                                }
                             },
                         }
                     }

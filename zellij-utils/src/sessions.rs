@@ -141,10 +141,11 @@ fn assert_socket(name: &str) -> bool {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match LocalSocketStream::connect(path) {
         Ok(stream) => {
-            let mut sender = IpcSenderWithContext::new(stream);
-            let _ = sender.send(ClientToServerMsg::ConnStatus);
+            let mut sender: IpcSenderWithContext<ClientToServerMsg> =
+                IpcSenderWithContext::new(stream);
+            let _ = sender.send_client_msg(ClientToServerMsg::ConnStatus);
             let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
-            match receiver.recv() {
+            match receiver.recv_server_msg() {
                 Some((ServerToClientMsg::Connected, _)) => true,
                 None | Some((_, _)) => false,
             }
@@ -242,7 +243,8 @@ pub fn kill_session(name: &str) {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match LocalSocketStream::connect(path) {
         Ok(stream) => {
-            let _ = IpcSenderWithContext::new(stream).send(ClientToServerMsg::KillSession);
+            let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                .send_client_msg(ClientToServerMsg::KillSession);
         },
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
@@ -255,8 +257,8 @@ pub fn delete_session(name: &str, force: bool) {
     if force {
         let path = &*ZELLIJ_SOCK_DIR.join(name);
         let _ = LocalSocketStream::connect(path).map(|stream| {
-            IpcSenderWithContext::new(stream)
-                .send(ClientToServerMsg::KillSession)
+            IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                .send_client_msg(ClientToServerMsg::KillSession)
                 .ok();
         });
     }

@@ -176,33 +176,51 @@ impl InputHandler {
                         InputEvent::Paste(pasted_text) => {
                             if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
                                 self.dispatch_action(
-                                    Action::Write(None, bracketed_paste_start.clone(), false),
+                                    Action::Write {
+                                        key_with_modifier: None,
+                                        bytes: bracketed_paste_start.clone(),
+                                        is_kitty_keyboard_protocol: false,
+                                    },
                                     None,
                                 );
                                 self.dispatch_action(
-                                    Action::Write(None, pasted_text.as_bytes().to_vec(), false),
+                                    Action::Write {
+                                        key_with_modifier: None,
+                                        bytes: pasted_text.as_bytes().to_vec(),
+                                        is_kitty_keyboard_protocol: false,
+                                    },
                                     None,
                                 );
                                 self.dispatch_action(
-                                    Action::Write(None, bracketed_paste_end.clone(), false),
+                                    Action::Write {
+                                        key_with_modifier: None,
+                                        bytes: bracketed_paste_end.clone(),
+                                        is_kitty_keyboard_protocol: false,
+                                    },
                                     None,
                                 );
                             }
                             if self.mode == InputMode::EnterSearch {
                                 self.dispatch_action(
-                                    Action::SearchInput(pasted_text.as_bytes().to_vec()),
+                                    Action::SearchInput {
+                                        input: pasted_text.as_bytes().to_vec(),
+                                    },
                                     None,
                                 );
                             }
                             if self.mode == InputMode::RenameTab {
                                 self.dispatch_action(
-                                    Action::TabNameInput(pasted_text.as_bytes().to_vec()),
+                                    Action::TabNameInput {
+                                        input: pasted_text.as_bytes().to_vec(),
+                                    },
                                     None,
                                 );
                             }
                             if self.mode == InputMode::RenamePane {
                                 self.dispatch_action(
-                                    Action::PaneNameInput(pasted_text.as_bytes().to_vec()),
+                                    Action::PaneNameInput {
+                                        input: pasted_text.as_bytes().to_vec(),
+                                    },
                                     None,
                                 );
                             }
@@ -249,33 +267,39 @@ impl InputHandler {
     ) {
         // we interpret the keys into actions on the server side so that we can change the
         // keybinds at runtime
-        self.os_input.send_to_server(ClientToServerMsg::Key(
-            key.clone(),
+        self.os_input.send_to_server(ClientToServerMsg::Key {
+            key: key.clone(),
             raw_bytes,
             is_kitty_keyboard_protocol,
-        ));
+        });
     }
     fn handle_stdin_ansi_instruction(&mut self, ansi_stdin_instructions: AnsiStdinInstruction) {
         match ansi_stdin_instructions {
             AnsiStdinInstruction::PixelDimensions(pixel_dimensions) => {
                 self.os_input
-                    .send_to_server(ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions));
+                    .send_to_server(ClientToServerMsg::TerminalPixelDimensions {
+                        pixel_dimensions,
+                    });
             },
             AnsiStdinInstruction::BackgroundColor(background_color_instruction) => {
                 self.os_input
-                    .send_to_server(ClientToServerMsg::BackgroundColor(
-                        background_color_instruction,
-                    ));
+                    .send_to_server(ClientToServerMsg::BackgroundColor {
+                        color: background_color_instruction,
+                    });
             },
             AnsiStdinInstruction::ForegroundColor(foreground_color_instruction) => {
                 self.os_input
-                    .send_to_server(ClientToServerMsg::ForegroundColor(
-                        foreground_color_instruction,
-                    ));
+                    .send_to_server(ClientToServerMsg::ForegroundColor {
+                        color: foreground_color_instruction,
+                    });
             },
             AnsiStdinInstruction::ColorRegisters(color_registers) => {
+                let color_registers: Vec<_> = color_registers
+                    .into_iter()
+                    .map(|(index, color)| zellij_utils::ipc::ColorRegister { index, color })
+                    .collect();
                 self.os_input
-                    .send_to_server(ClientToServerMsg::ColorRegisters(color_registers));
+                    .send_to_server(ClientToServerMsg::ColorRegisters { color_registers });
             },
             AnsiStdinInstruction::SynchronizedOutput(enabled) => {
                 self.send_client_instructions
@@ -287,7 +311,12 @@ impl InputHandler {
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {
         // This dispatch handles all of the output(s) to terminal
         // pane(s).
-        self.dispatch_action(Action::MouseEvent(*mouse_event), None);
+        self.dispatch_action(
+            Action::MouseEvent {
+                event: *mouse_event,
+            },
+            None,
+        );
     }
     /// Dispatches an [`Action`].
     ///
@@ -306,38 +335,47 @@ impl InputHandler {
         match action {
             Action::NoOp => {},
             Action::Quit => {
-                self.os_input
-                    .send_to_server(ClientToServerMsg::Action(action, None, client_id));
+                self.os_input.send_to_server(ClientToServerMsg::Action {
+                    action,
+                    terminal_id: None,
+                    client_id,
+                });
                 self.exit(ExitReason::Normal);
                 should_break = true;
             },
             Action::Detach => {
-                self.os_input
-                    .send_to_server(ClientToServerMsg::Action(action, None, client_id));
+                self.os_input.send_to_server(ClientToServerMsg::Action {
+                    action,
+                    terminal_id: None,
+                    client_id,
+                });
                 self.exit(ExitReason::NormalDetached);
                 should_break = true;
             },
             Action::CloseFocus
-            | Action::SwitchToMode(..)
+            | Action::SwitchToMode { .. }
             | Action::ClearScreen
-            | Action::NewPane(..)
-            | Action::Run(_)
-            | Action::NewTiledPane(..)
-            | Action::NewFloatingPane(..)
+            | Action::NewPane { .. }
+            | Action::Run { .. }
+            | Action::NewTiledPane { .. }
+            | Action::NewFloatingPane { .. }
             | Action::ToggleFloatingPanes
             | Action::TogglePaneEmbedOrFloating
-            | Action::NewTab(..)
+            | Action::NewTab { .. }
             | Action::GoToNextTab
             | Action::GoToPreviousTab
             | Action::CloseTab
-            | Action::GoToTab(_)
-            | Action::MoveTab(_)
-            | Action::GoToTabName(_, _)
+            | Action::GoToTab { .. }
+            | Action::MoveTab { .. }
+            | Action::GoToTabName { .. }
             | Action::ToggleTab
-            | Action::MoveFocusOrTab(_) => {
+            | Action::MoveFocusOrTab { .. } => {
                 self.command_is_executing.blocking_input_thread();
-                self.os_input
-                    .send_to_server(ClientToServerMsg::Action(action, None, client_id));
+                self.os_input.send_to_server(ClientToServerMsg::Action {
+                    action,
+                    terminal_id: None,
+                    client_id,
+                });
                 self.command_is_executing
                     .wait_until_input_thread_is_unblocked();
             },
@@ -350,9 +388,11 @@ impl InputHandler {
                     self.mouse_mode_active = true;
                 }
             },
-            _ => self
-                .os_input
-                .send_to_server(ClientToServerMsg::Action(action, None, client_id)),
+            _ => self.os_input.send_to_server(ClientToServerMsg::Action {
+                action,
+                terminal_id: None,
+                client_id,
+            }),
         }
 
         should_break
