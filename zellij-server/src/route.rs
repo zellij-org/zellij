@@ -1178,7 +1178,7 @@ pub(crate) fn route_thread_main(
                             .with_context(err_context)?;
                         },
                         ClientToServerMsg::ColorRegisters {
-                            color_registers: ref color_registers,
+                            ref color_registers,
                         } => {
                             send_to_screen_or_retry_queue!(
                                 rlocked_sessions,

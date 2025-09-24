@@ -1,7 +1,7 @@
 //! IPC stuff for starting to split things into a client and server model.
 use crate::{
     data::{ClientId, ConnectToSession, KeyWithModifier, Style},
-    errors::{get_current_ctx, prelude::*, ErrorContext},
+    errors::{prelude::*, ErrorContext},
     input::{actions::Action, cli_assets::CliAssets},
     pane_size::{Size, SizeInPixels},
 };
@@ -243,7 +243,6 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     }
 
     pub fn send_client_msg(&mut self, msg: ClientToServerMsg) -> Result<()> {
-        let err_ctx = get_current_ctx();
         let proto_msg: ProtoClientToServerMsg = msg.into();
         write_protobuf_message(&mut self.sender, &proto_msg)?;
         if let Err(e) = self.sender.flush() {
@@ -253,7 +252,6 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     }
 
     pub fn send_server_msg(&mut self, msg: ServerToClientMsg) -> Result<()> {
-        let err_ctx = get_current_ctx();
         let proto_msg: ProtoServerToClientMsg = msg.into();
         write_protobuf_message(&mut self.sender, &proto_msg)?;
         if let Err(e) = self.sender.flush() {

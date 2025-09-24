@@ -1,5 +1,3 @@
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 
 include!(concat!(
     env!("CARGO_MANIFEST_DIR"),
