@@ -77,9 +77,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::UnblockCliPipeInput { .. } => {
                 ClientInstruction::UnblockCliPipeInput(())
             },
-            ServerToClientMsg::CliPipeOutput { .. } => {
-                ClientInstruction::CliPipeOutput((), ())
-            },
+            ServerToClientMsg::CliPipeOutput { .. } => ClientInstruction::CliPipeOutput((), ()),
             ServerToClientMsg::QueryTerminalSize => ClientInstruction::QueryTerminalSize,
             ServerToClientMsg::StartWebServer => ClientInstruction::StartWebServer,
             ServerToClientMsg::RenamedSession { name } => ClientInstruction::RenamedSession(name),
@@ -322,7 +320,9 @@ pub fn start_client(
                 ClientToServerMsg::AttachClient {
                     cli_assets,
                     tab_position_to_focus,
-                    pane_to_focus: pane_id_to_focus.map(|(pane_id, is_plugin)| zellij_utils::ipc::PaneReference { pane_id, is_plugin }),
+                    pane_to_focus: pane_id_to_focus.map(|(pane_id, is_plugin)| {
+                        zellij_utils::ipc::PaneReference { pane_id, is_plugin }
+                    }),
                     is_web_client,
                 },
                 ipc_pipe,
@@ -358,7 +358,10 @@ pub fn start_client(
             let is_web_client = false;
 
             (
-                ClientToServerMsg::FirstClientConnected { cli_assets, is_web_client },
+                ClientToServerMsg::FirstClientConnected {
+                    cli_assets,
+                    is_web_client,
+                },
                 ipc_pipe,
             )
         },
@@ -405,7 +408,10 @@ pub fn start_client(
             let is_web_client = false;
 
             (
-                ClientToServerMsg::FirstClientConnected { cli_assets, is_web_client },
+                ClientToServerMsg::FirstClientConnected {
+                    cli_assets,
+                    is_web_client,
+                },
                 ipc_pipe,
             )
         },
@@ -688,8 +694,8 @@ pub fn start_client(
                     },
                     Err(e) => {
                         log::error!("Failed to start web_server: {}", e);
-                        let _ =
-                            os_input.send_to_server(ClientToServerMsg::FailedToStartWebServer { error: e });
+                        let _ = os_input
+                            .send_to_server(ClientToServerMsg::FailedToStartWebServer { error: e });
                     },
                 }
             },
@@ -784,7 +790,10 @@ pub fn start_server_detached(
             let is_web_client = false;
 
             (
-                ClientToServerMsg::FirstClientConnected { cli_assets, is_web_client },
+                ClientToServerMsg::FirstClientConnected {
+                    cli_assets,
+                    is_web_client,
+                },
                 ipc_pipe,
             )
         },
@@ -831,7 +840,10 @@ pub fn start_server_detached(
             let is_web_client = false;
 
             (
-                ClientToServerMsg::FirstClientConnected { cli_assets, is_web_client },
+                ClientToServerMsg::FirstClientConnected {
+                    cli_assets,
+                    is_web_client,
+                },
                 ipc_pipe,
             )
         },

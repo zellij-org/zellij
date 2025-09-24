@@ -90,7 +90,8 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
             let _pd = sh.push_dir(zellij_utils_basedir);
 
             let prost_ipc_dir = sh.current_dir().join("assets").join("prost_ipc");
-            let client_server_contract_dir = sh.current_dir().join("src").join("client_server_contract");
+            let client_server_contract_dir =
+                sh.current_dir().join("src").join("client_server_contract");
             std::fs::create_dir_all(&prost_ipc_dir).unwrap();
 
             let mut prost = prost_build::Config::new();

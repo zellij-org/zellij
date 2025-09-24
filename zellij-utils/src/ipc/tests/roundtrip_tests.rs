@@ -1,16 +1,25 @@
 use super::test_framework::*;
-use crate::ipc::{ClientToServerMsg, ServerToClientMsg, ExitReason, PixelDimensions, ColorRegister, PaneReference};
-use crate::pane_size::{Size, SizeInPixels};
-use crate::input::cli_assets::CliAssets;
-use crate::input::options::{Options, OnForceClose, Clipboard};
+use crate::data::{
+    BareKey, ConnectToSession, Direction, FloatingPaneCoordinates, InputMode, KeyModifier,
+    KeyWithModifier, LayoutInfo, OriginatingPlugin, PaneId, PluginTag, Resize, WebSharing,
+};
 use crate::input::actions::{Action, SearchDirection, SearchOption};
-use crate::input::layout::{TiledPaneLayout, FloatingPaneLayout, SplitDirection, SplitSize, Run, RunPlugin, RunPluginOrAlias, RunPluginLocation, PluginUserConfiguration, PluginAlias, PercentOrFixed, LayoutConstraint};
-use crate::input::command::{OpenFilePayload, RunCommandAction, RunCommand};
+use crate::input::cli_assets::CliAssets;
+use crate::input::command::{OpenFilePayload, RunCommand, RunCommandAction};
+use crate::input::layout::{
+    FloatingPaneLayout, LayoutConstraint, PercentOrFixed, PluginAlias, PluginUserConfiguration,
+    Run, RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, SplitSize,
+    TiledPaneLayout,
+};
 use crate::input::mouse::{MouseEvent, MouseEventType};
+use crate::input::options::{Clipboard, OnForceClose, Options};
+use crate::ipc::{
+    ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions, ServerToClientMsg,
+};
+use crate::pane_size::{Size, SizeInPixels};
 use crate::position::Position;
-use crate::data::{InputMode, WebSharing, KeyWithModifier, BareKey, Resize, Direction, OriginatingPlugin, FloatingPaneCoordinates, PluginTag, PaneId, KeyModifier, ConnectToSession, LayoutInfo};
-use std::path::PathBuf;
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 
 #[test]
 fn server_client_contract() {
@@ -33,147 +42,266 @@ fn test_client_messages() {
     let mut swap_tiled_layouts_1 = BTreeMap::new();
     swap_tiled_layouts_1.insert(
         LayoutConstraint::MaxPanes(1),
-        TiledPaneLayout { name: Some("max_panes_1".to_owned()), ..Default::default()}
+        TiledPaneLayout {
+            name: Some("max_panes_1".to_owned()),
+            ..Default::default()
+        },
     );
     swap_tiled_layouts_1.insert(
         LayoutConstraint::MinPanes(2),
-        TiledPaneLayout { name: Some("min_panes_2".to_owned()), ..Default::default()}
+        TiledPaneLayout {
+            name: Some("min_panes_2".to_owned()),
+            ..Default::default()
+        },
     );
     swap_tiled_layouts_1.insert(
         LayoutConstraint::ExactPanes(3),
-        TiledPaneLayout { name: Some("exact_panes_2".to_owned()), ..Default::default()}
+        TiledPaneLayout {
+            name: Some("exact_panes_2".to_owned()),
+            ..Default::default()
+        },
     );
     swap_tiled_layouts_1.insert(
         LayoutConstraint::NoConstraint,
-        TiledPaneLayout { name: Some("no_constraint".to_owned()), ..Default::default()}
+        TiledPaneLayout {
+            name: Some("no_constraint".to_owned()),
+            ..Default::default()
+        },
     );
-    let swap_tiled_layouts_1 = (swap_tiled_layouts_1, Some("swap_tiled_layouts_1".to_owned()));
+    let swap_tiled_layouts_1 = (
+        swap_tiled_layouts_1,
+        Some("swap_tiled_layouts_1".to_owned()),
+    );
     let mut swap_tiled_layouts_2 = BTreeMap::new();
     swap_tiled_layouts_2.insert(
         LayoutConstraint::MaxPanes(1),
-        TiledPaneLayout { name: Some("max_panes_1".to_owned()), ..Default::default()}
+        TiledPaneLayout {
+            name: Some("max_panes_1".to_owned()),
+            ..Default::default()
+        },
     );
     swap_tiled_layouts_2.insert(
         LayoutConstraint::MinPanes(2),
-        TiledPaneLayout { name: Some("min_panes_2".to_owned()), ..Default::default()}
+        TiledPaneLayout {
+            name: Some("min_panes_2".to_owned()),
+            ..Default::default()
+        },
     );
     swap_tiled_layouts_2.insert(
         LayoutConstraint::ExactPanes(3),
-        TiledPaneLayout { name: Some("exact_panes_2".to_owned()), ..Default::default()}
+        TiledPaneLayout {
+            name: Some("exact_panes_2".to_owned()),
+            ..Default::default()
+        },
     );
     swap_tiled_layouts_2.insert(
         LayoutConstraint::NoConstraint,
-        TiledPaneLayout { name: Some("no_constraint".to_owned()), ..Default::default()}
+        TiledPaneLayout {
+            name: Some("no_constraint".to_owned()),
+            ..Default::default()
+        },
     );
-    let swap_tiled_layouts_2 = (swap_tiled_layouts_2, Some("swap_tiled_layouts_2".to_owned()));
+    let swap_tiled_layouts_2 = (
+        swap_tiled_layouts_2,
+        Some("swap_tiled_layouts_2".to_owned()),
+    );
     let mut swap_tiled_layouts_3 = BTreeMap::new();
     swap_tiled_layouts_3.insert(
         LayoutConstraint::MaxPanes(1),
-        TiledPaneLayout { name: Some("max_panes_1".to_owned()), ..Default::default()}
+        TiledPaneLayout {
+            name: Some("max_panes_1".to_owned()),
+            ..Default::default()
+        },
     );
     swap_tiled_layouts_3.insert(
         LayoutConstraint::MinPanes(2),
-        TiledPaneLayout { name: Some("min_panes_2".to_owned()), ..Default::default()}
+        TiledPaneLayout {
+            name: Some("min_panes_2".to_owned()),
+            ..Default::default()
+        },
     );
     swap_tiled_layouts_3.insert(
         LayoutConstraint::ExactPanes(3),
-        TiledPaneLayout { name: Some("exact_panes_2".to_owned()), ..Default::default()}
+        TiledPaneLayout {
+            name: Some("exact_panes_2".to_owned()),
+            ..Default::default()
+        },
     );
     swap_tiled_layouts_3.insert(
         LayoutConstraint::NoConstraint,
-        TiledPaneLayout { name: Some("no_constraint".to_owned()), ..Default::default()}
+        TiledPaneLayout {
+            name: Some("no_constraint".to_owned()),
+            ..Default::default()
+        },
     );
     let swap_tiled_layouts_3 = (swap_tiled_layouts_3, None);
-
 
     let mut swap_floating_layouts_1 = BTreeMap::new();
     swap_floating_layouts_1.insert(
         LayoutConstraint::MaxPanes(1),
         vec![
-            FloatingPaneLayout { name: Some("max_panes_1".to_owned()), ..Default::default()},
-            FloatingPaneLayout { name: Some("max_panes_1_1".to_owned()), ..Default::default()},
-        ]
+            FloatingPaneLayout {
+                name: Some("max_panes_1".to_owned()),
+                ..Default::default()
+            },
+            FloatingPaneLayout {
+                name: Some("max_panes_1_1".to_owned()),
+                ..Default::default()
+            },
+        ],
     );
     swap_floating_layouts_1.insert(
         LayoutConstraint::MinPanes(2),
         vec![
-            FloatingPaneLayout { name: Some("min_panes_2".to_owned()), ..Default::default()},
-            FloatingPaneLayout { name: Some("min_panes_2_1".to_owned()), ..Default::default()},
-        ]
+            FloatingPaneLayout {
+                name: Some("min_panes_2".to_owned()),
+                ..Default::default()
+            },
+            FloatingPaneLayout {
+                name: Some("min_panes_2_1".to_owned()),
+                ..Default::default()
+            },
+        ],
     );
     swap_floating_layouts_1.insert(
         LayoutConstraint::ExactPanes(3),
         vec![
-            FloatingPaneLayout { name: Some("exact_panes_2".to_owned()), ..Default::default()},
-            FloatingPaneLayout { name: Some("exact_panes_2_1".to_owned()), ..Default::default()},
-        ]
+            FloatingPaneLayout {
+                name: Some("exact_panes_2".to_owned()),
+                ..Default::default()
+            },
+            FloatingPaneLayout {
+                name: Some("exact_panes_2_1".to_owned()),
+                ..Default::default()
+            },
+        ],
     );
     swap_floating_layouts_1.insert(
         LayoutConstraint::NoConstraint,
         vec![
-            FloatingPaneLayout { name: Some("no_constraint".to_owned()), ..Default::default()},
-            FloatingPaneLayout { name: Some("no_constraint_1".to_owned()), ..Default::default()},
-        ]
+            FloatingPaneLayout {
+                name: Some("no_constraint".to_owned()),
+                ..Default::default()
+            },
+            FloatingPaneLayout {
+                name: Some("no_constraint_1".to_owned()),
+                ..Default::default()
+            },
+        ],
     );
-    let swap_floating_layouts_1 = (swap_floating_layouts_1, Some("swap_floating_layouts_1".to_owned()));
+    let swap_floating_layouts_1 = (
+        swap_floating_layouts_1,
+        Some("swap_floating_layouts_1".to_owned()),
+    );
     let mut swap_floating_layouts_2 = BTreeMap::new();
     swap_floating_layouts_2.insert(
         LayoutConstraint::MaxPanes(1),
         vec![
-            FloatingPaneLayout { name: Some("max_panes_1".to_owned()), ..Default::default()},
-            FloatingPaneLayout { name: Some("max_panes_1_1".to_owned()), ..Default::default()},
-        ]
+            FloatingPaneLayout {
+                name: Some("max_panes_1".to_owned()),
+                ..Default::default()
+            },
+            FloatingPaneLayout {
+                name: Some("max_panes_1_1".to_owned()),
+                ..Default::default()
+            },
+        ],
     );
     swap_floating_layouts_2.insert(
         LayoutConstraint::MinPanes(2),
         vec![
-            FloatingPaneLayout { name: Some("min_panes_2".to_owned()), ..Default::default()},
-            FloatingPaneLayout { name: Some("min_panes_2_1".to_owned()), ..Default::default()},
-        ]
+            FloatingPaneLayout {
+                name: Some("min_panes_2".to_owned()),
+                ..Default::default()
+            },
+            FloatingPaneLayout {
+                name: Some("min_panes_2_1".to_owned()),
+                ..Default::default()
+            },
+        ],
     );
     swap_floating_layouts_2.insert(
         LayoutConstraint::ExactPanes(3),
         vec![
-            FloatingPaneLayout { name: Some("exact_panes_2".to_owned()), ..Default::default()},
-            FloatingPaneLayout { name: Some("exact_panes_2_1".to_owned()), ..Default::default()},
-        ]
+            FloatingPaneLayout {
+                name: Some("exact_panes_2".to_owned()),
+                ..Default::default()
+            },
+            FloatingPaneLayout {
+                name: Some("exact_panes_2_1".to_owned()),
+                ..Default::default()
+            },
+        ],
     );
     swap_floating_layouts_2.insert(
         LayoutConstraint::NoConstraint,
         vec![
-            FloatingPaneLayout { name: Some("no_constraint".to_owned()), ..Default::default()},
-            FloatingPaneLayout { name: Some("no_constraint_1".to_owned()), ..Default::default()},
-        ]
+            FloatingPaneLayout {
+                name: Some("no_constraint".to_owned()),
+                ..Default::default()
+            },
+            FloatingPaneLayout {
+                name: Some("no_constraint_1".to_owned()),
+                ..Default::default()
+            },
+        ],
     );
-    let swap_floating_layouts_2 = (swap_floating_layouts_2, Some("swap_floating_layouts_2".to_owned()));
+    let swap_floating_layouts_2 = (
+        swap_floating_layouts_2,
+        Some("swap_floating_layouts_2".to_owned()),
+    );
     let mut swap_floating_layouts_3 = BTreeMap::new();
     swap_floating_layouts_3.insert(
         LayoutConstraint::MaxPanes(1),
         vec![
-            FloatingPaneLayout { name: Some("max_panes_1".to_owned()), ..Default::default()},
-            FloatingPaneLayout { name: Some("max_panes_1_1".to_owned()), ..Default::default()},
-        ]
+            FloatingPaneLayout {
+                name: Some("max_panes_1".to_owned()),
+                ..Default::default()
+            },
+            FloatingPaneLayout {
+                name: Some("max_panes_1_1".to_owned()),
+                ..Default::default()
+            },
+        ],
     );
     swap_floating_layouts_3.insert(
         LayoutConstraint::MinPanes(2),
         vec![
-            FloatingPaneLayout { name: Some("min_panes_2".to_owned()), ..Default::default()},
-            FloatingPaneLayout { name: Some("min_panes_2_1".to_owned()), ..Default::default()},
-        ]
+            FloatingPaneLayout {
+                name: Some("min_panes_2".to_owned()),
+                ..Default::default()
+            },
+            FloatingPaneLayout {
+                name: Some("min_panes_2_1".to_owned()),
+                ..Default::default()
+            },
+        ],
     );
     swap_floating_layouts_3.insert(
         LayoutConstraint::ExactPanes(3),
         vec![
-            FloatingPaneLayout { name: Some("exact_panes_2".to_owned()), ..Default::default()},
-            FloatingPaneLayout { name: Some("exact_panes_2_1".to_owned()), ..Default::default()},
-        ]
+            FloatingPaneLayout {
+                name: Some("exact_panes_2".to_owned()),
+                ..Default::default()
+            },
+            FloatingPaneLayout {
+                name: Some("exact_panes_2_1".to_owned()),
+                ..Default::default()
+            },
+        ],
     );
     swap_floating_layouts_3.insert(
         LayoutConstraint::NoConstraint,
         vec![
-            FloatingPaneLayout { name: Some("no_constraint".to_owned()), ..Default::default()},
-            FloatingPaneLayout { name: Some("no_constraint_1".to_owned()), ..Default::default()},
-        ]
+            FloatingPaneLayout {
+                name: Some("no_constraint".to_owned()),
+                ..Default::default()
+            },
+            FloatingPaneLayout {
+                name: Some("no_constraint_1".to_owned()),
+                ..Default::default()
+            },
+        ],
     );
     let swap_floating_layouts_3 = (swap_floating_layouts_3, None);
     let mut demo_modifiers_1 = BTreeSet::new();
@@ -191,10 +319,7 @@ fn test_client_messages() {
     demo_modifiers_4.insert(KeyModifier::Shift);
     demo_modifiers_4.insert(KeyModifier::Super);
 
-
-    test_client_roundtrip!(ClientToServerMsg::DetachSession {
-        client_ids: vec![],
-    });
+    test_client_roundtrip!(ClientToServerMsg::DetachSession { client_ids: vec![] });
     test_client_roundtrip!(ClientToServerMsg::DetachSession {
         client_ids: vec![1],
     });
@@ -209,8 +334,14 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::TerminalPixelDimensions {
         pixel_dimensions: PixelDimensions {
-            text_area_size: Some(SizeInPixels { width: 800, height: 600 }),
-            character_cell_size: Some(SizeInPixels { width: 10, height: 20 }),
+            text_area_size: Some(SizeInPixels {
+                width: 800,
+                height: 600
+            }),
+            character_cell_size: Some(SizeInPixels {
+                width: 10,
+                height: 20
+            }),
         },
     });
     test_client_roundtrip!(ClientToServerMsg::BackgroundColor {
@@ -230,16 +361,28 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::ColorRegisters {
         color_registers: vec![
-            ColorRegister { index: 0, color: "black".to_string() },
-            ColorRegister { index: 1, color: "red".to_string() },
-            ColorRegister { index: 255, color: "#FFFFFF".to_string() },
+            ColorRegister {
+                index: 0,
+                color: "black".to_string()
+            },
+            ColorRegister {
+                index: 1,
+                color: "red".to_string()
+            },
+            ColorRegister {
+                index: 255,
+                color: "#FFFFFF".to_string()
+            },
         ],
     });
     test_client_roundtrip!(ClientToServerMsg::TerminalResize {
         new_size: Size { cols: 80, rows: 24 },
     });
     test_client_roundtrip!(ClientToServerMsg::TerminalResize {
-        new_size: Size { cols: 200, rows: 50 },
+        new_size: Size {
+            cols: 200,
+            rows: 50
+        },
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets::default(),
@@ -680,9 +823,7 @@ fn test_client_messages() {
         client_id: Some(100),
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
-        action: Action::MovePane {
-            direction: None,
-        },
+        action: Action::MovePane { direction: None },
         terminal_id: Some(1),
         client_id: Some(100),
     });
@@ -919,7 +1060,13 @@ fn test_client_messages() {
             floating: true,
             in_place: true,
             start_suppressed: true,
-            coordinates: FloatingPaneCoordinates::new(Some("100%".to_owned()), None, None, None, None),
+            coordinates: FloatingPaneCoordinates::new(
+                Some("100%".to_owned()),
+                None,
+                None,
+                None,
+                None
+            ),
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -940,7 +1087,13 @@ fn test_client_messages() {
             floating: true,
             in_place: true,
             start_suppressed: true,
-            coordinates: FloatingPaneCoordinates::new(Some("10".to_owned()), None, None, None, None),
+            coordinates: FloatingPaneCoordinates::new(
+                Some("10".to_owned()),
+                None,
+                None,
+                None,
+                None
+            ),
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -961,7 +1114,13 @@ fn test_client_messages() {
             floating: true,
             in_place: true,
             start_suppressed: true,
-            coordinates: FloatingPaneCoordinates::new(Some("10".to_owned()), Some("50%".to_owned()), Some("10".to_owned()), Some("20".to_owned()), Some(true)),
+            coordinates: FloatingPaneCoordinates::new(
+                Some("10".to_owned()),
+                Some("50%".to_owned()),
+                Some("10".to_owned()),
+                Some("20".to_owned()),
+                Some(true)
+            ),
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -1009,7 +1168,13 @@ fn test_client_messages() {
                 use_terminal_title: false,
             }),
             pane_name: Some("my_pane_name".to_owned()),
-            coordinates: FloatingPaneCoordinates::new(Some("10".to_owned()), None, None, None, None)
+            coordinates: FloatingPaneCoordinates::new(
+                Some("10".to_owned()),
+                None,
+                None,
+                None,
+                None
+            )
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -1031,7 +1196,13 @@ fn test_client_messages() {
                 use_terminal_title: false,
             }),
             pane_name: Some("my_pane_name".to_owned()),
-            coordinates: FloatingPaneCoordinates::new(Some("10".to_owned()), None, None, None, None)
+            coordinates: FloatingPaneCoordinates::new(
+                Some("10".to_owned()),
+                None,
+                None,
+                None,
+                None
+            )
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -1291,7 +1462,9 @@ fn test_client_messages() {
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::NewTab {
             tiled_layout: Some(TiledPaneLayout {
-                run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin::default()))),
+                run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(
+                    RunPlugin::default()
+                ))),
                 ..Default::default()
             }),
             floating_layouts: vec![],
@@ -1565,7 +1738,11 @@ fn test_client_messages() {
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::NewTab {
             tiled_layout: Some(TiledPaneLayout {
-                run: Some(Run::EditFile(PathBuf::from("/path/to/file"), Some(10), Some(PathBuf::from("/path")))),
+                run: Some(Run::EditFile(
+                    PathBuf::from("/path/to/file"),
+                    Some(10),
+                    Some(PathBuf::from("/path"))
+                )),
                 ..Default::default()
             }),
             floating_layouts: vec![],
@@ -1634,8 +1811,16 @@ fn test_client_messages() {
         action: Action::NewTab {
             tiled_layout: None,
             floating_layouts: vec![],
-            swap_tiled_layouts: Some(vec![swap_tiled_layouts_1.clone(), swap_tiled_layouts_2.clone(), swap_tiled_layouts_3.clone()]),
-            swap_floating_layouts: Some(vec![swap_floating_layouts_1, swap_floating_layouts_2, swap_floating_layouts_3]),
+            swap_tiled_layouts: Some(vec![
+                swap_tiled_layouts_1.clone(),
+                swap_tiled_layouts_2.clone(),
+                swap_tiled_layouts_3.clone()
+            ]),
+            swap_floating_layouts: Some(vec![
+                swap_floating_layouts_1,
+                swap_floating_layouts_2,
+                swap_floating_layouts_3
+            ]),
             tab_name: None,
             should_change_focus_to_new_tab: false,
             cwd: None,
@@ -1690,9 +1875,7 @@ fn test_client_messages() {
         client_id: Some(100),
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
-        action: Action::GoToTab {
-            index: 0,
-        },
+        action: Action::GoToTab { index: 0 },
         terminal_id: Some(1),
         client_id: Some(100),
     });
@@ -1971,7 +2154,13 @@ fn test_client_messages() {
             pane_name: Some("my_pane_name".to_owned()),
             skip_cache: true,
             cwd: Some(PathBuf::from("relative/path/to/cwd")),
-            coordinates: FloatingPaneCoordinates::new(Some("10".to_owned()), Some("10%".to_owned()), None, None, Some(true)),
+            coordinates: FloatingPaneCoordinates::new(
+                Some("10".to_owned()),
+                Some("10%".to_owned()),
+                None,
+                None,
+                Some(true)
+            ),
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -1993,16 +2182,12 @@ fn test_client_messages() {
         client_id: Some(100),
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
-        action: Action::CloseTerminalPane {
-            pane_id: 11,
-        },
+        action: Action::CloseTerminalPane { pane_id: 11 },
         terminal_id: Some(1),
         client_id: Some(100),
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
-        action: Action::ClosePluginPane {
-            pane_id: 12,
-        },
+        action: Action::ClosePluginPane { pane_id: 12 },
         terminal_id: Some(1),
         client_id: Some(100),
     });
@@ -2167,15 +2352,18 @@ fn test_client_messages() {
         client_id: Some(100),
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
-        action: Action::StackPanes {
-            pane_ids: vec![],
-        },
+        action: Action::StackPanes { pane_ids: vec![] },
         terminal_id: Some(1),
         client_id: Some(100),
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::StackPanes {
-            pane_ids: vec![PaneId::Terminal(0), PaneId::Plugin(1), PaneId::Terminal(2), PaneId::Plugin(3)],
+            pane_ids: vec![
+                PaneId::Terminal(0),
+                PaneId::Plugin(1),
+                PaneId::Terminal(2),
+                PaneId::Plugin(3)
+            ],
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -2183,7 +2371,14 @@ fn test_client_messages() {
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::ChangeFloatingPaneCoordinates {
             pane_id: PaneId::Terminal(0),
-            coordinates: FloatingPaneCoordinates::new(None, None, None, Some("10%".to_owned()), Some(false)).unwrap(),
+            coordinates: FloatingPaneCoordinates::new(
+                None,
+                None,
+                None,
+                Some("10%".to_owned()),
+                Some(false)
+            )
+            .unwrap(),
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -2543,9 +2738,7 @@ fn test_server_messages() {
     test_server_roundtrip!(ServerToClientMsg::Exit {
         exit_reason: ExitReason::WebClientsForbidden,
     });
-    test_server_roundtrip!(ServerToClientMsg::Log {
-        lines: vec![],
-    });
+    test_server_roundtrip!(ServerToClientMsg::Log { lines: vec![] });
     test_server_roundtrip!(ServerToClientMsg::Log {
         lines: vec![
             "Starting server...".to_string(),
@@ -2553,9 +2746,7 @@ fn test_server_messages() {
             "Accepting connections".to_string(),
         ],
     });
-    test_server_roundtrip!(ServerToClientMsg::LogError {
-        lines: vec![],
-    });
+    test_server_roundtrip!(ServerToClientMsg::LogError { lines: vec![] });
     test_server_roundtrip!(ServerToClientMsg::LogError {
         lines: vec![
             "ERROR: Failed to bind socket".to_string(),
@@ -2597,7 +2788,9 @@ fn test_server_messages() {
             name: Some("new_session_name".to_owned()),
             tab_position: Some(5),
             pane_id: Some((5, true)),
-            layout: Some(LayoutInfo::Stringified("layout { pane; pane; pane; }".to_owned())),
+            layout: Some(LayoutInfo::Stringified(
+                "layout { pane; pane; pane; }".to_owned()
+            )),
             cwd: Some(PathBuf::from("/path/to/cwd")),
         }
     });

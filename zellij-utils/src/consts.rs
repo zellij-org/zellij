@@ -59,7 +59,8 @@ const fn system_default_data_dir() -> &'static str {
 }
 
 lazy_static! {
-    pub static ref CLIENT_SERVER_CONTRACT_DIR: String = format!("contract_version_{}", CLIENT_SERVER_CONTRACT_VERSION);
+    pub static ref CLIENT_SERVER_CONTRACT_DIR: String =
+        format!("contract_version_{}", CLIENT_SERVER_CONTRACT_VERSION);
     pub static ref ZELLIJ_PROJ_DIR: ProjectDirs =
         ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
     pub static ref ZELLIJ_CACHE_DIR: PathBuf = ZELLIJ_PROJ_DIR.cache_dir().to_path_buf();
@@ -69,8 +70,9 @@ lazy_static! {
         .join(format!("{}", Uuid::new_v4()));
     pub static ref ZELLIJ_PLUGIN_PERMISSIONS_CACHE: PathBuf =
         ZELLIJ_CACHE_DIR.join("permissions.kdl");
-    pub static ref ZELLIJ_SESSION_INFO_CACHE_DIR: PathBuf =
-        ZELLIJ_CACHE_DIR.join(CLIENT_SERVER_CONTRACT_DIR.clone()).join("session_info");
+    pub static ref ZELLIJ_SESSION_INFO_CACHE_DIR: PathBuf = ZELLIJ_CACHE_DIR
+        .join(CLIENT_SERVER_CONTRACT_DIR.clone())
+        .join("session_info");
     pub static ref ZELLIJ_STDIN_CACHE_FILE: PathBuf =
         ZELLIJ_CACHE_DIR.join(VERSION).join("stdin_cache");
     pub static ref ZELLIJ_PLUGIN_ARTIFACT_DIR: PathBuf = ZELLIJ_CACHE_DIR.join(VERSION);

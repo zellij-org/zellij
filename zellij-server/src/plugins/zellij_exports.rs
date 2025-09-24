@@ -691,7 +691,7 @@ fn open_file_floating(
         .cwd
         .map(|cwd| env.plugin_cwd.join(cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
-    let action = Action::EditFile{
+    let action = Action::EditFile {
         payload: OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
         ),
@@ -719,7 +719,7 @@ fn open_file_in_place(
         .map(|cwd| env.plugin_cwd.join(cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
 
-    let action = Action::EditFile{
+    let action = Action::EditFile {
         payload: OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
         ),
@@ -828,7 +828,11 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
         TerminalAction::RunCommand(run_command) => Some(run_command.into()),
         _ => None,
     };
-    let action = Action::NewTiledPane{ direction: None, command: run_command_action, pane_name: None};
+    let action = Action::NewTiledPane {
+        direction: None,
+        command: run_command_action,
+        pane_name: None,
+    };
     apply_action!(action, error_msg, env);
 }
 
@@ -871,7 +875,11 @@ fn open_terminal_floating(
         TerminalAction::RunCommand(run_command) => Some(run_command.into()),
         _ => None,
     };
-    let action = Action::NewFloatingPane{ command: run_command_action, pane_name: None, coordinates: floating_pane_coordinates};
+    let action = Action::NewFloatingPane {
+        command: run_command_action,
+        pane_name: None,
+        coordinates: floating_pane_coordinates,
+    };
     apply_action!(action, error_msg, env);
 }
 
@@ -914,7 +922,10 @@ fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
         TerminalAction::RunCommand(run_command) => Some(run_command.into()),
         _ => None,
     };
-    let action = Action::NewInPlacePane{command: run_command_action, pane_name: None};
+    let action = Action::NewInPlacePane {
+        command: run_command_action,
+        pane_name: None,
+    };
     apply_action!(action, error_msg, env);
 }
 
@@ -1010,7 +1021,11 @@ fn open_command_pane(
         )),
         use_terminal_title,
     };
-    let action = Action::NewTiledPane{direction, command: Some(run_command_action), pane_name: name};
+    let action = Action::NewTiledPane {
+        direction,
+        command: Some(run_command_action),
+        pane_name: name,
+    };
     apply_action!(action, error_msg, env);
 }
 
@@ -1080,7 +1095,11 @@ fn open_command_pane_floating(
         )),
         use_terminal_title,
     };
-    let action = Action::NewFloatingPane{ command: Some(run_command_action), pane_name: name, coordinates: floating_pane_coordinates};
+    let action = Action::NewFloatingPane {
+        command: Some(run_command_action),
+        pane_name: name,
+        coordinates: floating_pane_coordinates,
+    };
     apply_action!(action, error_msg, env);
 }
 
@@ -1150,7 +1169,10 @@ fn open_command_pane_in_place(
         )),
         use_terminal_title,
     };
-    let action = Action::NewInPlacePane{command: Some(run_command_action), pane_name: name};
+    let action = Action::NewInPlacePane {
+        command: Some(run_command_action),
+        pane_name: name,
+    };
     apply_action!(action, error_msg, env);
 }
 
@@ -1363,7 +1385,10 @@ fn hide_pane_with_id(env: &PluginEnv, pane_id: PaneId) -> Result<()> {
 }
 
 fn show_self(env: &PluginEnv, should_float_if_hidden: bool) {
-    let action = Action::FocusPluginPaneWithId{pane_id: env.plugin_id, should_float_if_hidden};
+    let action = Action::FocusPluginPaneWithId {
+        pane_id: env.plugin_id,
+        should_float_if_hidden,
+    };
     let error_msg = || format!("Failed to show self for plugin");
     apply_action!(action, error_msg, env);
 }
@@ -1425,7 +1450,7 @@ fn rebind_keys(
 }
 
 fn switch_to_mode(env: &PluginEnv, input_mode: InputMode) {
-    let action = Action::SwitchToMode{input_mode};
+    let action = Action::SwitchToMode { input_mode };
     let error_msg = || format!("failed to switch to mode in plugin {}", env.name());
     apply_action!(action, error_msg, env);
 }
@@ -1458,7 +1483,7 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
     if tabs.is_empty() {
         let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
         let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
-        let action = Action::NewTab{
+        let action = Action::NewTab {
             tiled_layout: layout.template.as_ref().map(|t| t.0.clone()),
             floating_layouts: layout.template.map(|t| t.1).unwrap_or_default(),
             swap_tiled_layouts,
@@ -1476,7 +1501,7 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
             let should_focus_tab = tab_index == focused_tab_index;
             let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
             let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
-            let action = Action::NewTab{
+            let action = Action::NewTab {
                 tiled_layout: Some(tiled_pane_layout),
                 floating_layouts: floating_pane_layout,
                 swap_tiled_layouts,
@@ -1496,7 +1521,15 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
 
 fn new_tab(env: &PluginEnv, name: Option<String>, cwd: Option<String>) {
     let cwd = cwd.map(|c| PathBuf::from(c));
-    let action = Action::NewTab{tiled_layout: None, floating_layouts: vec![], swap_tiled_layouts: None, swap_floating_layouts: None, tab_name: name, should_change_focus_to_new_tab: true, cwd};
+    let action = Action::NewTab {
+        tiled_layout: None,
+        floating_layouts: vec![],
+        swap_tiled_layouts: None,
+        swap_floating_layouts: None,
+        tab_name: name,
+        should_change_focus_to_new_tab: true,
+        cwd,
+    };
     let error_msg = || format!("Failed to open new tab");
     apply_action!(action, error_msg, env);
 }
@@ -1515,13 +1548,19 @@ fn go_to_previous_tab(env: &PluginEnv) {
 
 fn resize(env: &PluginEnv, resize: Resize) {
     let error_msg = || format!("failed to resize in plugin {}", env.name());
-    let action = Action::Resize{resize, direction: None};
+    let action = Action::Resize {
+        resize,
+        direction: None,
+    };
     apply_action!(action, error_msg, env);
 }
 
 fn resize_with_direction(env: &PluginEnv, resize: ResizeStrategy) {
     let error_msg = || format!("failed to resize in plugin {}", env.name());
-    let action = Action::Resize{resize: resize.resize, direction: resize.direction};
+    let action = Action::Resize {
+        resize: resize.resize,
+        direction: resize.direction,
+    };
     apply_action!(action, error_msg, env);
 }
 
@@ -1539,13 +1578,13 @@ fn focus_previous_pane(env: &PluginEnv) {
 
 fn move_focus(env: &PluginEnv, direction: Direction) {
     let error_msg = || format!("failed to move focus in plugin {}", env.name());
-    let action = Action::MoveFocus{direction};
+    let action = Action::MoveFocus { direction };
     apply_action!(action, error_msg, env);
 }
 
 fn move_focus_or_tab(env: &PluginEnv, direction: Direction) {
     let error_msg = || format!("failed to move focus in plugin {}", env.name());
-    let action = Action::MoveFocusOrTab{direction};
+    let action = Action::MoveFocusOrTab { direction };
     apply_action!(action, error_msg, env);
 }
 
@@ -1652,13 +1691,19 @@ fn edit_scrollback(env: &PluginEnv) {
 
 fn write(env: &PluginEnv, bytes: Vec<u8>) {
     let error_msg = || format!("failed to write in plugin {}", env.name());
-    let action = Action::Write{key_with_modifier: None, bytes, is_kitty_keyboard_protocol: false};
+    let action = Action::Write {
+        key_with_modifier: None,
+        bytes,
+        is_kitty_keyboard_protocol: false,
+    };
     apply_action!(action, error_msg, env);
 }
 
 fn write_chars(env: &PluginEnv, chars_to_write: String) {
     let error_msg = || format!("failed to write in plugin {}", env.name());
-    let action = Action::WriteChars{chars: chars_to_write};
+    let action = Action::WriteChars {
+        chars: chars_to_write,
+    };
     apply_action!(action, error_msg, env);
 }
 
@@ -1670,13 +1715,15 @@ fn toggle_tab(env: &PluginEnv) {
 
 fn move_pane(env: &PluginEnv) {
     let error_msg = || format!("failed to move pane in plugin {}", env.name());
-    let action = Action::MovePane{direction: None};
+    let action = Action::MovePane { direction: None };
     apply_action!(action, error_msg, env);
 }
 
 fn move_pane_with_direction(env: &PluginEnv, direction: Direction) {
     let error_msg = || format!("failed to move pane in plugin {}", env.name());
-    let action = Action::MovePane{direction: Some(direction)};
+    let action = Action::MovePane {
+        direction: Some(direction),
+    };
     apply_action!(action, error_msg, env);
 }
 
@@ -1795,20 +1842,28 @@ fn next_swap_layout(env: &PluginEnv) {
 fn go_to_tab_name(env: &PluginEnv, tab_name: String) {
     let error_msg = || format!("failed to change tab in plugin {}", env.name());
     let create = false;
-    let action = Action::GoToTabName{name: tab_name, create};
+    let action = Action::GoToTabName {
+        name: tab_name,
+        create,
+    };
     apply_action!(action, error_msg, env);
 }
 
 fn focus_or_create_tab(env: &PluginEnv, tab_name: String) {
     let error_msg = || format!("failed to change or create tab in plugin {}", env.name());
     let create = true;
-    let action = Action::GoToTabName{name: tab_name, create};
+    let action = Action::GoToTabName {
+        name: tab_name,
+        create,
+    };
     apply_action!(action, error_msg, env);
 }
 
 fn go_to_tab(env: &PluginEnv, tab_index: u32) {
     let error_msg = || format!("failed to change tab focus in plugin {}", env.name());
-    let action = Action::GoToTab{index: tab_index + 1};
+    let action = Action::GoToTab {
+        index: tab_index + 1,
+    };
     apply_action!(action, error_msg, env);
 }
 
@@ -1817,14 +1872,18 @@ fn start_or_reload_plugin(env: &PluginEnv, url: &str) -> Result<()> {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let run_plugin_or_alias = RunPluginOrAlias::from_url(url, &None, None, Some(cwd))
         .map_err(|e| anyhow!("Failed to parse plugin location: {}", e))?;
-    let action = Action::StartOrReloadPlugin{plugin: run_plugin_or_alias};
+    let action = Action::StartOrReloadPlugin {
+        plugin: run_plugin_or_alias,
+    };
     apply_action!(action, error_msg, env);
     Ok(())
 }
 
 fn close_terminal_pane(env: &PluginEnv, terminal_pane_id: u32) {
     let error_msg = || format!("failed to change tab focus in plugin {}", env.name());
-    let action = Action::CloseTerminalPane{pane_id: terminal_pane_id};
+    let action = Action::CloseTerminalPane {
+        pane_id: terminal_pane_id,
+    };
     apply_action!(action, error_msg, env);
     env.senders
         .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(
@@ -1835,7 +1894,9 @@ fn close_terminal_pane(env: &PluginEnv, terminal_pane_id: u32) {
 
 fn close_plugin_pane(env: &PluginEnv, plugin_pane_id: u32) {
     let error_msg = || format!("failed to change tab focus in plugin {}", env.name());
-    let action = Action::ClosePluginPane{pane_id: plugin_pane_id};
+    let action = Action::ClosePluginPane {
+        pane_id: plugin_pane_id,
+    };
     apply_action!(action, error_msg, env);
     env.senders
         .send_to_plugin(PluginInstruction::Unload(plugin_pane_id))
@@ -1843,33 +1904,47 @@ fn close_plugin_pane(env: &PluginEnv, plugin_pane_id: u32) {
 }
 
 fn focus_terminal_pane(env: &PluginEnv, terminal_pane_id: u32, should_float_if_hidden: bool) {
-    let action = Action::FocusTerminalPaneWithId{pane_id:  terminal_pane_id, should_float_if_hidden};
+    let action = Action::FocusTerminalPaneWithId {
+        pane_id: terminal_pane_id,
+        should_float_if_hidden,
+    };
     let error_msg = || format!("Failed to focus terminal pane");
     apply_action!(action, error_msg, env);
 }
 
 fn focus_plugin_pane(env: &PluginEnv, plugin_pane_id: u32, should_float_if_hidden: bool) {
-    let action = Action::FocusPluginPaneWithId{pane_id: plugin_pane_id, should_float_if_hidden};
+    let action = Action::FocusPluginPaneWithId {
+        pane_id: plugin_pane_id,
+        should_float_if_hidden,
+    };
     let error_msg = || format!("Failed to focus plugin pane");
     apply_action!(action, error_msg, env);
 }
 
 fn rename_terminal_pane(env: &PluginEnv, terminal_pane_id: u32, new_name: &str) {
     let error_msg = || format!("Failed to rename terminal pane");
-    let rename_pane_action =
-        Action::RenameTerminalPane{pane_id: terminal_pane_id, name: new_name.as_bytes().to_vec()};
+    let rename_pane_action = Action::RenameTerminalPane {
+        pane_id: terminal_pane_id,
+        name: new_name.as_bytes().to_vec(),
+    };
     apply_action!(rename_pane_action, error_msg, env);
 }
 
 fn rename_plugin_pane(env: &PluginEnv, plugin_pane_id: u32, new_name: &str) {
     let error_msg = || format!("Failed to rename plugin pane");
-    let rename_pane_action = Action::RenamePluginPane{pane_id: plugin_pane_id, name: new_name.as_bytes().to_vec()};
+    let rename_pane_action = Action::RenamePluginPane {
+        pane_id: plugin_pane_id,
+        name: new_name.as_bytes().to_vec(),
+    };
     apply_action!(rename_pane_action, error_msg, env);
 }
 
 fn rename_tab(env: &PluginEnv, tab_index: u32, new_name: &str) {
     let error_msg = || format!("Failed to rename tab");
-    let rename_tab_action = Action::RenameTab{tab_index, name: new_name.as_bytes().to_vec()};
+    let rename_tab_action = Action::RenameTab {
+        tab_index,
+        name: new_name.as_bytes().to_vec(),
+    };
     apply_action!(rename_tab_action, error_msg, env);
 }
 
@@ -1878,7 +1953,9 @@ fn rename_session(env: &PluginEnv, new_session_name: String) {
     if new_session_name.contains('/') {
         log::error!("Session names cannot contain \'/\'");
     } else {
-        let action = Action::RenameSession{name: new_session_name};
+        let action = Action::RenameSession {
+            name: new_session_name,
+        };
         apply_action!(action, error_msg, env);
     }
 }
@@ -1895,7 +1972,8 @@ fn kill_sessions(session_names: Vec<String>) {
         let path = &*ZELLIJ_SOCK_DIR.join(&session_name);
         match LocalSocketStream::connect(path) {
             Ok(stream) => {
-                let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream).send_client_msg(ClientToServerMsg::KillSession);
+                let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                    .send_client_msg(ClientToServerMsg::KillSession);
             },
             Err(e) => {
                 log::error!("Failed to kill session {}: {:?}", session_name, e);

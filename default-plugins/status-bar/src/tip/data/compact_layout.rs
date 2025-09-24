@@ -78,13 +78,17 @@ pub fn compact_layout_short(help: &ModeInfo) -> LinePart {
 fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
     let to_pane = action_key(
         &help.get_mode_keybinds(),
-        &[Action::SwitchToMode{input_mode: InputMode::Pane}],
+        &[Action::SwitchToMode {
+            input_mode: InputMode::Pane,
+        }],
     );
     let pane_frames = action_key(
         &help.get_keybinds_for_mode(InputMode::Pane),
         &[
             Action::TogglePaneFrames,
-            Action::SwitchToMode{input_mode: InputMode::Normal},
+            Action::SwitchToMode {
+                input_mode: InputMode::Normal,
+            },
         ],
     );
 

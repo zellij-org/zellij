@@ -490,42 +490,58 @@ impl ZellijPlugin for State {
                         (
                             InputMode::Locked,
                             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                            vec![actions::Action::SwitchToMode{input_mode: InputMode::Normal}],
+                            vec![actions::Action::SwitchToMode {
+                                input_mode: InputMode::Normal,
+                            }],
                         ),
                         (
                             InputMode::Normal,
                             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                            vec![actions::Action::SwitchToMode{input_mode: InputMode::Locked}],
+                            vec![actions::Action::SwitchToMode {
+                                input_mode: InputMode::Locked,
+                            }],
                         ),
                         (
                             InputMode::Pane,
                             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                            vec![actions::Action::SwitchToMode{input_mode: InputMode::Locked}],
+                            vec![actions::Action::SwitchToMode {
+                                input_mode: InputMode::Locked,
+                            }],
                         ),
                         (
                             InputMode::Tab,
                             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                            vec![actions::Action::SwitchToMode{input_mode: InputMode::Locked}],
+                            vec![actions::Action::SwitchToMode {
+                                input_mode: InputMode::Locked,
+                            }],
                         ),
                         (
                             InputMode::Resize,
                             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                            vec![actions::Action::SwitchToMode{input_mode: InputMode::Locked}],
+                            vec![actions::Action::SwitchToMode {
+                                input_mode: InputMode::Locked,
+                            }],
                         ),
                         (
                             InputMode::Move,
                             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                            vec![actions::Action::SwitchToMode{input_mode: InputMode::Locked}],
+                            vec![actions::Action::SwitchToMode {
+                                input_mode: InputMode::Locked,
+                            }],
                         ),
                         (
                             InputMode::Search,
                             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                            vec![actions::Action::SwitchToMode{input_mode: InputMode::Locked}],
+                            vec![actions::Action::SwitchToMode {
+                                input_mode: InputMode::Locked,
+                            }],
                         ),
                         (
                             InputMode::Session,
                             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                            vec![actions::Action::SwitchToMode{input_mode: InputMode::Locked}],
+                            vec![actions::Action::SwitchToMode {
+                                input_mode: InputMode::Locked,
+                            }],
                         ),
                     ];
                     rebind_keys(keys_to_unbind, keys_to_rebind, write_to_disk);

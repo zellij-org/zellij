@@ -1,8 +1,8 @@
 use axum_server::Handle;
 use tokio::io::AsyncReadExt;
-use zellij_utils::prost::Message;
 use tokio::net::{UnixListener, UnixStream};
 use zellij_utils::consts::WEBSERVER_SOCKET_PATH;
+use zellij_utils::prost::Message;
 use zellij_utils::web_server_commands::InstructionForWebServer;
 use zellij_utils::web_server_contract::web_server_contract::InstructionForWebServer as ProtoInstructionForWebServer;
 
@@ -38,7 +38,8 @@ pub async fn receive_webserver_instruction(
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
     // Convert to Rust type
-    proto_instruction.try_into()
+    proto_instruction
+        .try_into()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
 }
 

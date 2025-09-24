@@ -413,9 +413,14 @@ pub fn floating_panes_are_visible(mode_info: &ModeInfo) -> LinePart {
     let press = "Press ";
     let pane_mode = format!(
         "{}",
-        action_key(km, &[Action::SwitchToMode{input_mode: InputMode::Pane}])
-            .first()
-            .unwrap_or(&KeyWithModifier::new(BareKey::Char('?')))
+        action_key(
+            km,
+            &[Action::SwitchToMode {
+                input_mode: InputMode::Pane
+            }]
+        )
+        .first()
+        .unwrap_or(&KeyWithModifier::new(BareKey::Char('?')))
     );
     let plus = ", ";
     let p_left_separator = "<";
@@ -665,23 +670,38 @@ mod tests {
                 vec![
                     (
                         KeyWithModifier::new(BareKey::Left),
-                        vec![Action::MoveFocus{direction: Direction::Left}],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Left,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Down),
-                        vec![Action::MoveFocus{direction: Direction::Down}],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Down,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Up),
-                        vec![Action::MoveFocus{direction: Direction::Up}],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Up,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Right),
-                        vec![Action::MoveFocus{direction: Direction::Right}],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Right,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char('n')),
-                        vec![Action::NewPane{direction: None, pane_name: None, start_suppressed: false}, TO_NORMAL],
+                        vec![
+                            Action::NewPane {
+                                direction: None,
+                                pane_name: None,
+                                start_suppressed: false,
+                            },
+                            TO_NORMAL,
+                        ],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char('x')),
@@ -715,23 +735,38 @@ mod tests {
                 vec![
                     (
                         KeyWithModifier::new(BareKey::Left),
-                        vec![Action::MoveFocus{direction: Direction::Left}],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Left,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Down),
-                        vec![Action::MoveFocus{direction: Direction::Down}],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Down,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Up),
-                        vec![Action::MoveFocus{direction: Direction::Up}],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Up,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Right),
-                        vec![Action::MoveFocus{direction: Direction::Right}],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Right,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char('n')),
-                        vec![Action::NewPane{direction: None, pane_name: None, start_suppressed: false}, TO_NORMAL],
+                        vec![
+                            Action::NewPane {
+                                direction: None,
+                                pane_name: None,
+                                start_suppressed: false,
+                            },
+                            TO_NORMAL,
+                        ],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char('x')),
@@ -761,23 +796,38 @@ mod tests {
                 vec![
                     (
                         KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                        vec![Action::MoveFocus{direction: Direction::Left}],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Left,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Enter).with_ctrl_modifier(),
-                        vec![Action::MoveFocus{direction: Direction::Down}],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Down,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char('1')).with_ctrl_modifier(),
-                        vec![Action::MoveFocus{direction: Direction::Up}],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Up,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char(' ')).with_ctrl_modifier(),
-                        vec![Action::MoveFocus{direction: Direction::Right}],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Right,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Backspace),
-                        vec![Action::NewPane{direction: None, pane_name: None, start_suppressed: false}, TO_NORMAL],
+                        vec![
+                            Action::NewPane {
+                                direction: None,
+                                pane_name: None,
+                                start_suppressed: false,
+                            },
+                            TO_NORMAL,
+                        ],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Esc),

@@ -480,7 +480,7 @@ pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<KeyWithModifier> {
                 ) {
                     return None;
                 }
-                if let actions::Action::SwitchToMode{input_mode: mode} = vac {
+                if let actions::Action::SwitchToMode { input_mode: mode } = vac {
                     return match mode {
                         // Store the keys that switch to displayed modes
                         InputMode::Normal
@@ -622,38 +622,59 @@ pub fn first_line(
             KeyAction::Lock,
             to_char(action_key(
                 binds,
-                &[Action::SwitchToMode{input_mode: InputMode::Locked}],
+                &[Action::SwitchToMode {
+                    input_mode: InputMode::Locked,
+                }],
             )),
         ),
         KeyShortcut::new(
             KeyMode::UnselectedAlternate,
             KeyAction::Pane,
-            to_char(action_key(binds, &[Action::SwitchToMode{input_mode: InputMode::Pane}])),
+            to_char(action_key(
+                binds,
+                &[Action::SwitchToMode {
+                    input_mode: InputMode::Pane,
+                }],
+            )),
         ),
         KeyShortcut::new(
             KeyMode::Unselected,
             KeyAction::Tab,
-            to_char(action_key(binds, &[Action::SwitchToMode{input_mode: InputMode::Tab}])),
+            to_char(action_key(
+                binds,
+                &[Action::SwitchToMode {
+                    input_mode: InputMode::Tab,
+                }],
+            )),
         ),
         KeyShortcut::new(
             KeyMode::UnselectedAlternate,
             KeyAction::Resize,
             to_char(action_key(
                 binds,
-                &[Action::SwitchToMode{input_mode: InputMode::Resize}],
+                &[Action::SwitchToMode {
+                    input_mode: InputMode::Resize,
+                }],
             )),
         ),
         KeyShortcut::new(
             KeyMode::Unselected,
             KeyAction::Move,
-            to_char(action_key(binds, &[Action::SwitchToMode{input_mode: InputMode::Move}])),
+            to_char(action_key(
+                binds,
+                &[Action::SwitchToMode {
+                    input_mode: InputMode::Move,
+                }],
+            )),
         ),
         KeyShortcut::new(
             KeyMode::UnselectedAlternate,
             KeyAction::Search,
             to_char(action_key(
                 binds,
-                &[Action::SwitchToMode{input_mode: InputMode::Scroll}],
+                &[Action::SwitchToMode {
+                    input_mode: InputMode::Scroll,
+                }],
             )),
         ),
         KeyShortcut::new(
@@ -661,7 +682,9 @@ pub fn first_line(
             KeyAction::Session,
             to_char(action_key(
                 binds,
-                &[Action::SwitchToMode{input_mode: InputMode::Session}],
+                &[Action::SwitchToMode {
+                    input_mode: InputMode::Session,
+                }],
             )),
         ),
         KeyShortcut::new(

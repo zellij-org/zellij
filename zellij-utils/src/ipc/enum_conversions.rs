@@ -1,9 +1,8 @@
 use crate::{
-    data::{BareKey, KeyModifier},
     client_server_contract::client_server_contract::{
-        BareKey as ProtoBareKey,
-        KeyModifier as ProtoKeyModifier,
+        BareKey as ProtoBareKey, KeyModifier as ProtoKeyModifier,
     },
+    data::{BareKey, KeyModifier},
     errors::prelude::*,
 };
 
@@ -35,7 +34,7 @@ impl From<BareKey> for ProtoBareKey {
             BareKey::F(11) => ProtoBareKey::F11,
             BareKey::F(12) => ProtoBareKey::F12,
             BareKey::F(_) => ProtoBareKey::Unspecified, // Unsupported F-key
-            BareKey::Char(_) => ProtoBareKey::Char, // Character stored separately
+            BareKey::Char(_) => ProtoBareKey::Char,     // Character stored separately
             BareKey::Tab => ProtoBareKey::Tab,
             BareKey::Esc => ProtoBareKey::Esc,
             BareKey::Enter => ProtoBareKey::Enter,
@@ -124,8 +123,8 @@ pub fn bare_key_to_proto_i32(key: BareKey) -> i32 {
 }
 
 pub fn bare_key_from_proto_i32(value: i32) -> Result<BareKey> {
-    let proto_key = ProtoBareKey::from_i32(value)
-        .ok_or_else(|| anyhow!("Invalid BareKey value: {}", value))?;
+    let proto_key =
+        ProtoBareKey::from_i32(value).ok_or_else(|| anyhow!("Invalid BareKey value: {}", value))?;
     proto_key.try_into()
 }
 

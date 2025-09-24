@@ -11,20 +11,19 @@ use nix::unistd::dup;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Error, Formatter},
-    io::{self, Write, Read},
+    io::{self, Read, Write},
     marker::PhantomData,
     os::unix::io::{AsRawFd, FromRawFd},
 };
 
 // Protobuf imports
-use prost::Message;
 use crate::client_server_contract::client_server_contract::{
-    ClientToServerMsg as ProtoClientToServerMsg,
-    ServerToClientMsg as ProtoServerToClientMsg,
+    ClientToServerMsg as ProtoClientToServerMsg, ServerToClientMsg as ProtoServerToClientMsg,
 };
+use prost::Message;
 
-mod protobuf_conversion;
 mod enum_conversions;
+mod protobuf_conversion;
 
 #[cfg(test)]
 mod tests;
@@ -263,7 +262,6 @@ impl<T: Serialize> IpcSenderWithContext<T> {
         Ok(())
     }
 
-
     /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
     pub fn get_receiver<F>(&self) -> IpcReceiverWithContext<F>
     where
@@ -275,7 +273,6 @@ impl<T: Serialize> IpcSenderWithContext<T> {
         IpcReceiverWithContext::new(socket)
     }
 }
-
 
 /// Receives messages on a stream socket, along with an [`ErrorContext`].
 pub struct IpcReceiverWithContext<T> {
@@ -297,37 +294,33 @@ where
 
     pub fn recv_client_msg(&mut self) -> Option<(ClientToServerMsg, ErrorContext)> {
         match read_protobuf_message::<ProtoClientToServerMsg>(&mut self.receiver) {
-            Ok(proto_msg) => {
-                match proto_msg.try_into() {
-                    Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
-                    Err(e) => {
-                        warn!("Error converting protobuf to ClientToServerMsg: {:?}", e);
-                        None
-                    }
-                }
+            Ok(proto_msg) => match proto_msg.try_into() {
+                Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
+                Err(e) => {
+                    warn!("Error converting protobuf to ClientToServerMsg: {:?}", e);
+                    None
+                },
             },
             Err(e) => {
                 warn!("Error in protobuf IpcReceiver.recv_client_msg(): {:?}", e);
                 None
-            }
+            },
         }
     }
 
     pub fn recv_server_msg(&mut self) -> Option<(ServerToClientMsg, ErrorContext)> {
         match read_protobuf_message::<ProtoServerToClientMsg>(&mut self.receiver) {
-            Ok(proto_msg) => {
-                match proto_msg.try_into() {
-                    Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
-                    Err(e) => {
-                        warn!("Error converting protobuf to ServerToClientMsg: {:?}", e);
-                        None
-                    }
-                }
+            Ok(proto_msg) => match proto_msg.try_into() {
+                Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
+                Err(e) => {
+                    warn!("Error converting protobuf to ServerToClientMsg: {:?}", e);
+                    None
+                },
             },
             Err(e) => {
                 warn!("Error in protobuf IpcReceiver.recv_server_msg(): {:?}", e);
                 None
-            }
+            },
         }
     }
 
@@ -340,11 +333,8 @@ where
     }
 }
 
-
 // Protobuf wire format utilities
-fn read_protobuf_message<T: Message + Default>(
-    reader: &mut impl Read
-) -> Result<T> {
+fn read_protobuf_message<T: Message + Default>(reader: &mut impl Read) -> Result<T> {
     // Read length-prefixed protobuf message
     let mut len_bytes = [0u8; 4];
     reader.read_exact(&mut len_bytes)?;
@@ -356,10 +346,7 @@ fn read_protobuf_message<T: Message + Default>(
     T::decode(&buf[..]).map_err(Into::into)
 }
 
-fn write_protobuf_message<T: Message>(
-    writer: &mut impl Write,
-    msg: &T
-) -> Result<()> {
+fn write_protobuf_message<T: Message>(writer: &mut impl Write, msg: &T) -> Result<()> {
     let encoded = msg.encode_to_vec();
     let len = encoded.len() as u32;
 
@@ -394,17 +381,15 @@ pub fn send_protobuf_server_to_client(
 }
 
 pub fn recv_protobuf_client_to_server(
-    receiver: &mut IpcReceiverWithContext<ClientToServerMsg>
+    receiver: &mut IpcReceiverWithContext<ClientToServerMsg>,
 ) -> Option<(ClientToServerMsg, ErrorContext)> {
     match read_protobuf_message::<ProtoClientToServerMsg>(&mut receiver.receiver) {
-        Ok(proto_msg) => {
-            match proto_msg.try_into() {
-                Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
-                Err(e) => {
-                    warn!("Error converting protobuf message: {:?}", e);
-                    None
-                }
-            }
+        Ok(proto_msg) => match proto_msg.try_into() {
+            Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
+            Err(e) => {
+                warn!("Error converting protobuf message: {:?}", e);
+                None
+            },
         },
         Err(e) => {
             warn!("Error reading protobuf message: {:?}", e);
@@ -414,17 +399,15 @@ pub fn recv_protobuf_client_to_server(
 }
 
 pub fn recv_protobuf_server_to_client(
-    receiver: &mut IpcReceiverWithContext<ServerToClientMsg>
+    receiver: &mut IpcReceiverWithContext<ServerToClientMsg>,
 ) -> Option<(ServerToClientMsg, ErrorContext)> {
     match read_protobuf_message::<ProtoServerToClientMsg>(&mut receiver.receiver) {
-        Ok(proto_msg) => {
-            match proto_msg.try_into() {
-                Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
-                Err(e) => {
-                    warn!("Error converting protobuf message: {:?}", e);
-                    None
-                }
-            }
+        Ok(proto_msg) => match proto_msg.try_into() {
+            Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
+            Err(e) => {
+                warn!("Error converting protobuf message: {:?}", e);
+                None
+            },
         },
         Err(e) => {
             warn!("Error reading protobuf message: {:?}", e);

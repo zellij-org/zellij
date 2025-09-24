@@ -47,13 +47,17 @@ pub fn floating_panes_mouse_short(help: &ModeInfo) -> LinePart {
 fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
     let to_pane = action_key(
         &help.get_mode_keybinds(),
-        &[Action::SwitchToMode{input_mode: InputMode::Pane}],
+        &[Action::SwitchToMode {
+            input_mode: InputMode::Pane,
+        }],
     );
     let floating_toggle = action_key(
         &help.get_keybinds_for_mode(InputMode::Pane),
         &[
             Action::ToggleFloatingPanes,
-            Action::SwitchToMode{input_mode: InputMode::Normal},
+            Action::SwitchToMode {
+                input_mode: InputMode::Normal,
+            },
         ],
     );
 

@@ -50,8 +50,12 @@ impl KeybindProcessor {
                             let should_add_brackets_to_keys = mode != InputMode::Normal;
 
                             // Check if this is switching to normal mode
-                            let is_switching_to_locked =
-                                matches!(first_action, Action::SwitchToMode{input_mode: InputMode::Locked});
+                            let is_switching_to_locked = matches!(
+                                first_action,
+                                Action::SwitchToMode {
+                                    input_mode: InputMode::Locked
+                                }
+                            );
 
                             let grouped_keys = Self::group_key_sets(
                                 &matching_keys,
@@ -304,41 +308,161 @@ impl KeybindProcessor {
         match mode {
             InputMode::Locked => {
                 let ordered_predicates = vec![|action: &Action| {
-                    matches!(action, Action::SwitchToMode{input_mode: InputMode::Normal})
+                    matches!(
+                        action,
+                        Action::SwitchToMode {
+                            input_mode: InputMode::Normal
+                        }
+                    )
                 }];
                 Self::find_predetermined_actions(mode_info, mode, ordered_predicates)
             },
             InputMode::Normal => {
                 let ordered_predicates = vec![
-                    |action: &Action| matches!(action, Action::SwitchToMode{input_mode: InputMode::Locked}),
-                    |action: &Action| matches!(action, Action::SwitchToMode{input_mode: InputMode::Pane}),
-                    |action: &Action| matches!(action, Action::SwitchToMode{input_mode: InputMode::Tab}),
-                    |action: &Action| matches!(action, Action::SwitchToMode{input_mode: InputMode::Resize}),
-                    |action: &Action| matches!(action, Action::SwitchToMode{input_mode: InputMode::Move}),
-                    |action: &Action| matches!(action, Action::SwitchToMode{input_mode: InputMode::Scroll}),
-                    |action: &Action| matches!(action, Action::SwitchToMode{input_mode: InputMode::Session}),
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::SwitchToMode {
+                                input_mode: InputMode::Locked
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::SwitchToMode {
+                                input_mode: InputMode::Pane
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::SwitchToMode {
+                                input_mode: InputMode::Tab
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::SwitchToMode {
+                                input_mode: InputMode::Resize
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::SwitchToMode {
+                                input_mode: InputMode::Move
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::SwitchToMode {
+                                input_mode: InputMode::Scroll
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::SwitchToMode {
+                                input_mode: InputMode::Session
+                            }
+                        )
+                    },
                     |action: &Action| matches!(action, Action::Quit),
                 ];
                 Self::find_predetermined_actions(mode_info, mode, ordered_predicates)
             },
             InputMode::Pane => {
                 let ordered_predicates = vec![
-                    |action: &Action| matches!(action, Action::NewPane{direction: None, pane_name: None, start_suppressed: false}),
-                    |action: &Action| matches!(action, Action::MoveFocus{direction: Direction::Left}),
-                    |action: &Action| matches!(action, Action::MoveFocus{direction: Direction::Down}),
-                    |action: &Action| matches!(action, Action::MoveFocus{direction: Direction::Up}),
-                    |action: &Action| matches!(action, Action::MoveFocus{direction: Direction::Right}),
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::NewPane {
+                                direction: None,
+                                pane_name: None,
+                                start_suppressed: false
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::MoveFocus {
+                                direction: Direction::Left
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::MoveFocus {
+                                direction: Direction::Down
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::MoveFocus {
+                                direction: Direction::Up
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::MoveFocus {
+                                direction: Direction::Right
+                            }
+                        )
+                    },
                     |action: &Action| matches!(action, Action::CloseFocus),
-                    |action: &Action| matches!(action, Action::SwitchToMode{input_mode: InputMode::RenamePane}),
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::SwitchToMode {
+                                input_mode: InputMode::RenamePane
+                            }
+                        )
+                    },
                     |action: &Action| matches!(action, Action::ToggleFocusFullscreen),
                     |action: &Action| matches!(action, Action::ToggleFloatingPanes),
                     |action: &Action| matches!(action, Action::TogglePaneEmbedOrFloating),
-                    |action: &Action| matches!(action, Action::NewStackedPane{command: None, pane_name: None}),
                     |action: &Action| {
-                        matches!(action, Action::NewPane{direction: Some(Direction::Right), pane_name: None, start_suppressed: false})
+                        matches!(
+                            action,
+                            Action::NewStackedPane {
+                                command: None,
+                                pane_name: None
+                            }
+                        )
                     },
                     |action: &Action| {
-                        matches!(action, Action::NewPane{direction: Some(Direction::Down), pane_name: None, start_suppressed: false})
+                        matches!(
+                            action,
+                            Action::NewPane {
+                                direction: Some(Direction::Right),
+                                pane_name: None,
+                                start_suppressed: false
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::NewPane {
+                                direction: Some(Direction::Down),
+                                pane_name: None,
+                                start_suppressed: false
+                            }
+                        )
                     },
                 ];
                 Self::find_predetermined_actions(mode_info, mode, ordered_predicates)
@@ -350,12 +474,27 @@ impl KeybindProcessor {
                     |action: &Action| {
                         matches!(
                             action,
-                            Action::NewTab{tiled_layout: None, floating_layouts: _, swap_tiled_layouts: None, swap_floating_layouts: None, tab_name: None, should_change_focus_to_new_tab: true, cwd: None}
+                            Action::NewTab {
+                                tiled_layout: None,
+                                floating_layouts: _,
+                                swap_tiled_layouts: None,
+                                swap_floating_layouts: None,
+                                tab_name: None,
+                                should_change_focus_to_new_tab: true,
+                                cwd: None
+                            }
                         )
                     },
                     |action: &Action| matches!(action, Action::CloseTab),
-                    |action: &Action| matches!(action, Action::SwitchToMode{input_mode: InputMode::RenameTab}),
-                    |action: &Action| matches!(action, Action::TabNameInput{..}),
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::SwitchToMode {
+                                input_mode: InputMode::RenameTab
+                            }
+                        )
+                    },
+                    |action: &Action| matches!(action, Action::TabNameInput { .. }),
                     |action: &Action| matches!(action, Action::ToggleActiveSyncTab),
                     |action: &Action| matches!(action, Action::BreakPane),
                     |action: &Action| matches!(action, Action::BreakPaneLeft),
@@ -366,54 +505,94 @@ impl KeybindProcessor {
             },
             InputMode::Resize => {
                 let ordered_predicates = vec![
-                    |action: &Action| matches!(action, Action::Resize{resize: Resize::Increase, direction: None}),
-                    |action: &Action| matches!(action, Action::Resize{resize: Resize::Decrease, direction: None}),
                     |action: &Action| {
                         matches!(
                             action,
-                            Action::Resize{resize: Resize::Increase, direction: Some(Direction::Left)}
+                            Action::Resize {
+                                resize: Resize::Increase,
+                                direction: None
+                            }
                         )
                     },
                     |action: &Action| {
                         matches!(
                             action,
-                            Action::Resize{resize: Resize::Increase, direction: Some(Direction::Down)}
+                            Action::Resize {
+                                resize: Resize::Decrease,
+                                direction: None
+                            }
                         )
                     },
                     |action: &Action| {
                         matches!(
                             action,
-                            Action::Resize{resize: Resize::Increase, direction: Some(Direction::Up)}
+                            Action::Resize {
+                                resize: Resize::Increase,
+                                direction: Some(Direction::Left)
+                            }
                         )
                     },
                     |action: &Action| {
                         matches!(
                             action,
-                            Action::Resize{resize: Resize::Increase, direction: Some(Direction::Right)}
+                            Action::Resize {
+                                resize: Resize::Increase,
+                                direction: Some(Direction::Down)
+                            }
                         )
                     },
                     |action: &Action| {
                         matches!(
                             action,
-                            Action::Resize{resize: Resize::Decrease, direction: Some(Direction::Left)}
+                            Action::Resize {
+                                resize: Resize::Increase,
+                                direction: Some(Direction::Up)
+                            }
                         )
                     },
                     |action: &Action| {
                         matches!(
                             action,
-                            Action::Resize{resize: Resize::Decrease, direction: Some(Direction::Down)}
+                            Action::Resize {
+                                resize: Resize::Increase,
+                                direction: Some(Direction::Right)
+                            }
                         )
                     },
                     |action: &Action| {
                         matches!(
                             action,
-                            Action::Resize{resize: Resize::Decrease, direction: Some(Direction::Up)}
+                            Action::Resize {
+                                resize: Resize::Decrease,
+                                direction: Some(Direction::Left)
+                            }
                         )
                     },
                     |action: &Action| {
                         matches!(
                             action,
-                            Action::Resize{resize: Resize::Decrease, direction: Some(Direction::Right)}
+                            Action::Resize {
+                                resize: Resize::Decrease,
+                                direction: Some(Direction::Down)
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::Resize {
+                                resize: Resize::Decrease,
+                                direction: Some(Direction::Up)
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::Resize {
+                                resize: Resize::Decrease,
+                                direction: Some(Direction::Right)
+                            }
                         )
                     },
                 ];
@@ -421,10 +600,38 @@ impl KeybindProcessor {
             },
             InputMode::Move => {
                 let ordered_predicates = vec![
-                    |action: &Action| matches!(action, Action::MovePane{direction: Some(Direction::Left)}),
-                    |action: &Action| matches!(action, Action::MovePane{direction: Some(Direction::Down)}),
-                    |action: &Action| matches!(action, Action::MovePane{direction: Some(Direction::Up)}),
-                    |action: &Action| matches!(action, Action::MovePane{direction: Some(Direction::Right)}),
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::MovePane {
+                                direction: Some(Direction::Left)
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::MovePane {
+                                direction: Some(Direction::Down)
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::MovePane {
+                                direction: Some(Direction::Up)
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::MovePane {
+                                direction: Some(Direction::Right)
+                            }
+                        )
+                    },
                 ];
                 Self::find_predetermined_actions(mode_info, mode, ordered_predicates)
             },
@@ -437,7 +644,12 @@ impl KeybindProcessor {
                     |action: &Action| matches!(action, Action::PageScrollDown),
                     |action: &Action| matches!(action, Action::PageScrollUp),
                     |action: &Action| {
-                        matches!(action, Action::SwitchToMode{input_mode: InputMode::EnterSearch})
+                        matches!(
+                            action,
+                            Action::SwitchToMode {
+                                input_mode: InputMode::EnterSearch
+                            }
+                        )
                     },
                     |action: &Action| matches!(action, Action::EditScrollback),
                 ];
@@ -446,9 +658,14 @@ impl KeybindProcessor {
             InputMode::Search => {
                 let ordered_predicates = vec![
                     |action: &Action| {
-                        matches!(action, Action::SwitchToMode{input_mode: InputMode::EnterSearch})
+                        matches!(
+                            action,
+                            Action::SwitchToMode {
+                                input_mode: InputMode::EnterSearch
+                            }
+                        )
                     },
-                    |action: &Action| matches!(action, Action::SearchInput{..}),
+                    |action: &Action| matches!(action, Action::SearchInput { .. }),
                     |action: &Action| matches!(action, Action::ScrollDown),
                     |action: &Action| matches!(action, Action::ScrollUp),
                     |action: &Action| matches!(action, Action::PageScrollDown),
@@ -456,27 +673,43 @@ impl KeybindProcessor {
                     |action: &Action| matches!(action, Action::HalfPageScrollDown),
                     |action: &Action| matches!(action, Action::HalfPageScrollUp),
                     |action: &Action| {
-                        matches!(action, Action::Search{direction: actions::SearchDirection::Down})
-                    },
-                    |action: &Action| {
-                        matches!(action, Action::Search{direction: actions::SearchDirection::Up})
-                    },
-                    |action: &Action| {
                         matches!(
                             action,
-                            Action::SearchToggleOption{option: actions::SearchOption::CaseSensitivity}
+                            Action::Search {
+                                direction: actions::SearchDirection::Down
+                            }
                         )
                     },
                     |action: &Action| {
                         matches!(
                             action,
-                            Action::SearchToggleOption{option: actions::SearchOption::Wrap}
+                            Action::Search {
+                                direction: actions::SearchDirection::Up
+                            }
                         )
                     },
                     |action: &Action| {
                         matches!(
                             action,
-                            Action::SearchToggleOption{option: actions::SearchOption::WholeWord}
+                            Action::SearchToggleOption {
+                                option: actions::SearchOption::CaseSensitivity
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::SearchToggleOption {
+                                option: actions::SearchOption::Wrap
+                            }
+                        )
+                    },
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::SearchToggleOption {
+                                option: actions::SearchOption::WholeWord
+                            }
                         )
                     },
                 ];

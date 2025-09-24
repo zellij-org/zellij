@@ -76,11 +76,15 @@ impl Keybinds {
         key_is_kitty_protocol: bool,
     ) -> Action {
         match *mode {
-            InputMode::Locked => {
-                Action::Write { key_with_modifier: key_with_modifier.cloned(), bytes: raw_bytes, is_kitty_keyboard_protocol: key_is_kitty_protocol }
+            InputMode::Locked => Action::Write {
+                key_with_modifier: key_with_modifier.cloned(),
+                bytes: raw_bytes,
+                is_kitty_keyboard_protocol: key_is_kitty_protocol,
             },
-            mode if mode == default_input_mode => {
-                Action::Write { key_with_modifier: key_with_modifier.cloned(), bytes: raw_bytes, is_kitty_keyboard_protocol: key_is_kitty_protocol }
+            mode if mode == default_input_mode => Action::Write {
+                key_with_modifier: key_with_modifier.cloned(),
+                bytes: raw_bytes,
+                is_kitty_keyboard_protocol: key_is_kitty_protocol,
             },
             InputMode::RenameTab => Action::TabNameInput { input: raw_bytes },
             InputMode::RenamePane => Action::PaneNameInput { input: raw_bytes },

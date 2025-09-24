@@ -2,8 +2,11 @@
 macro_rules! test_client_roundtrip {
     ($msg:expr) => {{
         let original: crate::ipc::ClientToServerMsg = $msg;
-        let proto: crate::client_server_contract::client_server_contract::ClientToServerMsg = original.clone().into();
-        let roundtrip: crate::ipc::ClientToServerMsg = proto.try_into().expect("Failed to convert back from protobuf");
+        let proto: crate::client_server_contract::client_server_contract::ClientToServerMsg =
+            original.clone().into();
+        let roundtrip: crate::ipc::ClientToServerMsg = proto
+            .try_into()
+            .expect("Failed to convert back from protobuf");
         assert_eq!(original, roundtrip);
     }};
 }
@@ -12,8 +15,11 @@ macro_rules! test_client_roundtrip {
 macro_rules! test_server_roundtrip {
     ($msg:expr) => {{
         let original: crate::ipc::ServerToClientMsg = $msg;
-        let proto: crate::client_server_contract::client_server_contract::ServerToClientMsg = original.clone().into();
-        let roundtrip: crate::ipc::ServerToClientMsg = proto.try_into().expect("Failed to convert back from protobuf");
+        let proto: crate::client_server_contract::client_server_contract::ServerToClientMsg =
+            original.clone().into();
+        let roundtrip: crate::ipc::ServerToClientMsg = proto
+            .try_into()
+            .expect("Failed to convert back from protobuf");
         assert_eq!(original, roundtrip);
     }};
 }

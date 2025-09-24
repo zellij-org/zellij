@@ -204,7 +204,11 @@ fn individual_messages_client(
     action: Action,
     pane_id: Option<u32>,
 ) {
-    let msg = ClientToServerMsg::Action { action, terminal_id: pane_id, client_id: None };
+    let msg = ClientToServerMsg::Action {
+        action,
+        terminal_id: pane_id,
+        client_id: None,
+    };
     os_input.send_to_server(msg);
     loop {
         match os_input.recv_from_server() {

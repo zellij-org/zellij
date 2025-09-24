@@ -1,10 +1,9 @@
+use crate::errors::prelude::*;
 use crate::web_server_commands::InstructionForWebServer as RustInstructionForWebServer;
 use crate::web_server_contract::web_server_contract::{
-    InstructionForWebServer as ProtoInstructionForWebServer,
+    instruction_for_web_server, InstructionForWebServer as ProtoInstructionForWebServer,
     ShutdownWebServerMsg,
-    instruction_for_web_server,
 };
-use crate::errors::prelude::*;
 
 // Convert Rust InstructionForWebServer to protobuf
 impl From<RustInstructionForWebServer> for ProtoInstructionForWebServer {

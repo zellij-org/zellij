@@ -68,13 +68,17 @@ pub fn edit_scrollbuffer_short(help: &ModeInfo) -> LinePart {
 fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
     let to_pane = action_key(
         &help.get_mode_keybinds(),
-        &[Action::SwitchToMode{input_mode: InputMode::Scroll}],
+        &[Action::SwitchToMode {
+            input_mode: InputMode::Scroll,
+        }],
     );
     let edit_buffer = action_key(
         &help.get_keybinds_for_mode(InputMode::Scroll),
         &[
             Action::EditScrollback,
-            Action::SwitchToMode{input_mode: InputMode::Normal},
+            Action::SwitchToMode {
+                input_mode: InputMode::Normal,
+            },
         ],
     );
 

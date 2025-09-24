@@ -430,11 +430,15 @@ impl Action {
                 is_kitty_keyboard_protocol: false,
             }]),
             CliAction::WriteChars { chars } => Ok(vec![Action::WriteChars { chars }]),
-            CliAction::Resize { resize, direction } => Ok(vec![Action::Resize { resize, direction }]),
+            CliAction::Resize { resize, direction } => {
+                Ok(vec![Action::Resize { resize, direction }])
+            },
             CliAction::FocusNextPane => Ok(vec![Action::FocusNextPane]),
             CliAction::FocusPreviousPane => Ok(vec![Action::FocusPreviousPane]),
             CliAction::MoveFocus { direction } => Ok(vec![Action::MoveFocus { direction }]),
-            CliAction::MoveFocusOrTab { direction } => Ok(vec![Action::MoveFocusOrTab { direction }]),
+            CliAction::MoveFocusOrTab { direction } => {
+                Ok(vec![Action::MoveFocusOrTab { direction }])
+            },
             CliAction::MovePane { direction } => Ok(vec![Action::MovePane { direction }]),
             CliAction::MovePaneBackwards => Ok(vec![Action::MovePaneBackwards]),
             CliAction::MoveTab { direction } => Ok(vec![Action::MoveTab { direction }]),
@@ -646,7 +650,9 @@ impl Action {
             CliAction::GoToPreviousTab => Ok(vec![Action::GoToPreviousTab]),
             CliAction::CloseTab => Ok(vec![Action::CloseTab]),
             CliAction::GoToTab { index } => Ok(vec![Action::GoToTab { index }]),
-            CliAction::GoToTabName { name, create } => Ok(vec![Action::GoToTabName { name, create }]),
+            CliAction::GoToTabName { name, create } => {
+                Ok(vec![Action::GoToTabName { name, create }])
+            },
             CliAction::RenameTab { name } => Ok(vec![
                 Action::TabNameInput { input: vec![0] },
                 Action::TabNameInput {
@@ -937,12 +943,8 @@ impl Action {
     }
     pub fn launches_plugin(&self, plugin_url: &str) -> bool {
         match self {
-            Action::LaunchPlugin { plugin, .. } => {
-                &plugin.location_string() == plugin_url
-            },
-            Action::LaunchOrFocusPlugin { plugin, .. } => {
-                &plugin.location_string() == plugin_url
-            },
+            Action::LaunchPlugin { plugin, .. } => &plugin.location_string() == plugin_url,
+            Action::LaunchOrFocusPlugin { plugin, .. } => &plugin.location_string() == plugin_url,
             _ => false,
         }
     }

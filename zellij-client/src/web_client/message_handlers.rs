@@ -105,26 +105,46 @@ pub fn parse_stdin(
         match input_event {
             InputEvent::Key(key_event) => {
                 let key = cast_termwiz_key(key_event.clone(), &buf, None);
-                os_input.send_to_server(ClientToServerMsg::Key { key: key.clone(), raw_bytes: buf.to_vec(), is_kitty_keyboard_protocol: false });
+                os_input.send_to_server(ClientToServerMsg::Key {
+                    key: key.clone(),
+                    raw_bytes: buf.to_vec(),
+                    is_kitty_keyboard_protocol: false,
+                });
             },
             InputEvent::Mouse(mouse_event) => {
                 let mouse_event = from_termwiz(mouse_old_event, mouse_event);
-                let action = Action::MouseEvent{ event: mouse_event };
-                os_input.send_to_server(ClientToServerMsg::Action { action, terminal_id: None, client_id: None });
+                let action = Action::MouseEvent { event: mouse_event };
+                os_input.send_to_server(ClientToServerMsg::Action {
+                    action,
+                    terminal_id: None,
+                    client_id: None,
+                });
             },
             InputEvent::Paste(pasted_text) => {
                 os_input.send_to_server(ClientToServerMsg::Action {
-                    action: Action::Write { key_with_modifier: None, bytes: BRACKETED_PASTE_START.to_vec(), is_kitty_keyboard_protocol: false },
+                    action: Action::Write {
+                        key_with_modifier: None,
+                        bytes: BRACKETED_PASTE_START.to_vec(),
+                        is_kitty_keyboard_protocol: false,
+                    },
                     terminal_id: None,
                     client_id: None,
                 });
                 os_input.send_to_server(ClientToServerMsg::Action {
-                    action: Action::Write { key_with_modifier: None, bytes: pasted_text.as_bytes().to_vec(), is_kitty_keyboard_protocol: false },
+                    action: Action::Write {
+                        key_with_modifier: None,
+                        bytes: pasted_text.as_bytes().to_vec(),
+                        is_kitty_keyboard_protocol: false,
+                    },
                     terminal_id: None,
                     client_id: None,
                 });
                 os_input.send_to_server(ClientToServerMsg::Action {
-                    action: Action::Write { key_with_modifier: None, bytes: BRACKETED_PASTE_END.to_vec(), is_kitty_keyboard_protocol: false },
+                    action: Action::Write {
+                        key_with_modifier: None,
+                        bytes: BRACKETED_PASTE_END.to_vec(),
+                        is_kitty_keyboard_protocol: false,
+                    },
                     terminal_id: None,
                     client_id: None,
                 });

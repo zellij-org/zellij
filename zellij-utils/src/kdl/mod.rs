@@ -414,7 +414,11 @@ impl Action {
         action_node: &KdlNode,
     ) -> Result<Self, ConfigError> {
         match action_name {
-            "Write" => Ok(Action::Write { key_with_modifier: None, bytes, is_kitty_keyboard_protocol: false }),
+            "Write" => Ok(Action::Write {
+                key_with_modifier: None,
+                bytes,
+                is_kitty_keyboard_protocol: false,
+            }),
             "PaneNameInput" => Ok(Action::PaneNameInput { input: bytes }),
             "TabNameInput" => Ok(Action::TabNameInput { input: bytes }),
             "SearchInput" => Ok(Action::SearchInput { input: bytes }),
@@ -525,17 +529,29 @@ impl Action {
                             action_node.span().len(),
                         )
                     })?;
-                    Ok(Action::MovePane { direction: Some(direction) })
+                    Ok(Action::MovePane {
+                        direction: Some(direction),
+                    })
                 }
             },
             "MovePaneBackwards" => Ok(Action::MovePaneBackwards),
-            "DumpScreen" => Ok(Action::DumpScreen { file_path: string, include_scrollback: false }),
+            "DumpScreen" => Ok(Action::DumpScreen {
+                file_path: string,
+                include_scrollback: false,
+            }),
             "DumpLayout" => Ok(Action::DumpLayout),
             "NewPane" => {
                 if string.is_empty() {
-                    return Ok(Action::NewPane { direction: None, pane_name: None, start_suppressed: false });
+                    return Ok(Action::NewPane {
+                        direction: None,
+                        pane_name: None,
+                        start_suppressed: false,
+                    });
                 } else if string == "stacked" {
-                    return Ok(Action::NewStackedPane { command: None, pane_name: None });
+                    return Ok(Action::NewStackedPane {
+                        command: None,
+                        pane_name: None,
+                    });
                 } else {
                     let direction = Direction::from_str(string.as_str()).map_err(|_| {
                         ConfigError::new_kdl_error(
@@ -544,7 +560,11 @@ impl Action {
                             action_node.span().len(),
                         )
                     })?;
-                    Ok(Action::NewPane { direction: Some(direction), pane_name: None, start_suppressed: false })
+                    Ok(Action::NewPane {
+                        direction: Some(direction),
+                        pane_name: None,
+                        start_suppressed: false,
+                    })
                 }
             },
             "SearchToggleOption" => {
@@ -555,7 +575,9 @@ impl Action {
                         action_node.span().len(),
                     )
                 })?;
-                Ok(Action::SearchToggleOption { option: toggle_option })
+                Ok(Action::SearchToggleOption {
+                    option: toggle_option,
+                })
             },
             "Search" => {
                 let search_direction =
@@ -566,7 +588,9 @@ impl Action {
                             action_node.span().len(),
                         )
                     })?;
-                Ok(Action::Search { direction: search_direction })
+                Ok(Action::Search {
+                    direction: search_direction,
+                })
             },
             "RenameSession" => Ok(Action::RenameSession { name: string }),
             _ => Err(ConfigError::new_kdl_error(
@@ -579,7 +603,11 @@ impl Action {
     pub fn to_kdl(&self) -> Option<KdlNode> {
         match self {
             Action::Quit => Some(KdlNode::new("Quit")),
-            Action::Write { key_with_modifier: _key, bytes, is_kitty_keyboard_protocol: _is_kitty } => {
+            Action::Write {
+                key_with_modifier: _key,
+                bytes,
+                is_kitty_keyboard_protocol: _is_kitty,
+            } => {
                 let mut node = KdlNode::new("Write");
                 for byte in bytes {
                     node.push(KdlValue::Base10(*byte as i64));
@@ -596,7 +624,10 @@ impl Action {
                 node.push(format!("{:?}", input_mode).to_lowercase());
                 Some(node)
             },
-            Action::Resize { resize, direction: resize_direction } => {
+            Action::Resize {
+                resize,
+                direction: resize_direction,
+            } => {
                 let mut node = KdlNode::new("Resize");
                 let resize = match resize {
                     Resize::Increase => "Increase",
@@ -654,7 +685,10 @@ impl Action {
                 Some(node)
             },
             Action::MovePaneBackwards => Some(KdlNode::new("MovePaneBackwards")),
-            Action::DumpScreen { file_path: file, include_scrollback: _ } => {
+            Action::DumpScreen {
+                file_path: file,
+                include_scrollback: _,
+            } => {
                 let mut node = KdlNode::new("DumpScreen");
                 node.push(file.clone());
                 Some(node)
@@ -672,7 +706,11 @@ impl Action {
             Action::ToggleFocusFullscreen => Some(KdlNode::new("ToggleFocusFullscreen")),
             Action::TogglePaneFrames => Some(KdlNode::new("TogglePaneFrames")),
             Action::ToggleActiveSyncTab => Some(KdlNode::new("ToggleActiveSyncTab")),
-            Action::NewPane { direction, pane_name: _, start_suppressed: _ } => {
+            Action::NewPane {
+                direction,
+                pane_name: _,
+                start_suppressed: _,
+            } => {
                 let mut node = KdlNode::new("NewPane");
                 if let Some(direction) = direction {
                     let direction = match direction {
@@ -696,7 +734,15 @@ impl Action {
                 Some(node)
             },
             Action::UndoRenamePane => Some(KdlNode::new("UndoRenamePane")),
-            Action::NewTab { tiled_layout: _, floating_layouts: _, swap_tiled_layouts: _, swap_floating_layouts: _, tab_name: name, should_change_focus_to_new_tab, cwd } => {
+            Action::NewTab {
+                tiled_layout: _,
+                floating_layouts: _,
+                swap_tiled_layouts: _,
+                swap_floating_layouts: _,
+                tab_name: name,
+                should_change_focus_to_new_tab,
+                cwd,
+            } => {
                 let mut node = KdlNode::new("NewTab");
                 let mut children = KdlDocument::new();
                 if let Some(name) = name {
@@ -750,7 +796,11 @@ impl Action {
                 node.push(direction);
                 Some(node)
             },
-            Action::NewTiledPane { direction, command: run_command_action, pane_name: name } => {
+            Action::NewTiledPane {
+                direction,
+                command: run_command_action,
+                pane_name: name,
+            } => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
                 if let Some(run_command_action) = run_command_action {
@@ -795,7 +845,11 @@ impl Action {
                 }
                 Some(node)
             },
-            Action::NewFloatingPane { command: run_command_action, pane_name: name, coordinates: floating_pane_coordinates } => {
+            Action::NewFloatingPane {
+                command: run_command_action,
+                pane_name: name,
+                coordinates: floating_pane_coordinates,
+            } => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
                 let mut floating_pane = KdlNode::new("floating");
@@ -882,7 +936,10 @@ impl Action {
                 }
                 Some(node)
             },
-            Action::NewInPlacePane { command: run_command_action, pane_name: name } => {
+            Action::NewInPlacePane {
+                command: run_command_action,
+                pane_name: name,
+            } => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
                 if let Some(run_command_action) = run_command_action {
@@ -919,7 +976,10 @@ impl Action {
                 }
                 Some(node)
             },
-            Action::NewStackedPane { command: run_command_action, pane_name: name } => match run_command_action {
+            Action::NewStackedPane {
+                command: run_command_action,
+                pane_name: name,
+            } => match run_command_action {
                 Some(run_command_action) => {
                     let mut node = KdlNode::new("Run");
                     let mut node_children = KdlDocument::new();
@@ -1060,7 +1120,9 @@ impl Action {
                 }
                 Some(node)
             },
-            Action::Search { direction: search_direction } => {
+            Action::Search {
+                direction: search_direction,
+            } => {
                 let mut node = KdlNode::new("Search");
                 let direction = match search_direction {
                     SearchDirection::Down => "down",
@@ -1069,7 +1131,9 @@ impl Action {
                 node.push(direction);
                 Some(node)
             },
-            Action::SearchToggleOption { option: search_toggle_option } => {
+            Action::SearchToggleOption {
+                option: search_toggle_option,
+            } => {
                 let mut node = KdlNode::new("SearchToggleOption");
                 node.push(format!("{:?}", search_toggle_option));
                 Some(node)
@@ -1478,7 +1542,15 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "NewTab" => {
                 let command_metadata = action_children.iter().next();
                 if command_metadata.is_none() {
-                    return Ok(Action::NewTab { tiled_layout: None, floating_layouts: vec![], swap_tiled_layouts: None, swap_floating_layouts: None, tab_name: None, should_change_focus_to_new_tab: true, cwd: None });
+                    return Ok(Action::NewTab {
+                        tiled_layout: None,
+                        floating_layouts: vec![],
+                        swap_tiled_layouts: None,
+                        swap_floating_layouts: None,
+                        tab_name: None,
+                        should_change_focus_to_new_tab: true,
+                        cwd: None,
+                    });
                 }
 
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -1642,9 +1714,15 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
                     })
                 } else if in_place {
-                    Ok(Action::NewInPlacePane { command: Some(run_command_action), pane_name: name })
+                    Ok(Action::NewInPlacePane {
+                        command: Some(run_command_action),
+                        pane_name: name,
+                    })
                 } else if stacked {
-                    Ok(Action::NewStackedPane { command: Some(run_command_action), pane_name: name })
+                    Ok(Action::NewStackedPane {
+                        command: Some(run_command_action),
+                        pane_name: name,
+                    })
                 } else {
                     Ok(Action::NewTiledPane {
                         direction,

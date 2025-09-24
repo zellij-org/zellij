@@ -38,14 +38,18 @@ impl TryFrom<ProtobufAction> for Action {
                 None => Ok(Action::Quit),
             },
             Some(ProtobufActionName::Write) => match protobuf_action.optional_payload {
-                Some(OptionalPayload::WritePayload(write_payload)) => {
-                    Ok(Action::Write { key_with_modifier: None, bytes: write_payload.bytes_to_write, is_kitty_keyboard_protocol: false })
-                },
+                Some(OptionalPayload::WritePayload(write_payload)) => Ok(Action::Write {
+                    key_with_modifier: None,
+                    bytes: write_payload.bytes_to_write,
+                    is_kitty_keyboard_protocol: false,
+                }),
                 _ => Err("Wrong payload for Action::Write"),
             },
             Some(ProtobufActionName::WriteChars) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::WriteCharsPayload(write_chars_payload)) => {
-                    Ok(Action::WriteChars { chars: write_chars_payload.chars })
+                    Ok(Action::WriteChars {
+                        chars: write_chars_payload.chars,
+                    })
                 },
                 _ => Err("Wrong payload for Action::WriteChars"),
             },
@@ -137,7 +141,10 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(OptionalPayload::DumpScreenPayload(payload)) => {
                     let file_path = payload.file_path;
                     let include_scrollback = payload.include_scrollback;
-                    Ok(Action::DumpScreen { file_path, include_scrollback })
+                    Ok(Action::DumpScreen {
+                        file_path,
+                        include_scrollback,
+                    })
                 },
                 _ => Err("Wrong payload for Action::DumpScreen"),
             },
@@ -222,7 +229,11 @@ impl TryFrom<ProtobufAction> for Action {
                         .and_then(|d| ProtobufResizeDirection::from_i32(d))
                         .and_then(|d| d.try_into().ok());
                     let pane_name = payload.pane_name;
-                    Ok(Action::NewPane { direction, pane_name, start_suppressed: false })
+                    Ok(Action::NewPane {
+                        direction,
+                        pane_name,
+                        start_suppressed: false,
+                    })
                 },
                 _ => Err("Wrong payload for Action::NewPane"),
             },
@@ -259,7 +270,11 @@ impl TryFrom<ProtobufAction> for Action {
                             coordinates: None,
                         })
                     } else {
-                        Ok(Action::NewFloatingPane { command: None, pane_name: None, coordinates: None })
+                        Ok(Action::NewFloatingPane {
+                            command: None,
+                            pane_name: None,
+                            coordinates: None,
+                        })
                     }
                 },
                 _ => Err("Wrong payload for Action::NewFloatingPane"),
@@ -279,7 +294,11 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_name,
                         })
                     } else {
-                        Ok(Action::NewTiledPane { direction, command: None, pane_name: None })
+                        Ok(Action::NewTiledPane {
+                            direction,
+                            command: None,
+                            pane_name: None,
+                        })
                     }
                 },
                 _ => Err("Wrong payload for Action::NewTiledPane"),
@@ -315,7 +334,15 @@ impl TryFrom<ProtobufAction> for Action {
                     Some(_) => Err("NewTab should not have a payload"),
                     None => {
                         // we do not serialize the layouts of this action
-                        Ok(Action::NewTab { tiled_layout: None, floating_layouts: vec![], swap_tiled_layouts: None, swap_floating_layouts: None, tab_name: None, should_change_focus_to_new_tab: true, cwd: None })
+                        Ok(Action::NewTab {
+                            tiled_layout: None,
+                            floating_layouts: vec![],
+                            swap_tiled_layouts: None,
+                            swap_floating_layouts: None,
+                            tab_name: None,
+                            should_change_focus_to_new_tab: true,
+                            cwd: None,
+                        })
                     },
                 }
             },
@@ -343,7 +370,10 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(OptionalPayload::GoToTabNamePayload(payload)) => {
                     let tab_name = payload.tab_name;
                     let create = payload.create;
-                    Ok(Action::GoToTabName { name: tab_name, create })
+                    Ok(Action::GoToTabName {
+                        name: tab_name,
+                        create,
+                    })
                 },
                 _ => Err("Wrong payload for Action::GoToTabName"),
             },
@@ -373,7 +403,9 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::Run) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::RunPayload(run_command_action)) => {
                     let run_command_action = run_command_action.try_into()?;
-                    Ok(Action::Run { command: run_command_action })
+                    Ok(Action::Run {
+                        command: run_command_action,
+                    })
                 },
                 _ => Err("Wrong payload for Action::Run"),
             },
@@ -384,27 +416,27 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::LeftClick) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::LeftClickPayload(payload)) => {
                     let position = payload.try_into()?;
-                    Ok(Action::MouseEvent { event: MouseEvent::new_left_press_event(
-                        position,
-                    ) })
+                    Ok(Action::MouseEvent {
+                        event: MouseEvent::new_left_press_event(position),
+                    })
                 },
                 _ => Err("Wrong payload for Action::LeftClick"),
             },
             Some(ProtobufActionName::RightClick) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::RightClickPayload(payload)) => {
                     let position = payload.try_into()?;
-                    Ok(Action::MouseEvent { event: MouseEvent::new_right_press_event(
-                        position,
-                    ) })
+                    Ok(Action::MouseEvent {
+                        event: MouseEvent::new_right_press_event(position),
+                    })
                 },
                 _ => Err("Wrong payload for Action::RightClick"),
             },
             Some(ProtobufActionName::MiddleClick) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::MiddleClickPayload(payload)) => {
                     let position = payload.try_into()?;
-                    Ok(Action::MouseEvent { event: MouseEvent::new_middle_press_event(
-                        position,
-                    ) })
+                    Ok(Action::MouseEvent {
+                        event: MouseEvent::new_middle_press_event(position),
+                    })
                 },
                 _ => Err("Wrong payload for Action::MiddleClick"),
             },
@@ -468,18 +500,18 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::LeftMouseRelease) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::LeftMouseReleasePayload(payload)) => {
                     let position = payload.try_into()?;
-                    Ok(Action::MouseEvent { event: MouseEvent::new_left_release_event(
-                        position,
-                    ) })
+                    Ok(Action::MouseEvent {
+                        event: MouseEvent::new_left_release_event(position),
+                    })
                 },
                 _ => Err("Wrong payload for Action::LeftMouseRelease"),
             },
             Some(ProtobufActionName::RightMouseRelease) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::RightMouseReleasePayload(payload)) => {
                     let position = payload.try_into()?;
-                    Ok(Action::MouseEvent { event: MouseEvent::new_right_release_event(
-                        position,
-                    ) })
+                    Ok(Action::MouseEvent {
+                        event: MouseEvent::new_right_release_event(position),
+                    })
                 },
                 _ => Err("Wrong payload for Action::RightMouseRelease"),
             },
@@ -487,9 +519,9 @@ impl TryFrom<ProtobufAction> for Action {
                 match protobuf_action.optional_payload {
                     Some(OptionalPayload::MiddleMouseReleasePayload(payload)) => {
                         let position = payload.try_into()?;
-                        Ok(Action::MouseEvent { event: MouseEvent::new_middle_release_event(
-                            position,
-                        ) })
+                        Ok(Action::MouseEvent {
+                            event: MouseEvent::new_middle_release_event(position),
+                        })
                     },
                     _ => Err("Wrong payload for Action::MiddleMouseRelease"),
                 }
@@ -601,7 +633,9 @@ impl TryFrom<ProtobufAction> for Action {
                             RunPluginOrAlias::from_url(&payload.as_str(), &None, None, None)
                                 .map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
 
-                        Ok(Action::StartOrReloadPlugin { plugin: run_plugin_or_alias })
+                        Ok(Action::StartOrReloadPlugin {
+                            plugin: run_plugin_or_alias,
+                        })
                     },
                     _ => Err("Wrong payload for Action::StartOrReloadPlugin"),
                 }
@@ -649,7 +683,10 @@ impl TryFrom<ProtobufAction> for Action {
                     Some(OptionalPayload::RenameTerminalPanePayload(payload)) => {
                         let terminal_pane_id = payload.id;
                         let new_pane_name = payload.name;
-                        Ok(Action::RenameTerminalPane { pane_id: terminal_pane_id, name: new_pane_name })
+                        Ok(Action::RenameTerminalPane {
+                            pane_id: terminal_pane_id,
+                            name: new_pane_name,
+                        })
                     },
                     _ => Err("Wrong payload for Action::RenameTerminalPane"),
                 }
@@ -658,7 +695,10 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(OptionalPayload::RenamePluginPanePayload(payload)) => {
                     let plugin_pane_id = payload.id;
                     let new_pane_name = payload.name;
-                    Ok(Action::RenamePluginPane { pane_id: plugin_pane_id, name: new_pane_name })
+                    Ok(Action::RenamePluginPane {
+                        pane_id: plugin_pane_id,
+                        name: new_pane_name,
+                    })
                 },
                 _ => Err("Wrong payload for Action::RenamePluginPane"),
             },
@@ -666,7 +706,10 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(OptionalPayload::RenameTabPayload(payload)) => {
                     let tab_index = payload.id;
                     let new_tab_name = payload.name;
-                    Ok(Action::RenameTab { tab_index, name: new_tab_name })
+                    Ok(Action::RenameTab {
+                        tab_index,
+                        name: new_tab_name,
+                    })
                 },
                 _ => Err("Wrong payload for Action::RenameTab"),
             },
@@ -722,7 +765,10 @@ impl TryFrom<ProtobufAction> for Action {
             },
             Some(ProtobufActionName::NewStackedPane) => match protobuf_action.optional_payload {
                 Some(_) => Err("NewStackedPane should not have a payload"),
-                None => Ok(Action::NewStackedPane { command: None, pane_name: None }),
+                None => Ok(Action::NewStackedPane {
+                    command: None,
+                    pane_name: None,
+                }),
             },
             _ => Err("Unknown Action"),
         }
@@ -737,13 +783,19 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::Quit as i32,
                 optional_payload: None,
             }),
-            Action::Write { key_with_modifier: _, bytes, is_kitty_keyboard_protocol: _ } => Ok(ProtobufAction {
+            Action::Write {
+                key_with_modifier: _,
+                bytes,
+                is_kitty_keyboard_protocol: _,
+            } => Ok(ProtobufAction {
                 name: ProtobufActionName::Write as i32,
                 optional_payload: Some(OptionalPayload::WritePayload(WritePayload {
                     bytes_to_write: bytes,
                 })),
             }),
-            Action::WriteChars { chars: chars_to_write } => Ok(ProtobufAction {
+            Action::WriteChars {
+                chars: chars_to_write,
+            } => Ok(ProtobufAction {
                 name: ProtobufActionName::WriteChars as i32,
                 optional_payload: Some(OptionalPayload::WriteCharsPayload(WriteCharsPayload {
                     chars: chars_to_write,
@@ -830,7 +882,10 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::ClearScreen as i32,
                 optional_payload: None,
             }),
-            Action::DumpScreen { file_path, include_scrollback } => Ok(ProtobufAction {
+            Action::DumpScreen {
+                file_path,
+                include_scrollback,
+            } => Ok(ProtobufAction {
                 name: ProtobufActionName::DumpScreen as i32,
                 optional_payload: Some(OptionalPayload::DumpScreenPayload(DumpScreenPayload {
                     file_path,
@@ -903,7 +958,11 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::ToggleActiveSyncTab as i32,
                 optional_payload: None,
             }),
-            Action::NewPane { direction, pane_name: new_pane_name, start_suppressed: _start_suppressed } => {
+            Action::NewPane {
+                direction,
+                pane_name: new_pane_name,
+                start_suppressed: _start_suppressed,
+            } => {
                 let direction = direction.and_then(|direction| {
                     let protobuf_direction: ProtobufResizeDirection = direction.try_into().ok()?;
                     Some(protobuf_direction as i32)
@@ -941,7 +1000,11 @@ impl TryFrom<Action> for ProtobufAction {
                     })),
                 })
             },
-            Action::NewFloatingPane { command: run_command_action, pane_name, coordinates: _coordinates } => {
+            Action::NewFloatingPane {
+                command: run_command_action,
+                pane_name,
+                coordinates: _coordinates,
+            } => {
                 let command = run_command_action.and_then(|r| {
                     let mut protobuf_run_command_action: ProtobufRunCommandAction =
                         r.try_into().ok()?;
@@ -955,7 +1018,11 @@ impl TryFrom<Action> for ProtobufAction {
                     )),
                 })
             },
-            Action::NewTiledPane { direction, command: run_command_action, pane_name } => {
+            Action::NewTiledPane {
+                direction,
+                command: run_command_action,
+                pane_name,
+            } => {
                 let direction = direction.and_then(|direction| {
                     let protobuf_direction: ProtobufResizeDirection = direction.try_into().ok()?;
                     Some(protobuf_direction as i32)
@@ -994,7 +1061,15 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::UndoRenamePane as i32,
                 optional_payload: None,
             }),
-            Action::NewTab { tiled_layout: _, floating_layouts: _, swap_tiled_layouts: _, swap_floating_layouts: _, tab_name: _, should_change_focus_to_new_tab: _, cwd: _ } => {
+            Action::NewTab {
+                tiled_layout: _,
+                floating_layouts: _,
+                swap_tiled_layouts: _,
+                swap_floating_layouts: _,
+                tab_name: _,
+                should_change_focus_to_new_tab: _,
+                cwd: _,
+            } => {
                 // we do not serialize the various newtab payloads
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewTab as i32,
@@ -1017,7 +1092,10 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::GoToTab as i32,
                 optional_payload: Some(OptionalPayload::GoToTabPayload(tab_index)),
             }),
-            Action::GoToTabName { name: tab_name, create } => Ok(ProtobufAction {
+            Action::GoToTabName {
+                name: tab_name,
+                create,
+            } => Ok(ProtobufAction {
                 name: ProtobufActionName::GoToTabName as i32,
                 optional_payload: Some(OptionalPayload::GoToTabNamePayload(GoToTabNamePayload {
                     tab_name,
@@ -1043,7 +1121,9 @@ impl TryFrom<Action> for ProtobufAction {
                     optional_payload: Some(OptionalPayload::MoveTabPayload(direction as i32)),
                 })
             },
-            Action::Run { command: run_command_action } => {
+            Action::Run {
+                command: run_command_action,
+            } => {
                 let run_command_action: ProtobufRunCommandAction = run_command_action.try_into()?;
                 Ok(ProtobufAction {
                     name: ProtobufActionName::Run as i32,
@@ -1109,14 +1189,18 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::SearchInput as i32,
                 optional_payload: Some(OptionalPayload::SearchInputPayload(bytes)),
             }),
-            Action::Search { direction: search_direction } => {
+            Action::Search {
+                direction: search_direction,
+            } => {
                 let search_direction: ProtobufSearchDirection = search_direction.try_into()?;
                 Ok(ProtobufAction {
                     name: ProtobufActionName::Search as i32,
                     optional_payload: Some(OptionalPayload::SearchPayload(search_direction as i32)),
                 })
             },
-            Action::SearchToggleOption { option: search_option } => {
+            Action::SearchToggleOption {
+                option: search_option,
+            } => {
                 let search_option: ProtobufSearchOption = search_option.try_into()?;
                 Ok(ProtobufAction {
                     name: ProtobufActionName::SearchToggleOption as i32,
@@ -1141,18 +1225,21 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::QueryTabNames as i32,
                 optional_payload: None,
             }),
-            Action::NewTiledPluginPane { plugin: run_plugin, pane_name, skip_cache: skip_plugin_cache, cwd: _cwd } => {
-                Ok(ProtobufAction {
-                    name: ProtobufActionName::NewTiledPluginPane as i32,
-                    optional_payload: Some(OptionalPayload::NewTiledPluginPanePayload(
-                        NewPluginPanePayload {
-                            plugin_url: run_plugin.location_string(),
-                            pane_name,
-                            skip_plugin_cache,
-                        },
-                    )),
-                })
-            },
+            Action::NewTiledPluginPane {
+                plugin: run_plugin,
+                pane_name,
+                skip_cache: skip_plugin_cache,
+                cwd: _cwd,
+            } => Ok(ProtobufAction {
+                name: ProtobufActionName::NewTiledPluginPane as i32,
+                optional_payload: Some(OptionalPayload::NewTiledPluginPanePayload(
+                    NewPluginPanePayload {
+                        plugin_url: run_plugin.location_string(),
+                        pane_name,
+                        skip_plugin_cache,
+                    },
+                )),
+            }),
             Action::NewFloatingPluginPane {
                 plugin: run_plugin,
                 pane_name,
@@ -1175,51 +1262,66 @@ impl TryFrom<Action> for ProtobufAction {
                     run_plugin.location_string(),
                 )),
             }),
-            Action::CloseTerminalPane { pane_id: terminal_pane_id } => Ok(ProtobufAction {
+            Action::CloseTerminalPane {
+                pane_id: terminal_pane_id,
+            } => Ok(ProtobufAction {
                 name: ProtobufActionName::CloseTerminalPane as i32,
                 optional_payload: Some(OptionalPayload::CloseTerminalPanePayload(terminal_pane_id)),
             }),
-            Action::ClosePluginPane { pane_id: plugin_pane_id } => Ok(ProtobufAction {
+            Action::ClosePluginPane {
+                pane_id: plugin_pane_id,
+            } => Ok(ProtobufAction {
                 name: ProtobufActionName::ClosePluginPane as i32,
                 optional_payload: Some(OptionalPayload::ClosePluginPanePayload(plugin_pane_id)),
             }),
-            Action::FocusTerminalPaneWithId { pane_id: terminal_pane_id, should_float_if_hidden } => {
-                Ok(ProtobufAction {
-                    name: ProtobufActionName::FocusTerminalPaneWithId as i32,
-                    optional_payload: Some(OptionalPayload::FocusTerminalPaneWithIdPayload(
-                        PaneIdAndShouldFloat {
-                            pane_id: terminal_pane_id,
-                            should_float: should_float_if_hidden,
-                        },
-                    )),
-                })
-            },
-            Action::FocusPluginPaneWithId { pane_id: plugin_pane_id, should_float_if_hidden } => {
-                Ok(ProtobufAction {
-                    name: ProtobufActionName::FocusPluginPaneWithId as i32,
-                    optional_payload: Some(OptionalPayload::FocusPluginPaneWithIdPayload(
-                        PaneIdAndShouldFloat {
-                            pane_id: plugin_pane_id,
-                            should_float: should_float_if_hidden,
-                        },
-                    )),
-                })
-            },
-            Action::RenameTerminalPane { pane_id: terminal_pane_id, name: new_name } => Ok(ProtobufAction {
+            Action::FocusTerminalPaneWithId {
+                pane_id: terminal_pane_id,
+                should_float_if_hidden,
+            } => Ok(ProtobufAction {
+                name: ProtobufActionName::FocusTerminalPaneWithId as i32,
+                optional_payload: Some(OptionalPayload::FocusTerminalPaneWithIdPayload(
+                    PaneIdAndShouldFloat {
+                        pane_id: terminal_pane_id,
+                        should_float: should_float_if_hidden,
+                    },
+                )),
+            }),
+            Action::FocusPluginPaneWithId {
+                pane_id: plugin_pane_id,
+                should_float_if_hidden,
+            } => Ok(ProtobufAction {
+                name: ProtobufActionName::FocusPluginPaneWithId as i32,
+                optional_payload: Some(OptionalPayload::FocusPluginPaneWithIdPayload(
+                    PaneIdAndShouldFloat {
+                        pane_id: plugin_pane_id,
+                        should_float: should_float_if_hidden,
+                    },
+                )),
+            }),
+            Action::RenameTerminalPane {
+                pane_id: terminal_pane_id,
+                name: new_name,
+            } => Ok(ProtobufAction {
                 name: ProtobufActionName::RenameTerminalPane as i32,
                 optional_payload: Some(OptionalPayload::RenameTerminalPanePayload(IdAndName {
                     name: new_name,
                     id: terminal_pane_id,
                 })),
             }),
-            Action::RenamePluginPane { pane_id: plugin_pane_id, name: new_name } => Ok(ProtobufAction {
+            Action::RenamePluginPane {
+                pane_id: plugin_pane_id,
+                name: new_name,
+            } => Ok(ProtobufAction {
                 name: ProtobufActionName::RenamePluginPane as i32,
                 optional_payload: Some(OptionalPayload::RenamePluginPanePayload(IdAndName {
                     name: new_name,
                     id: plugin_pane_id,
                 })),
             }),
-            Action::RenameTab { tab_index, name: new_name } => Ok(ProtobufAction {
+            Action::RenameTab {
+                tab_index,
+                name: new_name,
+            } => Ok(ProtobufAction {
                 name: ProtobufActionName::RenameTab as i32,
                 optional_payload: Some(OptionalPayload::RenameTabPayload(IdAndName {
                     name: new_name,
@@ -1258,21 +1360,34 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::ToggleGroupMarking as i32,
                 optional_payload: None,
             }),
-            Action::NewStackedPane { command: _, pane_name: _ } => Ok(ProtobufAction {
+            Action::NewStackedPane {
+                command: _,
+                pane_name: _,
+            } => Ok(ProtobufAction {
                 name: ProtobufActionName::NewStackedPane as i32,
                 optional_payload: None,
             }),
             Action::NoOp
             | Action::Confirm
-            | Action::NewInPlacePane { command: _, pane_name: _ }
-            | Action::NewInPlacePluginPane { plugin: _, pane_name: _, skip_cache: _ }
+            | Action::NewInPlacePane {
+                command: _,
+                pane_name: _,
+            }
+            | Action::NewInPlacePluginPane {
+                plugin: _,
+                pane_name: _,
+                skip_cache: _,
+            }
             | Action::Deny
             | Action::Copy
             | Action::DumpLayout
             | Action::CliPipe { .. }
             | Action::ListClients
             | Action::StackPanes { pane_ids: _ }
-            | Action::ChangeFloatingPaneCoordinates { pane_id: _, coordinates: _ }
+            | Action::ChangeFloatingPaneCoordinates {
+                pane_id: _,
+                coordinates: _,
+            }
             | Action::SkipConfirm { action: _ } => Err("Unsupported action"),
         }
     }
