@@ -1656,6 +1656,21 @@ impl Layout {
                     .map(|f| f.populate_run_plugin_if_needed(&plugin_aliases));
             }
         }
+        for swap_tiled_layout in &mut self.swap_tiled_layouts {
+            for (_constraint, tiled_pane_layout) in &mut swap_tiled_layout.0 {
+                tiled_pane_layout.populate_plugin_aliases_in_layout(plugin_aliases);
+            }
+        }
+        for swap_floating_layout in &mut self.swap_floating_layouts {
+            for (_constraint, floating_pane_layouts) in &mut swap_floating_layout.0 {
+                for floating_pane_layout in floating_pane_layouts {
+                    floating_pane_layout
+                        .run
+                        .as_mut()
+                        .map(|f| f.populate_run_plugin_if_needed(plugin_aliases));
+                }
+            }
+        }
     }
     pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
         for (_, tiled_pane_layout, floating_panes) in self.tabs.iter_mut() {
