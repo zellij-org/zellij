@@ -3,6 +3,8 @@ keybinds {
     normal {
         // uncomment this and adjust key if using copy_on_select=false
         // bind "Alt c" { Copy; }
+        // or you can bind smart copy action instead
+        // bind "Ctrl c" { SmartCopy; }
     }
     locked {
         bind "Ctrl g" { SwitchToMode "Normal"; }
@@ -83,6 +85,8 @@ keybinds {
         bind "u" { HalfPageScrollUp; }
         // uncomment this and adjust key if using copy_on_select=false
         // bind "Alt c" { Copy; }
+        // or you can bind smart copy action instead
+        // bind "Ctrl c" { SmartCopy; }
     }
     search {
         bind "Ctrl s" { SwitchToMode "Normal"; }
