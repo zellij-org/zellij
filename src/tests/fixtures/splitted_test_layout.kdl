@@ -1,0 +1,14 @@
+layout {
+    tab name="Test Tab" {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        pane split_direction="vertical" {
+            pane cwd="/tmp" focus=true
+            pane cwd="/home"
+        }
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+}
