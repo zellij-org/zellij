@@ -363,9 +363,12 @@ pub struct StdinPoller {
 impl StdinPoller {
     // use mio poll to check if stdin is readable without blocking
     pub fn ready(&mut self) -> bool {
-        self.poll
-            .poll(&mut self.events, Some(self.timeout))
-            .expect("could not poll stdin for readiness");
+        match self.poll
+            .poll(&mut self.events, Some(self.timeout)) {
+                OK(()) => Ok(()),
+                Err(ref e) if e.is_interrupted() => return false,
+                Err(e) => panic!("could not poll stdin for readiness"),
+        }
         for event in &self.events {
             if event.token() == Token(0) && event.is_readable() {
                 return true;
