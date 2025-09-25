@@ -38,7 +38,7 @@ serde_json = { workspace = true }
 signal-hook = { workspace = true }
 sixel-image = { version = "0.1.0", default-features = false }
 sixel-tokenizer = { version = "0.1.0", default-features = false }
-sysinfo = { version = "0.22.5", default-features = false }
+sysinfo = "0.22.5"
 tempfile = { workspace = true }
 typetag = { version = "0.1.7", default-features = false }
 unicode-width = { workspace = true }
