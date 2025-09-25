@@ -631,6 +631,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     force_run_commands: false,
                     index: None,
                     options: None,
+                    layout: None,
                 }));
             } else {
                 opts.command = None;
@@ -658,6 +659,7 @@ pub(crate) fn start_client(opts: CliArgs) {
             force_run_commands,
             index,
             options,
+            layout,
         })) = opts.command.clone()
         {
             let config_options = match options.as_deref() {
@@ -667,6 +669,12 @@ pub(crate) fn start_client(opts: CliArgs) {
                 None => config_options,
             };
             should_create_detached = create_background;
+
+            if let Some(layout) = layout {
+                if create || should_create_detached {
+                    layout_info = Some(zellij_utils::data::LayoutInfo::File(layout.display().to_string()));
+                }
+            }
 
             let mut client = if let Some(idx) = index {
                 attach_with_session_index(

@@ -2536,3 +2536,55 @@ pub fn pin_floating_panes() {
     let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
+
+#[test]
+#[ignore]
+pub fn attach_with_layout_creates_session() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new_attach_session_with_layout(
+            fake_win_size,
+            "test_attach_layout_session",
+            "simple_test_layout.kdl",
+        )
+        .add_step(Step {
+            name: "Wait for session to be created with layout",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.status_bar_appears()
+                   && remote_terminal.snapshot_contains("Test Tab") {
+                    // Layout has been applied and tab name from layout is visible
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+
+        runner.run_all_steps();
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for layout to be fully loaded",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.cursor_position_is(0, 2)
+                   && remote_terminal.snapshot_contains("Test Tab") {
+                    // Session is fully loaded with the layout applied
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
+    assert_snapshot!(last_snapshot);
+}
