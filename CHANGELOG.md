@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * refactor: move logical structures from client to server (https://github.com/zellij-org/zellij/pull/4383)
 * fix: make sessions compatible across versions (https://github.com/zellij-org/zellij/pull/4439)
 * fix: occasional status-bar pop-out after resurrecting a session (https://github.com/zellij-org/zellij/pull/4440)
+* fix: properly serialize/resurrect layouts with one-line split panes (https://github.com/zellij-org/zellij/pull/4442)
 
 ## [0.43.1] - 2025-08-08
 * fix: pane rename backspace regression (https://github.com/zellij-org/zellij/pull/4346)
