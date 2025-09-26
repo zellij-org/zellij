@@ -6286,7 +6286,7 @@ pub fn unblock_input_plugin_command() {
     std::thread::sleep(std::time::Duration::from_millis(500));
 
     let _ = plugin_thread_sender.send(PluginInstruction::CliPipe {
-        pane_id: None,
+        pane_id: Some(crate::panes::PaneId::Terminal(0)),
         pipe_id: "input_pipe_id".to_owned(),
         name: "message_name".to_owned(),
         payload: Some("message_payload".to_owned()),
