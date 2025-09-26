@@ -1,11 +1,9 @@
 use crate::plugins::plugin_map::{
-    PluginEnv, PluginMap, RunningPlugin, VecDequeInputStream, WriteOutputStream,
+    PluginEnv, PluginMap, RunningPlugin,
 };
 use crate::plugins::plugin_worker::{plugin_worker, RunningWorker};
 use crate::plugins::zellij_exports::{wasi_write_object, zellij_exports};
 use crate::plugins::PluginId;
-use highway::{HighwayHash, PortableHash};
-use log::info;
 use prost::Message;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -14,18 +12,17 @@ use std::{
     sync::{Arc, Mutex},
 };
 use url::Url;
-use wasmtime::{Engine, Instance, Linker, Module, Store};
-use wasmtime_wasi::{preview1::WasiP1Ctx, DirPerms, FilePerms, WasiCtxBuilder};
-use zellij_utils::consts::ZELLIJ_PLUGIN_ARTIFACT_DIR;
+use wasmi::{Engine, Instance, Linker, Module, Store};
+use wasmi_wasi::{WasiCtx, WasiCtxBuilder};
 
 use crate::{
-    logging_pipe::LoggingPipe, screen::ScreenInstruction, thread_bus::ThreadSenders,
+    screen::ScreenInstruction, thread_bus::ThreadSenders,
     ui::loading_indication::LoadingIndication, ClientId,
 };
 
 use zellij_utils::plugin_api::action::ProtobufPluginConfiguration;
 use zellij_utils::{
-    consts::{ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR},
+    consts::{ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR},
     data::{InputMode, PluginCapabilities},
     errors::prelude::*,
     input::command::TerminalAction,
@@ -62,7 +59,6 @@ pub struct PluginLoader<'a> {
     plugin_own_data_dir: PathBuf,
     plugin_own_cache_dir: PathBuf,
     size: Size,
-    wasm_blob_on_hd: Option<(Vec<u8>, PathBuf)>,
     path_to_default_shell: PathBuf,
     plugin_cwd: PathBuf,
     capabilities: PluginCapabilities,
@@ -155,6 +151,7 @@ impl<'a> PluginLoader<'a> {
         default_mode: InputMode,
         keybinds: Keybinds,
     ) -> Result<()> {
+        log::info!("start plugin 1");
         let err_context = || format!("failed to start plugin {plugin_id} for client {client_id}");
         let mut plugin_loader = PluginLoader::new(
             &plugin_cache,
@@ -177,7 +174,9 @@ impl<'a> PluginLoader<'a> {
             default_mode,
             keybinds,
         )?;
-        if skip_cache {
+        log::info!("start plugin 2");
+        if true { // TODO: proper fix
+            log::info!("start plugin 3");
             plugin_loader
                 .compile_module()
                 .and_then(|module| plugin_loader.create_plugin_environment(module))
@@ -192,6 +191,7 @@ impl<'a> PluginLoader<'a> {
                 })
                 .with_context(err_context)?;
         } else {
+            log::info!("start plugin 4");
             plugin_loader
                 .load_module_from_memory()
                 .or_else(|_e| plugin_loader.load_module_from_hd_cache())
@@ -364,7 +364,6 @@ impl<'a> PluginLoader<'a> {
             plugin_own_data_dir,
             plugin_own_cache_dir,
             size,
-            wasm_blob_on_hd: None,
             path_to_default_shell,
             plugin_cwd,
             capabilities,
@@ -521,29 +520,8 @@ impl<'a> PluginLoader<'a> {
             self.senders,
             self.plugin_id
         );
-        display_loading_stage!(
-            indicate_loading_plugin_from_hd_cache,
-            self.loading_indication,
-            self.senders,
-            self.plugin_id
-        );
-        let (_wasm_bytes, cached_path) = self.plugin_bytes_and_cache_path()?;
-        let timer = std::time::Instant::now();
-        let file_in_cache = std::fs::read(&cached_path)?;
-        let module = unsafe { Module::deserialize(&self.engine, file_in_cache)? };
-        log::info!(
-            "Loaded plugin '{}' from cache folder at '{}' in {:?}",
-            self.plugin_path.display(),
-            ZELLIJ_CACHE_DIR.display(),
-            timer.elapsed(),
-        );
-        display_loading_stage!(
-            indicate_loading_plugin_from_hd_cache_success,
-            self.loading_indication,
-            self.senders,
-            self.plugin_id
-        );
-        Ok(module)
+        // Wasmi doesn't support module serialization, fall back to compilation
+        Err(anyhow!("HD cache not supported with Wasmi"))
     }
     pub fn compile_module(&mut self) -> Result<Module> {
         self.loading_indication.override_previous_error();
@@ -559,26 +537,14 @@ impl<'a> PluginLoader<'a> {
             self.senders,
             self.plugin_id
         );
-        let (wasm_bytes, cached_path) = self.plugin_bytes_and_cache_path()?;
+        let wasm_bytes = self.plugin.resolve_wasm_bytes(&self.plugin_dir)?;
         let timer = std::time::Instant::now();
-        let err_context = || "failed to recover cache dir";
-        let module = fs::create_dir_all(ZELLIJ_PLUGIN_ARTIFACT_DIR.as_path())
-            .map_err(anyError::new)
-            .and_then(|_| {
-                // compile module
-                Module::new(&self.engine, &wasm_bytes)
-            })
-            .and_then(|m| {
-                // serialize module to HD cache for faster loading in the future
-                fs::write(&cached_path, m.serialize()?).map_err(anyError::new)?;
-                log::info!(
-                    "Compiled plugin '{}' in {:?}",
-                    self.plugin_path.display(),
-                    timer.elapsed()
-                );
-                Ok(m)
-            })
-            .with_context(err_context)?;
+        let module = Module::new(&self.engine, &wasm_bytes)?;
+        log::info!(
+            "Loaded plugin '{}' in {:?}",
+            self.plugin_path.display(),
+            timer.elapsed()
+        );
         Ok(module)
     }
     pub fn create_plugin_environment(
@@ -761,29 +727,6 @@ impl<'a> PluginLoader<'a> {
         }
         Ok(())
     }
-    fn plugin_bytes_and_cache_path(&mut self) -> Result<(Vec<u8>, PathBuf)> {
-        match self.wasm_blob_on_hd.as_ref() {
-            Some((wasm_bytes, cached_path)) => Ok((wasm_bytes.clone(), cached_path.clone())),
-            None => {
-                if self.plugin._allow_exec_host_cmd {
-                    info!(
-                        "Plugin({:?}) is able to run any host command, this may lead to some security issues!",
-                        self.plugin.path
-                    );
-                }
-                // The plugins blob as stored on the filesystem
-                let wasm_bytes = self.plugin.resolve_wasm_bytes(&self.plugin_dir)?;
-                let hash: String = PortableHash::default()
-                    .hash256(&wasm_bytes)
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect();
-                let cached_path = ZELLIJ_PLUGIN_ARTIFACT_DIR.join(&hash);
-                self.wasm_blob_on_hd = Some((wasm_bytes.clone(), cached_path.clone()));
-                Ok((wasm_bytes, cached_path))
-            },
-        }
-    }
     pub fn create_wasi_ctx(
         host_dir: &PathBuf,
         data_dir: &PathBuf,
@@ -793,7 +736,7 @@ impl<'a> PluginLoader<'a> {
         plugin_id: PluginId,
         stdin_pipe: Arc<Mutex<VecDeque<u8>>>,
         stdout_pipe: Arc<Mutex<VecDeque<u8>>>,
-    ) -> Result<WasiP1Ctx> {
+    ) -> Result<WasiCtx> {
         let err_context = || format!("Failed to create wasi_ctx");
         let dirs = vec![
             ("/host".to_owned(), host_dir.clone()),
@@ -809,20 +752,10 @@ impl<'a> PluginLoader<'a> {
             // there's no built-in solution
             dir.try_exists().ok().unwrap_or(false)
         });
-        let mut wasi_ctx_builder = WasiCtxBuilder::new();
-        wasi_ctx_builder.env("CLICOLOR_FORCE", "1");
-        for (guest_path, host_path) in dirs {
-            wasi_ctx_builder
-                .preopened_dir(host_path, guest_path, DirPerms::all(), FilePerms::all())
-                .with_context(err_context)?;
-        }
-        wasi_ctx_builder
-            .stdin(VecDequeInputStream(stdin_pipe.clone()))
-            .stdout(WriteOutputStream(stdout_pipe.clone()))
-            .stderr(WriteOutputStream(Arc::new(Mutex::new(LoggingPipe::new(
-                plugin_url, plugin_id,
-            )))));
-        let wasi_ctx = wasi_ctx_builder.build_p1();
+        let mut builder = WasiCtxBuilder::new();
+        builder.inherit_env()?;
+        builder.inherit_stdio();
+        let wasi_ctx = builder.build();
         Ok(wasi_ctx)
     }
     fn create_plugin_instance_env(&self, module: &Module) -> Result<(Store<PluginEnv>, Instance)> {
@@ -875,18 +808,20 @@ impl<'a> PluginLoader<'a> {
         let mut store = Store::new(&self.engine, plugin_env);
 
         let mut linker = Linker::new(&self.engine);
-        wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |plugin_env: &mut PluginEnv| {
+        wasmi_wasi::add_to_linker(&mut linker, |plugin_env: &mut PluginEnv| {
             &mut plugin_env.wasi_ctx
-        })
-        .unwrap();
+        })?;
         zellij_exports(&mut linker);
 
         let instance = linker
             .instantiate(&mut store, module)
+            .and_then(|pre| pre.start(&mut store))
             .with_context(err_context)?;
 
         if let Some(func) = instance.get_func(&mut store, "_initialize") {
-            func.typed::<(), ()>(&store)?.call(&mut store, ())?;
+            if let Ok(typed_func) = func.typed::<(), ()>(&store) {
+                let _ = typed_func.call(&mut store, ());
+            }
         }
 
         Ok((store, instance))

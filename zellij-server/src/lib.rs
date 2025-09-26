@@ -34,7 +34,7 @@ use zellij_utils::pane_size::Size;
 
 use zellij_utils::input::cli_assets::CliAssets;
 
-use wasmtime::{Config as WasmtimeConfig, Engine, Strategy};
+use wasmi::{Config as WasmiConfig, Engine};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -1892,14 +1892,8 @@ fn update_new_saved_config(
     }
 }
 
-#[cfg(not(feature = "singlepass"))]
 fn get_engine() -> Engine {
-    log::info!("Compiling plugins using Cranelift");
-    Engine::new(WasmtimeConfig::new().strategy(Strategy::Cranelift)).unwrap()
-}
-
-#[cfg(feature = "singlepass")]
-fn get_engine() -> Engine {
-    log::info!("Compiling plugins using Singlepass");
-    Engine::new(WasmtimeConfig::new().strategy(Strategy::Winch)).unwrap()
+    log::info!("Loading plugins using Wasmi interpreter");
+    let config = WasmiConfig::default();
+    Engine::new(&config)
 }

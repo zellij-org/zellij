@@ -6,7 +6,7 @@ use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tempfile::tempdir;
-use wasmtime::Engine;
+use wasmi::Engine;
 use zellij_utils::data::{
     BareKey, Event, InputMode, KeyWithModifier, PermissionStatus, PermissionType,
     PluginCapabilities,
