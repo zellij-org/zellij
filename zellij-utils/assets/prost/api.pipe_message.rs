@@ -15,9 +15,9 @@ pub struct PipeMessage {
     pub args: ::prost::alloc::vec::Vec<Arg>,
     #[prost(bool, tag="7")]
     pub is_private: bool,
-    #[prost(uint32, optional, tag = "8")]
+    #[prost(uint32, optional, tag="8")]
     pub client_id: ::core::option::Option<u32>,
-    #[prost(message, optional, tag = "9")]
+    #[prost(message, optional, tag="9")]
     pub pane_id: ::core::option::Option<super::event::PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]

@@ -724,7 +724,6 @@ pub(crate) fn plugin_thread_main(
                         );
                     },
                     None => {
-                        log::warn!("PIPE MESSAGE TO ALL PLUGINS");
                         // no specific destination, send to all plugins
                         pipe_to_all_plugins(
                             PipeSource::Cli(pipe_id.clone()),
@@ -779,7 +778,7 @@ pub(crate) fn plugin_thread_main(
                             // send to specific plugin(s)
                             pipe_to_specific_plugins(
                                 PipeSource::Keybind,
-                                Some(cli_client_id),
+                                None,
                                 pane_id,
                                 &plugin_url,
                                 &configuration,
@@ -804,7 +803,7 @@ pub(crate) fn plugin_thread_main(
                             // no specific destination, send to all plugins
                             pipe_to_all_plugins(
                                 PipeSource::Keybind,
-                                Some(cli_client_id),
+                                None,
                                 pane_id,
                                 &name,
                                 &payload,
