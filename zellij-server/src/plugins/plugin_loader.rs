@@ -1,5 +1,5 @@
 use crate::plugins::plugin_map::{
-    PluginEnv, PluginMap, RunningPlugin,
+    PluginEnv, PluginMap, RunningPlugin, VecDequeInputStream, WriteOutputStream,
 };
 use crate::plugins::plugin_worker::{plugin_worker, RunningWorker};
 use crate::plugins::zellij_exports::{wasi_write_object, zellij_exports};
@@ -13,10 +13,13 @@ use std::{
 };
 use url::Url;
 use wasmi::{Engine, Instance, Linker, Module, Store};
-use wasmi_wasi::{WasiCtx, WasiCtxBuilder};
+use wasmi_wasi::{WasiCtx};
+use wasmi_wasi::wasi_common::pipe::{ReadPipe, WritePipe};
+use wasmi_wasi::sync::WasiCtxBuilder;
+use wasmi_wasi::Dir;
 
 use crate::{
-    screen::ScreenInstruction, thread_bus::ThreadSenders,
+    logging_pipe::LoggingPipe, screen::ScreenInstruction, thread_bus::ThreadSenders,
     ui::loading_indication::LoadingIndication, ClientId,
 };
 
@@ -146,7 +149,7 @@ impl<'a> PluginLoader<'a> {
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
-        skip_cache: bool,
+        _skip_cache: bool,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
         keybinds: Keybinds,
@@ -737,7 +740,7 @@ impl<'a> PluginLoader<'a> {
         stdin_pipe: Arc<Mutex<VecDeque<u8>>>,
         stdout_pipe: Arc<Mutex<VecDeque<u8>>>,
     ) -> Result<WasiCtx> {
-        let err_context = || format!("Failed to create wasi_ctx");
+        let _err_context = || format!("Failed to create wasi_ctx");
         let dirs = vec![
             ("/host".to_owned(), host_dir.clone()),
             ("/data".to_owned(), data_dir.clone()),
@@ -752,11 +755,34 @@ impl<'a> PluginLoader<'a> {
             // there's no built-in solution
             dir.try_exists().ok().unwrap_or(false)
         });
+
         let mut builder = WasiCtxBuilder::new();
         builder.inherit_env()?;
-        builder.inherit_stdio();
-        let wasi_ctx = builder.build();
-        Ok(wasi_ctx)
+
+        // Mount directories using the builder
+        for (guest_path, host_path) in dirs {
+            log::info!("Mounting {:?} at {:?}", host_path, guest_path);
+            match std::fs::File::open(&host_path) {
+                Ok(dir_file) => {
+                    let dir = Dir::from_std_file(dir_file);
+                    builder.preopened_dir(dir, guest_path)?;
+                },
+                Err(e) => {
+                    log::warn!("Failed to mount directory {:?}: {}", host_path, e);
+                }
+            }
+        }
+
+        let ctx = builder.build();
+
+        // Set up custom stdin/stdout/stderr
+        ctx.set_stdin(Box::new(ReadPipe::new(VecDequeInputStream(stdin_pipe.clone()))));
+        ctx.set_stdout(Box::new(WritePipe::new(WriteOutputStream(stdout_pipe.clone()))));
+        ctx.set_stderr(Box::new(WritePipe::new(WriteOutputStream(Arc::new(Mutex::new(LoggingPipe::new(
+            plugin_url, plugin_id,
+        )))))));
+
+        Ok(ctx)
     }
     fn create_plugin_instance_env(&self, module: &Module) -> Result<(Store<PluginEnv>, Instance)> {
         let err_context = || {
@@ -814,8 +840,7 @@ impl<'a> PluginLoader<'a> {
         zellij_exports(&mut linker);
 
         let instance = linker
-            .instantiate(&mut store, module)
-            .and_then(|pre| pre.start(&mut store))
+            .instantiate_and_start(&mut store, module)
             .with_context(err_context)?;
 
         if let Some(func) = instance.get_func(&mut store, "_initialize") {
