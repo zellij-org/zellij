@@ -1,0 +1,28 @@
+---
+source: src/tests/e2e/cases.rs
+expression: last_snapshot
+---
+ Zellij (test_attach_layout_session)  Test Tab 
+┌ Pane #1 ─────────────────────────────────────────────────┐┌ Pane #2 ─────────────────────────────────────────────────┐
+│$ █                                                       ││$                                                         │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT  BASE 
+ Tip: Alt + <n> => new pane. Alt + <←↓↑→> or Alt + <hjkl> => navigate. Alt + <+|-> => resize pane.

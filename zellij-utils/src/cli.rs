@@ -257,6 +257,11 @@ pub enum Sessions {
         /// If resurrecting a dead session, immediately run all its commands on startup
         #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
         force_run_commands: bool,
+
+        /// Name of a predefined layout inside the layout directory or the path to a layout file
+        /// Only effective when creating a session (with --create/-c or --create-background/-b)
+        #[clap(short, long, value_parser)]
+        layout: Option<PathBuf>,
     },
 
     /// Kill a specific session
