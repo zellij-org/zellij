@@ -12,7 +12,7 @@ use std::{
     path::PathBuf,
     time::Duration,
 };
-use wasmtime::Engine;
+use wasmi::Engine;
 
 use crate::panes::PaneId;
 use crate::screen::ScreenInstruction;

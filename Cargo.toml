@@ -9,7 +9,7 @@ repository = "https://github.com/zellij-org/zellij"
 homepage = "https://zellij.dev"
 include = ["src/**/*", "assets/layouts/*", "assets/config/*", "LICENSE.md", "README.md", "!**/*_test.*", "!**/tests/**/*"]
 # NOTE: When updating this, modify `channel` in `rust-toolchain.toml` accordingly
-rust-version = "1.84"
+rust-version = "1.86"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -134,7 +134,6 @@ plugins_from_target = ["zellij-utils/plugins_from_target"]
 disable_automatic_asset_installation = ["zellij-utils/disable_automatic_asset_installation"]
 vendored_curl = ["zellij-utils/vendored_curl"]
 unstable = ["zellij-client/unstable", "zellij-utils/unstable"]
-singlepass = ["zellij-server/singlepass"]
 web_server_capability = ["zellij-client/web_server_capability", "zellij-server/web_server_capability", "zellij-utils/web_server_capability"]
 
 # uncomment this when developing plugins in the Zellij UI to make plugin compilation faster

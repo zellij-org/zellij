@@ -5,6 +5,7 @@ services:
     image: ghcr.io/linuxserver/openssh-server
     container_name: zellij-e2e
     hostname: zellij-e2e
+    network_mode: host
     environment:
       PUID: 1000
       PGID: 1000

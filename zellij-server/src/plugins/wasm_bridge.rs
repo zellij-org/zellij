@@ -19,7 +19,7 @@ use std::{
     str::FromStr,
     sync::{Arc, Mutex},
 };
-use wasmtime::{Engine, Module};
+use wasmi::Engine;
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{
     FloatingPaneCoordinates, InputMode, PermissionStatus, PermissionType, PipeMessage, PipeSource,
@@ -83,7 +83,6 @@ pub struct WasmBridge {
     senders: ThreadSenders,
     engine: Engine,
     plugin_dir: PathBuf,
-    plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
     plugin_map: Arc<Mutex<PluginMap>>,
     next_plugin_id: PluginId,
     plugin_ids_waiting_for_permission_request: HashSet<PluginId>,
@@ -130,8 +129,6 @@ impl WasmBridge {
     ) -> Self {
         let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
-        let plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>> =
-            Arc::new(Mutex::new(HashMap::new()));
         let watcher = None;
         let downloader = Downloader::new(ZELLIJ_CACHE_DIR.to_path_buf());
         WasmBridge {
@@ -139,7 +136,6 @@ impl WasmBridge {
             senders,
             engine,
             plugin_dir,
-            plugin_cache,
             plugin_map,
             path_to_default_shell,
             watcher,
@@ -175,6 +171,7 @@ impl WasmBridge {
         client_id: Option<ClientId>,
         cli_client_id: Option<ClientId>,
     ) -> Result<(PluginId, ClientId)> {
+        log::info!("load_plugin 1");
         // returns the plugin id
         let err_context = move || format!("failed to load plugin");
 
@@ -195,6 +192,7 @@ impl WasmBridge {
 
         match run {
             Some(run) => {
+                log::info!("load_plugin 2");
                 let mut plugin = PluginConfig::from_run_plugin(run)
                     .with_context(|| format!("failed to resolve plugin {run:?}"))
                     .with_context(err_context)?;
@@ -207,7 +205,6 @@ impl WasmBridge {
 
                 let load_plugin_task = task::spawn({
                     let plugin_dir = self.plugin_dir.clone();
-                    let plugin_cache = self.plugin_cache.clone();
                     let senders = self.senders.clone();
                     let engine = self.engine.clone();
                     let plugin_map = self.plugin_map.clone();
@@ -257,13 +254,13 @@ impl WasmBridge {
                             }
                         }
 
+                        log::info!("load_plugin 3");
                         match PluginLoader::start_plugin(
                             plugin_id,
                             client_id,
                             &plugin,
                             tab_index,
                             plugin_dir,
-                            plugin_cache,
                             senders.clone(),
                             engine,
                             plugin_map.clone(),
@@ -398,7 +395,6 @@ impl WasmBridge {
         self.start_plugin_loading_indication(&[plugin_id], &loading_indication);
         let load_plugin_task = task::spawn({
             let plugin_dir = self.plugin_dir.clone();
-            let plugin_cache = self.plugin_cache.clone();
             let senders = self.senders.clone();
             let engine = self.engine.clone();
             let plugin_map = self.plugin_map.clone();
@@ -413,7 +409,6 @@ impl WasmBridge {
                 match PluginLoader::reload_plugin(
                     plugin_id,
                     plugin_dir.clone(),
-                    plugin_cache.clone(),
                     senders.clone(),
                     engine.clone(),
                     plugin_map.clone(),
@@ -472,13 +467,11 @@ impl WasmBridge {
         self.start_plugin_loading_indication(&plugin_ids, &loading_indication);
         let load_plugin_task = task::spawn({
             let plugin_dir = self.plugin_dir.clone();
-            let plugin_cache = self.plugin_cache.clone();
             let senders = self.senders.clone();
             let engine = self.engine.clone();
             let plugin_map = self.plugin_map.clone();
             let connected_clients = self.connected_clients.clone();
             let path_to_default_shell = self.path_to_default_shell.clone();
-            let zellij_cwd = self.zellij_cwd.clone();
             let capabilities = self.capabilities.clone();
             let client_attributes = self.client_attributes.clone();
             let default_shell = self.default_shell.clone();
@@ -488,7 +481,6 @@ impl WasmBridge {
                 match PluginLoader::reload_plugin(
                     first_plugin_id,
                     plugin_dir.clone(),
-                    plugin_cache.clone(),
                     senders.clone(),
                     engine.clone(),
                     plugin_map.clone(),
@@ -510,17 +502,15 @@ impl WasmBridge {
                                 continue;
                             }
                             let mut loading_indication = LoadingIndication::new("".into());
-                            match PluginLoader::reload_plugin_from_memory(
+                            match PluginLoader::reload_plugin(
                                 *plugin_id,
                                 plugin_dir.clone(),
-                                plugin_cache.clone(),
                                 senders.clone(),
                                 engine.clone(),
                                 plugin_map.clone(),
                                 connected_clients.clone(),
                                 &mut loading_indication,
                                 path_to_default_shell.clone(),
-                                zellij_cwd.clone(),
                                 capabilities.clone(),
                                 client_attributes.clone(),
                                 default_shell.clone(),
@@ -572,7 +562,6 @@ impl WasmBridge {
         match PluginLoader::add_client(
             client_id,
             self.plugin_dir.clone(),
-            self.plugin_cache.clone(),
             self.senders.clone(),
             self.engine.clone(),
             self.plugin_map.clone(),
@@ -657,7 +646,11 @@ impl WasmBridge {
                                             (new_rows as i32, new_columns as i32),
                                         )
                                     })
-                                    .and_then(|_| wasi_read_string(running_plugin.store.data()))
+                                    .map_err(|e| anyhow!(e))
+                                    .and_then(|_| {
+                                        wasi_read_string(running_plugin.store.data())
+                                            .map_err(|e| anyhow!(e))
+                                    })
                                     .with_context(err_context);
                                 match rendered_bytes {
                                     Ok(rendered_bytes) => {
@@ -1666,7 +1659,10 @@ pub fn apply_event_to_plugin(
                     .and_then(|render| {
                         render.call(&mut running_plugin.store, (rows as i32, columns as i32))
                     })
-                    .and_then(|_| wasi_read_string(running_plugin.store.data()))
+                    .map_err(|e| anyhow!(e))
+                    .and_then(|_| {
+                        wasi_read_string(running_plugin.store.data()).map_err(|e| anyhow!(e))
+                    })
                     .with_context(err_context)?;
                 let pipes_to_block_or_unblock = pipes_to_block_or_unblock(running_plugin, None);
                 let plugin_render_asset = PluginRenderAsset::new(
