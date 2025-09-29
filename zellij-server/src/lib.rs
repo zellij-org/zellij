@@ -1896,6 +1896,6 @@ fn get_engine() -> Engine {
     log::info!("Loading plugins using Wasmi interpreter");
     let mut config = WasmiConfig::default();
     config.set_max_stack_height(1024 * 1024); // Maximum stack height (1MB)
-    config.set_max_recursion_depth(1000);     // Limit recursion depth
+    config.set_max_recursion_depth(1000); // Limit recursion depth
     Engine::new(&config)
 }

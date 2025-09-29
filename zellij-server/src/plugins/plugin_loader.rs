@@ -13,10 +13,10 @@ use std::{
 };
 use url::Url;
 use wasmi::{Engine, Instance, Linker, Module, Store, StoreLimits};
-use wasmi_wasi::{WasiCtx};
-use wasmi_wasi::wasi_common::pipe::{ReadPipe, WritePipe};
 use wasmi_wasi::sync::WasiCtxBuilder;
+use wasmi_wasi::wasi_common::pipe::{ReadPipe, WritePipe};
 use wasmi_wasi::Dir;
+use wasmi_wasi::WasiCtx;
 
 use crate::{
     logging_pipe::LoggingPipe, screen::ScreenInstruction, thread_bus::ThreadSenders,
@@ -76,11 +76,11 @@ impl<'a> PluginLoader<'a> {
     fn create_optimized_store_limits() -> StoreLimits {
         use wasmi::StoreLimitsBuilder;
         StoreLimitsBuilder::new()
-            .instances(1)                          // One instance per plugin
-            .memories(4)                           // Max 4 linear memories per plugin
-            .memory_size(16 * 1024 * 1024)        // 16MB per memory maximum
-            .tables(16)                            // Small table element limit
-            .trap_on_grow_failure(true)            // Fail fast on resource exhaustion
+            .instances(1) // One instance per plugin
+            .memories(4) // Max 4 linear memories per plugin
+            .memory_size(16 * 1024 * 1024) // 16MB per memory maximum
+            .tables(16) // Small table element limit
+            .trap_on_grow_failure(true) // Fail fast on resource exhaustion
             .build()
     }
     pub fn start_plugin(
@@ -458,9 +458,7 @@ impl<'a> PluginLoader<'a> {
                 plugin_id
             )
         };
-        let module = self
-            .compile_module()
-            .with_context(err_context)?;
+        let module = self.compile_module().with_context(err_context)?;
         let (store, instance) = self.create_plugin_instance_env(&module)?;
         Ok((store, instance))
     }
@@ -640,7 +638,6 @@ impl<'a> PluginLoader<'a> {
         let mut builder = WasiCtxBuilder::new();
         builder.inherit_env()?;
 
-
         // Mount directories using the builder
         for (guest_path, host_path) in dirs {
             match std::fs::File::open(&host_path) {
@@ -650,18 +647,22 @@ impl<'a> PluginLoader<'a> {
                 },
                 Err(e) => {
                     log::warn!("Failed to mount directory {:?}: {}", host_path, e);
-                }
+                },
             }
         }
 
         let ctx = builder.build();
 
         // Set up custom stdin/stdout/stderr
-        ctx.set_stdin(Box::new(ReadPipe::new(VecDequeInputStream(stdin_pipe.clone()))));
-        ctx.set_stdout(Box::new(WritePipe::new(WriteOutputStream(stdout_pipe.clone()))));
-        ctx.set_stderr(Box::new(WritePipe::new(WriteOutputStream(Arc::new(Mutex::new(LoggingPipe::new(
-            plugin_url, plugin_id,
-        )))))));
+        ctx.set_stdin(Box::new(ReadPipe::new(VecDequeInputStream(
+            stdin_pipe.clone(),
+        ))));
+        ctx.set_stdout(Box::new(WritePipe::new(WriteOutputStream(
+            stdout_pipe.clone(),
+        ))));
+        ctx.set_stderr(Box::new(WritePipe::new(WriteOutputStream(Arc::new(
+            Mutex::new(LoggingPipe::new(plugin_url, plugin_id)),
+        )))));
 
         Ok(ctx)
     }

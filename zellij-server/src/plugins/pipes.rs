@@ -172,7 +172,9 @@ pub fn apply_pipe_message_to_plugin(
                         render.call(&mut running_plugin.store, (rows as i32, columns as i32))
                     })
                     .map_err(|e| anyhow!(e))
-                    .and_then(|_| wasi_read_string(running_plugin.store.data()).map_err(|e| anyhow!(e)))
+                    .and_then(|_| {
+                        wasi_read_string(running_plugin.store.data()).map_err(|e| anyhow!(e))
+                    })
                     .with_context(err_context)?;
                 let pipes_to_block_or_unblock =
                     pipes_to_block_or_unblock(running_plugin, Some(&pipe_message.source));
