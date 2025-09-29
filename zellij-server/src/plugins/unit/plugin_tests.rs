@@ -333,7 +333,10 @@ fn create_plugin_thread(
         None,
     )
     .should_silently_fail();
-    let engine = Engine::new(wasmtime::Config::new().strategy(wasmtime::Strategy::Winch)).unwrap();
+    let mut config = wasmi::Config::default();
+    config.set_max_stack_height(1024 * 1024);
+    config.set_max_recursion_depth(1000);
+    let engine = Engine::new(&config);
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
     let plugin_capabilities = PluginCapabilities::default();
@@ -427,7 +430,10 @@ fn create_plugin_thread_with_server_receiver(
         None,
     )
     .should_silently_fail();
-    let engine = Engine::new(wasmtime::Config::new().strategy(wasmtime::Strategy::Winch)).unwrap();
+    let mut config = wasmi::Config::default();
+    config.set_max_stack_height(1024 * 1024);
+    config.set_max_recursion_depth(1000);
+    let engine = Engine::new(&config);
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
     let plugin_capabilities = PluginCapabilities::default();
@@ -517,7 +523,10 @@ fn create_plugin_thread_with_pty_receiver(
         None,
     )
     .should_silently_fail();
-    let engine = Engine::new(wasmtime::Config::new().strategy(wasmtime::Strategy::Winch)).unwrap();
+    let mut config = wasmi::Config::default();
+    config.set_max_stack_height(1024 * 1024);
+    config.set_max_recursion_depth(1000);
+    let engine = Engine::new(&config);
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
     let plugin_capabilities = PluginCapabilities::default();
@@ -602,7 +611,10 @@ fn create_plugin_thread_with_background_jobs_receiver(
         None,
     )
     .should_silently_fail();
-    let engine = Engine::new(wasmtime::Config::new().strategy(wasmtime::Strategy::Winch)).unwrap();
+    let mut config = wasmi::Config::default();
+    config.set_max_stack_height(1024 * 1024);
+    config.set_max_recursion_depth(1000);
+    let engine = Engine::new(&config);
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
     let plugin_capabilities = PluginCapabilities::default();
