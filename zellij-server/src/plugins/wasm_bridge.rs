@@ -208,7 +208,6 @@ impl WasmBridge {
 
                 let load_plugin_task = task::spawn({
                     let plugin_dir = self.plugin_dir.clone();
-                    let plugin_cache = Arc::new(Mutex::new(HashMap::new()));
                     let senders = self.senders.clone();
                     let engine = self.engine.clone();
                     let plugin_map = self.plugin_map.clone();
@@ -265,7 +264,6 @@ impl WasmBridge {
                             &plugin,
                             tab_index,
                             plugin_dir,
-                            plugin_cache,
                             senders.clone(),
                             engine,
                             plugin_map.clone(),
@@ -400,7 +398,6 @@ impl WasmBridge {
         self.start_plugin_loading_indication(&[plugin_id], &loading_indication);
         let load_plugin_task = task::spawn({
             let plugin_dir = self.plugin_dir.clone();
-            let plugin_cache = Arc::new(Mutex::new(HashMap::new()));
             let senders = self.senders.clone();
             let engine = self.engine.clone();
             let plugin_map = self.plugin_map.clone();
@@ -415,7 +412,6 @@ impl WasmBridge {
                 match PluginLoader::reload_plugin(
                     plugin_id,
                     plugin_dir.clone(),
-                    plugin_cache.clone(),
                     senders.clone(),
                     engine.clone(),
                     plugin_map.clone(),
@@ -474,13 +470,11 @@ impl WasmBridge {
         self.start_plugin_loading_indication(&plugin_ids, &loading_indication);
         let load_plugin_task = task::spawn({
             let plugin_dir = self.plugin_dir.clone();
-            let plugin_cache = Arc::new(Mutex::new(HashMap::new()));
             let senders = self.senders.clone();
             let engine = self.engine.clone();
             let plugin_map = self.plugin_map.clone();
             let connected_clients = self.connected_clients.clone();
             let path_to_default_shell = self.path_to_default_shell.clone();
-            let zellij_cwd = self.zellij_cwd.clone();
             let capabilities = self.capabilities.clone();
             let client_attributes = self.client_attributes.clone();
             let default_shell = self.default_shell.clone();
@@ -490,7 +484,6 @@ impl WasmBridge {
                 match PluginLoader::reload_plugin(
                     first_plugin_id,
                     plugin_dir.clone(),
-                    plugin_cache.clone(),
                     senders.clone(),
                     engine.clone(),
                     plugin_map.clone(),
@@ -512,17 +505,15 @@ impl WasmBridge {
                                 continue;
                             }
                             let mut loading_indication = LoadingIndication::new("".into());
-                            match PluginLoader::reload_plugin_from_memory(
+                            match PluginLoader::reload_plugin(
                                 *plugin_id,
                                 plugin_dir.clone(),
-                                plugin_cache.clone(),
                                 senders.clone(),
                                 engine.clone(),
                                 plugin_map.clone(),
                                 connected_clients.clone(),
                                 &mut loading_indication,
                                 path_to_default_shell.clone(),
-                                zellij_cwd.clone(),
                                 capabilities.clone(),
                                 client_attributes.clone(),
                                 default_shell.clone(),
@@ -574,7 +565,6 @@ impl WasmBridge {
         match PluginLoader::add_client(
             client_id,
             self.plugin_dir.clone(),
-            Arc::new(Mutex::new(HashMap::new())),
             self.senders.clone(),
             self.engine.clone(),
             self.plugin_map.clone(),
