@@ -12,7 +12,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use url::Url;
-use wasmi::{Engine, Instance, Linker, Module, Store};
+use wasmi::{Engine, Instance, Linker, Module, Store, StoreLimits};
 use wasmi_wasi::{WasiCtx};
 use wasmi_wasi::wasi_common::pipe::{ReadPipe, WritePipe};
 use wasmi_wasi::sync::WasiCtxBuilder;
@@ -74,6 +74,18 @@ pub struct PluginLoader<'a> {
 }
 
 impl<'a> PluginLoader<'a> {
+    /// Create optimized StoreLimits for memory-efficient plugin operation
+    fn create_optimized_store_limits() -> StoreLimits {
+        use wasmi::StoreLimitsBuilder;
+
+        StoreLimitsBuilder::new()
+            .instances(1)                          // One instance per plugin
+            .memories(4)                           // Max 4 linear memories per plugin
+            .memory_size(16 * 1024 * 1024)        // 16MB per memory maximum
+            .tables(16)                            // Small table element limit
+            .trap_on_grow_failure(true)            // Fail fast on resource exhaustion
+            .build()
+    }
     pub fn reload_plugin_from_memory(
         plugin_id: PluginId,
         plugin_dir: PathBuf,
@@ -555,6 +567,7 @@ impl<'a> PluginLoader<'a> {
         module: Module,
     ) -> Result<(Store<PluginEnv>, Instance)> {
         let (store, instance) = self.create_plugin_instance_env(&module)?;
+
         // Only do an insert when everything went well!
         let cloned_plugin = self.plugin.clone();
         self.plugin_cache
@@ -759,6 +772,7 @@ impl<'a> PluginLoader<'a> {
         let mut builder = WasiCtxBuilder::new();
         builder.inherit_env()?;
 
+
         // Mount directories using the builder
         for (guest_path, host_path) in dirs {
             log::info!("Mounting {:?} at {:?}", host_path, guest_path);
@@ -830,8 +844,12 @@ impl<'a> PluginLoader<'a> {
             intercepting_key_presses: false,
             stdin_pipe,
             stdout_pipe,
+            store_limits: Self::create_optimized_store_limits(),
         };
         let mut store = Store::new(&self.engine, plugin_env);
+
+        // Apply optimized resource limits for memory efficiency
+        store.limiter(|plugin_env| &mut plugin_env.store_limits);
 
         let mut linker = Linker::new(&self.engine);
         wasmi_wasi::add_to_linker(&mut linker, |plugin_env: &mut PluginEnv| {

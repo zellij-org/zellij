@@ -6,7 +6,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-use wasmi::{Instance, Store};
+use wasmi::{Instance, Store, StoreLimits};
 use wasmi_wasi::WasiCtx;
 
 use crate::{thread_bus::ThreadSenders, ClientId};
@@ -309,6 +309,7 @@ pub struct PluginEnv {
     pub stdout_pipe: Arc<Mutex<VecDeque<u8>>>,
     pub keybinds: Keybinds,
     pub intercepting_key_presses: bool,
+    pub store_limits: StoreLimits,
 }
 
 #[derive(Clone)]
