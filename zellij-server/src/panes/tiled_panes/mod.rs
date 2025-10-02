@@ -867,6 +867,11 @@ impl TiledPanes {
         }
     }
     pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        if let Some(focused_pane) = self.active_panes.get(&client_id).copied() {
+            if pane_id != focused_pane {
+                self.active_panes.set_last_pane(client_id, focused_pane);
+            }
+        }
         let pane_is_selectable = self
             .panes
             .get(&pane_id)
@@ -969,6 +974,9 @@ impl TiledPanes {
     }
     pub fn get_active_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
         self.active_panes.get(&client_id).copied()
+    }
+    pub fn get_last_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
+        self.active_panes.get_last(&client_id).copied()
     }
     pub fn panes_contain(&self, pane_id: &PaneId) -> bool {
         self.panes.contains_key(pane_id)
@@ -1747,6 +1755,39 @@ impl TiledPanes {
         self.set_pane_active_at(next_active_pane_id);
         self.reset_boundaries();
     }
+    pub fn focus_last_pane(&mut self, client_id: ClientId) {
+        let Some(last_pane_id) = self.get_last_pane_id(client_id) else {
+            return;
+        };
+
+        let previously_active_pane_id = self.active_panes.get(&client_id).unwrap();
+        let previously_active_pane = self
+            .panes
+            .get_mut(previously_active_pane_id)
+            .unwrap();
+
+        previously_active_pane.set_should_render(true);
+        // we render the full viewport to remove any ui elements that might have been
+        // there before (eg. another user's cursor)
+        previously_active_pane.render_full_viewport();
+
+        let next_active_pane = self.panes.get_mut(&last_pane_id).unwrap();
+        let stacked = next_active_pane.current_geom().stacked;
+        next_active_pane.set_should_render(true);
+        // we render the full viewport to remove any ui elements that might have been
+        // there before (eg. another user's cursor)
+        next_active_pane.render_full_viewport();
+
+        self.focus_pane(last_pane_id, client_id);
+        self.set_pane_active_at(last_pane_id);
+        if let Some(stack_id) = stacked {
+            // we do this because a stack pane focus change also changes its
+            // geometry and we need to let the pty know about this (like in a
+            // normal size change)
+            self.focus_pane_for_all_clients_in_stack(last_pane_id, stack_id);
+            self.reapply_pane_frames();
+        }
+    }
     fn set_pane_active_at(&mut self, pane_id: PaneId) {
         if let Some(pane) = self.get_pane_mut(pane_id) {
             pane.set_active_at(Instant::now());
@@ -2510,6 +2551,12 @@ impl TiledPanes {
     pub fn switch_prev_pane_fullscreen(&mut self, client_id: ClientId) {
         self.unset_fullscreen();
         self.focus_previous_pane(client_id);
+        self.toggle_active_pane_fullscreen(client_id);
+    }
+
+    pub fn switch_last_pane_fullscreen(&mut self, client_id: ClientId) {
+        self.unset_fullscreen();
+        self.focus_last_pane(client_id);
         self.toggle_active_pane_fullscreen(client_id);
     }
 

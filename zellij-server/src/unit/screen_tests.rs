@@ -1884,6 +1884,51 @@ pub fn send_cli_focus_previous_pane_action() {
 }
 
 #[test]
+pub fn send_cli_focus_last_pane_action() {
+    let size = Size { cols: 80, rows: 20 };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_instruction = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let move_focus_action = CliAction::MoveFocus {
+        direction: Direction::Right,
+    };
+    let focus_last_pane_action = CliAction::FocusLastPane;
+    // move focus 1 -> 2 -> 3
+    send_cli_action_to_server(&session_metadata, move_focus_action.clone(), client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    send_cli_action_to_server(&session_metadata, move_focus_action.clone(), client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    // move focus 3 -> 2
+    send_cli_action_to_server(&session_metadata, focus_last_pane_action.clone(), client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    // move focus 2 -> 3
+    send_cli_action_to_server(&session_metadata, focus_last_pane_action.clone(), client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.teardown(vec![server_instruction, screen_thread]);
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let snapshot_count = snapshots.len();
+    for (cursor_coordinates, _snapshot) in snapshots {
+        // here we assert he cursor_coordinates to let us know if we switched the pane focus
+        assert_snapshot!(format!("{:?}", cursor_coordinates));
+    }
+    assert_snapshot!(format!("{}", snapshot_count));
+}
+
+#[test]
 pub fn send_cli_move_focus_pane_action() {
     let size = Size { cols: 80, rows: 20 };
     let client_id = 10; // fake client id should not appear in the screen's state

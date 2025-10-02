@@ -136,6 +136,11 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::FocusPreviousPane(client_id))
                 .with_context(err_context)?;
         },
+        Action::FocusLastPane => {
+            senders
+                .send_to_screen(ScreenInstruction::FocusLastPane(client_id))
+                .with_context(err_context)?;
+        },
         Action::MoveFocus { direction } => {
             let screen_instr = match direction {
                 Direction::Left => ScreenInstruction::MoveFocusLeft(client_id),

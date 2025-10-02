@@ -188,6 +188,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     },
                     PluginCommand::FocusNextPane => focus_next_pane(env),
                     PluginCommand::FocusPreviousPane => focus_previous_pane(env),
+                    PluginCommand::FocusLastPane => focus_last_pane(env),
                     PluginCommand::MoveFocus(direction) => move_focus(env, direction),
                     PluginCommand::MoveFocusOrTab(direction) => move_focus_or_tab(env, direction),
                     PluginCommand::Detach => detach(env),
@@ -1573,6 +1574,12 @@ fn focus_next_pane(env: &PluginEnv) {
 fn focus_previous_pane(env: &PluginEnv) {
     let action = Action::FocusPreviousPane;
     let error_msg = || format!("Failed to focus previous pane");
+    apply_action!(action, error_msg, env);
+}
+
+fn focus_last_pane(env: &PluginEnv) {
+    let action = Action::FocusLastPane;
+    let error_msg = || format!("Failed to focus last pane");
     apply_action!(action, error_msg, env);
 }
 

@@ -529,6 +529,8 @@ pub enum CliAction {
     FocusNextPane,
     /// Change focus to the previous pane
     FocusPreviousPane,
+    /// Change focus to the last focused frame
+    FocusLastPane,
     /// Move the focused pane in the specified direction. [right|left|up|down]
     MoveFocus {
         direction: Direction,

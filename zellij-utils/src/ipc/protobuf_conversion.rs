@@ -684,10 +684,10 @@ impl From<crate::input::actions::Action>
             ChangeFloatingPaneCoordinatesAction, ClearScreenAction, CliPipeAction,
             CloseFocusAction, ClosePluginPaneAction, CloseTabAction, CloseTerminalPaneAction,
             ConfirmAction, CopyAction, DenyAction, DetachAction, DumpLayoutAction,
-            DumpScreenAction, EditFileAction, EditScrollbackAction, FocusNextPaneAction,
-            FocusPluginPaneWithIdAction, FocusPreviousPaneAction, FocusTerminalPaneWithIdAction,
-            GoToNextTabAction, GoToPreviousTabAction, GoToTabAction, GoToTabNameAction,
-            HalfPageScrollDownAction, HalfPageScrollUpAction, KeybindPipeAction,
+            DumpScreenAction, EditFileAction, EditScrollbackAction, FocusLastPaneAction,
+            FocusNextPaneAction, FocusPluginPaneWithIdAction, FocusPreviousPaneAction,
+            FocusTerminalPaneWithIdAction, GoToNextTabAction, GoToPreviousTabAction, GoToTabAction,
+            GoToTabNameAction, HalfPageScrollDownAction, HalfPageScrollUpAction, KeybindPipeAction,
             LaunchOrFocusPluginAction, LaunchPluginAction, ListClientsAction, MouseEventAction,
             MoveFocusAction, MoveFocusOrTabAction, MovePaneAction, MovePaneBackwardsAction,
             MoveTabAction, NewFloatingPaneAction, NewFloatingPluginPaneAction,
@@ -743,6 +743,9 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::FocusPreviousPane => {
                 ActionType::FocusPreviousPane(FocusPreviousPaneAction {})
+            },
+            crate::input::actions::Action::FocusLastPane => {
+                ActionType::FocusLastPane(FocusLastPaneAction {})
             },
             crate::input::actions::Action::SwitchFocus => {
                 ActionType::SwitchFocus(SwitchFocusAction {})
@@ -1241,6 +1244,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::FocusPreviousPane(_) => {
                 Ok(crate::input::actions::Action::FocusPreviousPane)
             },
+            ActionType::FocusLastPane(_) => Ok(crate::input::actions::Action::FocusLastPane),
             ActionType::SwitchFocus(_) => Ok(crate::input::actions::Action::SwitchFocus),
             ActionType::MoveFocus(move_focus_action) => {
                 Ok(crate::input::actions::Action::MoveFocus {
