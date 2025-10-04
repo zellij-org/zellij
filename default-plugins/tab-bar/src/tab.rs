@@ -4,10 +4,10 @@ use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
-fn cursors(
-    focused_clients: &[ClientId],
+fn cursors<'a>(
+    focused_clients: &'a [ClientId],
     multiplayer_colors: MultiplayerColors,
-) -> (Vec<ANSIString>, usize) {
+) -> (Vec<ANSIString<'a>>, usize) {
     // cursor section, text length
     let mut len = 0;
     let mut cursors = vec![];

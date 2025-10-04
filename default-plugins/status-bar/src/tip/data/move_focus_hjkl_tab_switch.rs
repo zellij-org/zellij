@@ -45,7 +45,7 @@ pub fn move_focus_hjkl_tab_switch_short(help: &ModeInfo) -> LinePart {
     strings!(&bits)
 }
 
-fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
+fn add_keybinds<'a>(help: &'a ModeInfo) -> Vec<ANSIString<'a>> {
     let pane_keymap = help.get_keybinds_for_mode(InputMode::Pane);
     let move_focus_keys = action_key_group(
         &pane_keymap,

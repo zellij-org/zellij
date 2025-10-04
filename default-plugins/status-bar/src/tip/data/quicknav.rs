@@ -60,7 +60,7 @@ struct Keygroups<'a> {
     resize: Vec<ANSIString<'a>>,
 }
 
-fn add_keybinds(help: &ModeInfo) -> Keygroups {
+fn add_keybinds<'a>(help: &'a ModeInfo) -> Keygroups<'a> {
     let normal_keymap = help.get_mode_keybinds();
     let new_pane_keys = action_key(
         &normal_keymap,
