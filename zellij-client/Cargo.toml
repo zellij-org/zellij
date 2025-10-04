@@ -1,10 +1,10 @@
 [package]
 name = "zellij-client"
-version = "0.44.0"
+version.workspace = true
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
-edition = "2021"
+edition.workspace = true
 description = "The client-side library for Zellij"
-license = "MIT"
+license.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

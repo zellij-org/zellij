@@ -1,10 +1,10 @@
 [package]
 name = "zellij-utils"
-version = "0.44.0"
+version.workspace = true
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
-edition = "2021"
+edition.workspace = true
 description = "A utility library for Zellij client and server"
-license = "MIT"
+license.workspace = true
 include = ["src/**/*", "assets/"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -58,9 +58,6 @@ tokio = { workspace = true }
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
 expect-test = "1.4.1"
-
-[build-dependencies]
-prost-build = "0.11.9"
 
 [features]
 # If this feature is NOT set (default):
