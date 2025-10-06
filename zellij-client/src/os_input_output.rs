@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use interprocess;
 use libc;
 use nix;
@@ -29,6 +30,93 @@ const ENABLE_MOUSE_SUPPORT: &str =
     "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1003h\u{1b}[?1015h\u{1b}[?1006h";
 const DISABLE_MOUSE_SUPPORT: &str =
     "\u{1b}[?1006l\u{1b}[?1015l\u{1b}[?1003l\u{1b}[?1002l\u{1b}[?1000l";
+
+/// Trait for async stdin reading, allowing for testable implementations
+#[async_trait]
+pub trait AsyncStdin: Send {
+    async fn read(&mut self) -> io::Result<Vec<u8>>;
+}
+
+pub struct AsyncStdinReader {
+    stdin: tokio::io::Stdin,
+    buffer: Vec<u8>,
+}
+
+impl AsyncStdinReader {
+    pub fn new() -> Self {
+        Self {
+            stdin: tokio::io::stdin(),
+            buffer: vec![0u8; 10 * 1024],
+        }
+    }
+}
+
+#[async_trait]
+impl AsyncStdin for AsyncStdinReader {
+    async fn read(&mut self) -> io::Result<Vec<u8>> {
+        use tokio::io::AsyncReadExt;
+        let n = self.stdin.read(&mut self.buffer).await?;
+        Ok(self.buffer[..n].to_vec())
+    }
+}
+
+pub enum SignalEvent {
+    Resize,
+    Quit,
+}
+
+/// Trait for async signal listening, allowing for testable implementations
+#[async_trait]
+pub trait AsyncSignals: Send {
+    async fn recv(&mut self) -> Option<SignalEvent>;
+}
+
+pub struct AsyncSignalListener {
+    sigwinch: tokio::signal::unix::Signal,
+    sigterm: tokio::signal::unix::Signal,
+    sigint: tokio::signal::unix::Signal,
+    sigquit: tokio::signal::unix::Signal,
+    sighup: tokio::signal::unix::Signal,
+}
+
+impl AsyncSignalListener {
+    pub fn new() -> io::Result<Self> {
+        use tokio::signal::unix::{signal, SignalKind};
+        Ok(Self {
+            sigwinch: signal(SignalKind::window_change())?,
+            sigterm: signal(SignalKind::terminate())?,
+            sigint: signal(SignalKind::interrupt())?,
+            sigquit: signal(SignalKind::quit())?,
+            sighup: signal(SignalKind::hangup())?,
+        })
+    }
+
+    pub async fn recv_resize(&mut self) -> Option<()> {
+        self.sigwinch.recv().await
+    }
+
+    pub async fn recv_quit(&mut self) -> Option<()> {
+        tokio::select! {
+            result = self.sigterm.recv() => result,
+            result = self.sigint.recv() => result,
+            result = self.sigquit.recv() => result,
+            result = self.sighup.recv() => result,
+        }
+    }
+}
+
+#[async_trait]
+impl AsyncSignals for AsyncSignalListener {
+    async fn recv(&mut self) -> Option<SignalEvent> {
+        tokio::select! {
+            result = self.sigwinch.recv() => result.map(|_| SignalEvent::Resize),
+            result = self.sigterm.recv() => result.map(|_| SignalEvent::Quit),
+            result = self.sigint.recv() => result.map(|_| SignalEvent::Quit),
+            result = self.sigquit.recv() => result.map(|_| SignalEvent::Quit),
+            result = self.sighup.recv() => result.map(|_| SignalEvent::Quit),
+        }
+    }
+}
 
 fn into_raw_mode(pid: RawFd) {
     let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
@@ -135,6 +223,14 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
     fn stdin_poller(&self) -> StdinPoller;
     fn env_variable(&self, _name: &str) -> Option<String> {
         None
+    }
+    /// Returns an async stdin reader that can be polled in tokio::select
+    fn get_async_stdin_reader(&self) -> Box<dyn AsyncStdin> {
+        Box::new(AsyncStdinReader::new())
+    }
+    /// Returns an async signal listener that can be polled in tokio::select
+    fn get_async_signal_listener(&self) -> io::Result<Box<dyn AsyncSignals>> {
+        Ok(Box::new(AsyncSignalListener::new()?))
     }
 }
 

@@ -25,6 +25,8 @@ pub mod downloader; // Requires async_std
 pub mod ipc; // Requires interprocess
 #[cfg(not(target_family = "wasm"))]
 pub mod logging; // Requires log4rs
+#[cfg(all(not(target_family = "wasm"), feature = "web_server_capability"))]
+pub mod remote_session_tokens;
 #[cfg(not(target_family = "wasm"))]
 pub mod sessions;
 #[cfg(all(not(target_family = "wasm"), feature = "web_server_capability"))]

@@ -20,7 +20,9 @@ time = { version = "0.3", optional = true }
 tower-http = { version = "0.6.4", features = ["cors"], optional = true }
 
 anyhow = { workspace = true }
+async-trait = { workspace = true }
 daemonize = { workspace = true }
+dialoguer = { workspace = true }
 interprocess = { workspace = true }
 lazy_static = { workspace = true }
 libc = { workspace = true }
@@ -40,13 +42,13 @@ include_dir = { workspace = true }
 zellij-utils = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
+isahc = { workspace = true }
+tokio-tungstenite = { version = "0.20", features = ["native-tls"] } #TODO: see about this native-tls...
+futures-util = "0.3"
+urlencoding = "2.1"
 
 [dev-dependencies]
 insta = "1.6.0"
-isahc = { workspace = true }
-tokio-tungstenite = "0.20"
-futures-util = "0.3"
-urlencoding = "2.1"
 serde_json = "1.0"
 serial_test = "3.0"
 

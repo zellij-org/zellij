@@ -5,6 +5,8 @@ mod command_is_executing;
 mod input_handler;
 mod keyboard_parser;
 pub mod old_config_converter;
+#[cfg(feature = "web_server_capability")]
+pub mod remote_attach;
 mod stdin_ansi_parser;
 mod stdin_handler;
 #[cfg(feature = "web_server_capability")]
@@ -20,6 +22,58 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use zellij_utils::errors::FatalError;
 use zellij_utils::shared::web_server_base_url;
+
+#[cfg(feature = "web_server_capability")]
+use futures_util::{SinkExt, StreamExt};
+#[cfg(feature = "web_server_capability")]
+use tokio::runtime::Runtime;
+#[cfg(feature = "web_server_capability")]
+use tokio_tungstenite::tungstenite::Message;
+
+#[cfg(feature = "web_server_capability")]
+use crate::web_client::control_message::{
+    WebClientToWebServerControlMessage, WebClientToWebServerControlMessagePayload,
+    WebServerToWebClientControlMessage,
+};
+
+#[derive(Debug)]
+pub enum RemoteClientError {
+    InvalidAuthToken,
+    SessionTokenExpired,
+    Unauthorized,
+    ConnectionFailed(String),
+    UrlParseError(url::ParseError),
+    IoError(std::io::Error),
+    Other(Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl std::fmt::Display for RemoteClientError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RemoteClientError::InvalidAuthToken => write!(f, "Invalid authentication token"),
+            RemoteClientError::SessionTokenExpired => write!(f, "Session token expired"),
+            RemoteClientError::Unauthorized => write!(f, "Unauthorized"),
+            RemoteClientError::ConnectionFailed(msg) => write!(f, "Connection failed: {}", msg),
+            RemoteClientError::UrlParseError(e) => write!(f, "Invalid URL: {}", e),
+            RemoteClientError::IoError(e) => write!(f, "IO error: {}", e),
+            RemoteClientError::Other(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl std::error::Error for RemoteClientError {}
+
+impl From<url::ParseError> for RemoteClientError {
+    fn from(error: url::ParseError) -> Self {
+        RemoteClientError::UrlParseError(error)
+    }
+}
+
+impl From<std::io::Error> for RemoteClientError {
+    fn from(error: std::io::Error) -> Self {
+        RemoteClientError::IoError(error)
+    }
+}
 
 use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser, SyncOutput};
 use crate::{
@@ -214,6 +268,296 @@ pub(crate) enum InputInstruction {
     StartedParsing,
     DoneParsing,
     Exit,
+}
+
+#[cfg(feature = "web_server_capability")]
+pub async fn run_remote_client_terminal_loop(
+    os_input: Box<dyn ClientOsApi>,
+    mut connections: remote_attach::WebSocketConnections,
+) -> Result<Option<ConnectToSession>, RemoteClientError> {
+    use crate::os_input_output::{AsyncSignals, AsyncStdin};
+
+    let synchronised_output = match os_input.env_variable("TERM").as_deref() {
+        Some("alacritty") => Some(SyncOutput::DCS),
+        _ => None,
+    };
+
+    let mut async_stdin: Box<dyn AsyncStdin> = os_input.get_async_stdin_reader();
+    let mut async_signals: Box<dyn AsyncSignals> = os_input
+        .get_async_signal_listener()
+        .map_err(|e| RemoteClientError::IoError(e))?;
+
+    let create_resize_message = |size: Size| {
+        Message::Text(
+            serde_json::to_string(&WebClientToWebServerControlMessage {
+                web_client_id: connections.web_client_id.clone(),
+                payload: WebClientToWebServerControlMessagePayload::TerminalResize(size),
+            })
+            .unwrap(),
+        )
+    };
+
+    // send size on startup
+    let new_size = os_input.get_terminal_size_using_fd(0);
+    if let Err(e) = connections
+        .control_ws
+        .send(create_resize_message(new_size))
+        .await
+    {
+        log::error!("Failed to send resize message: {}", e);
+    }
+
+    loop {
+        tokio::select! {
+            // Handle stdin input
+            result = async_stdin.read() => {
+                match result {
+                    Ok(buf) if !buf.is_empty() => {
+                        if let Err(e) = connections.terminal_ws.send(Message::Binary(buf)).await {
+                            log::error!("Failed to send stdin to terminal WebSocket: {}", e);
+                            break;
+                        }
+                    }
+                    Ok(_) => {
+                        // Empty buffer means EOF
+                        break;
+                    }
+                    Err(e) => {
+                        log::error!("Error reading from stdin: {}", e);
+                        break;
+                    }
+                }
+            }
+
+            // Handle signals
+            Some(signal) = async_signals.recv() => {
+                match signal {
+                    crate::os_input_output::SignalEvent::Resize => {
+                        let new_size = os_input.get_terminal_size_using_fd(0);
+                        if let Err(e) = connections.control_ws.send(create_resize_message(new_size)).await {
+                            log::error!("Failed to send resize message: {}", e);
+                            break;
+                        }
+                    }
+                    crate::os_input_output::SignalEvent::Quit => {
+                        break;
+                    }
+                }
+            }
+
+            // Handle terminal messages
+            terminal_msg = connections.terminal_ws.next() => {
+                match terminal_msg {
+                    Some(Ok(Message::Text(text))) => {
+                        let mut stdout = os_input.get_stdout_writer();
+                        if let Some(sync) = synchronised_output {
+                            stdout
+                                .write_all(sync.start_seq())
+                                .expect("cannot write to stdout");
+                        }
+                        stdout
+                            .write_all(text.as_bytes())
+                            .expect("cannot write to stdout");
+                        if let Some(sync) = synchronised_output {
+                            stdout
+                                .write_all(sync.end_seq())
+                                .expect("cannot write to stdout");
+                        }
+                        stdout.flush().expect("could not flush");
+                    }
+                    Some(Ok(Message::Binary(data))) => {
+                        let mut stdout = os_input.get_stdout_writer();
+                        if let Some(sync) = synchronised_output {
+                            stdout
+                                .write_all(sync.start_seq())
+                                .expect("cannot write to stdout");
+                        }
+                        stdout
+                            .write_all(&data)
+                            .expect("cannot write to stdout");
+                        if let Some(sync) = synchronised_output {
+                            stdout
+                                .write_all(sync.end_seq())
+                                .expect("cannot write to stdout");
+                        }
+                        stdout.flush().expect("could not flush");
+                    }
+                    Some(Ok(Message::Close(_))) => {
+                        break;
+                    }
+                    Some(Err(e)) => {
+                        log::error!("Error: {}", e);
+                        break;
+                    }
+                    None => {
+                        log::error!("Received empty message from web server");
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+
+            control_msg = connections.control_ws.next() => {
+                match control_msg {
+                    Some(Ok(Message::Text(msg))) => {
+                        let deserialized_msg: Result<WebServerToWebClientControlMessage, _> =
+                            serde_json::from_str(&msg);
+                        match deserialized_msg {
+                            Ok(WebServerToWebClientControlMessage::SetConfig(..)) => {
+                                // no-op
+                            }
+                            Ok(WebServerToWebClientControlMessage::QueryTerminalSize) => {
+                                let new_size = os_input.get_terminal_size_using_fd(0);
+                                if let Err(e) = connections.control_ws.send(create_resize_message(new_size)).await {
+                                    log::error!("Failed to send resize message: {}", e);
+                                }
+                            }
+                            Ok(WebServerToWebClientControlMessage::Log { lines }) => {
+                                for line in lines {
+                                    log::info!("{}", line);
+                                }
+                            }
+                            Ok(WebServerToWebClientControlMessage::LogError { lines }) => {
+                                for line in lines {
+                                    log::error!("{}", line);
+                                }
+                            }
+                            Ok(WebServerToWebClientControlMessage::SwitchedSession{ .. }) => {
+                                // no-op
+                            }
+                            Err(e) => {
+                                log::error!("Failed to deserialize control message: {}", e);
+                            }
+                        }
+
+                    }
+                    Some(Ok(Message::Close(_))) => {
+                        break;
+                    }
+                    Some(Err(e)) => {
+                        log::error!("{}", e);
+                        break;
+                    }
+                    None => break,
+                    _ => {}
+                }
+            }
+
+        }
+    }
+
+    Ok(None)
+}
+
+#[cfg(feature = "web_server_capability")]
+pub fn start_remote_client(
+    mut os_input: Box<dyn ClientOsApi>,
+    remote_session_url: &str,
+    token: Option<String>,
+    remember: bool,
+    forget: bool,
+) -> Result<Option<ConnectToSession>, RemoteClientError> {
+    info!("Starting Zellij client!");
+
+    let runtime = Runtime::new().map_err(|e| RemoteClientError::IoError(e))?;
+
+    let connections = remote_attach::attach_to_remote_session(
+        &runtime,
+        os_input.clone(),
+        remote_session_url,
+        token,
+        remember,
+        forget,
+    )?;
+
+    let reconnect_to_session = None;
+    let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
+    let take_snapshot = "\u{1b}[?1049h";
+    let bracketed_paste = "\u{1b}[?2004h";
+    let enter_kitty_keyboard_mode = "\u{1b}[>1u";
+    os_input.unset_raw_mode(0).unwrap();
+
+    let _ = os_input
+        .get_stdout_writer()
+        .write(take_snapshot.as_bytes())
+        .unwrap();
+    let _ = os_input
+        .get_stdout_writer()
+        .write(clear_client_terminal_attributes.as_bytes())
+        .unwrap();
+    let _ = os_input
+        .get_stdout_writer()
+        .write(enter_kitty_keyboard_mode.as_bytes())
+        .unwrap();
+
+    envs::set_zellij("0".to_string());
+
+    let full_screen_ws = os_input.get_terminal_size_using_fd(0);
+
+    os_input.set_raw_mode(0);
+    let _ = os_input
+        .get_stdout_writer()
+        .write(bracketed_paste.as_bytes())
+        .unwrap();
+
+    std::panic::set_hook({
+        use zellij_utils::errors::handle_panic;
+        let os_input = os_input.clone();
+        Box::new(move |info| {
+            if let Ok(()) = os_input.unset_raw_mode(0) {
+                handle_panic::<ClientInstruction>(info, None);
+            }
+        })
+    });
+
+    let reset_controlling_terminal_state = |e: String, exit_status: i32| {
+        os_input.unset_raw_mode(0).unwrap();
+        let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
+        let restore_alternate_screen = "\u{1b}[?1049l";
+        let exit_kitty_keyboard_mode = "\u{1b}[<1u";
+        let reset_style = "\u{1b}[m";
+        let show_cursor = "\u{1b}[?25h";
+        os_input.disable_mouse().non_fatal();
+        let error = format!(
+            "{}{}{}{}\n{}{}\n",
+            reset_style,
+            show_cursor,
+            restore_alternate_screen,
+            exit_kitty_keyboard_mode,
+            goto_start_of_last_line,
+            e
+        );
+        let _ = os_input
+            .get_stdout_writer()
+            .write(error.as_bytes())
+            .unwrap();
+        let _ = os_input.get_stdout_writer().flush().unwrap();
+        if exit_status == 0 {
+            log::info!("{}", e);
+        } else {
+            log::error!("{}", e);
+        };
+        std::process::exit(exit_status);
+    };
+
+    runtime.block_on(run_remote_client_terminal_loop(
+        os_input.clone(),
+        connections,
+    ))?;
+
+    let exit_msg = String::from("Bye from Zellij!");
+
+    if reconnect_to_session.is_none() {
+        reset_controlling_terminal_state(exit_msg, 0);
+        std::process::exit(0);
+    } else {
+        let clear_screen = "\u{1b}[2J";
+        let mut stdout = os_input.get_stdout_writer();
+        let _ = stdout.write(clear_screen.as_bytes()).unwrap();
+        stdout.flush().unwrap();
+    }
+
+    Ok(reconnect_to_session)
 }
 
 pub fn start_client(
@@ -444,7 +788,7 @@ pub fn start_client(
         let os_input = os_input.clone();
         Box::new(move |info| {
             if let Ok(()) = os_input.unset_raw_mode(0) {
-                handle_panic(info, &send_client_instructions);
+                handle_panic(info, Some(&send_client_instructions));
             }
         })
     });
@@ -856,3 +1200,6 @@ pub fn start_server_detached(
     os_input.connect_to_server(&*ipc_pipe);
     os_input.send_to_server(first_msg);
 }
+
+#[cfg(test)]
+mod unit;
