@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: occasional status-bar pop-out after resurrecting a session (https://github.com/zellij-org/zellij/pull/4440)
 * fix: properly serialize/resurrect layouts with one-line split panes (https://github.com/zellij-org/zellij/pull/4442)
 * feat: allow attaching to remote Zellij sessions over https (eg. `zellij attach https://example.com/my-cool-session`) (https://github.com/zellij-org/zellij/pull/4460)
+* build: Update Rust toolchain to 1.90.0 (https://github.com/zellij-org/zellij/pull/4457)
 
 ## [0.43.1] - 2025-08-08
 * fix: pane rename backspace regression (https://github.com/zellij-org/zellij/pull/4346)
