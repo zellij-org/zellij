@@ -590,7 +590,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         use zellij_utils::errors::handle_panic;
         let to_server = to_server.clone();
         Box::new(move |info| {
-            handle_panic(info, &to_server);
+            handle_panic(info, Some(&to_server));
         })
     });
 

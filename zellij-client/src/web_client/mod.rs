@@ -1,4 +1,4 @@
-mod control_message;
+pub mod control_message;
 
 mod authentication;
 mod connection_manager;

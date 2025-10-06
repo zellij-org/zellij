@@ -169,6 +169,24 @@ async fn handle_ws_terminal(
     let mut mouse_old_event = MouseEvent::new();
     while let Some(Ok(msg)) = client_terminal_channel_rx.next().await {
         match msg {
+            Message::Binary(buf) => {
+                let Some(client_connection) = state
+                    .connection_table
+                    .lock()
+                    .unwrap()
+                    .get_client_os_api(&web_client_id)
+                    .cloned()
+                else {
+                    log::error!("Unknown web_client_id: {}", web_client_id);
+                    continue;
+                };
+                parse_stdin(
+                    &buf,
+                    client_connection.clone(),
+                    &mut mouse_old_event,
+                    explicitly_disable_kitty_keyboard_protocol,
+                );
+            },
             Message::Text(msg) => {
                 let Some(client_connection) = state
                     .connection_table
@@ -195,6 +213,7 @@ async fn handle_ws_terminal(
                     .remove_client(&web_client_id);
                 break;
             },
+            // TODO: support Message::Binary
             _ => {
                 log::error!("Unsupported websocket msg type");
             },

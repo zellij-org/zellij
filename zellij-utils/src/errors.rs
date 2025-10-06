@@ -679,7 +679,7 @@ mod not_wasm {
     }
 
     /// Custom panic handler/hook. Prints the [`ErrorContext`].
-    pub fn handle_panic<T>(info: &PanicHookInfo<'_>, sender: &SenderWithContext<T>)
+    pub fn handle_panic<T>(info: &PanicHookInfo<'_>, sender: Option<&SenderWithContext<T>>)
     where
         T: ErrorInstruction + Clone,
     {
@@ -728,14 +728,14 @@ mod not_wasm {
             )
         );
 
-        if thread == "main" {
+        if thread == "main" || sender.is_none() {
             // here we only show the first line because the backtrace is not readable otherwise
             // a better solution would be to escape raw mode before we do this, but it's not trivial
             // to get os_input here
             println!("\u{1b}[2J{}", fmt_report(report));
             process::exit(1);
         } else {
-            let _ = sender.send(T::error(fmt_report(report)));
+            let _ = sender.unwrap().send(T::error(fmt_report(report)));
         }
     }
 

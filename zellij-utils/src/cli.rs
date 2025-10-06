@@ -257,6 +257,18 @@ pub enum Sessions {
         /// If resurrecting a dead session, immediately run all its commands on startup
         #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
         force_run_commands: bool,
+
+        /// Authentication token for remote sessions
+        #[clap(short('t'), long, value_parser)]
+        token: Option<String>,
+
+        /// Save session for automatic re-authentication (4 weeks)
+        #[clap(short('r'), long, value_parser)]
+        remember: bool,
+
+        /// Delete saved session before connecting
+        #[clap(long, value_parser)]
+        forget: bool,
     },
 
     /// Kill a specific session
