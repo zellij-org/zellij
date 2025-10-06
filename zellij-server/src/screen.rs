@@ -169,6 +169,7 @@ pub enum ScreenInstruction {
     SwitchFocus(ClientId),
     FocusNextPane(ClientId),
     FocusPreviousPane(ClientId),
+    FocusLastPane(ClientId),
     MoveFocusLeft(ClientId),
     MoveFocusLeftOrPreviousTab(ClientId),
     MoveFocusDown(ClientId),
@@ -468,6 +469,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SwitchFocus(..) => ScreenContext::SwitchFocus,
             ScreenInstruction::FocusNextPane(..) => ScreenContext::FocusNextPane,
             ScreenInstruction::FocusPreviousPane(..) => ScreenContext::FocusPreviousPane,
+            ScreenInstruction::FocusLastPane(_) => ScreenContext::FocusLastPane,
             ScreenInstruction::MoveFocusLeft(..) => ScreenContext::MoveFocusLeft,
             ScreenInstruction::MoveFocusLeftOrPreviousTab(..) => {
                 ScreenContext::MoveFocusLeftOrPreviousTab
@@ -2211,6 +2213,7 @@ impl Screen {
                     pane_id,
                     None,
                     true,
+                    Some(client_id)
                 )?;
             } else {
                 new_active_tab.hide_floating_panes();
@@ -2324,7 +2327,7 @@ impl Screen {
             let (mut tiled_panes_layout, mut floating_panes_layout) = default_layout.new_tab();
             if pane_to_break_is_floating {
                 tab.show_floating_panes();
-                tab.add_floating_pane(active_pane, active_pane_id, None, true)?;
+                tab.add_floating_pane(active_pane, active_pane_id, None, true, Some(client_id))?;
                 if let Some(already_running_layout) = floating_panes_layout
                     .iter_mut()
                     .find(|i| i.run == active_pane_run_instruction)
@@ -2460,7 +2463,7 @@ impl Screen {
 
             if pane_to_break_is_floating {
                 new_active_tab.show_floating_panes();
-                new_active_tab.add_floating_pane(active_pane, active_pane_id, None, true)?;
+                new_active_tab.add_floating_pane(active_pane, active_pane_id, None, true, Some(client_id))?;
             } else {
                 new_active_tab.hide_floating_panes();
                 new_active_tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
@@ -2541,6 +2544,7 @@ impl Screen {
                         pane_id,
                         Some(floating_pane_coordinates),
                         false,
+                        Some(client_id)
                     )?;
                 } else {
                     // here we pass None instead of the ClientId, because we do not want this pane to be
@@ -3681,6 +3685,16 @@ pub(crate) fn screen_thread_main(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.focus_previous_pane(client_id)
+                );
+                screen.render(None)?;
+                screen.unblock_input()?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::FocusLastPane(client_id) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.focus_last_pane(client_id)
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;

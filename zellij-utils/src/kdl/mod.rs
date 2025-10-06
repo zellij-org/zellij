@@ -46,6 +46,7 @@ macro_rules! parse_kdl_action_arguments {
                 "Quit" => Ok(Action::Quit),
                 "FocusNextPane" => Ok(Action::FocusNextPane),
                 "FocusPreviousPane" => Ok(Action::FocusPreviousPane),
+                "FocusLastPane" => Ok(Action::FocusLastPane),
                 "SwitchFocus" => Ok(Action::SwitchFocus),
                 "EditScrollback" => Ok(Action::EditScrollback),
                 "ScrollUp" => Ok(Action::ScrollUp),
@@ -648,6 +649,7 @@ impl Action {
             },
             Action::FocusNextPane => Some(KdlNode::new("FocusNextPane")),
             Action::FocusPreviousPane => Some(KdlNode::new("FocusPreviousPane")),
+            Action::FocusLastPane => Some(KdlNode::new("FocusLastPane")),
             Action::SwitchFocus => Some(KdlNode::new("SwitchFocus")),
             Action::MoveFocus { direction } => {
                 let mut node = KdlNode::new("MoveFocus");
@@ -1407,6 +1409,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "FocusPreviousPane" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "FocusLastPane" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "SwitchFocus" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
@@ -5885,6 +5890,7 @@ fn keybinds_to_string_with_all_actions() {
                         config_key_2 "config_value_2";
                     };
                 }
+                bind "Ctrl Alt k" { FocusLastPane; }
             }
         }"#;
     let document: KdlDocument = fake_config.parse().unwrap();

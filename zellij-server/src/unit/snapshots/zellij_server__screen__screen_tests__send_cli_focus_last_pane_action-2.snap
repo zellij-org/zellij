@@ -1,0 +1,5 @@
+---
+source: zellij-server/src/./unit/screen_tests.rs
+expression: "format!(\"{:?}\", cursor_coordinates)"
+---
+Some((28, 1))
