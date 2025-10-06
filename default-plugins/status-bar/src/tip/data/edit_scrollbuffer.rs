@@ -65,7 +65,7 @@ pub fn edit_scrollbuffer_short(help: &ModeInfo) -> LinePart {
     strings!(&bits)
 }
 
-fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
+fn add_keybinds<'a>(help: &'a ModeInfo) -> Vec<ANSIString<'a>> {
     let to_pane = action_key(
         &help.get_mode_keybinds(),
         &[Action::SwitchToMode {
