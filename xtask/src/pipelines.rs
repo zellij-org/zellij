@@ -278,8 +278,10 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
         .context(err_context)?;
     // Version of the core crate
     let version = manifest
-        .get("package")
+        .get("workspace")
+        .and_then(|workspace| workspace.get("package"))
         .and_then(|package| package["version"].as_str())
+        .context("failed to read package version from manifest")
         .context(err_context)?;
 
     let mut skip_build = false;
