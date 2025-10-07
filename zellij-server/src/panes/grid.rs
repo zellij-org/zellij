@@ -2450,7 +2450,7 @@ impl Grid {
             let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
             viewport.push(s);
         }
-        PaneContents::new(viewport)
+        PaneContents::new(viewport, self.selection.clone())
     }
 }
 

@@ -18,7 +18,7 @@ use crate::panes::PaneId;
 use crate::screen::ScreenInstruction;
 use crate::session_layout_metadata::SessionLayoutMetadata;
 use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
-use crate::output::PaneContents;
+use crate::output::PaneRenderReport;
 
 pub use wasm_bridge::PluginRenderAsset;
 use wasm_bridge::WasmBridge;
@@ -167,7 +167,7 @@ pub enum PluginInstruction {
     ChangePluginHostDir(PathBuf, PluginId, ClientId),
     WebServerStarted(String), // String -> the base url of the web server
     FailedToStartWebServer(String),
-    PaneContents(HashMap<ClientId, HashMap<PaneId, PaneContents>>),
+    PaneRenderReport(PaneRenderReport),
     Exit,
 }
 
@@ -217,7 +217,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::ChangePluginHostDir(..) => PluginContext::ChangePluginHostDir,
             PluginInstruction::WebServerStarted(..) => PluginContext::WebServerStarted,
             PluginInstruction::FailedToStartWebServer(..) => PluginContext::FailedToStartWebServer,
-            PluginInstruction::PaneContents(..) => PluginContext::PaneContents,
+            PluginInstruction::PaneRenderReport(..) => PluginContext::PaneRenderReport,
         }
     }
 }
@@ -964,9 +964,9 @@ pub(crate) fn plugin_thread_main(
                     .update_plugins(updates, shutdown_send.clone())
                     .non_fatal();
             },
-            PluginInstruction::PaneContents(pane_contents) => {
+            PluginInstruction::PaneRenderReport(pane_render_report) => {
                 log::info!("***** PANE CONTENTS *****");
-                log::info!("{:?}", pane_contents);
+                log::info!("{:?}", pane_render_report);
                 log::info!("*************************");
             }
             PluginInstruction::Exit => {
