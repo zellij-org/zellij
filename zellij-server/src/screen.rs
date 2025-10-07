@@ -1326,6 +1326,12 @@ impl Screen {
                 .context(err_context)
                 .non_fatal();
         }
+        let _ = self
+            .bus
+            .senders
+            .send_to_plugin(PluginInstruction::PaneContents(output.all_pane_contents.clone())); // TODO:
+                                                                                            // no
+                                                                                            // clone?
         if output.is_dirty() {
             let serialized_output = output.serialize().context(err_context)?;
             let _ = self

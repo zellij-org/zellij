@@ -34,7 +34,7 @@ use swap_layouts::SwapLayouts;
 use self::clipboard::ClipboardProvider;
 use crate::{
     os_input_output::ServerOsApi,
-    output::{CharacterChunk, Output, SixelImageChunk},
+    output::{CharacterChunk, Output, SixelImageChunk, PaneContents},
     panes::floating_panes::floating_pane_grid::half_size_middle_geom,
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
@@ -626,6 +626,7 @@ pub trait Pane {
     fn set_pinned(&mut self, _should_be_pinned: bool) {}
     fn reset_logical_position(&mut self) {}
     fn set_mouse_selection_support(&mut self, _selection_support: bool) {}
+    fn pane_contents(&self, client_id: Option<ClientId>) -> PaneContents;
 }
 
 #[derive(Clone, Debug)]

@@ -6,7 +6,7 @@ use crate::panes::Row;
 use crate::{
     panes::sixel::SixelImageStore,
     panes::terminal_character::{AnsiCode, CharacterStyles},
-    panes::{LinkHandler, TerminalCharacter, DEFAULT_STYLES, EMPTY_TERMINAL_CHARACTER},
+    panes::{LinkHandler, TerminalCharacter, PaneId, DEFAULT_STYLES, EMPTY_TERMINAL_CHARACTER},
     ClientId,
 };
 use std::cell::RefCell;
@@ -236,7 +236,23 @@ fn adjust_middle_segment_for_wide_chars(
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct PaneContents {
+    pub viewport: Vec<String>,
+}
+
+impl PaneContents {
+    pub fn new(viewport: Vec<String>) -> Self {
+        PaneContents {
+            viewport
+        }
+    }
+}
+
+
+#[derive(Clone, Debug, Default)]
 pub struct Output {
+    // TODO: CONTINUE HERE - add a HashMap<PaneId, PaneRender>, PaneRender should include a
+    // Vec<String> of the ansi stripped(?) pane contents and other metadata like selection, etc.
     pre_vte_instructions: HashMap<ClientId, Vec<String>>,
     post_vte_instructions: HashMap<ClientId, Vec<String>>,
     client_character_chunks: HashMap<ClientId, Vec<CharacterChunk>>,
@@ -246,6 +262,7 @@ pub struct Output {
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     floating_panes_stack: Option<FloatingPanesStack>,
     styled_underlines: bool,
+    pub all_pane_contents: HashMap<ClientId, HashMap<PaneId, PaneContents>>,
 }
 
 impl Output {
@@ -453,6 +470,13 @@ impl Output {
             .as_ref()
             .map(|s| s.cursor_is_visible(cursor_x, cursor_y))
             .unwrap_or(true)
+    }
+    pub fn add_pane_contents(&mut self, client_ids: &[ClientId], pane_id: PaneId, pane_contents: PaneContents) {
+        // log::info!("add_pane_contents: {:?}", pane_contents);
+        for client_id in client_ids {
+            let p = self.all_pane_contents.entry(*client_id).or_insert_with(|| HashMap::new());
+            p.insert(pane_id, pane_contents.clone());
+        }
     }
 }
 

@@ -28,7 +28,7 @@ pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 use vte::{Params, Perform};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
-use crate::output::{CharacterChunk, OutputBuffer, SixelImageChunk};
+use crate::output::{CharacterChunk, OutputBuffer, SixelImageChunk, PaneContents};
 use crate::panes::alacritty_functions::{parse_number, xparse_color};
 use crate::panes::hyperlink_tracker::HyperlinkTracker;
 use crate::panes::link_handler::LinkHandler;
@@ -2443,6 +2443,14 @@ impl Grid {
     }
     pub fn has_selection(&self) -> bool {
         !self.selection.is_empty()
+    }
+    pub fn pane_contents(&self) -> PaneContents {
+        let mut viewport: Vec<String> = Vec::with_capacity(self.viewport.len());
+        for row in &self.viewport {
+            let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+            viewport.push(s);
+        }
+        PaneContents::new(viewport)
     }
 }
 

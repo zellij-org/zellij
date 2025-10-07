@@ -1,4 +1,4 @@
-use crate::output::{CharacterChunk, SixelImageChunk};
+use crate::output::{CharacterChunk, SixelImageChunk, PaneContents};
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::panes::{
@@ -880,6 +880,9 @@ impl Pane for TerminalPane {
     }
     fn reset_logical_position(&mut self) {
         self.geom.logical_position = None;
+    }
+    fn pane_contents(&self, _client_id: Option<ClientId>) -> PaneContents {
+        self.grid.pane_contents()
     }
 }
 

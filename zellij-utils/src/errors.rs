@@ -454,6 +454,7 @@ pub enum PluginContext {
     ChangePluginHostDir,
     WebServerStarted,
     FailedToStartWebServer,
+    PaneContents,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

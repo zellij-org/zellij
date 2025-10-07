@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
 
-use crate::output::{CharacterChunk, SixelImageChunk};
+use crate::output::{CharacterChunk, SixelImageChunk, PaneContents};
 use crate::panes::{
     grid::Grid,
     sixel::SixelImageStore,
@@ -850,6 +850,9 @@ impl Pane for PluginPane {
                 self.reset_selection(Some(client_id));
             }
         }
+    }
+    fn pane_contents(&self, client_id: Option<ClientId>) -> PaneContents {
+        client_id.and_then(|c| self.grids.get(&c)).map(|g| g.pane_contents()).unwrap_or_else(Default::default)
     }
 }
 
