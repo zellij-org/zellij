@@ -539,6 +539,10 @@ pub struct PaneContents {
     pub viewport: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(message, optional, tag="2")]
     pub selection: ::core::option::Option<Selection>,
+    #[prost(string, repeated, tag="3")]
+    pub lines_above_viewport: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="4")]
+    pub lines_below_viewport: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

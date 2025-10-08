@@ -2444,13 +2444,27 @@ impl Grid {
     pub fn has_selection(&self) -> bool {
         !self.selection.is_empty()
     }
-    pub fn pane_contents(&self) -> PaneContents {
+    pub fn pane_contents(&self, get_full_scrollback: bool) -> PaneContents {
         let mut viewport: Vec<String> = Vec::with_capacity(self.viewport.len());
         for row in &self.viewport {
             let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
             viewport.push(s);
         }
-        PaneContents::new(viewport, self.selection.clone())
+        if get_full_scrollback {
+            let mut lines_above_viewport: Vec<String> = Vec::with_capacity(self.lines_above.len());
+            for row in &self.lines_above {
+                let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+                lines_above_viewport.push(s);
+            }
+            let mut lines_below_viewport: Vec<String> = Vec::with_capacity(self.lines_below.len());
+            for row in &self.lines_below {
+                let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+                lines_below_viewport.push(s);
+            }
+            PaneContents::new_with_scrollback(viewport, self.selection.clone(), lines_above_viewport, lines_below_viewport)
+        } else {
+            PaneContents::new(viewport, self.selection.clone())
+        }
     }
 }
 

@@ -882,8 +882,8 @@ impl Pane for TerminalPane {
     fn reset_logical_position(&mut self) {
         self.geom.logical_position = None;
     }
-    fn pane_contents(&self, _client_id: Option<ClientId>) -> PaneContents {
-        self.grid.pane_contents()
+    fn pane_contents(&self, _client_id: Option<ClientId>, get_full_scrollback: bool) -> PaneContents {
+        self.grid.pane_contents(get_full_scrollback)
     }
 }
 

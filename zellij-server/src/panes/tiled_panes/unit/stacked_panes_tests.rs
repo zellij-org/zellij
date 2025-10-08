@@ -1236,7 +1236,7 @@ impl Pane for MockPane {
     fn custom_title(&self) -> Option<String> {
         unimplemented!()
     }
-    fn pane_contents(&self, _client_id: Option<ClientId>) -> PaneContents {
+    fn pane_contents(&self, _client_id: Option<ClientId>, _get_full_scrollback: bool) -> PaneContents {
         unimplemented!()
     }
 }

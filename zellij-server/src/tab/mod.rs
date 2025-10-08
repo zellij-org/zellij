@@ -627,7 +627,7 @@ pub trait Pane {
     fn set_pinned(&mut self, _should_be_pinned: bool) {}
     fn reset_logical_position(&mut self) {}
     fn set_mouse_selection_support(&mut self, _selection_support: bool) {}
-    fn pane_contents(&self, client_id: Option<ClientId>) -> PaneContents;
+    fn pane_contents(&self, client_id: Option<ClientId>, _get_full_scrollback: bool) -> PaneContents;
 }
 
 #[derive(Clone, Debug)]

@@ -1894,6 +1894,11 @@ impl PaneRenderReport {
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PaneContents {
+    // NOTE: both lines_above_viewport and lines_below_viewport are only populated if explicitly
+    // requested (eg. with get_full_scrollback true in the plugin command) this is for performance
+    // reasons
+    pub lines_above_viewport: Vec<String>,
+    pub lines_below_viewport: Vec<String>,
     pub viewport: Vec<String>,
     pub selection: Selection,
 }
@@ -1903,6 +1908,20 @@ impl PaneContents {
         PaneContents {
             viewport,
             selection,
+            ..Default::default()
+        }
+    }
+    pub fn new_with_scrollback(
+        viewport: Vec<String>,
+        selection: Selection,
+        lines_above_viewport: Vec<String>,
+        lines_below_viewport: Vec<String>
+    ) -> Self {
+        PaneContents {
+            viewport,
+            selection,
+            lines_above_viewport,
+            lines_below_viewport,
         }
     }
 }

@@ -2310,6 +2310,8 @@ impl TryFrom<ProtobufPaneContents> for PaneContents {
                 .selection
                 .ok_or("Missing selection in PaneContents")?
                 .try_into()?,
+            lines_above_viewport: protobuf_contents.lines_above_viewport,
+            lines_below_viewport: protobuf_contents.lines_below_viewport,
         })
     }
 }
@@ -2320,6 +2322,8 @@ impl TryFrom<PaneContents> for ProtobufPaneContents {
         Ok(ProtobufPaneContents {
             viewport: pane_contents.viewport,
             selection: Some(pane_contents.selection.try_into()?),
+            lines_above_viewport: pane_contents.lines_above_viewport,
+            lines_below_viewport: pane_contents.lines_below_viewport,
         })
     }
 }

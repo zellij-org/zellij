@@ -403,6 +403,8 @@ message PaneContentsEntry {
 message PaneContents {
   repeated string viewport = 1;
   Selection selection = 2;
+  repeated string lines_above_viewport = 3;
+  repeated string lines_below_viewport = 4;
 }
 
 message Selection {
