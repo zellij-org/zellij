@@ -2176,6 +2176,10 @@ impl Selection {
     }
 }
 
+#[cfg(test)]
+#[path = "./unit/selection_tests.rs"]
+mod selection_tests;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PluginIds {
     pub plugin_id: u32,
