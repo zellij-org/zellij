@@ -965,7 +965,6 @@ pub(crate) fn plugin_thread_main(
                     .non_fatal();
             },
             PluginInstruction::PaneRenderReport(pane_render_report) => {
-                log::info!("processing pane render report");
                 wasm_bridge
                     .handle_pane_render_report(pane_render_report, shutdown_send.clone())
                     .non_fatal();

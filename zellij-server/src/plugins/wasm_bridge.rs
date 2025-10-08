@@ -1091,10 +1091,7 @@ impl WasmBridge {
         pane_render_report: PaneRenderReport,
         shutdown_sender: Sender<()>,
     ) -> Result<()> {
-        // 1. Get changed panes per client
         let changed_panes_per_client = self.get_changed_panes_per_client(&pane_render_report);
-
-        // 2. Send update to each client that has changes
         for (client_id, client_panes) in changed_panes_per_client {
             let updates = vec![(
                 None,
@@ -1103,10 +1100,7 @@ impl WasmBridge {
             )];
             self.update_plugins(updates, shutdown_sender.clone())?;
         }
-
-        // 3. Store current report as previous for next comparison
         self.previous_pane_render_report = Some(pane_render_report);
-
         Ok(())
     }
 
