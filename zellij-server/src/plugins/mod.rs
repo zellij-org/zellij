@@ -968,7 +968,7 @@ pub(crate) fn plugin_thread_main(
                 wasm_bridge
                     .handle_pane_render_report(pane_render_report, shutdown_send.clone())
                     .non_fatal();
-            }
+            },
             PluginInstruction::Exit => {
                 break;
             },

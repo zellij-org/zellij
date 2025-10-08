@@ -12,10 +12,10 @@ pub use super::generated_api::api::{
         PaneManifest as ProtobufPaneManifest,
         PaneRenderReportPayload as ProtobufPaneRenderReportPayload, PaneType as ProtobufPaneType,
         PluginInfo as ProtobufPluginInfo, PositionPair as ProtobufPositionPair,
-        ResurrectableSession as ProtobufResurrectableSession,
-        Selection as ProtobufSelection, SessionManifest as ProtobufSessionManifest,
-        TabInfo as ProtobufTabInfo, WebServerStatusPayload as ProtobufWebServerStatusPayload,
-        WebSharing as ProtobufWebSharing, *,
+        ResurrectableSession as ProtobufResurrectableSession, Selection as ProtobufSelection,
+        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo,
+        WebServerStatusPayload as ProtobufWebServerStatusPayload, WebSharing as ProtobufWebSharing,
+        *,
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
@@ -24,9 +24,9 @@ pub use super::generated_api::api::{
 #[allow(hidden_glob_reexports)]
 use crate::data::{
     ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier,
-    LayoutInfo, ModeInfo, Mouse, PaneContents, PaneId, PaneInfo, PaneManifest,
-    PermissionStatus, PluginCapabilities, PluginInfo, Selection, SessionInfo,
-    Style, TabInfo, WebServerStatus, WebSharing,
+    LayoutInfo, ModeInfo, Mouse, PaneContents, PaneId, PaneInfo, PaneManifest, PermissionStatus,
+    PluginCapabilities, PluginInfo, Selection, SessionInfo, Style, TabInfo, WebServerStatus,
+    WebSharing,
 };
 
 use crate::errors::prelude::*;
@@ -2334,16 +2334,12 @@ impl TryFrom<ProtobufSelection> for Selection {
                     pair.start
                         .ok_or("Missing start in PositionPair")?
                         .try_into()?,
-                    pair.end
-                        .ok_or("Missing end in PositionPair")?
-                        .try_into()?,
+                    pair.end.ok_or("Missing end in PositionPair")?.try_into()?,
                 ))
             })
             .transpose()?;
 
-        let last_added_line_index = protobuf_selection
-            .last_added_line_index
-            .map(|i| i as isize);
+        let last_added_line_index = protobuf_selection.last_added_line_index.map(|i| i as isize);
 
         Ok(Selection {
             start: protobuf_selection

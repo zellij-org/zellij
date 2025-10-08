@@ -8,11 +8,11 @@ mod swap_layouts;
 
 use copy_command::CopyCommand;
 use serde;
-use zellij_utils::data::PaneContents;
 use std::env::temp_dir;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use uuid::Uuid;
+use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
     Direction, KeyWithModifier, PaneInfo, PermissionStatus, PermissionType, PluginPermission,
     ResizeStrategy, WebSharing,

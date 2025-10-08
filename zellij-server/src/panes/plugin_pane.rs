@@ -2,7 +2,6 @@ use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
 
 use crate::output::{CharacterChunk, SixelImageChunk};
-use zellij_utils::data::PaneContents;
 use crate::panes::{
     grid::Grid,
     sixel::SixelImageStore,
@@ -20,6 +19,7 @@ use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
 use vte;
+use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
     BareKey, KeyWithModifier, PermissionStatus, PermissionType, PluginPermission,
 };
@@ -853,7 +853,10 @@ impl Pane for PluginPane {
         }
     }
     fn pane_contents(&self, client_id: Option<ClientId>) -> PaneContents {
-        client_id.and_then(|c| self.grids.get(&c)).map(|g| g.pane_contents()).unwrap_or_else(Default::default)
+        client_id
+            .and_then(|c| self.grids.get(&c))
+            .map(|g| g.pane_contents())
+            .unwrap_or_else(Default::default)
     }
 }
 

@@ -5,7 +5,7 @@ use crate::panes::Row;
 use crate::{
     panes::sixel::SixelImageStore,
     panes::terminal_character::{AnsiCode, CharacterStyles},
-    panes::{LinkHandler, TerminalCharacter, PaneId, DEFAULT_STYLES, EMPTY_TERMINAL_CHARACTER},
+    panes::{LinkHandler, PaneId, TerminalCharacter, DEFAULT_STYLES, EMPTY_TERMINAL_CHARACTER},
     ClientId,
 };
 use std::cell::RefCell;
@@ -455,8 +455,14 @@ impl Output {
             .map(|s| s.cursor_is_visible(cursor_x, cursor_y))
             .unwrap_or(true)
     }
-    pub fn add_pane_contents(&mut self, client_ids: &[ClientId], pane_id: PaneId, pane_contents: PaneContents) {
-        self.pane_render_report.add_pane_contents(client_ids, pane_id.into(), pane_contents);
+    pub fn add_pane_contents(
+        &mut self,
+        client_ids: &[ClientId],
+        pane_id: PaneId,
+        pane_contents: PaneContents,
+    ) {
+        self.pane_render_report
+            .add_pane_contents(client_ids, pane_id.into(), pane_contents);
     }
     pub fn drain_pane_render_report(&mut self) -> PaneRenderReport {
         let empty_pane_render_report = PaneRenderReport::default();

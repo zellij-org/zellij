@@ -1047,7 +1047,8 @@ impl WasmBridge {
         &self,
         new_report: &PaneRenderReport,
     ) -> HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>> {
-        let mut result: HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>> = HashMap::new();
+        let mut result: HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>> =
+            HashMap::new();
 
         // First report - return everything grouped by client
         let Some(prev_report) = &self.previous_pane_render_report else {
@@ -1059,7 +1060,8 @@ impl WasmBridge {
 
         // Compare each client's panes
         for (client_id, new_panes) in &new_report.all_pane_contents {
-            let mut client_panes: HashMap<zellij_utils::data::PaneId, PaneContents> = HashMap::new();
+            let mut client_panes: HashMap<zellij_utils::data::PaneId, PaneContents> =
+                HashMap::new();
 
             for (pane_id, new_contents) in new_panes {
                 let has_changed = prev_report
@@ -1093,11 +1095,7 @@ impl WasmBridge {
     ) -> Result<()> {
         let changed_panes_per_client = self.get_changed_panes_per_client(&pane_render_report);
         for (client_id, client_panes) in changed_panes_per_client {
-            let updates = vec![(
-                None,
-                Some(client_id),
-                Event::PaneRenderReport(client_panes),
-            )];
+            let updates = vec![(None, Some(client_id), Event::PaneRenderReport(client_panes))];
             self.update_plugins(updates, shutdown_sender.clone())?;
         }
         self.previous_pane_render_report = Some(pane_render_report);

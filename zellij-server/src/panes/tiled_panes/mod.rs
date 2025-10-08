@@ -1020,16 +1020,23 @@ impl TiledPanes {
                 .with_context(err_context)?
         };
         for (kind, pane) in self.panes.iter_mut() {
-
             match kind {
                 PaneId::Terminal(_) => {
-                    output.add_pane_contents(&connected_clients, pane.pid(), pane.pane_contents(None));
-                }
+                    output.add_pane_contents(
+                        &connected_clients,
+                        pane.pid(),
+                        pane.pane_contents(None),
+                    );
+                },
                 PaneId::Plugin(_) => {
                     for client_id in &connected_clients {
-                        output.add_pane_contents(&[*client_id], pane.pid(), pane.pane_contents(Some(*client_id)));
+                        output.add_pane_contents(
+                            &[*client_id],
+                            pane.pid(),
+                            pane.pane_contents(Some(*client_id)),
+                        );
                     }
-                }
+                },
             }
 
             if !self.panes_to_hide.contains(&pane.pid()) {
