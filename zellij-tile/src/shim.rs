@@ -1045,6 +1045,21 @@ pub fn edit_scrollback_for_pane_with_id(pane_id: PaneId) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Retrieves the scrollback contents from the specified pane
+///
+/// # Arguments
+/// * `pane_id` - The ID of the pane to get scrollback from
+/// * `get_full_scrollback` - Whether to retrieve the full scrollback buffer
+pub fn get_pane_scrollback(pane_id: PaneId, get_full_scrollback: bool) {
+    let plugin_command = PluginCommand::GetPaneScrollback {
+        pane_id,
+        get_full_scrollback,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Write bytes to the `STDIN` of the specified pane
 pub fn write_to_pane_id(bytes: Vec<u8>, pane_id: PaneId) {
     let plugin_command = PluginCommand::WriteToPaneId(bytes, pane_id);

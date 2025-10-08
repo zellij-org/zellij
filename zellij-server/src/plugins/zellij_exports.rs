@@ -328,6 +328,10 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::EditScrollbackForPaneWithId(pane_id) => {
                         edit_scrollback_for_pane_with_id(env, pane_id.into())
                     },
+                    PluginCommand::GetPaneScrollback {
+                        pane_id,
+                        get_full_scrollback,
+                    } => get_pane_scrollback(env, pane_id.into(), get_full_scrollback),
                     PluginCommand::WriteToPaneId(bytes, pane_id) => {
                         write_to_pane_id(env, bytes, pane_id.into())
                     },
@@ -2122,6 +2126,14 @@ fn edit_scrollback_for_pane_with_id(env: &PluginEnv, pane_id: PaneId) {
         .send_to_screen(ScreenInstruction::EditScrollbackForPaneWithId(pane_id));
 }
 
+fn get_pane_scrollback(_env: &PluginEnv, _pane_id: PaneId, _get_full_scrollback: bool) {
+    // TODO: Implementation will be added later
+    // This should eventually send a ScreenInstruction to retrieve scrollback
+    // let _ = env
+    //     .senders
+    //     .send_to_screen(ScreenInstruction::GetPaneScrollback(pane_id, get_full_scrollback));
+}
+
 fn write_to_pane_id(env: &PluginEnv, bytes: Vec<u8>, pane_id: PaneId) {
     let _ = env
         .senders
@@ -2764,6 +2776,7 @@ fn check_command_permission(
         PluginCommand::InterceptKeyPresses | PluginCommand::ClearKeyPressesIntercepts => {
             PermissionType::InterceptInput
         },
+        PluginCommand::GetPaneScrollback { .. } => PermissionType::ReadPaneContents,
         _ => return (PermissionStatus::Granted, None),
     };
 

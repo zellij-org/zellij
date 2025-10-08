@@ -12,7 +12,8 @@ pub use super::generated_api::api::{
         FixedOrPercent as ProtobufFixedOrPercent,
         FixedOrPercentValue as ProtobufFixedOrPercentValue, FloatMultiplePanesPayload,
         FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, GenerateWebLoginTokenPayload,
-        GroupAndUngroupPanesPayload, HidePaneWithIdPayload, HighlightAndUnhighlightPanesPayload,
+        GetPaneScrollbackPayload, GroupAndUngroupPanesPayload, HidePaneWithIdPayload,
+        HighlightAndUnhighlightPanesPayload,
         HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
         ListTokensResponse, LoadNewPluginPayload, MessageToPluginPayload,
         MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload, MovePayload,
@@ -1108,6 +1109,18 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     _ => Err("Malformed edit_scrollback_for_pane_with_id payload"),
                 },
                 _ => Err("Mismatched payload for EditScrollback"),
+            },
+            Some(CommandName::GetPaneScrollback) => match protobuf_plugin_command.payload {
+                Some(Payload::GetPaneScrollbackPayload(get_pane_scrollback_payload)) => {
+                    match get_pane_scrollback_payload.pane_id {
+                        Some(pane_id) => Ok(PluginCommand::GetPaneScrollback {
+                            pane_id: pane_id.try_into()?,
+                            get_full_scrollback: get_pane_scrollback_payload.get_full_scrollback,
+                        }),
+                        _ => Err("Malformed get_pane_scrollback_payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for GetPaneScrollback"),
             },
             Some(CommandName::WriteToPaneId) => match protobuf_plugin_command.payload {
                 Some(Payload::WriteToPaneIdPayload(write_to_pane_id_payload)) => {
@@ -2372,6 +2385,16 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                         pane_id: Some(pane_id.try_into()?),
                     },
                 )),
+            }),
+            PluginCommand::GetPaneScrollback {
+                pane_id,
+                get_full_scrollback,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::GetPaneScrollback as i32,
+                payload: Some(Payload::GetPaneScrollbackPayload(GetPaneScrollbackPayload {
+                    pane_id: Some(pane_id.try_into()?),
+                    get_full_scrollback,
+                })),
             }),
             PluginCommand::WriteToPaneId(bytes_to_write, pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::WriteToPaneId as i32,
