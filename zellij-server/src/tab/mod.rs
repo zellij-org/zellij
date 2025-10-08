@@ -8,6 +8,7 @@ mod swap_layouts;
 
 use copy_command::CopyCommand;
 use serde;
+use zellij_utils::data::PaneContents;
 use std::env::temp_dir;
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -34,7 +35,7 @@ use swap_layouts::SwapLayouts;
 use self::clipboard::ClipboardProvider;
 use crate::{
     os_input_output::ServerOsApi,
-    output::{CharacterChunk, Output, SixelImageChunk, PaneContents},
+    output::{CharacterChunk, Output, SixelImageChunk},
     panes::floating_panes::floating_pane_grid::half_size_middle_geom,
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},

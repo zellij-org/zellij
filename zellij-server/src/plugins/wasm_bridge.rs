@@ -1603,6 +1603,7 @@ fn check_event_permission(
         | Event::CommandPaneReRun(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
+        Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,
         _ => return (PermissionStatus::Granted, None),
     };
 

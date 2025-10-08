@@ -1,7 +1,8 @@
 use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
 
-use crate::output::{CharacterChunk, SixelImageChunk, PaneContents};
+use crate::output::{CharacterChunk, SixelImageChunk};
+use zellij_utils::data::PaneContents;
 use crate::panes::{
     grid::Grid,
     sixel::SixelImageStore,

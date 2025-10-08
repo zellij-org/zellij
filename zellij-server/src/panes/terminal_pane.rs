@@ -1,4 +1,5 @@
-use crate::output::{CharacterChunk, SixelImageChunk, PaneContents};
+use crate::output::{CharacterChunk, SixelImageChunk};
+use zellij_utils::data::PaneContents;
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::panes::{

@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
 
-use crate::panes::selection::Selection;
 use crate::panes::Row;
 
 use crate::{
@@ -16,6 +15,7 @@ use std::{
     collections::{HashMap, HashSet},
     str,
 };
+use zellij_utils::data::{PaneContents, PaneRenderReport, Selection};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::pane_size::SizeInPixels;
@@ -236,22 +236,6 @@ fn adjust_middle_segment_for_wide_chars(
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct PaneContents {
-    pub viewport: Vec<String>,
-    pub selection: Selection,
-}
-
-impl PaneContents {
-    pub fn new(viewport: Vec<String>, selection: Selection) -> Self {
-        PaneContents {
-            viewport,
-            selection,
-        }
-    }
-}
-
-
-#[derive(Clone, Debug, Default)]
 pub struct Output {
     pre_vte_instructions: HashMap<ClientId, Vec<String>>,
     post_vte_instructions: HashMap<ClientId, Vec<String>>,
@@ -263,20 +247,6 @@ pub struct Output {
     floating_panes_stack: Option<FloatingPanesStack>,
     styled_underlines: bool,
     pane_render_report: PaneRenderReport,
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct PaneRenderReport {
-    pub all_pane_contents: HashMap<ClientId, HashMap<PaneId, PaneContents>>,
-}
-
-impl PaneRenderReport {
-    pub fn add_pane_contents(&mut self, client_ids: &[ClientId], pane_id: PaneId, pane_contents: PaneContents) {
-        for client_id in client_ids {
-            let p = self.all_pane_contents.entry(*client_id).or_insert_with(|| HashMap::new());
-            p.insert(pane_id, pane_contents.clone());
-        }
-    }
 }
 
 impl Output {
@@ -486,7 +456,7 @@ impl Output {
             .unwrap_or(true)
     }
     pub fn add_pane_contents(&mut self, client_ids: &[ClientId], pane_id: PaneId, pane_contents: PaneContents) {
-        self.pane_render_report.add_pane_contents(client_ids, pane_id, pane_contents);
+        self.pane_render_report.add_pane_contents(client_ids, pane_id.into(), pane_contents);
     }
     pub fn drain_pane_render_report(&mut self) -> PaneRenderReport {
         let empty_pane_render_report = PaneRenderReport::default();

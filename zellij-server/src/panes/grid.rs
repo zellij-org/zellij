@@ -28,17 +28,17 @@ pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 use vte::{Params, Perform};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
-use crate::output::{CharacterChunk, OutputBuffer, SixelImageChunk, PaneContents};
+use crate::output::{CharacterChunk, OutputBuffer, SixelImageChunk};
 use crate::panes::alacritty_functions::{parse_number, xparse_color};
 use crate::panes::hyperlink_tracker::HyperlinkTracker;
 use crate::panes::link_handler::LinkHandler;
 use crate::panes::search::SearchResult;
-use crate::panes::selection::Selection;
 use crate::panes::terminal_character::{
     AnsiCode, CharsetIndex, Cursor, CursorShape, RcCharacterStyles, StandardCharset,
     TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
 use crate::ui::components::UiComponentParser;
+use zellij_utils::data::{PaneContents, Selection};
 
 fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;

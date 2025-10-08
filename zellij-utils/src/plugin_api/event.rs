@@ -2,17 +2,21 @@ pub use super::generated_api::api::{
     action::{Action as ProtobufAction, Position as ProtobufPosition},
     event::{
         event::Payload as ProtobufEventPayload, ClientInfo as ProtobufClientInfo,
+        ClientPaneContents as ProtobufClientPaneContents,
         ClientTabHistory as ProtobufClientTabHistory, CopyDestination as ProtobufCopyDestination,
         Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
         EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
         InputModeKeybinds as ProtobufInputModeKeybinds, KeyBind as ProtobufKeyBind,
         LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
+        PaneContents as ProtobufPaneContents, PaneContentsEntry as ProtobufPaneContentsEntry,
         PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
-        PaneManifest as ProtobufPaneManifest, PaneType as ProtobufPaneType,
-        PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
-        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo,
-        WebServerStatusPayload as ProtobufWebServerStatusPayload, WebSharing as ProtobufWebSharing,
-        *,
+        PaneManifest as ProtobufPaneManifest,
+        PaneRenderReportPayload as ProtobufPaneRenderReportPayload, PaneType as ProtobufPaneType,
+        PluginInfo as ProtobufPluginInfo, PositionPair as ProtobufPositionPair,
+        ResurrectableSession as ProtobufResurrectableSession,
+        Selection as ProtobufSelection, SessionManifest as ProtobufSessionManifest,
+        TabInfo as ProtobufTabInfo, WebServerStatusPayload as ProtobufWebServerStatusPayload,
+        WebSharing as ProtobufWebSharing, *,
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
@@ -21,8 +25,9 @@ pub use super::generated_api::api::{
 #[allow(hidden_glob_reexports)]
 use crate::data::{
     ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier,
-    LayoutInfo, ModeInfo, Mouse, PaneId, PaneInfo, PaneManifest, PermissionStatus,
-    PluginCapabilities, PluginInfo, SessionInfo, Style, TabInfo, WebServerStatus, WebSharing,
+    LayoutInfo, ModeInfo, Mouse, PaneContents, PaneId, PaneInfo, PaneManifest,
+    PaneRenderReport, PermissionStatus, PluginCapabilities, PluginInfo, Selection, SessionInfo,
+    Style, TabInfo, WebServerStatus, WebSharing,
 };
 
 use crate::errors::prelude::*;
@@ -386,6 +391,12 @@ impl TryFrom<ProtobufEvent> for Event {
                     Ok(Event::InterceptedKeyPress(protobuf_key.try_into()?))
                 },
                 _ => Err("Malformed payload for the InterceptedKeyPress Event"),
+            },
+            Some(ProtobufEventType::PaneRenderReport) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PaneRenderReportPayload(protobuf_payload)) => {
+                    Ok(Event::PaneRenderReport(protobuf_payload.try_into()?))
+                },
+                _ => Err("Malformed payload for the PaneRenderReport Event"),
             },
             None => Err("Unknown Protobuf Event"),
         }
@@ -780,6 +791,12 @@ impl TryFrom<Event> for ProtobufEvent {
             Event::InterceptedKeyPress(key) => Ok(ProtobufEvent {
                 name: ProtobufEventType::InterceptedKeyPress as i32,
                 payload: Some(event::Payload::KeyPayload(key.try_into()?)),
+            }),
+            Event::PaneRenderReport(pane_render_report) => Ok(ProtobufEvent {
+                name: ProtobufEventType::PaneRenderReport as i32,
+                payload: Some(event::Payload::PaneRenderReportPayload(
+                    pane_render_report.try_into()?,
+                )),
             }),
         }
     }
@@ -1459,6 +1476,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::BeforeClose => EventType::BeforeClose,
             ProtobufEventType::FailedToStartWebServer => EventType::FailedToStartWebServer,
             ProtobufEventType::InterceptedKeyPress => EventType::InterceptedKeyPress,
+            ProtobufEventType::PaneRenderReport => EventType::PaneRenderReport,
         })
     }
 }
@@ -1502,6 +1520,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::BeforeClose => ProtobufEventType::BeforeClose,
             EventType::FailedToStartWebServer => ProtobufEventType::FailedToStartWebServer,
             EventType::InterceptedKeyPress => ProtobufEventType::InterceptedKeyPress,
+            EventType::PaneRenderReport => ProtobufEventType::PaneRenderReport,
         })
     }
 }
@@ -2241,5 +2260,145 @@ impl TryFrom<ProtobufWebServerStatusPayload> for WebServerStatus {
             Some(WebServerStatusIndication::Offline) => Ok(WebServerStatus::Offline),
             None => Err("Unknown status"),
         }
+    }
+}
+
+impl TryFrom<ProtobufPaneRenderReportPayload> for PaneRenderReport {
+    type Error = &'static str;
+    fn try_from(protobuf_payload: ProtobufPaneRenderReportPayload) -> Result<Self, &'static str> {
+        let mut all_pane_contents = HashMap::new();
+
+        for client_pane_contents in protobuf_payload.client_pane_contents {
+            let client_id = client_pane_contents.client_id as u16;
+            let mut pane_contents_map = HashMap::new();
+
+            for entry in client_pane_contents.pane_contents_entries {
+                let pane_id = entry
+                    .pane_id
+                    .ok_or("Missing pane_id in PaneContentsEntry")?
+                    .try_into()?;
+                let pane_contents = entry
+                    .pane_contents
+                    .ok_or("Missing pane_contents in PaneContentsEntry")?
+                    .try_into()?;
+                pane_contents_map.insert(pane_id, pane_contents);
+            }
+
+            all_pane_contents.insert(client_id, pane_contents_map);
+        }
+
+        Ok(PaneRenderReport { all_pane_contents })
+    }
+}
+
+impl TryFrom<PaneRenderReport> for ProtobufPaneRenderReportPayload {
+    type Error = &'static str;
+    fn try_from(pane_render_report: PaneRenderReport) -> Result<Self, &'static str> {
+        let mut client_pane_contents_vec = vec![];
+
+        for (client_id, pane_contents_map) in pane_render_report.all_pane_contents {
+            let mut pane_contents_entries = vec![];
+
+            for (pane_id, pane_contents) in pane_contents_map {
+                pane_contents_entries.push(ProtobufPaneContentsEntry {
+                    pane_id: Some(pane_id.try_into()?),
+                    pane_contents: Some(pane_contents.try_into()?),
+                });
+            }
+
+            client_pane_contents_vec.push(ProtobufClientPaneContents {
+                client_id: client_id as u32,
+                pane_contents_entries,
+            });
+        }
+
+        Ok(ProtobufPaneRenderReportPayload {
+            client_pane_contents: client_pane_contents_vec,
+        })
+    }
+}
+
+impl TryFrom<ProtobufPaneContents> for PaneContents {
+    type Error = &'static str;
+    fn try_from(protobuf_contents: ProtobufPaneContents) -> Result<Self, &'static str> {
+        Ok(PaneContents {
+            viewport: protobuf_contents.viewport,
+            selection: protobuf_contents
+                .selection
+                .ok_or("Missing selection in PaneContents")?
+                .try_into()?,
+        })
+    }
+}
+
+impl TryFrom<PaneContents> for ProtobufPaneContents {
+    type Error = &'static str;
+    fn try_from(pane_contents: PaneContents) -> Result<Self, &'static str> {
+        Ok(ProtobufPaneContents {
+            viewport: pane_contents.viewport,
+            selection: Some(pane_contents.selection.try_into()?),
+        })
+    }
+}
+
+impl TryFrom<ProtobufSelection> for Selection {
+    type Error = &'static str;
+    fn try_from(protobuf_selection: ProtobufSelection) -> Result<Self, &'static str> {
+        let last_added_word_position = protobuf_selection
+            .last_added_word_position
+            .map(|pair| -> Result<_, &'static str> {
+                Ok((
+                    pair.start
+                        .ok_or("Missing start in PositionPair")?
+                        .try_into()?,
+                    pair.end
+                        .ok_or("Missing end in PositionPair")?
+                        .try_into()?,
+                ))
+            })
+            .transpose()?;
+
+        let last_added_line_index = protobuf_selection
+            .last_added_line_index
+            .map(|i| i as isize);
+
+        Ok(Selection {
+            start: protobuf_selection
+                .start
+                .ok_or("Missing start in Selection")?
+                .try_into()?,
+            end: protobuf_selection
+                .end
+                .ok_or("Missing end in Selection")?
+                .try_into()?,
+            active: protobuf_selection.active,
+            last_added_word_position,
+            last_added_line_index,
+        })
+    }
+}
+
+impl TryFrom<Selection> for ProtobufSelection {
+    type Error = &'static str;
+    fn try_from(selection: Selection) -> Result<Self, &'static str> {
+        let last_added_word_position = selection
+            .last_added_word_position
+            .map(|(start, end)| -> Result<_, &'static str> {
+                Ok(ProtobufPositionPair {
+                    start: Some(start.try_into()?),
+                    end: Some(end.try_into()?),
+                })
+            })
+            .transpose()?;
+
+        let last_added_line_index = selection.last_added_line_index.map(|i| i as i64);
+
+        Ok(ProtobufSelection {
+            start: Some(selection.start.try_into()?),
+            end: Some(selection.end.try_into()?),
+            active: selection.active,
+            last_added_word_position,
+            last_added_line_index,
+        })
     }
 }
