@@ -965,14 +965,10 @@ pub(crate) fn plugin_thread_main(
                     .non_fatal();
             },
             PluginInstruction::PaneRenderReport(pane_render_report) => {
-                log::info!("sending pane render report");
-                let updates = vec![(None, None, Event::PaneRenderReport(pane_render_report))];
+                log::info!("processing pane render report");
                 wasm_bridge
-                    .update_plugins(updates, shutdown_send.clone())
+                    .handle_pane_render_report(pane_render_report, shutdown_send.clone())
                     .non_fatal();
-//                 log::info!("***** PANE CONTENTS *****");
-//                 log::info!("{:?}", pane_render_report);
-//                 log::info!("*************************");
             }
             PluginInstruction::Exit => {
                 break;

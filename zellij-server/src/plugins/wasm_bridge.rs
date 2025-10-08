@@ -22,7 +22,8 @@ use std::{
 use wasmtime::{Engine, Module};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{
-    FloatingPaneCoordinates, InputMode, PermissionStatus, PermissionType, PipeMessage, PipeSource,
+    FloatingPaneCoordinates, InputMode, PaneRenderReport, PermissionStatus, PermissionType,
+    PipeMessage, PipeSource,
 };
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::keybinds::Keybinds;
@@ -111,6 +112,7 @@ pub struct WasmBridge {
     keybinds: HashMap<ClientId, Keybinds>,
     base_modes: HashMap<ClientId, InputMode>,
     downloader: Downloader,
+    previous_pane_render_report: Option<PaneRenderReport>,
 }
 
 impl WasmBridge {
@@ -163,6 +165,7 @@ impl WasmBridge {
             keybinds: HashMap::new(),
             base_modes: HashMap::new(),
             downloader,
+            previous_pane_render_report: None,
         }
     }
     pub fn load_plugin(
@@ -1033,7 +1036,90 @@ impl WasmBridge {
             .lock()
             .unwrap()
             .retain(|c| c != &client_id);
+
+        // Remove client from cached pane render report
+        if let Some(ref mut prev_report) = self.previous_pane_render_report {
+            prev_report.all_pane_contents.remove(&client_id);
+        }
     }
+
+    fn get_changed_panes_per_client(
+        &self,
+        new_report: &PaneRenderReport,
+    ) -> HashMap<ClientId, PaneRenderReport> {
+        let mut result: HashMap<ClientId, PaneRenderReport> = HashMap::new();
+
+        // First report - return everything grouped by client
+        let Some(prev_report) = &self.previous_pane_render_report else {
+            for (client_id, panes) in &new_report.all_pane_contents {
+                let mut client_report = PaneRenderReport {
+                    all_pane_contents: HashMap::new(),
+                };
+                client_report
+                    .all_pane_contents
+                    .insert(*client_id, panes.clone());
+                result.insert(*client_id, client_report);
+            }
+            return result;
+        };
+
+        // Compare each client's panes
+        for (client_id, new_panes) in &new_report.all_pane_contents {
+            let mut client_report = PaneRenderReport {
+                all_pane_contents: HashMap::new(),
+            };
+            let mut has_changes = false;
+
+            for (pane_id, new_contents) in new_panes {
+                let has_changed = prev_report
+                    .all_pane_contents
+                    .get(client_id)
+                    .and_then(|prev_panes| prev_panes.get(pane_id))
+                    .map(|prev_contents| {
+                        // Check if viewport or selection changed
+                        prev_contents.viewport != new_contents.viewport
+                            || prev_contents.selection != new_contents.selection
+                    })
+                    .unwrap_or(true); // New pane - treat as changed
+
+                if has_changed {
+                    has_changes = true;
+                    client_report.add_pane_contents(&[*client_id], *pane_id, new_contents.clone());
+                }
+            }
+
+            if has_changes {
+                result.insert(*client_id, client_report);
+            }
+        }
+
+        result
+    }
+
+    pub fn handle_pane_render_report(
+        &mut self,
+        pane_render_report: PaneRenderReport,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
+        // 1. Get changed panes per client
+        let changed_panes_per_client = self.get_changed_panes_per_client(&pane_render_report);
+
+        // 2. Send update to each client that has changes
+        for (client_id, client_report) in changed_panes_per_client {
+            let updates = vec![(
+                None,
+                Some(client_id),
+                Event::PaneRenderReport(client_report),
+            )];
+            self.update_plugins(updates, shutdown_sender.clone())?;
+        }
+
+        // 3. Store current report as previous for next comparison
+        self.previous_pane_render_report = Some(pane_render_report);
+
+        Ok(())
+    }
+
     pub fn cleanup(&mut self) {
         for (_plugin_id, loading_plugin_task) in self.loading_plugins.drain() {
             drop(loading_plugin_task.cancel());
