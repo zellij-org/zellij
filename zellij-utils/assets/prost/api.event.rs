@@ -522,15 +522,7 @@ pub struct KeyBind {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PaneRenderReportPayload {
     #[prost(message, repeated, tag="1")]
-    pub client_pane_contents: ::prost::alloc::vec::Vec<ClientPaneContents>,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ClientPaneContents {
-    #[prost(uint32, tag="1")]
-    pub client_id: u32,
-    #[prost(message, repeated, tag="2")]
-    pub pane_contents_entries: ::prost::alloc::vec::Vec<PaneContentsEntry>,
+    pub pane_contents: ::prost::alloc::vec::Vec<PaneContentsEntry>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

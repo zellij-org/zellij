@@ -945,7 +945,7 @@ pub enum Event {
     FailedToStartWebServer(String),
     BeforeClose,
     InterceptedKeyPress(KeyWithModifier),
-    PaneRenderReport(PaneRenderReport),
+    PaneRenderReport(HashMap<PaneId, PaneContents>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, ToString, Serialize, Deserialize)]

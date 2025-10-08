@@ -22,8 +22,8 @@ use std::{
 use wasmtime::{Engine, Module};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{
-    FloatingPaneCoordinates, InputMode, PaneRenderReport, PermissionStatus, PermissionType,
-    PipeMessage, PipeSource,
+    FloatingPaneCoordinates, InputMode, PaneContents, PaneRenderReport, PermissionStatus,
+    PermissionType, PipeMessage, PipeSource,
 };
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::keybinds::Keybinds;
@@ -1046,29 +1046,20 @@ impl WasmBridge {
     fn get_changed_panes_per_client(
         &self,
         new_report: &PaneRenderReport,
-    ) -> HashMap<ClientId, PaneRenderReport> {
-        let mut result: HashMap<ClientId, PaneRenderReport> = HashMap::new();
+    ) -> HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>> {
+        let mut result: HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>> = HashMap::new();
 
         // First report - return everything grouped by client
         let Some(prev_report) = &self.previous_pane_render_report else {
             for (client_id, panes) in &new_report.all_pane_contents {
-                let mut client_report = PaneRenderReport {
-                    all_pane_contents: HashMap::new(),
-                };
-                client_report
-                    .all_pane_contents
-                    .insert(*client_id, panes.clone());
-                result.insert(*client_id, client_report);
+                result.insert(*client_id, panes.clone());
             }
             return result;
         };
 
         // Compare each client's panes
         for (client_id, new_panes) in &new_report.all_pane_contents {
-            let mut client_report = PaneRenderReport {
-                all_pane_contents: HashMap::new(),
-            };
-            let mut has_changes = false;
+            let mut client_panes: HashMap<zellij_utils::data::PaneId, PaneContents> = HashMap::new();
 
             for (pane_id, new_contents) in new_panes {
                 let has_changed = prev_report
@@ -1083,13 +1074,12 @@ impl WasmBridge {
                     .unwrap_or(true); // New pane - treat as changed
 
                 if has_changed {
-                    has_changes = true;
-                    client_report.add_pane_contents(&[*client_id], *pane_id, new_contents.clone());
+                    client_panes.insert(*pane_id, new_contents.clone());
                 }
             }
 
-            if has_changes {
-                result.insert(*client_id, client_report);
+            if !client_panes.is_empty() {
+                result.insert(*client_id, client_panes);
             }
         }
 
@@ -1105,11 +1095,11 @@ impl WasmBridge {
         let changed_panes_per_client = self.get_changed_panes_per_client(&pane_render_report);
 
         // 2. Send update to each client that has changes
-        for (client_id, client_report) in changed_panes_per_client {
+        for (client_id, client_panes) in changed_panes_per_client {
             let updates = vec![(
                 None,
                 Some(client_id),
-                Event::PaneRenderReport(client_report),
+                Event::PaneRenderReport(client_panes),
             )];
             self.update_plugins(updates, shutdown_sender.clone())?;
         }

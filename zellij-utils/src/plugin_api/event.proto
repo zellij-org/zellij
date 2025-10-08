@@ -392,12 +392,7 @@ message KeyBind {
 }
 
 message PaneRenderReportPayload {
-  repeated ClientPaneContents client_pane_contents = 1;
-}
-
-message ClientPaneContents {
-  uint32 client_id = 1;
-  repeated PaneContentsEntry pane_contents_entries = 2;
+  repeated PaneContentsEntry pane_contents = 1;
 }
 
 message PaneContentsEntry {

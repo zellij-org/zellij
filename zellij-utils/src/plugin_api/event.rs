@@ -2,7 +2,6 @@ pub use super::generated_api::api::{
     action::{Action as ProtobufAction, Position as ProtobufPosition},
     event::{
         event::Payload as ProtobufEventPayload, ClientInfo as ProtobufClientInfo,
-        ClientPaneContents as ProtobufClientPaneContents,
         ClientTabHistory as ProtobufClientTabHistory, CopyDestination as ProtobufCopyDestination,
         Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
         EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
@@ -26,7 +25,7 @@ pub use super::generated_api::api::{
 use crate::data::{
     ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier,
     LayoutInfo, ModeInfo, Mouse, PaneContents, PaneId, PaneInfo, PaneManifest,
-    PaneRenderReport, PermissionStatus, PluginCapabilities, PluginInfo, Selection, SessionInfo,
+    PermissionStatus, PluginCapabilities, PluginInfo, Selection, SessionInfo,
     Style, TabInfo, WebServerStatus, WebSharing,
 };
 
@@ -792,10 +791,10 @@ impl TryFrom<Event> for ProtobufEvent {
                 name: ProtobufEventType::InterceptedKeyPress as i32,
                 payload: Some(event::Payload::KeyPayload(key.try_into()?)),
             }),
-            Event::PaneRenderReport(pane_render_report) => Ok(ProtobufEvent {
+            Event::PaneRenderReport(pane_contents_map) => Ok(ProtobufEvent {
                 name: ProtobufEventType::PaneRenderReport as i32,
                 payload: Some(event::Payload::PaneRenderReportPayload(
-                    pane_render_report.try_into()?,
+                    pane_contents_map.try_into()?,
                 )),
             }),
         }
@@ -2263,57 +2262,41 @@ impl TryFrom<ProtobufWebServerStatusPayload> for WebServerStatus {
     }
 }
 
-impl TryFrom<ProtobufPaneRenderReportPayload> for PaneRenderReport {
+impl TryFrom<ProtobufPaneRenderReportPayload> for HashMap<PaneId, PaneContents> {
     type Error = &'static str;
     fn try_from(protobuf_payload: ProtobufPaneRenderReportPayload) -> Result<Self, &'static str> {
-        let mut all_pane_contents = HashMap::new();
+        let mut pane_contents_map = HashMap::new();
 
-        for client_pane_contents in protobuf_payload.client_pane_contents {
-            let client_id = client_pane_contents.client_id as u16;
-            let mut pane_contents_map = HashMap::new();
-
-            for entry in client_pane_contents.pane_contents_entries {
-                let pane_id = entry
-                    .pane_id
-                    .ok_or("Missing pane_id in PaneContentsEntry")?
-                    .try_into()?;
-                let pane_contents = entry
-                    .pane_contents
-                    .ok_or("Missing pane_contents in PaneContentsEntry")?
-                    .try_into()?;
-                pane_contents_map.insert(pane_id, pane_contents);
-            }
-
-            all_pane_contents.insert(client_id, pane_contents_map);
+        for entry in protobuf_payload.pane_contents {
+            let pane_id = entry
+                .pane_id
+                .ok_or("Missing pane_id in PaneContentsEntry")?
+                .try_into()?;
+            let pane_contents = entry
+                .pane_contents
+                .ok_or("Missing pane_contents in PaneContentsEntry")?
+                .try_into()?;
+            pane_contents_map.insert(pane_id, pane_contents);
         }
 
-        Ok(PaneRenderReport { all_pane_contents })
+        Ok(pane_contents_map)
     }
 }
 
-impl TryFrom<PaneRenderReport> for ProtobufPaneRenderReportPayload {
+impl TryFrom<HashMap<PaneId, PaneContents>> for ProtobufPaneRenderReportPayload {
     type Error = &'static str;
-    fn try_from(pane_render_report: PaneRenderReport) -> Result<Self, &'static str> {
-        let mut client_pane_contents_vec = vec![];
+    fn try_from(pane_contents_map: HashMap<PaneId, PaneContents>) -> Result<Self, &'static str> {
+        let mut pane_contents_vec = vec![];
 
-        for (client_id, pane_contents_map) in pane_render_report.all_pane_contents {
-            let mut pane_contents_entries = vec![];
-
-            for (pane_id, pane_contents) in pane_contents_map {
-                pane_contents_entries.push(ProtobufPaneContentsEntry {
-                    pane_id: Some(pane_id.try_into()?),
-                    pane_contents: Some(pane_contents.try_into()?),
-                });
-            }
-
-            client_pane_contents_vec.push(ProtobufClientPaneContents {
-                client_id: client_id as u32,
-                pane_contents_entries,
+        for (pane_id, pane_contents) in pane_contents_map {
+            pane_contents_vec.push(ProtobufPaneContentsEntry {
+                pane_id: Some(pane_id.try_into()?),
+                pane_contents: Some(pane_contents.try_into()?),
             });
         }
 
         Ok(ProtobufPaneRenderReportPayload {
-            client_pane_contents: client_pane_contents_vec,
+            pane_contents: pane_contents_vec,
         })
     }
 }
