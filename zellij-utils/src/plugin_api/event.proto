@@ -402,7 +402,7 @@ message PaneContentsEntry {
 
 message PaneContents {
   repeated string viewport = 1;
-  Selection selection = 2;
+  optional SelectedText selected_text = 2;
   repeated string lines_above_viewport = 3;
   repeated string lines_below_viewport = 4;
 }
@@ -414,15 +414,7 @@ message PaneScrollbackResponse {
   }
 }
 
-message Selection {
-  action.Position start = 1;
-  action.Position end = 2;
-  bool active = 3;
-  optional PositionPair last_added_word_position = 4;
-  optional int64 last_added_line_index = 5;
-}
-
-message PositionPair {
+message SelectedText {
   action.Position start = 1;
   action.Position end = 2;
 }

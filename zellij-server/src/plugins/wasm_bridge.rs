@@ -1069,9 +1069,9 @@ impl WasmBridge {
                     .get(client_id)
                     .and_then(|prev_panes| prev_panes.get(pane_id))
                     .map(|prev_contents| {
-                        // Check if viewport or selection changed
+                        // Check if viewport or selected_text changed
                         prev_contents.viewport != new_contents.viewport
-                            || prev_contents.selection != new_contents.selection
+                            || prev_contents.selected_text != new_contents.selected_text
                     })
                     .unwrap_or(true); // New pane - treat as changed
 

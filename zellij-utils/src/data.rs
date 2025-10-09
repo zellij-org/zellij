@@ -1900,14 +1900,14 @@ pub struct PaneContents {
     pub lines_above_viewport: Vec<String>,
     pub lines_below_viewport: Vec<String>,
     pub viewport: Vec<String>,
-    pub selection: Selection,
+    pub selected_text: Option<SelectedText>,
 }
 
 impl PaneContents {
     pub fn new(viewport: Vec<String>, selection: Selection) -> Self {
         PaneContents {
             viewport,
-            selection,
+            selected_text: SelectedText::from_selection(&selection),
             ..Default::default()
         }
     }
@@ -1919,7 +1919,7 @@ impl PaneContents {
     ) -> Self {
         PaneContents {
             viewport,
-            selection,
+            selected_text: SelectedText::from_selection(&selection),
             lines_above_viewport,
             lines_below_viewport,
         }
@@ -2198,6 +2198,47 @@ impl Selection {
         let start = start.line.0.max(0);
         let end = end.line.0.min(max as isize);
         start..end
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SelectedText {
+    pub start: Position,
+    pub end: Position,
+}
+
+impl SelectedText {
+    pub fn new(start: Position, end: Position) -> Self {
+        // Normalize: ensure start <= end
+        let (normalized_start, normalized_end) = if start <= end {
+            (start, end)
+        } else {
+            (end, start)
+        };
+
+        // Normalize negative line values to 0
+        // (column is already usize so can't be negative)
+        let normalized_start = Position::new(
+            normalized_start.line().max(0) as i32,
+            normalized_start.column() as u16,
+        );
+        let normalized_end = Position::new(
+            normalized_end.line().max(0) as i32,
+            normalized_end.column() as u16,
+        );
+
+        SelectedText {
+            start: normalized_start,
+            end: normalized_end,
+        }
+    }
+
+    pub fn from_selection(selection: &Selection) -> Option<Self> {
+        if selection.is_empty() {
+            None
+        } else {
+            Some(Self::new(selection.start, selection.end))
+        }
     }
 }
 

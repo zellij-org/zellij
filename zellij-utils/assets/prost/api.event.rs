@@ -538,7 +538,7 @@ pub struct PaneContents {
     #[prost(string, repeated, tag="1")]
     pub viewport: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(message, optional, tag="2")]
-    pub selection: ::core::option::Option<Selection>,
+    pub selected_text: ::core::option::Option<SelectedText>,
     #[prost(string, repeated, tag="3")]
     pub lines_above_viewport: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(string, repeated, tag="4")]
@@ -563,21 +563,7 @@ pub mod pane_scrollback_response {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Selection {
-    #[prost(message, optional, tag="1")]
-    pub start: ::core::option::Option<super::action::Position>,
-    #[prost(message, optional, tag="2")]
-    pub end: ::core::option::Option<super::action::Position>,
-    #[prost(bool, tag="3")]
-    pub active: bool,
-    #[prost(message, optional, tag="4")]
-    pub last_added_word_position: ::core::option::Option<PositionPair>,
-    #[prost(int64, optional, tag="5")]
-    pub last_added_line_index: ::core::option::Option<i64>,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PositionPair {
+pub struct SelectedText {
     #[prost(message, optional, tag="1")]
     pub start: ::core::option::Option<super::action::Position>,
     #[prost(message, optional, tag="2")]

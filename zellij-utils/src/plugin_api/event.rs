@@ -13,8 +13,8 @@ pub use super::generated_api::api::{
         PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
         PaneScrollbackResponse as ProtobufPaneScrollbackResponse,
         pane_scrollback_response, PaneType as ProtobufPaneType,
-        PluginInfo as ProtobufPluginInfo, PositionPair as ProtobufPositionPair,
-        ResurrectableSession as ProtobufResurrectableSession, Selection as ProtobufSelection,
+        PluginInfo as ProtobufPluginInfo,
+        ResurrectableSession as ProtobufResurrectableSession, SelectedText as ProtobufSelectedText,
         SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo,
         WebServerStatusPayload as ProtobufWebServerStatusPayload, WebSharing as ProtobufWebSharing,
         *,
@@ -27,7 +27,7 @@ pub use super::generated_api::api::{
 use crate::data::{
     ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier,
     LayoutInfo, ModeInfo, Mouse, PaneContents, PaneId, PaneInfo, PaneManifest,
-    PaneScrollbackResponse, PermissionStatus, PluginCapabilities, PluginInfo, Selection,
+    PaneScrollbackResponse, PermissionStatus, PluginCapabilities, PluginInfo, SelectedText,
     SessionInfo, Style, TabInfo, WebServerStatus, WebSharing,
 };
 
@@ -2306,12 +2306,14 @@ impl TryFrom<HashMap<PaneId, PaneContents>> for ProtobufPaneRenderReportPayload 
 impl TryFrom<ProtobufPaneContents> for PaneContents {
     type Error = &'static str;
     fn try_from(protobuf_contents: ProtobufPaneContents) -> Result<Self, &'static str> {
+        let selected_text = protobuf_contents
+            .selected_text
+            .map(|st| st.try_into())
+            .transpose()?;
+
         Ok(PaneContents {
             viewport: protobuf_contents.viewport,
-            selection: protobuf_contents
-                .selection
-                .ok_or("Missing selection in PaneContents")?
-                .try_into()?,
+            selected_text,
             lines_above_viewport: protobuf_contents.lines_above_viewport,
             lines_below_viewport: protobuf_contents.lines_below_viewport,
         })
@@ -2321,9 +2323,14 @@ impl TryFrom<ProtobufPaneContents> for PaneContents {
 impl TryFrom<PaneContents> for ProtobufPaneContents {
     type Error = &'static str;
     fn try_from(pane_contents: PaneContents) -> Result<Self, &'static str> {
+        let selected_text = pane_contents
+            .selected_text
+            .map(|st| st.try_into())
+            .transpose()?;
+
         Ok(ProtobufPaneContents {
             viewport: pane_contents.viewport,
-            selection: Some(pane_contents.selection.try_into()?),
+            selected_text,
             lines_above_viewport: pane_contents.lines_above_viewport,
             lines_below_viewport: pane_contents.lines_below_viewport,
         })
@@ -2362,60 +2369,28 @@ impl TryFrom<PaneScrollbackResponse> for ProtobufPaneScrollbackResponse {
     }
 }
 
-impl TryFrom<ProtobufSelection> for Selection {
+impl TryFrom<ProtobufSelectedText> for SelectedText {
     type Error = &'static str;
-    fn try_from(protobuf_selection: ProtobufSelection) -> Result<Self, &'static str> {
-        let last_added_word_position = protobuf_selection
-            .last_added_word_position
-            .map(|pair| -> Result<_, &'static str> {
-                Ok((
-                    pair.start
-                        .ok_or("Missing start in PositionPair")?
-                        .try_into()?,
-                    pair.end.ok_or("Missing end in PositionPair")?.try_into()?,
-                ))
-            })
-            .transpose()?;
-
-        let last_added_line_index = protobuf_selection.last_added_line_index.map(|i| i as isize);
-
-        Ok(Selection {
-            start: protobuf_selection
+    fn try_from(protobuf_selected_text: ProtobufSelectedText) -> Result<Self, &'static str> {
+        Ok(SelectedText {
+            start: protobuf_selected_text
                 .start
-                .ok_or("Missing start in Selection")?
+                .ok_or("Missing start in SelectedText")?
                 .try_into()?,
-            end: protobuf_selection
+            end: protobuf_selected_text
                 .end
-                .ok_or("Missing end in Selection")?
+                .ok_or("Missing end in SelectedText")?
                 .try_into()?,
-            active: protobuf_selection.active,
-            last_added_word_position,
-            last_added_line_index,
         })
     }
 }
 
-impl TryFrom<Selection> for ProtobufSelection {
+impl TryFrom<SelectedText> for ProtobufSelectedText {
     type Error = &'static str;
-    fn try_from(selection: Selection) -> Result<Self, &'static str> {
-        let last_added_word_position = selection
-            .last_added_word_position
-            .map(|(start, end)| -> Result<_, &'static str> {
-                Ok(ProtobufPositionPair {
-                    start: Some(start.try_into()?),
-                    end: Some(end.try_into()?),
-                })
-            })
-            .transpose()?;
-
-        let last_added_line_index = selection.last_added_line_index.map(|i| i as i64);
-
-        Ok(ProtobufSelection {
-            start: Some(selection.start.try_into()?),
-            end: Some(selection.end.try_into()?),
-            active: selection.active,
-            last_added_word_position,
-            last_added_line_index,
+    fn try_from(selected_text: SelectedText) -> Result<Self, &'static str> {
+        Ok(ProtobufSelectedText {
+            start: Some(selected_text.start.try_into()?),
+            end: Some(selected_text.end.try_into()?),
         })
     }
 }
