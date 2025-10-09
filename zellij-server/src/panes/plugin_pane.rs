@@ -852,7 +852,11 @@ impl Pane for PluginPane {
             }
         }
     }
-    fn pane_contents(&self, client_id: Option<ClientId>, get_full_scrollback: bool) -> PaneContents {
+    fn pane_contents(
+        &self,
+        client_id: Option<ClientId>,
+        get_full_scrollback: bool,
+    ) -> PaneContents {
         client_id
             .and_then(|c| self.grids.get(&c))
             .map(|g| g.pane_contents(get_full_scrollback))

@@ -3877,7 +3877,7 @@ pub(crate) fn screen_thread_main(
                             pane_id
                         );
                         PaneScrollbackResponse::Err(format!("Pane {:?} not found", pane_id))
-                    }
+                    },
                 };
 
                 // Send response - if this fails, the plugin timed out and dropped the receiver

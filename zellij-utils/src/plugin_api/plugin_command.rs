@@ -13,14 +13,13 @@ pub use super::generated_api::api::{
         FixedOrPercentValue as ProtobufFixedOrPercentValue, FloatMultiplePanesPayload,
         FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, GenerateWebLoginTokenPayload,
         GetPaneScrollbackPayload, GroupAndUngroupPanesPayload, HidePaneWithIdPayload,
-        HighlightAndUnhighlightPanesPayload,
-        HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
-        ListTokensResponse, LoadNewPluginPayload, MessageToPluginPayload,
-        MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload, MovePayload,
-        NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload, NewTabsWithLayoutInfoPayload,
-        OpenCommandPaneFloatingNearPluginPayload, OpenCommandPaneInPlaceOfPluginPayload,
-        OpenCommandPaneNearPluginPayload, OpenCommandPanePayload,
-        OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
+        HighlightAndUnhighlightPanesPayload, HttpVerb as ProtobufHttpVerb, IdAndNewName,
+        KeyToRebind, KeyToUnbind, KillSessionsPayload, ListTokensResponse, LoadNewPluginPayload,
+        MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload,
+        MovePayload, NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
+        NewTabsWithLayoutInfoPayload, OpenCommandPaneFloatingNearPluginPayload,
+        OpenCommandPaneInPlaceOfPluginPayload, OpenCommandPaneNearPluginPayload,
+        OpenCommandPanePayload, OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
         OpenFileNearPluginPayload, OpenFilePayload, OpenTerminalFloatingNearPluginPayload,
         OpenTerminalInPlaceOfPluginPayload, OpenTerminalNearPluginPayload,
         PageScrollDownInPaneIdPayload, PageScrollUpInPaneIdPayload, PaneId as ProtobufPaneId,
@@ -2391,10 +2390,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 get_full_scrollback,
             } => Ok(ProtobufPluginCommand {
                 name: CommandName::GetPaneScrollback as i32,
-                payload: Some(Payload::GetPaneScrollbackPayload(GetPaneScrollbackPayload {
-                    pane_id: Some(pane_id.try_into()?),
-                    get_full_scrollback,
-                })),
+                payload: Some(Payload::GetPaneScrollbackPayload(
+                    GetPaneScrollbackPayload {
+                        pane_id: Some(pane_id.try_into()?),
+                        get_full_scrollback,
+                    },
+                )),
             }),
             PluginCommand::WriteToPaneId(bytes_to_write, pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::WriteToPaneId as i32,

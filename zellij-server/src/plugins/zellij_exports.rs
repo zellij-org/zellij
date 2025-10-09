@@ -2129,8 +2129,8 @@ fn edit_scrollback_for_pane_with_id(env: &PluginEnv, pane_id: PaneId) {
 }
 
 fn get_pane_scrollback(env: &PluginEnv, pane_id: PaneId, get_full_scrollback: bool) {
-    use std::time::Duration;
     use crossbeam::channel::RecvTimeoutError;
+    use std::time::Duration;
 
     let err_context = || {
         format!(
@@ -2166,7 +2166,7 @@ fn get_pane_scrollback(env: &PluginEnv, pane_id: PaneId, get_full_scrollback: bo
                 "Timeout retrieving scrollback for pane {:?}",
                 pane_id
             ))
-        }
+        },
         Err(RecvTimeoutError::Disconnected) => {
             log::error!(
                 "GetPaneScrollback channel disconnected for plugin {} requesting pane {:?}",
@@ -2177,7 +2177,7 @@ fn get_pane_scrollback(env: &PluginEnv, pane_id: PaneId, get_full_scrollback: bo
                 "Channel disconnected while retrieving scrollback for pane {:?}",
                 pane_id
             ))
-        }
+        },
     };
 
     // Convert to protobuf and write back to plugin

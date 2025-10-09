@@ -1989,7 +1989,7 @@ impl PaneContents {
         selection_start: Position,
         selection_end: Position,
         lines_above_viewport: Vec<String>,
-        lines_below_viewport: Vec<String>
+        lines_below_viewport: Vec<String>,
     ) -> Self {
         PaneContents {
             viewport,

@@ -1055,7 +1055,10 @@ pub fn edit_scrollback_for_pane_with_id(pane_id: PaneId) {
 /// # Returns
 /// * `Ok(PaneContents)` - The pane contents if successful
 /// * `Err(String)` - An error message if the pane was not found, timed out, or another error occurred
-pub fn get_pane_scrollback(pane_id: PaneId, get_full_scrollback: bool) -> Result<PaneContents, String> {
+pub fn get_pane_scrollback(
+    pane_id: PaneId,
+    get_full_scrollback: bool,
+) -> Result<PaneContents, String> {
     let plugin_command = PluginCommand::GetPaneScrollback {
         pane_id,
         get_full_scrollback,
@@ -1065,8 +1068,8 @@ pub fn get_pane_scrollback(pane_id: PaneId, get_full_scrollback: bool) -> Result
     unsafe { host_run_plugin_command() };
 
     // Read response from stdin
-    let response_bytes = bytes_from_stdin()
-        .map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
 
     // Decode protobuf response
     let protobuf_response = ProtobufPaneScrollbackResponse::decode(response_bytes.as_slice())

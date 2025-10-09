@@ -454,4 +454,3 @@ fn add_line_to_position_reduce_from_above() {
     assert_eq!(selection.start, Position::new(line_index_to_add as i32, 0));
     assert_eq!(selection.end, selection_end);
 }
-

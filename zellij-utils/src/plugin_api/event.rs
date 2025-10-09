@@ -1,23 +1,21 @@
 pub use super::generated_api::api::{
     action::{Action as ProtobufAction, Position as ProtobufPosition},
     event::{
-        event::Payload as ProtobufEventPayload, ClientInfo as ProtobufClientInfo,
-        ClientTabHistory as ProtobufClientTabHistory, CopyDestination as ProtobufCopyDestination,
-        Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
-        EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
-        InputModeKeybinds as ProtobufInputModeKeybinds, KeyBind as ProtobufKeyBind,
-        LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
-        PaneContents as ProtobufPaneContents, PaneContentsEntry as ProtobufPaneContentsEntry,
-        PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
-        PaneManifest as ProtobufPaneManifest,
+        event::Payload as ProtobufEventPayload, pane_scrollback_response,
+        ClientInfo as ProtobufClientInfo, ClientTabHistory as ProtobufClientTabHistory,
+        CopyDestination as ProtobufCopyDestination, Event as ProtobufEvent,
+        EventNameList as ProtobufEventNameList, EventType as ProtobufEventType,
+        FileMetadata as ProtobufFileMetadata, InputModeKeybinds as ProtobufInputModeKeybinds,
+        KeyBind as ProtobufKeyBind, LayoutInfo as ProtobufLayoutInfo,
+        ModeUpdatePayload as ProtobufModeUpdatePayload, PaneContents as ProtobufPaneContents,
+        PaneContentsEntry as ProtobufPaneContentsEntry, PaneId as ProtobufPaneId,
+        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
         PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
-        PaneScrollbackResponse as ProtobufPaneScrollbackResponse,
-        pane_scrollback_response, PaneType as ProtobufPaneType,
-        PluginInfo as ProtobufPluginInfo,
-        ResurrectableSession as ProtobufResurrectableSession, SelectedText as ProtobufSelectedText,
-        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo,
-        WebServerStatusPayload as ProtobufWebServerStatusPayload, WebSharing as ProtobufWebSharing,
-        *,
+        PaneScrollbackResponse as ProtobufPaneScrollbackResponse, PaneType as ProtobufPaneType,
+        PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
+        SelectedText as ProtobufSelectedText, SessionManifest as ProtobufSessionManifest,
+        TabInfo as ProtobufTabInfo, WebServerStatusPayload as ProtobufWebServerStatusPayload,
+        WebSharing as ProtobufWebSharing, *,
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
@@ -2343,10 +2341,10 @@ impl TryFrom<ProtobufPaneScrollbackResponse> for PaneScrollbackResponse {
         match protobuf_response.response {
             Some(pane_scrollback_response::Response::Ok(pane_contents)) => {
                 Ok(PaneScrollbackResponse::Ok(pane_contents.try_into()?))
-            }
+            },
             Some(pane_scrollback_response::Response::Err(error_msg)) => {
                 Ok(PaneScrollbackResponse::Err(error_msg))
-            }
+            },
             None => Err("PaneScrollbackResponse missing response field"),
         }
     }
@@ -2358,10 +2356,10 @@ impl TryFrom<PaneScrollbackResponse> for ProtobufPaneScrollbackResponse {
         let response_field = match response {
             PaneScrollbackResponse::Ok(pane_contents) => {
                 pane_scrollback_response::Response::Ok(pane_contents.try_into()?)
-            }
+            },
             PaneScrollbackResponse::Err(error_msg) => {
                 pane_scrollback_response::Response::Err(error_msg)
-            }
+            },
         };
         Ok(ProtobufPaneScrollbackResponse {
             response: Some(response_field),
