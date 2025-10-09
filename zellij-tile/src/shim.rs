@@ -8,6 +8,7 @@ use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
 pub use zellij_utils::plugin_api;
+use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::plugin_command::{
     CreateTokenResponse, ListTokensResponse, ProtobufPluginCommand, RenameWebTokenResponse,
     RevokeAllWebTokensResponse, RevokeTokenResponse,
@@ -1043,6 +1044,46 @@ pub fn edit_scrollback_for_pane_with_id(pane_id: PaneId) {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+}
+
+/// Retrieves the scrollback contents from the specified pane
+///
+/// # Arguments
+/// * `pane_id` - The ID of the pane to get scrollback from
+/// * `get_full_scrollback` - Whether to retrieve the full scrollback buffer (including lines above and below viewport)
+///
+/// # Returns
+/// * `Ok(PaneContents)` - The pane contents if successful
+/// * `Err(String)` - An error message if the pane was not found, timed out, or another error occurred
+pub fn get_pane_scrollback(
+    pane_id: PaneId,
+    get_full_scrollback: bool,
+) -> Result<PaneContents, String> {
+    let plugin_command = PluginCommand::GetPaneScrollback {
+        pane_id,
+        get_full_scrollback,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    // Read response from stdin
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+
+    // Decode protobuf response
+    let protobuf_response = ProtobufPaneScrollbackResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
+
+    // Convert to Rust type
+    let response = PaneScrollbackResponse::try_from(protobuf_response)
+        .map_err(|e| format!("Failed to convert protobuf response: {}", e))?;
+
+    // Convert Result enum to actual Result type
+    match response {
+        PaneScrollbackResponse::Ok(contents) => Ok(contents),
+        PaneScrollbackResponse::Err(error_msg) => Err(error_msg),
+    }
 }
 
 /// Write bytes to the `STDIN` of the specified pane

@@ -18,6 +18,7 @@ use crate::panes::PaneId;
 use crate::screen::ScreenInstruction;
 use crate::session_layout_metadata::SessionLayoutMetadata;
 use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
+use zellij_utils::data::PaneRenderReport;
 
 pub use wasm_bridge::PluginRenderAsset;
 use wasm_bridge::WasmBridge;
@@ -166,6 +167,7 @@ pub enum PluginInstruction {
     ChangePluginHostDir(PathBuf, PluginId, ClientId),
     WebServerStarted(String), // String -> the base url of the web server
     FailedToStartWebServer(String),
+    PaneRenderReport(PaneRenderReport),
     Exit,
 }
 
@@ -215,6 +217,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::ChangePluginHostDir(..) => PluginContext::ChangePluginHostDir,
             PluginInstruction::WebServerStarted(..) => PluginContext::WebServerStarted,
             PluginInstruction::FailedToStartWebServer(..) => PluginContext::FailedToStartWebServer,
+            PluginInstruction::PaneRenderReport(..) => PluginContext::PaneRenderReport,
         }
     }
 }
@@ -959,6 +962,11 @@ pub(crate) fn plugin_thread_main(
                 let updates = vec![(None, None, Event::FailedToStartWebServer(error))];
                 wasm_bridge
                     .update_plugins(updates, shutdown_send.clone())
+                    .non_fatal();
+            },
+            PluginInstruction::PaneRenderReport(pane_render_report) => {
+                wasm_bridge
+                    .handle_pane_render_report(pane_render_report, shutdown_send.clone())
                     .non_fatal();
             },
             PluginInstruction::Exit => {

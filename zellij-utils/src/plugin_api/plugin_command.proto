@@ -159,6 +159,7 @@ enum CommandName {
   InterceptKeyPresses = 143;
   ClearKeyPressesIntercepts = 144;
   ReplacePaneWithExistingPane = 155;
+  GetPaneScrollback = 163;
 }
 
 message PluginCommand {
@@ -266,6 +267,7 @@ message PluginCommand {
     RenameWebLoginTokenPayload rename_web_login_token_payload = 110;
     ReplacePaneWithExistingPanePayload replace_pane_with_existing_pane_payload = 111;
     NewTabPayload new_tab_payload = 112;
+    GetPaneScrollbackPayload get_pane_scrollback_payload = 113;
   }
 }
 
@@ -702,4 +704,9 @@ message RevokeAllWebTokensResponse {
 message RenameWebTokenResponse {
   bool successfully_renamed = 1;
   optional string error = 2;
+}
+
+message GetPaneScrollbackPayload {
+  PaneId pane_id = 1;
+  bool get_full_scrollback = 2;
 }

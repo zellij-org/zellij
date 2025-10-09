@@ -1,12 +1,12 @@
 use std::collections::VecDeque;
 
-use crate::panes::selection::Selection;
 use crate::panes::Row;
 
+use crate::panes::Selection;
 use crate::{
     panes::sixel::SixelImageStore,
     panes::terminal_character::{AnsiCode, CharacterStyles},
-    panes::{LinkHandler, TerminalCharacter, DEFAULT_STYLES, EMPTY_TERMINAL_CHARACTER},
+    panes::{LinkHandler, PaneId, TerminalCharacter, DEFAULT_STYLES, EMPTY_TERMINAL_CHARACTER},
     ClientId,
 };
 use std::cell::RefCell;
@@ -16,6 +16,7 @@ use std::{
     collections::{HashMap, HashSet},
     str,
 };
+use zellij_utils::data::{PaneContents, PaneRenderReport};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::pane_size::SizeInPixels;
@@ -246,6 +247,7 @@ pub struct Output {
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     floating_panes_stack: Option<FloatingPanesStack>,
     styled_underlines: bool,
+    pane_render_report: PaneRenderReport,
 }
 
 impl Output {
@@ -453,6 +455,19 @@ impl Output {
             .as_ref()
             .map(|s| s.cursor_is_visible(cursor_x, cursor_y))
             .unwrap_or(true)
+    }
+    pub fn add_pane_contents(
+        &mut self,
+        client_ids: &[ClientId],
+        pane_id: PaneId,
+        pane_contents: PaneContents,
+    ) {
+        self.pane_render_report
+            .add_pane_contents(client_ids, pane_id.into(), pane_contents);
+    }
+    pub fn drain_pane_render_report(&mut self) -> PaneRenderReport {
+        let empty_pane_render_report = PaneRenderReport::default();
+        std::mem::replace(&mut self.pane_render_report, empty_pane_render_report)
     }
 }
 

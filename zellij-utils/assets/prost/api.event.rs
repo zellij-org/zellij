@@ -9,7 +9,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -73,6 +73,8 @@ pub mod event {
         FailedToStartWebServerPayload(super::FailedToStartWebServerPayload),
         #[prost(message, tag="29")]
         InterceptedKeyPayload(super::super::key::Key),
+        #[prost(message, tag="30")]
+        PaneRenderReportPayload(super::PaneRenderReportPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -516,6 +518,57 @@ pub struct KeyBind {
     #[prost(message, repeated, tag="2")]
     pub action: ::prost::alloc::vec::Vec<super::action::Action>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneRenderReportPayload {
+    #[prost(message, repeated, tag="1")]
+    pub pane_contents: ::prost::alloc::vec::Vec<PaneContentsEntry>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneContentsEntry {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag="2")]
+    pub pane_contents: ::core::option::Option<PaneContents>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneContents {
+    #[prost(string, repeated, tag="1")]
+    pub viewport: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(message, optional, tag="2")]
+    pub selected_text: ::core::option::Option<SelectedText>,
+    #[prost(string, repeated, tag="3")]
+    pub lines_above_viewport: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="4")]
+    pub lines_below_viewport: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneScrollbackResponse {
+    #[prost(oneof="pane_scrollback_response::Response", tags="1, 2")]
+    pub response: ::core::option::Option<pane_scrollback_response::Response>,
+}
+/// Nested message and enum types in `PaneScrollbackResponse`.
+pub mod pane_scrollback_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Response {
+        #[prost(message, tag="1")]
+        Ok(super::PaneContents),
+        #[prost(string, tag="2")]
+        Err(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SelectedText {
+    #[prost(message, optional, tag="1")]
+    pub start: ::core::option::Option<super::action::Position>,
+    #[prost(message, optional, tag="2")]
+    pub end: ::core::option::Option<super::action::Position>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum EventType {
@@ -569,6 +622,7 @@ pub enum EventType {
     BeforeClose = 32,
     FailedToStartWebServer = 34,
     InterceptedKeyPress = 35,
+    PaneRenderReport = 36,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -612,6 +666,7 @@ impl EventType {
             EventType::BeforeClose => "BeforeClose",
             EventType::FailedToStartWebServer => "FailedToStartWebServer",
             EventType::InterceptedKeyPress => "InterceptedKeyPress",
+            EventType::PaneRenderReport => "PaneRenderReport",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -652,6 +707,7 @@ impl EventType {
             "BeforeClose" => Some(Self::BeforeClose),
             "FailedToStartWebServer" => Some(Self::FailedToStartWebServer),
             "InterceptedKeyPress" => Some(Self::InterceptedKeyPress),
+            "PaneRenderReport" => Some(Self::PaneRenderReport),
             _ => None,
         }
     }

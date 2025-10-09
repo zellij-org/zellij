@@ -19,6 +19,7 @@ use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
 use vte;
+use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
     BareKey, KeyWithModifier, PermissionStatus, PermissionType, PluginPermission,
 };
@@ -850,6 +851,16 @@ impl Pane for PluginPane {
                 self.reset_selection(Some(client_id));
             }
         }
+    }
+    fn pane_contents(
+        &self,
+        client_id: Option<ClientId>,
+        get_full_scrollback: bool,
+    ) -> PaneContents {
+        client_id
+            .and_then(|c| self.grids.get(&c))
+            .map(|g| g.pane_contents(get_full_scrollback))
+            .unwrap_or_else(Default::default)
     }
 }
 

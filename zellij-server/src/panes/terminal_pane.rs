@@ -14,6 +14,7 @@ use std::fmt::Debug;
 use std::rc::Rc;
 use std::time::{self, Instant};
 use vte;
+use zellij_utils::data::PaneContents;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::pane_size::Offset;
@@ -880,6 +881,13 @@ impl Pane for TerminalPane {
     }
     fn reset_logical_position(&mut self) {
         self.geom.logical_position = None;
+    }
+    fn pane_contents(
+        &self,
+        _client_id: Option<ClientId>,
+        get_full_scrollback: bool,
+    ) -> PaneContents {
+        self.grid.pane_contents(get_full_scrollback)
     }
 }
 

@@ -58,6 +58,7 @@ enum EventType {
     BeforeClose = 32;
     FailedToStartWebServer = 34;
     InterceptedKeyPress = 35;
+    PaneRenderReport = 36;
 }
 
 message EventNameList {
@@ -95,6 +96,7 @@ message Event {
     WebServerStatusPayload web_server_status_payload = 27;
     FailedToStartWebServerPayload failed_to_start_web_server_payload = 28;
     key.Key intercepted_key_payload = 29;
+    PaneRenderReportPayload pane_render_report_payload = 30;
   }
 }
 
@@ -387,4 +389,32 @@ message InputModeKeybinds {
 message KeyBind {
   key.Key key = 1;
   repeated action.Action action = 2;
+}
+
+message PaneRenderReportPayload {
+  repeated PaneContentsEntry pane_contents = 1;
+}
+
+message PaneContentsEntry {
+  PaneId pane_id = 1;
+  PaneContents pane_contents = 2;
+}
+
+message PaneContents {
+  repeated string viewport = 1;
+  optional SelectedText selected_text = 2;
+  repeated string lines_above_viewport = 3;
+  repeated string lines_below_viewport = 4;
+}
+
+message PaneScrollbackResponse {
+  oneof response {
+    PaneContents ok = 1;
+    string err = 2;
+  }
+}
+
+message SelectedText {
+  action.Position start = 1;
+  action.Position end = 2;
 }

@@ -260,6 +260,7 @@ pub enum ScreenContext {
     DumpScreen,
     DumpLayout,
     EditScrollback,
+    GetPaneScrollback,
     ScrollUp,
     ScrollUpAt,
     ScrollDown,
@@ -454,6 +455,7 @@ pub enum PluginContext {
     ChangePluginHostDir,
     WebServerStarted,
     FailedToStartWebServer,
+    PaneRenderReport,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

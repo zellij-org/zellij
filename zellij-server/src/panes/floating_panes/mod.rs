@@ -374,6 +374,28 @@ impl FloatingPanes {
         } else {
             Default::default()
         };
+
+        for (kind, pane) in &self.panes {
+            match kind {
+                PaneId::Terminal(_) => {
+                    output.add_pane_contents(
+                        &connected_clients,
+                        pane.pid(),
+                        pane.pane_contents(None, false),
+                    );
+                },
+                PaneId::Plugin(_) => {
+                    for client_id in &connected_clients {
+                        output.add_pane_contents(
+                            &[*client_id],
+                            pane.pid(),
+                            pane.pane_contents(Some(*client_id), false),
+                        );
+                    }
+                },
+            }
+        }
+
         let mut floating_panes: Vec<_> = if self.panes_are_visible() {
             self.panes.iter_mut().collect()
         } else if self.has_pinned_panes() {

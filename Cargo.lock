@@ -5905,6 +5905,7 @@ dependencies = [
  "cassowary",
  "chrono",
  "close_fds",
+ "crossbeam",
  "daemonize",
  "highway",
  "insta",

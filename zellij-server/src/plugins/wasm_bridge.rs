@@ -22,7 +22,8 @@ use std::{
 use wasmtime::{Engine, Module};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{
-    FloatingPaneCoordinates, InputMode, PermissionStatus, PermissionType, PipeMessage, PipeSource,
+    FloatingPaneCoordinates, InputMode, PaneContents, PaneRenderReport, PermissionStatus,
+    PermissionType, PipeMessage, PipeSource,
 };
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::keybinds::Keybinds;
@@ -111,6 +112,7 @@ pub struct WasmBridge {
     keybinds: HashMap<ClientId, Keybinds>,
     base_modes: HashMap<ClientId, InputMode>,
     downloader: Downloader,
+    previous_pane_render_report: Option<PaneRenderReport>,
 }
 
 impl WasmBridge {
@@ -163,6 +165,7 @@ impl WasmBridge {
             keybinds: HashMap::new(),
             base_modes: HashMap::new(),
             downloader,
+            previous_pane_render_report: None,
         }
     }
     pub fn load_plugin(
@@ -1033,7 +1036,72 @@ impl WasmBridge {
             .lock()
             .unwrap()
             .retain(|c| c != &client_id);
+
+        // Remove client from cached pane render report
+        if let Some(ref mut prev_report) = self.previous_pane_render_report {
+            prev_report.all_pane_contents.remove(&client_id);
+        }
     }
+
+    fn get_changed_panes_per_client(
+        &self,
+        new_report: &PaneRenderReport,
+    ) -> HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>> {
+        let mut result: HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>> =
+            HashMap::new();
+
+        // First report - return everything grouped by client
+        let Some(prev_report) = &self.previous_pane_render_report else {
+            for (client_id, panes) in &new_report.all_pane_contents {
+                result.insert(*client_id, panes.clone());
+            }
+            return result;
+        };
+
+        // Compare each client's panes
+        for (client_id, new_panes) in &new_report.all_pane_contents {
+            let mut client_panes: HashMap<zellij_utils::data::PaneId, PaneContents> =
+                HashMap::new();
+
+            for (pane_id, new_contents) in new_panes {
+                let has_changed = prev_report
+                    .all_pane_contents
+                    .get(client_id)
+                    .and_then(|prev_panes| prev_panes.get(pane_id))
+                    .map(|prev_contents| {
+                        // Check if viewport or selected_text changed
+                        prev_contents.viewport != new_contents.viewport
+                            || prev_contents.selected_text != new_contents.selected_text
+                    })
+                    .unwrap_or(true); // New pane - treat as changed
+
+                if has_changed {
+                    client_panes.insert(*pane_id, new_contents.clone());
+                }
+            }
+
+            if !client_panes.is_empty() {
+                result.insert(*client_id, client_panes);
+            }
+        }
+
+        result
+    }
+
+    pub fn handle_pane_render_report(
+        &mut self,
+        pane_render_report: PaneRenderReport,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
+        let changed_panes_per_client = self.get_changed_panes_per_client(&pane_render_report);
+        for (client_id, client_panes) in changed_panes_per_client {
+            let updates = vec![(None, Some(client_id), Event::PaneRenderReport(client_panes))];
+            self.update_plugins(updates, shutdown_sender.clone())?;
+        }
+        self.previous_pane_render_report = Some(pane_render_report);
+        Ok(())
+    }
+
     pub fn cleanup(&mut self) {
         for (_plugin_id, loading_plugin_task) in self.loading_plugins.drain() {
             drop(loading_plugin_task.cancel());
@@ -1603,6 +1671,7 @@ fn check_event_permission(
         | Event::CommandPaneReRun(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
+        Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,
         _ => return (PermissionStatus::Granted, None),
     };
 

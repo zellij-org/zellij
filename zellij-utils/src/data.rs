@@ -4,6 +4,7 @@ use crate::input::config::ConversionError;
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{RunPlugin, SplitSize};
 use crate::pane_size::PaneGeom;
+use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,7 @@ use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::time::Duration;
 use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
+use unicode_width::UnicodeWidthChar;
 
 #[cfg(not(target_family = "wasm"))]
 use termwiz::{
@@ -944,6 +946,7 @@ pub enum Event {
     FailedToStartWebServer(String),
     BeforeClose,
     InterceptedKeyPress(KeyWithModifier),
+    PaneRenderReport(HashMap<PaneId, PaneContents>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, ToString, Serialize, Deserialize)]
@@ -984,6 +987,7 @@ pub enum Permission {
     FullHdAccess,
     StartWebServer,
     InterceptInput,
+    ReadPaneContents,
 }
 
 impl PermissionType {
@@ -1010,6 +1014,9 @@ impl PermissionType {
                 "Start a local web server to serve Zellij sessions".to_owned()
             },
             PermissionType::InterceptInput => "Intercept Input (keyboard & mouse)".to_owned(),
+            PermissionType::ReadPaneContents => {
+                "Read pane contents (viewport and selection)".to_owned()
+            },
         }
     }
 }
@@ -1864,6 +1871,224 @@ impl ClientInfo {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PaneRenderReport {
+    pub all_pane_contents: HashMap<ClientId, HashMap<PaneId, PaneContents>>,
+}
+
+impl PaneRenderReport {
+    pub fn add_pane_contents(
+        &mut self,
+        client_ids: &[ClientId],
+        pane_id: PaneId,
+        pane_contents: PaneContents,
+    ) {
+        for client_id in client_ids {
+            let p = self
+                .all_pane_contents
+                .entry(*client_id)
+                .or_insert_with(|| HashMap::new());
+            p.insert(pane_id, pane_contents.clone());
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PaneContents {
+    // NOTE: both lines_above_viewport and lines_below_viewport are only populated if explicitly
+    // requested (eg. with get_full_scrollback true in the plugin command) this is for performance
+    // reasons
+    pub lines_above_viewport: Vec<String>,
+    pub lines_below_viewport: Vec<String>,
+    pub viewport: Vec<String>,
+    pub selected_text: Option<SelectedText>,
+}
+
+/// Extract text from a line between two column positions, accounting for wide characters
+fn extract_text_by_columns(line: &str, start_col: usize, end_col: usize) -> String {
+    let mut current_col = 0;
+    let mut result = String::new();
+    let mut capturing = false;
+
+    for ch in line.chars() {
+        let char_width = ch.width().unwrap_or(0);
+
+        // Start capturing when we reach start_col
+        if current_col >= start_col && !capturing {
+            capturing = true;
+        }
+
+        // Stop if we've reached or passed end_col
+        if current_col >= end_col {
+            break;
+        }
+
+        // Capture character if we're in the range
+        if capturing {
+            result.push(ch);
+        }
+
+        current_col += char_width;
+    }
+
+    result
+}
+
+/// Extract text from a line starting at a column position, accounting for wide characters
+fn extract_text_from_column(line: &str, start_col: usize) -> String {
+    let mut current_col = 0;
+    let mut result = String::new();
+    let mut capturing = false;
+
+    for ch in line.chars() {
+        let char_width = ch.width().unwrap_or(0);
+
+        if current_col >= start_col {
+            capturing = true;
+        }
+
+        if capturing {
+            result.push(ch);
+        }
+
+        current_col += char_width;
+    }
+
+    result
+}
+
+/// Extract text from a line up to a column position, accounting for wide characters
+fn extract_text_to_column(line: &str, end_col: usize) -> String {
+    let mut current_col = 0;
+    let mut result = String::new();
+
+    for ch in line.chars() {
+        let char_width = ch.width().unwrap_or(0);
+
+        if current_col >= end_col {
+            break;
+        }
+
+        result.push(ch);
+        current_col += char_width;
+    }
+
+    result
+}
+
+impl PaneContents {
+    pub fn new(viewport: Vec<String>, selection_start: Position, selection_end: Position) -> Self {
+        PaneContents {
+            viewport,
+            selected_text: SelectedText::from_positions(selection_start, selection_end),
+            ..Default::default()
+        }
+    }
+    pub fn new_with_scrollback(
+        viewport: Vec<String>,
+        selection_start: Position,
+        selection_end: Position,
+        lines_above_viewport: Vec<String>,
+        lines_below_viewport: Vec<String>,
+    ) -> Self {
+        PaneContents {
+            viewport,
+            selected_text: SelectedText::from_positions(selection_start, selection_end),
+            lines_above_viewport,
+            lines_below_viewport,
+        }
+    }
+
+    /// Returns the actual text content of the selection, if any exists.
+    /// Selection only occurs within the viewport.
+    pub fn get_selected_text(&self) -> Option<String> {
+        let selected_text = self.selected_text?;
+
+        let start_line = selected_text.start.line() as usize;
+        let start_col = selected_text.start.column();
+        let end_line = selected_text.end.line() as usize;
+        let end_col = selected_text.end.column();
+
+        // Handle out of bounds
+        if start_line >= self.viewport.len() || end_line >= self.viewport.len() {
+            return None;
+        }
+
+        if start_line == end_line {
+            // Single line selection
+            let line = &self.viewport[start_line];
+            Some(extract_text_by_columns(line, start_col, end_col))
+        } else {
+            // Multi-line selection
+            let mut result = String::new();
+
+            // First line - from start column to end of line
+            let first_line = &self.viewport[start_line];
+            result.push_str(&extract_text_from_column(first_line, start_col));
+            result.push('\n');
+
+            // Middle lines - complete lines
+            for i in (start_line + 1)..end_line {
+                result.push_str(&self.viewport[i]);
+                result.push('\n');
+            }
+
+            // Last line - from start to end column
+            let last_line = &self.viewport[end_line];
+            result.push_str(&extract_text_to_column(last_line, end_col));
+
+            Some(result)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PaneScrollbackResponse {
+    Ok(PaneContents),
+    Err(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SelectedText {
+    pub start: Position,
+    pub end: Position,
+}
+
+impl SelectedText {
+    pub fn new(start: Position, end: Position) -> Self {
+        // Normalize: ensure start <= end
+        let (normalized_start, normalized_end) = if start <= end {
+            (start, end)
+        } else {
+            (end, start)
+        };
+
+        // Normalize negative line values to 0
+        // (column is already usize so can't be negative)
+        let normalized_start = Position::new(
+            normalized_start.line().max(0) as i32,
+            normalized_start.column() as u16,
+        );
+        let normalized_end = Position::new(
+            normalized_end.line().max(0) as i32,
+            normalized_end.column() as u16,
+        );
+
+        SelectedText {
+            start: normalized_start,
+            end: normalized_end,
+        }
+    }
+
+    pub fn from_positions(start: Position, end: Position) -> Option<Self> {
+        if start == end {
+            None
+        } else {
+            Some(Self::new(start, end))
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PluginIds {
     pub plugin_id: u32,
@@ -2467,6 +2692,10 @@ pub enum PluginCommand {
     RerunCommandPane(u32), // u32  - terminal pane id
     ResizePaneIdWithDirection(ResizeStrategy, PaneId),
     EditScrollbackForPaneWithId(PaneId),
+    GetPaneScrollback {
+        pane_id: PaneId,
+        get_full_scrollback: bool,
+    },
     WriteToPaneId(Vec<u8>, PaneId),
     WriteCharsToPaneId(String, PaneId),
     MovePaneWithPaneId(PaneId),
