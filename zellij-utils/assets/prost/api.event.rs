@@ -546,6 +546,23 @@ pub struct PaneContents {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneScrollbackResponse {
+    #[prost(oneof="pane_scrollback_response::Response", tags="1, 2")]
+    pub response: ::core::option::Option<pane_scrollback_response::Response>,
+}
+/// Nested message and enum types in `PaneScrollbackResponse`.
+pub mod pane_scrollback_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Response {
+        #[prost(message, tag="1")]
+        Ok(super::PaneContents),
+        #[prost(string, tag="2")]
+        Err(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Selection {
     #[prost(message, optional, tag="1")]
     pub start: ::core::option::Option<super::action::Position>,

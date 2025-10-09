@@ -260,6 +260,7 @@ pub enum ScreenContext {
     DumpScreen,
     DumpLayout,
     EditScrollback,
+    GetPaneScrollback,
     ScrollUp,
     ScrollUpAt,
     ScrollDown,

@@ -407,6 +407,13 @@ message PaneContents {
   repeated string lines_below_viewport = 4;
 }
 
+message PaneScrollbackResponse {
+  oneof response {
+    PaneContents ok = 1;
+    string err = 2;
+  }
+}
+
 message Selection {
   action.Position start = 1;
   action.Position end = 2;

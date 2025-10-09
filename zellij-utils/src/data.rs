@@ -1926,6 +1926,12 @@ impl PaneContents {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PaneScrollbackResponse {
+    Ok(PaneContents),
+    Err(String),
+}
+
 // The selection is empty when start == end
 // it includes the character at start, and everything before end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

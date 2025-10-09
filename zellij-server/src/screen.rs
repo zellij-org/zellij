@@ -10,8 +10,9 @@ use std::time::Duration;
 
 use log::{debug, warn};
 use zellij_utils::data::{
-    Direction, FloatingPaneCoordinates, KeyWithModifier, PaneManifest, PluginPermission, Resize,
-    ResizeStrategy, SessionInfo, Styling, WebSharing,
+    Direction, FloatingPaneCoordinates, KeyWithModifier, PaneContents, PaneManifest,
+    PaneScrollbackResponse, PluginPermission, Resize, ResizeStrategy, SessionInfo, Styling,
+    WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -188,6 +189,11 @@ pub enum ScreenInstruction {
     // shell
     DumpLayoutToPlugin(PluginId),
     EditScrollback(ClientId),
+    GetPaneScrollback {
+        pane_id: PaneId,
+        get_full_scrollback: bool,
+        response_channel: crossbeam::channel::Sender<PaneScrollbackResponse>,
+    },
     ScrollUp(ClientId),
     ScrollUpAt(Position, ClientId),
     ScrollDown(ClientId),
@@ -490,6 +496,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::DumpLayout(..) => ScreenContext::DumpLayout,
             ScreenInstruction::DumpLayoutToPlugin(..) => ScreenContext::DumpLayoutToPlugin,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
+            ScreenInstruction::GetPaneScrollback { .. } => ScreenContext::GetPaneScrollback,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown(..) => ScreenContext::ScrollDown,
             ScreenInstruction::ScrollToBottom(..) => ScreenContext::ScrollToBottom,
@@ -3843,6 +3850,43 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::GetPaneScrollback {
+                pane_id,
+                get_full_scrollback,
+                response_channel,
+            } => {
+                // Search all tabs to find the pane
+                let mut pane_contents: Option<PaneContents> = None;
+
+                for tab in screen.get_tabs_mut().values() {
+                    if let Some(pane) = tab.get_pane_with_id(pane_id) {
+                        // Found the pane! Get its contents
+                        // Pass None for client_id since this is a plugin request
+                        pane_contents = Some(pane.pane_contents(None, get_full_scrollback));
+                        break;
+                    }
+                }
+
+                // Send response back through channel
+                let response = match pane_contents {
+                    Some(contents) => PaneScrollbackResponse::Ok(contents),
+                    None => {
+                        log::warn!(
+                            "Plugin requested scrollback for pane {:?} but pane was not found",
+                            pane_id
+                        );
+                        PaneScrollbackResponse::Err(format!("Pane {:?} not found", pane_id))
+                    }
+                };
+
+                // Send response - if this fails, the plugin timed out and dropped the receiver
+                if let Err(_) = response_channel.send(response) {
+                    log::debug!(
+                        "Plugin timed out before pane scrollback response was sent for pane {:?}",
+                        pane_id
+                    );
+                }
             },
             ScreenInstruction::ScrollUp(client_id) => {
                 active_tab_and_connected_client_id!(

@@ -21,7 +21,8 @@ use std::{
 use wasmtime::{Caller, Linker};
 use zellij_utils::data::{
     CommandType, ConnectToSession, FloatingPaneCoordinates, HttpVerb, KeyWithModifier, LayoutInfo,
-    MessageToPlugin, OriginatingPlugin, PermissionStatus, PermissionType, PluginPermission,
+    MessageToPlugin, OriginatingPlugin, PaneScrollbackResponse, PermissionStatus, PermissionType,
+    PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
@@ -48,6 +49,7 @@ use zellij_utils::{
         layout::{Layout, RunPluginOrAlias},
     },
     plugin_api::{
+        event::ProtobufPaneScrollbackResponse,
         plugin_command::ProtobufPluginCommand,
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
@@ -2126,12 +2128,67 @@ fn edit_scrollback_for_pane_with_id(env: &PluginEnv, pane_id: PaneId) {
         .send_to_screen(ScreenInstruction::EditScrollbackForPaneWithId(pane_id));
 }
 
-fn get_pane_scrollback(_env: &PluginEnv, _pane_id: PaneId, _get_full_scrollback: bool) {
-    // TODO: Implementation will be added later
-    // This should eventually send a ScreenInstruction to retrieve scrollback
-    // let _ = env
-    //     .senders
-    //     .send_to_screen(ScreenInstruction::GetPaneScrollback(pane_id, get_full_scrollback));
+fn get_pane_scrollback(env: &PluginEnv, pane_id: PaneId, get_full_scrollback: bool) {
+    use std::time::Duration;
+    use crossbeam::channel::RecvTimeoutError;
+
+    let err_context = || {
+        format!(
+            "failed to get pane scrollback for pane {:?} from plugin {}",
+            pane_id,
+            env.name()
+        )
+    };
+
+    // Create oneshot channel for response
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+
+    // Send request to screen thread
+    env.senders
+        .send_to_screen(ScreenInstruction::GetPaneScrollback {
+            pane_id,
+            get_full_scrollback,
+            response_channel: response_sender,
+        })
+        .with_context(err_context)
+        .non_fatal();
+
+    // Block waiting for response with 5 second timeout
+    let response = match response_receiver.recv_timeout(Duration::from_secs(5)) {
+        Ok(response) => response,
+        Err(RecvTimeoutError::Timeout) => {
+            log::error!(
+                "GetPaneScrollback timed out after 5s for plugin {} requesting pane {:?}",
+                env.plugin_id,
+                pane_id
+            );
+            PaneScrollbackResponse::Err(format!(
+                "Timeout retrieving scrollback for pane {:?}",
+                pane_id
+            ))
+        }
+        Err(RecvTimeoutError::Disconnected) => {
+            log::error!(
+                "GetPaneScrollback channel disconnected for plugin {} requesting pane {:?}",
+                env.plugin_id,
+                pane_id
+            );
+            PaneScrollbackResponse::Err(format!(
+                "Channel disconnected while retrieving scrollback for pane {:?}",
+                pane_id
+            ))
+        }
+    };
+
+    // Convert to protobuf and write back to plugin
+    ProtobufPaneScrollbackResponse::try_from(response)
+        .map_err(|e| anyhow!("Failed to serialize pane scrollback response: {}", e))
+        .and_then(|serialized| {
+            wasi_write_object(env, &serialized.encode_to_vec())?;
+            Ok(())
+        })
+        .with_context(err_context)
+        .non_fatal();
 }
 
 fn write_to_pane_id(env: &PluginEnv, bytes: Vec<u8>, pane_id: PaneId) {

@@ -10,7 +10,9 @@ pub use super::generated_api::api::{
         PaneContents as ProtobufPaneContents, PaneContentsEntry as ProtobufPaneContentsEntry,
         PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
         PaneManifest as ProtobufPaneManifest,
-        PaneRenderReportPayload as ProtobufPaneRenderReportPayload, PaneType as ProtobufPaneType,
+        PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
+        PaneScrollbackResponse as ProtobufPaneScrollbackResponse,
+        pane_scrollback_response, PaneType as ProtobufPaneType,
         PluginInfo as ProtobufPluginInfo, PositionPair as ProtobufPositionPair,
         ResurrectableSession as ProtobufResurrectableSession, Selection as ProtobufSelection,
         SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo,
@@ -24,9 +26,9 @@ pub use super::generated_api::api::{
 #[allow(hidden_glob_reexports)]
 use crate::data::{
     ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier,
-    LayoutInfo, ModeInfo, Mouse, PaneContents, PaneId, PaneInfo, PaneManifest, PermissionStatus,
-    PluginCapabilities, PluginInfo, Selection, SessionInfo, Style, TabInfo, WebServerStatus,
-    WebSharing,
+    LayoutInfo, ModeInfo, Mouse, PaneContents, PaneId, PaneInfo, PaneManifest,
+    PaneScrollbackResponse, PermissionStatus, PluginCapabilities, PluginInfo, Selection,
+    SessionInfo, Style, TabInfo, WebServerStatus, WebSharing,
 };
 
 use crate::errors::prelude::*;
@@ -2324,6 +2326,38 @@ impl TryFrom<PaneContents> for ProtobufPaneContents {
             selection: Some(pane_contents.selection.try_into()?),
             lines_above_viewport: pane_contents.lines_above_viewport,
             lines_below_viewport: pane_contents.lines_below_viewport,
+        })
+    }
+}
+
+impl TryFrom<ProtobufPaneScrollbackResponse> for PaneScrollbackResponse {
+    type Error = &'static str;
+    fn try_from(protobuf_response: ProtobufPaneScrollbackResponse) -> Result<Self, &'static str> {
+        match protobuf_response.response {
+            Some(pane_scrollback_response::Response::Ok(pane_contents)) => {
+                Ok(PaneScrollbackResponse::Ok(pane_contents.try_into()?))
+            }
+            Some(pane_scrollback_response::Response::Err(error_msg)) => {
+                Ok(PaneScrollbackResponse::Err(error_msg))
+            }
+            None => Err("PaneScrollbackResponse missing response field"),
+        }
+    }
+}
+
+impl TryFrom<PaneScrollbackResponse> for ProtobufPaneScrollbackResponse {
+    type Error = &'static str;
+    fn try_from(response: PaneScrollbackResponse) -> Result<Self, &'static str> {
+        let response_field = match response {
+            PaneScrollbackResponse::Ok(pane_contents) => {
+                pane_scrollback_response::Response::Ok(pane_contents.try_into()?)
+            }
+            PaneScrollbackResponse::Err(error_msg) => {
+                pane_scrollback_response::Response::Err(error_msg)
+            }
+        };
+        Ok(ProtobufPaneScrollbackResponse {
+            response: Some(response_field),
         })
     }
 }
