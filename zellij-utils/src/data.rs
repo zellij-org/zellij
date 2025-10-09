@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::time::Duration;
 use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
+use unicode_width::UnicodeWidthChar;
 
 #[cfg(not(target_family = "wasm"))]
 use termwiz::{
@@ -1903,6 +1904,78 @@ pub struct PaneContents {
     pub selected_text: Option<SelectedText>,
 }
 
+/// Extract text from a line between two column positions, accounting for wide characters
+fn extract_text_by_columns(line: &str, start_col: usize, end_col: usize) -> String {
+    let mut current_col = 0;
+    let mut result = String::new();
+    let mut capturing = false;
+
+    for ch in line.chars() {
+        let char_width = ch.width().unwrap_or(0);
+
+        // Start capturing when we reach start_col
+        if current_col >= start_col && !capturing {
+            capturing = true;
+        }
+
+        // Stop if we've reached or passed end_col
+        if current_col >= end_col {
+            break;
+        }
+
+        // Capture character if we're in the range
+        if capturing {
+            result.push(ch);
+        }
+
+        current_col += char_width;
+    }
+
+    result
+}
+
+/// Extract text from a line starting at a column position, accounting for wide characters
+fn extract_text_from_column(line: &str, start_col: usize) -> String {
+    let mut current_col = 0;
+    let mut result = String::new();
+    let mut capturing = false;
+
+    for ch in line.chars() {
+        let char_width = ch.width().unwrap_or(0);
+
+        if current_col >= start_col {
+            capturing = true;
+        }
+
+        if capturing {
+            result.push(ch);
+        }
+
+        current_col += char_width;
+    }
+
+    result
+}
+
+/// Extract text from a line up to a column position, accounting for wide characters
+fn extract_text_to_column(line: &str, end_col: usize) -> String {
+    let mut current_col = 0;
+    let mut result = String::new();
+
+    for ch in line.chars() {
+        let char_width = ch.width().unwrap_or(0);
+
+        if current_col >= end_col {
+            break;
+        }
+
+        result.push(ch);
+        current_col += char_width;
+    }
+
+    result
+}
+
 impl PaneContents {
     pub fn new(viewport: Vec<String>, selection: Selection) -> Self {
         PaneContents {
@@ -1922,6 +1995,48 @@ impl PaneContents {
             selected_text: SelectedText::from_selection(&selection),
             lines_above_viewport,
             lines_below_viewport,
+        }
+    }
+
+    /// Returns the actual text content of the selection, if any exists.
+    /// Selection only occurs within the viewport.
+    pub fn get_selected_text(&self) -> Option<String> {
+        let selected_text = self.selected_text?;
+
+        let start_line = selected_text.start.line() as usize;
+        let start_col = selected_text.start.column();
+        let end_line = selected_text.end.line() as usize;
+        let end_col = selected_text.end.column();
+
+        // Handle out of bounds
+        if start_line >= self.viewport.len() || end_line >= self.viewport.len() {
+            return None;
+        }
+
+        if start_line == end_line {
+            // Single line selection
+            let line = &self.viewport[start_line];
+            Some(extract_text_by_columns(line, start_col, end_col))
+        } else {
+            // Multi-line selection
+            let mut result = String::new();
+
+            // First line - from start column to end of line
+            let first_line = &self.viewport[start_line];
+            result.push_str(&extract_text_from_column(first_line, start_col));
+            result.push('\n');
+
+            // Middle lines - complete lines
+            for i in (start_line + 1)..end_line {
+                result.push_str(&self.viewport[i]);
+                result.push('\n');
+            }
+
+            // Last line - from start to end column
+            let last_line = &self.viewport[end_line];
+            result.push_str(&extract_text_to_column(last_line, end_col));
+
+            Some(result)
         }
     }
 }
