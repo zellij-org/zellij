@@ -3861,7 +3861,8 @@ pub(crate) fn screen_thread_main(
                 let mut pane_contents: Option<PaneContents> = None;
                 for tab in screen.get_tabs_mut().values() {
                     if let Some(pane) = tab.get_pane_with_id(pane_id) {
-                        pane_contents = Some(pane.pane_contents(Some(client_id), get_full_scrollback));
+                        pane_contents =
+                            Some(pane.pane_contents(Some(client_id), get_full_scrollback));
                         break;
                     }
                 }
