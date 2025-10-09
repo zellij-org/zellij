@@ -191,6 +191,7 @@ pub enum ScreenInstruction {
     EditScrollback(ClientId),
     GetPaneScrollback {
         pane_id: PaneId,
+        client_id: ClientId,
         get_full_scrollback: bool,
         response_channel: crossbeam::channel::Sender<PaneScrollbackResponse>,
     },
@@ -3853,21 +3854,17 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::GetPaneScrollback {
                 pane_id,
+                client_id,
                 get_full_scrollback,
                 response_channel,
             } => {
-                // Search all tabs to find the pane
                 let mut pane_contents: Option<PaneContents> = None;
-
                 for tab in screen.get_tabs_mut().values() {
                     if let Some(pane) = tab.get_pane_with_id(pane_id) {
-                        // Found the pane! Get its contents
-                        // Pass None for client_id since this is a plugin request
-                        pane_contents = Some(pane.pane_contents(None, get_full_scrollback));
+                        pane_contents = Some(pane.pane_contents(Some(client_id), get_full_scrollback));
                         break;
                     }
                 }
-
                 // Send response back through channel
                 let response = match pane_contents {
                     Some(contents) => PaneScrollbackResponse::Ok(contents),
@@ -3879,9 +3876,8 @@ pub(crate) fn screen_thread_main(
                         PaneScrollbackResponse::Err(format!("Pane {:?} not found", pane_id))
                     },
                 };
-
-                // Send response - if this fails, the plugin timed out and dropped the receiver
                 if let Err(_) = response_channel.send(response) {
+                    // the plugin likely timed out and dropped the receiver
                     log::debug!(
                         "Plugin timed out before pane scrollback response was sent for pane {:?}",
                         pane_id

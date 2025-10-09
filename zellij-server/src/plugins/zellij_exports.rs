@@ -2147,6 +2147,7 @@ fn get_pane_scrollback(env: &PluginEnv, pane_id: PaneId, get_full_scrollback: bo
     env.senders
         .send_to_screen(ScreenInstruction::GetPaneScrollback {
             pane_id,
+            client_id: env.client_id,
             get_full_scrollback,
             response_channel: response_sender,
         })
