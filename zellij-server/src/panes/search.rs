@@ -2,7 +2,7 @@ use crate::panes::terminal_character::TerminalCharacter;
 use crate::panes::{Grid, Row};
 use std::borrow::Cow;
 use std::fmt::Debug;
-use zellij_utils::data::Selection;
+use super::Selection;
 use zellij_utils::input::actions::SearchDirection;
 use zellij_utils::position::Position;
 

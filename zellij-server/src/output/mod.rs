@@ -15,7 +15,8 @@ use std::{
     collections::{HashMap, HashSet},
     str,
 };
-use zellij_utils::data::{PaneContents, PaneRenderReport, Selection};
+use zellij_utils::data::{PaneContents, PaneRenderReport};
+use crate::panes::Selection;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::pane_size::SizeInPixels;

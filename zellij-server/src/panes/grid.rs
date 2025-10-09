@@ -38,7 +38,8 @@ use crate::panes::terminal_character::{
     TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
 use crate::ui::components::UiComponentParser;
-use zellij_utils::data::{PaneContents, Selection};
+use zellij_utils::data::PaneContents;
+use crate::panes::Selection;
 
 fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
@@ -2461,9 +2462,9 @@ impl Grid {
                 let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
                 lines_below_viewport.push(s);
             }
-            PaneContents::new_with_scrollback(viewport, self.selection.clone(), lines_above_viewport, lines_below_viewport)
+            PaneContents::new_with_scrollback(viewport, self.selection.start, self.selection.end, lines_above_viewport, lines_below_viewport)
         } else {
-            PaneContents::new(viewport, self.selection.clone())
+            PaneContents::new(viewport, self.selection.start, self.selection.end)
         }
     }
 }
