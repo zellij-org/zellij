@@ -150,8 +150,9 @@ impl WasmBridge {
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
         let watcher = None;
         let downloader = Downloader::new(ZELLIJ_CACHE_DIR.to_path_buf());
-        let executor_size = num_cpus::get().max(4).min(16);
-        let plugin_executor = Arc::new(PinnedExecutor::new(executor_size));
+        let max_threads = num_cpus::get().max(4).min(16);
+        let plugin_executor = Arc::new(PinnedExecutor::new(max_threads));
+        // Note: starts with 1 thread, max_threads is just the cap
         WasmBridge {
             connected_clients,
             senders,
@@ -226,6 +227,10 @@ impl WasmBridge {
 
                 // Clone for threaded contexts
                 let plugin_executor = self.plugin_executor.clone();
+
+                // Register plugin and assign it to a thread
+                plugin_executor.register_plugin(plugin_id);
+
                 let senders = self.senders.clone();
                 // let engine = self.engine.clone();
                 let engine = get_engine();
@@ -424,6 +429,7 @@ impl WasmBridge {
             }
 
             let senders = self.senders.clone();
+            let plugin_executor_for_unregister = self.plugin_executor.clone();
 
             // CRITICAL: Execute cleanup on plugin's pinned thread to prevent cross-thread deallocation
             self.plugin_executor.execute_for_plugin(plugin_id, move || {
@@ -474,6 +480,8 @@ impl WasmBridge {
 //                     libc::malloc_trim(0);
 //                 }
 
+                // Unregister plugin and potentially shrink the thread pool
+                plugin_executor_for_unregister.unregister_plugin(plugin_id);
             });
         }
 
