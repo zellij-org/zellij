@@ -29,6 +29,7 @@ nix = { workspace = true }
 suggest = { workspace = true }
 thiserror = { workspace = true }
 isahc = { workspace = true }
+tikv-jemallocator = { version = "0.6", optional = true }
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
@@ -139,13 +140,15 @@ pkg-fmt = "tgz"
 
 [features]
 # See remarks in zellij_utils/Cargo.toml
-default = ["plugins_from_target", "vendored_curl", "web_server_capability"]
+# default = ["plugins_from_target", "vendored_curl", "web_server_capability"]
+default = ["plugins_from_target", "vendored_curl", "web_server_capability", "jemalloc"] # TODO: NO!!!!!111oneoneone (need to add jemalloc as a feature flag in a more deliberate manner and it should not be the default!)
 plugins_from_target = ["zellij-utils/plugins_from_target"]
 disable_automatic_asset_installation = ["zellij-utils/disable_automatic_asset_installation"]
 vendored_curl = ["zellij-utils/vendored_curl"]
 unstable = ["zellij-client/unstable", "zellij-utils/unstable"]
 singlepass = ["zellij-server/singlepass"]
 web_server_capability = ["zellij-client/web_server_capability", "zellij-server/web_server_capability", "zellij-utils/web_server_capability"]
+jemalloc = ["tikv-jemallocator"]
 
 # uncomment this when developing plugins in the Zellij UI to make plugin compilation faster
 # [profile.dev.package."*"]
