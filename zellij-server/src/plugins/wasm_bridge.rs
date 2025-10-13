@@ -1,16 +1,18 @@
-use super::{PluginId, PluginInstruction};
+use super::{PinnedExecutor, PluginId, PluginInstruction};
 use crate::plugins::pipes::{
     apply_pipe_message_to_plugin, pipes_to_block_or_unblock, PendingPipes, PipeStateChange,
 };
 use crate::plugins::plugin_loader::PluginLoader;
 use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions};
+use crate::get_engine;
 
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use async_channel::Sender;
-use async_std::task::{self, JoinHandle};
 use highway::{HighwayHash, PortableHash};
+use once_cell::sync::OnceCell;
+use tokio::runtime::Runtime;
 use log::info;
 use notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 use std::{
@@ -49,6 +51,20 @@ use zellij_utils::{
     pane_size::Size,
 };
 
+// Global tokio runtime for async I/O operations (plugin downloads, timers)
+static TOKIO_RUNTIME: OnceCell<Runtime> = OnceCell::new();
+
+pub fn get_tokio_runtime() -> &'static Runtime {
+    TOKIO_RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2) // Small pool for I/O only
+            .thread_name("tokio-plugin-io")
+            .enable_all()
+            .build()
+            .expect("Failed to create tokio runtime")
+    })
+}
+
 #[derive(Debug, Clone)]
 pub enum EventOrPipeMessage {
     Event(Event),
@@ -85,6 +101,7 @@ pub struct WasmBridge {
     engine: Engine,
     plugin_dir: PathBuf,
     plugin_map: Arc<Mutex<PluginMap>>,
+    plugin_executor: Arc<PinnedExecutor>,
     next_plugin_id: PluginId,
     plugin_ids_waiting_for_permission_request: HashSet<PluginId>,
     cached_events_for_pending_plugins: HashMap<PluginId, Vec<EventOrPipeMessage>>,
@@ -93,7 +110,7 @@ pub struct WasmBridge {
     // worker_name,
     // message,
     // payload>
-    loading_plugins: HashMap<(PluginId, RunPlugin), JoinHandle<()>>, // plugin_id to join-handle
+    loading_plugins: HashSet<(PluginId, RunPlugin)>, // tracks loading plugins without handles
     pending_plugin_reloads: HashSet<RunPlugin>,
     path_to_default_shell: PathBuf,
     watcher: Option<Debouncer<RecommendedWatcher, FileIdMap>>,
@@ -133,12 +150,15 @@ impl WasmBridge {
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
         let watcher = None;
         let downloader = Downloader::new(ZELLIJ_CACHE_DIR.to_path_buf());
+        let executor_size = num_cpus::get().max(4).min(16);
+        let plugin_executor = Arc::new(PinnedExecutor::new(executor_size));
         WasmBridge {
             connected_clients,
             senders,
             engine,
             plugin_dir,
             plugin_map,
+            plugin_executor,
             path_to_default_shell,
             watcher,
             next_plugin_id: 0,
@@ -146,7 +166,7 @@ impl WasmBridge {
             plugin_ids_waiting_for_permission_request: HashSet::new(),
             cached_resizes_for_pending_plugins: HashMap::new(),
             cached_worker_messages: HashMap::new(),
-            loading_plugins: HashMap::new(),
+            loading_plugins: HashSet::new(),
             pending_plugin_reloads: HashSet::new(),
             zellij_cwd,
             capabilities,
@@ -174,8 +194,6 @@ impl WasmBridge {
         client_id: Option<ClientId>,
         cli_client_id: Option<ClientId>,
     ) -> Result<(PluginId, ClientId)> {
-        log::info!("load_plugin 1");
-        // returns the plugin id
         let err_context = move || format!("failed to load plugin");
 
         let client_id = client_id
@@ -195,7 +213,6 @@ impl WasmBridge {
 
         match run {
             Some(run) => {
-                log::info!("load_plugin 2");
                 let mut plugin = PluginConfig::from_run_plugin(run)
                     .with_context(|| format!("failed to resolve plugin {run:?}"))
                     .with_context(err_context)?;
@@ -205,37 +222,47 @@ impl WasmBridge {
                     .insert(plugin_id, vec![]);
                 self.cached_resizes_for_pending_plugins
                     .insert(plugin_id, (size.rows, size.cols));
+                self.loading_plugins.insert((plugin_id, run.clone()));
 
-                let load_plugin_task = task::spawn({
-                    let plugin_dir = self.plugin_dir.clone();
-                    let senders = self.senders.clone();
-                    let engine = self.engine.clone();
-                    let plugin_map = self.plugin_map.clone();
-                    let connected_clients = self.connected_clients.clone();
-                    let path_to_default_shell = self.path_to_default_shell.clone();
-                    let zellij_cwd = cwd.unwrap_or_else(|| self.zellij_cwd.clone());
-                    let capabilities = self.capabilities.clone();
-                    let client_attributes = self.client_attributes.clone();
-                    let default_shell = self.default_shell.clone();
-                    let default_layout = self.default_layout.clone();
-                    let layout_dir = self.layout_dir.clone();
-                    let downloader = self.downloader.clone();
-                    let default_mode = self
-                        .base_modes
-                        .get(&client_id)
-                        .copied()
-                        .unwrap_or(self.default_mode);
-                    let keybinds = self
-                        .keybinds
-                        .get(&client_id)
-                        .cloned()
-                        .unwrap_or_else(|| self.default_keybinds.clone());
-                    async move {
+                // Clone for threaded contexts
+                let plugin_executor = self.plugin_executor.clone();
+                let senders = self.senders.clone();
+                // let engine = self.engine.clone();
+                let engine = get_engine();
+                let plugin_map = self.plugin_map.clone();
+                let connected_clients = self.connected_clients.clone();
+                let path_to_default_shell = self.path_to_default_shell.clone();
+                let zellij_cwd = cwd.unwrap_or_else(|| self.zellij_cwd.clone());
+                let capabilities = self.capabilities.clone();
+                let client_attributes = self.client_attributes.clone();
+                let default_shell = self.default_shell.clone();
+                let default_layout = self.default_layout.clone();
+                let layout_dir = self.layout_dir.clone();
+                let downloader = self.downloader.clone();
+                let plugin_dir = self.plugin_dir.clone();
+                let default_mode = self
+                    .base_modes
+                    .get(&client_id)
+                    .copied()
+                    .unwrap_or(self.default_mode);
+                let keybinds = self
+                    .keybinds
+                    .get(&client_id)
+                    .cloned()
+                    .unwrap_or_else(|| self.default_keybinds.clone());
+
+                // Check if we need to download (async I/O required)
+                let needs_download = matches!(plugin.location, RunPluginLocation::Remote(_));
+
+                if needs_download {
+                    // CASE 1: Remote plugin - need tokio for download, then pinned executor
+                    get_tokio_runtime().spawn(async move {
                         let _ = senders.send_to_background_jobs(
                             BackgroundJob::AnimatePluginLoading(plugin_id),
                         );
                         let mut loading_indication = LoadingIndication::new(plugin_name.clone());
 
+                        // ASYNC I/O: Download on tokio runtime
                         if let RunPluginLocation::Remote(url) = &plugin.location {
                             let file_name: String = PortableHash::default()
                                 .hash128(url.as_bytes())
@@ -243,10 +270,52 @@ impl WasmBridge {
                                 .map(ToString::to_string)
                                 .collect();
 
-                            // if the url is already in cache, we'll use that version, otherwise
-                            // we'll download it, place it in cache and then use it
                             match downloader.download(url, Some(&file_name)).await {
                                 Ok(_) => plugin.path = ZELLIJ_CACHE_DIR.join(&file_name),
+                                Err(e) => {
+                                    handle_plugin_loading_failure(
+                                        &senders,
+                                        plugin_id,
+                                        &mut loading_indication,
+                                        e,
+                                        cli_client_id,
+                                    );
+                                    return;
+                                }
+                            }
+                        }
+
+                        // BLOCKING WORK: Hand off to pinned executor
+                        plugin_executor.execute_for_plugin(plugin_id, move || {
+                            log::info!("Compiling plugin {} on pinned thread", plugin_id);
+
+                            match PluginLoader::start_plugin(
+                                plugin_id,
+                                client_id,
+                                &plugin,
+                                tab_index,
+                                plugin_dir,
+                                senders.clone(),
+                                engine,
+                                plugin_map.clone(),
+                                size,
+                                connected_clients.clone(),
+                                &mut loading_indication,
+                                path_to_default_shell,
+                                zellij_cwd.clone(),
+                                capabilities,
+                                client_attributes,
+                                default_shell,
+                                default_layout,
+                                skip_cache,
+                                layout_dir,
+                                default_mode,
+                                keybinds,
+                            ) {
+                                Ok(_) => {
+                                    let plugin_list = plugin_map.lock().unwrap().list_plugins();
+                                    handle_plugin_successful_loading(&senders, plugin_id, plugin_list);
+                                },
                                 Err(e) => handle_plugin_loading_failure(
                                     &senders,
                                     plugin_id,
@@ -255,9 +324,23 @@ impl WasmBridge {
                                     cli_client_id,
                                 ),
                             }
-                        }
 
-                        log::info!("load_plugin 3");
+                            let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
+                                plugin_ids: vec![plugin_id],
+                                done_receiving_permissions: false,
+                            });
+                        });
+                    });
+                } else {
+                    // CASE 2: Local plugin - execute directly on pinned thread from main thread
+                    let _ = senders.send_to_background_jobs(
+                        BackgroundJob::AnimatePluginLoading(plugin_id),
+                    );
+                    let mut loading_indication = LoadingIndication::new(plugin_name.clone());
+
+                    self.plugin_executor.execute_for_plugin(plugin_id, move || {
+                        log::info!("Compiling plugin {} on pinned thread", plugin_id);
+
                         match PluginLoader::start_plugin(
                             plugin_id,
                             client_id,
@@ -293,14 +376,14 @@ impl WasmBridge {
                                 cli_client_id,
                             ),
                         }
+
                         let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
                             plugin_ids: vec![plugin_id],
                             done_receiving_permissions: false,
                         });
-                    }
-                });
-                self.loading_plugins
-                    .insert((plugin_id, run.clone()), load_plugin_task);
+                    });
+                }
+
                 self.next_plugin_id += 1;
             },
             None => {
@@ -319,55 +402,82 @@ impl WasmBridge {
     }
     pub fn unload_plugin(&mut self, pid: PluginId) -> Result<()> {
         info!("Bye from plugin {}", &pid);
-        let mut plugin_map = self.plugin_map.lock().unwrap();
-        for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in
-            plugin_map.remove_plugins(pid)
-        {
+
+        // Remove from plugin_map on main thread
+        let plugins_to_cleanup: Vec<_> = {
+            let mut plugin_map = self.plugin_map.lock().unwrap();
+            plugin_map.remove_plugins(pid).into_iter().collect()
+        };
+
+        // Schedule cleanup on each plugin's pinned thread
+        for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in plugins_to_cleanup {
+            // Clear key intercepts if needed (on main thread is OK)
+            if running_plugin.lock().unwrap().intercepting_key_presses() {
+                let _ = self
+                    .senders
+                    .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(client_id));
+            }
+
+            // Send worker exit messages
             for (_worker_name, worker_sender) in workers {
                 drop(worker_sender.send(MessageToWorker::Exit));
             }
-            {
-                // if the plugin was intercepting key presses and for some reason did not clear
-                // this state, we make sure to do it ourselves so that the user will not get stuck
-                if running_plugin.lock().unwrap().intercepting_key_presses() {
-                    let _ = self
-                        .senders
-                        .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(client_id));
-                }
-            }
-            let subscriptions = subscriptions.lock().unwrap();
-            if subscriptions.contains(&EventType::BeforeClose) {
-                let mut running_plugin = running_plugin.lock().unwrap();
-                match apply_before_close_event_to_plugin(
-                    pid,
-                    client_id,
-                    &mut running_plugin,
-                    self.senders.clone(),
-                ) {
-                    Ok(()) => {},
-                    Err(e) => {
-                        log::error!("{:?}", e);
 
-                        // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
-                        let stringified_error = format!("{:?}", e).replace("\n", "\n\r");
+            let senders = self.senders.clone();
 
-                        handle_plugin_crash(plugin_id, stringified_error, self.senders.clone());
-                    },
+            // CRITICAL: Execute cleanup on plugin's pinned thread to prevent cross-thread deallocation
+            self.plugin_executor.execute_for_plugin(plugin_id, move || {
+                let subscriptions_guard = subscriptions.lock().unwrap();
+                let needs_before_close = subscriptions_guard.contains(&EventType::BeforeClose);
+                drop(subscriptions_guard); // Release lock before calling plugin
+
+                if needs_before_close {
+                    let mut rp = running_plugin.lock().unwrap();
+                    match apply_before_close_event_to_plugin(
+                        plugin_id,
+                        client_id,
+                        &mut rp,
+                        senders.clone(),
+                    ) {
+                        Ok(()) => {},
+                        Err(e) => {
+                            log::error!("{:?}", e);
+                            let stringified_error = format!("{:?}", e).replace("\n", "\n\r");
+                            handle_plugin_crash(plugin_id, stringified_error, senders.clone());
+                        },
+                    }
+                    let cache_dir = rp.store.data().plugin_own_data_dir.clone();
+                    drop(rp); // Release lock before filesystem operation
+                    if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
+                        log::error!("Failed to remove cache dir for plugin: {:?}", e);
+                    }
+                } else {
+                    let cache_dir = running_plugin
+                        .lock()
+                        .unwrap()
+                        .store
+                        .data()
+                        .plugin_own_data_dir
+                        .clone();
+                    if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
+                        log::error!("Failed to remove cache dir for plugin: {:?}", e);
+                    }
                 }
-                let cache_dir = running_plugin.store.data().plugin_own_data_dir.clone();
-                if let Err(e) = std::fs::remove_dir_all(cache_dir) {
-                    log::error!("Failed to remove cache dir for plugin: {:?}", e);
-                }
-            } else {
-                // this is duplicated because of locking/unlocking order between running_plugin and
-                // subscriptions
-                let running_plugin = running_plugin.lock().unwrap();
-                let cache_dir = running_plugin.store.data().plugin_own_data_dir.clone();
-                if let Err(e) = std::fs::remove_dir_all(cache_dir) {
-                    log::error!("Failed to remove cache dir for plugin: {:?}", e);
-                }
-            }
+
+                // CRITICAL: Final deallocation happens on same thread as allocation!
+                // This is the key to preventing memory fragmentation.
+                drop(running_plugin);
+                drop(subscriptions);
+
+//                 // TODO: REMOVEME!!!111oneoneone
+//                 unsafe {
+//                     libc::malloc_trim(0);
+//                 }
+
+            });
         }
+
+        // Main thread cleanup
         self.cached_plugin_map.clear();
         let mut pipes_to_unblock = self.pending_pipes.unload_plugin(&pid);
         for pipe_name in pipes_to_unblock.drain(..) {
@@ -376,10 +486,11 @@ impl WasmBridge {
                 .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name))
                 .context("failed to unblock input pipe");
         }
-        let plugin_list = plugin_map.list_plugins();
+        let plugin_list = self.plugin_map.lock().unwrap().list_plugins();
         let _ = self
             .senders
             .send_to_background_jobs(BackgroundJob::ReportPluginList(plugin_list));
+
         Ok(())
     }
     pub fn reload_plugin_with_id(&mut self, plugin_id: u32) -> Result<()> {
@@ -396,56 +507,57 @@ impl WasmBridge {
 
         let mut loading_indication = LoadingIndication::new(run_plugin.location.to_string());
         self.start_plugin_loading_indication(&[plugin_id], &loading_indication);
-        let load_plugin_task = task::spawn({
-            let plugin_dir = self.plugin_dir.clone();
-            let senders = self.senders.clone();
-            let engine = self.engine.clone();
-            let plugin_map = self.plugin_map.clone();
-            let connected_clients = self.connected_clients.clone();
-            let path_to_default_shell = self.path_to_default_shell.clone();
-            let capabilities = self.capabilities.clone();
-            let client_attributes = self.client_attributes.clone();
-            let default_shell = self.default_shell.clone();
-            let default_layout = self.default_layout.clone();
-            let layout_dir = self.layout_dir.clone();
-            async move {
-                match PluginLoader::reload_plugin(
-                    plugin_id,
-                    plugin_dir.clone(),
-                    senders.clone(),
-                    engine.clone(),
-                    plugin_map.clone(),
-                    connected_clients.clone(),
-                    &mut loading_indication,
-                    path_to_default_shell.clone(),
-                    capabilities.clone(),
-                    client_attributes.clone(),
-                    default_shell.clone(),
-                    default_layout.clone(),
-                    layout_dir.clone(),
-                ) {
-                    Ok(_) => {
-                        let plugin_list = plugin_map.lock().unwrap().list_plugins();
-                        handle_plugin_successful_loading(&senders, plugin_id, plugin_list);
-                    },
-                    Err(e) => {
-                        handle_plugin_loading_failure(
-                            &senders,
-                            plugin_id,
-                            &mut loading_indication,
-                            &e,
-                            None,
-                        );
-                    },
-                }
-                let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
-                    plugin_ids: vec![plugin_id],
-                    done_receiving_permissions: false,
-                });
+        self.loading_plugins.insert((plugin_id, run_plugin.clone()));
+
+        let plugin_executor = self.plugin_executor.clone();
+        let plugin_dir = self.plugin_dir.clone();
+        let senders = self.senders.clone();
+        let engine = self.engine.clone();
+        let plugin_map = self.plugin_map.clone();
+        let connected_clients = self.connected_clients.clone();
+        let path_to_default_shell = self.path_to_default_shell.clone();
+        let capabilities = self.capabilities.clone();
+        let client_attributes = self.client_attributes.clone();
+        let default_shell = self.default_shell.clone();
+        let default_layout = self.default_layout.clone();
+        let layout_dir = self.layout_dir.clone();
+
+        // Execute directly on pinned thread (no async I/O needed for reload)
+        plugin_executor.execute_for_plugin(plugin_id, move || {
+            match PluginLoader::reload_plugin(
+                plugin_id,
+                plugin_dir.clone(),
+                senders.clone(),
+                engine.clone(),
+                plugin_map.clone(),
+                connected_clients.clone(),
+                &mut loading_indication,
+                path_to_default_shell.clone(),
+                capabilities.clone(),
+                client_attributes.clone(),
+                default_shell.clone(),
+                default_layout.clone(),
+                layout_dir.clone(),
+            ) {
+                Ok(_) => {
+                    let plugin_list = plugin_map.lock().unwrap().list_plugins();
+                    handle_plugin_successful_loading(&senders, plugin_id, plugin_list);
+                },
+                Err(e) => {
+                    handle_plugin_loading_failure(
+                        &senders,
+                        plugin_id,
+                        &mut loading_indication,
+                        &e,
+                        None,
+                    );
+                },
             }
+            let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
+                plugin_ids: vec![plugin_id],
+                done_receiving_permissions: false,
+            });
         });
-        self.loading_plugins
-            .insert((plugin_id, run_plugin.clone()), load_plugin_task);
         Ok(())
     }
     pub fn reload_plugin(&mut self, run_plugin: &RunPlugin) -> Result<()> {
@@ -468,96 +580,116 @@ impl WasmBridge {
                                                            // methods always returns at least 1 id
         let mut loading_indication = LoadingIndication::new(run_plugin.location.to_string());
         self.start_plugin_loading_indication(&plugin_ids, &loading_indication);
-        let load_plugin_task = task::spawn({
-            let plugin_dir = self.plugin_dir.clone();
-            let senders = self.senders.clone();
-            let engine = self.engine.clone();
-            let plugin_map = self.plugin_map.clone();
-            let connected_clients = self.connected_clients.clone();
-            let path_to_default_shell = self.path_to_default_shell.clone();
-            let capabilities = self.capabilities.clone();
-            let client_attributes = self.client_attributes.clone();
-            let default_shell = self.default_shell.clone();
-            let default_layout = self.default_layout.clone();
-            let layout_dir = self.layout_dir.clone();
-            async move {
-                match PluginLoader::reload_plugin(
-                    first_plugin_id,
-                    plugin_dir.clone(),
-                    senders.clone(),
-                    engine.clone(),
-                    plugin_map.clone(),
-                    connected_clients.clone(),
-                    &mut loading_indication,
-                    path_to_default_shell.clone(),
-                    capabilities.clone(),
-                    client_attributes.clone(),
-                    default_shell.clone(),
-                    default_layout.clone(),
-                    layout_dir.clone(),
-                ) {
-                    Ok(_) => {
-                        let plugin_list = plugin_map.lock().unwrap().list_plugins();
-                        handle_plugin_successful_loading(&senders, first_plugin_id, plugin_list);
-                        for plugin_id in &plugin_ids {
-                            if plugin_id == &first_plugin_id {
-                                // no need to reload the plugin we just reloaded
-                                continue;
-                            }
-                            let mut loading_indication = LoadingIndication::new("".into());
-                            match PluginLoader::reload_plugin(
-                                *plugin_id,
-                                plugin_dir.clone(),
-                                senders.clone(),
-                                engine.clone(),
-                                plugin_map.clone(),
-                                connected_clients.clone(),
-                                &mut loading_indication,
-                                path_to_default_shell.clone(),
-                                capabilities.clone(),
-                                client_attributes.clone(),
-                                default_shell.clone(),
-                                default_layout.clone(),
-                                layout_dir.clone(),
-                            ) {
-                                Ok(_) => {
-                                    let plugin_list = plugin_map.lock().unwrap().list_plugins();
-                                    handle_plugin_successful_loading(
-                                        &senders,
-                                        *plugin_id,
-                                        plugin_list,
-                                    );
-                                },
-                                Err(e) => handle_plugin_loading_failure(
-                                    &senders,
-                                    *plugin_id,
+        self.loading_plugins.insert((first_plugin_id, run_plugin.clone()));
+
+        let plugin_executor = self.plugin_executor.clone();
+        let plugin_dir = self.plugin_dir.clone();
+        let senders = self.senders.clone();
+        let engine = self.engine.clone();
+        let plugin_map = self.plugin_map.clone();
+        let connected_clients = self.connected_clients.clone();
+        let path_to_default_shell = self.path_to_default_shell.clone();
+        let capabilities = self.capabilities.clone();
+        let client_attributes = self.client_attributes.clone();
+        let default_shell = self.default_shell.clone();
+        let default_layout = self.default_layout.clone();
+        let layout_dir = self.layout_dir.clone();
+
+        // Execute directly on pinned thread (no async I/O needed for reload)
+        // Reload first plugin on its pinned thread
+        let plugin_executor_for_closure = plugin_executor.clone();
+        plugin_executor.execute_for_plugin(first_plugin_id, move || {
+            match PluginLoader::reload_plugin(
+                first_plugin_id,
+                plugin_dir.clone(),
+                senders.clone(),
+                engine.clone(),
+                plugin_map.clone(),
+                connected_clients.clone(),
+                &mut loading_indication,
+                path_to_default_shell.clone(),
+                capabilities.clone(),
+                client_attributes.clone(),
+                default_shell.clone(),
+                default_layout.clone(),
+                layout_dir.clone(),
+            ) {
+                Ok(_) => {
+                    let plugin_list = plugin_map.lock().unwrap().list_plugins();
+                    handle_plugin_successful_loading(&senders, first_plugin_id, plugin_list);
+                    // Reload remaining plugins on their respective pinned threads
+                    for plugin_id in &plugin_ids {
+                        if plugin_id == &first_plugin_id {
+                            // no need to reload the plugin we just reloaded
+                            continue;
+                        }
+                        let plugin_id = *plugin_id;
+                        plugin_executor_for_closure.execute_for_plugin(plugin_id, {
+                            let plugin_dir = plugin_dir.clone();
+                            let senders = senders.clone();
+                            let engine = engine.clone();
+                            let plugin_map = plugin_map.clone();
+                            let connected_clients = connected_clients.clone();
+                            let path_to_default_shell = path_to_default_shell.clone();
+                            let capabilities = capabilities.clone();
+                            let client_attributes = client_attributes.clone();
+                            let default_shell = default_shell.clone();
+                            let default_layout = default_layout.clone();
+                            let layout_dir = layout_dir.clone();
+                            move || {
+                                let mut loading_indication = LoadingIndication::new("".into());
+                                match PluginLoader::reload_plugin(
+                                    plugin_id,
+                                    plugin_dir.clone(),
+                                    senders.clone(),
+                                    engine.clone(),
+                                    plugin_map.clone(),
+                                    connected_clients.clone(),
                                     &mut loading_indication,
-                                    e,
-                                    None,
-                                ),
+                                    path_to_default_shell.clone(),
+                                    capabilities.clone(),
+                                    client_attributes.clone(),
+                                    default_shell.clone(),
+                                    default_layout.clone(),
+                                    layout_dir.clone(),
+                                ) {
+                                    Ok(_) => {
+                                        let plugin_list = plugin_map.lock().unwrap().list_plugins();
+                                        handle_plugin_successful_loading(
+                                            &senders,
+                                            plugin_id,
+                                            plugin_list,
+                                        );
+                                    },
+                                    Err(e) => handle_plugin_loading_failure(
+                                        &senders,
+                                        plugin_id,
+                                        &mut loading_indication,
+                                        e,
+                                        None,
+                                    ),
+                                }
                             }
-                        }
-                    },
-                    Err(e) => {
-                        for plugin_id in &plugin_ids {
-                            handle_plugin_loading_failure(
-                                &senders,
-                                *plugin_id,
-                                &mut loading_indication,
-                                &e,
-                                None,
-                            );
-                        }
-                    },
-                }
-                let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
-                    plugin_ids,
-                    done_receiving_permissions: false,
-                });
+                        });
+                    }
+                },
+                Err(e) => {
+                    for plugin_id in &plugin_ids {
+                        handle_plugin_loading_failure(
+                            &senders,
+                            *plugin_id,
+                            &mut loading_indication,
+                            &e,
+                            None,
+                        );
+                    }
+                },
             }
+            let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
+                plugin_ids,
+                done_receiving_permissions: false,
+            });
         });
-        self.loading_plugins
-            .insert((first_plugin_id, run_plugin.clone()), load_plugin_task);
         Ok(())
     }
     pub fn add_client(&mut self, client_id: ClientId) -> Result<()> {
@@ -620,11 +752,12 @@ impl WasmBridge {
                     .lock()
                     .unwrap()
                     .next_event_id(AtomicEvent::Resize);
-                task::spawn({
+                // Execute directly on pinned thread (no async I/O needed for resize/render)
+                self.plugin_executor.execute_for_plugin(plugin_id, {
                     let senders = self.senders.clone();
                     let running_plugin = running_plugin.clone();
                     let _s = shutdown_sender.clone();
-                    async move {
+                    move || {
                         let mut running_plugin = running_plugin.lock().unwrap();
                         let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                         if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
@@ -707,29 +840,37 @@ impl WasmBridge {
                     .contains_key(&plugin_id)
             })
             .collect();
-        task::spawn({
-            let mut updates = updates.clone();
-            let senders = self.senders.clone();
-            let s = shutdown_sender.clone();
-            async move {
-                let _s = s;
-                for (pid, cid, event) in updates.drain(..) {
-                    for (plugin_id, client_id, running_plugin, subscriptions) in &plugins_to_update
+
+        // Execute each plugin update on its respective pinned thread
+        let plugin_executor = self.plugin_executor.clone();
+        let senders = self.senders.clone();
+        for (pid, cid, event) in updates.clone().into_iter() {
+            for (plugin_id, client_id, running_plugin, subscriptions) in &plugins_to_update
+            {
+                let subs = subscriptions.lock().unwrap().clone();
+                // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
+                if let Ok(event_type) = EventType::from_str(&event.to_string()) {
+                    if (subs.contains(&event_type)
+                        || event_type == EventType::PermissionRequestResult)
+                        && Self::message_is_directed_at_plugin(
+                            pid, cid, plugin_id, client_id,
+                        )
                     {
-                        let subs = subscriptions.lock().unwrap().clone();
-                        // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
-                        if let Ok(event_type) = EventType::from_str(&event.to_string()) {
-                            if (subs.contains(&event_type)
-                                || event_type == EventType::PermissionRequestResult)
-                                && Self::message_is_directed_at_plugin(
-                                    pid, cid, plugin_id, client_id,
-                                )
-                            {
+                        // Execute directly on pinned thread (no async I/O needed for event processing)
+                        plugin_executor.execute_for_plugin(*plugin_id, {
+                            let plugin_id = *plugin_id;
+                            let client_id = *client_id;
+                            let running_plugin = running_plugin.clone();
+                            let event = event.clone();
+                            let senders = senders.clone();
+                            let _s = shutdown_sender.clone();
+                            move || {
+                                let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                                 let mut running_plugin = running_plugin.lock().unwrap();
                                 let mut plugin_render_assets = vec![];
                                 match apply_event_to_plugin(
-                                    *plugin_id,
-                                    *client_id,
+                                    plugin_id,
+                                    client_id,
                                     &mut running_plugin,
                                     &event,
                                     &mut plugin_render_assets,
@@ -748,18 +889,19 @@ impl WasmBridge {
                                             format!("{:?}", e).replace("\n", "\n\r");
 
                                         handle_plugin_crash(
-                                            *plugin_id,
+                                            plugin_id,
                                             stringified_error,
                                             senders.clone(),
                                         );
                                     },
                                 }
                             }
-                        }
+                        });
                     }
                 }
             }
-        });
+        }
+
         // loop once more to update the cached events for the pending plugins (probably currently
         // being loaded, we'll send them these events when they load)
         for (pid, _cid, event) in updates.drain(..) {
@@ -811,9 +953,11 @@ impl WasmBridge {
             .iter()
             .cloned()
             .collect();
-        task::spawn({
+
+        // Execute directly on pinned thread (no async I/O needed for directory check/change)
+        self.plugin_executor.execute_for_plugin(plugin_id_to_update, {
             let senders = self.senders.clone();
-            async move {
+            move || {
                 match new_host_dir.try_exists() {
                     Ok(false) => {
                         log::error!(
@@ -889,7 +1033,7 @@ impl WasmBridge {
     }
     pub fn pipe_messages(
         &mut self,
-        mut messages: Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)>,
+        messages: Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)>,
         shutdown_sender: Sender<()>,
     ) -> Result<()> {
         let plugins_to_update: Vec<(
@@ -910,7 +1054,11 @@ impl WasmBridge {
                     .contains_key(&plugin_id)
             })
             .collect();
-        for (message_pid, message_cid, pipe_message) in messages.drain(..) {
+
+        // Execute each pipe message on its respective plugin's pinned thread
+        let plugin_executor = self.plugin_executor.clone();
+        let senders = self.senders.clone();
+        for (message_pid, message_cid, pipe_message) in messages.clone().into_iter() {
             for (plugin_id, client_id, running_plugin, _subscriptions) in &plugins_to_update {
                 if Self::message_is_directed_at_plugin(
                     message_pid,
@@ -922,14 +1070,15 @@ impl WasmBridge {
                         self.pending_pipes
                             .mark_being_processed(pipe_id, plugin_id, client_id);
                     }
-                    task::spawn({
-                        let senders = self.senders.clone();
+                    // Execute directly on pinned thread (no async I/O needed for pipe message processing)
+                    plugin_executor.execute_for_plugin(*plugin_id, {
+                        let senders = senders.clone();
                         let running_plugin = running_plugin.clone();
                         let pipe_message = pipe_message.clone();
                         let plugin_id = *plugin_id;
                         let client_id = *client_id;
                         let _s = shutdown_sender.clone();
-                        async move {
+                        move || {
                             let mut running_plugin = running_plugin.lock().unwrap();
                             let mut plugin_render_assets = vec![];
                             let _s = _s; // guard to allow the task to complete before cleanup/shutdown
@@ -1014,7 +1163,7 @@ impl WasmBridge {
                 applied_plugin_paths.insert(run_plugin.clone());
             }
             self.loading_plugins
-                .retain(|(p_id, _run_plugin), _| p_id != &plugin_id);
+                .retain(|(p_id, _run_plugin)| p_id != &plugin_id);
             self.clear_plugin_map_cache();
         }
         for run_plugin in applied_plugin_paths.drain() {
@@ -1096,9 +1245,9 @@ impl WasmBridge {
     }
 
     pub fn cleanup(&mut self) {
-        for (_plugin_id, loading_plugin_task) in self.loading_plugins.drain() {
-            drop(loading_plugin_task.cancel());
-        }
+        // No more JoinHandles to cancel - just clear the tracking set
+        self.loading_plugins.clear();
+
         let plugin_ids = self.plugin_map.lock().unwrap().plugin_ids();
         for plugin_id in &plugin_ids {
             drop(self.unload_plugin(*plugin_id));
@@ -1106,12 +1255,13 @@ impl WasmBridge {
         if let Some(watcher) = self.watcher.take() {
             watcher.stop_nonblocking();
         }
+        // plugin_executor will be dropped, closing channels and terminating threads gracefully
     }
     pub fn run_plugin_of_loading_plugin_id(&self, plugin_id: PluginId) -> Option<&RunPlugin> {
         self.loading_plugins
             .iter()
-            .find(|((p_id, _run_plugin), _)| p_id == &plugin_id)
-            .map(|((_p_id, run_plugin), _)| run_plugin)
+            .find(|(p_id, _run_plugin)| p_id == &plugin_id)
+            .map(|(_p_id, run_plugin)| run_plugin)
     }
     pub fn run_plugin_of_plugin_id(&self, plugin_id: PluginId) -> Option<RunPlugin> {
         self.plugin_map
@@ -1127,16 +1277,16 @@ impl WasmBridge {
         default_mode: Option<InputMode>,
         default_shell: Option<TerminalAction>,
     ) -> Result<()> {
-        let plugins_to_reconfigure: Vec<Arc<Mutex<RunningPlugin>>> = self
+        let plugins_to_reconfigure: Vec<(PluginId, Arc<Mutex<RunningPlugin>>)> = self
             .plugin_map
             .lock()
             .unwrap()
             .running_plugins()
             .iter()
             .cloned()
-            .filter_map(|(_plugin_id, c_id, running_plugin)| {
+            .filter_map(|(plugin_id, c_id, running_plugin)| {
                 if c_id == client_id {
-                    Some(running_plugin.clone())
+                    Some((plugin_id, running_plugin.clone()))
                 } else {
                     None
                 }
@@ -1149,12 +1299,13 @@ impl WasmBridge {
             self.keybinds.insert(client_id, keybinds.clone());
         }
         self.default_shell = default_shell.clone();
-        for running_plugin in plugins_to_reconfigure {
-            task::spawn({
+        // Execute each plugin reconfiguration on its respective pinned thread
+        for (plugin_id, running_plugin) in plugins_to_reconfigure {
+            self.plugin_executor.execute_for_plugin(plugin_id, {
                 let running_plugin = running_plugin.clone();
                 let keybinds = keybinds.clone();
                 let default_shell = default_shell.clone();
-                async move {
+                move || {
                     let mut running_plugin = running_plugin.lock().unwrap();
                     if let Some(keybinds) = keybinds {
                         running_plugin.update_keybinds(keybinds);
@@ -1191,14 +1342,15 @@ impl WasmBridge {
                     .unwrap()
                     .get_running_plugin_and_subscriptions(plugin_id, *client_id)
                 {
-                    task::spawn({
+                    let subs = subscriptions.lock().unwrap().clone();
+                    // Execute directly on pinned thread (no async I/O needed for event/message processing)
+                    self.plugin_executor.execute_for_plugin(plugin_id, {
                         let senders = self.senders.clone();
                         let running_plugin = running_plugin.clone();
                         let client_id = *client_id;
                         let _s = shutdown_sender.clone();
                         let events_or_pipe_messages = events_or_pipe_messages.clone();
-                        async move {
-                            let subs = subscriptions.lock().unwrap().clone();
+                        move || {
                             let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                             for event_or_pipe_message in events_or_pipe_messages {
                                 match event_or_pipe_message {
@@ -1304,7 +1456,7 @@ impl WasmBridge {
     fn plugin_is_currently_being_loaded(&self, plugin_location: &RunPluginLocation) -> bool {
         self.loading_plugins
             .iter()
-            .find(|((_plugin_id, run_plugin), _)| &run_plugin.location == plugin_location)
+            .find(|(_plugin_id, run_plugin)| &run_plugin.location == plugin_location)
             .is_some()
     }
     fn plugin_id_of_loading_plugin(
@@ -1314,7 +1466,7 @@ impl WasmBridge {
     ) -> Option<PluginId> {
         self.loading_plugins
             .iter()
-            .find_map(|((plugin_id, run_plugin), _)| {
+            .find_map(|(plugin_id, run_plugin)| {
                 if &run_plugin.location == plugin_location
                     && &run_plugin.configuration == plugin_configuration
                 {

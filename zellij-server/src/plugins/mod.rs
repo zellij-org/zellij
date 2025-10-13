@@ -1,3 +1,4 @@
+mod pinned_executor;
 mod pipes;
 mod plugin_loader;
 mod plugin_map;
@@ -6,6 +7,8 @@ mod wasm_bridge;
 mod watch_filesystem;
 mod zellij_exports;
 use log::info;
+
+pub use pinned_executor::PinnedExecutor;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs,

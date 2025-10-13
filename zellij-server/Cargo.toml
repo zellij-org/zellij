@@ -49,6 +49,8 @@ vte = { workspace = true }
 wasmi_wasi = { version = "0.51.1" }
 zellij-utils = { workspace = true }
 tokio = { workspace = true }
+once_cell = "1.19"
+num_cpus = "1.16"
 
 [dependencies.wasmi]
 version = "0.51.1"
