@@ -227,13 +227,9 @@ impl WasmBridge {
 
                 // Clone for threaded contexts
                 let plugin_executor = self.plugin_executor.clone();
-
-                // Register plugin and assign it to a thread
-                plugin_executor.register_plugin(plugin_id);
-
                 let senders = self.senders.clone();
                 // let engine = self.engine.clone();
-                let engine = get_engine();
+                // let engine = get_engine();
                 let plugin_map = self.plugin_map.clone();
                 let connected_clients = self.connected_clients.clone();
                 let path_to_default_shell = self.path_to_default_shell.clone();
@@ -290,8 +286,8 @@ impl WasmBridge {
                             }
                         }
 
-                        // BLOCKING WORK: Hand off to pinned executor
-                        plugin_executor.execute_for_plugin(plugin_id, move || {
+                        // BLOCKING WORK: Hand off to pinned executor (register + execute)
+                        plugin_executor.execute_plugin_load(plugin_id, move || {
                             log::info!("Compiling plugin {} on pinned thread", plugin_id);
 
                             match PluginLoader::start_plugin(
@@ -301,7 +297,8 @@ impl WasmBridge {
                                 tab_index,
                                 plugin_dir,
                                 senders.clone(),
-                                engine,
+                                // engine,
+                                get_engine(),
                                 plugin_map.clone(),
                                 size,
                                 connected_clients.clone(),
@@ -343,7 +340,7 @@ impl WasmBridge {
                     );
                     let mut loading_indication = LoadingIndication::new(plugin_name.clone());
 
-                    self.plugin_executor.execute_for_plugin(plugin_id, move || {
+                    self.plugin_executor.execute_plugin_load(plugin_id, move || {
                         log::info!("Compiling plugin {} on pinned thread", plugin_id);
 
                         match PluginLoader::start_plugin(
@@ -353,7 +350,8 @@ impl WasmBridge {
                             tab_index,
                             plugin_dir,
                             senders.clone(),
-                            engine,
+                            // engine,
+                            get_engine(),
                             plugin_map.clone(),
                             size,
                             connected_clients.clone(),
@@ -429,10 +427,10 @@ impl WasmBridge {
             }
 
             let senders = self.senders.clone();
-            let plugin_executor_for_unregister = self.plugin_executor.clone();
 
             // CRITICAL: Execute cleanup on plugin's pinned thread to prevent cross-thread deallocation
-            self.plugin_executor.execute_for_plugin(plugin_id, move || {
+            // execute_plugin_unload will automatically unregister the plugin after cleanup
+            self.plugin_executor.execute_plugin_unload(plugin_id, move || {
                 let subscriptions_guard = subscriptions.lock().unwrap();
                 let needs_before_close = subscriptions_guard.contains(&EventType::BeforeClose);
                 drop(subscriptions_guard); // Release lock before calling plugin
@@ -480,8 +478,8 @@ impl WasmBridge {
 //                     libc::malloc_trim(0);
 //                 }
 
-                // Unregister plugin and potentially shrink the thread pool
-                plugin_executor_for_unregister.unregister_plugin(plugin_id);
+                // Note: execute_plugin_unload will automatically unregister the plugin
+                // and shrink the pool after this closure completes
             });
         }
 
@@ -520,7 +518,8 @@ impl WasmBridge {
         let plugin_executor = self.plugin_executor.clone();
         let plugin_dir = self.plugin_dir.clone();
         let senders = self.senders.clone();
-        let engine = self.engine.clone();
+        // let engine = self.engine.clone();
+        // let engine = get_engine();
         let plugin_map = self.plugin_map.clone();
         let connected_clients = self.connected_clients.clone();
         let path_to_default_shell = self.path_to_default_shell.clone();
@@ -536,7 +535,8 @@ impl WasmBridge {
                 plugin_id,
                 plugin_dir.clone(),
                 senders.clone(),
-                engine.clone(),
+                // engine.clone(),
+                get_engine(),
                 plugin_map.clone(),
                 connected_clients.clone(),
                 &mut loading_indication,
@@ -593,7 +593,7 @@ impl WasmBridge {
         let plugin_executor = self.plugin_executor.clone();
         let plugin_dir = self.plugin_dir.clone();
         let senders = self.senders.clone();
-        let engine = self.engine.clone();
+        // let engine = self.engine.clone();
         let plugin_map = self.plugin_map.clone();
         let connected_clients = self.connected_clients.clone();
         let path_to_default_shell = self.path_to_default_shell.clone();
@@ -611,7 +611,8 @@ impl WasmBridge {
                 first_plugin_id,
                 plugin_dir.clone(),
                 senders.clone(),
-                engine.clone(),
+                // engine.clone(),
+                get_engine(),
                 plugin_map.clone(),
                 connected_clients.clone(),
                 &mut loading_indication,
@@ -635,7 +636,7 @@ impl WasmBridge {
                         plugin_executor_for_closure.execute_for_plugin(plugin_id, {
                             let plugin_dir = plugin_dir.clone();
                             let senders = senders.clone();
-                            let engine = engine.clone();
+                            // let engine = engine.clone();
                             let plugin_map = plugin_map.clone();
                             let connected_clients = connected_clients.clone();
                             let path_to_default_shell = path_to_default_shell.clone();
@@ -650,7 +651,8 @@ impl WasmBridge {
                                     plugin_id,
                                     plugin_dir.clone(),
                                     senders.clone(),
-                                    engine.clone(),
+                                    // engine.clone(),
+                                    get_engine(),
                                     plugin_map.clone(),
                                     connected_clients.clone(),
                                     &mut loading_indication,
@@ -701,12 +703,14 @@ impl WasmBridge {
         Ok(())
     }
     pub fn add_client(&mut self, client_id: ClientId) -> Result<()> {
+        log::info!("add client: {:?}", client_id);
         let mut loading_indication = LoadingIndication::new("".into());
         match PluginLoader::add_client(
             client_id,
             self.plugin_dir.clone(),
             self.senders.clone(),
-            self.engine.clone(),
+            // self.engine.clone(),
+            get_engine(),
             self.plugin_map.clone(),
             self.connected_clients.clone(),
             &mut loading_indication,
