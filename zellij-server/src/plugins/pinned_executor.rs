@@ -3,6 +3,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Sender};
 use std::thread::{self, JoinHandle};
+use crate::ThreadSenders;
+use crate::plugins::plugin_map::PluginMap;
+use crate::ClientId;
+use zellij_utils::input::layout::Layout;
 
 /// A dynamic thread pool that pins jobs to specific threads based on plugin_id
 /// Starts with 1 thread and expands when threads are busy, shrinks when plugins unload
@@ -21,6 +25,12 @@ pub struct PinnedExecutor {
 
     // Maximum threads allowed
     max_threads: usize,
+
+    // state to send to plugins (to be kept on execution threads)
+    senders: ThreadSenders,
+    plugin_map: Arc<Mutex<PluginMap>>,
+    connected_clients: Arc<Mutex<Vec<ClientId>>>,
+    default_layout: Box<Layout>,
 }
 
 struct ExecutionThread {
@@ -30,18 +40,19 @@ struct ExecutionThread {
 }
 
 enum Job {
-    Work(Box<dyn FnOnce() + Send + 'static>),
+    // Work(Box<dyn FnOnce() + Send + 'static>),
+    Work(Box<dyn FnOnce(ThreadSenders, Arc<Mutex<PluginMap>>, Arc<Mutex<Vec<ClientId>>>, Box<Layout>) + Send + 'static>),
     Shutdown,  // Signal to exit the worker loop
 }
 
 impl PinnedExecutor {
     /// Creates a new pinned executor with the specified maximum number of threads
     /// Starts with exactly 1 thread
-    pub fn new(max_threads: usize) -> Self {
+    pub fn new(max_threads: usize, senders: &ThreadSenders, plugin_map: &Arc<Mutex<PluginMap>>, connected_clients: &Arc<Mutex<Vec<ClientId>>>, default_layout: &Box<Layout>) -> Self {
         let max_threads = max_threads.max(1);  // At least 1
 
         // Start with exactly 1 thread (thread index 0)
-        let thread_0 = Self::spawn_thread(0);
+        let thread_0 = Self::spawn_thread(0, senders.clone(), plugin_map.clone(), connected_clients.clone(), default_layout.clone());
 
         PinnedExecutor {
             execution_threads: Arc::new(Mutex::new(vec![Some(thread_0)])),
@@ -49,24 +60,40 @@ impl PinnedExecutor {
             thread_plugins: Arc::new(Mutex::new(HashMap::new())),
             next_thread_idx: AtomicUsize::new(1),  // Next will be index 1
             max_threads,
+            senders: senders.clone(),
+            plugin_map: plugin_map.clone(),
+            connected_clients: connected_clients.clone(),
+            default_layout: default_layout.clone(),
         }
     }
 
-    fn spawn_thread(thread_idx: usize) -> ExecutionThread {
+    // fn spawn_thread(thread_idx: usize) -> ExecutionThread {
+    fn spawn_thread(thread_idx: usize, senders: ThreadSenders, plugin_map: Arc<Mutex<PluginMap>>, connected_clients: Arc<Mutex<Vec<ClientId>>>, default_layout: Box<Layout>) -> ExecutionThread {
         let (sender, receiver) = channel::<Job>();
         let jobs_in_flight = Arc::new(AtomicUsize::new(0));
         let jobs_in_flight_clone = jobs_in_flight.clone();
 
         let handle = thread::Builder::new()
             .name(format!("plugin-exec-{}", thread_idx))
-            .spawn(move || {
-                while let Ok(job) = receiver.recv() {
-                    match job {
-                        Job::Work(work) => {
-                            work();
-                            jobs_in_flight_clone.fetch_sub(1, Ordering::SeqCst);
+            .spawn({
+                let senders = senders;
+                let plugin_map = plugin_map;
+                let connected_clients = connected_clients;
+                let default_layout = default_layout;
+                move || {
+                    while let Ok(job) = receiver.recv() {
+                        match job {
+                            Job::Work(work) => {
+                                work(
+                                    senders.clone(),
+                                    plugin_map.clone(),
+                                    connected_clients.clone(),
+                                    default_layout.clone()
+                                );
+                                jobs_in_flight_clone.fetch_sub(1, Ordering::SeqCst);
+                            }
+                            Job::Shutdown => break,
                         }
-                        Job::Shutdown => break,
                     }
                 }
             })
@@ -142,7 +169,7 @@ impl PinnedExecutor {
     fn add_thread(&self, thread_idx: usize) {
         log::info!("ADD_THREAD: {:?}", thread_idx);
         let mut threads = self.execution_threads.lock().unwrap();
-        let new_thread = Self::spawn_thread(thread_idx);
+        let new_thread = Self::spawn_thread(thread_idx, self.senders.clone(), self.plugin_map.clone(), self.connected_clients.clone(), self.default_layout.clone());
 
         // Extend vector if needed
         while threads.len() <= thread_idx {
@@ -154,7 +181,8 @@ impl PinnedExecutor {
     /// Execute job pinned to plugin's assigned thread
     pub fn execute_for_plugin<F>(&self, plugin_id: u32, f: F)
     where
-        F: FnOnce() + Send + 'static,
+        // F: FnOnce() + Send + 'static,
+        F: FnOnce(ThreadSenders, Arc<Mutex<PluginMap>>, Arc<Mutex<Vec<ClientId>>>, Box<Layout>) + Send + 'static,
     {
         // Look up assigned thread
         let thread_idx = {
@@ -185,7 +213,8 @@ impl PinnedExecutor {
     /// This combines registration + execution for plugin loading
     pub fn execute_plugin_load<F>(&self, plugin_id: u32, f: F)
     where
-        F: FnOnce() + Send + 'static,
+        // F: FnOnce() + Send + 'static,
+        F: FnOnce(ThreadSenders, Arc<Mutex<PluginMap>>, Arc<Mutex<Vec<ClientId>>>, Box<Layout>) + Send + 'static,
     {
         // Register plugin and assign to a thread
         self.register_plugin(plugin_id);
@@ -197,12 +226,13 @@ impl PinnedExecutor {
     /// Unload a plugin: execute cleanup work, then unregister and potentially shrink pool
     /// This combines cleanup execution + unregistration for plugin unloading
     /// Requires Arc<Self> so we can clone it into the closure for unregistration
-    pub fn execute_plugin_unload(self: &Arc<Self>, plugin_id: u32, f: impl FnOnce() + Send + 'static)
+    pub fn execute_plugin_unload(self: &Arc<Self>, plugin_id: u32, f: impl FnOnce(ThreadSenders, Arc<Mutex<PluginMap>>, Arc<Mutex<Vec<ClientId>>>, Box<Layout>) + Send + 'static)
+        // FnOnce() + Send + 'static)
     {
         let executor = self.clone();
-        self.execute_for_plugin(plugin_id, move || {
+        self.execute_for_plugin(plugin_id, move |senders, plugin_map, connected_clients, default_layout| {
             // Execute the cleanup work
-            f();
+            f(senders, plugin_map, connected_clients, default_layout);
 
             // Unregister plugin and potentially shrink the pool
             executor.unregister_plugin(plugin_id);
