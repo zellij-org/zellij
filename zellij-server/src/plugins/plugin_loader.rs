@@ -208,7 +208,8 @@ impl<'a> PluginLoader<'a> {
                 keybinds.clone(),
             )?;
             plugin_loader
-                .compile_module()
+                .load_module_from_memory()
+                .or_else(|_e| plugin_loader.compile_module())
                 .and_then(|module| plugin_loader.create_plugin_environment(module))
                 .and_then(|(store, instance)| {
                     plugin_loader.load_plugin_instance(store, &instance, &plugin_map)
