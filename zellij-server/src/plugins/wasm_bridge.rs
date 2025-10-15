@@ -241,16 +241,11 @@ impl WasmBridge {
                 // Clone for threaded contexts
                 let plugin_executor = self.plugin_executor.clone();
                 let senders = self.senders.clone();
-                // let engine = self.engine.clone();
-                // let engine = get_engine();
-                // let plugin_map = self.plugin_map.clone();
-                // let connected_clients = self.connected_clients.clone();
                 let path_to_default_shell = self.path_to_default_shell.clone();
                 let zellij_cwd = cwd.unwrap_or_else(|| self.zellij_cwd.clone());
                 let capabilities = self.capabilities.clone();
                 let client_attributes = self.client_attributes.clone();
                 let default_shell = self.default_shell.clone();
-                // let default_layout = self.default_layout.clone();
                 let layout_dir = self.layout_dir.clone();
                 let plugin_dir = self.plugin_dir.clone();
                 let default_mode = self
@@ -1289,7 +1284,6 @@ impl WasmBridge {
     }
 
     pub fn cleanup(&mut self) {
-        // No more JoinHandles to cancel - just clear the tracking set
         self.loading_plugins.clear();
 
         let plugin_ids = self.plugin_map.lock().unwrap().plugin_ids();

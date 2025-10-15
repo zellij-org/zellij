@@ -1,4 +1,5 @@
 use std::fmt::{Display, Error, Formatter};
+use std::time::Instant;
 
 use zellij_utils::{
     data::{PaletteColor, Styling},
@@ -26,13 +27,16 @@ pub struct LoadingIndication {
     plugin_name: String,
     terminal_emulator_colors: Option<Styling>,
     override_previous_error: bool,
+    started_at: Option<Instant>,
 }
 
 impl LoadingIndication {
     pub fn new(plugin_name: String) -> Self {
+        let started_at = Some(Instant::now());
         LoadingIndication {
             plugin_name,
             animation_offset: 0,
+            started_at,
             ..Default::default()
         }
     }
@@ -293,6 +297,10 @@ impl Display for LoadingIndication {
                     .paint("ERROR IN PLUGIN - check logs for more info")
             ));
         }
-        write!(f, "{}", stringified)
+        if self.started_at.map(|s| s.elapsed() > std::time::Duration::from_millis(400)).unwrap_or(true) || self.error.is_some() {
+            write!(f, "{}", stringified)
+        } else {
+            Ok(())
+        }
     }
 }
