@@ -215,13 +215,20 @@ impl WasmBridge {
                         .iter()
                         .next()
                         .copied()
-                    }
+                }
             })
-            .or(client_id)
+            .or_else(|| {
+                // if no client id was provided, try to use the first connected client
+                self.connected_clients
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .next()
+                    .copied()
+            })
             .with_context(|| {
                 "Plugins must have a client id, none was provided and none are connected"
             })?;
-        log::info!("sending client_id: {:?}", client_id);
 
         let plugin_id = self.next_plugin_id;
 
