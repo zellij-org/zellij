@@ -94,7 +94,7 @@ impl PinnedExecutor {
         let jobs_in_flight = Arc::new(AtomicUsize::new(0));
         let jobs_in_flight_clone = jobs_in_flight.clone();
 
-        let handle = thread::Builder::new()
+        let thread_handle = thread::Builder::new()
             .name(format!("plugin-exec-{}", thread_idx))
             .spawn({
                 move || {
@@ -121,8 +121,10 @@ impl PinnedExecutor {
                         }
                     }
                 }
-            })
-            .expect("Failed to spawn execution thread");
+            });
+        if let Err(e) = thread_handle {
+            log::error!("Failed to spawn plugin execution thread: {}", e);
+        }
 
         ExecutionThread {
             sender,
@@ -133,12 +135,10 @@ impl PinnedExecutor {
     /// Register a plugin and assign it to a thread
     /// Called from wasm_bridge when loading a plugin
     pub fn register_plugin(&self, plugin_id: u32) -> usize {
-        log::info!("register_plugin: {:?}, pool size: {:?}", plugin_id, self.thread_count());
         let mut assignments = self.plugin_assignments.lock().unwrap();
 
         // If already assigned (shouldn't happen, but defensive)
         if let Some(&thread_idx) = assignments.get(&plugin_id) {
-            log::info!("already assigned");
             return thread_idx;
         }
 
@@ -153,7 +153,7 @@ impl PinnedExecutor {
                 let is_busy = thread.jobs_in_flight.load(Ordering::SeqCst) > 0;
                 if !is_busy {
                     let load = thread_plugins.get(&idx).map(|s| s.len()).unwrap_or(0);
-                    if best_thread.is_none() || load < best_thread.unwrap().1 {
+                    if best_thread.is_none() || best_thread.map(|b| load < b.1).unwrap_or(false) {
                         best_thread = Some((idx, load));
                     }
                 }
@@ -179,7 +179,11 @@ impl PinnedExecutor {
                     .min_by_key(|&idx| {
                         thread_plugins.get(&idx).map(|s| s.len()).unwrap_or(0)
                     })
-                    .expect("Must have at least one thread")
+                    .unwrap_or_else(|| {
+                        log::error!("Failed to find free thread to run the plugin!");
+                        0 // this is a misconfiguration, but we don't want to crash the app
+                          // if it happens
+                    })
             }
         };
 
@@ -191,7 +195,6 @@ impl PinnedExecutor {
     }
 
     fn add_thread(&self, thread_idx: usize) {
-        log::info!("ADD_THREAD: {:?}", thread_idx);
         let mut threads = self.execution_threads.lock().unwrap();
         let new_thread = Self::spawn_thread(thread_idx, self.senders.clone(), self.plugin_map.clone(), self.connected_clients.clone(), self.default_layout.clone(), self.plugin_cache.clone(), self.engine.clone());
 
@@ -211,15 +214,20 @@ impl PinnedExecutor {
         // Look up assigned thread
         let thread_idx = {
             let assignments = self.plugin_assignments.lock().unwrap();
-            *assignments.get(&plugin_id).expect(&format!(
-                "Plugin {} not registered! Call register_plugin first.",
-                plugin_id
-            ))
+            assignments.get(&plugin_id).copied()
+        };
+        let Some(thread_idx) = thread_idx else {
+            log::error!("Failed to find thread for plugin with id: {}", plugin_id);
+            return;
         };
 
         // Get thread and mark as busy
         let threads = self.execution_threads.lock().unwrap();
-        let thread = threads[thread_idx].as_ref().expect("Thread should exist");
+        let thread = threads[thread_idx].as_ref();
+        let Some(thread) = thread else {
+            log::error!("Failed to find thread for plugin with id: {}", plugin_id);
+            return;
+        };
 
         // Increment busy counter BEFORE sending work
         thread.jobs_in_flight.fetch_add(1, Ordering::SeqCst);
@@ -266,7 +274,6 @@ impl PinnedExecutor {
     /// Unregister a plugin and potentially shrink the pool
     /// Called from wasm_bridge after plugin cleanup is complete
     pub fn unregister_plugin(&self, plugin_id: u32) {
-        log::info!("unregister_plugin: {:?}, pool_size: {:?}", plugin_id, self.thread_count());
         let mut assignments = self.plugin_assignments.lock().unwrap();
         let mut thread_plugins = self.thread_plugins.lock().unwrap();
 
@@ -284,7 +291,6 @@ impl PinnedExecutor {
     }
 
     fn try_shrink_pool(&self) {
-        log::info!("try_shrink_pool");
         let mut threads = self.execution_threads.lock().unwrap();
         let thread_plugins = self.thread_plugins.lock().unwrap();
 
@@ -307,7 +313,6 @@ impl PinnedExecutor {
                 }
             })
             .collect();
-        log::info!("threads_to_remove: {:?}", threads_to_remove);
 
         // Shutdown and remove idle threads
         for idx in threads_to_remove {
@@ -315,7 +320,6 @@ impl PinnedExecutor {
                 // Send shutdown signal
                 let _ = thread.sender.send(Job::Shutdown);
 
-                log::info!("thread gone!");
             }
         }
     }
