@@ -34,7 +34,7 @@ use zellij_utils::pane_size::Size;
 
 use zellij_utils::input::cli_assets::CliAssets;
 
-use wasmi::{Config as WasmiConfig, Engine};
+use wasmi::Engine;
 
 use crate::{
     os_input_output::ServerOsApi,

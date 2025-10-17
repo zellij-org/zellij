@@ -65,17 +65,6 @@ impl PluginMap {
         }
         removed
     }
-    pub fn remove_single_plugin(
-        &mut self,
-        plugin_id: PluginId,
-        client_id: ClientId,
-    ) -> Option<(
-        Arc<Mutex<RunningPlugin>>,
-        Arc<Mutex<Subscriptions>>,
-        HashMap<String, Sender<MessageToWorker>>,
-    )> {
-        self.plugin_assets.remove(&(plugin_id, client_id))
-    }
     pub fn plugin_ids(&self) -> Vec<PluginId> {
         let mut unique_plugins: HashSet<PluginId> = self
             .plugin_assets
