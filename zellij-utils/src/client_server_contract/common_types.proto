@@ -894,6 +894,7 @@ message Options {
   optional string web_server_key = 37;
   optional bool enforce_https_for_localhost = 38;
   optional string post_command_discovery_hook = 39;
+  optional bool enable_xtgettcap = 40;
 }
 
 enum OnForceClose {

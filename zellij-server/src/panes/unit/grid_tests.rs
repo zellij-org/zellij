@@ -46,6 +46,7 @@ fn vttest1_0() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest1-0";
     let content = read_fixture(fixture_name);
@@ -77,6 +78,7 @@ fn vttest1_1() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest1-1";
     let content = read_fixture(fixture_name);
@@ -108,6 +110,7 @@ fn vttest1_2() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest1-2";
     let content = read_fixture(fixture_name);
@@ -139,6 +142,7 @@ fn vttest1_3() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest1-3";
     let content = read_fixture(fixture_name);
@@ -170,6 +174,7 @@ fn vttest1_4() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest1-4";
     let content = read_fixture(fixture_name);
@@ -201,6 +206,7 @@ fn vttest1_5() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest1-5";
     let content = read_fixture(fixture_name);
@@ -232,6 +238,7 @@ fn vttest2_0() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest2-0";
     let content = read_fixture(fixture_name);
@@ -263,6 +270,7 @@ fn vttest2_1() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest2-1";
     let content = read_fixture(fixture_name);
@@ -294,6 +302,7 @@ fn vttest2_2() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest2-2";
     let content = read_fixture(fixture_name);
@@ -325,6 +334,7 @@ fn vttest2_3() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest2-3";
     let content = read_fixture(fixture_name);
@@ -356,6 +366,7 @@ fn vttest2_4() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest2-4";
     let content = read_fixture(fixture_name);
@@ -387,6 +398,7 @@ fn vttest2_5() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest2-5";
     let content = read_fixture(fixture_name);
@@ -418,6 +430,7 @@ fn vttest2_6() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest2-6";
     let content = read_fixture(fixture_name);
@@ -449,6 +462,7 @@ fn vttest2_7() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest2-7";
     let content = read_fixture(fixture_name);
@@ -480,6 +494,7 @@ fn vttest2_8() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest2-8";
     let content = read_fixture(fixture_name);
@@ -511,6 +526,7 @@ fn vttest2_9() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest2-9";
     let content = read_fixture(fixture_name);
@@ -542,6 +558,7 @@ fn vttest2_10() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest2-10";
     let content = read_fixture(fixture_name);
@@ -573,6 +590,7 @@ fn vttest2_11() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest2-11";
     let content = read_fixture(fixture_name);
@@ -604,6 +622,7 @@ fn vttest2_12() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest2-12";
     let content = read_fixture(fixture_name);
@@ -635,6 +654,7 @@ fn vttest2_13() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest2-13";
     let content = read_fixture(fixture_name);
@@ -666,6 +686,7 @@ fn vttest2_14() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest2-14";
     let content = read_fixture(fixture_name);
@@ -697,6 +718,7 @@ fn vttest3_0() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest3-0";
     let content = read_fixture(fixture_name);
@@ -728,6 +750,7 @@ fn vttest8_0() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest8-0";
     let content = read_fixture(fixture_name);
@@ -759,6 +782,7 @@ fn vttest8_1() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest8-1";
     let content = read_fixture(fixture_name);
@@ -790,6 +814,7 @@ fn vttest8_2() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest8-2";
     let content = read_fixture(fixture_name);
@@ -821,6 +846,7 @@ fn vttest8_3() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest8-3";
     let content = read_fixture(fixture_name);
@@ -852,6 +878,7 @@ fn vttest8_4() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest8-4";
     let content = read_fixture(fixture_name);
@@ -883,6 +910,7 @@ fn vttest8_5() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vttest8-5";
     let content = read_fixture(fixture_name);
@@ -914,6 +942,7 @@ fn csi_b() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "csi-b";
     let content = read_fixture(fixture_name);
@@ -945,6 +974,7 @@ fn csi_capital_i() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "csi-capital-i";
     let content = read_fixture(fixture_name);
@@ -976,6 +1006,7 @@ fn csi_capital_z() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "csi-capital-z";
     let content = read_fixture(fixture_name);
@@ -1007,6 +1038,7 @@ fn terminal_reports() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        true,
     );
     let fixture_name = "terminal_reports";
     let content = read_fixture(fixture_name);
@@ -1014,6 +1046,41 @@ fn terminal_reports() {
         vte_parser.advance(&mut grid, byte);
     }
     assert_snapshot!(format!("{:?}", grid.pending_messages_to_pty));
+}
+
+#[test]
+fn xtgettcap_clipboard() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
+    let mut grid = Grid::new(
+        10,
+        10,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        true,
+    );
+    // DCS $ q clipboard ST (using 7-bit format)
+    let dcs_query = b"\x1bP$q clipboard\x1b\\";
+    for &byte in dcs_query {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    let response = &grid.pending_messages_to_pty[0];
+    let response_str = String::from_utf8_lossy(response);
+    assert!(response_str.starts_with("\x1bP1$rclipboard = y"));
 }
 
 #[test]
@@ -1038,6 +1105,7 @@ fn wide_characters() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "wide_characters";
     let content = read_fixture(fixture_name);
@@ -1069,6 +1137,7 @@ fn wide_characters_line_wrap() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "wide_characters_line_wrap";
     let content = read_fixture(fixture_name);
@@ -1100,6 +1169,7 @@ fn insert_character_in_line_with_wide_character() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "wide_characters_middle_line_insert";
     let content = read_fixture(fixture_name);
@@ -1131,6 +1201,7 @@ fn delete_char_in_middle_of_line_with_widechar() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "wide-chars-delete-middle";
     let content = read_fixture(fixture_name);
@@ -1162,6 +1233,7 @@ fn delete_char_in_middle_of_line_with_multiple_widechars() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "wide-chars-delete-middle-after-multi";
     let content = read_fixture(fixture_name);
@@ -1193,6 +1265,7 @@ fn fish_wide_characters_override_clock() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "fish_wide_characters_override_clock";
     let content = read_fixture(fixture_name);
@@ -1224,6 +1297,7 @@ fn bash_delete_wide_characters() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "bash_delete_wide_characters";
     let content = read_fixture(fixture_name);
@@ -1255,6 +1329,7 @@ fn delete_wide_characters_before_cursor() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "delete_wide_characters_before_cursor";
     let content = read_fixture(fixture_name);
@@ -1286,6 +1361,7 @@ fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "delete_wide_characters_before_cursor_when_cursor_is_on_wide_character";
     let content = read_fixture(fixture_name);
@@ -1317,6 +1393,7 @@ fn delete_wide_character_under_cursor() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "delete_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
@@ -1348,6 +1425,7 @@ fn replace_wide_character_under_cursor() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "replace_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
@@ -1379,6 +1457,7 @@ fn wrap_wide_characters() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -1410,6 +1489,7 @@ fn wrap_wide_characters_on_size_change() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -1442,6 +1522,7 @@ fn unwrap_wide_characters_on_size_change() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -1475,6 +1556,7 @@ fn wrap_wide_characters_in_the_middle_of_the_line() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "wide_characters_line_middle";
     let content = read_fixture(fixture_name);
@@ -1506,6 +1588,7 @@ fn wrap_wide_characters_at_the_end_of_the_line() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "wide_characters_line_end";
     let content = read_fixture(fixture_name);
@@ -1537,6 +1620,7 @@ fn copy_selected_text_from_viewport() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -1576,6 +1660,7 @@ fn copy_wrapped_selected_text_from_viewport() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "grid_copy_wrapped";
     let content = read_fixture(fixture_name);
@@ -1614,6 +1699,7 @@ fn copy_selected_text_from_lines_above() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -1653,6 +1739,7 @@ fn copy_selected_text_from_lines_below() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -1700,6 +1787,7 @@ fn run_bandwhich_from_fish_shell() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "fish_and_bandwhich";
     let content = read_fixture(fixture_name);
@@ -1731,6 +1819,7 @@ fn fish_tab_completion_options() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "fish_tab_completion_options";
     let content = read_fixture(fixture_name);
@@ -1768,6 +1857,7 @@ pub fn fish_select_tab_completion_options() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "fish_select_tab_completion_options";
     let content = read_fixture(fixture_name);
@@ -1809,6 +1899,7 @@ pub fn vim_scroll_region_down() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vim_scroll_region_down";
     let content = read_fixture(fixture_name);
@@ -1847,6 +1938,7 @@ pub fn vim_ctrl_d() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vim_ctrl_d";
     let content = read_fixture(fixture_name);
@@ -1884,6 +1976,7 @@ pub fn vim_ctrl_u() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vim_ctrl_u";
     let content = read_fixture(fixture_name);
@@ -1915,6 +2008,7 @@ pub fn htop() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "htop";
     let content = read_fixture(fixture_name);
@@ -1946,6 +2040,7 @@ pub fn htop_scrolling() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "htop_scrolling";
     let content = read_fixture(fixture_name);
@@ -1977,6 +2072,7 @@ pub fn htop_right_scrolling() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "htop_right_scrolling";
     let content = read_fixture(fixture_name);
@@ -2018,6 +2114,7 @@ pub fn vim_overwrite() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "vim_overwrite";
     let content = read_fixture(fixture_name);
@@ -2051,6 +2148,7 @@ pub fn clear_scroll_region() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "clear_scroll_region";
     let content = read_fixture(fixture_name);
@@ -2082,6 +2180,7 @@ pub fn display_tab_characters_properly() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "tab_characters";
     let content = read_fixture(fixture_name);
@@ -2113,6 +2212,7 @@ pub fn neovim_insert_mode() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "nvim_insert";
     let content = read_fixture(fixture_name);
@@ -2144,6 +2244,7 @@ pub fn bash_cursor_linewrap() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "bash_cursor_linewrap";
     let content = read_fixture(fixture_name);
@@ -2177,6 +2278,7 @@ pub fn fish_paste_multiline() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "fish_paste_multiline";
     let content = read_fixture(fixture_name);
@@ -2208,6 +2310,7 @@ pub fn git_log() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "git_log";
     let content = read_fixture(fixture_name);
@@ -2241,6 +2344,7 @@ pub fn git_diff_scrollup() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "git_diff_scrollup";
     let content = read_fixture(fixture_name);
@@ -2272,6 +2376,7 @@ pub fn emacs_longbuf() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "emacs_longbuf_tutorial";
     let content = read_fixture(fixture_name);
@@ -2303,6 +2408,7 @@ pub fn top_and_quit() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "top_and_quit";
     let content = read_fixture(fixture_name);
@@ -2341,6 +2447,7 @@ pub fn exa_plus_omf_theme() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "exa_plus_omf_theme";
     let content = read_fixture(fixture_name);
@@ -2372,6 +2479,7 @@ pub fn scroll_up() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2404,6 +2512,7 @@ pub fn scroll_down() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2437,6 +2546,7 @@ pub fn scroll_up_with_line_wraps() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2469,6 +2579,7 @@ pub fn scroll_down_with_line_wraps() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2502,6 +2613,7 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2540,6 +2652,7 @@ pub fn scroll_up_increase_width_and_scroll_down() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2578,6 +2691,7 @@ fn saved_cursor_across_resize() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let mut parse = |s, grid: &mut Grid| {
         for b in Vec::from(s) {
@@ -2625,6 +2739,7 @@ fn saved_cursor_across_resize_longline() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let mut parse = |s, grid: &mut Grid| {
         for b in Vec::from(s) {
@@ -2665,6 +2780,7 @@ fn saved_cursor_across_resize_rewrap() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let mut parse = |s, grid: &mut Grid| {
         for b in Vec::from(s) {
@@ -2705,6 +2821,7 @@ pub fn move_cursor_below_scroll_region() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "move_cursor_below_scroll_region";
     let content = read_fixture(fixture_name);
@@ -2736,6 +2853,7 @@ pub fn insert_wide_characters_in_existing_line() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "chinese_characters_line_middle";
     let content = read_fixture(fixture_name);
@@ -2773,6 +2891,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "scroll_region_full_screen";
     let content = read_fixture(fixture_name);
@@ -2807,6 +2926,7 @@ pub fn ring_bell() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "ring_bell";
     let content = read_fixture(fixture_name);
@@ -2838,6 +2958,7 @@ pub fn alternate_screen_change_size() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "alternate_screen_change_size";
     let content = read_fixture(fixture_name);
@@ -2873,6 +2994,7 @@ pub fn fzf_fullscreen() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "fzf_fullscreen";
     let content = read_fixture(fixture_name);
@@ -2908,6 +3030,7 @@ pub fn replace_multiple_wide_characters_under_cursor() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "replace_multiple_wide_characters";
     let content = read_fixture(fixture_name);
@@ -2943,6 +3066,7 @@ pub fn replace_non_wide_characters_with_wide_characters() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "replace_non_wide_characters_with_wide_characters";
     let content = read_fixture(fixture_name);
@@ -2974,6 +3098,7 @@ pub fn scroll_down_ansi() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "scroll_down";
     let content = read_fixture(fixture_name);
@@ -3005,6 +3130,7 @@ pub fn ansi_capital_t() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let content = "foo\u{1b}[14Tbar".as_bytes();
     for byte in content {
@@ -3035,6 +3161,7 @@ pub fn ansi_capital_s() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let content = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nfoo\u{1b}[14Sbar".as_bytes();
     for byte in content {
@@ -3068,6 +3195,7 @@ fn terminal_pixel_size_reports() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
@@ -3105,6 +3233,7 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
@@ -3143,6 +3272,7 @@ pub fn ansi_csi_at_sign() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let content = "foo\u{1b}[2D\u{1b}[2@".as_bytes();
     for byte in content {
@@ -3177,6 +3307,7 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let pane_content = read_fixture("sixel-image-500px.six");
     for byte in pane_content {
@@ -3220,6 +3351,7 @@ pub fn sixel_images_are_reaped_when_resetting() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let pane_content = read_fixture("sixel-image-500px.six");
     for byte in pane_content {
@@ -3260,6 +3392,7 @@ pub fn sixel_image_in_alternate_buffer() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
 
     let move_to_alternate_screen = "\u{1b}[?1049h";
@@ -3311,6 +3444,7 @@ pub fn sixel_with_image_scrolling_decsdm() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
 
     // enter DECSDM
@@ -3381,6 +3515,7 @@ pub fn osc_4_background_query() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let content = "\u{1b}]10;?\u{1b}\\";
     for byte in content.as_bytes() {
@@ -3419,6 +3554,7 @@ pub fn osc_4_foreground_query() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let content = "\u{1b}]11;?\u{1b}\\";
     for byte in content.as_bytes() {
@@ -3459,6 +3595,7 @@ pub fn osc_4_color_query() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let content = "\u{1b}]4;222;?\u{1b}\\";
     for byte in content.as_bytes() {
@@ -3497,6 +3634,7 @@ pub fn xtsmgraphics_color_register_count() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let content = "\u{1b}[?1;1;S\u{1b}\\";
     for byte in content.as_bytes() {
@@ -3539,6 +3677,7 @@ pub fn xtsmgraphics_pixel_graphics_geometry() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let content = "\u{1b}[?2;1;S\u{1b}\\";
     for byte in content.as_bytes() {
@@ -3581,6 +3720,7 @@ pub fn cursor_hide_persists_through_alternate_screen() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
 
     let hide_cursor = "\u{1b}[?25l";
@@ -3637,6 +3777,7 @@ fn table_ui_component() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "table-ui-component";
     let content = read_fixture(fixture_name);
@@ -3668,6 +3809,7 @@ fn table_ui_component_with_coordinates() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "table-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
@@ -3699,6 +3841,7 @@ fn ribbon_ui_component() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "ribbon-ui-component";
     let content = read_fixture(fixture_name);
@@ -3730,6 +3873,7 @@ fn ribbon_ui_component_with_coordinates() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "ribbon-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
@@ -3761,6 +3905,7 @@ fn nested_list_ui_component() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "nested-list-ui-component";
     let content = read_fixture(fixture_name);
@@ -3792,6 +3937,7 @@ fn nested_list_ui_component_with_coordinates() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "nested-list-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
@@ -3823,6 +3969,7 @@ fn text_ui_component() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "text-ui-component";
     let content = read_fixture(fixture_name);
@@ -3854,6 +4001,7 @@ fn text_ui_component_with_coordinates() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let fixture_name = "text-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
@@ -3893,10 +4041,118 @@ fn cannot_escape_scroll_region() {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let content = "\u{1b}[1;42r\u{1b}[42;1HHi there!".as_bytes();
     for byte in content {
         vte_parser.advance(&mut grid, *byte);
     }
     assert_snapshot!(format!("{:?}", grid));
+}
+#[test]
+fn xtgettcap_terminal_name() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
+    let enable_xtgettcap = true;
+    let mut grid = Grid::new(
+        24,
+        80,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        enable_xtgettcap,
+    );
+
+    let xtgettcap_query = b"\x1bP+q544e\x1b\\";
+    for byte in xtgettcap_query {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    let response = String::from_utf8_lossy(&grid.pending_messages_to_pty[0]);
+    assert_eq!(response, "\x1bP1+r544e=7a656c6c696a\x1b\\");
+}
+
+#[test]
+fn xtgettcap_columns() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
+    let enable_xtgettcap = true;
+    let mut grid = Grid::new(
+        24,
+        80,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        enable_xtgettcap,
+    );
+
+    let xtgettcap_query = b"\x1bP+q636f\x1b\\";
+    for byte in xtgettcap_query {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    let response = String::from_utf8_lossy(&grid.pending_messages_to_pty[0]);
+    assert_eq!(response, "\x1bP1+r636f=50\x1b\\");
+}
+
+#[test]
+fn xtgettcap_unsupported_capability() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
+    let enable_xtgettcap = true;
+    let mut grid = Grid::new(
+        24,
+        80,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        enable_xtgettcap,
+    );
+
+    let xtgettcap_query = b"\x1bP+q9999\x1b\\";
+    for byte in xtgettcap_query {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    let response = String::from_utf8_lossy(&grid.pending_messages_to_pty[0]);
+    assert_eq!(response, "\x1bP0+r9999\x1b\\");
 }

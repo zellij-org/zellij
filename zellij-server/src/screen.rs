@@ -758,6 +758,7 @@ pub(crate) struct Screen {
     // is brought online
     web_server_ip: IpAddr,
     web_server_port: u16,
+    enable_xtgettcap: bool,
 }
 
 impl Screen {
@@ -789,6 +790,7 @@ impl Screen {
         advanced_mouse_actions: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
+        enable_xtgettcap: bool,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -840,6 +842,7 @@ impl Screen {
             advanced_mouse_actions,
             web_server_ip,
             web_server_port,
+            enable_xtgettcap,
         }
     }
 
@@ -1475,6 +1478,7 @@ impl Screen {
             self.arrow_fonts,
             self.styled_underlines,
             self.explicitly_disable_kitty_keyboard_protocol,
+            self.enable_xtgettcap,
             self.default_editor.clone(),
             self.web_clients_allowed,
             self.web_sharing,
@@ -3283,6 +3287,7 @@ pub(crate) fn screen_thread_main(
         .unwrap_or(false);
     let web_sharing = config_options.web_sharing.unwrap_or_else(Default::default);
     let advanced_mouse_actions = config_options.advanced_mouse_actions.unwrap_or(true);
+    let enable_xtgettcap = config_options.enable_xtgettcap.unwrap_or(false);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -3321,6 +3326,7 @@ pub(crate) fn screen_thread_main(
         advanced_mouse_actions,
         web_server_ip,
         web_server_port,
+        enable_xtgettcap,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();

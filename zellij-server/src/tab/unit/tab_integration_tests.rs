@@ -265,6 +265,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
         None,
         false,
         web_sharing,
@@ -346,6 +347,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
         None,
         false,
         web_sharing,
@@ -442,6 +444,7 @@ fn create_new_tab_with_swap_layouts(
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
         None,
         false,
         web_sharing,
@@ -539,6 +542,7 @@ fn create_new_tab_with_os_api(
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
         None,
         false,
         web_sharing,
@@ -622,6 +626,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
         None,
         false,
         web_sharing,
@@ -719,6 +724,7 @@ fn create_new_tab_with_mock_pty_writer(
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
         None,
         false,
         web_sharing,
@@ -807,6 +813,7 @@ fn create_new_tab_with_sixel_support(
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
         None,
         false,
         web_sharing,
@@ -867,6 +874,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -904,6 +912,7 @@ fn take_snapshot_with_sixel(
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -938,6 +947,7 @@ fn take_snapshot_and_cursor_position(
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {

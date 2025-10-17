@@ -910,6 +910,7 @@ impl TerminalPane {
         arrow_fonts: bool,
         styled_underlines: bool,
         explicitly_disable_keyboard_protocol: bool,
+        enable_xtgettcap: bool,
     ) -> TerminalPane {
         let initial_pane_title =
             initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
@@ -926,6 +927,7 @@ impl TerminalPane {
             arrow_fonts,
             styled_underlines,
             explicitly_disable_keyboard_protocol,
+            enable_xtgettcap,
         );
         TerminalPane {
             frame: HashMap::new(),

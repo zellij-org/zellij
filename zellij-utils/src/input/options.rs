@@ -231,6 +231,11 @@ pub struct Options {
     /// of manipulating the command (eg. with a regex) before it gets serialized
     #[clap(long, value_parser)]
     pub post_command_discovery_hook: Option<String>,
+
+    /// Enable XTGETTCAP responses for terminal capabilities like OSC 52
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub enable_xtgettcap: Option<bool>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -324,6 +329,7 @@ impl Options {
         let enforce_https_for_localhost = other
             .enforce_https_for_localhost
             .or(self.enforce_https_for_localhost);
+        let enable_xtgettcap = other.enable_xtgettcap.or(self.enable_xtgettcap);
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or(self.post_command_discovery_hook.clone());
@@ -367,6 +373,7 @@ impl Options {
             web_server_cert,
             web_server_key,
             enforce_https_for_localhost,
+            enable_xtgettcap,
             post_command_discovery_hook,
         }
     }
@@ -441,6 +448,7 @@ impl Options {
         let enforce_https_for_localhost = other
             .enforce_https_for_localhost
             .or(self.enforce_https_for_localhost);
+        let enable_xtgettcap = merge_bool(other.enable_xtgettcap, self.enable_xtgettcap);
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or_else(|| self.post_command_discovery_hook.clone());
@@ -484,6 +492,7 @@ impl Options {
             web_server_cert,
             web_server_key,
             enforce_https_for_localhost,
+            enable_xtgettcap,
             post_command_discovery_hook,
         }
     }
