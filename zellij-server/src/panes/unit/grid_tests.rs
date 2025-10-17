@@ -1080,7 +1080,7 @@ fn xtgettcap_clipboard() {
     assert_eq!(grid.pending_messages_to_pty.len(), 1);
     let response = &grid.pending_messages_to_pty[0];
     let response_str = String::from_utf8_lossy(response);
-    assert!(response_str.starts_with("\x1bP1$rclipboard = y"));
+    assert_eq!(response_str, "\x1bP1$rclipboard = y\x1b\\");
 }
 
 #[test]

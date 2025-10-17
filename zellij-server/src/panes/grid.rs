@@ -25,6 +25,12 @@ use zellij_utils::{
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 
+// XTGETTCAP terminal capability constants (hex-encoded per xterm spec)
+const XTGETTCAP_TN: &str = "544e"; // "TN" = Terminal Name capability
+const XTGETTCAP_CO: &str = "636f"; // "co" = Columns capability
+const XTGETTCAP_LI: &str = "6c69"; // "li" = Lines capability
+const XTGETTCAP_TERMINAL_NAME: &str = "7a656c6c696a"; // "zellij" hex-encoded
+
 use vte::{Params, Perform};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
@@ -2599,9 +2605,9 @@ impl Perform for Grid {
                 Some(DcsQueryType::Xtgettcap) => {
                     // Handle hex-encoded XTGETTCAP queries (+q format)
                     let response_value = match capability_name.as_str() {
-                        "544e" => Some("7a656c6c696a".to_string()),
-                        "636f" => Some(format!("{:x}", self.width)),
-                        "6c69" => Some(format!("{:x}", self.height)),
+                        XTGETTCAP_TN => Some(XTGETTCAP_TERMINAL_NAME.to_string()),
+                        XTGETTCAP_CO => Some(format!("{:x}", self.width)),
+                        XTGETTCAP_LI => Some(format!("{:x}", self.height)),
                         _ => None,
                     };
                     
@@ -2623,13 +2629,11 @@ impl Perform for Grid {
                     };
                     
                     if let Some(value) = response_value {
-                        let mut response_message = format!("\x1bP1$r{} = {}", capability_name, value);
-                        response_message.push('\u{009c}'); // ST (String Terminator)
+                        let response_message = format!("\x1bP1$r{} = {}\x1b\\", capability_name, value);
                         self.pending_messages_to_pty
                             .push(response_message.as_bytes().to_vec());
                     } else {
-                        let mut response_message = "\x1bP0$r".to_string();
-                        response_message.push('\u{009c}'); // ST (String Terminator)
+                        let response_message = "\x1bP0$r\x1b\\".to_string();
                         self.pending_messages_to_pty
                             .push(response_message.as_bytes().to_vec());
                     }
