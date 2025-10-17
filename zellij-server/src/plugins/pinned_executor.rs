@@ -385,7 +385,7 @@ impl PinnedExecutor {
         }
     }
 
-    /// Get the number of execution threads
+    #[cfg(test)]
     pub fn thread_count(&self) -> usize {
         self.execution_threads
             .lock()

@@ -756,6 +756,7 @@ impl WasmBridge {
                         Ok(_) => {
                             let _ = senders
                                 .send_to_screen(ScreenInstruction::RequestStateUpdateForPlugins);
+                            let _ = senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(plugin_id));
                             let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
                                 plugin_ids: vec![plugin_id],
                                 done_receiving_permissions: false,

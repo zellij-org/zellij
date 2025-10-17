@@ -50,9 +50,6 @@ impl LoadingIndication {
             }
         }
     }
-    pub fn end(&mut self) {
-        self.ended = true;
-    }
     pub fn progress_animation_offset(&mut self) {
         if self.animation_offset == 3 {
             self.animation_offset = 0;
@@ -68,9 +65,6 @@ impl LoadingIndication {
     }
     pub fn override_previous_error(&mut self) {
         self.override_previous_error = true;
-    }
-    fn started_loading(&self) -> bool {
-        !self.ended
     }
 }
 
