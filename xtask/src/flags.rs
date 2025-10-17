@@ -77,8 +77,6 @@ xflags::xflags! {
             optional --quick-run
             /// Take plugins from here, skip building plugins. Passed to zellij verbatim
             optional --data-dir path: PathBuf
-            /// Enable the singlepass compiler for WASM plugins
-            optional --singlepass
             /// Disable optimizing dependencies
             optional --disable-deps-optimize
             /// Compile without web server support
@@ -204,7 +202,6 @@ pub struct Run {
 
     pub quick_run: bool,
     pub data_dir: Option<PathBuf>,
-    pub singlepass: bool,
     pub disable_deps_optimize: bool,
     pub no_web: bool,
 }

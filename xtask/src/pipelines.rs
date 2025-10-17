@@ -105,7 +105,6 @@ pub fn run(sh: &Shell, mut flags: flags::Run) -> anyhow::Result<()> {
     let err_context =
         |flags: &flags::Run| format!("failed to run pipeline 'run' with args {:?}", flags);
 
-    let singlepass = flags.singlepass.then_some(["--features", "singlepass"]);
     if flags.quick_run {
         if flags.data_dir.is_some() {
             eprintln!("cannot use '--data-dir' and '--quick-run' at the same time!");
@@ -134,7 +133,6 @@ pub fn run(sh: &Shell, mut flags: flags::Run) -> anyhow::Result<()> {
                     .args(["--package", "zellij"])
                     .arg("--no-default-features")
                     .args(["--features", features])
-                    .args(singlepass.iter().flatten())
                     .args(["--profile", profile])
                     .args(["--", "--data-dir", &format!("{}", data_dir.display())])
                     .args(&flags.args)
@@ -161,7 +159,6 @@ pub fn run(sh: &Shell, mut flags: flags::Run) -> anyhow::Result<()> {
                 {
                     Some(features) => {
                         let mut cmd = cmd!(sh, "{cargo} run")
-                            .args(singlepass.iter().flatten())
                             .args(["--no-default-features"]);
 
                         if !features.is_empty() {
@@ -177,7 +174,6 @@ pub fn run(sh: &Shell, mut flags: flags::Run) -> anyhow::Result<()> {
                     None => {
                         // Main crate doesn't have web_server_capability, run normally
                         cmd!(sh, "{cargo} run")
-                            .args(singlepass.iter().flatten())
                             .args(["--profile", profile])
                             .args(["--"])
                             .args(&flags.args)
@@ -187,7 +183,6 @@ pub fn run(sh: &Shell, mut flags: flags::Run) -> anyhow::Result<()> {
                 }
             } else {
                 cmd!(sh, "{cargo} run")
-                    .args(singlepass.iter().flatten())
                     .args(["--profile", profile])
                     .args(["--"])
                     .args(&flags.args)
