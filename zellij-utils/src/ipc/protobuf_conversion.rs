@@ -580,6 +580,7 @@ impl From<crate::input::options::Options>
                 .web_server_key
                 .map(|p| p.to_string_lossy().to_string()),
             enforce_https_for_localhost: options.enforce_https_for_localhost,
+            enable_xtgettcap: options.enable_xtgettcap,
             post_command_discovery_hook: options.post_command_discovery_hook,
         }
     }
@@ -669,6 +670,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             web_server_cert: options.web_server_cert.map(std::path::PathBuf::from),
             web_server_key: options.web_server_key.map(std::path::PathBuf::from),
             enforce_https_for_localhost: options.enforce_https_for_localhost,
+            enable_xtgettcap: options.enable_xtgettcap,
             post_command_discovery_hook: options.post_command_discovery_hook,
         })
     }

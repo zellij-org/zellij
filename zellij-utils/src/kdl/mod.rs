@@ -2480,6 +2480,8 @@ impl Options {
         let post_command_discovery_hook =
             kdl_property_first_arg_as_string_or_error!(kdl_options, "post_command_discovery_hook")
                 .map(|(hook, _entry)| hook.to_string());
+        let enable_xtgettcap = kdl_property_first_arg_as_bool_or_error!(kdl_options, "enable_xtgettcap")
+            .map(|(v, _)| v);
 
         Ok(Options {
             simplified_ui,
@@ -2520,6 +2522,7 @@ impl Options {
             web_server_cert,
             web_server_key,
             enforce_https_for_localhost,
+            enable_xtgettcap,
             post_command_discovery_hook,
         })
     }

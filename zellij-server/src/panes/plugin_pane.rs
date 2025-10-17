@@ -64,6 +64,7 @@ macro_rules! get_or_create_grid {
                 $self.arrow_fonts,
                 $self.styled_underlines,
                 explicitly_disable_kitty_keyboard_protocol,
+                $self.enable_xtgettcap,
             );
             grid.hide_cursor();
             grid
@@ -101,6 +102,7 @@ pub(crate) struct PluginPane {
     debug: bool,
     arrow_fonts: bool,
     styled_underlines: bool,
+    enable_xtgettcap: bool,
     should_be_suppressed: bool,
     text_being_pasted: Option<Vec<u8>>,
     supports_mouse_selection: bool,
@@ -124,6 +126,7 @@ impl PluginPane {
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
+        enable_xtgettcap: bool,
     ) -> Self {
         let loading_indication = LoadingIndication::new(title.clone()).with_colors(style.colors);
         let initial_loading_message = loading_indication.to_string();
@@ -157,6 +160,7 @@ impl PluginPane {
             debug,
             arrow_fonts,
             styled_underlines,
+            enable_xtgettcap,
             should_be_suppressed: false,
             text_being_pasted: None,
             supports_mouse_selection: false,

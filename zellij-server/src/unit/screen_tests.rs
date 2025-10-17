@@ -90,6 +90,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        false,
     );
     let snapshots: Vec<(Option<(usize, usize)>, String)> = all_events
         .filter_map(|server_instruction| {
@@ -304,6 +305,7 @@ fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
         advanced_mouse_actions,
         web_server_ip,
         web_server_port,
+        false,
     );
     screen
 }

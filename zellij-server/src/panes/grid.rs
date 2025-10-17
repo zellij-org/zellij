@@ -25,6 +25,12 @@ use zellij_utils::{
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 
+// XTGETTCAP terminal capability constants (hex-encoded per xterm spec)
+const XTGETTCAP_TN: &str = "544e"; // "TN" = Terminal Name capability
+const XTGETTCAP_CO: &str = "636f"; // "co" = Columns capability
+const XTGETTCAP_LI: &str = "6c69"; // "li" = Lines capability
+const XTGETTCAP_TERMINAL_NAME: &str = "7a656c6c696a"; // "zellij" hex-encoded
+
 use vte::{Params, Perform};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
@@ -312,6 +318,9 @@ fn utf8_mouse_coordinates(column: usize, line: isize) -> Vec<u8> {
 
 #[derive(Clone)]
 pub struct Grid {
+    dcs_buffer: Option<String>,
+    dcs_query_type: Option<DcsQueryType>,
+    enable_xtgettcap: bool,
     pub(crate) lines_above: VecDeque<Row>,
     pub(crate) viewport: Vec<Row>,
     pub(crate) lines_below: Vec<Row>,
@@ -367,6 +376,12 @@ pub struct Grid {
 }
 
 const CLICK_TIME_THRESHOLD: u128 = 400; // Doherty Threshold
+
+#[derive(Clone, Debug)]
+enum DcsQueryType {
+    Xtgettcap, // +q format (hex-encoded capability names)
+    Decrqss,   // $q format (plain text capability names)
+}
 
 #[derive(Clone, Debug, Default)]
 struct Click {
@@ -493,14 +508,19 @@ impl Grid {
         arrow_fonts: bool,
         styled_underlines: bool,
         explicitly_disable_kitty_keyboard_protocol: bool,
+        enable_xtgettcap: bool,
     ) -> Self {
         let sixel_grid = SixelGrid::new(character_cell_size.clone(), sixel_image_store);
+
         // make sure this is initialized as it is used internally
         // if it was already initialized (which should happen normally unless this is a test or
         // something changed since this comment was written), we get an Error which we ignore
         // I don't know why this needs to be a OneCell, but whatevs
         let _ = SCROLL_BUFFER_SIZE.set(DEFAULT_SCROLL_BUFFER_SIZE);
         Grid {
+            dcs_buffer: None,
+            dcs_query_type: None,
+            enable_xtgettcap,
             lines_above: VecDeque::new(),
             viewport: vec![Row::new().canonical()],
             lines_below: vec![],
@@ -2523,7 +2543,17 @@ impl Perform for Grid {
     }
 
     fn hook(&mut self, params: &Params, intermediates: &[u8], _ignore: bool, c: char) {
-        if c == 'q' {
+        if c == 'q' && intermediates == &[b'+'] {
+            if self.enable_xtgettcap {
+                self.dcs_buffer = Some(String::new());
+                self.dcs_query_type = Some(DcsQueryType::Xtgettcap);
+            }
+        } else if c == 'q' && intermediates == &[b'$'] {
+            if self.enable_xtgettcap {
+                self.dcs_buffer = Some(String::new());
+                self.dcs_query_type = Some(DcsQueryType::Decrqss);
+            }
+        } else if c == 'q' {
             // we only process sixel images if we know the pixel size of each character cell,
             // otherwise we can't reliably display them
             if self.current_cursor_pixel_coordinates().is_some() {
@@ -2553,6 +2583,8 @@ impl Perform for Grid {
             self.should_render = false;
         } else if let Some(ui_component_bytes) = self.ui_component_bytes.as_mut() {
             ui_component_bytes.push(byte);
+        } else if let Some(dcs_buffer) = self.dcs_buffer.as_mut() {
+            dcs_buffer.push(byte as char);
         }
     }
 
@@ -2566,6 +2598,51 @@ impl Perform for Grid {
             UiComponentParser::new(self, style, arrow_fonts)
                 .parse(component_bytes.collect())
                 .non_fatal();
+        } else if let Some(capability_name) = self.dcs_buffer.take() {
+            let query_type = self.dcs_query_type.take();
+            
+            match query_type {
+                Some(DcsQueryType::Xtgettcap) => {
+                    // Handle hex-encoded XTGETTCAP queries (+q format)
+                    let capability_name = capability_name.trim();
+                    let response_value = match capability_name {
+                        XTGETTCAP_TN => Some(XTGETTCAP_TERMINAL_NAME.to_string()),
+                        XTGETTCAP_CO => Some(format!("{:x}", self.width)),
+                        XTGETTCAP_LI => Some(format!("{:x}", self.height)),
+                        _ => None,
+                    };
+                    
+                    let response_message = if let Some(value) = response_value {
+                        format!("\x1bP1+r{}={}\x1b\\", capability_name, value)
+                    } else {
+                        format!("\x1bP0+r{}\x1b\\", capability_name)
+                    };
+                    
+                    self.pending_messages_to_pty
+                        .push(response_message.as_bytes().to_vec());
+                }
+                Some(DcsQueryType::Decrqss) => {
+                    // Handle plain text DECRQSS queries ($q format)
+                    let capability_name = capability_name.trim();
+                    let response_value = match capability_name {
+                        "clipboard" => Some("y".to_string()),
+                        _ => None,
+                    };
+                    
+                    if let Some(value) = response_value {
+                        let response_message = format!("\x1bP1$r{} = {}\x1b\\", capability_name, value);
+                        self.pending_messages_to_pty
+                            .push(response_message.as_bytes().to_vec());
+                    } else {
+                        let response_message = "\x1bP0$r\x1b\\".to_string();
+                        self.pending_messages_to_pty
+                            .push(response_message.as_bytes().to_vec());
+                    }
+                }
+                None => {
+                    // No query type set, ignore
+                }
+            }
         }
         self.mark_for_rerender();
     }

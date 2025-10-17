@@ -265,6 +265,7 @@ pub(crate) struct Tab {
     arrow_fonts: bool,
     styled_underlines: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
+    enable_xtgettcap: bool,
     web_clients_allowed: bool,
     web_sharing: WebSharing,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
@@ -694,6 +695,7 @@ impl Tab {
         arrow_fonts: bool,
         styled_underlines: bool,
         explicitly_disable_kitty_keyboard_protocol: bool,
+        enable_xtgettcap: bool,
         default_editor: Option<PathBuf>,
         web_clients_allowed: bool,
         web_sharing: WebSharing,
@@ -795,6 +797,7 @@ impl Tab {
             arrow_fonts,
             styled_underlines,
             explicitly_disable_kitty_keyboard_protocol,
+            enable_xtgettcap,
             default_editor,
             web_clients_allowed,
             web_sharing,
@@ -839,6 +842,7 @@ impl Tab {
             self.arrow_fonts,
             self.styled_underlines,
             self.explicitly_disable_kitty_keyboard_protocol,
+            self.enable_xtgettcap,
         )
         .apply_layout(
             layout,
@@ -909,6 +913,7 @@ impl Tab {
                 self.arrow_fonts,
                 self.styled_underlines,
                 self.explicitly_disable_kitty_keyboard_protocol,
+                self.enable_xtgettcap,
             )
             .apply_floating_panes_layout_to_existing_panes(&layout_candidate)
             .non_fatal();
@@ -947,6 +952,7 @@ impl Tab {
                 self.arrow_fonts,
                 self.styled_underlines,
                 self.explicitly_disable_kitty_keyboard_protocol,
+                self.enable_xtgettcap,
             )
             .apply_tiled_panes_layout_to_existing_panes(&layout_candidate);
             if application_res.is_err() {
@@ -1366,6 +1372,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    self.enable_xtgettcap,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1390,6 +1397,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.enable_xtgettcap,
                 )) as Box<dyn Pane>
             },
         };
@@ -1467,6 +1475,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    self.enable_xtgettcap,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1491,6 +1500,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.enable_xtgettcap,
                 )) as Box<dyn Pane>
             },
         };
@@ -1558,6 +1568,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    self.enable_xtgettcap,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1582,6 +1593,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.enable_xtgettcap,
                 )) as Box<dyn Pane>
             },
         };
@@ -1690,6 +1702,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    self.enable_xtgettcap,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1714,6 +1727,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.enable_xtgettcap,
                 )) as Box<dyn Pane>
             },
         };
@@ -1893,6 +1907,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    self.enable_xtgettcap,
                 );
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
                     self.floating_panes
@@ -1956,6 +1971,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.enable_xtgettcap,
                 );
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
                     self.floating_panes
@@ -2055,6 +2071,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    self.enable_xtgettcap,
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -2115,6 +2132,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    self.enable_xtgettcap,
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
@@ -5371,6 +5389,7 @@ impl Tab {
             self.arrow_fonts,
             self.styled_underlines,
             self.explicitly_disable_kitty_keyboard_protocol,
+            self.enable_xtgettcap,
         );
         new_pane.update_name("EDITING SCROLLBACK"); // we do this here and not in the
                                                     // constructor so it won't be overrided
