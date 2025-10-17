@@ -2604,7 +2604,8 @@ impl Perform for Grid {
             match query_type {
                 Some(DcsQueryType::Xtgettcap) => {
                     // Handle hex-encoded XTGETTCAP queries (+q format)
-                    let response_value = match capability_name.as_str() {
+                    let capability_name = capability_name.trim();
+                    let response_value = match capability_name {
                         XTGETTCAP_TN => Some(XTGETTCAP_TERMINAL_NAME.to_string()),
                         XTGETTCAP_CO => Some(format!("{:x}", self.width)),
                         XTGETTCAP_LI => Some(format!("{:x}", self.height)),
