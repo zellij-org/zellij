@@ -2687,9 +2687,7 @@ pub fn wasi_write_object(plugin_env: &PluginEnv, object: &(impl Serialize + ?Siz
 
 pub fn wasi_read_bytes(plugin_env: &PluginEnv) -> Result<Vec<u8>> {
     wasi_read_string(plugin_env)
-        .and_then(|string| {
-            serde_json::from_str(&string).map_err(anyError::new)
-        })
+        .and_then(|string| serde_json::from_str(&string).map_err(anyError::new))
         .with_context(|| format!("failed to deserialize object from WASI env"))
 }
 

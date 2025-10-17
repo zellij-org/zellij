@@ -2,9 +2,9 @@ use crate::plugins::plugin_map::{
     PluginEnv, PluginMap, RunningPlugin, VecDequeInputStream, WriteOutputStream,
 };
 use crate::plugins::plugin_worker::{plugin_worker, RunningWorker};
+use crate::plugins::wasm_bridge::{LoadingContext, PluginCache};
 use crate::plugins::zellij_exports::{wasi_write_object, zellij_exports};
 use crate::plugins::PluginId;
-use crate::plugins::wasm_bridge::{LoadingContext, PluginCache};
 use prost::Message;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -36,10 +36,7 @@ use zellij_utils::{
     pane_size::Size,
 };
 
-fn create_plugin_fs_entries(
-    plugin_own_data_dir: &PathBuf,
-    plugin_own_cache_dir: &PathBuf,
-) {
+fn create_plugin_fs_entries(plugin_own_data_dir: &PathBuf, plugin_own_cache_dir: &PathBuf) {
     // Create filesystem entries mounted into WASM.
     // We create them here to get expressive error messages in case they fail.
     if let Err(e) = fs::create_dir_all(&plugin_own_data_dir) {
@@ -79,8 +76,6 @@ pub struct PluginLoader {
     plugin_cache: PluginCache,
     plugin_map: Arc<Mutex<PluginMap>>,
     connected_clients: Option<Arc<Mutex<Vec<ClientId>>>>,
-
-
 }
 
 impl PluginLoader {
@@ -92,10 +87,13 @@ impl PluginLoader {
         default_layout: Box<Layout>,
         plugin_cache: PluginCache,
         plugin_map: Arc<Mutex<PluginMap>>,
-        connected_clients: Arc<Mutex<Vec<ClientId>>>
+        connected_clients: Arc<Mutex<Vec<ClientId>>>,
     ) -> Self {
         let loading_indication = LoadingIndication::new("".into());
-        create_plugin_fs_entries(&loading_context.plugin_own_data_dir, &loading_context.plugin_own_cache_dir);
+        create_plugin_fs_entries(
+            &loading_context.plugin_own_data_dir,
+            &loading_context.plugin_own_cache_dir,
+        );
         Self {
             plugin_id: loading_context.plugin_id,
             client_id: loading_context.client_id,
@@ -144,9 +142,7 @@ impl PluginLoader {
         self.clone_instance_for_other_clients()?;
         Ok(())
     }
-    fn interpret_module(
-        &mut self,
-    ) -> Result<Module> {
+    fn interpret_module(&mut self) -> Result<Module> {
         self.loading_indication.override_previous_error();
         let wasm_bytes = self.plugin_config.resolve_wasm_bytes(&self.plugin_dir)?;
         let timer = std::time::Instant::now();
@@ -158,15 +154,14 @@ impl PluginLoader {
         );
         Ok(module)
     }
-    fn load_module_from_memory(
-        &mut self,
-    ) -> Result<Module> {
+    fn load_module_from_memory(&mut self) -> Result<Module> {
         log::info!("attempting to load module from memory...");
-        let module = self.plugin_cache
+        let module = self
+            .plugin_cache
             .lock()
             .unwrap()
             .remove(&self.plugin_config.path) // TODO: do we still bring it back later?
-                                                         // maybe we can forgo this dance?
+            // maybe we can forgo this dance?
             .ok_or(anyhow!("Plugin is not stored in memory"))?;
         log::info!("found in memory!");
         Ok(module)
@@ -317,14 +312,13 @@ impl PluginLoader {
             .insert(plugin_path.clone(), module);
         Ok((store, instance))
     }
-    pub fn clone_instance_for_other_clients(
-        &mut self,
-    ) -> Result<()> {
+    pub fn clone_instance_for_other_clients(&mut self) -> Result<()> {
         let Some(connected_clients) = self.connected_clients.as_ref() else {
             log::info!("no other clients");
             return Ok(());
         };
-        let connected_clients: Vec<ClientId> = connected_clients.lock().unwrap().iter().copied().collect();
+        let connected_clients: Vec<ClientId> =
+            connected_clients.lock().unwrap().iter().copied().collect();
         if !connected_clients.is_empty() {
             for client_id in connected_clients {
                 if client_id == self.client_id {
@@ -350,7 +344,8 @@ impl PluginLoader {
                 plugin_id
             )
         };
-        let module = self.plugin_cache
+        let module = self
+            .plugin_cache
             .lock()
             .unwrap()
             .get(&self.plugin_config.path)
@@ -359,10 +354,7 @@ impl PluginLoader {
         let (store, instance) = self.create_plugin_instance_env(&module)?;
         Ok((store, instance))
     }
-    fn create_plugin_instance_env(
-        &self,
-        module: &Module
-    ) -> Result<(Store<PluginEnv>, Instance)> {
+    fn create_plugin_instance_env(&self, module: &Module) -> Result<(Store<PluginEnv>, Instance)> {
         let err_context = || {
             format!(
                 "Failed to create instance, plugin env and subscriptions for plugin {}",

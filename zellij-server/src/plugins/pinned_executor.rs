@@ -1,14 +1,14 @@
+use crate::plugins::plugin_map::PluginMap;
+use crate::plugins::wasm_bridge::PluginCache;
+use crate::ClientId;
+use crate::ThreadSenders;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
-use crate::ThreadSenders;
-use crate::plugins::plugin_map::PluginMap;
-use crate::ClientId;
-use zellij_utils::input::layout::Layout;
-use crate::plugins::wasm_bridge::PluginCache;
 use wasmi::Engine;
+use zellij_utils::input::layout::Layout;
 
 /// A dynamic thread pool that pins jobs to specific threads based on plugin_id
 /// Starts with 1 thread and expands when threads are busy, shrinks when plugins unload
@@ -39,13 +39,25 @@ pub struct PinnedExecutor {
 
 struct ExecutionThread {
     sender: Sender<Job>,
-    jobs_in_flight: Arc<AtomicUsize>,  // Busy state tracking
+    jobs_in_flight: Arc<AtomicUsize>, // Busy state tracking
 }
 
 enum Job {
     // Work(Box<dyn FnOnce() + Send + 'static>),
-    Work(Box<dyn FnOnce(ThreadSenders, Arc<Mutex<PluginMap>>, Arc<Mutex<Vec<ClientId>>>, Box<Layout>, PluginCache, Engine) + Send + 'static>),
-    Shutdown,  // Signal to exit the worker loop
+    Work(
+        Box<
+            dyn FnOnce(
+                    ThreadSenders,
+                    Arc<Mutex<PluginMap>>,
+                    Arc<Mutex<Vec<ClientId>>>,
+                    Box<Layout>,
+                    PluginCache,
+                    Engine,
+                ) + Send
+                + 'static,
+        >,
+    ),
+    Shutdown, // Signal to exit the worker loop
 }
 
 impl PinnedExecutor {
@@ -60,23 +72,31 @@ impl PinnedExecutor {
         plugin_cache: &PluginCache,
         engine: &Engine,
     ) -> Self {
-        let max_threads = max_threads.max(1);  // At least 1
+        let max_threads = max_threads.max(1); // At least 1
 
         // Start with exactly 1 thread (thread index 0)
-        let thread_0 = Self::spawn_thread(0, senders.clone(), plugin_map.clone(), connected_clients.clone(), default_layout.clone(), plugin_cache.clone(), engine.clone());
+        let thread_0 = Self::spawn_thread(
+            0,
+            senders.clone(),
+            plugin_map.clone(),
+            connected_clients.clone(),
+            default_layout.clone(),
+            plugin_cache.clone(),
+            engine.clone(),
+        );
 
         PinnedExecutor {
             execution_threads: Arc::new(Mutex::new(vec![Some(thread_0)])),
             plugin_assignments: Arc::new(Mutex::new(HashMap::new())),
             thread_plugins: Arc::new(Mutex::new(HashMap::new())),
-            next_thread_idx: AtomicUsize::new(1),  // Next will be index 1
+            next_thread_idx: AtomicUsize::new(1), // Next will be index 1
             max_threads,
             senders: senders.clone(),
             plugin_map: plugin_map.clone(),
             connected_clients: connected_clients.clone(),
             default_layout: default_layout.clone(),
             plugin_cache: plugin_cache.clone(),
-            engine: engine.clone()
+            engine: engine.clone(),
         }
     }
 
@@ -116,7 +136,7 @@ impl PinnedExecutor {
                                     engine.clone(),
                                 );
                                 jobs_in_flight_clone.fetch_sub(1, Ordering::SeqCst);
-                            }
+                            },
                             Job::Shutdown => break,
                         }
                     }
@@ -146,7 +166,7 @@ impl PinnedExecutor {
         let threads = self.execution_threads.lock().unwrap();
 
         // Find a non-busy thread with assigned plugins (prefer reusing threads)
-        let mut best_thread: Option<(usize, usize)> = None;  // (index, load)
+        let mut best_thread: Option<(usize, usize)> = None; // (index, load)
 
         for (idx, thread_opt) in threads.iter().enumerate() {
             if let Some(thread) = thread_opt {
@@ -168,17 +188,16 @@ impl PinnedExecutor {
             if threads.len() < self.max_threads {
                 // Spawn a new thread
                 let new_idx = self.next_thread_idx.fetch_add(1, Ordering::SeqCst);
-                drop(threads);  // Release lock before spawning
+                drop(threads); // Release lock before spawning
                 self.add_thread(new_idx);
                 new_idx
             } else {
                 // At max capacity, assign to least-loaded thread
-                threads.iter()
+                threads
+                    .iter()
                     .enumerate()
                     .filter_map(|(idx, t)| t.as_ref().map(|_| idx))
-                    .min_by_key(|&idx| {
-                        thread_plugins.get(&idx).map(|s| s.len()).unwrap_or(0)
-                    })
+                    .min_by_key(|&idx| thread_plugins.get(&idx).map(|s| s.len()).unwrap_or(0))
                     .unwrap_or_else(|| {
                         log::error!("Failed to find free thread to run the plugin!");
                         0 // this is a misconfiguration, but we don't want to crash the app
@@ -189,14 +208,25 @@ impl PinnedExecutor {
 
         // Update mappings
         assignments.insert(plugin_id, thread_idx);
-        thread_plugins.entry(thread_idx).or_insert_with(HashSet::new).insert(plugin_id);
+        thread_plugins
+            .entry(thread_idx)
+            .or_insert_with(HashSet::new)
+            .insert(plugin_id);
 
         thread_idx
     }
 
     fn add_thread(&self, thread_idx: usize) {
         let mut threads = self.execution_threads.lock().unwrap();
-        let new_thread = Self::spawn_thread(thread_idx, self.senders.clone(), self.plugin_map.clone(), self.connected_clients.clone(), self.default_layout.clone(), self.plugin_cache.clone(), self.engine.clone());
+        let new_thread = Self::spawn_thread(
+            thread_idx,
+            self.senders.clone(),
+            self.plugin_map.clone(),
+            self.connected_clients.clone(),
+            self.default_layout.clone(),
+            self.plugin_cache.clone(),
+            self.engine.clone(),
+        );
 
         // Extend vector if needed
         while threads.len() <= thread_idx {
@@ -209,7 +239,15 @@ impl PinnedExecutor {
     pub fn execute_for_plugin<F>(&self, plugin_id: u32, f: F)
     where
         // F: FnOnce() + Send + 'static,
-        F: FnOnce(ThreadSenders, Arc<Mutex<PluginMap>>, Arc<Mutex<Vec<ClientId>>>, Box<Layout>, PluginCache, Engine) + Send + 'static,
+        F: FnOnce(
+                ThreadSenders,
+                Arc<Mutex<PluginMap>>,
+                Arc<Mutex<Vec<ClientId>>>,
+                Box<Layout>,
+                PluginCache,
+                Engine,
+            ) + Send
+            + 'static,
     {
         // Look up assigned thread
         let thread_idx = {
@@ -246,7 +284,15 @@ impl PinnedExecutor {
     pub fn execute_plugin_load<F>(&self, plugin_id: u32, f: F)
     where
         // F: FnOnce() + Send + 'static,
-        F: FnOnce(ThreadSenders, Arc<Mutex<PluginMap>>, Arc<Mutex<Vec<ClientId>>>, Box<Layout>, PluginCache, Engine) + Send + 'static,
+        F: FnOnce(
+                ThreadSenders,
+                Arc<Mutex<PluginMap>>,
+                Arc<Mutex<Vec<ClientId>>>,
+                Box<Layout>,
+                PluginCache,
+                Engine,
+            ) + Send
+            + 'static,
     {
         // Register plugin and assign to a thread
         self.register_plugin(plugin_id);
@@ -258,17 +304,39 @@ impl PinnedExecutor {
     /// Unload a plugin: execute cleanup work, then unregister and potentially shrink pool
     /// This combines cleanup execution + unregistration for plugin unloading
     /// Requires Arc<Self> so we can clone it into the closure for unregistration
-    pub fn execute_plugin_unload(self: &Arc<Self>, plugin_id: u32, f: impl FnOnce(ThreadSenders, Arc<Mutex<PluginMap>>, Arc<Mutex<Vec<ClientId>>>, Box<Layout>, PluginCache, Engine) + Send + 'static)
-        // FnOnce() + Send + 'static)
+    pub fn execute_plugin_unload(
+        self: &Arc<Self>,
+        plugin_id: u32,
+        f: impl FnOnce(
+                ThreadSenders,
+                Arc<Mutex<PluginMap>>,
+                Arc<Mutex<Vec<ClientId>>>,
+                Box<Layout>,
+                PluginCache,
+                Engine,
+            ) + Send
+            + 'static,
+    )
+    // FnOnce() + Send + 'static)
     {
         let executor = self.clone();
-        self.execute_for_plugin(plugin_id, move |senders, plugin_map, connected_clients, default_layout, plugin_cache, engine| {
-            // Execute the cleanup work
-            f(senders, plugin_map, connected_clients, default_layout, plugin_cache, engine);
+        self.execute_for_plugin(
+            plugin_id,
+            move |senders, plugin_map, connected_clients, default_layout, plugin_cache, engine| {
+                // Execute the cleanup work
+                f(
+                    senders,
+                    plugin_map,
+                    connected_clients,
+                    default_layout,
+                    plugin_cache,
+                    engine,
+                );
 
-            // Unregister plugin and potentially shrink the pool
-            executor.unregister_plugin(plugin_id);
-        });
+                // Unregister plugin and potentially shrink the pool
+                executor.unregister_plugin(plugin_id);
+            },
+        );
     }
 
     /// Unregister a plugin and potentially shrink the pool
@@ -295,12 +363,14 @@ impl PinnedExecutor {
         let thread_plugins = self.thread_plugins.lock().unwrap();
 
         // Find threads with no assigned plugins (except thread 0, always keep it)
-        let threads_to_remove: Vec<usize> = threads.iter()
+        let threads_to_remove: Vec<usize> = threads
+            .iter()
             .enumerate()
-            .skip(1)  // Never remove thread 0
+            .skip(1) // Never remove thread 0
             .filter_map(|(idx, thread_opt)| {
                 if thread_opt.is_some() {
-                    let has_plugins = thread_plugins.get(&idx)
+                    let has_plugins = thread_plugins
+                        .get(&idx)
                         .map(|s| !s.is_empty())
                         .unwrap_or(false);
                     if !has_plugins {
@@ -319,14 +389,15 @@ impl PinnedExecutor {
             if let Some(thread) = threads[idx].take() {
                 // Send shutdown signal
                 let _ = thread.sender.send(Job::Shutdown);
-
             }
         }
     }
 
     /// Get the number of execution threads
     pub fn thread_count(&self) -> usize {
-        self.execution_threads.lock().unwrap()
+        self.execution_threads
+            .lock()
+            .unwrap()
             .iter()
             .filter(|t| t.is_some())
             .count()
@@ -343,7 +414,6 @@ impl Drop for PinnedExecutor {
                 let _ = thread.sender.send(Job::Shutdown);
             }
         }
-
     }
 }
 
@@ -351,8 +421,8 @@ impl Drop for PinnedExecutor {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::{Arc, Barrier, Mutex};
     use std::sync::mpsc::{channel, Sender};
+    use std::sync::{Arc, Barrier, Mutex};
     use std::thread;
     use std::time::Duration;
 
@@ -365,9 +435,9 @@ mod tests {
         PluginCache,
         Engine,
     ) {
-        use zellij_utils::channels::{self, SenderWithContext};
         use std::path::PathBuf;
         use wasmi::Module;
+        use zellij_utils::channels::{self, SenderWithContext};
 
         let (send_to_pty, _receive_pty) = channels::bounded(1);
         let (send_to_screen, _receive_screen) = channels::bounded(1);
@@ -398,11 +468,20 @@ mod tests {
 
         let layout = Box::new(Layout::default());
 
-        let plugin_cache = Arc::new(Mutex::new(std::collections::HashMap::<PathBuf, Module>::new()));
+        let plugin_cache = Arc::new(Mutex::new(
+            std::collections::HashMap::<PathBuf, Module>::new(),
+        ));
 
         let engine = Engine::default();
 
-        (senders, plugin_map, connected_clients, layout, plugin_cache, engine)
+        (
+            senders,
+            plugin_map,
+            connected_clients,
+            layout,
+            plugin_cache,
+            engine,
+        )
     }
 
     fn create_test_executor(max_threads: usize) -> Arc<PinnedExecutor> {
@@ -419,7 +498,17 @@ mod tests {
     }
 
     // Helper to create a job that signals completion via channel
-    fn make_signaling_job(tx: Sender<()>) -> impl FnOnce(ThreadSenders, Arc<Mutex<PluginMap>>, Arc<Mutex<Vec<ClientId>>>, Box<Layout>, PluginCache, Engine) + Send + 'static {
+    fn make_signaling_job(
+        tx: Sender<()>,
+    ) -> impl FnOnce(
+        ThreadSenders,
+        Arc<Mutex<PluginMap>>,
+        Arc<Mutex<Vec<ClientId>>>,
+        Box<Layout>,
+        PluginCache,
+        Engine,
+    ) + Send
+           + 'static {
         move |_senders, _plugin_map, _clients, _layout, _cache, _engine| {
             tx.send(()).unwrap();
         }
@@ -432,7 +521,8 @@ mod tests {
             let name = thread::current().name().unwrap().to_string();
             tx.send(name).unwrap();
         });
-        rx.recv_timeout(Duration::from_secs(5)).expect("Thread name should be received")
+        rx.recv_timeout(Duration::from_secs(5))
+            .expect("Thread name should be received")
     }
 
     #[test]
@@ -444,7 +534,11 @@ mod tests {
     #[test]
     fn test_new_respects_min_threads() {
         let executor = create_test_executor(0);
-        assert_eq!(executor.thread_count(), 1, "Executor should enforce minimum of 1 thread");
+        assert_eq!(
+            executor.thread_count(),
+            1,
+            "Executor should enforce minimum of 1 thread"
+        );
     }
 
     #[test]
@@ -460,7 +554,10 @@ mod tests {
         let thread_idx1 = executor.register_plugin(1);
         let thread_idx2 = executor.register_plugin(2);
         assert_eq!(thread_idx1, 0);
-        assert_eq!(thread_idx2, 0, "Second plugin should share thread 0 when idle");
+        assert_eq!(
+            thread_idx2, 0,
+            "Second plugin should share thread 0 when idle"
+        );
     }
 
     #[test]
@@ -483,7 +580,10 @@ mod tests {
 
         // Register plugin 2 while thread 0 is busy
         let thread_idx2 = executor.register_plugin(2);
-        assert_eq!(thread_idx2, 1, "Plugin 2 should get new thread 1 when thread 0 is busy");
+        assert_eq!(
+            thread_idx2, 1,
+            "Plugin 2 should get new thread 1 when thread 0 is busy"
+        );
 
         // Verify thread count
         assert_eq!(executor.thread_count(), 2);
@@ -520,7 +620,10 @@ mod tests {
 
         // Register plugin 3 when all threads busy
         let thread_idx3 = executor.register_plugin(3);
-        assert!(thread_idx3 == 0 || thread_idx3 == 1, "Plugin 3 should be assigned to existing thread");
+        assert!(
+            thread_idx3 == 0 || thread_idx3 == 1,
+            "Plugin 3 should be assigned to existing thread"
+        );
         assert_eq!(executor.thread_count(), 2, "Should not exceed max_threads");
 
         // Release barriers
@@ -533,7 +636,10 @@ mod tests {
         let executor = create_test_executor(4);
         let thread_idx1 = executor.register_plugin(1);
         let thread_idx2 = executor.register_plugin(1);
-        assert_eq!(thread_idx1, thread_idx2, "Duplicate registration should return same thread");
+        assert_eq!(
+            thread_idx1, thread_idx2,
+            "Duplicate registration should return same thread"
+        );
     }
 
     #[test]
@@ -564,7 +670,10 @@ mod tests {
         // Register plugin 5 when both threads idle
         // Thread 0 has 3 plugins, thread 1 has 1 plugin
         let thread_idx5 = executor.register_plugin(5);
-        assert_eq!(thread_idx5, 1, "Plugin 5 should be assigned to less loaded thread 1");
+        assert_eq!(
+            thread_idx5, 1,
+            "Plugin 5 should be assigned to less loaded thread 1"
+        );
     }
 
     #[test]
@@ -607,7 +716,10 @@ mod tests {
 
         // Try to receive with timeout - should timeout
         let result = rx.recv_timeout(Duration::from_millis(100));
-        assert!(result.is_err(), "Job for unregistered plugin should not execute");
+        assert!(
+            result.is_err(),
+            "Job for unregistered plugin should not execute"
+        );
     }
 
     #[test]
@@ -630,10 +742,15 @@ mod tests {
 
         // Wait for all 3 jobs to complete
         for _ in 0..3 {
-            rx.recv_timeout(Duration::from_secs(5)).expect("Job should complete");
+            rx.recv_timeout(Duration::from_secs(5))
+                .expect("Job should complete");
         }
 
-        assert_eq!(*order.lock().unwrap(), vec![1, 2, 3], "Jobs should execute in order");
+        assert_eq!(
+            *order.lock().unwrap(),
+            vec![1, 2, 3],
+            "Jobs should execute in order"
+        );
     }
 
     #[test]
@@ -703,7 +820,8 @@ mod tests {
         executor.execute_plugin_load(1, make_signaling_job(tx));
 
         // Wait for load to complete
-        rx.recv_timeout(Duration::from_secs(5)).expect("Load should complete");
+        rx.recv_timeout(Duration::from_secs(5))
+            .expect("Load should complete");
 
         // Verify plugin is registered
         let thread_idx = executor.register_plugin(1);
@@ -717,7 +835,9 @@ mod tests {
         // Load plugin
         let (tx_load, rx_load) = channel();
         executor.execute_plugin_load(1, make_signaling_job(tx_load));
-        rx_load.recv_timeout(Duration::from_secs(5)).expect("Load should complete");
+        rx_load
+            .recv_timeout(Duration::from_secs(5))
+            .expect("Load should complete");
 
         // Unload plugin with cleanup
         let counter = Arc::new(AtomicUsize::new(0));
@@ -730,7 +850,9 @@ mod tests {
         });
 
         // Wait for unload to complete
-        rx_unload.recv_timeout(Duration::from_secs(5)).expect("Unload should complete");
+        rx_unload
+            .recv_timeout(Duration::from_secs(5))
+            .expect("Unload should complete");
 
         // Verify cleanup ran
         assert_eq!(counter.load(Ordering::SeqCst), 1, "Cleanup should have run");
@@ -750,7 +872,9 @@ mod tests {
         // Load plugin
         let (tx_load, rx_load) = channel();
         executor.execute_plugin_load(1, make_signaling_job(tx_load));
-        rx_load.recv_timeout(Duration::from_secs(5)).expect("Load should complete");
+        rx_load
+            .recv_timeout(Duration::from_secs(5))
+            .expect("Load should complete");
 
         // Unload with sequence tracking
         let sequence = Arc::new(Mutex::new(Vec::new()));
@@ -763,7 +887,9 @@ mod tests {
         });
 
         // Wait for unload to complete
-        rx_unload.recv_timeout(Duration::from_secs(5)).expect("Unload should complete");
+        rx_unload
+            .recv_timeout(Duration::from_secs(5))
+            .expect("Unload should complete");
         sequence.lock().unwrap().push("after");
 
         assert_eq!(*sequence.lock().unwrap(), vec!["cleanup", "after"]);
@@ -776,7 +902,8 @@ mod tests {
         // Load plugin 1 to thread 0
         let (tx1, rx1) = channel();
         executor.execute_plugin_load(1, make_signaling_job(tx1));
-        rx1.recv_timeout(Duration::from_secs(5)).expect("Load should complete");
+        rx1.recv_timeout(Duration::from_secs(5))
+            .expect("Load should complete");
 
         // Make thread 0 busy to force plugin 2 to thread 1
         let barrier = Arc::new(Barrier::new(2));
@@ -789,7 +916,8 @@ mod tests {
         // Load plugin 2 to thread 1
         let (tx2, rx2) = channel();
         executor.execute_plugin_load(2, make_signaling_job(tx2));
-        rx2.recv_timeout(Duration::from_secs(5)).expect("Load should complete");
+        rx2.recv_timeout(Duration::from_secs(5))
+            .expect("Load should complete");
 
         // Release barrier
         barrier.wait();
@@ -801,14 +929,19 @@ mod tests {
         // Unload plugin 2
         let (tx_unload2, rx_unload2) = channel();
         executor.execute_plugin_unload(2, make_signaling_job(tx_unload2));
-        rx_unload2.recv_timeout(Duration::from_secs(5)).expect("Unload should complete");
+        rx_unload2
+            .recv_timeout(Duration::from_secs(5))
+            .expect("Unload should complete");
 
         // Give shrinking a moment to complete
         thread::sleep(Duration::from_millis(100));
 
         // Thread count should decrease after unloading
         let thread_count_after = executor.thread_count();
-        assert!(thread_count_after < thread_count_before, "Idle threads should be removed");
+        assert!(
+            thread_count_after < thread_count_before,
+            "Idle threads should be removed"
+        );
         assert!(thread_count_after >= 1, "Thread 0 should remain");
     }
 
@@ -819,17 +952,24 @@ mod tests {
         // Load a plugin and then unload it
         let (tx_load, rx_load) = channel();
         executor.execute_plugin_load(1, make_signaling_job(tx_load));
-        rx_load.recv_timeout(Duration::from_secs(5)).expect("Load should complete");
+        rx_load
+            .recv_timeout(Duration::from_secs(5))
+            .expect("Load should complete");
 
         let (tx_unload, rx_unload) = channel();
         executor.execute_plugin_unload(1, make_signaling_job(tx_unload));
-        rx_unload.recv_timeout(Duration::from_secs(5)).expect("Unload should complete");
+        rx_unload
+            .recv_timeout(Duration::from_secs(5))
+            .expect("Unload should complete");
 
         // Give shrinking a moment
         thread::sleep(Duration::from_millis(100));
 
         // Thread 0 should remain
-        assert!(executor.thread_count() >= 1, "Thread 0 should never be removed");
+        assert!(
+            executor.thread_count() >= 1,
+            "Thread 0 should never be removed"
+        );
     }
 
     #[test]
@@ -839,7 +979,8 @@ mod tests {
         // Load plugin 1 to thread 0
         let (tx1, rx1) = channel();
         executor.execute_plugin_load(1, make_signaling_job(tx1));
-        rx1.recv_timeout(Duration::from_secs(5)).expect("Load should complete");
+        rx1.recv_timeout(Duration::from_secs(5))
+            .expect("Load should complete");
 
         // Force plugin 2 to thread 1 by making thread 0 busy
         let barrier = Arc::new(Barrier::new(2));
@@ -851,29 +992,41 @@ mod tests {
 
         let (tx2, rx2) = channel();
         executor.execute_plugin_load(2, make_signaling_job(tx2));
-        rx2.recv_timeout(Duration::from_secs(5)).expect("Load should complete");
+        rx2.recv_timeout(Duration::from_secs(5))
+            .expect("Load should complete");
 
         barrier.wait();
         thread::sleep(Duration::from_millis(100));
 
         let thread_count_with_both = executor.thread_count();
-        assert!(thread_count_with_both >= 2, "Should have at least 2 threads with 2 plugins");
+        assert!(
+            thread_count_with_both >= 2,
+            "Should have at least 2 threads with 2 plugins"
+        );
 
         // Unload plugin 2
         let (tx_unload, rx_unload) = channel();
         executor.execute_plugin_unload(2, make_signaling_job(tx_unload));
-        rx_unload.recv_timeout(Duration::from_secs(5)).expect("Unload should complete");
+        rx_unload
+            .recv_timeout(Duration::from_secs(5))
+            .expect("Unload should complete");
 
         thread::sleep(Duration::from_millis(100));
 
         // Plugin 1's thread should still work (verify active threads not affected)
         let (tx_test, rx_test) = channel();
         executor.execute_for_plugin(1, make_signaling_job(tx_test));
-        assert!(rx_test.recv_timeout(Duration::from_secs(5)).is_ok(), "Plugin 1's thread should still work");
+        assert!(
+            rx_test.recv_timeout(Duration::from_secs(5)).is_ok(),
+            "Plugin 1's thread should still work"
+        );
 
         // Thread count should decrease after unloading
         let thread_count_after = executor.thread_count();
-        assert!(thread_count_after < thread_count_with_both, "Idle thread should be removed");
+        assert!(
+            thread_count_after < thread_count_with_both,
+            "Idle thread should be removed"
+        );
         assert!(thread_count_after >= 1, "Active threads should remain");
     }
 
@@ -884,7 +1037,8 @@ mod tests {
         // Load plugin 1 to thread 0
         let (tx1, rx1) = channel();
         executor.execute_plugin_load(1, make_signaling_job(tx1));
-        rx1.recv_timeout(Duration::from_secs(5)).expect("Load should complete");
+        rx1.recv_timeout(Duration::from_secs(5))
+            .expect("Load should complete");
 
         // Force plugin 2 to thread 1
         let barrier = Arc::new(Barrier::new(2));
@@ -896,7 +1050,8 @@ mod tests {
 
         let (tx2, rx2) = channel();
         executor.execute_plugin_load(2, make_signaling_job(tx2));
-        rx2.recv_timeout(Duration::from_secs(5)).expect("Load should complete");
+        rx2.recv_timeout(Duration::from_secs(5))
+            .expect("Load should complete");
 
         barrier.wait();
         thread::sleep(Duration::from_millis(50));
@@ -904,7 +1059,9 @@ mod tests {
         // Unload plugin 2 (shrinks pool)
         let (tx_unload, rx_unload) = channel();
         executor.execute_plugin_unload(2, make_signaling_job(tx_unload));
-        rx_unload.recv_timeout(Duration::from_secs(5)).expect("Unload should complete");
+        rx_unload
+            .recv_timeout(Duration::from_secs(5))
+            .expect("Unload should complete");
 
         thread::sleep(Duration::from_millis(100));
 
@@ -912,7 +1069,10 @@ mod tests {
         let (tx_test, rx_test) = channel();
         executor.execute_for_plugin(1, make_signaling_job(tx_test));
 
-        assert!(rx_test.recv_timeout(Duration::from_secs(5)).is_ok(), "Plugin 1's thread should still work");
+        assert!(
+            rx_test.recv_timeout(Duration::from_secs(5)).is_ok(),
+            "Plugin 1's thread should still work"
+        );
     }
 
     #[test]
@@ -922,7 +1082,8 @@ mod tests {
         // Load multiple plugins on different threads
         let (tx1, rx1) = channel();
         executor.execute_plugin_load(1, make_signaling_job(tx1));
-        rx1.recv_timeout(Duration::from_secs(5)).expect("Load should complete");
+        rx1.recv_timeout(Duration::from_secs(5))
+            .expect("Load should complete");
 
         let barrier = Arc::new(Barrier::new(2));
         let barrier_clone = barrier.clone();
@@ -933,7 +1094,8 @@ mod tests {
 
         let (tx2, rx2) = channel();
         executor.execute_plugin_load(2, make_signaling_job(tx2));
-        rx2.recv_timeout(Duration::from_secs(5)).expect("Load should complete");
+        rx2.recv_timeout(Duration::from_secs(5))
+            .expect("Load should complete");
 
         barrier.wait();
 
@@ -970,9 +1132,7 @@ mod tests {
         let handles: Vec<_> = (1..=10)
             .map(|i| {
                 let exec = executor.clone();
-                thread::spawn(move || {
-                    exec.register_plugin(i)
-                })
+                thread::spawn(move || exec.register_plugin(i))
             })
             .collect();
 
@@ -1017,24 +1177,30 @@ mod tests {
         // Load plugin 1
         let (tx1, rx1) = channel();
         executor.execute_plugin_load(1, make_signaling_job(tx1));
-        rx1.recv_timeout(Duration::from_secs(5)).expect("Load should complete");
+        rx1.recv_timeout(Duration::from_secs(5))
+            .expect("Load should complete");
 
         // Unload plugin 1
         let (tx2, rx2) = channel();
         executor.execute_plugin_unload(1, make_signaling_job(tx2));
-        rx2.recv_timeout(Duration::from_secs(5)).expect("Unload should complete");
+        rx2.recv_timeout(Duration::from_secs(5))
+            .expect("Unload should complete");
 
         thread::sleep(Duration::from_millis(100));
 
         // Load plugin 1 again
         let (tx3, rx3) = channel();
         executor.execute_plugin_load(1, make_signaling_job(tx3));
-        rx3.recv_timeout(Duration::from_secs(5)).expect("Second load should complete");
+        rx3.recv_timeout(Duration::from_secs(5))
+            .expect("Second load should complete");
 
         // Execute job for plugin 1
         let (tx4, rx4) = channel();
         executor.execute_for_plugin(1, make_signaling_job(tx4));
-        assert!(rx4.recv_timeout(Duration::from_secs(5)).is_ok(), "Executor should handle cycles correctly");
+        assert!(
+            rx4.recv_timeout(Duration::from_secs(5)).is_ok(),
+            "Executor should handle cycles correctly"
+        );
     }
 
     #[test]
@@ -1050,10 +1216,14 @@ mod tests {
 
         // Collect 20 completion signals
         for _ in 1..=20 {
-            rx.recv_timeout(Duration::from_secs(5)).expect("Load should complete");
+            rx.recv_timeout(Duration::from_secs(5))
+                .expect("Load should complete");
         }
 
-        assert!(executor.thread_count() <= 4, "Should not exceed max_threads");
+        assert!(
+            executor.thread_count() <= 4,
+            "Should not exceed max_threads"
+        );
     }
 
     #[test]
@@ -1069,7 +1239,8 @@ mod tests {
 
         // Wait for all loads
         for _ in 0..5 {
-            rx.recv_timeout(Duration::from_secs(5)).expect("Load should complete");
+            rx.recv_timeout(Duration::from_secs(5))
+                .expect("Load should complete");
         }
 
         // Execute 2 jobs per plugin (10 total)
@@ -1082,7 +1253,8 @@ mod tests {
 
         // Wait for all jobs
         for _ in 0..10 {
-            rx.recv_timeout(Duration::from_secs(5)).expect("Job should complete");
+            rx.recv_timeout(Duration::from_secs(5))
+                .expect("Job should complete");
         }
 
         let thread_count_before = executor.thread_count();
@@ -1095,14 +1267,18 @@ mod tests {
 
         // Wait for unloads
         for _ in 0..3 {
-            rx.recv_timeout(Duration::from_secs(5)).expect("Unload should complete");
+            rx.recv_timeout(Duration::from_secs(5))
+                .expect("Unload should complete");
         }
 
         thread::sleep(Duration::from_millis(100));
 
         // Thread count should decrease or stay the same
         let thread_count_after = executor.thread_count();
-        assert!(thread_count_after <= thread_count_before, "Thread count should decrease after unloads");
+        assert!(
+            thread_count_after <= thread_count_before,
+            "Thread count should decrease after unloads"
+        );
 
         // Execute jobs for remaining plugins
         for i in 4..=5 {
@@ -1111,7 +1287,8 @@ mod tests {
         }
 
         for _ in 0..2 {
-            rx.recv_timeout(Duration::from_secs(5)).expect("Job should complete");
+            rx.recv_timeout(Duration::from_secs(5))
+                .expect("Job should complete");
         }
 
         // Drop executor
@@ -1129,7 +1306,8 @@ mod tests {
             executor.execute_plugin_load(i, make_signaling_job(tx_clone));
         }
         for _ in 0..3 {
-            rx.recv_timeout(Duration::from_secs(5)).expect("Load should complete");
+            rx.recv_timeout(Duration::from_secs(5))
+                .expect("Load should complete");
         }
 
         // Execute jobs for each
@@ -1138,13 +1316,15 @@ mod tests {
             executor.execute_for_plugin(i, make_signaling_job(tx_clone));
         }
         for _ in 0..3 {
-            rx.recv_timeout(Duration::from_secs(5)).expect("Job should complete");
+            rx.recv_timeout(Duration::from_secs(5))
+                .expect("Job should complete");
         }
 
         // Unload plugin 2
         let tx_clone = tx.clone();
         executor.execute_plugin_unload(2, make_signaling_job(tx_clone));
-        rx.recv_timeout(Duration::from_secs(5)).expect("Unload should complete");
+        rx.recv_timeout(Duration::from_secs(5))
+            .expect("Unload should complete");
 
         thread::sleep(Duration::from_millis(100));
 
@@ -1154,7 +1334,8 @@ mod tests {
             executor.execute_plugin_load(i, make_signaling_job(tx_clone));
         }
         for _ in 0..2 {
-            rx.recv_timeout(Duration::from_secs(5)).expect("Load should complete");
+            rx.recv_timeout(Duration::from_secs(5))
+                .expect("Load should complete");
         }
 
         // Execute jobs for plugins 1, 3, 4, 5
@@ -1163,7 +1344,8 @@ mod tests {
             executor.execute_for_plugin(*i, make_signaling_job(tx_clone));
         }
         for _ in 0..4 {
-            rx.recv_timeout(Duration::from_secs(5)).expect("Job should complete");
+            rx.recv_timeout(Duration::from_secs(5))
+                .expect("Job should complete");
         }
 
         // Unload plugins 1, 3
@@ -1172,13 +1354,17 @@ mod tests {
             executor.execute_plugin_unload(*i, make_signaling_job(tx_clone));
         }
         for _ in 0..2 {
-            rx.recv_timeout(Duration::from_secs(5)).expect("Unload should complete");
+            rx.recv_timeout(Duration::from_secs(5))
+                .expect("Unload should complete");
         }
 
         thread::sleep(Duration::from_millis(100));
 
         // Verify thread count reflects active plugins (4 and 5)
-        assert!(executor.thread_count() >= 1, "Should have at least thread 0");
+        assert!(
+            executor.thread_count() >= 1,
+            "Should have at least thread 0"
+        );
 
         drop(executor);
     }

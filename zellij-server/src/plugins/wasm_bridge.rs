@@ -10,23 +10,19 @@ use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use async_channel::Sender;
 use highway::{HighwayHash, PortableHash};
-use url::Url;
-use once_cell::sync::OnceCell;
-use tokio::runtime::Runtime;
 use log::info;
 use notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
+use once_cell::sync::OnceCell;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     path::PathBuf,
     str::FromStr,
     sync::{Arc, Mutex},
 };
+use tokio::runtime::Runtime;
+use url::Url;
 use wasmi::{Engine, Module};
-use zellij_utils::consts::{
-    ZELLIJ_CACHE_DIR,
-    ZELLIJ_SESSION_CACHE_DIR,
-    ZELLIJ_TMP_DIR
-};
+use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{
     FloatingPaneCoordinates, InputMode, PaneContents, PaneRenderReport, PermissionStatus,
     PermissionType, PipeMessage, PipeSource,
@@ -135,15 +131,16 @@ impl LoadingContext {
         let plugin_own_cache_dir = ZELLIJ_SESSION_CACHE_DIR
             .join(Url::from(&plugin_config.location).to_string())
             .join(format!("plugin_cache"));
-        let default_mode = wasm_bridge.base_modes
+        let default_mode = wasm_bridge
+            .base_modes
             .get(&client_id)
             .copied()
             .unwrap_or(wasm_bridge.default_mode);
-        let keybinds = wasm_bridge.keybinds
+        let keybinds = wasm_bridge
+            .keybinds
             .get(&client_id)
             .cloned()
             .unwrap_or_else(|| wasm_bridge.default_keybinds.clone());
-
 
         LoadingContext {
             client_id,
@@ -227,7 +224,15 @@ impl WasmBridge {
         let watcher = None;
         let downloader = Downloader::new(ZELLIJ_CACHE_DIR.to_path_buf());
         let max_threads = num_cpus::get().max(4).min(16);
-        let plugin_executor = Arc::new(PinnedExecutor::new(max_threads, &senders, &plugin_map, &connected_clients, &default_layout, &plugin_cache, &engine));
+        let plugin_executor = Arc::new(PinnedExecutor::new(
+            max_threads,
+            &senders,
+            &plugin_map,
+            &connected_clients,
+            &default_layout,
+            &plugin_cache,
+            &engine,
+        ));
         WasmBridge {
             connected_clients,
             senders,
@@ -328,7 +333,7 @@ impl WasmBridge {
                     plugin_id,
                     client_id,
                     tab_index,
-                    size
+                    size,
                 );
 
                 if needs_download {
@@ -347,7 +352,8 @@ impl WasmBridge {
                                 .collect();
 
                             match downloader.download(url, Some(&file_name)).await {
-                                Ok(_) => loading_context.update_plugin_path(ZELLIJ_CACHE_DIR.join(&file_name)),
+                                Ok(_) => loading_context
+                                    .update_plugin_path(ZELLIJ_CACHE_DIR.join(&file_name)),
                                 Err(e) => {
                                     handle_plugin_loading_failure(
                                         &senders,
@@ -357,11 +363,70 @@ impl WasmBridge {
                                         Some(client_id),
                                     );
                                     return;
-                                }
+                                },
                             }
                         }
 
-                        plugin_executor.execute_plugin_load(plugin_id, move |senders: ThreadSenders, plugin_map: Arc<Mutex<PluginMap>>, connected_clients: Arc<Mutex<Vec<ClientId>>>, default_layout: Box<Layout>, plugin_cache: PluginCache, engine| {
+                        plugin_executor.execute_plugin_load(
+                            plugin_id,
+                            move |senders: ThreadSenders,
+                                  plugin_map: Arc<Mutex<PluginMap>>,
+                                  connected_clients: Arc<Mutex<Vec<ClientId>>>,
+                                  default_layout: Box<Layout>,
+                                  plugin_cache: PluginCache,
+                                  engine| {
+                                log::info!("Compiling plugin {} on pinned thread", plugin_id);
+
+                                match PluginLoader::new(
+                                    skip_cache,
+                                    loading_context,
+                                    senders.clone(),
+                                    engine.clone(),
+                                    default_layout.clone(),
+                                    plugin_cache.clone(),
+                                    plugin_map.clone(),
+                                    connected_clients.clone(),
+                                )
+                                .start_plugin()
+                                {
+                                    Ok(_) => {
+                                        let plugin_list = plugin_map.lock().unwrap().list_plugins();
+                                        handle_plugin_successful_loading(
+                                            &senders,
+                                            plugin_id,
+                                            plugin_list,
+                                        );
+                                    },
+                                    Err(e) => handle_plugin_loading_failure(
+                                        &senders,
+                                        plugin_id,
+                                        &mut loading_indication,
+                                        e,
+                                        Some(client_id),
+                                    ),
+                                }
+
+                                let _ =
+                                    senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
+                                        plugin_ids: vec![plugin_id],
+                                        done_receiving_permissions: false,
+                                    });
+                            },
+                        );
+                    });
+                } else {
+                    let _ = senders
+                        .send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
+                    let mut loading_indication = LoadingIndication::new(plugin_name.clone());
+
+                    self.plugin_executor.execute_plugin_load(
+                        plugin_id,
+                        move |senders,
+                              plugin_map,
+                              connected_clients,
+                              default_layout,
+                              plugin_cache: PluginCache,
+                              engine: Engine| {
                             log::info!("Compiling plugin {} on pinned thread", plugin_id);
 
                             match PluginLoader::new(
@@ -372,11 +437,17 @@ impl WasmBridge {
                                 default_layout.clone(),
                                 plugin_cache.clone(),
                                 plugin_map.clone(),
-                                connected_clients.clone()
-                            ).start_plugin() {
+                                connected_clients.clone(),
+                            )
+                            .start_plugin()
+                            {
                                 Ok(_) => {
                                     let plugin_list = plugin_map.lock().unwrap().list_plugins();
-                                    handle_plugin_successful_loading(&senders, plugin_id, plugin_list);
+                                    handle_plugin_successful_loading(
+                                        &senders,
+                                        plugin_id,
+                                        plugin_list,
+                                    );
                                 },
                                 Err(e) => handle_plugin_loading_failure(
                                     &senders,
@@ -391,45 +462,8 @@ impl WasmBridge {
                                 plugin_ids: vec![plugin_id],
                                 done_receiving_permissions: false,
                             });
-                        });
-                    });
-                } else {
-                    let _ = senders.send_to_background_jobs(
-                        BackgroundJob::AnimatePluginLoading(plugin_id),
+                        },
                     );
-                    let mut loading_indication = LoadingIndication::new(plugin_name.clone());
-
-                    self.plugin_executor.execute_plugin_load(plugin_id, move |senders, plugin_map, connected_clients, default_layout, plugin_cache: PluginCache, engine: Engine| {
-                        log::info!("Compiling plugin {} on pinned thread", plugin_id);
-
-                        match PluginLoader::new(
-                            skip_cache,
-                            loading_context,
-                            senders.clone(),
-                            engine.clone(),
-                            default_layout.clone(),
-                            plugin_cache.clone(),
-                            plugin_map.clone(),
-                            connected_clients.clone()
-                        ).start_plugin() {
-                            Ok(_) => {
-                                let plugin_list = plugin_map.lock().unwrap().list_plugins();
-                                handle_plugin_successful_loading(&senders, plugin_id, plugin_list);
-                            },
-                            Err(e) => handle_plugin_loading_failure(
-                                &senders,
-                                plugin_id,
-                                &mut loading_indication,
-                                e,
-                                Some(client_id),
-                            ),
-                        }
-
-                        let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
-                            plugin_ids: vec![plugin_id],
-                            done_receiving_permissions: false,
-                        });
-                    });
                 }
 
                 self.next_plugin_id += 1;
@@ -458,7 +492,8 @@ impl WasmBridge {
         };
 
         // Schedule cleanup on each plugin's pinned thread
-        for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in plugins_to_cleanup {
+        for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in plugins_to_cleanup
+        {
             // Clear key intercepts if needed (on main thread is OK)
             if running_plugin.lock().unwrap().intercepting_key_presses() {
                 let _ = self
@@ -471,48 +506,55 @@ impl WasmBridge {
                 drop(worker_sender.send(MessageToWorker::Exit));
             }
 
-            self.plugin_executor.execute_plugin_unload(plugin_id, move |senders, _plugin_map, _connected_clients, _default_layout, _plugin_cache, _engine| {
-                let subscriptions_guard = subscriptions.lock().unwrap();
-                let needs_before_close = subscriptions_guard.contains(&EventType::BeforeClose);
-                drop(subscriptions_guard); // Release lock before calling plugin
+            self.plugin_executor.execute_plugin_unload(
+                plugin_id,
+                move |senders,
+                      _plugin_map,
+                      _connected_clients,
+                      _default_layout,
+                      _plugin_cache,
+                      _engine| {
+                    let subscriptions_guard = subscriptions.lock().unwrap();
+                    let needs_before_close = subscriptions_guard.contains(&EventType::BeforeClose);
+                    drop(subscriptions_guard); // Release lock before calling plugin
 
-                if needs_before_close {
-                    let mut rp = running_plugin.lock().unwrap();
-                    match apply_before_close_event_to_plugin(
-                        plugin_id,
-                        client_id,
-                        &mut rp,
-                        senders.clone(),
-                    ) {
-                        Ok(()) => {},
-                        Err(e) => {
-                            log::error!("{:?}", e);
-                            let stringified_error = format!("{:?}", e).replace("\n", "\n\r");
-                            handle_plugin_crash(plugin_id, stringified_error, senders.clone());
-                        },
+                    if needs_before_close {
+                        let mut rp = running_plugin.lock().unwrap();
+                        match apply_before_close_event_to_plugin(
+                            plugin_id,
+                            client_id,
+                            &mut rp,
+                            senders.clone(),
+                        ) {
+                            Ok(()) => {},
+                            Err(e) => {
+                                log::error!("{:?}", e);
+                                let stringified_error = format!("{:?}", e).replace("\n", "\n\r");
+                                handle_plugin_crash(plugin_id, stringified_error, senders.clone());
+                            },
+                        }
+                        let cache_dir = rp.store.data().plugin_own_data_dir.clone();
+                        drop(rp); // Release lock before filesystem operation
+                        if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
+                            log::error!("Failed to remove cache dir for plugin: {:?}", e);
+                        }
+                    } else {
+                        let cache_dir = running_plugin
+                            .lock()
+                            .unwrap()
+                            .store
+                            .data()
+                            .plugin_own_data_dir
+                            .clone();
+                        if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
+                            log::error!("Failed to remove cache dir for plugin: {:?}", e);
+                        }
                     }
-                    let cache_dir = rp.store.data().plugin_own_data_dir.clone();
-                    drop(rp); // Release lock before filesystem operation
-                    if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
-                        log::error!("Failed to remove cache dir for plugin: {:?}", e);
-                    }
-                } else {
-                    let cache_dir = running_plugin
-                        .lock()
-                        .unwrap()
-                        .store
-                        .data()
-                        .plugin_own_data_dir
-                        .clone();
-                    if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
-                        log::error!("Failed to remove cache dir for plugin: {:?}", e);
-                    }
-                }
 
-                drop(running_plugin);
-                drop(subscriptions);
-
-            });
+                    drop(running_plugin);
+                    drop(subscriptions);
+                },
+            );
         }
 
         // Main thread cleanup
@@ -559,7 +601,10 @@ impl WasmBridge {
         };
         let tab_index = self.tab_index_of_plugin_id(plugin_id);
         let Some(size) = self.size_of_plugin_id(plugin_id) else {
-            log::error!("Could not find size of running plugin with id: {}", plugin_id);
+            log::error!(
+                "Could not find size of running plugin with id: {}",
+                plugin_id
+            );
             return Ok(());
         };
         let size = Size {
@@ -576,39 +621,43 @@ impl WasmBridge {
             plugin_id,
             first_client_id,
             tab_index,
-            size
+            size,
         );
 
-        plugin_executor.execute_for_plugin(plugin_id, move |senders, plugin_map, connected_clients, default_layout, plugin_cache, engine| {
-
-            let skip_cache = true; // we want to explicitly reload the plugin
-            match PluginLoader::new(
-                skip_cache,
-                loading_context,
-                senders.clone(),
-                engine.clone(),
-                default_layout.clone(),
-                plugin_cache.clone(),
-                plugin_map.clone(),
-                connected_clients.clone()
-            ).start_plugin() {
-                Ok(_) => {
-                    let plugin_list = plugin_map.lock().unwrap().list_plugins();
-                    handle_plugin_successful_loading(&senders, plugin_id, plugin_list);
-                },
-                Err(e) => handle_plugin_loading_failure(
-                    &senders,
-                    plugin_id,
-                    &mut loading_indication,
-                    e,
-                    Some(first_client_id),
-                ),
-            }
-            let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
-                plugin_ids: vec![plugin_id],
-                done_receiving_permissions: false,
-            });
-        });
+        plugin_executor.execute_for_plugin(
+            plugin_id,
+            move |senders, plugin_map, connected_clients, default_layout, plugin_cache, engine| {
+                let skip_cache = true; // we want to explicitly reload the plugin
+                match PluginLoader::new(
+                    skip_cache,
+                    loading_context,
+                    senders.clone(),
+                    engine.clone(),
+                    default_layout.clone(),
+                    plugin_cache.clone(),
+                    plugin_map.clone(),
+                    connected_clients.clone(),
+                )
+                .start_plugin()
+                {
+                    Ok(_) => {
+                        let plugin_list = plugin_map.lock().unwrap().list_plugins();
+                        handle_plugin_successful_loading(&senders, plugin_id, plugin_list);
+                    },
+                    Err(e) => handle_plugin_loading_failure(
+                        &senders,
+                        plugin_id,
+                        &mut loading_indication,
+                        e,
+                        Some(first_client_id),
+                    ),
+                }
+                let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
+                    plugin_ids: vec![plugin_id],
+                    done_receiving_permissions: false,
+                });
+            },
+        );
         Ok(())
     }
     pub fn reload_plugin(&mut self, run_plugin: &RunPlugin) -> Result<()> {
@@ -635,7 +684,8 @@ impl WasmBridge {
             new_plugins.insert(plugin_id);
         }
         for plugin_id in new_plugins {
-            let Some(run_plugin) = self.run_plugin_of_plugin_id(plugin_id).map(|r| r.clone()) else {
+            let Some(run_plugin) = self.run_plugin_of_plugin_id(plugin_id).map(|r| r.clone())
+            else {
                 log::error!("Failed to find plugin with id: {}", plugin_id);
                 return Ok(());
             };
@@ -658,7 +708,10 @@ impl WasmBridge {
             };
             let tab_index = self.tab_index_of_plugin_id(plugin_id);
             let Some(size) = self.size_of_plugin_id(plugin_id) else {
-                log::error!("Could not find size of running plugin with id: {}", plugin_id);
+                log::error!(
+                    "Could not find size of running plugin with id: {}",
+                    plugin_id
+                );
                 return Ok(());
             };
             let size = Size {
@@ -675,35 +728,45 @@ impl WasmBridge {
                 plugin_id,
                 client_id,
                 tab_index,
-                size
+                size,
             );
 
-            plugin_executor.execute_for_plugin(plugin_id, move |senders, plugin_map, connected_clients, default_layout, plugin_cache, engine| {
-                let skip_cache = false;
-                match PluginLoader::new(
-                    skip_cache,
-                    loading_context,
-                    senders.clone(),
-                    engine.clone(),
-                    default_layout.clone(),
-                    plugin_cache.clone(),
-                    plugin_map.clone(),
-                    connected_clients.clone()
-                ).without_connected_clients()
-                .start_plugin() {
-                    Ok(_) => {
-                        let _ = senders
-                            .send_to_screen(ScreenInstruction::RequestStateUpdateForPlugins);
-                        let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
-                            plugin_ids: vec![plugin_id],
-                            done_receiving_permissions: false,
-                        });
+            plugin_executor.execute_for_plugin(
+                plugin_id,
+                move |senders,
+                      plugin_map,
+                      connected_clients,
+                      default_layout,
+                      plugin_cache,
+                      engine| {
+                    let skip_cache = false;
+                    match PluginLoader::new(
+                        skip_cache,
+                        loading_context,
+                        senders.clone(),
+                        engine.clone(),
+                        default_layout.clone(),
+                        plugin_cache.clone(),
+                        plugin_map.clone(),
+                        connected_clients.clone(),
+                    )
+                    .without_connected_clients()
+                    .start_plugin()
+                    {
+                        Ok(_) => {
+                            let _ = senders
+                                .send_to_screen(ScreenInstruction::RequestStateUpdateForPlugins);
+                            let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
+                                plugin_ids: vec![plugin_id],
+                                done_receiving_permissions: false,
+                            });
+                        },
+                        Err(e) => {
+                            log::error!("Failed to load plugin for new client: {}", e);
+                        },
                     }
-                    Err(e) => {
-                        log::error!("Failed to load plugin for new client: {}", e);
-                    }
-                }
-            })
+                },
+            )
         }
         self.connected_clients.lock().unwrap().push(client_id);
         Ok(())
@@ -741,7 +804,12 @@ impl WasmBridge {
                     // let senders = self.senders.clone();
                     let running_plugin = running_plugin.clone();
                     let _s = shutdown_sender.clone();
-                    move |senders, _plugin_map, _connected_clients, _default_layout, _plugin_cache, _engine| {
+                    move |senders,
+                          _plugin_map,
+                          _connected_clients,
+                          _default_layout,
+                          _plugin_cache,
+                          _engine| {
                         let mut running_plugin = running_plugin.lock().unwrap();
                         let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                         if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
@@ -829,16 +897,13 @@ impl WasmBridge {
         let plugin_executor = self.plugin_executor.clone();
         // let senders = self.senders.clone();
         for (pid, cid, event) in updates.clone().into_iter() {
-            for (plugin_id, client_id, running_plugin, subscriptions) in &plugins_to_update
-            {
+            for (plugin_id, client_id, running_plugin, subscriptions) in &plugins_to_update {
                 let subs = subscriptions.lock().unwrap().clone();
                 // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
                 if let Ok(event_type) = EventType::from_str(&event.to_string()) {
                     if (subs.contains(&event_type)
                         || event_type == EventType::PermissionRequestResult)
-                        && Self::message_is_directed_at_plugin(
-                            pid, cid, plugin_id, client_id,
-                        )
+                        && Self::message_is_directed_at_plugin(pid, cid, plugin_id, client_id)
                     {
                         // Execute directly on pinned thread (no async I/O needed for event processing)
                         plugin_executor.execute_for_plugin(*plugin_id, {
@@ -847,7 +912,12 @@ impl WasmBridge {
                             let running_plugin = running_plugin.clone();
                             let event = event.clone();
                             let _s = shutdown_sender.clone();
-                            move |senders, _plugin_map, _connected_clients, _default_layout, _plugin_cache, _engine| {
+                            move |senders,
+                                  _plugin_map,
+                                  _connected_clients,
+                                  _default_layout,
+                                  _plugin_cache,
+                                  _engine| {
                                 let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                                 let mut running_plugin = running_plugin.lock().unwrap();
                                 let mut plugin_render_assets = vec![];
@@ -938,79 +1008,88 @@ impl WasmBridge {
             .collect();
 
         // Execute directly on pinned thread (no async I/O needed for directory check/change)
-        self.plugin_executor.execute_for_plugin(plugin_id_to_update, {
-            move |senders, _plugin_map, _connected_clients, _default_layout, _plugin_cache, _engine| {
-                match new_host_dir.try_exists() {
-                    Ok(false) => {
-                        log::error!(
-                            "Failed to change folder to {},: folder does not exist",
-                            new_host_dir.display()
-                        );
-                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                            Some(plugin_id_to_update),
-                            Some(client_id_to_update),
-                            Event::FailedToChangeHostFolder(Some(format!(
-                                "Folder {} does not exist",
+        self.plugin_executor
+            .execute_for_plugin(plugin_id_to_update, {
+                move |senders,
+                      _plugin_map,
+                      _connected_clients,
+                      _default_layout,
+                      _plugin_cache,
+                      _engine| {
+                    match new_host_dir.try_exists() {
+                        Ok(false) => {
+                            log::error!(
+                                "Failed to change folder to {},: folder does not exist",
                                 new_host_dir.display()
-                            ))),
-                        )]));
-                        return;
-                    },
-                    Err(e) => {
-                        log::error!(
-                            "Failed to change folder to {},: {}",
-                            new_host_dir.display(),
-                            e
-                        );
-                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                            Some(plugin_id_to_update),
-                            Some(client_id_to_update),
-                            Event::FailedToChangeHostFolder(Some(e.to_string())),
-                        )]));
-                        return;
-                    },
-                    _ => {},
-                }
-                for (plugin_id, client_id, running_plugin, _subscriptions) in &plugins_to_change {
-                    if plugin_id == &plugin_id_to_update && client_id == &client_id_to_update {
-                        let mut running_plugin = running_plugin.lock().unwrap();
-                        let plugin_env = running_plugin.store.data_mut();
-                        let stdin_pipe = plugin_env.stdin_pipe.clone();
-                        let stdout_pipe = plugin_env.stdout_pipe.clone();
-                        let wasi_ctx = PluginLoader::create_wasi_ctx(
-                            &new_host_dir,
-                            &plugin_env.plugin_own_data_dir,
-                            &plugin_env.plugin_own_cache_dir,
-                            &ZELLIJ_TMP_DIR,
-                            &plugin_env.plugin.location.to_string(),
-                            plugin_env.plugin_id,
-                            stdin_pipe.clone(),
-                            stdout_pipe.clone(),
-                        );
-                        match wasi_ctx {
-                            Ok(wasi_ctx) => {
-                                drop(std::mem::replace(&mut plugin_env.wasi_ctx, wasi_ctx));
-                                plugin_env.plugin_cwd = new_host_dir.clone();
+                            );
+                            let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                Some(plugin_id_to_update),
+                                Some(client_id_to_update),
+                                Event::FailedToChangeHostFolder(Some(format!(
+                                    "Folder {} does not exist",
+                                    new_host_dir.display()
+                                ))),
+                            )]));
+                            return;
+                        },
+                        Err(e) => {
+                            log::error!(
+                                "Failed to change folder to {},: {}",
+                                new_host_dir.display(),
+                                e
+                            );
+                            let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                Some(plugin_id_to_update),
+                                Some(client_id_to_update),
+                                Event::FailedToChangeHostFolder(Some(e.to_string())),
+                            )]));
+                            return;
+                        },
+                        _ => {},
+                    }
+                    for (plugin_id, client_id, running_plugin, _subscriptions) in &plugins_to_change
+                    {
+                        if plugin_id == &plugin_id_to_update && client_id == &client_id_to_update {
+                            let mut running_plugin = running_plugin.lock().unwrap();
+                            let plugin_env = running_plugin.store.data_mut();
+                            let stdin_pipe = plugin_env.stdin_pipe.clone();
+                            let stdout_pipe = plugin_env.stdout_pipe.clone();
+                            let wasi_ctx = PluginLoader::create_wasi_ctx(
+                                &new_host_dir,
+                                &plugin_env.plugin_own_data_dir,
+                                &plugin_env.plugin_own_cache_dir,
+                                &ZELLIJ_TMP_DIR,
+                                &plugin_env.plugin.location.to_string(),
+                                plugin_env.plugin_id,
+                                stdin_pipe.clone(),
+                                stdout_pipe.clone(),
+                            );
+                            match wasi_ctx {
+                                Ok(wasi_ctx) => {
+                                    drop(std::mem::replace(&mut plugin_env.wasi_ctx, wasi_ctx));
+                                    plugin_env.plugin_cwd = new_host_dir.clone();
 
-                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                    Some(*plugin_id),
-                                    Some(*client_id),
-                                    Event::HostFolderChanged(new_host_dir.clone()),
-                                )]));
-                            },
-                            Err(e) => {
-                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                    Some(*plugin_id),
-                                    Some(*client_id),
-                                    Event::FailedToChangeHostFolder(Some(e.to_string())),
-                                )]));
-                                log::error!("Failed to create wasi ctx: {}", e);
-                            },
+                                    let _ =
+                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                            Some(*plugin_id),
+                                            Some(*client_id),
+                                            Event::HostFolderChanged(new_host_dir.clone()),
+                                        )]));
+                                },
+                                Err(e) => {
+                                    let _ =
+                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                            Some(*plugin_id),
+                                            Some(*client_id),
+                                            Event::FailedToChangeHostFolder(Some(e.to_string())),
+                                        )]));
+                                    log::error!("Failed to create wasi ctx: {}", e);
+                                },
+                            }
                         }
                     }
                 }
-            }
-        });
+            });
         Ok(())
     }
     pub fn pipe_messages(
@@ -1059,7 +1138,12 @@ impl WasmBridge {
                         let plugin_id = *plugin_id;
                         let client_id = *client_id;
                         let _s = shutdown_sender.clone();
-                        move |senders, _plugin_map, _connected_clients, _default_layout, _plugin_cache, _engine| {
+                        move |senders,
+                              _plugin_map,
+                              _connected_clients,
+                              _default_layout,
+                              _plugin_cache,
+                              _engine| {
                             let mut running_plugin = running_plugin.lock().unwrap();
                             let mut plugin_render_assets = vec![];
                             let _s = _s; // guard to allow the task to complete before cleanup/shutdown
@@ -1283,7 +1367,12 @@ impl WasmBridge {
                 let running_plugin = running_plugin.clone();
                 let keybinds = keybinds.clone();
                 let default_shell = default_shell.clone();
-                move |_senders, _plugin_map, _connected_clients, _default_layout, _plugin_cache, _engine| {
+                move |_senders,
+                      _plugin_map,
+                      _connected_clients,
+                      _default_layout,
+                      _plugin_cache,
+                      _engine| {
                     let mut running_plugin = running_plugin.lock().unwrap();
                     if let Some(keybinds) = keybinds {
                         running_plugin.update_keybinds(keybinds);
@@ -1326,7 +1415,12 @@ impl WasmBridge {
                         let client_id = *client_id;
                         let _s = shutdown_sender.clone();
                         let events_or_pipe_messages = events_or_pipe_messages.clone();
-                        move |senders, _plugin_map, _connected_clients, _default_layout, _plugin_cache, _engine| {
+                        move |senders,
+                              _plugin_map,
+                              _connected_clients,
+                              _default_layout,
+                              _plugin_cache,
+                              _engine| {
                             let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                             for event_or_pipe_message in events_or_pipe_messages {
                                 match event_or_pipe_message {

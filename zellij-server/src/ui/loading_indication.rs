@@ -124,7 +124,12 @@ impl Display for LoadingIndication {
             stringified.push_str(&format!("{} {}", loading_text, cyan.paint(plugin_name)));
             add_dots(&mut stringified);
         }
-        if self.started_at.map(|s| s.elapsed() > std::time::Duration::from_millis(400)).unwrap_or(true) || self.error.is_some() {
+        if self
+            .started_at
+            .map(|s| s.elapsed() > std::time::Duration::from_millis(400))
+            .unwrap_or(true)
+            || self.error.is_some()
+        {
             write!(f, "{}", stringified)
         } else {
             Ok(())
