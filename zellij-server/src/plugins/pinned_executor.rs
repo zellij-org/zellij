@@ -43,7 +43,6 @@ struct ExecutionThread {
 }
 
 enum Job {
-    // Work(Box<dyn FnOnce() + Send + 'static>),
     Work(
         Box<
             dyn FnOnce(
@@ -74,7 +73,6 @@ impl PinnedExecutor {
     ) -> Self {
         let max_threads = max_threads.max(1); // At least 1
 
-        // Start with exactly 1 thread (thread index 0)
         let thread_0 = Self::spawn_thread(
             0,
             senders.clone(),
@@ -100,7 +98,6 @@ impl PinnedExecutor {
         }
     }
 
-    // fn spawn_thread(thread_idx: usize) -> ExecutionThread {
     fn spawn_thread(
         thread_idx: usize,
         senders: ThreadSenders,
@@ -238,7 +235,6 @@ impl PinnedExecutor {
     /// Execute job pinned to plugin's assigned thread
     pub fn execute_for_plugin<F>(&self, plugin_id: u32, f: F)
     where
-        // F: FnOnce() + Send + 'static,
         F: FnOnce(
                 ThreadSenders,
                 Arc<Mutex<PluginMap>>,
@@ -275,7 +271,7 @@ impl PinnedExecutor {
         if let Err(_) = thread.sender.send(job) {
             // Thread died unexpectedly - this is a critical error
             thread.jobs_in_flight.fetch_sub(1, Ordering::SeqCst);
-            panic!("Plugin executor thread {} has died", thread_idx);
+            log::error!("Plugin executor thread {} has died", thread_idx);
         }
     }
 
@@ -283,7 +279,6 @@ impl PinnedExecutor {
     /// This combines registration + execution for plugin loading
     pub fn execute_plugin_load<F>(&self, plugin_id: u32, f: F)
     where
-        // F: FnOnce() + Send + 'static,
         F: FnOnce(
                 ThreadSenders,
                 Arc<Mutex<PluginMap>>,
@@ -316,9 +311,7 @@ impl PinnedExecutor {
                 Engine,
             ) + Send
             + 'static,
-    )
-    // FnOnce() + Send + 'static)
-    {
+    ) {
         let executor = self.clone();
         self.execute_for_plugin(
             plugin_id,
@@ -387,7 +380,6 @@ impl PinnedExecutor {
         // Shutdown and remove idle threads
         for idx in threads_to_remove {
             if let Some(thread) = threads[idx].take() {
-                // Send shutdown signal
                 let _ = thread.sender.send(Job::Shutdown);
             }
         }
