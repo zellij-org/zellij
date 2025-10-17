@@ -362,6 +362,8 @@ impl Pane for PluginPane {
     }
     fn request_permissions_from_user(&mut self, permissions: Option<PluginPermission>) {
         self.requesting_permissions = permissions;
+        self.handle_plugin_bytes_for_all_clients(Default::default()); // to trigger the render of
+                                                                      // the permission message
     }
     fn render(
         &mut self,
