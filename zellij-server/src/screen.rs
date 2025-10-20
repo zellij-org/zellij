@@ -707,50 +707,50 @@ impl CopyOptions {
 // a sensible timeout of 100ms)
 #[derive(Debug, Clone)]
 pub struct RenderBlocker {
-  blocking_plugins: HashMap<u32, Instant>,
-  timeout_ms: u64,
+    blocking_plugins: HashMap<u32, Instant>,
+    timeout_ms: u64,
 }
 
 impl RenderBlocker {
-  pub fn new(timeout_ms: u64) -> Self {
-      Self {
-          blocking_plugins: HashMap::new(),
-          timeout_ms,
-      }
-  }
+    pub fn new(timeout_ms: u64) -> Self {
+        Self {
+            blocking_plugins: HashMap::new(),
+            timeout_ms,
+        }
+    }
 
-  pub fn register_blocking_plugin(&mut self, plugin_id: u32) {
-      self.blocking_plugins.insert(plugin_id, Instant::now());
-  }
+    pub fn register_blocking_plugin(&mut self, plugin_id: u32) {
+        self.blocking_plugins.insert(plugin_id, Instant::now());
+    }
 
-  pub fn remove_blocking_plugin(&mut self, plugin_id: u32) {
-      self.blocking_plugins.remove(&plugin_id);
-  }
+    pub fn remove_blocking_plugin(&mut self, plugin_id: u32) {
+        self.blocking_plugins.remove(&plugin_id);
+    }
 
-  #[cfg(test)]
-  pub fn can_render(&mut self) -> bool {
-      // we want the tests to be more deterministic and so we always render without any
-      // optimizations
-      true
-  }
+    #[cfg(test)]
+    pub fn can_render(&mut self) -> bool {
+        // we want the tests to be more deterministic and so we always render without any
+        // optimizations
+        true
+    }
 
-  #[cfg(not(test))]
-  pub fn can_render(&mut self) -> bool {
-      let ret = if self.blocking_plugins.is_empty() {
-          true
-      } else {
-          let timeout = Duration::from_millis(self.timeout_ms);
-          let now = Instant::now();
+    #[cfg(not(test))]
+    pub fn can_render(&mut self) -> bool {
+        let ret = if self.blocking_plugins.is_empty() {
+            true
+        } else {
+            let timeout = Duration::from_millis(self.timeout_ms);
+            let now = Instant::now();
 
-          self.blocking_plugins
-              .values()
-              .all(|&registered_at| now.duration_since(registered_at) >= timeout)
-      };
-      if ret {
-          self.blocking_plugins.clear();
-      }
-      ret
-  }
+            self.blocking_plugins
+                .values()
+                .all(|&registered_at| now.duration_since(registered_at) >= timeout)
+        };
+        if ret {
+            self.blocking_plugins.clear();
+        }
+        ret
+    }
 }
 
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
@@ -4290,7 +4290,6 @@ pub(crate) fn screen_thread_main(
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
             ) => {
-                
                 screen.apply_layout(
                     layout,
                     floating_panes_layout,

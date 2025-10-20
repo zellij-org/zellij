@@ -158,8 +158,7 @@ pub fn run(sh: &Shell, mut flags: flags::Run) -> anyhow::Result<()> {
                     .context("Failed to check web features for main crate")?
                 {
                     Some(features) => {
-                        let mut cmd = cmd!(sh, "{cargo} run")
-                            .args(["--no-default-features"]);
+                        let mut cmd = cmd!(sh, "{cargo} run").args(["--no-default-features"]);
 
                         if !features.is_empty() {
                             cmd = cmd.args(["--features", &features]);
