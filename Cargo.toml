@@ -116,6 +116,7 @@ opt-level = 3
 [profile.release]
 lto = true
 strip = true
+codegen-units = 1
 
 [package.metadata.deb]
 depends = "$auto"
