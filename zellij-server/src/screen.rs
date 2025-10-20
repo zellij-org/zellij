@@ -727,6 +727,14 @@ impl RenderBlocker {
       self.blocking_plugins.remove(&plugin_id);
   }
 
+  #[cfg(test)]
+  pub fn can_render(&mut self) -> bool {
+      // we want the tests to be more deterministic and so we always render without any
+      // optimizations
+      true
+  }
+
+  #[cfg(not(test))]
   pub fn can_render(&mut self) -> bool {
       let ret = if self.blocking_plugins.is_empty() {
           true
