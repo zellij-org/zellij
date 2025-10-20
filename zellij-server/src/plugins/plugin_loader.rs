@@ -50,8 +50,7 @@ fn create_plugin_fs_entries(plugin_own_data_dir: &PathBuf, plugin_own_cache_dir:
     }
 }
 
-#[derive(Clone)]
-pub struct PluginLoader {
+pub struct PluginLoader <'a>{
     skip_cache: bool,
     plugin_id: PluginId,
     client_id: ClientId,
@@ -74,11 +73,13 @@ pub struct PluginLoader {
     engine: Engine,
     default_layout: Box<Layout>,
     plugin_cache: PluginCache,
-    plugin_map: Arc<Mutex<PluginMap>>,
+    plugin_map: &'a mut PluginMap, // we receive a mutable reference rather than the Arc so that it
+                                   // will be held for the lifetime of this struct and thus loading
+                                   // plugins for all connected clients will be one transaction
     connected_clients: Option<Arc<Mutex<Vec<ClientId>>>>,
 }
 
-impl PluginLoader {
+impl <'a> PluginLoader <'a>{
     pub fn new(
         skip_cache: bool,
         loading_context: LoadingContext,
@@ -86,7 +87,7 @@ impl PluginLoader {
         engine: Engine,
         default_layout: Box<Layout>,
         plugin_cache: PluginCache,
-        plugin_map: Arc<Mutex<PluginMap>>,
+        plugin_map: &'a mut PluginMap,
         connected_clients: Arc<Mutex<Vec<ClientId>>>,
     ) -> Self {
         let loading_indication = LoadingIndication::new("".into());
@@ -122,10 +123,6 @@ impl PluginLoader {
             loading_indication,
         }
     }
-    pub fn with_client_id(mut self, client_id: ClientId) -> Self {
-        self.client_id = client_id;
-        self
-    }
     pub fn without_connected_clients(mut self) -> Self {
         self.connected_clients = None;
         self
@@ -155,7 +152,6 @@ impl PluginLoader {
         Ok(module)
     }
     fn load_module_from_memory(&mut self) -> Result<Module> {
-        log::info!("attempting to load module from memory...");
         let module = self
             .plugin_cache
             .lock()
@@ -163,7 +159,6 @@ impl PluginLoader {
             .remove(&self.plugin_config.path) // TODO: do we still bring it back later?
             // maybe we can forgo this dance?
             .ok_or(anyhow!("Plugin is not stored in memory"))?;
-        log::info!("found in memory!");
         Ok(module)
     }
     fn load_plugin_instance(
@@ -207,7 +202,7 @@ impl PluginLoader {
             self.size.rows,
             self.size.cols,
         )));
-        self.plugin_map.lock().unwrap().insert(
+        self.plugin_map.insert(
             self.plugin_id,
             self.client_id,
             plugin.clone(),
@@ -314,22 +309,19 @@ impl PluginLoader {
     }
     pub fn clone_instance_for_other_clients(&mut self) -> Result<()> {
         let Some(connected_clients) = self.connected_clients.as_ref() else {
-            log::info!("no other clients");
             return Ok(());
         };
         let connected_clients: Vec<ClientId> =
             connected_clients.lock().unwrap().iter().copied().collect();
         if !connected_clients.is_empty() {
+            self.connected_clients = None; // so we don't have infinite loops
             for client_id in connected_clients {
                 if client_id == self.client_id {
                     // don't reload the plugin once more for ourselves
                     continue;
                 }
-                let mut plugin_loader_for_client = self
-                    .clone()
-                    .with_client_id(client_id)
-                    .without_connected_clients();
-                plugin_loader_for_client.start_plugin()?; // TODO: no deadlocks, right?
+                self.client_id = client_id;
+                self.start_plugin()?;
             }
         }
         Ok(())

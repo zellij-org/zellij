@@ -375,8 +375,8 @@ impl WasmBridge {
                                   default_layout: Box<Layout>,
                                   plugin_cache: PluginCache,
                                   engine| {
-                                log::info!("Compiling plugin {} on pinned thread", plugin_id);
 
+                                let mut plugin_map = plugin_map.lock().unwrap();
                                 match PluginLoader::new(
                                     skip_cache,
                                     loading_context,
@@ -384,13 +384,13 @@ impl WasmBridge {
                                     engine.clone(),
                                     default_layout.clone(),
                                     plugin_cache.clone(),
-                                    plugin_map.clone(),
+                                    &mut plugin_map,
                                     connected_clients.clone(),
                                 )
                                 .start_plugin()
                                 {
                                     Ok(_) => {
-                                        let plugin_list = plugin_map.lock().unwrap().list_plugins();
+                                        let plugin_list = plugin_map.list_plugins();
                                         handle_plugin_successful_loading(
                                             &senders,
                                             plugin_id,
@@ -427,8 +427,8 @@ impl WasmBridge {
                               default_layout,
                               plugin_cache: PluginCache,
                               engine: Engine| {
-                            log::info!("Compiling plugin {} on pinned thread", plugin_id);
 
+                            let mut plugin_map = plugin_map.lock().unwrap();
                             match PluginLoader::new(
                                 skip_cache,
                                 loading_context,
@@ -436,13 +436,13 @@ impl WasmBridge {
                                 engine.clone(),
                                 default_layout.clone(),
                                 plugin_cache.clone(),
-                                plugin_map.clone(),
+                                &mut plugin_map,
                                 connected_clients.clone(),
                             )
                             .start_plugin()
                             {
                                 Ok(_) => {
-                                    let plugin_list = plugin_map.lock().unwrap().list_plugins();
+                                    let plugin_list = plugin_map.list_plugins();
                                     handle_plugin_successful_loading(
                                         &senders,
                                         plugin_id,
@@ -628,6 +628,7 @@ impl WasmBridge {
             plugin_id,
             move |senders, plugin_map, connected_clients, default_layout, plugin_cache, engine| {
                 let skip_cache = true; // we want to explicitly reload the plugin
+                let mut plugin_map = plugin_map.lock().unwrap();
                 match PluginLoader::new(
                     skip_cache,
                     loading_context,
@@ -635,13 +636,13 @@ impl WasmBridge {
                     engine.clone(),
                     default_layout.clone(),
                     plugin_cache.clone(),
-                    plugin_map.clone(),
+                    &mut plugin_map,
                     connected_clients.clone(),
                 )
                 .start_plugin()
                 {
                     Ok(_) => {
-                        let plugin_list = plugin_map.lock().unwrap().list_plugins();
+                        let plugin_list = plugin_map.list_plugins();
                         handle_plugin_successful_loading(&senders, plugin_id, plugin_list);
                     },
                     Err(e) => handle_plugin_loading_failure(
@@ -675,7 +676,6 @@ impl WasmBridge {
     }
     pub fn add_client(&mut self, client_id: ClientId) -> Result<()> {
         if self.client_is_connected(&client_id) {
-            log::info!("Client {} already connected, skipping", client_id);
             return Ok(());
         }
 
@@ -740,6 +740,7 @@ impl WasmBridge {
                       plugin_cache,
                       engine| {
                     let skip_cache = false;
+                    let mut plugin_map = plugin_map.lock().unwrap();
                     match PluginLoader::new(
                         skip_cache,
                         loading_context,
@@ -747,7 +748,7 @@ impl WasmBridge {
                         engine.clone(),
                         default_layout.clone(),
                         plugin_cache.clone(),
-                        plugin_map.clone(),
+                        &mut plugin_map,
                         connected_clients.clone(),
                     )
                     .without_connected_clients()
