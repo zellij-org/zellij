@@ -2488,6 +2488,7 @@ pub fn pin_floating_panes() {
                         remote_terminal.send_key(&PANE_MODE);
                         std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&TOGGLE_FLOATING_PANES);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -2520,8 +2521,11 @@ pub fn pin_floating_panes() {
         runner.run_all_steps();
         let last_snapshot = runner.take_snapshot_after(Step {
             name: "Wait for cursor to be behind pinned pane",
-            instruction: |remote_terminal: RemoteTerminal| -> bool {
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
+                if !remote_terminal.snapshot_contains("LOCK") {
+                    remote_terminal.send_key(&PANE_MODE);
+                }
                 if remote_terminal.snapshot_contains("hide")
                     && remote_terminal.snapshot_contains("LOCK")
                 {
