@@ -296,8 +296,8 @@ impl WasmBridge {
                     .copied()
             })
             .or(client_id) // if we got here, this is likely a cli client with no other clients
-                           // connected, or loading a background plugin on app start, we use the provided client id as a dummy to load the
-                           // plugin anyway
+            // connected, or loading a background plugin on app start, we use the provided client id as a dummy to load the
+            // plugin anyway
             .with_context(|| {
                 "Plugins must have a client id, none was provided and none are connected"
             })?;
