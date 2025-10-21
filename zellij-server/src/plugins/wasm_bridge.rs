@@ -279,15 +279,11 @@ impl WasmBridge {
                 // first attempt to use a connected client (because this might be a cli_client that
                 // should not get plugins) and only if none is connected, load a "dummy" plugin for
                 // the cli client
-                if self.connected_clients.lock().unwrap().contains(&client_id) {
+                let connected_clients = self.connected_clients.lock().unwrap();
+                if connected_clients.contains(&client_id) {
                     Some(client_id)
                 } else {
-                    self.connected_clients
-                        .lock()
-                        .unwrap()
-                        .iter()
-                        .next()
-                        .copied()
+                    None
                 }
             })
             .or_else(|| {
@@ -299,6 +295,9 @@ impl WasmBridge {
                     .next()
                     .copied()
             })
+            .or(client_id) // if we got here, this is likely a cli client with no other clients
+                           // connected, or loading a background plugin on app start, we use the provided client id as a dummy to load the
+                           // plugin anyway
             .with_context(|| {
                 "Plugins must have a client id, none was provided and none are connected"
             })?;

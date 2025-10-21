@@ -376,7 +376,7 @@ pub fn toggle_pane_fullscreen() {
             name: "Wait for pane to become fullscreen",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2) {
+                if remote_terminal.cursor_position_is(3, 2) && remote_terminal.snapshot_contains("LOCK") {
                     // cursor is in full screen pane now
                     step_is_complete = true;
                 }
@@ -1445,6 +1445,7 @@ pub fn scrolling_inside_a_pane_with_mouse() {
                 if remote_terminal.cursor_position_is(63, 21)
                     && remote_terminal.snapshot_contains("line1 ")
                     && remote_terminal.snapshot_contains("SCROLL:  3/3")
+                    && remote_terminal.snapshot_contains("LOCK")
                 {
                     step_is_complete = true;
                 }
@@ -2519,7 +2520,7 @@ pub fn pin_floating_panes() {
             name: "Wait for cursor to be behind pinned pane",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.snapshot_contains("hide") {
+                if remote_terminal.snapshot_contains("hide") && remote_terminal.snapshot_contains("LOCK") {
                     // terminal has been filled with fixture text
                     step_is_complete = true;
                 }

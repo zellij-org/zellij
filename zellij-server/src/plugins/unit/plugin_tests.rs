@@ -8678,7 +8678,7 @@ pub fn reload_plugin_plugin_command() {
         received_screen_instructions,
         ScreenInstruction::RequestStateUpdateForPlugins, // happens on successful plugin (re)load
         screen_receiver,
-        3,
+        2,
         &PermissionType::ChangeApplicationState,
         cache_path,
         plugin_thread_sender,
@@ -8721,7 +8721,7 @@ pub fn reload_plugin_plugin_command() {
             }
         })
         .count();
-    assert_eq!(request_state_update_requests, 3);
+    assert_eq!(request_state_update_requests, 2);
 }
 
 #[test]
@@ -8752,7 +8752,7 @@ pub fn load_new_plugin_plugin_command() {
         received_screen_instructions,
         ScreenInstruction::RequestStateUpdateForPlugins, // happens on successful plugin (re)load
         screen_receiver,
-        3,
+        2,
         &PermissionType::ChangeApplicationState,
         cache_path,
         plugin_thread_sender,
@@ -8795,7 +8795,7 @@ pub fn load_new_plugin_plugin_command() {
             }
         })
         .count();
-    assert_eq!(request_state_update_requests, 3);
+    assert_eq!(request_state_update_requests, 2);
 }
 
 #[test]
