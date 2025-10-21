@@ -827,7 +827,7 @@ impl Tab {
             &self.terminal_emulator_colors,
             &self.terminal_emulator_color_codes,
             &self.character_cell_size,
-            &self.connected_clients,
+            &self.connected_clients_in_app,
             &self.style,
             &self.display_area,
             &mut self.tiled_panes,
@@ -897,7 +897,7 @@ impl Tab {
                 &self.terminal_emulator_colors,
                 &self.terminal_emulator_color_codes,
                 &self.character_cell_size,
-                &self.connected_clients,
+                &self.connected_clients_in_app,
                 &self.style,
                 &self.display_area,
                 &mut self.tiled_panes,
@@ -935,7 +935,7 @@ impl Tab {
                 &self.terminal_emulator_colors,
                 &self.terminal_emulator_color_codes,
                 &self.character_cell_size,
-                &self.connected_clients,
+                &self.connected_clients_in_app,
                 &self.style,
                 &self.display_area,
                 &mut self.tiled_panes,
@@ -1384,7 +1384,11 @@ impl Tab {
                     self.terminal_emulator_color_codes.clone(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
-                    self.connected_clients.borrow().iter().copied().collect(),
+                    self.connected_clients_in_app
+                        .borrow()
+                        .keys()
+                        .copied()
+                        .collect(),
                     self.style,
                     invoked_with,
                     self.debug,
@@ -1485,7 +1489,11 @@ impl Tab {
                     self.terminal_emulator_color_codes.clone(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
-                    self.connected_clients.borrow().iter().copied().collect(),
+                    self.connected_clients_in_app
+                        .borrow()
+                        .keys()
+                        .copied()
+                        .collect(),
                     self.style,
                     invoked_with,
                     self.debug,
@@ -1576,7 +1584,11 @@ impl Tab {
                     self.terminal_emulator_color_codes.clone(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
-                    self.connected_clients.borrow().iter().copied().collect(),
+                    self.connected_clients_in_app
+                        .borrow()
+                        .keys()
+                        .copied()
+                        .collect(),
                     self.style,
                     invoked_with,
                     self.debug,
@@ -1708,7 +1720,11 @@ impl Tab {
                     self.terminal_emulator_color_codes.clone(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
-                    self.connected_clients.borrow().iter().copied().collect(),
+                    self.connected_clients_in_app
+                        .borrow()
+                        .keys()
+                        .copied()
+                        .collect(),
                     self.style,
                     invoked_with,
                     self.debug,
@@ -1950,7 +1966,11 @@ impl Tab {
                     self.terminal_emulator_color_codes.clone(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
-                    self.connected_clients.borrow().iter().copied().collect(),
+                    self.connected_clients_in_app
+                        .borrow()
+                        .keys()
+                        .copied()
+                        .collect(),
                     self.style,
                     run,
                     self.debug,

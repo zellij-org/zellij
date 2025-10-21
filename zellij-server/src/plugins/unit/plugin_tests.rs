@@ -6,7 +6,7 @@ use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tempfile::tempdir;
-use wasmtime::Engine;
+use wasmi::Engine;
 use zellij_utils::data::{
     BareKey, Event, InputMode, KeyWithModifier, PermissionStatus, PermissionType,
     PluginCapabilities,
@@ -333,7 +333,10 @@ fn create_plugin_thread(
         None,
     )
     .should_silently_fail();
-    let engine = Engine::new(wasmtime::Config::new().strategy(wasmtime::Strategy::Winch)).unwrap();
+    let mut config = wasmi::Config::default();
+    config.set_max_stack_height(1024 * 1024);
+    config.set_max_recursion_depth(1000);
+    let engine = Engine::new(&config);
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
     let plugin_capabilities = PluginCapabilities::default();
@@ -427,7 +430,10 @@ fn create_plugin_thread_with_server_receiver(
         None,
     )
     .should_silently_fail();
-    let engine = Engine::new(wasmtime::Config::new().strategy(wasmtime::Strategy::Winch)).unwrap();
+    let mut config = wasmi::Config::default();
+    config.set_max_stack_height(1024 * 1024);
+    config.set_max_recursion_depth(1000);
+    let engine = Engine::new(&config);
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
     let plugin_capabilities = PluginCapabilities::default();
@@ -517,7 +523,10 @@ fn create_plugin_thread_with_pty_receiver(
         None,
     )
     .should_silently_fail();
-    let engine = Engine::new(wasmtime::Config::new().strategy(wasmtime::Strategy::Winch)).unwrap();
+    let mut config = wasmi::Config::default();
+    config.set_max_stack_height(1024 * 1024);
+    config.set_max_recursion_depth(1000);
+    let engine = Engine::new(&config);
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
     let plugin_capabilities = PluginCapabilities::default();
@@ -602,7 +611,10 @@ fn create_plugin_thread_with_background_jobs_receiver(
         None,
     )
     .should_silently_fail();
-    let engine = Engine::new(wasmtime::Config::new().strategy(wasmtime::Strategy::Winch)).unwrap();
+    let mut config = wasmi::Config::default();
+    config.set_max_stack_height(1024 * 1024);
+    config.set_max_recursion_depth(1000);
+    let engine = Engine::new(&config);
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
     let plugin_capabilities = PluginCapabilities::default();
@@ -8666,7 +8678,7 @@ pub fn reload_plugin_plugin_command() {
         received_screen_instructions,
         ScreenInstruction::RequestStateUpdateForPlugins, // happens on successful plugin (re)load
         screen_receiver,
-        3,
+        2,
         &PermissionType::ChangeApplicationState,
         cache_path,
         plugin_thread_sender,
@@ -8709,7 +8721,7 @@ pub fn reload_plugin_plugin_command() {
             }
         })
         .count();
-    assert_eq!(request_state_update_requests, 3);
+    assert_eq!(request_state_update_requests, 2);
 }
 
 #[test]
@@ -8740,7 +8752,7 @@ pub fn load_new_plugin_plugin_command() {
         received_screen_instructions,
         ScreenInstruction::RequestStateUpdateForPlugins, // happens on successful plugin (re)load
         screen_receiver,
-        3,
+        2,
         &PermissionType::ChangeApplicationState,
         cache_path,
         plugin_thread_sender,
@@ -8783,7 +8795,7 @@ pub fn load_new_plugin_plugin_command() {
             }
         })
         .count();
-    assert_eq!(request_state_update_requests, 3);
+    assert_eq!(request_state_update_requests, 2);
 }
 
 #[test]

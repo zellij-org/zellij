@@ -6,7 +6,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use log::{debug, warn};
 use zellij_utils::data::{
@@ -702,6 +702,57 @@ impl CopyOptions {
     }
 }
 
+// We use this to delay rendering when a new tab opens so that we make sure all plugins
+// (representing portions of the UI) have been fully loaded before the tab is first rendered (with
+// a sensible timeout of 100ms)
+#[derive(Debug, Clone)]
+pub struct RenderBlocker {
+    blocking_plugins: HashMap<u32, Instant>,
+    timeout_ms: u64,
+}
+
+impl RenderBlocker {
+    pub fn new(timeout_ms: u64) -> Self {
+        Self {
+            blocking_plugins: HashMap::new(),
+            timeout_ms,
+        }
+    }
+
+    pub fn register_blocking_plugin(&mut self, plugin_id: u32) {
+        self.blocking_plugins.insert(plugin_id, Instant::now());
+    }
+
+    pub fn remove_blocking_plugin(&mut self, plugin_id: u32) {
+        self.blocking_plugins.remove(&plugin_id);
+    }
+
+    #[cfg(test)]
+    pub fn can_render(&mut self) -> bool {
+        // we want the tests to be more deterministic and so we always render without any
+        // optimizations
+        true
+    }
+
+    #[cfg(not(test))]
+    pub fn can_render(&mut self) -> bool {
+        let ret = if self.blocking_plugins.is_empty() {
+            true
+        } else {
+            let timeout = Duration::from_millis(self.timeout_ms);
+            let now = Instant::now();
+
+            self.blocking_plugins
+                .values()
+                .all(|&registered_at| now.duration_since(registered_at) >= timeout)
+        };
+        if ret {
+            self.blocking_plugins.clear();
+        }
+        ret
+    }
+}
+
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
 /// It only directly controls which tab is active, delegating the rest to the individual `Tab`.
 pub(crate) struct Screen {
@@ -758,6 +809,7 @@ pub(crate) struct Screen {
     // is brought online
     web_server_ip: IpAddr,
     web_server_port: u16,
+    render_blocker: RenderBlocker,
 }
 
 impl Screen {
@@ -840,6 +892,7 @@ impl Screen {
             advanced_mouse_actions,
             web_server_ip,
             web_server_port,
+            render_blocker: RenderBlocker::new(100),
         }
     }
 
@@ -3369,6 +3422,7 @@ pub(crate) fn screen_thread_main(
                             break;
                         }
                     }
+                    screen.render_blocker.remove_blocking_plugin(plugin_id);
                 }
                 screen.render(Some(plugin_render_assets))?;
             },
@@ -3376,7 +3430,14 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::RenderToClients => {
-                screen.render_to_clients()?;
+                // render_blocker.can_render() returning true means that either all pending plugins
+                // (only those waiting for a new tab layout to be applied!) have been rendered or
+                // that a 100ms timeout has been reached (more info in the RenderBlocker comment)
+                if screen.render_blocker.can_render() {
+                    screen.render_to_clients()?;
+                } else {
+                    screen.render(None)?;
+                }
             },
             ScreenInstruction::NewPane(
                 pid,
@@ -4267,6 +4328,7 @@ pub(crate) fn screen_thread_main(
                             screen.update_plugin_loading_stage(*plugin_id, loading_indication);
                             screen.render(None)?;
                         }
+                        screen.render_blocker.register_blocking_plugin(*plugin_id);
                     }
                 }
 

@@ -46,29 +46,21 @@ unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 vte = { workspace = true }
-wasmtime-wasi = { version = "29.0.1", default-features = false, features = ["preview1"] } # Keep in sync with wasmtime
+wasmi_wasi = { version = "0.51.1" }
 zellij-utils = { workspace = true }
 tokio = { workspace = true }
+once_cell = "1.19"
+num_cpus = "1.16"
 
-[dependencies.wasmtime]
-version = "29.0.1" # Keep in sync with wasmtime-wasi
+[dependencies.wasmi]
+version = "0.51.1"
 default-features = false
-features = [
-  'addr2line',
-  'cranelift',
-  'demangle',
-  'gc',
-  'gc-drc',
-  'parallel-compilation',
-  'runtime',
-  'std',
-]
+features = ["std"]
 
 [dev-dependencies]
 insta = "1.6.0"
 tempfile = "3.2.0"
-wasmtime = { version = "29.0.1", features = ["winch"] } # Keep in sync with the other wasmtime dep
+wasmi = { version = "0.51.1", features = ["std"] }
 
 [features]
-singlepass = ["wasmtime/winch"]
 web_server_capability = ["zellij-utils/web_server_capability"]

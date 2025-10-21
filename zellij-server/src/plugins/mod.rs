@@ -1,3 +1,4 @@
+mod pinned_executor;
 mod pipes;
 mod plugin_loader;
 mod plugin_map;
@@ -6,13 +7,15 @@ mod wasm_bridge;
 mod watch_filesystem;
 mod zellij_exports;
 use log::info;
+
+pub use pinned_executor::PinnedExecutor;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs,
     path::PathBuf,
     time::Duration,
 };
-use wasmtime::Engine;
+use wasmi::Engine;
 
 use crate::panes::PaneId;
 use crate::screen::ScreenInstruction;
@@ -313,7 +316,6 @@ pub(crate) fn plugin_thread_main(
                     cwd.clone(),
                     skip_cache,
                     Some(client_id),
-                    None,
                 ) {
                     Ok((plugin_id, client_id)) => {
                         drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
@@ -388,7 +390,6 @@ pub(crate) fn plugin_thread_main(
                                         size,
                                         None,
                                         skip_cache,
-                                        None,
                                         None,
                                     ) {
                                         Ok((plugin_id, _client_id)) => {
@@ -501,7 +502,6 @@ pub(crate) fn plugin_thread_main(
                             cwd,
                             skip_cache,
                             Some(client_id),
-                            None,
                         )?;
                         plugin_ids
                             .entry(run_plugin_or_alias.clone())
@@ -1124,7 +1124,6 @@ fn load_background_plugin(
         cwd.clone(),
         skip_cache,
         Some(client_id),
-        None,
     ) {
         Ok((plugin_id, client_id)) => {
             let should_float = None;
