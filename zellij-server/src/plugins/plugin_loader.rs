@@ -50,7 +50,7 @@ fn create_plugin_fs_entries(plugin_own_data_dir: &PathBuf, plugin_own_cache_dir:
     }
 }
 
-pub struct PluginLoader <'a>{
+pub struct PluginLoader<'a> {
     skip_cache: bool,
     plugin_id: PluginId,
     client_id: ClientId,
@@ -74,12 +74,12 @@ pub struct PluginLoader <'a>{
     default_layout: Box<Layout>,
     plugin_cache: PluginCache,
     plugin_map: &'a mut PluginMap, // we receive a mutable reference rather than the Arc so that it
-                                   // will be held for the lifetime of this struct and thus loading
-                                   // plugins for all connected clients will be one transaction
+    // will be held for the lifetime of this struct and thus loading
+    // plugins for all connected clients will be one transaction
     connected_clients: Option<Arc<Mutex<Vec<ClientId>>>>,
 }
 
-impl <'a> PluginLoader <'a>{
+impl<'a> PluginLoader<'a> {
     pub fn new(
         skip_cache: bool,
         loading_context: LoadingContext,

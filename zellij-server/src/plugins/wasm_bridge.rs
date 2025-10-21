@@ -375,7 +375,6 @@ impl WasmBridge {
                                   default_layout: Box<Layout>,
                                   plugin_cache: PluginCache,
                                   engine| {
-
                                 let mut plugin_map = plugin_map.lock().unwrap();
                                 match PluginLoader::new(
                                     skip_cache,
@@ -427,7 +426,6 @@ impl WasmBridge {
                               default_layout,
                               plugin_cache: PluginCache,
                               engine: Engine| {
-
                             let mut plugin_map = plugin_map.lock().unwrap();
                             match PluginLoader::new(
                                 skip_cache,

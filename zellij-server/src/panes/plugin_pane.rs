@@ -404,7 +404,7 @@ impl Pane for PluginPane {
             return Ok(None);
         }
         let frame_geom = self.current_geom();
-        let grid = {get_or_create_grid!(self, client_id)};
+        let grid = get_or_create_grid!(self, client_id);
         let err_context = || format!("failed to render frame for client {client_id}");
         let pane_title = if let Some(text_color_override) = self
             .pane_frame_color_override
