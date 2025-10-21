@@ -403,56 +403,44 @@ impl Pane for PluginPane {
         if self.borderless {
             return Ok(None);
         }
-        if let Some(grid) = self.grids.get(&client_id) {
-            let err_context = || format!("failed to render frame for client {client_id}");
-            let pane_title = if let Some(text_color_override) = self
-                .pane_frame_color_override
-                .as_ref()
-                .and_then(|(_color, text)| text.as_ref())
-            {
-                text_color_override.into()
-            } else if self.pane_name.is_empty()
-                && input_mode == InputMode::RenamePane
-                && frame_params.is_main_client
-            {
-                String::from("Enter name...")
-            } else if self.pane_name.is_empty() {
-                grid.title
-                    .clone()
-                    .unwrap_or_else(|| self.pane_title.clone())
-            } else {
-                self.pane_name.clone()
-            };
+        let frame_geom = self.current_geom();
+        let grid = {get_or_create_grid!(self, client_id)};
+        let err_context = || format!("failed to render frame for client {client_id}");
+        let pane_title = if let Some(text_color_override) = self
+            .pane_frame_color_override
+            .as_ref()
+            .and_then(|(_color, text)| text.as_ref())
+        {
+            text_color_override.into()
+        } else if self.pane_name.is_empty()
+            && input_mode == InputMode::RenamePane
+            && frame_params.is_main_client
+        {
+            String::from("Enter name...")
+        } else if self.pane_name.is_empty() {
+            grid.title
+                .clone()
+                .unwrap_or_else(|| self.pane_title.clone())
+        } else {
+            self.pane_name.clone()
+        };
 
-            let frame_geom = self.current_geom();
-            let is_pinned = frame_geom.is_pinned;
-            let mut frame = PaneFrame::new(
-                frame_geom.into(),
-                grid.scrollback_position_and_length(),
-                pane_title,
-                frame_params,
-            )
-            .is_pinned(is_pinned);
-            if let Some((frame_color_override, _text)) = self.pane_frame_color_override.as_ref() {
-                frame.override_color(*frame_color_override);
-            }
+        let is_pinned = frame_geom.is_pinned;
+        let mut frame = PaneFrame::new(
+            frame_geom.into(),
+            grid.scrollback_position_and_length(),
+            pane_title,
+            frame_params,
+        )
+        .is_pinned(is_pinned);
+        if let Some((frame_color_override, _text)) = self.pane_frame_color_override.as_ref() {
+            frame.override_color(*frame_color_override);
+        }
 
-            let res = match self.frame.get(&client_id) {
-                // TODO: use and_then or something?
-                Some(last_frame) => {
-                    if &frame != last_frame {
-                        if !self.borderless {
-                            let frame_output = frame.render().with_context(err_context)?;
-                            self.frame.insert(client_id, frame);
-                            Some(frame_output)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                },
-                None => {
+        let res = match self.frame.get(&client_id) {
+            // TODO: use and_then or something?
+            Some(last_frame) => {
+                if &frame != last_frame {
                     if !self.borderless {
                         let frame_output = frame.render().with_context(err_context)?;
                         self.frame.insert(client_id, frame);
@@ -460,12 +448,21 @@ impl Pane for PluginPane {
                     } else {
                         None
                     }
-                },
-            };
-            Ok(res)
-        } else {
-            Ok(None)
-        }
+                } else {
+                    None
+                }
+            },
+            None => {
+                if !self.borderless {
+                    let frame_output = frame.render().with_context(err_context)?;
+                    self.frame.insert(client_id, frame);
+                    Some(frame_output)
+                } else {
+                    None
+                }
+            },
+        };
+        Ok(res)
     }
     fn render_fake_cursor(
         &mut self,
