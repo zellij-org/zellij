@@ -2735,11 +2735,21 @@ impl Tab {
         Ok(())
     }
 
-    pub fn render(&mut self, output: &mut Output) -> Result<()> {
+    pub fn render(
+        &mut self,
+        output: &mut Output,
+        client_id_override: Option<ClientId>,
+    ) -> Result<()> {
         let err_context = || "failed to render tab".to_string();
 
-        let connected_clients: HashSet<ClientId> =
+        let mut connected_clients: HashSet<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
+
+        // If we have a client_id_override (for watcher rendering), add it temporarily
+        if let Some(override_id) = client_id_override {
+            connected_clients.insert(override_id);
+        }
+
         if connected_clients.is_empty() || !self.tiled_panes.has_active_panes() {
             return Ok(());
         }

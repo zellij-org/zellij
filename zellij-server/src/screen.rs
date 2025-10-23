@@ -430,6 +430,9 @@ pub enum ScreenInstruction {
     InterceptKeyPresses(PluginId, ClientId),
     ClearKeyPressesIntercepts(ClientId),
     ReplacePaneWithExistingPane(PaneId, PaneId),
+    AddWatcherClient(ClientId),
+    RemoveWatcherClient(ClientId),
+    SetFollowedClient(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -668,6 +671,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ReplacePaneWithExistingPane(..) => {
                 ScreenContext::ReplacePaneWithExistingPane
             },
+            ScreenInstruction::AddWatcherClient(..) => ScreenContext::AddWatcherClient,
+            ScreenInstruction::RemoveWatcherClient(..) => ScreenContext::RemoveWatcherClient,
+            ScreenInstruction::SetFollowedClient(..) => ScreenContext::SetFollowedClient,
         }
     }
 }
@@ -810,6 +816,8 @@ pub(crate) struct Screen {
     web_server_ip: IpAddr,
     web_server_port: u16,
     render_blocker: RenderBlocker,
+    watcher_clients: HashSet<ClientId>,
+    followed_client_id: Option<ClientId>,
 }
 
 impl Screen {
@@ -893,6 +901,8 @@ impl Screen {
             web_server_ip,
             web_server_port,
             render_blocker: RenderBlocker::new(100),
+            watcher_clients: HashSet::new(),
+            followed_client_id: None,
         }
     }
 
@@ -1364,44 +1374,107 @@ impl Screen {
     }
 
     pub fn render_to_clients(&mut self) -> Result<()> {
+        log::info!("render_to_clients");
         // this method does the actual rendering and is triggered by a debounced BackgroundJob (see
         // the render method for more details)
         let err_context = "failed to render screen";
 
-        let mut output = Output::new(
-            self.sixel_image_store.clone(),
-            self.character_cell_size.clone(),
-            self.styled_underlines,
-        );
-        let mut tabs_to_close = vec![];
-        for (tab_index, tab) in &mut self.tabs {
-            if tab.has_selectable_tiled_panes() {
-                tab.render(&mut output).context(err_context)?;
-            } else if !tab.is_pending() {
-                tabs_to_close.push(*tab_index);
+        // Separate rendering for regular clients and watchers
+        let has_regular_clients = self.connected_clients
+            .borrow()
+            .keys()
+            .any(|id| !self.watcher_clients.contains(id));
+        let has_watchers = !self.watcher_clients.is_empty();
+
+        // === PHASE 1: Render for regular clients ===
+        if has_regular_clients {
+            log::info!("has_regular_clients");
+            let mut output = Output::new(
+                self.sixel_image_store.clone(),
+                self.character_cell_size.clone(),
+                self.styled_underlines,
+            );
+
+            let mut tabs_to_close = vec![];
+            for (tab_index, tab) in &mut self.tabs {
+                if tab.has_selectable_tiled_panes() {
+                    // Pass None for normal client rendering
+                    tab.render(&mut output, None).context(err_context)?;
+                } else if !tab.is_pending() {
+                    tabs_to_close.push(*tab_index);
+                }
             }
-        }
-        for tab_index in tabs_to_close {
-            // cleanup as needed
-            self.close_tab_at_index(tab_index)
-                .context(err_context)
-                .non_fatal();
-        }
+            for tab_index in tabs_to_close {
+                self.close_tab_at_index(tab_index)
+                    .context(err_context)
+                    .non_fatal();
+            }
 
-        let pane_render_report = output.drain_pane_render_report();
-        let _ = self
-            .bus
-            .senders
-            .send_to_plugin(PluginInstruction::PaneRenderReport(pane_render_report));
-
-        if output.is_dirty() {
-            let serialized_output = output.serialize().context(err_context)?;
+            let pane_render_report = output.drain_pane_render_report();
             let _ = self
                 .bus
                 .senders
-                .send_to_server(ServerInstruction::Render(Some(serialized_output)))
-                .context(err_context);
+                .send_to_plugin(PluginInstruction::PaneRenderReport(pane_render_report));
+
+            if output.is_dirty() {
+                let serialized_output = output.serialize().context(err_context)?;
+                let _ = self
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::Render(Some(serialized_output)))
+                    .context(err_context);
+            }
         }
+
+        // === PHASE 2: Render for watchers ===
+        if has_watchers {
+            log::info!("has_watchers");
+            if let Some(followed_client_id) = self.followed_client_id {
+                log::info!("has followed_client_id");
+                // Create fresh output for watchers
+                let mut watcher_output = Output::new(
+                    self.sixel_image_store.clone(),
+                    self.character_cell_size.clone(),
+                    self.styled_underlines,
+                );
+
+                // Render all tabs with the followed_client_id
+                for (_tab_index, tab) in &mut self.tabs {
+                    if tab.has_selectable_tiled_panes() {
+                        log::info!("rendering tab for watchers");
+                        // Pass Some(followed_client_id) to force rendering with this client's state
+                        // Even if this client is disconnected, terminals will render and plugins
+                        // will use their last known grid for this client
+                        tab.set_force_render(); // TODO: not good...
+                        tab.render(&mut watcher_output, Some(followed_client_id))
+                            .context(err_context)?;
+                    }
+                }
+
+                // Send the rendered output to all watcher clients
+                if watcher_output.is_dirty() {
+                    let mut serialized_watcher_output = watcher_output.serialize().context(err_context)?;
+
+                    // Get the output that was generated for followed_client_id
+                    if let Some(followed_output) = serialized_watcher_output.remove(&followed_client_id) {
+                        // Create a HashMap with all watcher clients pointing to the same output
+                        let watcher_render_output: HashMap<ClientId, String> = self
+                            .watcher_clients
+                            .iter()
+                            .map(|watcher_id| (*watcher_id, followed_output.clone()))
+                            .collect();
+
+                        // Send to server for delivery to watcher clients
+                        let _ = self
+                            .bus
+                            .senders
+                            .send_to_server(ServerInstruction::Render(Some(watcher_render_output)))
+                            .context(err_context);
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -1666,6 +1739,11 @@ impl Screen {
             format!("failed to attach client {client_id} to tab with index {tab_index}")
         };
 
+        // Set followed_client_id to the first regular client if not already set
+        if self.followed_client_id.is_none() && !self.watcher_clients.contains(&client_id) {
+            self.followed_client_id = Some(client_id);
+        }
+
         let mut tab_history = vec![];
         if let Some((_first_client, first_tab_history)) = self.tab_history.iter().next() {
             tab_history = first_tab_history.clone();
@@ -1698,6 +1776,22 @@ impl Screen {
     pub fn remove_client(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to remove client {client_id}");
 
+        // If the followed client disconnected, find the next regular client
+        if Some(client_id) == self.followed_client_id {
+            // Try to find another regular (non-watcher) client
+            self.followed_client_id = self.connected_clients
+                .borrow()
+                .keys()
+                .copied()
+                .find(|id| !self.watcher_clients.contains(id) && id != &client_id);
+
+            // If no regular client remains but we have watchers, keep the old followed_client_id
+            // for terminal rendering (plugins will use their last state)
+            if self.followed_client_id.is_none() && !self.watcher_clients.is_empty() {
+                self.followed_client_id = Some(client_id); // Keep the disconnected client's ID
+            }
+        }
+
         for (_, tab) in self.tabs.iter_mut() {
             tab.remove_client(client_id);
             if tab.has_no_connected_clients() {
@@ -1713,6 +1807,27 @@ impl Screen {
         self.connected_clients.borrow_mut().remove(&client_id);
         self.log_and_report_session_state()
             .with_context(err_context)
+    }
+
+    pub fn add_watcher_client(&mut self, client_id: ClientId) -> Result<()> {
+        self.watcher_clients.insert(client_id);
+
+        // Force a full render for the new watcher
+        // This ensures they get complete state, not just delta
+        self.render(None)?;
+
+        Ok(())
+    }
+
+    pub fn remove_watcher_client(&mut self, client_id: ClientId) {
+        self.watcher_clients.remove(&client_id);
+    }
+
+    pub fn set_followed_client(&mut self, client_id: ClientId) -> Result<()> {
+        self.followed_client_id = Some(client_id);
+        // Trigger re-render with new followed client
+        self.render(None)?;
+        Ok(())
     }
 
     pub fn generate_and_report_tab_state(&mut self) -> Result<Vec<TabInfo>> {
@@ -5762,6 +5877,15 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ReplacePaneWithExistingPane(old_pane_id, new_pane_id) => {
                 screen.replace_pane_with_existing_pane(old_pane_id, new_pane_id)
             },
+            ScreenInstruction::AddWatcherClient(client_id) => {
+                screen.add_watcher_client(client_id).context("failed to add watcher client")?;
+            }
+            ScreenInstruction::RemoveWatcherClient(client_id) => {
+                screen.remove_watcher_client(client_id);
+            }
+            ScreenInstruction::SetFollowedClient(client_id) => {
+                screen.set_followed_client(client_id).context("failed to set followed client")?;
+            }
         }
     }
     Ok(())
