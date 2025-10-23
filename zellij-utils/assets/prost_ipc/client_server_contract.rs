@@ -2283,7 +2283,7 @@ pub struct ConfigFileUpdatedMsg {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -2321,6 +2321,8 @@ pub mod client_to_server_msg {
         WebServerStarted(super::WebServerStartedMsg),
         #[prost(message, tag="15")]
         FailedToStartWebServer(super::FailedToStartWebServerMsg),
+        #[prost(message, tag="16")]
+        AttachWatcherClient(super::AttachWatcherClientMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -2378,6 +2380,11 @@ pub struct AttachClientMsg {
     pub pane_to_focus: ::core::option::Option<PaneReference>,
     #[prost(bool, tag="4")]
     pub is_web_client: bool,
+}
+/// Empty message
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AttachWatcherClientMsg {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

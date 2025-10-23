@@ -93,6 +93,7 @@ pub enum ServerInstruction {
         bool,                // is_web_client
         ClientId,
     ),
+    AttachWatcherClient(ClientId),
     ConnStatus(ClientId),
     Log(Vec<String>, ClientId),
     LogError(Vec<String>, ClientId),
@@ -139,6 +140,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::KillSession => ServerContext::KillSession,
             ServerInstruction::DetachSession(..) => ServerContext::DetachSession,
             ServerInstruction::AttachClient(..) => ServerContext::AttachClient,
+            ServerInstruction::AttachWatcherClient(..) => ServerContext::AttachClient,
             ServerInstruction::ConnStatus(..) => ServerContext::ConnStatus,
             ServerInstruction::Log(..) => ServerContext::Log,
             ServerInstruction::LogError(..) => ServerContext::LogError,
@@ -472,6 +474,7 @@ macro_rules! send_to_client {
 pub(crate) struct SessionState {
     clients: HashMap<ClientId, Option<(Size, bool)>>, // bool -> is_web_client
     pipes: HashMap<String, ClientId>,                 // String => pipe_id
+    watchers: HashSet<ClientId>,                      // watcher clients (read-only observers)
 }
 
 impl SessionState {
@@ -479,13 +482,20 @@ impl SessionState {
         SessionState {
             clients: HashMap::new(),
             pipes: HashMap::new(),
+            watchers: HashSet::new(),
         }
     }
     pub fn new_client(&mut self) -> ClientId {
-        let clients: HashSet<ClientId> = self.clients.keys().copied().collect();
+        let all_ids: HashSet<ClientId> = self
+            .clients
+            .keys()
+            .copied()
+            .chain(self.watchers.iter().copied())
+            .collect();
+
         let mut next_client_id = 1;
         loop {
-            if clients.contains(&next_client_id) {
+            if all_ids.contains(&next_client_id) {
                 next_client_id += 1;
             } else {
                 break;
@@ -564,6 +574,19 @@ impl SessionState {
             active_clients_connected = true;
         }
         active_clients_connected
+    }
+    pub fn convert_client_to_watcher(&mut self, client_id: ClientId) {
+        self.clients.remove(&client_id);
+        self.watchers.insert(client_id);
+    }
+    pub fn is_watcher(&self, client_id: &ClientId) -> bool {
+        self.watchers.contains(client_id)
+    }
+    pub fn first_non_watcher_client(&self) -> Option<ClientId> {
+        self.clients.keys().copied().next()
+    }
+    pub fn remove_watcher(&mut self, client_id: ClientId) {
+        self.watchers.remove(&client_id);
     }
 }
 
@@ -897,6 +920,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     )]))
                     .unwrap();
             },
+            ServerInstruction::AttachWatcherClient(client_id) => {
+                // the client_id was inserted into clients upon ipc tunnel initialization
+                // now that it identified itself as a watcher, we need to convert it
+                session_state.write().unwrap().convert_client_to_watcher(client_id)
+            },
             ServerInstruction::UnblockInputThread => {
                 let client_ids = session_state.read().unwrap().client_ids();
                 for client_id in client_ids {
@@ -975,77 +1003,98 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         exit_reason: ExitReason::Normal,
                     },
                 );
-                remove_client!(client_id, os_input, session_state);
-                if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
+
+                // Check if this is a watcher
+                let is_watcher = session_state.read().unwrap().is_watcher(&client_id);
+                if is_watcher {
+                    // Simply remove the watcher from the watchers set
+                    session_state.write().unwrap().remove_watcher(client_id);
+                    os_input.remove_client(client_id).unwrap();
+                } else {
+                    // Handle regular client removal
+                    remove_client!(client_id, os_input, session_state);
+                    if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
+                    {
+                        session_data
+                            .write()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                            .unwrap();
+                    }
                     session_data
                         .write()
                         .unwrap()
                         .as_ref()
                         .unwrap()
                         .senders
-                        .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                        .send_to_screen(ScreenInstruction::RemoveClient(client_id))
                         .unwrap();
-                }
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_screen(ScreenInstruction::RemoveClient(client_id))
-                    .unwrap();
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_plugin(PluginInstruction::RemoveClient(client_id))
-                    .unwrap();
-                if !session_state.read().unwrap().active_clients_are_connected() {
-                    *session_data.write().unwrap() = None;
-                    let client_ids_to_cleanup: Vec<ClientId> = session_state
-                        .read()
+                    session_data
+                        .write()
                         .unwrap()
-                        .clients
-                        .keys()
-                        .copied()
-                        .collect();
-                    // these are just the pipes
-                    for client_id in client_ids_to_cleanup {
-                        remove_client!(client_id, os_input, session_state);
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_plugin(PluginInstruction::RemoveClient(client_id))
+                        .unwrap();
+                    if !session_state.read().unwrap().active_clients_are_connected() {
+                        *session_data.write().unwrap() = None;
+                        let client_ids_to_cleanup: Vec<ClientId> = session_state
+                            .read()
+                            .unwrap()
+                            .clients
+                            .keys()
+                            .copied()
+                            .collect();
+                        // these are just the pipes
+                        for client_id in client_ids_to_cleanup {
+                            remove_client!(client_id, os_input, session_state);
+                        }
+                        break;
                     }
-                    break;
                 }
             },
             ServerInstruction::RemoveClient(client_id) => {
-                remove_client!(client_id, os_input, session_state);
-                if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
+                // Check if this is a watcher
+                let is_watcher = session_state.read().unwrap().is_watcher(&client_id);
+                if is_watcher {
+                    // Simply remove the watcher from the watchers set
+                    session_state.write().unwrap().remove_watcher(client_id);
+                    os_input.remove_client(client_id).unwrap();
+                } else {
+                    // Handle regular client removal
+                    remove_client!(client_id, os_input, session_state);
+                    if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
+                    {
+                        session_data
+                            .write()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                            .unwrap();
+                    }
                     session_data
                         .write()
                         .unwrap()
                         .as_ref()
                         .unwrap()
                         .senders
-                        .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                        .send_to_screen(ScreenInstruction::RemoveClient(client_id))
+                        .unwrap();
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                         .unwrap();
                 }
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_screen(ScreenInstruction::RemoveClient(client_id))
-                    .unwrap();
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_plugin(PluginInstruction::RemoveClient(client_id))
-                    .unwrap();
             },
             ServerInstruction::SendWebClientsForbidden(client_id) => {
                 let _ = os_input.send_to_client(
@@ -1141,6 +1190,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // If `Some(_)`- unwrap it and forward it to the clients to render.
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
                 if let Some(output) = &serialized_output {
+                    // Send to regular clients
                     for (client_id, client_render_instruction) in output.iter() {
                         // TODO: When a client is too slow or unresponsive, the channel fills up
                         // and this call will disconnect the client in turn. Should this be
@@ -1154,7 +1204,34 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             session_state
                         );
                     }
+
+                    // Send the first client's rendered output to all watchers
+                    let first_client_id = session_state.read().unwrap().first_non_watcher_client();
+                    if let Some(first_client_id) = first_client_id {
+                        if let Some(first_client_output) = output.get(&first_client_id) {
+                            let watcher_ids: Vec<ClientId> = session_state
+                                .read()
+                                .unwrap()
+                                .watchers
+                                .iter()
+                                .copied()
+                                .collect();
+
+                            for watcher_id in watcher_ids {
+                                send_to_client!(
+                                    watcher_id,
+                                    os_input,
+                                    ServerToClientMsg::Render {
+                                        content: first_client_output.clone()
+                                    },
+                                    session_state
+                                );
+                            }
+                        }
+                    }
+                    // If no non-watcher clients exist, watchers get nothing (no render)
                 } else {
+                    // Session is exiting - disconnect all regular clients
                     for client_id in client_ids {
                         let _ = os_input.send_to_client(
                             client_id,
@@ -1163,6 +1240,24 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             },
                         );
                         remove_client!(client_id, os_input, session_state);
+                    }
+
+                    // Also disconnect all watchers
+                    let watcher_ids: Vec<ClientId> = session_state
+                        .read()
+                        .unwrap()
+                        .watchers
+                        .iter()
+                        .copied()
+                        .collect();
+                    for watcher_id in watcher_ids {
+                        let _ = os_input.send_to_client(
+                            watcher_id,
+                            ServerToClientMsg::Exit {
+                                exit_reason: ExitReason::Normal,
+                            },
+                        );
+                        remove_client!(watcher_id, os_input, session_state);
                     }
                     break;
                 }

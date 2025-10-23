@@ -271,6 +271,14 @@ pub enum Sessions {
         forget: bool,
     },
 
+    /// Watch a session (read-only)
+    #[clap(visible_alias = "w")]
+    Watch {
+        /// Name of the session to watch
+        #[clap(value_parser)]
+        session_name: Option<String>,
+    },
+
     /// Kill a specific session
     #[clap(visible_alias = "k")]
     KillSession {

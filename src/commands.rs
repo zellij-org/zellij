@@ -906,6 +906,79 @@ pub(crate) fn list_aliases(opts: CliArgs) {
     process::exit(0);
 }
 
+pub(crate) fn watch_session(session_name: Option<String>, opts: CliArgs) {
+    let (config, _, config_options, _, _) = match Setup::from_cli_args(&opts) {
+        Ok(results) => results,
+        Err(e) => {
+            if let ConfigError::KdlError(error) = e {
+                let report: Report = error.into();
+                eprintln!("{:?}", report);
+            } else {
+                eprintln!("{}", e);
+            }
+            process::exit(1);
+        },
+    };
+
+    // Resolve the session name to watch
+    let client_info = match &session_name {
+        Some(prefix) => match match_session_name(prefix).unwrap() {
+            SessionNameMatch::UniquePrefix(s) | SessionNameMatch::Exact(s) => {
+                ClientInfo::Watch(s, config_options.clone())
+            },
+            SessionNameMatch::AmbiguousPrefix(sessions) => {
+                eprintln!(
+                    "Ambiguous selection: multiple sessions names start with '{}':",
+                    prefix
+                );
+                print_sessions(
+                    sessions
+                        .iter()
+                        .map(|s| (s.clone(), Duration::default(), false))
+                        .collect(),
+                    false,
+                    false,
+                    true,
+                );
+                process::exit(1);
+            },
+            SessionNameMatch::None => {
+                eprintln!("No session with the name '{}' found!", prefix);
+                process::exit(1);
+            },
+        },
+        None => match get_active_session() {
+            ActiveSession::None => {
+                eprintln!("No active zellij sessions found.");
+                process::exit(1);
+            },
+            ActiveSession::One(name) => ClientInfo::Watch(name, config_options.clone()),
+            ActiveSession::Many => {
+                eprintln!("Please specify the session name to watch.");
+                process::exit(1);
+            },
+        },
+    };
+
+    let mut opts = opts.clone();
+    opts.session = Some(client_info.get_session_name().to_string());
+
+    let os_input = get_os_input(get_client_os_input);
+
+    // Start the watcher client
+    start_client_impl(
+        Box::new(os_input),
+        opts,
+        config,
+        config_options,
+        client_info,
+        None, // tab_position_to_focus
+        None, // pane_id_to_focus
+        false, // is_a_reconnect
+        false, // should_create_detached
+    );
+}
+
 fn reload_config_from_disk(
     config_without_layout: &mut Config,
     config_options_without_layout: &mut Options,

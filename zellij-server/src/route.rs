@@ -1039,6 +1039,27 @@ pub(crate) fn route_thread_main(
                     let mut should_break = false;
                     let rlocked_sessions =
                         session_data.read().to_anyhow().with_context(err_context)?;
+
+                    // Check if this is a watcher client and ignore input messages
+                    let is_watcher = session_state.read().unwrap().is_watcher(&client_id);
+                    if is_watcher {
+                        match instruction {
+                            ClientToServerMsg::Key { .. }
+                            | ClientToServerMsg::Action { .. }
+                            | ClientToServerMsg::TerminalResize { .. }
+                            | ClientToServerMsg::TerminalPixelDimensions { .. }
+                            | ClientToServerMsg::BackgroundColor { .. }
+                            | ClientToServerMsg::ForegroundColor { .. }
+                            | ClientToServerMsg::ColorRegisters { .. } => {
+                                // Ignore all input from watcher clients
+                                return Ok(should_break);
+                            },
+                            _ => {
+                                // Allow connection/disconnection messages
+                            },
+                        }
+                    }
+
                     match instruction {
                         ClientToServerMsg::Key {
                             key,
@@ -1239,6 +1260,13 @@ pub(crate) fn route_thread_main(
                                 let _ = to_server
                                     .send(ServerInstruction::SendWebClientsForbidden(client_id));
                             }
+                        },
+                        ClientToServerMsg::AttachWatcherClient => {
+                            let attach_watcher_instruction =
+                                ServerInstruction::AttachWatcherClient(client_id);
+                            to_server
+                                .send(attach_watcher_instruction)
+                                .with_context(err_context)?;
                         },
                         ClientToServerMsg::ClientExited => {
                             // we don't unwrap this because we don't really care if there's an error here (eg.

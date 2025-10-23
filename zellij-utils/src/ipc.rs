@@ -114,6 +114,7 @@ pub enum ClientToServerMsg {
         pane_to_focus: Option<PaneReference>,
         is_web_client: bool,
     },
+    AttachWatcherClient,
     Action {
         action: Action,
         terminal_id: Option<u32>,
