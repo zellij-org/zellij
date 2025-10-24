@@ -1438,17 +1438,12 @@ impl Screen {
                     self.styled_underlines,
                 );
 
-                // Render all tabs with the followed_client_id
-                for (_tab_index, tab) in &mut self.tabs {
-                    if tab.has_selectable_tiled_panes() {
-                        log::info!("rendering tab for watchers");
-                        // Pass Some(followed_client_id) to force rendering with this client's state
-                        // Even if this client is disconnected, terminals will render and plugins
-                        // will use their last known grid for this client
-                        tab.set_force_render(); // TODO: not good...
-                        tab.render(&mut watcher_output, Some(followed_client_id))
-                            .context(err_context)?;
-                    }
+
+                let focused_tab_index_of_followed_client_id = *self.active_tab_indices.get(&followed_client_id).unwrap_or(&0);
+
+                if let Some(tab) = self.tabs.get_mut(&focused_tab_index_of_followed_client_id).as_mut() {
+                    tab.set_force_render();
+                    tab.render(&mut watcher_output, Some(followed_client_id)).context(err_context)?;
                 }
 
                 // Send the rendered output to all watcher clients
