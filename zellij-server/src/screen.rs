@@ -1473,8 +1473,8 @@ impl Screen {
                             watcher_specific_output.add_pre_vte_instruction_to_client(followed_client_id, &clear_below_instruction);
                         }
 
-                        // Serialize this watcher's output
-                        let mut serialized_output = watcher_specific_output.serialize().context(err_context)?;
+                        // Serialize this watcher's output with size constraints
+                        let mut serialized_output = watcher_specific_output.serialize_with_size(Some(*watcher_size)).context(err_context)?;
 
                         // Get the output for the followed client and map it to this watcher
                         if let Some(followed_output) = serialized_output.remove(&followed_client_id) {
