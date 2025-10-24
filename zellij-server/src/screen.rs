@@ -433,6 +433,7 @@ pub enum ScreenInstruction {
     AddWatcherClient(ClientId),
     RemoveWatcherClient(ClientId),
     SetFollowedClient(ClientId),
+    WatcherTerminalResize(ClientId, Size),  // NEW
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -674,6 +675,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::AddWatcherClient(..) => ScreenContext::AddWatcherClient,
             ScreenInstruction::RemoveWatcherClient(..) => ScreenContext::RemoveWatcherClient,
             ScreenInstruction::SetFollowedClient(..) => ScreenContext::SetFollowedClient,
+            ScreenInstruction::WatcherTerminalResize(..) => ScreenContext::WatcherTerminalResize,  // NEW
         }
     }
 }
@@ -816,7 +818,7 @@ pub(crate) struct Screen {
     web_server_ip: IpAddr,
     web_server_port: u16,
     render_blocker: RenderBlocker,
-    watcher_clients: HashSet<ClientId>,
+    watcher_clients: HashMap<ClientId, Size>,  // CHANGED: now stores both identity AND size
     followed_client_id: Option<ClientId>,
 }
 
@@ -901,7 +903,7 @@ impl Screen {
             web_server_ip,
             web_server_port,
             render_blocker: RenderBlocker::new(100),
-            watcher_clients: HashSet::new(),
+            watcher_clients: HashMap::new(),  // CHANGED: now a HashMap
             followed_client_id: None,
         }
     }
@@ -1374,7 +1376,6 @@ impl Screen {
     }
 
     pub fn render_to_clients(&mut self) -> Result<()> {
-        log::info!("render_to_clients");
         // this method does the actual rendering and is triggered by a debounced BackgroundJob (see
         // the render method for more details)
         let err_context = "failed to render screen";
@@ -1383,12 +1384,11 @@ impl Screen {
         let has_regular_clients = self.connected_clients
             .borrow()
             .keys()
-            .any(|id| !self.watcher_clients.contains(id));
-        let has_watchers = !self.watcher_clients.is_empty();
+            .any(|id| !self.watcher_clients.contains_key(id));  // CHANGED: contains -> contains_key
+        let has_watchers = !self.watcher_clients.is_empty();  // No change needed
 
         // === PHASE 1: Render for regular clients ===
         if has_regular_clients {
-            log::info!("has_regular_clients");
             let mut output = Output::new(
                 self.sixel_image_store.clone(),
                 self.character_cell_size.clone(),
@@ -1428,9 +1428,7 @@ impl Screen {
 
         // === PHASE 2: Render for watchers ===
         if has_watchers {
-            log::info!("has_watchers");
             if let Some(followed_client_id) = self.followed_client_id {
-                log::info!("has followed_client_id");
                 // Create fresh output for watchers
                 let mut watcher_output = Output::new(
                     self.sixel_image_store.clone(),
@@ -1455,7 +1453,7 @@ impl Screen {
                         // Create a HashMap with all watcher clients pointing to the same output
                         let watcher_render_output: HashMap<ClientId, String> = self
                             .watcher_clients
-                            .iter()
+                            .keys()
                             .map(|watcher_id| (*watcher_id, followed_output.clone()))
                             .collect();
 
@@ -1735,7 +1733,7 @@ impl Screen {
         };
 
         // Set followed_client_id to the first regular client if not already set
-        if self.followed_client_id.is_none() && !self.watcher_clients.contains(&client_id) {
+        if self.followed_client_id.is_none() && !self.watcher_clients.contains_key(&client_id) {  // CHANGED
             self.followed_client_id = Some(client_id);
         }
 
@@ -1778,7 +1776,7 @@ impl Screen {
                 .borrow()
                 .keys()
                 .copied()
-                .find(|id| !self.watcher_clients.contains(id) && id != &client_id);
+                .find(|id| !self.watcher_clients.contains_key(id) && id != &client_id);  // CHANGED
 
             // If no regular client remains but we have watchers, keep the old followed_client_id
             // for terminal rendering (plugins will use their last state)
@@ -1805,7 +1803,9 @@ impl Screen {
     }
 
     pub fn add_watcher_client(&mut self, client_id: ClientId) -> Result<()> {
-        self.watcher_clients.insert(client_id);
+        // Initialize with a default size - will be updated when we receive the actual size
+        let default_size = Size { rows: 24, cols: 80 };  // Reasonable default
+        self.watcher_clients.insert(client_id, default_size);  // CHANGED: now insert with size
 
         // Force a full render for the new watcher
         // This ensures they get complete state, not just delta
@@ -1823,6 +1823,23 @@ impl Screen {
         // Trigger re-render with new followed client
         self.render(None)?;
         Ok(())
+    }
+
+    pub fn set_watcher_size(&mut self, client_id: ClientId, size: Size) {
+        // Update size if this client is a watcher
+        if let Some(current_size) = self.watcher_clients.get_mut(&client_id) {
+            *current_size = size;
+        }
+    }
+
+    // Optional: getter for debugging/monitoring
+    pub fn get_watcher_size(&self, client_id: &ClientId) -> Option<Size> {
+        self.watcher_clients.get(client_id).copied()
+    }
+
+    // Optional: get all watcher sizes
+    pub fn get_all_watcher_sizes(&self) -> &HashMap<ClientId, Size> {
+        &self.watcher_clients
     }
 
     pub fn generate_and_report_tab_state(&mut self) -> Result<Vec<TabInfo>> {
@@ -5880,6 +5897,11 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::SetFollowedClient(client_id) => {
                 screen.set_followed_client(client_id).context("failed to set followed client")?;
+            }
+            ScreenInstruction::WatcherTerminalResize(client_id, size) => {  // NEW
+                screen.set_watcher_size(client_id, size);
+                log::info!("Watcher {} terminal size updated to {:?}", client_id, size);
+                log::info!("all watcher sizes: {:?}", screen.watcher_clients);
             }
         }
     }

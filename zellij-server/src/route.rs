@@ -1046,7 +1046,7 @@ pub(crate) fn route_thread_main(
                         match instruction {
                             ClientToServerMsg::Key { .. }
                             | ClientToServerMsg::Action { .. }
-                            | ClientToServerMsg::TerminalResize { .. }
+                            // TerminalResize removed - watchers can now report size
                             | ClientToServerMsg::TerminalPixelDimensions { .. }
                             | ClientToServerMsg::BackgroundColor { .. }
                             | ClientToServerMsg::ForegroundColor { .. }
@@ -1055,7 +1055,7 @@ pub(crate) fn route_thread_main(
                                 return Ok(should_break);
                             },
                             _ => {
-                                // Allow connection/disconnection messages
+                                // Allow other messages (like ClientExited, TerminalResize, etc.)
                             },
                         }
                     }
@@ -1141,27 +1141,40 @@ pub(crate) fn route_thread_main(
                             }
                         },
                         ClientToServerMsg::TerminalResize { new_size } => {
-                            session_state
-                                .write()
-                                .to_anyhow()
-                                .with_context(err_context)?
-                                .set_client_size(client_id, new_size);
-                            session_state
-                                .read()
-                                .to_anyhow()
-                                .and_then(|state| {
-                                    state.min_client_terminal_size().ok_or(anyhow!(
-                                        "failed to determine minimal client terminal size"
-                                    ))
-                                })
-                                .and_then(|min_size| {
-                                    rlocked_sessions
-                                        .as_ref()
-                                        .context("couldn't get reference to read-locked session")?
-                                        .senders
-                                        .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                                })
+                            // Check if this is a watcher or regular client
+                            if is_watcher {
+                                // For watchers: send size to Screen for tracking, don't affect screen size
+                                send_to_screen_or_retry_queue!(
+                                    rlocked_sessions,
+                                    ScreenInstruction::WatcherTerminalResize(client_id, new_size),
+                                    instruction,
+                                    retry_queue
+                                )
                                 .with_context(err_context)?;
+                            } else {
+                                // For regular clients: existing behavior
+                                session_state
+                                    .write()
+                                    .to_anyhow()
+                                    .with_context(err_context)?
+                                    .set_client_size(client_id, new_size);
+                                session_state
+                                    .read()
+                                    .to_anyhow()
+                                    .and_then(|state| {
+                                        state.min_client_terminal_size().ok_or(anyhow!(
+                                            "failed to determine minimal client terminal size"
+                                        ))
+                                    })
+                                    .and_then(|min_size| {
+                                        rlocked_sessions
+                                            .as_ref()
+                                            .context("couldn't get reference to read-locked session")?
+                                            .senders
+                                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                                    })
+                                    .with_context(err_context)?;
+                            }
                         },
                         ClientToServerMsg::TerminalPixelDimensions { pixel_dimensions } => {
                             send_to_screen_or_retry_queue!(
