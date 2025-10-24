@@ -1440,7 +1440,8 @@ impl Screen {
                 let focused_tab_index_of_followed_client_id = *self.active_tab_indices.get(&followed_client_id).unwrap_or(&0);
 
                 if let Some(tab) = self.tabs.get_mut(&focused_tab_index_of_followed_client_id).as_mut() {
-                    tab.set_force_render();
+                    tab.set_force_render(); // TODO: cache these somehow, otherwise we always
+                                            // render
                     tab.render(&mut watcher_output, Some(followed_client_id)).context(err_context)?;
                 }
 
@@ -5926,6 +5927,7 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::WatcherTerminalResize(client_id, size) => {  // NEW
                 screen.set_watcher_size(client_id, size);
+                screen.render(None)?;
                 log::info!("Watcher {} terminal size updated to {:?}", client_id, size);
                 log::info!("all watcher sizes: {:?}", screen.watcher_clients);
             }
