@@ -1446,18 +1446,44 @@ impl Screen {
 
                 // Send the rendered output to all watcher clients
                 if watcher_output.is_dirty() {
-                    let mut serialized_watcher_output = watcher_output.serialize().context(err_context)?;
+                    let mut watcher_render_output: HashMap<ClientId, String> = HashMap::new();
 
-                    // Get the output that was generated for followed_client_id
-                    if let Some(followed_output) = serialized_watcher_output.remove(&followed_client_id) {
-                        // Create a HashMap with all watcher clients pointing to the same output
-                        let watcher_render_output: HashMap<ClientId, String> = self
-                            .watcher_clients
-                            .keys()
-                            .map(|watcher_id| (*watcher_id, followed_output.clone()))
-                            .collect();
+                    // For each watcher, clone the output, add padding if needed, and serialize
+                    for (watcher_id, watcher_size) in &self.watcher_clients {
+                        let mut watcher_specific_output = watcher_output.clone();
 
-                        // Send to server for delivery to watcher clients
+                        // Add padding instructions if this watcher has a larger screen
+                        if watcher_size.rows > self.size.rows || watcher_size.cols > self.size.cols {
+                            // Clear each line from the end of rendered content to the end of the watcher's line
+                            for y in 0..self.size.rows {
+                                let padding_instruction = format!(
+                                    "\u{1b}[{};{}H\u{1b}[m\u{1b}[K",
+                                    y + 1,
+                                    self.size.cols + 1
+                                );
+                                watcher_specific_output.add_pre_vte_instruction_to_client(followed_client_id, &padding_instruction);
+                            }
+
+                            // Clear all content below the last rendered line
+                            let clear_below_instruction = format!(
+                                "\u{1b}[{};{}H\u{1b}[m\u{1b}[J",
+                                self.size.rows + 1,
+                                1
+                            );
+                            watcher_specific_output.add_pre_vte_instruction_to_client(followed_client_id, &clear_below_instruction);
+                        }
+
+                        // Serialize this watcher's output
+                        let mut serialized_output = watcher_specific_output.serialize().context(err_context)?;
+
+                        // Get the output for the followed client and map it to this watcher
+                        if let Some(followed_output) = serialized_output.remove(&followed_client_id) {
+                            watcher_render_output.insert(*watcher_id, followed_output);
+                        }
+                    }
+
+                    // Send to server for delivery to watcher clients
+                    if !watcher_render_output.is_empty() {
                         let _ = self
                             .bus
                             .senders
