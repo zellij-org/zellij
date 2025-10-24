@@ -15,7 +15,7 @@ use std::time::Duration;
 use uuid::Uuid;
 use zellij_utils::{
     channels::SenderWithContext,
-    data::{Direction, Event, InputMode, PluginCapabilities, ResizeStrategy},
+    data::{Direction, Event, InputMode, PluginCapabilities, ResizeStrategy, BareKey, KeyModifier},
     errors::prelude::*,
     input::{
         actions::{Action, SearchDirection, SearchOption},
@@ -1043,10 +1043,8 @@ pub(crate) fn route_thread_main(
                     // Check if this is a watcher client and ignore input messages
                     let is_watcher = session_state.read().unwrap().is_watcher(&client_id);
                     if is_watcher {
-                        match instruction {
-                            ClientToServerMsg::Key { .. }
-                            | ClientToServerMsg::Action { .. }
-                            // TerminalResize removed - watchers can now report size
+                        match &instruction {
+                            ClientToServerMsg::Action { .. }
                             | ClientToServerMsg::TerminalPixelDimensions { .. }
                             | ClientToServerMsg::BackgroundColor { .. }
                             | ClientToServerMsg::ForegroundColor { .. }
@@ -1054,6 +1052,21 @@ pub(crate) fn route_thread_main(
                                 // Ignore all input from watcher clients
                                 return Ok(should_break);
                             },
+                            ClientToServerMsg::Key { key, .. } => {
+                                if (key.bare_key == BareKey::Char('q') && key.key_modifiers.contains(&KeyModifier::Ctrl)) ||
+                                    key.bare_key == BareKey::Esc || 
+                                    (key.bare_key == BareKey::Char('c') && key.key_modifiers.contains(&KeyModifier::Ctrl))
+                                {
+                                    let _ = os_input.send_to_client(
+                                        client_id,
+                                        ServerToClientMsg::Exit {
+                                            exit_reason: ExitReason::Normal
+                                        },
+                                    );
+                                    should_break = true;
+                                    return Ok(should_break);
+                                }
+                            }
                             _ => {
                                 // Allow other messages (like ClientExited, TerminalResize, etc.)
                             },

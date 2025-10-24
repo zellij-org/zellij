@@ -5918,6 +5918,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::AddWatcherClient(client_id) => {
                 screen.add_watcher_client(client_id).context("failed to add watcher client")?;
+                screen.render(None)?;
             }
             ScreenInstruction::RemoveWatcherClient(client_id) => {
                 screen.remove_watcher_client(client_id);
