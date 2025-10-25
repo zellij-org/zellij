@@ -36,6 +36,11 @@ fn vte_goto_instruction(x_coords: usize, y_coords: usize, vte_output: &mut Strin
     })
 }
 
+fn vte_hide_cursor_instruction(vte_output: &mut String) -> Result<()> {
+    write!(vte_output, "\u{1b}[?25l")
+        .context("failed to execute VTE instruction to hide cursor")
+}
+
 fn adjust_styles_for_possible_selection(
     chunk_selection_and_colors: Vec<(Selection, AnsiCode, Option<AnsiCode>)>,
     character_styles: CharacterStyles,
@@ -294,6 +299,7 @@ pub struct Output {
     floating_panes_stack: Option<FloatingPanesStack>,
     styled_underlines: bool,
     pane_render_report: PaneRenderReport,
+    cursor_coordinates: Option<(usize, usize)>,
 }
 
 impl Output {
@@ -547,6 +553,17 @@ impl Output {
                     client_serialized_render_instructions.push_str(&vte_instruction);
                 }
             }
+
+            // Check if cursor was cropped and hide it if necessary
+            if let (Some(max_size), Some((cursor_x, cursor_y))) = (max_size, self.cursor_coordinates) {
+                let cursor_was_cropped = cursor_y >= max_size.rows || cursor_x >= max_size.cols;
+                if cursor_was_cropped {
+                    log::info!("cursor_was_cropped");
+                    vte_hide_cursor_instruction(&mut client_serialized_render_instructions)
+                        .with_context(err_context)?;
+                }
+            }
+
             serialized_render_instructions.insert(client_id, client_serialized_render_instructions);
         }
         Ok(serialized_render_instructions)
@@ -562,7 +579,9 @@ impl Output {
         self.client_character_chunks.values().any(|c| !c.is_empty())
             || self.sixel_chunks.values().any(|c| !c.is_empty())
     }
-    pub fn cursor_is_visible(&self, cursor_x: usize, cursor_y: usize) -> bool {
+    pub fn cursor_is_visible(&mut self, cursor_x: usize, cursor_y: usize) -> bool {
+        self.cursor_coordinates = Some((cursor_x, cursor_y));
+        log::info!("Cursor coordinates: ({}, {})", cursor_x, cursor_y);
         self.floating_panes_stack
             .as_ref()
             .map(|s| s.cursor_is_visible(cursor_x, cursor_y))
