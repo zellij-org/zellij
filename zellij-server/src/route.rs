@@ -1063,6 +1063,7 @@ pub(crate) fn route_thread_main(
                                             exit_reason: ExitReason::Normal
                                         },
                                     );
+                                    let _ = rlocked_sessions.as_ref().map(|r| r.senders.send_to_screen(ScreenInstruction::RemoveWatcherClient(client_id)));
                                     should_break = true;
                                     return Ok(should_break);
                                 }

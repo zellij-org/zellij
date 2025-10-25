@@ -761,6 +761,42 @@ impl RenderBlocker {
     }
 }
 
+/// State information for a watcher client
+#[derive(Debug, Clone)]
+pub(crate) struct WatcherState {
+    size: Size,
+    should_force_render: bool,
+}
+
+impl WatcherState {
+    pub fn new(size: Size) -> Self {
+        WatcherState {
+            size,
+            should_force_render: true,
+        }
+    }
+
+    pub fn size(&self) -> Size {
+        self.size
+    }
+
+    pub fn set_size(&mut self, size: Size) {
+        self.size = size;
+    }
+
+    pub fn should_force_render(&self) -> bool {
+        self.should_force_render
+    }
+
+    pub fn clear_force_render(&mut self) {
+        self.should_force_render = false;
+    }
+
+    pub fn set_force_render(&mut self) {
+        self.should_force_render = true;
+    }
+}
+
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
 /// It only directly controls which tab is active, delegating the rest to the individual `Tab`.
 pub(crate) struct Screen {
@@ -818,7 +854,7 @@ pub(crate) struct Screen {
     web_server_ip: IpAddr,
     web_server_port: u16,
     render_blocker: RenderBlocker,
-    watcher_clients: HashMap<ClientId, Size>,  // CHANGED: now stores both identity AND size
+    watcher_clients: HashMap<ClientId, WatcherState>,
     followed_client_id: Option<ClientId>,
 }
 
@@ -1387,6 +1423,9 @@ impl Screen {
             .any(|id| !self.watcher_clients.contains_key(id));  // CHANGED: contains -> contains_key
         let has_watchers = !self.watcher_clients.is_empty();  // No change needed
 
+        // Track whether non-watcher output was dirty for conditional watcher rendering
+        let non_watcher_output_was_dirty;
+
         // === PHASE 1: Render for regular clients ===
         if has_regular_clients {
             let mut output = Output::new(
@@ -1416,7 +1455,9 @@ impl Screen {
                 .senders
                 .send_to_plugin(PluginInstruction::PaneRenderReport(pane_render_report));
 
-            if output.is_dirty() {
+            non_watcher_output_was_dirty = output.is_dirty();
+            if non_watcher_output_was_dirty {
+                log::info!("rendering non watcher");
                 let serialized_output = output.serialize().context(err_context)?;
                 let _ = self
                     .bus
@@ -1424,6 +1465,9 @@ impl Screen {
                     .send_to_server(ServerInstruction::Render(Some(serialized_output)))
                     .context(err_context);
             }
+        } else {
+            // No regular clients, output is not dirty
+            non_watcher_output_was_dirty = false;
         }
 
         // === PHASE 2: Render for watchers ===
@@ -1440,8 +1484,19 @@ impl Screen {
                 let focused_tab_index_of_followed_client_id = *self.active_tab_indices.get(&followed_client_id).unwrap_or(&0);
 
                 if let Some(tab) = self.tabs.get_mut(&focused_tab_index_of_followed_client_id).as_mut() {
-                    tab.set_force_render(); // TODO: cache these somehow, otherwise we always
-                                            // render
+                    // Only force render if:
+                    // 1. Non-watcher output was dirty, OR
+                    // 2. Any watcher needs a forced render (first render or after resize), OR
+                    // 3. No non-watcher clients are connected
+                    let any_watcher_needs_force_render = self.watcher_clients.values().any(|state| state.should_force_render());
+                    let should_force_render = non_watcher_output_was_dirty
+                        || any_watcher_needs_force_render
+                        || !has_regular_clients;
+
+                    if should_force_render {
+                        log::info!("force rendering tab");
+                        tab.set_force_render();
+                    }
                     tab.render(&mut watcher_output, Some(followed_client_id)).context(err_context)?;
                 }
 
@@ -1450,11 +1505,11 @@ impl Screen {
                     let mut watcher_render_output: HashMap<ClientId, String> = HashMap::new();
 
                     // For each watcher, clone the output and serialize with size constraints
-                    for (watcher_id, watcher_size) in &self.watcher_clients {
+                    for (watcher_id, watcher_state) in &self.watcher_clients {
                         let mut watcher_specific_output = watcher_output.clone();
 
                         // Serialize this watcher's output with size constraints (cropping and padding handled inside)
-                        let mut serialized_output = watcher_specific_output.serialize_with_size(Some(*watcher_size), Some(self.size)).context(err_context)?;
+                        let mut serialized_output = watcher_specific_output.serialize_with_size(Some(watcher_state.size()), Some(self.size)).context(err_context)?;
 
                         // Get the output for the followed client and map it to this watcher
                         if let Some(followed_output) = serialized_output.remove(&followed_client_id) {
@@ -1464,11 +1519,17 @@ impl Screen {
 
                     // Send to server for delivery to watcher clients
                     if !watcher_render_output.is_empty() {
+                        log::info!("Rendering watcher");
                         let _ = self
                             .bus
                             .senders
                             .send_to_server(ServerInstruction::Render(Some(watcher_render_output)))
                             .context(err_context);
+                    }
+
+                    // Clear force render flag for all watchers after successful render
+                    for watcher_state in self.watcher_clients.values_mut() {
+                        watcher_state.clear_force_render();
                     }
                 }
             }
@@ -1811,7 +1872,7 @@ impl Screen {
     pub fn add_watcher_client(&mut self, client_id: ClientId) -> Result<()> {
         // Initialize with a default size - will be updated when we receive the actual size
         let default_size = Size { rows: 24, cols: 80 };  // Reasonable default
-        self.watcher_clients.insert(client_id, default_size);  // CHANGED: now insert with size
+        self.watcher_clients.insert(client_id, WatcherState::new(default_size));
 
         // Force a full render for the new watcher
         // This ensures they get complete state, not just delta
@@ -1833,18 +1894,19 @@ impl Screen {
 
     pub fn set_watcher_size(&mut self, client_id: ClientId, size: Size) {
         // Update size if this client is a watcher
-        if let Some(current_size) = self.watcher_clients.get_mut(&client_id) {
-            *current_size = size;
+        if let Some(watcher_state) = self.watcher_clients.get_mut(&client_id) {
+            watcher_state.set_size(size);
+            watcher_state.set_force_render();
         }
     }
 
     // Optional: getter for debugging/monitoring
     pub fn get_watcher_size(&self, client_id: &ClientId) -> Option<Size> {
-        self.watcher_clients.get(client_id).copied()
+        self.watcher_clients.get(client_id).map(|state| state.size())
     }
 
     // Optional: get all watcher sizes
-    pub fn get_all_watcher_sizes(&self) -> &HashMap<ClientId, Size> {
+    pub fn get_all_watcher_sizes(&self) -> &HashMap<ClientId, WatcherState> {
         &self.watcher_clients
     }
 
