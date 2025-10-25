@@ -5909,8 +5909,6 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::WatcherTerminalResize(client_id, size) => {  // NEW
                 screen.set_watcher_size(client_id, size);
                 screen.render(None)?;
-                log::info!("Watcher {} terminal size updated to {:?}", client_id, size);
-                log::info!("all watcher sizes: {:?}", screen.watcher_clients);
             }
         }
     }
