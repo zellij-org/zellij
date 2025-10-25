@@ -61,7 +61,7 @@ message AttachClientMsg {
 }
 
 message AttachWatcherClientMsg {
-  // Empty message
+  Size terminal_size = 1;
 }
 
 message ActionMsg {

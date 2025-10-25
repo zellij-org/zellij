@@ -430,10 +430,10 @@ pub enum ScreenInstruction {
     InterceptKeyPresses(PluginId, ClientId),
     ClearKeyPressesIntercepts(ClientId),
     ReplacePaneWithExistingPane(PaneId, PaneId),
-    AddWatcherClient(ClientId),
+    AddWatcherClient(ClientId, Size),
     RemoveWatcherClient(ClientId),
     SetFollowedClient(ClientId),
-    WatcherTerminalResize(ClientId, Size),  // NEW
+    WatcherTerminalResize(ClientId, Size),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -5916,8 +5916,9 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ReplacePaneWithExistingPane(old_pane_id, new_pane_id) => {
                 screen.replace_pane_with_existing_pane(old_pane_id, new_pane_id)
             },
-            ScreenInstruction::AddWatcherClient(client_id) => {
+            ScreenInstruction::AddWatcherClient(client_id, size) => {
                 screen.add_watcher_client(client_id).context("failed to add watcher client")?;
+                screen.set_watcher_size(client_id, size);
                 screen.render(None)?;
             }
             ScreenInstruction::RemoveWatcherClient(client_id) => {

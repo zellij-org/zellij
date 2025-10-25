@@ -93,7 +93,7 @@ pub enum ServerInstruction {
         bool,                // is_web_client
         ClientId,
     ),
-    AttachWatcherClient(ClientId),
+    AttachWatcherClient(ClientId, Size),
     ConnStatus(ClientId),
     Log(Vec<String>, ClientId),
     LogError(Vec<String>, ClientId),
@@ -917,21 +917,21 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     )]))
                     .unwrap();
             },
-            ServerInstruction::AttachWatcherClient(client_id) => {
+            ServerInstruction::AttachWatcherClient(client_id, terminal_size) => {
                 // the client_id was inserted into clients upon ipc tunnel initialization
                 // now that it identified itself as a watcher, we need to convert it
 
                 // Convert to watcher in SessionState (needed for input filtering in route.rs)
                 session_state.write().unwrap().convert_client_to_watcher(client_id);
 
-                // Also notify Screen to add this as a watcher client (for rendering)
+                // Also notify Screen to add this as a watcher client (for rendering) with the terminal size
                 session_data
                     .write()
                     .unwrap()
                     .as_ref()
                     .unwrap()
                     .senders
-                    .send_to_screen(ScreenInstruction::AddWatcherClient(client_id))
+                    .send_to_screen(ScreenInstruction::AddWatcherClient(client_id, terminal_size))
                     .unwrap();
             },
             ServerInstruction::UnblockInputThread => {

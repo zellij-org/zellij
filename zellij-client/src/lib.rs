@@ -631,8 +631,6 @@ pub fn start_client(
         sock_dir
     };
 
-    let is_watcher = matches!(info, ClientInfo::Watch(..));
-
     let (first_msg, ipc_pipe) = match info {
         ClientInfo::Attach(name, config_options) => {
             envs::set_session_name(name.clone());
@@ -681,7 +679,12 @@ pub fn start_client(
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
 
-            (ClientToServerMsg::AttachWatcherClient, ipc_pipe)
+            (
+                ClientToServerMsg::AttachWatcherClient {
+                    terminal_size: full_screen_ws,
+                },
+                ipc_pipe,
+            )
         },
         ClientInfo::Resurrect(name, path_to_layout, force_run_commands, cwd) => {
             envs::set_session_name(name.clone());
@@ -774,15 +777,6 @@ pub fn start_client(
 
     os_input.connect_to_server(&*ipc_pipe);
     os_input.send_to_server(first_msg);
-
-    // Send initial terminal size for watcher clients
-    // we do this explicitly for watchers because the watcher attach messages does not contain this
-    // info
-    if is_watcher {
-        os_input.send_to_server(ClientToServerMsg::TerminalResize {
-            new_size: full_screen_ws,
-        });
-    }
 
     let mut command_is_executing = CommandIsExecuting::new();
 

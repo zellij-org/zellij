@@ -1287,9 +1287,9 @@ pub(crate) fn route_thread_main(
                                     .send(ServerInstruction::SendWebClientsForbidden(client_id));
                             }
                         },
-                        ClientToServerMsg::AttachWatcherClient => {
+                        ClientToServerMsg::AttachWatcherClient { terminal_size } => {
                             let attach_watcher_instruction =
-                                ServerInstruction::AttachWatcherClient(client_id);
+                                ServerInstruction::AttachWatcherClient(client_id, terminal_size);
                             to_server
                                 .send(attach_watcher_instruction)
                                 .with_context(err_context)?;
