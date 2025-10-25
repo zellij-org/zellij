@@ -486,7 +486,7 @@ impl Output {
         }
         Ok(serialized_render_instructions)
     }
-    pub fn serialize_with_size(&mut self, max_size: Option<Size>) -> Result<HashMap<ClientId, String>> {
+    pub fn serialize_with_size(&mut self, max_size: Option<Size>, content_size: Option<Size>) -> Result<HashMap<ClientId, String>> {
         let err_context = || "failed to serialize output to clients with size constraints".to_string();
 
         let mut serialized_render_instructions = HashMap::new();
@@ -500,6 +500,29 @@ impl Output {
             {
                 for vte_instruction in pre_vte_instructions_for_client {
                     client_serialized_render_instructions.push_str(&vte_instruction);
+                }
+            }
+
+            // Add padding instructions if max_size is larger than content_size
+            if let (Some(max_size), Some(content_size)) = (max_size, content_size) {
+                if max_size.rows > content_size.rows || max_size.cols > content_size.cols {
+                    // Clear each line from the end of rendered content to the end of the watcher's line
+                    for y in 0..content_size.rows {
+                        let padding_instruction = format!(
+                            "\u{1b}[{};{}H\u{1b}[m\u{1b}[K",
+                            y + 1,
+                            content_size.cols + 1
+                        );
+                        client_serialized_render_instructions.push_str(&padding_instruction);
+                    }
+
+                    // Clear all content below the last rendered line
+                    let clear_below_instruction = format!(
+                        "\u{1b}[{};{}H\u{1b}[m\u{1b}[J",
+                        content_size.rows + 1,
+                        1
+                    );
+                    client_serialized_render_instructions.push_str(&clear_below_instruction);
                 }
             }
 
