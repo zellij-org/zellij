@@ -925,7 +925,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // now that it identified itself as a watcher, we need to convert it
 
                 // Convert to watcher in SessionState (needed for input filtering in route.rs)
-                session_state.write().unwrap().convert_client_to_watcher(client_id);
+                session_state
+                    .write()
+                    .unwrap()
+                    .convert_client_to_watcher(client_id);
 
                 // Also notify Screen to add this as a watcher client (for rendering) with the terminal size
                 session_data
@@ -934,7 +937,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .as_ref()
                     .unwrap()
                     .senders
-                    .send_to_screen(ScreenInstruction::AddWatcherClient(client_id, terminal_size))
+                    .send_to_screen(ScreenInstruction::AddWatcherClient(
+                        client_id,
+                        terminal_size,
+                    ))
                     .unwrap();
             },
             ServerInstruction::UnblockInputThread => {
@@ -1074,10 +1080,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             remove_client!(client_id, os_input, session_state);
                         }
 
-                        let watcher_client_ids: Vec<ClientId> = session_state
-                            .read()
-                            .unwrap()
-                            .watcher_client_ids();
+                        let watcher_client_ids: Vec<ClientId> =
+                            session_state.read().unwrap().watcher_client_ids();
                         for watcher_id in watcher_client_ids {
                             let _ = os_input.send_to_client(
                                 watcher_id,
@@ -1086,8 +1090,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                 },
                             );
                         }
-
-
 
                         break;
                     }

@@ -675,7 +675,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::AddWatcherClient(..) => ScreenContext::AddWatcherClient,
             ScreenInstruction::RemoveWatcherClient(..) => ScreenContext::RemoveWatcherClient,
             ScreenInstruction::SetFollowedClient(..) => ScreenContext::SetFollowedClient,
-            ScreenInstruction::WatcherTerminalResize(..) => ScreenContext::WatcherTerminalResize,  // NEW
+            ScreenInstruction::WatcherTerminalResize(..) => ScreenContext::WatcherTerminalResize, // NEW
         }
     }
 }
@@ -939,7 +939,7 @@ impl Screen {
             web_server_ip,
             web_server_port,
             render_blocker: RenderBlocker::new(100),
-            watcher_clients: HashMap::new(),  // CHANGED: now a HashMap
+            watcher_clients: HashMap::new(), // CHANGED: now a HashMap
             followed_client_id: None,
         }
     }
@@ -1417,11 +1417,12 @@ impl Screen {
         let err_context = "failed to render screen";
 
         // Separate rendering for regular clients and watchers
-        let has_regular_clients = self.connected_clients
+        let has_regular_clients = self
+            .connected_clients
             .borrow()
             .keys()
-            .any(|id| !self.watcher_clients.contains_key(id));  // CHANGED: contains -> contains_key
-        let has_watchers = !self.watcher_clients.is_empty();  // No change needed
+            .any(|id| !self.watcher_clients.contains_key(id)); // CHANGED: contains -> contains_key
+        let has_watchers = !self.watcher_clients.is_empty(); // No change needed
 
         // Track whether non-watcher output was dirty for conditional watcher rendering
         let non_watcher_output_was_dirty;
@@ -1480,15 +1481,24 @@ impl Screen {
                     self.styled_underlines,
                 );
 
+                let focused_tab_index_of_followed_client_id = *self
+                    .active_tab_indices
+                    .get(&followed_client_id)
+                    .unwrap_or(&0);
 
-                let focused_tab_index_of_followed_client_id = *self.active_tab_indices.get(&followed_client_id).unwrap_or(&0);
-
-                if let Some(tab) = self.tabs.get_mut(&focused_tab_index_of_followed_client_id).as_mut() {
+                if let Some(tab) = self
+                    .tabs
+                    .get_mut(&focused_tab_index_of_followed_client_id)
+                    .as_mut()
+                {
                     // Only force render if:
                     // 1. Non-watcher output was dirty, OR
                     // 2. Any watcher needs a forced render (first render or after resize), OR
                     // 3. No non-watcher clients are connected
-                    let any_watcher_needs_force_render = self.watcher_clients.values().any(|state| state.should_force_render());
+                    let any_watcher_needs_force_render = self
+                        .watcher_clients
+                        .values()
+                        .any(|state| state.should_force_render());
                     let should_force_render = non_watcher_output_was_dirty
                         || any_watcher_needs_force_render
                         || !has_regular_clients;
@@ -1497,7 +1507,8 @@ impl Screen {
                         log::info!("force rendering tab");
                         tab.set_force_render();
                     }
-                    tab.render(&mut watcher_output, Some(followed_client_id)).context(err_context)?;
+                    tab.render(&mut watcher_output, Some(followed_client_id))
+                        .context(err_context)?;
                 }
 
                 // Send the rendered output to all watcher clients
@@ -1509,10 +1520,13 @@ impl Screen {
                         let mut watcher_specific_output = watcher_output.clone();
 
                         // Serialize this watcher's output with size constraints (cropping and padding handled inside)
-                        let mut serialized_output = watcher_specific_output.serialize_with_size(Some(watcher_state.size()), Some(self.size)).context(err_context)?;
+                        let mut serialized_output = watcher_specific_output
+                            .serialize_with_size(Some(watcher_state.size()), Some(self.size))
+                            .context(err_context)?;
 
                         // Get the output for the followed client and map it to this watcher
-                        if let Some(followed_output) = serialized_output.remove(&followed_client_id) {
+                        if let Some(followed_output) = serialized_output.remove(&followed_client_id)
+                        {
                             watcher_render_output.insert(*watcher_id, followed_output);
                         }
                     }
@@ -1800,7 +1814,8 @@ impl Screen {
         };
 
         // Set followed_client_id to the first regular client if not already set
-        if self.followed_client_id.is_none() && !self.watcher_clients.contains_key(&client_id) {  // CHANGED
+        if self.followed_client_id.is_none() && !self.watcher_clients.contains_key(&client_id) {
+            // CHANGED
             self.followed_client_id = Some(client_id);
         }
 
@@ -1839,11 +1854,12 @@ impl Screen {
         // If the followed client disconnected, find the next regular client
         if Some(client_id) == self.followed_client_id {
             // Try to find another regular (non-watcher) client
-            self.followed_client_id = self.connected_clients
+            self.followed_client_id = self
+                .connected_clients
                 .borrow()
                 .keys()
                 .copied()
-                .find(|id| !self.watcher_clients.contains_key(id) && id != &client_id);  // CHANGED
+                .find(|id| !self.watcher_clients.contains_key(id) && id != &client_id); // CHANGED
 
             // If no regular client remains but we have watchers, keep the old followed_client_id
             // for terminal rendering (plugins will use their last state)
@@ -1871,8 +1887,9 @@ impl Screen {
 
     pub fn add_watcher_client(&mut self, client_id: ClientId) -> Result<()> {
         // Initialize with a default size - will be updated when we receive the actual size
-        let default_size = Size { rows: 24, cols: 80 };  // Reasonable default
-        self.watcher_clients.insert(client_id, WatcherState::new(default_size));
+        let default_size = Size { rows: 24, cols: 80 }; // Reasonable default
+        self.watcher_clients
+            .insert(client_id, WatcherState::new(default_size));
 
         // Force a full render for the new watcher
         // This ensures they get complete state, not just delta
@@ -1902,7 +1919,9 @@ impl Screen {
 
     // Optional: getter for debugging/monitoring
     pub fn get_watcher_size(&self, client_id: &ClientId) -> Option<Size> {
-        self.watcher_clients.get(client_id).map(|state| state.size())
+        self.watcher_clients
+            .get(client_id)
+            .map(|state| state.size())
     }
 
     // Optional: get all watcher sizes
@@ -5958,20 +5977,25 @@ pub(crate) fn screen_thread_main(
                 screen.replace_pane_with_existing_pane(old_pane_id, new_pane_id)
             },
             ScreenInstruction::AddWatcherClient(client_id, size) => {
-                screen.add_watcher_client(client_id).context("failed to add watcher client")?;
+                screen
+                    .add_watcher_client(client_id)
+                    .context("failed to add watcher client")?;
                 screen.set_watcher_size(client_id, size);
                 screen.render(None)?;
-            }
+            },
             ScreenInstruction::RemoveWatcherClient(client_id) => {
                 screen.remove_watcher_client(client_id);
-            }
+            },
             ScreenInstruction::SetFollowedClient(client_id) => {
-                screen.set_followed_client(client_id).context("failed to set followed client")?;
-            }
-            ScreenInstruction::WatcherTerminalResize(client_id, size) => {  // NEW
+                screen
+                    .set_followed_client(client_id)
+                    .context("failed to set followed client")?;
+            },
+            ScreenInstruction::WatcherTerminalResize(client_id, size) => {
+                // NEW
                 screen.set_watcher_size(client_id, size);
                 screen.render(None)?;
-            }
+            },
         }
     }
     Ok(())

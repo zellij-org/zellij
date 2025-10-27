@@ -18,8 +18,8 @@ use std::{
 };
 use zellij_utils::data::{PaneContents, PaneRenderReport};
 use zellij_utils::errors::prelude::*;
-use zellij_utils::pane_size::{PaneGeom, Size};
 use zellij_utils::pane_size::SizeInPixels;
+use zellij_utils::pane_size::{PaneGeom, Size};
 
 fn vte_goto_instruction(x_coords: usize, y_coords: usize, vte_output: &mut String) -> Result<()> {
     write!(
@@ -37,8 +37,7 @@ fn vte_goto_instruction(x_coords: usize, y_coords: usize, vte_output: &mut Strin
 }
 
 fn vte_hide_cursor_instruction(vte_output: &mut String) -> Result<()> {
-    write!(vte_output, "\u{1b}[?25l")
-        .context("failed to execute VTE instruction to hide cursor")
+    write!(vte_output, "\u{1b}[?25l").context("failed to execute VTE instruction to hide cursor")
 }
 
 fn adjust_styles_for_possible_selection(
@@ -492,8 +491,13 @@ impl Output {
         }
         Ok(serialized_render_instructions)
     }
-    pub fn serialize_with_size(&mut self, max_size: Option<Size>, content_size: Option<Size>) -> Result<HashMap<ClientId, String>> {
-        let err_context = || "failed to serialize output to clients with size constraints".to_string();
+    pub fn serialize_with_size(
+        &mut self,
+        max_size: Option<Size>,
+        content_size: Option<Size>,
+    ) -> Result<HashMap<ClientId, String>> {
+        let err_context =
+            || "failed to serialize output to clients with size constraints".to_string();
 
         let mut serialized_render_instructions = HashMap::new();
 
@@ -523,11 +527,8 @@ impl Output {
                     }
 
                     // Clear all content below the last rendered line
-                    let clear_below_instruction = format!(
-                        "\u{1b}[{};{}H\u{1b}[m\u{1b}[J",
-                        content_size.rows + 1,
-                        1
-                    );
+                    let clear_below_instruction =
+                        format!("\u{1b}[{};{}H\u{1b}[m\u{1b}[J", content_size.rows + 1, 1);
                     client_serialized_render_instructions.push_str(&clear_below_instruction);
                 }
             }
@@ -555,7 +556,9 @@ impl Output {
             }
 
             // Check if cursor was cropped and hide it if necessary
-            if let (Some(max_size), Some((cursor_x, cursor_y))) = (max_size, self.cursor_coordinates) {
+            if let (Some(max_size), Some((cursor_x, cursor_y))) =
+                (max_size, self.cursor_coordinates)
+            {
                 let cursor_was_cropped = cursor_y >= max_size.rows || cursor_x >= max_size.cols;
                 if cursor_was_cropped {
                     vte_hide_cursor_instruction(&mut client_serialized_render_instructions)

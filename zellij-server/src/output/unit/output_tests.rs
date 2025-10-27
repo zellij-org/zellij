@@ -20,10 +20,8 @@ fn create_test_output() -> Output {
 
 /// Helper to create a simple CharacterChunk with text
 fn create_character_chunk_from_str(text: &str, x: usize, y: usize) -> CharacterChunk {
-    let terminal_chars: Vec<TerminalCharacter> = text
-        .chars()
-        .map(|c| TerminalCharacter::new(c))
-        .collect();
+    let terminal_chars: Vec<TerminalCharacter> =
+        text.chars().map(|c| TerminalCharacter::new(c)).collect();
     CharacterChunk::new(terminal_chars, x, y)
 }
 
@@ -370,10 +368,7 @@ fn test_serialize_with_size_crops_chunks_below_visible_area() {
     let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
     output.add_clients(&client_ids, link_handler, None);
 
-    let max_size = Some(Size {
-        rows: 10,
-        cols: 80,
-    });
+    let max_size = Some(Size { rows: 10, cols: 80 });
 
     // Add chunk below visible area (should be cropped)
     let chunk_below = create_character_chunk_from_str("Hidden", 0, 15);
@@ -407,10 +402,7 @@ fn test_serialize_with_size_crops_chunks_outside_cols() {
     let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
     output.add_clients(&client_ids, link_handler, None);
 
-    let max_size = Some(Size {
-        rows: 10,
-        cols: 20,
-    });
+    let max_size = Some(Size { rows: 10, cols: 20 });
 
     // Add chunk outside visible columns (should be cropped)
     let chunk_outside = create_character_chunk_from_str("Hidden", 25, 5);
@@ -444,10 +436,7 @@ fn test_serialize_with_size_crops_characters_within_chunk() {
     let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
     output.add_clients(&client_ids, link_handler, None);
 
-    let max_size = Some(Size {
-        rows: 10,
-        cols: 20,
-    });
+    let max_size = Some(Size { rows: 10, cols: 20 });
 
     // Add chunk that starts at x=15 and would extend to x=25 (10 chars)
     let chunk = create_character_chunk_from_str("1234567890", 15, 5);
@@ -480,10 +469,7 @@ fn test_serialize_with_size_adds_padding_instructions() {
         rows: 30,
         cols: 100,
     });
-    let content_size = Some(Size {
-        rows: 20,
-        cols: 80,
-    });
+    let content_size = Some(Size { rows: 20, cols: 80 });
 
     let chunk = create_character_chunk_from_str("Test", 0, 0);
     output
@@ -513,10 +499,7 @@ fn test_serialize_with_size_hides_cursor_when_cropped() {
     let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
     output.add_clients(&client_ids, link_handler, None);
 
-    let max_size = Some(Size {
-        rows: 10,
-        cols: 20,
-    });
+    let max_size = Some(Size { rows: 10, cols: 20 });
 
     // Set cursor outside max_size
     output.cursor_is_visible(25, 5);
@@ -641,8 +624,15 @@ fn test_character_chunk_drain_by_width() {
     let drained_text: String = drained.iter().map(|c| c.character).collect();
     assert_eq!(drained_text, "Hello", "Drained part should be 'Hello'");
 
-    let remaining_text: String = chunk.terminal_characters.iter().map(|c| c.character).collect();
-    assert_eq!(remaining_text, " World", "Remaining part should be ' World'");
+    let remaining_text: String = chunk
+        .terminal_characters
+        .iter()
+        .map(|c| c.character)
+        .collect();
+    assert_eq!(
+        remaining_text, " World",
+        "Remaining part should be ' World'"
+    );
 }
 
 #[test]
@@ -676,7 +666,11 @@ fn test_character_chunk_retain_by_width() {
         5,
         "Should have 5 characters"
     );
-    let text: String = chunk.terminal_characters.iter().map(|c| c.character).collect();
+    let text: String = chunk
+        .terminal_characters
+        .iter()
+        .map(|c| c.character)
+        .collect();
     assert_eq!(text, "Hello", "Should retain 'Hello'");
 }
 

@@ -972,8 +972,8 @@ pub(crate) fn watch_session(session_name: Option<String>, opts: CliArgs) {
         config,
         config_options,
         client_info,
-        None, // tab_position_to_focus
-        None, // pane_id_to_focus
+        None,  // tab_position_to_focus
+        None,  // pane_id_to_focus
         false, // is_a_reconnect
         false, // should_create_detached
     );

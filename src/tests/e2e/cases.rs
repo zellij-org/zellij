@@ -1,7 +1,10 @@
 #![allow(unused)]
 
 use ::insta::assert_snapshot;
-use zellij_utils::{pane_size::Size, position::{Position, Line, Column}};
+use zellij_utils::{
+    pane_size::Size,
+    position::{Column, Line, Position},
+};
 
 use rand::Rng;
 use regex::Regex;
@@ -2558,15 +2561,16 @@ pub fn watcher_client_functionality() {
         RemoteRunner::kill_running_sessions(fake_win_size);
 
         // Step 1: Create main client and wait for it to load
-        let mut main_client = RemoteRunner::new_with_session_name(fake_win_size, session_name, false)
-            .dont_panic()
-            .add_step(Step {
-                name: "Wait for app to load",
-                instruction: |remote_terminal: RemoteTerminal| -> bool {
-                    remote_terminal.status_bar_appears()
-                        && remote_terminal.cursor_position_is(3, 2)
-                },
-            });
+        let mut main_client =
+            RemoteRunner::new_with_session_name(fake_win_size, session_name, false)
+                .dont_panic()
+                .add_step(Step {
+                    name: "Wait for app to load",
+                    instruction: |remote_terminal: RemoteTerminal| -> bool {
+                        remote_terminal.status_bar_appears()
+                            && remote_terminal.cursor_position_is(3, 2)
+                    },
+                });
         main_client.run_all_steps();
 
         // Step 2: Start a background process that produces periodic output
@@ -2598,7 +2602,7 @@ pub fn watcher_client_functionality() {
                 name: "Wait for watcher to connect",
                 instruction: |remote_terminal: RemoteTerminal| -> bool {
                     remote_terminal.status_bar_appears()
-                        // && remote_terminal.cursor_position_is(3, 2)
+                    // && remote_terminal.cursor_position_is(3, 2)
                 },
             });
         watcher.run_all_steps();
@@ -2607,8 +2611,7 @@ pub fn watcher_client_functionality() {
         main_client = main_client.add_step(Step {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
-                if remote_terminal.status_bar_appears()
-                    && remote_terminal.cursor_position_is(1, 7)
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(1, 7)
                 {
                     remote_terminal.send_key(&PANE_MODE);
                     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2626,8 +2629,8 @@ pub fn watcher_client_functionality() {
         watcher = watcher.add_step(Step {
             name: "Watcher sees split pane",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
-                remote_terminal.cursor_position_is(63, 2)
-                    && remote_terminal.snapshot_contains("┐┌") // vertical split indicator
+                remote_terminal.cursor_position_is(63, 2) && remote_terminal.snapshot_contains("┐┌")
+                // vertical split indicator
             },
         });
         watcher.run_all_steps();
@@ -2662,7 +2665,10 @@ pub fn watcher_client_functionality() {
         watcher = watcher.add_step(Step {
             name: "Watcher attempts mouse click",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
-                let click_position = Position { line: Line(10), column: Column(10) };
+                let click_position = Position {
+                    line: Line(10),
+                    column: Column(10),
+                };
                 remote_terminal.send_key(&sgr_mouse_report(click_position, 0)); // left click
                 std::thread::sleep(std::time::Duration::from_millis(500));
                 true
@@ -2700,18 +2706,19 @@ pub fn watcher_client_functionality() {
         watcher.run_all_steps();
 
         // Step 12: Main client re-attaches
-        let mut main_client_reattached = RemoteRunner::new_existing_session(fake_win_size, session_name)
-            .dont_panic()
-            .add_step(Step {
-                name: "Main client re-attaches",
-                instruction: |remote_terminal: RemoteTerminal| -> bool {
-                    std::thread::sleep(std::time::Duration::from_millis(500)); // wait for watcher
-                                                                               // to fail running
-                                                                               // commands
-                    remote_terminal.status_bar_appears()
-                        && remote_terminal.snapshot_contains("┐┌")
-                },
-            });
+        let mut main_client_reattached =
+            RemoteRunner::new_existing_session(fake_win_size, session_name)
+                .dont_panic()
+                .add_step(Step {
+                    name: "Main client re-attaches",
+                    instruction: |remote_terminal: RemoteTerminal| -> bool {
+                        std::thread::sleep(std::time::Duration::from_millis(500)); // wait for watcher
+                                                                                   // to fail running
+                                                                                   // commands
+                        remote_terminal.status_bar_appears()
+                            && remote_terminal.snapshot_contains("┐┌")
+                    },
+                });
         main_client_reattached.run_all_steps();
 
         watcher.run_all_steps();

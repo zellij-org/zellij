@@ -1109,7 +1109,9 @@ impl Grid {
                 for line in &self.viewport {
                     to_serialize.push(line.clone())
                 }
-                self.output_buffer.serialize(to_serialize.as_slice(), None).ok()
+                self.output_buffer
+                    .serialize(to_serialize.as_slice(), None)
+                    .ok()
             },
             None => self.output_buffer.serialize(&self.viewport, None).ok(),
         }

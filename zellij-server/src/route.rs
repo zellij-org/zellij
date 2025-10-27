@@ -15,7 +15,7 @@ use std::time::Duration;
 use uuid::Uuid;
 use zellij_utils::{
     channels::SenderWithContext,
-    data::{Direction, Event, InputMode, PluginCapabilities, ResizeStrategy, BareKey, KeyModifier},
+    data::{BareKey, Direction, Event, InputMode, KeyModifier, PluginCapabilities, ResizeStrategy},
     errors::prelude::*,
     input::{
         actions::{Action, SearchDirection, SearchOption},
@@ -1045,20 +1045,26 @@ pub(crate) fn route_thread_main(
                     if is_watcher {
                         match &instruction {
                             ClientToServerMsg::Key { key, .. } => {
-                                if (key.bare_key == BareKey::Char('q') && key.key_modifiers.contains(&KeyModifier::Ctrl)) ||
-                                    key.bare_key == BareKey::Esc || 
-                                    (key.bare_key == BareKey::Char('c') && key.key_modifiers.contains(&KeyModifier::Ctrl))
+                                if (key.bare_key == BareKey::Char('q')
+                                    && key.key_modifiers.contains(&KeyModifier::Ctrl))
+                                    || key.bare_key == BareKey::Esc
+                                    || (key.bare_key == BareKey::Char('c')
+                                        && key.key_modifiers.contains(&KeyModifier::Ctrl))
                                 {
                                     let _ = os_input.send_to_client(
                                         client_id,
                                         ServerToClientMsg::Exit {
-                                            exit_reason: ExitReason::Normal
+                                            exit_reason: ExitReason::Normal,
                                         },
                                     );
-                                    let _ = rlocked_sessions.as_ref().map(|r| r.senders.send_to_screen(ScreenInstruction::RemoveWatcherClient(client_id)));
+                                    let _ = rlocked_sessions.as_ref().map(|r| {
+                                        r.senders.send_to_screen(
+                                            ScreenInstruction::RemoveWatcherClient(client_id),
+                                        )
+                                    });
                                     should_break = true;
                                 }
-                            }
+                            },
                             ClientToServerMsg::TerminalResize { new_size } => {
                                 // For watchers: send size to Screen for rendering adjustments, but
                                 // this does not affect the screen size
@@ -1069,7 +1075,7 @@ pub(crate) fn route_thread_main(
                                     retry_queue
                                 )
                                 .with_context(err_context)?;
-                            }
+                            },
                             _ => {
                                 // Ignore all input from watcher clients
                             },
@@ -1187,9 +1193,13 @@ pub(crate) fn route_thread_main(
                                     .and_then(|min_size| {
                                         rlocked_sessions
                                             .as_ref()
-                                            .context("couldn't get reference to read-locked session")?
+                                            .context(
+                                                "couldn't get reference to read-locked session",
+                                            )?
                                             .senders
-                                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                                            .send_to_screen(ScreenInstruction::TerminalResize(
+                                                min_size,
+                                            ))
                                     })
                                     .with_context(err_context)?;
                             }
