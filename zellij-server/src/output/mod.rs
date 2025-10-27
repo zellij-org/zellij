@@ -1203,3 +1203,6 @@ impl OutputBuffer {
         changed_rects
     }
 }
+
+#[cfg(test)]
+mod unit;
