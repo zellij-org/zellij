@@ -180,6 +180,20 @@ fn attach_to_existing_session(channel: &mut ssh2::Channel, session_name: &str) {
     std::thread::sleep(std::time::Duration::from_secs(3)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
+fn watch_existing_session(channel: &mut ssh2::Channel, session_name: &str) {
+    channel
+        .write_all(
+            format!(
+                "{} {} watch {}\n",
+                SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, session_name
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+    channel.flush().unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(3)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
+}
+
 fn start_zellij_without_frames(channel: &mut ssh2::Channel) {
     stop_zellij(channel);
     channel
@@ -688,6 +702,44 @@ impl RemoteRunner {
             reader_thread,
         }
     }
+    pub fn new_watcher_session(win_size: Size, session_name: &str) -> Self {
+        let sess = ssh_connect_without_timeout();
+        let mut channel = sess.channel_session().unwrap();
+        let mut rows = Dimension::fixed(win_size.rows);
+        let mut cols = Dimension::fixed(win_size.cols);
+        rows.set_inner(win_size.rows);
+        cols.set_inner(win_size.cols);
+        let pane_geom = PaneGeom {
+            x: 0,
+            y: 0,
+            rows,
+            cols,
+            stacked: None,
+            is_pinned: false,
+            logical_position: None,
+        };
+        setup_remote_environment(&mut channel, win_size);
+        watch_existing_session(&mut channel, session_name);
+        let channel = Arc::new(Mutex::new(channel));
+        let last_snapshot = Arc::new(Mutex::new(String::new()));
+        let cursor_coordinates = Arc::new(Mutex::new((0, 0)));
+        sess.set_blocking(false);
+        let reader_thread =
+            read_from_channel(&channel, &last_snapshot, &cursor_coordinates, &pane_geom);
+        RemoteRunner {
+            steps: vec![],
+            channel,
+            currently_running_step: None,
+            current_step_index: 0,
+            retries_left: RETRIES,
+            retry_pause_ms: 100,
+            test_timed_out: false,
+            panic_on_no_retries_left: true,
+            last_snapshot,
+            cursor_coordinates,
+            reader_thread,
+        }
+    }
     pub fn new_without_frames(win_size: Size) -> Self {
         let sess = ssh_connect();
         let mut channel = sess.channel_session().unwrap();
@@ -797,7 +849,7 @@ impl RemoteRunner {
                 self.retries_left = RETRIES;
                 self.current_step_index += 1;
             } else {
-                self.retries_left -= 1;
+                self.retries_left = self.retries_left.saturating_sub(1);
                 std::thread::sleep(std::time::Duration::from_millis(self.retry_pause_ms as u64));
             }
         }

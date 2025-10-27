@@ -558,7 +558,6 @@ impl Output {
             if let (Some(max_size), Some((cursor_x, cursor_y))) = (max_size, self.cursor_coordinates) {
                 let cursor_was_cropped = cursor_y >= max_size.rows || cursor_x >= max_size.cols;
                 if cursor_was_cropped {
-                    log::info!("cursor_was_cropped");
                     vte_hide_cursor_instruction(&mut client_serialized_render_instructions)
                         .with_context(err_context)?;
                 }
@@ -581,7 +580,6 @@ impl Output {
     }
     pub fn cursor_is_visible(&mut self, cursor_x: usize, cursor_y: usize) -> bool {
         self.cursor_coordinates = Some((cursor_x, cursor_y));
-        log::info!("Cursor coordinates: ({}, {})", cursor_x, cursor_y);
         self.floating_panes_stack
             .as_ref()
             .map(|s| s.cursor_is_visible(cursor_x, cursor_y))
