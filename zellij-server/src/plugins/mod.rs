@@ -18,6 +18,7 @@ use std::{
 use wasmi::Engine;
 
 use crate::panes::PaneId;
+use crate::route::NotificationEnd;
 use crate::screen::ScreenInstruction;
 use crate::session_layout_metadata::SessionLayoutMetadata;
 use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
@@ -83,9 +84,10 @@ pub enum PluginInstruction {
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
-        usize,            // tab_index
-        bool,             // should change focus to new tab
-        (ClientId, bool), // bool -> is_web_client
+        usize,                   // tab_index
+        bool,                    // should change focus to new tab
+        (ClientId, bool),        // bool -> is_web_client
+        Option<NotificationEnd>, // completion signal
     ),
     ApplyCachedEvents {
         plugin_ids: Vec<PluginId>,
@@ -447,6 +449,7 @@ pub(crate) fn plugin_thread_main(
                 tab_index,
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
+                completion_tx,
             ) => {
                 // prefer connected clients so as to avoid opening plugins in the background for
                 // CLI clients unless no-one else is connected
@@ -518,6 +521,7 @@ pub(crate) fn plugin_thread_main(
                     plugin_ids,
                     should_change_focus_to_new_tab,
                     (client_id, is_web_client),
+                    completion_tx,
                 )));
             },
             PluginInstruction::ApplyCachedEvents {

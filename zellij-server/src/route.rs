@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::sync::{Arc, RwLock};
+use tokio::sync::oneshot;
 
+use crate::global_async_runtime::get_tokio_runtime;
 use crate::thread_bus::ThreadSenders;
 use crate::{
     os_input_output::ServerOsApi,
@@ -30,6 +32,66 @@ use zellij_utils::{
 };
 
 use crate::ClientId;
+
+// Timeout for action completion (1 second)
+const ACTION_COMPLETION_TIMEOUT: Duration = Duration::from_secs(1);
+
+fn wait_for_action_completion(
+    receiver: oneshot::Receiver<()>,
+    timeout: Duration,
+    action_name: &str,
+) -> Result<()> {
+    let runtime = get_tokio_runtime();
+    match runtime.block_on(async {
+        tokio::time::timeout(timeout, receiver).await
+    }) {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(_)) => {
+            log::warn!(
+                "Action {} completion channel closed without sending signal",
+                action_name
+            );
+            Ok(()) // treat as success (worker thread may have exited)
+        }
+        Err(_) => {
+            log::error!(
+                "Action {} did not complete within {:?} timeout",
+                action_name,
+                timeout
+            );
+            Err(anyhow::anyhow!(
+                "Action {} timed out after {:?}",
+                action_name,
+                timeout
+            ))
+        }
+    }
+}
+
+// Wrapper struct for oneshot::Sender that implements Clone by always cloning as None
+// This is necessary because oneshot::Sender cannot be cloned, but some instruction types
+// need to be cloned for propagation through the thread pipeline
+#[derive(Debug)]
+pub struct NotificationEnd(pub Option<oneshot::Sender<()>>);
+
+impl Clone for NotificationEnd {
+    fn clone(&self) -> Self {
+        // Always clone as None - only the original holder should signal completion
+        NotificationEnd(None)
+    }
+}
+
+impl NotificationEnd {
+    pub fn new(sender: oneshot::Sender<()>) -> Self {
+        NotificationEnd(Some(sender))
+    }
+
+    pub fn send(self) {
+        if let Some(tx) = self.0 {
+            let _ = tx.send(());
+        }
+    }
+}
 
 pub(crate) fn route_action(
     action: Action,
@@ -61,8 +123,16 @@ pub(crate) fn route_action(
 
     match action {
         Action::ToggleTab => {
+            let (completion_tx, completion_rx) = oneshot::channel();
+
             senders
-                .send_to_screen(ScreenInstruction::ToggleTab(client_id))
+                .send_to_screen(ScreenInstruction::ToggleTab(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "ToggleTab")
                 .with_context(err_context)?;
         },
         Action::Write {
@@ -151,8 +221,8 @@ pub(crate) fn route_action(
             let screen_instr = match direction {
                 Direction::Left => ScreenInstruction::MoveFocusLeftOrPreviousTab(client_id),
                 Direction::Right => ScreenInstruction::MoveFocusRightOrNextTab(client_id),
-                Direction::Up => ScreenInstruction::SwitchTabNext(client_id),
-                Direction::Down => ScreenInstruction::SwitchTabPrev(client_id),
+                Direction::Up => ScreenInstruction::SwitchTabNext(client_id, None),
+                Direction::Down => ScreenInstruction::SwitchTabPrev(client_id, None),
             };
             senders
                 .send_to_screen(screen_instr)
@@ -257,9 +327,21 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::ToggleFocusFullscreen => {
+            let (completion_tx, completion_rx) = oneshot::channel();
+
             senders
-                .send_to_screen(ScreenInstruction::ToggleActiveTerminalFullscreen(client_id))
+                .send_to_screen(ScreenInstruction::ToggleActiveTerminalFullscreen(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
                 .with_context(err_context)?;
+
+            wait_for_action_completion(
+                completion_rx,
+                ACTION_COMPLETION_TIMEOUT,
+                "ToggleFocusFullscreen",
+            )
+            .with_context(err_context)?;
         },
         Action::TogglePaneFrames => {
             senders
@@ -456,12 +538,22 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::ToggleFloatingPanes => {
+            let (completion_tx, completion_rx) = oneshot::channel();
+
             senders
                 .send_to_screen(ScreenInstruction::ToggleFloatingPanes(
                     client_id,
                     default_shell.clone(),
+                    Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
+
+            wait_for_action_completion(
+                completion_rx,
+                ACTION_COMPLETION_TIMEOUT,
+                "ToggleFloatingPanes",
+            )
+            .with_context(err_context)?;
         },
         Action::PaneNameInput { input } => {
             senders
@@ -484,8 +576,16 @@ pub(crate) fn route_action(
             ));
         },
         Action::CloseFocus => {
+            let (completion_tx, completion_rx) = oneshot::channel();
+
             senders
-                .send_to_screen(ScreenInstruction::CloseFocusedPane(client_id))
+                .send_to_screen(ScreenInstruction::CloseFocusedPane(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "CloseFocusedPane")
                 .with_context(err_context)?;
         },
         Action::NewTab {
@@ -503,6 +603,10 @@ pub(crate) fn route_action(
             let swap_floating_layouts = swap_floating_layouts
                 .unwrap_or_else(|| default_layout.swap_floating_layouts.clone());
             let is_web_client = false; // actions cannot be initiated directly from the web
+
+            // Create completion channel
+            let (completion_tx, completion_rx) = oneshot::channel();
+
             senders
                 .send_to_screen(ScreenInstruction::NewTab(
                     cwd,
@@ -513,17 +617,38 @@ pub(crate) fn route_action(
                     (swap_tiled_layouts, swap_floating_layouts),
                     should_change_focus_to_new_tab,
                     (client_id, is_web_client),
+                    Some(NotificationEnd::new(completion_tx)),
                 ))
+                .with_context(err_context)?;
+
+            // Wait for completion
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "NewTab")
                 .with_context(err_context)?;
         },
         Action::GoToNextTab => {
+            let (completion_tx, completion_rx) = oneshot::channel();
+
             senders
-                .send_to_screen(ScreenInstruction::SwitchTabNext(client_id))
+                .send_to_screen(ScreenInstruction::SwitchTabNext(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "SwitchTabNext")
                 .with_context(err_context)?;
         },
         Action::GoToPreviousTab => {
+            let (completion_tx, completion_rx) = oneshot::channel();
+
             senders
-                .send_to_screen(ScreenInstruction::SwitchTabPrev(client_id))
+                .send_to_screen(ScreenInstruction::SwitchTabPrev(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "SwitchTabPrev")
                 .with_context(err_context)?;
         },
         Action::ToggleActiveSyncTab => {
@@ -532,13 +657,30 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::CloseTab => {
+            let (completion_tx, completion_rx) = oneshot::channel();
+
             senders
-                .send_to_screen(ScreenInstruction::CloseTab(client_id))
+                .send_to_screen(ScreenInstruction::CloseTab(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "CloseTab")
                 .with_context(err_context)?;
         },
         Action::GoToTab { index } => {
+            let (completion_tx, completion_rx) = oneshot::channel();
+
             senders
-                .send_to_screen(ScreenInstruction::GoToTab(index, Some(client_id)))
+                .send_to_screen(ScreenInstruction::GoToTab(
+                    index,
+                    Some(client_id),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "GoToTab")
                 .with_context(err_context)?;
         },
         Action::GoToTabName { name, create } => {
@@ -566,13 +708,30 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::MoveTab { direction } => {
+            let (completion_tx, completion_rx) = oneshot::channel();
+
             let screen_instr = match direction {
-                Direction::Left => ScreenInstruction::MoveTabLeft(client_id),
-                Direction::Right => ScreenInstruction::MoveTabRight(client_id),
+                Direction::Left => ScreenInstruction::MoveTabLeft(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ),
+                Direction::Right => ScreenInstruction::MoveTabRight(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ),
                 _ => return Ok(false),
             };
             senders
                 .send_to_screen(screen_instr)
+                .with_context(err_context)?;
+
+            let action_name = match direction {
+                Direction::Left => "MoveTabLeft",
+                Direction::Right => "MoveTabRight",
+                Direction::Up => "MoveTabUp",
+                Direction::Down => "MoveTabDown",
+            };
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, action_name)
                 .with_context(err_context)?;
         },
         Action::Quit => {

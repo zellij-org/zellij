@@ -4,6 +4,7 @@ pub mod panes;
 pub mod tab;
 
 mod background_jobs;
+mod global_async_runtime;
 mod logging_pipe;
 mod pane_groups;
 mod plugins;
@@ -771,6 +772,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             swap_layouts,
                             should_focus_tab,
                             (client_id, is_web_client),
+                            None,
                         ))
                         .unwrap()
                 };

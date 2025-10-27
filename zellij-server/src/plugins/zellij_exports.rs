@@ -1,7 +1,8 @@
 use super::PluginInstruction;
 use crate::background_jobs::BackgroundJob;
+use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::plugin_map::PluginEnv;
-use crate::plugins::wasm_bridge::{get_tokio_runtime, handle_plugin_crash};
+use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::pty::{ClientTabIndexOrPaneId, NewPanePlacement, PtyInstruction};
 use crate::route::route_action;
 use crate::ServerInstruction;
@@ -1230,7 +1231,7 @@ fn rerun_command_pane(env: &PluginEnv, terminal_pane_id: u32) {
 
 fn switch_tab_to(env: &PluginEnv, tab_idx: u32) {
     env.senders
-        .send_to_screen(ScreenInstruction::GoToTab(tab_idx, Some(env.client_id)))
+        .send_to_screen(ScreenInstruction::GoToTab(tab_idx, Some(env.client_id), None))
         .with_context(|| {
             format!(
                 "failed to switch to tab {tab_idx} from plugin {}",

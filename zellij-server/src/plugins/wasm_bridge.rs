@@ -1,4 +1,5 @@
 use super::{PinnedExecutor, PluginId, PluginInstruction};
+use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::pipes::{
     apply_pipe_message_to_plugin, pipes_to_block_or_unblock, PendingPipes, PipeStateChange,
 };
@@ -12,14 +13,12 @@ use async_channel::Sender;
 use highway::{HighwayHash, PortableHash};
 use log::info;
 use notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
-use once_cell::sync::OnceCell;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     path::PathBuf,
     str::FromStr,
     sync::{Arc, Mutex},
 };
-use tokio::runtime::Runtime;
 use url::Url;
 use wasmi::{Engine, Module};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR};
@@ -50,20 +49,6 @@ use zellij_utils::{
     ipc::ClientAttributes,
     pane_size::Size,
 };
-
-// Global tokio runtime for async I/O operations (plugin downloads, timers)
-static TOKIO_RUNTIME: OnceCell<Runtime> = OnceCell::new();
-
-pub fn get_tokio_runtime() -> &'static Runtime {
-    TOKIO_RUNTIME.get_or_init(|| {
-        tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2) // Small pool for I/O only
-            .thread_name("tokio-plugin-io")
-            .enable_all()
-            .build()
-            .expect("Failed to create tokio runtime")
-    })
-}
 
 #[derive(Debug, Clone)]
 pub enum EventOrPipeMessage {

@@ -1,4 +1,5 @@
 use crate::background_jobs::BackgroundJob;
+use crate::route::NotificationEnd;
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
     panes::PaneId,
@@ -137,6 +138,7 @@ pub enum PtyInstruction {
         HashMap<RunPluginOrAlias, Vec<u32>>, // plugin_ids
         bool,                                // should change focus to new tab
         (ClientId, bool),                    // bool -> is_web_client
+        Option<NotificationEnd>,             // completion signal
     ), // the String is the tab name
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
@@ -473,7 +475,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::GoToTab(tab_index, client_id) => {
                 pty.bus
                     .senders
-                    .send_to_screen(ScreenInstruction::GoToTab(tab_index, Some(client_id)))
+                    .send_to_screen(ScreenInstruction::GoToTab(tab_index, Some(client_id), None))
                     .with_context(|| {
                         format!("failed to move client {} to tab {}", client_id, tab_index)
                     })?;
@@ -487,6 +489,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 plugin_ids,
                 should_change_focus_to_new_tab,
                 client_id_and_is_web_client,
+                completion_tx,
             ) => {
                 let err_context = || "failed to open new tab";
 
@@ -504,6 +507,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     tab_index,
                     should_change_focus_to_new_tab,
                     client_id_and_is_web_client,
+                    completion_tx,
                 )
                 .with_context(err_context)?;
             },
@@ -983,6 +987,7 @@ impl Pty {
         tab_index: usize,
         should_change_focus_to_new_tab: bool,
         client_id_and_is_web_client: (ClientId, bool),
+        completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context = || format!("failed to spawn terminals for layout for");
 
@@ -1049,6 +1054,7 @@ impl Pty {
                 tab_index,
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
+                completion_tx,
             ))
             .with_context(err_context)?;
         let mut terminals_to_start = vec![];
