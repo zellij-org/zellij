@@ -91,4 +91,9 @@ NewTab(
         10,
         false,
     ),
+    Some(
+        NotificationEnd(
+            None,
+        ),
+    ),
 )

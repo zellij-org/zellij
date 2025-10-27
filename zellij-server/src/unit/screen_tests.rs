@@ -399,6 +399,7 @@ impl MockScreen {
             (vec![], vec![]), // swap layouts
             should_change_focus_to_new_tab,
             (self.main_client_id, false),
+            None,
         ));
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
             pane_layout,
@@ -409,6 +410,7 @@ impl MockScreen {
             tab_index,
             true,
             (self.main_client_id, false),
+            None,
         ));
         self.last_opened_tab_index = Some(tab_index);
         std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
@@ -487,6 +489,7 @@ impl MockScreen {
             (vec![], vec![]), // swap layouts
             should_change_focus_to_new_tab,
             (self.main_client_id, false),
+            None,
         ));
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
             pane_layout,
@@ -497,6 +500,7 @@ impl MockScreen {
             tab_index,
             true,
             (self.main_client_id, false),
+            None,
         ));
         self.last_opened_tab_index = Some(tab_index);
         screen_thread
@@ -521,6 +525,7 @@ impl MockScreen {
             (vec![], vec![]), // swap layouts
             should_change_focus_to_new_tab,
             (self.main_client_id, false),
+            None,
         ));
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
             tab_layout,
@@ -531,6 +536,7 @@ impl MockScreen {
             0,
             true,
             (self.main_client_id, false),
+            None,
         ));
         self.last_opened_tab_index = Some(tab_index);
     }
@@ -690,11 +696,11 @@ macro_rules! log_actions_in_thread {
                         .expect("failed to receive event on channel");
                     match event {
                         $exit_event => {
-                            log.lock().unwrap().push(event);
+                            log.lock().unwrap().push(event.clone());
                             break;
                         },
                         _ => {
-                            log.lock().unwrap().push(event);
+                            log.lock().unwrap().push(event.clone());
                         },
                     }
                 }
@@ -3644,6 +3650,7 @@ pub fn screen_can_break_pane_to_a_new_tab() {
         1,
         true,
         (1, false),
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // move back to make sure the other pane is in the previous tab
@@ -3748,6 +3755,7 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
         1,
         true,
         (1, false),
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(200));
     // move back to make sure the other pane is in the previous tab
@@ -3820,6 +3828,7 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
         1,
         true,
         (1, false),
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // move back to make sure the other pane is in the previous tab
@@ -3896,6 +3905,7 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
         1,
         true,
         (1, false),
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // move back to make sure the other pane is in the previous tab

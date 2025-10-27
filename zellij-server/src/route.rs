@@ -86,12 +86,25 @@ impl NotificationEnd {
         NotificationEnd(Some(sender))
     }
 
-    pub fn send(self) {
-        if let Some(tx) = self.0 {
+    pub fn send(mut self) {
+        if let Some(tx) = self.0.take() {
             let _ = tx.send(());
         }
     }
 }
+
+
+// Auto-signal on drop in tests since test code doesn't have access to
+// deconstruct instruction enums and manually signal completion
+#[cfg(test)]
+impl Drop for NotificationEnd {
+      fn drop(&mut self) {
+          if let Some(tx) = self.0.take() {
+              let _ = tx.send(());
+          }
+      }
+  }
+
 
 pub(crate) fn route_action(
     action: Action,
