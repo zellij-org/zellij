@@ -389,6 +389,10 @@ pub enum ScreenContext {
     InterceptKeyPresses,
     ClearKeyPressesIntercepts,
     ReplacePaneWithExistingPane,
+    AddWatcherClient,
+    RemoveWatcherClient,
+    SetFollowedClient,
+    WatcherTerminalResize, // NEW
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

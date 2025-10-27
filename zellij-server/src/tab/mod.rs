@@ -1118,6 +1118,10 @@ impl Tab {
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
         self.focus_pane_id = None;
+        self.mode_info
+            .borrow_mut()
+            .get_mut(&client_id)
+            .map(|c| c.change_to_default_mode()); // TODO: no races?
         self.connected_clients.borrow_mut().remove(&client_id);
         self.set_force_render();
     }
@@ -2735,11 +2739,21 @@ impl Tab {
         Ok(())
     }
 
-    pub fn render(&mut self, output: &mut Output) -> Result<()> {
+    pub fn render(
+        &mut self,
+        output: &mut Output,
+        client_id_override: Option<ClientId>,
+    ) -> Result<()> {
         let err_context = || "failed to render tab".to_string();
 
-        let connected_clients: HashSet<ClientId> =
+        let mut connected_clients: HashSet<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
+
+        // If we have a client_id_override (for watcher rendering), add it temporarily
+        if let Some(override_id) = client_id_override {
+            connected_clients.insert(override_id);
+        }
+
         if connected_clients.is_empty() || !self.tiled_panes.has_active_panes() {
             return Ok(());
         }
@@ -2761,13 +2775,19 @@ impl Tab {
                 self.floating_panes.panes_are_visible(),
                 &self.mouse_hover_pane_id,
                 current_pane_group.clone(),
+                client_id_override,
             )
             .with_context(err_context)?;
         if (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
             || self.floating_panes.has_pinned_panes()
         {
             self.floating_panes
-                .render(output, &self.mouse_hover_pane_id, current_pane_group)
+                .render(
+                    output,
+                    &self.mouse_hover_pane_id,
+                    current_pane_group,
+                    client_id_override,
+                )
                 .with_context(err_context)?;
         }
 

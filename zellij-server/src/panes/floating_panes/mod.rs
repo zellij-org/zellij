@@ -365,10 +365,18 @@ impl FloatingPanes {
         output: &mut Output,
         mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
         current_pane_group: HashMap<ClientId, Vec<PaneId>>,
+        client_id_override: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || "failed to render output";
-        let connected_clients: Vec<ClientId> =
+        let mut connected_clients: HashSet<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
+
+        // If we have a client_id_override (for watcher rendering), add it temporarily
+        if let Some(override_id) = client_id_override {
+            connected_clients.insert(override_id);
+        }
+
+        let connected_clients: Vec<ClientId> = connected_clients.into_iter().collect();
         let active_panes = if self.panes_are_visible() {
             self.active_panes.clone_active_panes()
         } else {

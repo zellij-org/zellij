@@ -20,6 +20,7 @@ message ClientToServerMsg {
     ConnStatusMsg conn_status = 13;
     WebServerStartedMsg web_server_started = 14;
     FailedToStartWebServerMsg failed_to_start_web_server = 15;
+    AttachWatcherClientMsg attach_watcher_client = 16;
   }
 }
 
@@ -57,6 +58,10 @@ message AttachClientMsg {
   optional uint32 tab_position_to_focus = 2;
   optional PaneReference pane_to_focus = 3;
   bool is_web_client = 4;
+}
+
+message AttachWatcherClientMsg {
+  Size terminal_size = 1;
 }
 
 message ActionMsg {

@@ -18,8 +18,8 @@ use std::{
 };
 use zellij_utils::data::{PaneContents, PaneRenderReport};
 use zellij_utils::errors::prelude::*;
-use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::pane_size::SizeInPixels;
+use zellij_utils::pane_size::{PaneGeom, Size};
 
 fn vte_goto_instruction(x_coords: usize, y_coords: usize, vte_output: &mut String) -> Result<()> {
     write!(
@@ -34,6 +34,10 @@ fn vte_goto_instruction(x_coords: usize, y_coords: usize, vte_output: &mut Strin
             x_coords, y_coords
         )
     })
+}
+
+fn vte_hide_cursor_instruction(vte_output: &mut String) -> Result<()> {
+    write!(vte_output, "\u{1b}[?25l").context("failed to execute VTE instruction to hide cursor")
 }
 
 fn adjust_styles_for_possible_selection(
@@ -85,17 +89,35 @@ fn serialize_chunks_with_newlines(
     _sixel_chunks: Option<&Vec<SixelImageChunk>>, // TODO: fix this sometime
     link_handler: Option<&mut Rc<RefCell<LinkHandler>>>,
     styled_underlines: bool,
+    max_size: Option<Size>,
 ) -> Result<String> {
     let err_context = || "failed to serialize input chunks".to_string();
 
     let mut vte_output = String::new();
     let link_handler = link_handler.map(|l_h| l_h.borrow());
     for character_chunk in character_chunks {
+        // Skip chunks that are completely outside the size bounds
+        if let Some(size) = max_size {
+            if character_chunk.y >= size.rows {
+                continue; // Chunk is below visible area
+            }
+            if character_chunk.x >= size.cols {
+                continue; // Chunk starts outside visible area
+            }
+        }
+
         let chunk_changed_colors = character_chunk.changed_colors();
         let mut character_styles = DEFAULT_STYLES.enable_styled_underlines(styled_underlines);
         vte_output.push_str("\n\r");
         let mut chunk_width = character_chunk.x;
         for t_character in character_chunk.terminal_characters.iter() {
+            // Stop rendering if the next character would exceed max_size.cols
+            if let Some(size) = max_size {
+                if chunk_width + t_character.width() > size.cols {
+                    break; // Stop rendering this chunk
+                }
+            }
+
             let current_character_styles = adjust_styles_for_possible_selection(
                 character_chunk.selection_and_colors(),
                 *t_character.styles,
@@ -122,6 +144,7 @@ fn serialize_chunks(
     link_handler: Option<&mut Rc<RefCell<LinkHandler>>>,
     sixel_image_store: Option<&mut SixelImageStore>,
     styled_underlines: bool,
+    max_size: Option<Size>,
 ) -> Result<String> {
     let err_context = || "failed to serialize input chunks".to_string();
 
@@ -129,12 +152,29 @@ fn serialize_chunks(
     let mut sixel_vte: Option<String> = None;
     let link_handler = link_handler.map(|l_h| l_h.borrow());
     for character_chunk in character_chunks {
+        // Skip chunks that are completely outside the size bounds
+        if let Some(size) = max_size {
+            if character_chunk.y >= size.rows {
+                continue; // Chunk is below visible area
+            }
+            if character_chunk.x >= size.cols {
+                continue; // Chunk starts outside visible area
+            }
+        }
+
         let chunk_changed_colors = character_chunk.changed_colors();
         let mut character_styles = DEFAULT_STYLES.enable_styled_underlines(styled_underlines);
         vte_goto_instruction(character_chunk.x, character_chunk.y, &mut vte_output)
             .with_context(err_context)?;
         let mut chunk_width = character_chunk.x;
         for t_character in character_chunk.terminal_characters.iter() {
+            // Stop rendering if the next character would exceed max_size.cols
+            if let Some(size) = max_size {
+                if chunk_width + t_character.width() > size.cols {
+                    break; // Stop rendering this chunk
+                }
+            }
+
             let current_character_styles = adjust_styles_for_possible_selection(
                 character_chunk.selection_and_colors(),
                 *t_character.styles,
@@ -156,6 +196,16 @@ fn serialize_chunks(
     if let Some(sixel_image_store) = sixel_image_store {
         if let Some(sixel_chunks) = sixel_chunks {
             for sixel_chunk in sixel_chunks {
+                // Skip sixel chunks that are completely outside the size bounds
+                if let Some(size) = max_size {
+                    if sixel_chunk.cell_y >= size.rows {
+                        continue; // Sixel chunk is below visible area
+                    }
+                    if sixel_chunk.cell_x >= size.cols {
+                        continue; // Sixel chunk starts outside visible area
+                    }
+                }
+
                 let serialized_sixel_image = sixel_image_store.serialize_image(
                     sixel_chunk.sixel_image_id,
                     sixel_chunk.sixel_image_pixel_x,
@@ -248,6 +298,7 @@ pub struct Output {
     floating_panes_stack: Option<FloatingPanesStack>,
     styled_underlines: bool,
     pane_render_report: PaneRenderReport,
+    cursor_coordinates: Option<(usize, usize)>,
 }
 
 impl Output {
@@ -423,6 +474,7 @@ impl Output {
                     self.link_handler.as_mut(),
                     Some(&mut self.sixel_image_store.borrow_mut()),
                     self.styled_underlines,
+                    None, // No size constraints for regular rendering
                 )
                 .with_context(err_context)?,
             ); // TODO: less allocations?
@@ -439,6 +491,85 @@ impl Output {
         }
         Ok(serialized_render_instructions)
     }
+    pub fn serialize_with_size(
+        &mut self,
+        max_size: Option<Size>,
+        content_size: Option<Size>,
+    ) -> Result<HashMap<ClientId, String>> {
+        let err_context =
+            || "failed to serialize output to clients with size constraints".to_string();
+
+        let mut serialized_render_instructions = HashMap::new();
+
+        for (client_id, client_character_chunks) in self.client_character_chunks.drain() {
+            let mut client_serialized_render_instructions = String::new();
+
+            // append pre-vte instructions for this client
+            if let Some(pre_vte_instructions_for_client) =
+                self.pre_vte_instructions.remove(&client_id)
+            {
+                for vte_instruction in pre_vte_instructions_for_client {
+                    client_serialized_render_instructions.push_str(&vte_instruction);
+                }
+            }
+
+            // Add padding instructions if max_size is larger than content_size
+            if let (Some(max_size), Some(content_size)) = (max_size, content_size) {
+                if max_size.rows > content_size.rows || max_size.cols > content_size.cols {
+                    // Clear each line from the end of rendered content to the end of the watcher's line
+                    for y in 0..content_size.rows {
+                        let padding_instruction = format!(
+                            "\u{1b}[{};{}H\u{1b}[m\u{1b}[K",
+                            y + 1,
+                            content_size.cols + 1
+                        );
+                        client_serialized_render_instructions.push_str(&padding_instruction);
+                    }
+
+                    // Clear all content below the last rendered line
+                    let clear_below_instruction =
+                        format!("\u{1b}[{};{}H\u{1b}[m\u{1b}[J", content_size.rows + 1, 1);
+                    client_serialized_render_instructions.push_str(&clear_below_instruction);
+                }
+            }
+
+            // append the actual vte with size constraints
+            client_serialized_render_instructions.push_str(
+                &serialize_chunks(
+                    client_character_chunks,
+                    self.sixel_chunks.get(&client_id),
+                    self.link_handler.as_mut(),
+                    Some(&mut self.sixel_image_store.borrow_mut()),
+                    self.styled_underlines,
+                    max_size,
+                )
+                .with_context(err_context)?,
+            );
+
+            // append post-vte instructions for this client
+            if let Some(post_vte_instructions_for_client) =
+                self.post_vte_instructions.remove(&client_id)
+            {
+                for vte_instruction in post_vte_instructions_for_client {
+                    client_serialized_render_instructions.push_str(&vte_instruction);
+                }
+            }
+
+            // Check if cursor was cropped and hide it if necessary
+            if let (Some(max_size), Some((cursor_x, cursor_y))) =
+                (max_size, self.cursor_coordinates)
+            {
+                let cursor_was_cropped = cursor_y >= max_size.rows || cursor_x >= max_size.cols;
+                if cursor_was_cropped {
+                    vte_hide_cursor_instruction(&mut client_serialized_render_instructions)
+                        .with_context(err_context)?;
+                }
+            }
+
+            serialized_render_instructions.insert(client_id, client_serialized_render_instructions);
+        }
+        Ok(serialized_render_instructions)
+    }
     pub fn is_dirty(&self) -> bool {
         !self.pre_vte_instructions.is_empty()
             || !self.post_vte_instructions.is_empty()
@@ -450,7 +581,8 @@ impl Output {
         self.client_character_chunks.values().any(|c| !c.is_empty())
             || self.sixel_chunks.values().any(|c| !c.is_empty())
     }
-    pub fn cursor_is_visible(&self, cursor_x: usize, cursor_y: usize) -> bool {
+    pub fn cursor_is_visible(&mut self, cursor_x: usize, cursor_y: usize) -> bool {
+        self.cursor_coordinates = Some((cursor_x, cursor_y));
         self.floating_panes_stack
             .as_ref()
             .map(|s| s.cursor_is_visible(cursor_x, cursor_y))
@@ -951,7 +1083,7 @@ impl OutputBuffer {
         self.changed_lines.clear();
         self.should_update_all_lines = false;
     }
-    pub fn serialize(&self, viewport: &[Row]) -> Result<String> {
+    pub fn serialize(&self, viewport: &[Row], max_size: Option<Size>) -> Result<String> {
         let mut chunks = Vec::new();
         for (line_index, line) in viewport.iter().enumerate() {
             let terminal_characters =
@@ -961,7 +1093,7 @@ impl OutputBuffer {
             let y = line_index;
             chunks.push(CharacterChunk::new(terminal_characters, x, y));
         }
-        serialize_chunks_with_newlines(chunks, None, None, self.styled_underlines)
+        serialize_chunks_with_newlines(chunks, None, None, self.styled_underlines, max_size)
     }
     pub fn changed_chunks_in_viewport(
         &self,
@@ -1074,3 +1206,6 @@ impl OutputBuffer {
         changed_rects
     }
 }
+
+#[cfg(test)]
+mod unit;

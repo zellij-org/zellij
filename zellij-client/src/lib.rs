@@ -235,6 +235,7 @@ pub enum ClientInfo {
     Attach(String, Options),
     New(String, Option<LayoutInfo>, Option<PathBuf>), // PathBuf -> explicit cwd
     Resurrect(String, PathBuf, bool, Option<PathBuf>), // (name, path_to_layout, force_run_commands, cwd)
+    Watch(String, Options),                            // Watch mode (read-only)
 }
 
 impl ClientInfo {
@@ -243,6 +244,7 @@ impl ClientInfo {
             Self::Attach(ref name, _) => name,
             Self::New(ref name, _layout_info, _layout_cwd) => name,
             Self::Resurrect(ref name, _, _, _) => name,
+            Self::Watch(ref name, _) => name,
         }
     }
     pub fn set_layout_info(&mut self, new_layout_info: LayoutInfo) {
@@ -668,6 +670,18 @@ pub fn start_client(
                         zellij_utils::ipc::PaneReference { pane_id, is_plugin }
                     }),
                     is_web_client,
+                },
+                ipc_pipe,
+            )
+        },
+        ClientInfo::Watch(name, _config_options) => {
+            envs::set_session_name(name.clone());
+            os_input.update_session_name(name);
+            let ipc_pipe = create_ipc_pipe();
+
+            (
+                ClientToServerMsg::AttachWatcherClient {
+                    terminal_size: full_screen_ws,
                 },
                 ipc_pipe,
             )

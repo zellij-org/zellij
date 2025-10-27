@@ -1,11 +1,12 @@
 use crate::{
     client_server_contract::client_server_contract::{
-        client_to_server_msg, server_to_client_msg, ActionMsg, AttachClientMsg, BackgroundColorMsg,
-        CliPipeOutputMsg, ClientExitedMsg, ClientToServerMsg as ProtoClientToServerMsg,
-        ColorRegistersMsg, ConfigFileUpdatedMsg, ConnStatusMsg, ConnectedMsg, DetachSessionMsg,
-        ExitMsg, ExitReason as ProtoExitReason, FailedToStartWebServerMsg, FirstClientConnectedMsg,
-        ForegroundColorMsg, InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LogErrorMsg,
-        LogMsg, QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
+        client_to_server_msg, server_to_client_msg, ActionMsg, AttachClientMsg,
+        AttachWatcherClientMsg, BackgroundColorMsg, CliPipeOutputMsg, ClientExitedMsg,
+        ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg, ConfigFileUpdatedMsg,
+        ConnStatusMsg, ConnectedMsg, DetachSessionMsg, ExitMsg, ExitReason as ProtoExitReason,
+        FailedToStartWebServerMsg, FirstClientConnectedMsg, ForegroundColorMsg,
+        InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LogErrorMsg, LogMsg,
+        QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
         ServerToClientMsg as ProtoServerToClientMsg, StartWebServerMsg, SwitchSessionMsg,
         TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
         UnblockInputThreadMsg, WebServerStartedMsg,
@@ -68,6 +69,11 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                 pane_to_focus: pane_to_focus.map(|p| p.into()),
                 is_web_client,
             }),
+            ClientToServerMsg::AttachWatcherClient { terminal_size } => {
+                client_to_server_msg::Message::AttachWatcherClient(AttachWatcherClientMsg {
+                    terminal_size: Some(terminal_size.into()),
+                })
+            },
             ClientToServerMsg::Action {
                 action,
                 terminal_id,
@@ -175,6 +181,14 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     tab_position_to_focus: attach.tab_position_to_focus.map(|pos| pos as usize),
                     pane_to_focus: attach.pane_to_focus.map(|p| p.try_into()).transpose()?,
                     is_web_client: attach.is_web_client,
+                })
+            },
+            Some(client_to_server_msg::Message::AttachWatcherClient(attach_watcher)) => {
+                Ok(ClientToServerMsg::AttachWatcherClient {
+                    terminal_size: attach_watcher
+                        .terminal_size
+                        .ok_or_else(|| anyhow::anyhow!("Missing terminal_size"))?
+                        .try_into()?,
                 })
             },
             Some(client_to_server_msg::Message::Action(action)) => Ok(ClientToServerMsg::Action {

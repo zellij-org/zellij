@@ -1624,6 +1624,11 @@ impl ModeInfo {
     pub fn update_hide_session_name(&mut self, hide_session_name: bool) {
         self.style.hide_session_name = hide_session_name;
     }
+    pub fn change_to_default_mode(&mut self) {
+        if let Some(base_mode) = self.base_mode {
+            self.mode = base_mode;
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]

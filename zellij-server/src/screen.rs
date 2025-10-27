@@ -430,6 +430,10 @@ pub enum ScreenInstruction {
     InterceptKeyPresses(PluginId, ClientId),
     ClearKeyPressesIntercepts(ClientId),
     ReplacePaneWithExistingPane(PaneId, PaneId),
+    AddWatcherClient(ClientId, Size),
+    RemoveWatcherClient(ClientId),
+    SetFollowedClient(ClientId),
+    WatcherTerminalResize(ClientId, Size),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -668,6 +672,10 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ReplacePaneWithExistingPane(..) => {
                 ScreenContext::ReplacePaneWithExistingPane
             },
+            ScreenInstruction::AddWatcherClient(..) => ScreenContext::AddWatcherClient,
+            ScreenInstruction::RemoveWatcherClient(..) => ScreenContext::RemoveWatcherClient,
+            ScreenInstruction::SetFollowedClient(..) => ScreenContext::SetFollowedClient,
+            ScreenInstruction::WatcherTerminalResize(..) => ScreenContext::WatcherTerminalResize, // NEW
         }
     }
 }
@@ -753,6 +761,42 @@ impl RenderBlocker {
     }
 }
 
+/// State information for a watcher client
+#[derive(Debug, Clone)]
+pub(crate) struct WatcherState {
+    size: Size,
+    should_force_render: bool,
+}
+
+impl WatcherState {
+    pub fn new(size: Size) -> Self {
+        WatcherState {
+            size,
+            should_force_render: true,
+        }
+    }
+
+    pub fn size(&self) -> Size {
+        self.size
+    }
+
+    pub fn set_size(&mut self, size: Size) {
+        self.size = size;
+    }
+
+    pub fn should_force_render(&self) -> bool {
+        self.should_force_render
+    }
+
+    pub fn clear_force_render(&mut self) {
+        self.should_force_render = false;
+    }
+
+    pub fn set_force_render(&mut self) {
+        self.should_force_render = true;
+    }
+}
+
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
 /// It only directly controls which tab is active, delegating the rest to the individual `Tab`.
 pub(crate) struct Screen {
@@ -810,6 +854,8 @@ pub(crate) struct Screen {
     web_server_ip: IpAddr,
     web_server_port: u16,
     render_blocker: RenderBlocker,
+    watcher_clients: HashMap<ClientId, WatcherState>,
+    followed_client_id: Option<ClientId>,
 }
 
 impl Screen {
@@ -893,6 +939,8 @@ impl Screen {
             web_server_ip,
             web_server_port,
             render_blocker: RenderBlocker::new(100),
+            watcher_clients: HashMap::new(),
+            followed_client_id: None,
         }
     }
 
@@ -1368,40 +1416,136 @@ impl Screen {
         // the render method for more details)
         let err_context = "failed to render screen";
 
-        let mut output = Output::new(
-            self.sixel_image_store.clone(),
-            self.character_cell_size.clone(),
-            self.styled_underlines,
-        );
-        let mut tabs_to_close = vec![];
-        for (tab_index, tab) in &mut self.tabs {
-            if tab.has_selectable_tiled_panes() {
-                tab.render(&mut output).context(err_context)?;
-            } else if !tab.is_pending() {
-                tabs_to_close.push(*tab_index);
+        // Separate rendering for regular clients and watchers
+        let has_regular_clients = self
+            .connected_clients
+            .borrow()
+            .keys()
+            .any(|id| !self.watcher_clients.contains_key(id));
+        let has_watchers = !self.watcher_clients.is_empty(); // No change needed
+
+        // Track whether non-watcher output was dirty for conditional watcher rendering
+        let non_watcher_output_was_dirty;
+
+        // === PHASE 1: Render for regular clients ===
+        if has_regular_clients {
+            let mut output = Output::new(
+                self.sixel_image_store.clone(),
+                self.character_cell_size.clone(),
+                self.styled_underlines,
+            );
+
+            let mut tabs_to_close = vec![];
+            for (tab_index, tab) in &mut self.tabs {
+                if tab.has_selectable_tiled_panes() {
+                    // Pass None for normal client rendering
+                    tab.render(&mut output, None).context(err_context)?;
+                } else if !tab.is_pending() {
+                    tabs_to_close.push(*tab_index);
+                }
             }
-        }
-        for tab_index in tabs_to_close {
-            // cleanup as needed
-            self.close_tab_at_index(tab_index)
-                .context(err_context)
-                .non_fatal();
-        }
+            for tab_index in tabs_to_close {
+                self.close_tab_at_index(tab_index)
+                    .context(err_context)
+                    .non_fatal();
+            }
 
-        let pane_render_report = output.drain_pane_render_report();
-        let _ = self
-            .bus
-            .senders
-            .send_to_plugin(PluginInstruction::PaneRenderReport(pane_render_report));
-
-        if output.is_dirty() {
-            let serialized_output = output.serialize().context(err_context)?;
+            let pane_render_report = output.drain_pane_render_report();
             let _ = self
                 .bus
                 .senders
-                .send_to_server(ServerInstruction::Render(Some(serialized_output)))
-                .context(err_context);
+                .send_to_plugin(PluginInstruction::PaneRenderReport(pane_render_report));
+
+            non_watcher_output_was_dirty = output.is_dirty();
+            if non_watcher_output_was_dirty {
+                let serialized_output = output.serialize().context(err_context)?;
+                let _ = self
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::Render(Some(serialized_output)))
+                    .context(err_context);
+            }
+        } else {
+            // No regular clients, output is not dirty
+            non_watcher_output_was_dirty = false;
         }
+
+        // === PHASE 2: Render for watchers ===
+        if has_watchers {
+            if let Some(followed_client_id) = self.followed_client_id {
+                // Create fresh output for watchers
+                let mut watcher_output = Output::new(
+                    self.sixel_image_store.clone(),
+                    self.character_cell_size.clone(),
+                    self.styled_underlines,
+                );
+
+                let focused_tab_index_of_followed_client_id = *self
+                    .active_tab_indices
+                    .get(&followed_client_id)
+                    .unwrap_or(&0);
+
+                if let Some(tab) = self
+                    .tabs
+                    .get_mut(&focused_tab_index_of_followed_client_id)
+                    .as_mut()
+                {
+                    // Only force render if:
+                    // 1. Non-watcher output was dirty, OR
+                    // 2. Any watcher needs a forced render (first render or after resize), OR
+                    // 3. No non-watcher clients are connected
+                    let any_watcher_needs_force_render = self
+                        .watcher_clients
+                        .values()
+                        .any(|state| state.should_force_render());
+                    let should_force_render = non_watcher_output_was_dirty
+                        || any_watcher_needs_force_render
+                        || !has_regular_clients;
+
+                    if should_force_render {
+                        tab.set_force_render();
+                    }
+                    tab.render(&mut watcher_output, Some(followed_client_id))
+                        .context(err_context)?;
+                }
+
+                // Send the rendered output to all watcher clients
+                if watcher_output.is_dirty() {
+                    let mut watcher_render_output: HashMap<ClientId, String> = HashMap::new();
+
+                    // For each watcher, clone the output and serialize with size constraints
+                    for (watcher_id, watcher_state) in &self.watcher_clients {
+                        let mut watcher_specific_output = watcher_output.clone();
+
+                        // Serialize this watcher's output with size constraints (cropping and padding handled inside)
+                        let mut serialized_output = watcher_specific_output
+                            .serialize_with_size(Some(watcher_state.size()), Some(self.size))
+                            .context(err_context)?;
+
+                        // Get the output for the followed client and map it to this watcher
+                        if let Some(followed_output) = serialized_output.remove(&followed_client_id)
+                        {
+                            watcher_render_output.insert(*watcher_id, followed_output);
+                        }
+                    }
+
+                    // Send to server for delivery to watcher clients
+                    if !watcher_render_output.is_empty() {
+                        let _ = self
+                            .bus
+                            .senders
+                            .send_to_server(ServerInstruction::Render(Some(watcher_render_output)))
+                            .context(err_context);
+                    }
+
+                    // Clear force render flag for all watchers after successful render
+                    for watcher_state in self.watcher_clients.values_mut() {
+                        watcher_state.clear_force_render();
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -1666,6 +1810,11 @@ impl Screen {
             format!("failed to attach client {client_id} to tab with index {tab_index}")
         };
 
+        // Set followed_client_id to the first regular client if not already set
+        if self.followed_client_id.is_none() && !self.watcher_clients.contains_key(&client_id) {
+            self.followed_client_id = Some(client_id);
+        }
+
         let mut tab_history = vec![];
         if let Some((_first_client, first_tab_history)) = self.tab_history.iter().next() {
             tab_history = first_tab_history.clone();
@@ -1698,6 +1847,23 @@ impl Screen {
     pub fn remove_client(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to remove client {client_id}");
 
+        // If the followed client disconnected, find the next regular client
+        if Some(client_id) == self.followed_client_id {
+            // Try to find another regular (non-watcher) client
+            self.followed_client_id = self
+                .connected_clients
+                .borrow()
+                .keys()
+                .copied()
+                .find(|id| !self.watcher_clients.contains_key(id) && id != &client_id);
+
+            // If no regular client remains but we have watchers, keep the old followed_client_id
+            // for terminal rendering (plugins will use their last state)
+            if self.followed_client_id.is_none() && !self.watcher_clients.is_empty() {
+                self.followed_client_id = Some(client_id); // Keep the disconnected client's ID
+            }
+        }
+
         for (_, tab) in self.tabs.iter_mut() {
             tab.remove_client(client_id);
             if tab.has_no_connected_clients() {
@@ -1713,6 +1879,50 @@ impl Screen {
         self.connected_clients.borrow_mut().remove(&client_id);
         self.log_and_report_session_state()
             .with_context(err_context)
+    }
+
+    pub fn add_watcher_client(&mut self, client_id: ClientId) -> Result<()> {
+        // Initialize with a default size - will be updated when we receive the actual size
+        let default_size = Size { rows: 24, cols: 80 }; // Reasonable default
+        self.watcher_clients
+            .insert(client_id, WatcherState::new(default_size));
+
+        // Force a full render for the new watcher
+        // This ensures they get complete state, not just delta
+        self.render(None)?;
+
+        Ok(())
+    }
+
+    pub fn remove_watcher_client(&mut self, client_id: ClientId) {
+        self.watcher_clients.remove(&client_id);
+    }
+
+    pub fn set_followed_client(&mut self, client_id: ClientId) -> Result<()> {
+        self.followed_client_id = Some(client_id);
+        // Trigger re-render with new followed client
+        self.render(None)?;
+        Ok(())
+    }
+
+    pub fn set_watcher_size(&mut self, client_id: ClientId, size: Size) {
+        // Update size if this client is a watcher
+        if let Some(watcher_state) = self.watcher_clients.get_mut(&client_id) {
+            watcher_state.set_size(size);
+            watcher_state.set_force_render();
+        }
+    }
+
+    // Optional: getter for debugging/monitoring
+    pub fn get_watcher_size(&self, client_id: &ClientId) -> Option<Size> {
+        self.watcher_clients
+            .get(client_id)
+            .map(|state| state.size())
+    }
+
+    // Optional: get all watcher sizes
+    pub fn get_all_watcher_sizes(&self) -> &HashMap<ClientId, WatcherState> {
+        &self.watcher_clients
     }
 
     pub fn generate_and_report_tab_state(&mut self) -> Result<Vec<TabInfo>> {
@@ -5761,6 +5971,26 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ReplacePaneWithExistingPane(old_pane_id, new_pane_id) => {
                 screen.replace_pane_with_existing_pane(old_pane_id, new_pane_id)
+            },
+            ScreenInstruction::AddWatcherClient(client_id, size) => {
+                screen
+                    .add_watcher_client(client_id)
+                    .context("failed to add watcher client")?;
+                screen.set_watcher_size(client_id, size);
+                screen.render(None)?;
+            },
+            ScreenInstruction::RemoveWatcherClient(client_id) => {
+                screen.remove_watcher_client(client_id);
+            },
+            ScreenInstruction::SetFollowedClient(client_id) => {
+                screen
+                    .set_followed_client(client_id)
+                    .context("failed to set followed client")?;
+            },
+            ScreenInstruction::WatcherTerminalResize(client_id, size) => {
+                // NEW
+                screen.set_watcher_size(client_id, size);
+                screen.render(None)?;
             },
         }
     }

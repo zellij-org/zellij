@@ -15,7 +15,7 @@ use std::time::Duration;
 use uuid::Uuid;
 use zellij_utils::{
     channels::SenderWithContext,
-    data::{Direction, Event, InputMode, PluginCapabilities, ResizeStrategy},
+    data::{BareKey, Direction, Event, InputMode, KeyModifier, PluginCapabilities, ResizeStrategy},
     errors::prelude::*,
     input::{
         actions::{Action, SearchDirection, SearchOption},
@@ -1039,6 +1039,51 @@ pub(crate) fn route_thread_main(
                     let mut should_break = false;
                     let rlocked_sessions =
                         session_data.read().to_anyhow().with_context(err_context)?;
+
+                    // Check if this is a watcher client and ignore input messages
+                    let is_watcher = session_state.read().unwrap().is_watcher(&client_id);
+                    if is_watcher {
+                        match &instruction {
+                            ClientToServerMsg::Key { key, .. } => {
+                                if (key.bare_key == BareKey::Char('q')
+                                    && key.key_modifiers.contains(&KeyModifier::Ctrl))
+                                    || key.bare_key == BareKey::Esc
+                                    || (key.bare_key == BareKey::Char('c')
+                                        && key.key_modifiers.contains(&KeyModifier::Ctrl))
+                                {
+                                    let _ = os_input.send_to_client(
+                                        client_id,
+                                        ServerToClientMsg::Exit {
+                                            exit_reason: ExitReason::Normal,
+                                        },
+                                    );
+                                    let _ = rlocked_sessions.as_ref().map(|r| {
+                                        r.senders.send_to_screen(
+                                            ScreenInstruction::RemoveWatcherClient(client_id),
+                                        )
+                                    });
+                                    should_break = true;
+                                }
+                            },
+                            ClientToServerMsg::TerminalResize { new_size } => {
+                                // For watchers: send size to Screen for rendering adjustments, but
+                                // this does not affect the screen size
+                                send_to_screen_or_retry_queue!(
+                                    rlocked_sessions,
+                                    ScreenInstruction::WatcherTerminalResize(client_id, *new_size),
+                                    instruction.clone(),
+                                    retry_queue
+                                )
+                                .with_context(err_context)?;
+                            },
+                            _ => {
+                                // Ignore all input from watcher clients
+                            },
+                        }
+                        // don't do anything else for watchers
+                        return Ok(should_break);
+                    }
+
                     match instruction {
                         ClientToServerMsg::Key {
                             key,
@@ -1120,27 +1165,43 @@ pub(crate) fn route_thread_main(
                             }
                         },
                         ClientToServerMsg::TerminalResize { new_size } => {
-                            session_state
-                                .write()
-                                .to_anyhow()
-                                .with_context(err_context)?
-                                .set_client_size(client_id, new_size);
-                            session_state
-                                .read()
-                                .to_anyhow()
-                                .and_then(|state| {
-                                    state.min_client_terminal_size().ok_or(anyhow!(
-                                        "failed to determine minimal client terminal size"
-                                    ))
-                                })
-                                .and_then(|min_size| {
-                                    rlocked_sessions
-                                        .as_ref()
-                                        .context("couldn't get reference to read-locked session")?
-                                        .senders
-                                        .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                                })
+                            // Check if this is a watcher or regular client
+                            if is_watcher {
+                                // For watchers: send size to Screen for tracking, don't affect screen size
+                                send_to_screen_or_retry_queue!(
+                                    rlocked_sessions,
+                                    ScreenInstruction::WatcherTerminalResize(client_id, new_size),
+                                    instruction,
+                                    retry_queue
+                                )
                                 .with_context(err_context)?;
+                            } else {
+                                session_state
+                                    .write()
+                                    .to_anyhow()
+                                    .with_context(err_context)?
+                                    .set_client_size(client_id, new_size);
+                                session_state
+                                    .read()
+                                    .to_anyhow()
+                                    .and_then(|state| {
+                                        state.min_client_terminal_size().ok_or(anyhow!(
+                                            "failed to determine minimal client terminal size"
+                                        ))
+                                    })
+                                    .and_then(|min_size| {
+                                        rlocked_sessions
+                                            .as_ref()
+                                            .context(
+                                                "couldn't get reference to read-locked session",
+                                            )?
+                                            .senders
+                                            .send_to_screen(ScreenInstruction::TerminalResize(
+                                                min_size,
+                                            ))
+                                    })
+                                    .with_context(err_context)?;
+                            }
                         },
                         ClientToServerMsg::TerminalPixelDimensions { pixel_dimensions } => {
                             send_to_screen_or_retry_queue!(
@@ -1239,6 +1300,13 @@ pub(crate) fn route_thread_main(
                                 let _ = to_server
                                     .send(ServerInstruction::SendWebClientsForbidden(client_id));
                             }
+                        },
+                        ClientToServerMsg::AttachWatcherClient { terminal_size } => {
+                            let attach_watcher_instruction =
+                                ServerInstruction::AttachWatcherClient(client_id, terminal_size);
+                            to_server
+                                .send(attach_watcher_instruction)
+                                .with_context(err_context)?;
                         },
                         ClientToServerMsg::ClientExited => {
                             // we don't unwrap this because we don't really care if there's an error here (eg.
