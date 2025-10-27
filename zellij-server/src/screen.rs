@@ -939,7 +939,7 @@ impl Screen {
             web_server_ip,
             web_server_port,
             render_blocker: RenderBlocker::new(100),
-            watcher_clients: HashMap::new(), // CHANGED: now a HashMap
+            watcher_clients: HashMap::new(),
             followed_client_id: None,
         }
     }
@@ -1421,7 +1421,7 @@ impl Screen {
             .connected_clients
             .borrow()
             .keys()
-            .any(|id| !self.watcher_clients.contains_key(id)); // CHANGED: contains -> contains_key
+            .any(|id| !self.watcher_clients.contains_key(id));
         let has_watchers = !self.watcher_clients.is_empty(); // No change needed
 
         // Track whether non-watcher output was dirty for conditional watcher rendering
@@ -1458,7 +1458,6 @@ impl Screen {
 
             non_watcher_output_was_dirty = output.is_dirty();
             if non_watcher_output_was_dirty {
-                log::info!("rendering non watcher");
                 let serialized_output = output.serialize().context(err_context)?;
                 let _ = self
                     .bus
@@ -1504,7 +1503,6 @@ impl Screen {
                         || !has_regular_clients;
 
                     if should_force_render {
-                        log::info!("force rendering tab");
                         tab.set_force_render();
                     }
                     tab.render(&mut watcher_output, Some(followed_client_id))
@@ -1533,7 +1531,6 @@ impl Screen {
 
                     // Send to server for delivery to watcher clients
                     if !watcher_render_output.is_empty() {
-                        log::info!("Rendering watcher");
                         let _ = self
                             .bus
                             .senders
@@ -1815,7 +1812,6 @@ impl Screen {
 
         // Set followed_client_id to the first regular client if not already set
         if self.followed_client_id.is_none() && !self.watcher_clients.contains_key(&client_id) {
-            // CHANGED
             self.followed_client_id = Some(client_id);
         }
 
@@ -1859,7 +1855,7 @@ impl Screen {
                 .borrow()
                 .keys()
                 .copied()
-                .find(|id| !self.watcher_clients.contains_key(id) && id != &client_id); // CHANGED
+                .find(|id| !self.watcher_clients.contains_key(id) && id != &client_id);
 
             // If no regular client remains but we have watchers, keep the old followed_client_id
             // for terminal rendering (plugins will use their last state)

@@ -1236,11 +1236,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // If `Some(_)`- unwrap it and forward it to the clients to render.
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
                 if let Some(output) = &serialized_output {
-                    // Send to clients (both regular and watchers - Screen now handles watcher rendering)
                     for (client_id, client_render_instruction) in output.iter() {
-                        // TODO: When a client is too slow or unresponsive, the channel fills up
-                        // and this call will disconnect the client in turn. Should this be
-                        // changed?
                         send_to_client!(
                             *client_id,
                             os_input,

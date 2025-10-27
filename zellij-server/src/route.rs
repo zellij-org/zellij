@@ -1176,7 +1176,6 @@ pub(crate) fn route_thread_main(
                                 )
                                 .with_context(err_context)?;
                             } else {
-                                // For regular clients: existing behavior
                                 session_state
                                     .write()
                                     .to_anyhow()
