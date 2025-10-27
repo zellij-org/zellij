@@ -1044,14 +1044,6 @@ pub(crate) fn route_thread_main(
                     let is_watcher = session_state.read().unwrap().is_watcher(&client_id);
                     if is_watcher {
                         match &instruction {
-                            ClientToServerMsg::Action { .. }
-                            | ClientToServerMsg::TerminalPixelDimensions { .. }
-                            | ClientToServerMsg::BackgroundColor { .. }
-                            | ClientToServerMsg::ForegroundColor { .. }
-                            | ClientToServerMsg::ColorRegisters { .. } => {
-                                // Ignore all input from watcher clients
-                                return Ok(should_break);
-                            },
                             ClientToServerMsg::Key { key, .. } => {
                                 if (key.bare_key == BareKey::Char('q') && key.key_modifiers.contains(&KeyModifier::Ctrl)) ||
                                     key.bare_key == BareKey::Esc || 
@@ -1065,13 +1057,25 @@ pub(crate) fn route_thread_main(
                                     );
                                     let _ = rlocked_sessions.as_ref().map(|r| r.senders.send_to_screen(ScreenInstruction::RemoveWatcherClient(client_id)));
                                     should_break = true;
-                                    return Ok(should_break);
                                 }
                             }
+                            ClientToServerMsg::TerminalResize { new_size } => {
+                                // For watchers: send size to Screen for rendering adjustments, but
+                                // this does not affect the screen size
+                                send_to_screen_or_retry_queue!(
+                                    rlocked_sessions,
+                                    ScreenInstruction::WatcherTerminalResize(client_id, *new_size),
+                                    instruction.clone(),
+                                    retry_queue
+                                )
+                                .with_context(err_context)?;
+                            }
                             _ => {
-                                // Allow other messages (like ClientExited, TerminalResize, etc.)
+                                // Ignore all input from watcher clients
                             },
                         }
+                        // don't do anything else for watchers
+                        return Ok(should_break);
                     }
 
                     match instruction {
