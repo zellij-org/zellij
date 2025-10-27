@@ -552,6 +552,9 @@ impl SessionState {
     pub fn client_ids(&self) -> Vec<ClientId> {
         self.clients.keys().copied().collect()
     }
+    pub fn watcher_client_ids(&self) -> Vec<ClientId> {
+        self.watchers.iter().copied().collect()
+    }
     pub fn web_client_ids(&self) -> Vec<ClientId> {
         self.clients
             .iter()
@@ -1070,6 +1073,22 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         for client_id in client_ids_to_cleanup {
                             remove_client!(client_id, os_input, session_state);
                         }
+
+                        let watcher_client_ids: Vec<ClientId> = session_state
+                            .read()
+                            .unwrap()
+                            .watcher_client_ids();
+                        for watcher_id in watcher_client_ids {
+                            let _ = os_input.send_to_client(
+                                watcher_id,
+                                ServerToClientMsg::Exit {
+                                    exit_reason: ExitReason::Normal,
+                                },
+                            );
+                        }
+
+
+
                         break;
                     }
                 }
