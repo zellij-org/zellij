@@ -162,60 +162,60 @@ pub enum ScreenInstruction {
         ClientTabIndexOrPaneId,
     ),
     OpenInPlaceEditor(PaneId, ClientTabIndexOrPaneId),
-    TogglePaneEmbedOrFloating(ClientId),
+    TogglePaneEmbedOrFloating(ClientId, Option<NotificationEnd>),
     ToggleFloatingPanes(ClientId, Option<TerminalAction>, Option<NotificationEnd>),
     HorizontalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
-    WriteCharacter(Option<KeyWithModifier>, Vec<u8>, bool, ClientId), // bool ->
+    WriteCharacter(Option<KeyWithModifier>, Vec<u8>, bool, ClientId, Option<NotificationEnd>), // bool ->
     // is_kitty_keyboard_protocol
-    Resize(ClientId, ResizeStrategy),
-    SwitchFocus(ClientId),
-    FocusNextPane(ClientId),
-    FocusPreviousPane(ClientId),
-    MoveFocusLeft(ClientId),
-    MoveFocusLeftOrPreviousTab(ClientId),
-    MoveFocusDown(ClientId),
-    MoveFocusUp(ClientId),
-    MoveFocusRight(ClientId),
-    MoveFocusRightOrNextTab(ClientId),
-    MovePane(ClientId),
-    MovePaneBackwards(ClientId),
-    MovePaneUp(ClientId),
-    MovePaneDown(ClientId),
-    MovePaneRight(ClientId),
-    MovePaneLeft(ClientId),
+    Resize(ClientId, ResizeStrategy, Option<NotificationEnd>),
+    SwitchFocus(ClientId, Option<NotificationEnd>),
+    FocusNextPane(ClientId, Option<NotificationEnd>),
+    FocusPreviousPane(ClientId, Option<NotificationEnd>),
+    MoveFocusLeft(ClientId, Option<NotificationEnd>),
+    MoveFocusLeftOrPreviousTab(ClientId, Option<NotificationEnd>),
+    MoveFocusDown(ClientId, Option<NotificationEnd>),
+    MoveFocusUp(ClientId, Option<NotificationEnd>),
+    MoveFocusRight(ClientId, Option<NotificationEnd>),
+    MoveFocusRightOrNextTab(ClientId, Option<NotificationEnd>),
+    MovePane(ClientId, Option<NotificationEnd>),
+    MovePaneBackwards(ClientId, Option<NotificationEnd>),
+    MovePaneUp(ClientId, Option<NotificationEnd>),
+    MovePaneDown(ClientId, Option<NotificationEnd>),
+    MovePaneRight(ClientId, Option<NotificationEnd>),
+    MovePaneLeft(ClientId, Option<NotificationEnd>),
     Exit,
-    ClearScreen(ClientId),
-    DumpScreen(String, ClientId, bool),
-    DumpLayout(Option<PathBuf>, ClientId), // PathBuf is the default configured
+    ClearScreen(ClientId, Option<NotificationEnd>),
+    DumpScreen(String, ClientId, bool, Option<NotificationEnd>),
+    DumpLayout(Option<PathBuf>, ClientId, Option<NotificationEnd>), // PathBuf is the default configured
     // shell
     DumpLayoutToPlugin(PluginId),
-    EditScrollback(ClientId),
+    EditScrollback(ClientId, Option<NotificationEnd>),
     GetPaneScrollback {
         pane_id: PaneId,
         client_id: ClientId,
         get_full_scrollback: bool,
         response_channel: crossbeam::channel::Sender<PaneScrollbackResponse>,
     },
-    ScrollUp(ClientId),
-    ScrollUpAt(Position, ClientId),
-    ScrollDown(ClientId),
-    ScrollDownAt(Position, ClientId),
-    ScrollToBottom(ClientId),
-    ScrollToTop(ClientId),
-    PageScrollUp(ClientId),
-    PageScrollDown(ClientId),
-    HalfPageScrollUp(ClientId),
-    HalfPageScrollDown(ClientId),
+    ScrollUp(ClientId, Option<NotificationEnd>),
+    ScrollUpAt(Position, ClientId, Option<NotificationEnd>),
+    ScrollDown(ClientId, Option<NotificationEnd>),
+    ScrollDownAt(Position, ClientId, Option<NotificationEnd>),
+    ScrollToBottom(ClientId, Option<NotificationEnd>),
+    ScrollToTop(ClientId, Option<NotificationEnd>),
+    PageScrollUp(ClientId, Option<NotificationEnd>),
+    PageScrollDown(ClientId, Option<NotificationEnd>),
+    HalfPageScrollUp(ClientId, Option<NotificationEnd>),
+    HalfPageScrollDown(ClientId, Option<NotificationEnd>),
     ClearScroll(ClientId),
     CloseFocusedPane(ClientId, Option<NotificationEnd>),
     ToggleActiveTerminalFullscreen(ClientId, Option<NotificationEnd>),
-    TogglePaneFrames,
+    TogglePaneFrames(Option<NotificationEnd>),
     SetSelectable(PaneId, bool),
-    ClosePane(PaneId, Option<ClientId>),
+    ClosePane(PaneId, Option<ClientId>, Option<NotificationEnd>),
     HoldPane(PaneId, Option<i32>, RunCommand),
-    UpdatePaneName(Vec<u8>, ClientId),
-    UndoRenamePane(ClientId),
+    UpdatePaneName(Vec<u8>, ClientId, Option<NotificationEnd>),
+    UndoRenamePane(ClientId, Option<NotificationEnd>),
     NewTab(
         Option<PathBuf>,
         Option<TerminalAction>,
@@ -240,7 +240,7 @@ pub enum ScreenInstruction {
     ),
     SwitchTabNext(ClientId, Option<NotificationEnd>),
     SwitchTabPrev(ClientId, Option<NotificationEnd>),
-    ToggleActiveSyncTab(ClientId),
+    ToggleActiveSyncTab(ClientId, Option<NotificationEnd>),
     CloseTab(ClientId, Option<NotificationEnd>),
     GoToTab(u32, Option<ClientId>, Option<NotificationEnd>), // this Option is a hacky workaround, please do not copy this behaviour
     GoToTabName(
@@ -249,10 +249,11 @@ pub enum ScreenInstruction {
         Option<TerminalAction>,                          // default_shell
         bool,
         Option<ClientId>,
+        Option<NotificationEnd>,
     ),
     ToggleTab(ClientId, Option<NotificationEnd>),
-    UpdateTabName(Vec<u8>, ClientId),
-    UndoRenameTab(ClientId),
+    UpdateTabName(Vec<u8>, ClientId, Option<NotificationEnd>),
+    UndoRenameTab(ClientId, Option<NotificationEnd>),
     MoveTabLeft(ClientId, Option<NotificationEnd>),
     MoveTabRight(ClientId, Option<NotificationEnd>),
     TerminalResize(Size),
@@ -262,8 +263,8 @@ pub enum ScreenInstruction {
     TerminalColorRegisters(Vec<(usize, String)>),
     ChangeMode(ModeInfo, ClientId),
     ChangeModeForAllClients(ModeInfo),
-    MouseEvent(MouseEvent, ClientId),
-    Copy(ClientId),
+    MouseEvent(MouseEvent, ClientId, Option<NotificationEnd>),
+    Copy(ClientId, Option<NotificationEnd>),
     AddClient(
         ClientId,
         bool,                // is_web_client
@@ -273,25 +274,26 @@ pub enum ScreenInstruction {
     RemoveClient(ClientId),
     AddOverlay(Overlay, ClientId),
     RemoveOverlay(ClientId),
-    ConfirmPrompt(ClientId),
-    DenyPrompt(ClientId),
-    UpdateSearch(Vec<u8>, ClientId),
-    SearchDown(ClientId),
-    SearchUp(ClientId),
-    SearchToggleCaseSensitivity(ClientId),
-    SearchToggleWholeWord(ClientId),
-    SearchToggleWrap(ClientId),
+    ConfirmPrompt(ClientId, Option<NotificationEnd>),
+    DenyPrompt(ClientId, Option<NotificationEnd>),
+    UpdateSearch(Vec<u8>, ClientId, Option<NotificationEnd>),
+    SearchDown(ClientId, Option<NotificationEnd>),
+    SearchUp(ClientId, Option<NotificationEnd>),
+    SearchToggleCaseSensitivity(ClientId, Option<NotificationEnd>),
+    SearchToggleWholeWord(ClientId, Option<NotificationEnd>),
+    SearchToggleWrap(ClientId, Option<NotificationEnd>),
     AddRedPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional error text
     ClearPaneFrameColorOverride(Vec<PaneId>),
-    PreviousSwapLayout(ClientId),
-    NextSwapLayout(ClientId),
-    QueryTabNames(ClientId),
+    PreviousSwapLayout(ClientId, Option<NotificationEnd>),
+    NextSwapLayout(ClientId, Option<NotificationEnd>),
+    QueryTabNames(ClientId, Option<NotificationEnd>),
     NewTiledPluginPane(
         RunPluginOrAlias,
         Option<String>,
         bool,
         Option<PathBuf>,
         ClientId,
+        Option<NotificationEnd>,
     ), // Option<String> is
     // optional pane title, bool is skip cache, Option<PathBuf> is an optional cwd
     NewFloatingPluginPane(
@@ -301,12 +303,13 @@ pub enum ScreenInstruction {
         Option<PathBuf>,
         Option<FloatingPaneCoordinates>,
         ClientId,
+        Option<NotificationEnd>,
     ), // Option<String> is an
     // optional pane title, bool
     // is skip cache, Option<PathBuf> is an optional cwd
-    NewInPlacePluginPane(RunPluginOrAlias, Option<String>, PaneId, bool, ClientId), // Option<String> is an
+    NewInPlacePluginPane(RunPluginOrAlias, Option<String>, PaneId, bool, ClientId, Option<NotificationEnd>), // Option<String> is an
     // optional pane title, bool is skip cache
-    StartOrReloadPluginPane(RunPluginOrAlias, Option<String>),
+    StartOrReloadPluginPane(RunPluginOrAlias, Option<String>, Option<NotificationEnd>),
     AddPlugin(
         Option<bool>, // should_float
         bool,         // should be opened in place
@@ -333,6 +336,7 @@ pub enum ScreenInstruction {
         Option<PaneId>,
         bool,
         ClientId,
+        Option<NotificationEnd>,
     ), // bools are: should_float, move_to_focused_tab, should_open_in_place, Option<PaneId> is the pane id to replace, bool following it is skip_cache
     LaunchPlugin(
         RunPluginOrAlias,
@@ -342,18 +346,19 @@ pub enum ScreenInstruction {
         bool,
         Option<PathBuf>,
         ClientId,
+        Option<NotificationEnd>,
     ), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace, Option<PathBuf> is an optional cwd, bool after is skip_cache
     SuppressPane(PaneId, ClientId),          // bool is should_float
-    FocusPaneWithId(PaneId, bool, ClientId), // bool is should_float
-    RenamePane(PaneId, Vec<u8>),
-    RenameTab(usize, Vec<u8>),
+    FocusPaneWithId(PaneId, bool, ClientId, Option<NotificationEnd>), // bool is should_float
+    RenamePane(PaneId, Vec<u8>, Option<NotificationEnd>),
+    RenameTab(usize, Vec<u8>, Option<NotificationEnd>),
     RequestPluginPermissions(
         u32, // u32 - plugin_id
         PluginPermission,
     ),
-    BreakPane(Box<Layout>, Option<TerminalAction>, ClientId),
-    BreakPaneRight(ClientId),
-    BreakPaneLeft(ClientId),
+    BreakPane(Box<Layout>, Option<TerminalAction>, ClientId, Option<NotificationEnd>),
+    BreakPaneRight(ClientId, Option<NotificationEnd>),
+    BreakPaneLeft(ClientId, Option<NotificationEnd>),
     UpdateSessionInfos(
         BTreeMap<String, SessionInfo>, // String is the session name
         BTreeMap<String, Duration>,    // resurrectable sessions - <name, created>
@@ -367,8 +372,8 @@ pub enum ScreenInstruction {
         ClientTabIndexOrPaneId,
     ),
     SerializeLayoutForResurrection,
-    RenameSession(String, ClientId), // String -> new name
-    ListClientsMetadata(Option<PathBuf>, ClientId), // Option<PathBuf> - default shell
+    RenameSession(String, ClientId, Option<NotificationEnd>), // String -> new name
+    ListClientsMetadata(Option<PathBuf>, ClientId, Option<NotificationEnd>), // Option<PathBuf> - default shell
     Reconfigure {
         client_id: ClientId,
         keybinds: Keybinds,
@@ -417,18 +422,18 @@ pub enum ScreenInstruction {
         client_id: ClientId,
     },
     ListClientsToPlugin(PluginId, ClientId),
-    TogglePanePinned(ClientId),
+    TogglePanePinned(ClientId, Option<NotificationEnd>),
     SetFloatingPanePinned(PaneId, bool),
-    StackPanes(Vec<PaneId>, ClientId),
-    ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
+    StackPanes(Vec<PaneId>, ClientId, Option<NotificationEnd>),
+    ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>, Option<NotificationEnd>),
     AddHighlightPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional
     // message
     GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, bool, ClientId), // panes_to_group, panes_to_ungroup, bool -> for all clients
     HighlightAndUnhighlightPanes(Vec<PaneId>, Vec<PaneId>, ClientId), // panes_to_highlight, panes_to_unhighlight
     FloatMultiplePanes(Vec<PaneId>, ClientId),
     EmbedMultiplePanes(Vec<PaneId>, ClientId),
-    TogglePaneInGroup(ClientId),
-    ToggleGroupMarking(ClientId),
+    TogglePaneInGroup(ClientId, Option<NotificationEnd>),
+    ToggleGroupMarking(ClientId, Option<NotificationEnd>),
     SessionSharingStatusChange(bool),
     SetMouseSelectionSupport(PaneId, bool),
     InterceptKeyPresses(PluginId, ClientId),
@@ -456,7 +461,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::HorizontalSplit(..) => ScreenContext::HorizontalSplit,
             ScreenInstruction::VerticalSplit(..) => ScreenContext::VerticalSplit,
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
-            ScreenInstruction::Resize(.., strategy) => match strategy {
+            ScreenInstruction::Resize(.., strategy, _) => match strategy {
                 ResizeStrategy {
                     resize: Resize::Increase,
                     direction,
@@ -519,7 +524,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ToggleActiveTerminalFullscreen(..) => {
                 ScreenContext::ToggleActiveTerminalFullscreen
             },
-            ScreenInstruction::TogglePaneFrames => ScreenContext::TogglePaneFrames,
+            ScreenInstruction::TogglePaneFrames(..) => ScreenContext::TogglePaneFrames,
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
             ScreenInstruction::ClosePane(..) => ScreenContext::ClosePane,
             ScreenInstruction::HoldPane(..) => ScreenContext::HoldPane,
@@ -3777,12 +3782,17 @@ pub(crate) fn screen_thread_main(
 
                 screen.render(None)?;
             },
-            ScreenInstruction::TogglePaneEmbedOrFloating(client_id) => {
+            ScreenInstruction::TogglePaneEmbedOrFloating(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| tab
                     .toggle_pane_embed_or_floating(client_id), ?);
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::ToggleFloatingPanes(client_id, default_shell, completion_tx) => {
                 active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| tab
@@ -3860,6 +3870,7 @@ pub(crate) fn screen_thread_main(
                 raw_bytes,
                 is_kitty_keyboard_protocol,
                 client_id,
+                completion_tx,
             ) => {
                 if let Some(plugin_id) = keybind_intercepts.get(&client_id) {
                     if let Some(key_with_modifier) = key_with_modifier {
@@ -3942,8 +3953,14 @@ pub(crate) fn screen_thread_main(
                     screen.log_and_report_session_state()?;
                 }
                 screen.unblock_input()?;
+                screen.render(None)?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::Resize(client_id, strategy) => {
+            ScreenInstruction::Resize(client_id, strategy, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -3954,7 +3971,7 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::SwitchFocus(client_id) => {
+            ScreenInstruction::SwitchFocus(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -3963,8 +3980,13 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::FocusNextPane(client_id) => {
+            ScreenInstruction::FocusNextPane(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -3972,8 +3994,13 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::FocusPreviousPane(client_id) => {
+            ScreenInstruction::FocusPreviousPane(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -3982,8 +4009,13 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::MoveFocusLeft(client_id) => {
+            ScreenInstruction::MoveFocusLeft(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -3994,15 +4026,25 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::MoveFocusLeftOrPreviousTab(client_id) => {
+            ScreenInstruction::MoveFocusLeftOrPreviousTab(client_id, completion_tx) => {
                 screen.move_focus_left_or_previous_tab(client_id)?;
                 screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.unblock_input()?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::MoveFocusDown(client_id) => {
+            ScreenInstruction::MoveFocusDown(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4013,8 +4055,13 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::MoveFocusRight(client_id) => {
+            ScreenInstruction::MoveFocusRight(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4025,15 +4072,25 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::MoveFocusRightOrNextTab(client_id) => {
+            ScreenInstruction::MoveFocusRightOrNextTab(client_id, completion_tx) => {
                 screen.move_focus_right_or_next_tab(client_id)?;
                 screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.unblock_input()?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::MoveFocusUp(client_id) => {
+            ScreenInstruction::MoveFocusUp(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4044,8 +4101,13 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::ClearScreen(client_id) => {
+            ScreenInstruction::ClearScreen(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4056,8 +4118,13 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::DumpScreen(file, client_id, full) => {
+            ScreenInstruction::DumpScreen(file, client_id, full, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4070,8 +4137,13 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::DumpLayout(default_shell, client_id) => {
+            ScreenInstruction::DumpLayout(default_shell, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
                 let session_layout_metadata = screen.get_layout_metadata(default_shell);
                 screen
@@ -4082,8 +4154,13 @@ pub(crate) fn screen_thread_main(
                         client_id,
                     ))
                     .with_context(err_context)?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::ListClientsMetadata(default_shell, client_id) => {
+            ScreenInstruction::ListClientsMetadata(default_shell, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
                 let session_layout_metadata = screen.get_layout_metadata(default_shell);
                 screen
@@ -4094,6 +4171,11 @@ pub(crate) fn screen_thread_main(
                         client_id,
                     ))
                     .with_context(err_context)?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::DumpLayoutToPlugin(plugin_id) => {
                 let err_context = || format!("Failed to dump layout");
@@ -4124,7 +4206,7 @@ pub(crate) fn screen_thread_main(
                     .with_context(err_context)
                     .non_fatal();
             },
-            ScreenInstruction::EditScrollback(client_id) => {
+            ScreenInstruction::EditScrollback(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4133,6 +4215,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::GetPaneScrollback {
                 pane_id,
@@ -4167,7 +4254,7 @@ pub(crate) fn screen_thread_main(
                     );
                 }
             },
-            ScreenInstruction::ScrollUp(client_id) => {
+            ScreenInstruction::ScrollUp(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4175,8 +4262,13 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.unblock_input()?;
                 screen.render(None)?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::MovePane(client_id) => {
+            ScreenInstruction::MovePane(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4185,8 +4277,13 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::MovePaneBackwards(client_id) => {
+            ScreenInstruction::MovePaneBackwards(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4195,8 +4292,13 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::MovePaneDown(client_id) => {
+            ScreenInstruction::MovePaneDown(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4205,8 +4307,13 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::MovePaneUp(client_id) => {
+            ScreenInstruction::MovePaneUp(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4215,8 +4322,13 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::MovePaneRight(client_id) => {
+            ScreenInstruction::MovePaneRight(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4225,8 +4337,13 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::MovePaneLeft(client_id) => {
+            ScreenInstruction::MovePaneLeft(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4235,8 +4352,13 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::ScrollUpAt(point, client_id) => {
+            ScreenInstruction::ScrollUpAt(point, client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4245,8 +4367,13 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::ScrollDown(client_id) => {
+            ScreenInstruction::ScrollDown(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4254,8 +4381,13 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::ScrollDownAt(point, client_id) => {
+            ScreenInstruction::ScrollDownAt(point, client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4264,8 +4396,13 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::ScrollToBottom(client_id) => {
+            ScreenInstruction::ScrollToBottom(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4274,8 +4411,13 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::ScrollToTop(client_id) => {
+            ScreenInstruction::ScrollToTop(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4284,8 +4426,13 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::PageScrollUp(client_id) => {
+            ScreenInstruction::PageScrollUp(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4294,8 +4441,13 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::PageScrollDown(client_id) => {
+            ScreenInstruction::PageScrollDown(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4304,8 +4456,13 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::HalfPageScrollUp(client_id) => {
+            ScreenInstruction::HalfPageScrollUp(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4314,8 +4471,13 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::HalfPageScrollDown(client_id) => {
+            ScreenInstruction::HalfPageScrollDown(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4324,6 +4486,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::ClearScroll(client_id) => {
                 active_tab_and_connected_client_id!(
@@ -4385,7 +4552,7 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::ClosePane(id, client_id) => {
+            ScreenInstruction::ClosePane(id, client_id, completion_tx) => {
                 match client_id {
                     Some(client_id) => {
                         active_tab!(screen, client_id, |tab: &mut Tab| tab
@@ -4404,6 +4571,11 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
                 screen.retain_only_existing_panes_in_pane_groups();
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::HoldPane(id, exit_status, run_command) => {
                 let is_first_run = false;
@@ -4416,7 +4588,7 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::UpdatePaneName(c, client_id) => {
+            ScreenInstruction::UpdatePaneName(c, client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4425,8 +4597,13 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::UndoRenamePane(client_id) => {
+            ScreenInstruction::UndoRenamePane(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4434,6 +4611,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::ToggleActiveTerminalFullscreen(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
@@ -4451,7 +4633,7 @@ pub(crate) fn screen_thread_main(
                     tx.send();
                 }
             },
-            ScreenInstruction::TogglePaneFrames => {
+            ScreenInstruction::TogglePaneFrames(completion_tx) => {
                 screen.draw_pane_frames = !screen.draw_pane_frames;
                 for tab in screen.tabs.values_mut() {
                     tab.set_pane_frames(screen.draw_pane_frames);
@@ -4459,6 +4641,11 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::SwitchTabNext(client_id, completion_tx) => {
                 screen.switch_tab_next(None, true, client_id)?;
@@ -4649,6 +4836,7 @@ pub(crate) fn screen_thread_main(
                 default_shell,
                 create,
                 client_id,
+                completion_tx,
             ) => {
                 let client_id = if client_id.is_none() {
                     None
@@ -4695,16 +4883,31 @@ pub(crate) fn screen_thread_main(
                         }
                     }
                 }
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::UpdateTabName(c, client_id) => {
+            ScreenInstruction::UpdateTabName(c, client_id, completion_tx) => {
                 screen.update_active_tab_name(c, client_id)?;
                 screen.unblock_input()?;
                 screen.render(None)?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::UndoRenameTab(client_id) => {
+            ScreenInstruction::UndoRenameTab(client_id, completion_tx) => {
                 screen.undo_active_rename_tab(client_id)?;
                 screen.unblock_input()?;
                 screen.render(None)?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::MoveTabLeft(client_id, completion_tx) => {
                 if pending_tab_ids.is_empty() {
@@ -4763,7 +4966,7 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::ToggleActiveSyncTab(client_id) => {
+            ScreenInstruction::ToggleActiveSyncTab(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4772,14 +4975,29 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::MouseEvent(event, client_id) => {
+            ScreenInstruction::MouseEvent(event, client_id, completion_tx) => {
                 screen.handle_mouse_event(event, client_id);
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::Copy(client_id) => {
+            ScreenInstruction::Copy(client_id, completion_tx) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .copy_selection(client_id), ?);
                 screen.render(None)?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::Exit => {
                 break;
@@ -4849,7 +5067,7 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::ConfirmPrompt(_client_id) => {
+            ScreenInstruction::ConfirmPrompt(_client_id, completion_tx) => {
                 let overlay = screen.get_active_overlays_mut().pop();
                 let instruction = overlay.and_then(|o| o.prompt_confirm());
                 if let Some(instruction) = instruction {
@@ -4860,29 +5078,49 @@ pub(crate) fn screen_thread_main(
                         .context("failed to confirm prompt")?;
                 }
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::DenyPrompt(_client_id) => {
+            ScreenInstruction::DenyPrompt(_client_id, completion_tx) => {
                 screen.get_active_overlays_mut().pop();
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::UpdateSearch(c, client_id) => {
+            ScreenInstruction::UpdateSearch(c, client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.update_search_term(c, client_id), ?
                 );
                 screen.render(None)?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::SearchDown(client_id) => {
+            ScreenInstruction::SearchDown(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.search_down(client_id)
                 );
                 screen.render(None)?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::SearchUp(client_id) => {
+            ScreenInstruction::SearchUp(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4890,8 +5128,13 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::SearchToggleCaseSensitivity(client_id) => {
+            ScreenInstruction::SearchToggleCaseSensitivity(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4900,8 +5143,13 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::SearchToggleWrap(client_id) => {
+            ScreenInstruction::SearchToggleWrap(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4909,8 +5157,13 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::SearchToggleWholeWord(client_id) => {
+            ScreenInstruction::SearchToggleWholeWord(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4918,6 +5171,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::AddRedPaneFrameColorOverride(pane_ids, error_text) => {
                 let all_tabs = screen.get_tabs_mut();
@@ -4959,7 +5217,7 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
             },
-            ScreenInstruction::PreviousSwapLayout(client_id) => {
+            ScreenInstruction::PreviousSwapLayout(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4969,8 +5227,13 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::NextSwapLayout(client_id) => {
+            ScreenInstruction::NextSwapLayout(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4980,8 +5243,13 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
                 screen.unblock_input()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::QueryTabNames(client_id) => {
+            ScreenInstruction::QueryTabNames(client_id, completion_tx) => {
                 let tab_names = screen
                     .get_tabs_mut()
                     .values()
@@ -4991,6 +5259,11 @@ pub(crate) fn screen_thread_main(
                     .bus
                     .senders
                     .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::NewTiledPluginPane(
                 run_plugin,
@@ -4998,6 +5271,7 @@ pub(crate) fn screen_thread_main(
                 skip_cache,
                 cwd,
                 client_id,
+                completion_tx,
             ) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
                 let size = Size::default();
@@ -5020,6 +5294,11 @@ pub(crate) fn screen_thread_main(
                         None,
                         None,
                     ))?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::NewFloatingPluginPane(
                 run_plugin,
@@ -5028,34 +5307,42 @@ pub(crate) fn screen_thread_main(
                 cwd,
                 floating_pane_coordinates,
                 client_id,
-            ) => match screen.active_tab_indices.values().next() {
-                Some(tab_index) => {
-                    let size = Size::default();
-                    let should_float = Some(true);
-                    let should_be_opened_in_place = false;
-                    screen
-                        .bus
-                        .senders
-                        .send_to_pty(PtyInstruction::FillPluginCwd(
-                            should_float,
-                            should_be_opened_in_place,
-                            pane_title,
-                            run_plugin,
-                            *tab_index,
-                            None,
-                            client_id,
-                            size,
-                            skip_cache,
-                            cwd,
-                            None,
-                            floating_pane_coordinates,
-                        ))?;
-                },
-                None => {
-                    log::error!(
-                        "Could not find an active tab - is there at least 1 connected user?"
-                    );
-                },
+                completion_tx,
+            ) => {
+                match screen.active_tab_indices.values().next() {
+                    Some(tab_index) => {
+                        let size = Size::default();
+                        let should_float = Some(true);
+                        let should_be_opened_in_place = false;
+                        screen
+                            .bus
+                            .senders
+                            .send_to_pty(PtyInstruction::FillPluginCwd(
+                                should_float,
+                                should_be_opened_in_place,
+                                pane_title,
+                                run_plugin,
+                                *tab_index,
+                                None,
+                                client_id,
+                                size,
+                                skip_cache,
+                                cwd,
+                                None,
+                                floating_pane_coordinates,
+                            ))?;
+                    },
+                    None => {
+                        log::error!(
+                            "Could not find an active tab - is there at least 1 connected user?"
+                        );
+                    },
+                }
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::NewInPlacePluginPane(
                 run_plugin,
@@ -5063,36 +5350,44 @@ pub(crate) fn screen_thread_main(
                 pane_id_to_replace,
                 skip_cache,
                 client_id,
-            ) => match screen.active_tab_indices.values().next() {
-                Some(tab_index) => {
-                    let size = Size::default();
-                    let should_float = None;
-                    let should_be_in_place = true;
-                    screen
-                        .bus
-                        .senders
-                        .send_to_pty(PtyInstruction::FillPluginCwd(
-                            should_float,
-                            should_be_in_place,
-                            pane_title,
-                            run_plugin,
-                            *tab_index,
-                            Some(pane_id_to_replace),
-                            client_id,
-                            size,
-                            skip_cache,
-                            None,
-                            None,
-                            None,
-                        ))?;
-                },
-                None => {
-                    log::error!(
-                        "Could not find an active tab - is there at least 1 connected user?"
-                    );
-                },
+                completion_tx,
+            ) => {
+                match screen.active_tab_indices.values().next() {
+                    Some(tab_index) => {
+                        let size = Size::default();
+                        let should_float = None;
+                        let should_be_in_place = true;
+                        screen
+                            .bus
+                            .senders
+                            .send_to_pty(PtyInstruction::FillPluginCwd(
+                                should_float,
+                                should_be_in_place,
+                                pane_title,
+                                run_plugin,
+                                *tab_index,
+                                Some(pane_id_to_replace),
+                                client_id,
+                                size,
+                                skip_cache,
+                                None,
+                                None,
+                                None,
+                            ))?;
+                    },
+                    None => {
+                        log::error!(
+                            "Could not find an active tab - is there at least 1 connected user?"
+                        );
+                    },
+                }
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::StartOrReloadPluginPane(run_plugin, pane_title) => {
+            ScreenInstruction::StartOrReloadPluginPane(run_plugin, pane_title, completion_tx) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
                 let size = Size::default();
                 let should_float = Some(false);
@@ -5107,6 +5402,11 @@ pub(crate) fn screen_thread_main(
                         *tab_index,
                         size,
                     ))?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::AddPlugin(
                 should_float,
@@ -5273,7 +5573,9 @@ pub(crate) fn screen_thread_main(
                 pane_id_to_replace,
                 skip_cache,
                 client_id,
-            ) => match pane_id_to_replace {
+                completion_tx,
+            ) => {
+                match pane_id_to_replace {
                 Some(pane_id_to_replace) if should_open_in_place => {
                     match screen.active_tab_indices.values().next() {
                         Some(tab_index) => {
@@ -5350,6 +5652,12 @@ pub(crate) fn screen_thread_main(
                         },
                     }
                 },
+                }
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::LaunchPlugin(
                 run_plugin,
@@ -5359,7 +5667,9 @@ pub(crate) fn screen_thread_main(
                 skip_cache,
                 cwd,
                 client_id,
-            ) => match pane_id_to_replace {
+                completion_tx,
+            ) => {
+                match pane_id_to_replace {
                 Some(pane_id_to_replace) => match screen.active_tab_indices.values().next() {
                     Some(tab_index) => {
                         let size = Size::default();
@@ -5424,6 +5734,12 @@ pub(crate) fn screen_thread_main(
                         },
                     }
                 },
+                }
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::SuppressPane(pane_id, client_id) => {
                 let all_tabs = screen.get_tabs_mut();
@@ -5436,11 +5752,16 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::FocusPaneWithId(pane_id, should_float_if_hidden, client_id) => {
+            ScreenInstruction::FocusPaneWithId(pane_id, should_float_if_hidden, client_id, completion_tx) => {
                 screen.focus_pane_with_id(pane_id, should_float_if_hidden, client_id)?;
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::RenamePane(pane_id, new_name) => {
+            ScreenInstruction::RenamePane(pane_id, new_name, completion_tx) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
@@ -5452,8 +5773,13 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::RenameTab(tab_index, new_name) => {
+            ScreenInstruction::RenameTab(tab_index, new_name, completion_tx) => {
                 match screen.tabs.get_mut(&tab_index.saturating_sub(1)) {
                     Some(tab) => {
                         tab.name = String::from_utf8_lossy(&new_name).to_string();
@@ -5463,6 +5789,11 @@ pub(crate) fn screen_thread_main(
                     },
                 }
                 screen.log_and_report_session_state()?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::RequestPluginPermissions(plugin_id, plugin_permission) => {
                 let all_tabs = screen.get_tabs_mut();
@@ -5482,14 +5813,29 @@ pub(crate) fn screen_thread_main(
                     );
                 }
             },
-            ScreenInstruction::BreakPane(default_layout, default_shell, client_id) => {
+            ScreenInstruction::BreakPane(default_layout, default_shell, client_id, completion_tx) => {
                 screen.break_pane(default_shell, default_layout, client_id)?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::BreakPaneRight(client_id) => {
+            ScreenInstruction::BreakPaneRight(client_id, completion_tx) => {
                 screen.break_pane_to_new_tab(Direction::Right, client_id)?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::BreakPaneLeft(client_id) => {
+            ScreenInstruction::BreakPaneLeft(client_id, completion_tx) => {
                 screen.break_pane_to_new_tab(Direction::Left, client_id)?;
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::UpdateSessionInfos(new_session_infos, resurrectable_sessions) => {
                 screen.update_session_infos(new_session_infos, resurrectable_sessions)?;
@@ -5521,7 +5867,7 @@ pub(crate) fn screen_thread_main(
                     screen.dump_layout_to_hd()?;
                 }
             },
-            ScreenInstruction::RenameSession(name, client_id) => {
+            ScreenInstruction::RenameSession(name, client_id, completion_tx) => {
                 if screen.session_infos_on_machine.contains_key(&name) {
                     let error_text = "A session by this name already exists.";
                     log::error!("{}", error_text);
@@ -5596,6 +5942,11 @@ pub(crate) fn screen_thread_main(
                             );
                         }
                     }
+                }
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
                 }
             },
             ScreenInstruction::Reconfigure {
@@ -5878,13 +6229,18 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.clear_pane_group(&client_id);
             },
-            ScreenInstruction::TogglePanePinned(client_id) => {
+            ScreenInstruction::TogglePanePinned(client_id, completion_tx) => {
                 screen.toggle_pane_pinned(client_id);
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::SetFloatingPanePinned(pane_id, should_be_pinned) => {
                 screen.set_floating_pane_pinned(pane_id, should_be_pinned);
             },
-            ScreenInstruction::StackPanes(pane_ids_to_stack, client_id) => {
+            ScreenInstruction::StackPanes(pane_ids_to_stack, client_id, completion_tx) => {
                 if let Some(last_pane_id) = screen.stack_panes(pane_ids_to_stack) {
                     let _ = screen.focus_pane_with_id(last_pane_id, false, client_id);
                     let _ = screen.unblock_input();
@@ -5900,11 +6256,21 @@ pub(crate) fn screen_thread_main(
                     }
                     screen.clear_pane_group(&client_id);
                 }
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::ChangeFloatingPanesCoordinates(pane_ids_and_coordinates) => {
+            ScreenInstruction::ChangeFloatingPanesCoordinates(pane_ids_and_coordinates, completion_tx) => {
                 screen.change_floating_panes_coordinates(pane_ids_and_coordinates);
                 let _ = screen.unblock_input();
                 let _ = screen.render(None);
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::GroupAndUngroupPanes(
                 pane_ids_to_group,
@@ -5920,11 +6286,21 @@ pub(crate) fn screen_thread_main(
                 );
                 let _ = screen.log_and_report_session_state();
             },
-            ScreenInstruction::TogglePaneInGroup(client_id) => {
+            ScreenInstruction::TogglePaneInGroup(client_id, completion_tx) => {
                 screen.toggle_pane_in_group(client_id).non_fatal();
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
-            ScreenInstruction::ToggleGroupMarking(client_id) => {
+            ScreenInstruction::ToggleGroupMarking(client_id, completion_tx) => {
                 screen.toggle_group_marking(client_id).non_fatal();
+
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::SessionSharingStatusChange(web_sharing) => {
                 if web_sharing {

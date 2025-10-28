@@ -938,7 +938,7 @@ impl Pty {
                         command,
                     ));
                 } else {
-                    let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
+                    let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None));
                 }
             }
         });
@@ -1128,7 +1128,7 @@ impl Pty {
         let quit_cb = Box::new({
             let senders = self.bus.senders.clone();
             move |pane_id, _exit_status, _command| {
-                let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
+                let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None));
             }
         });
         match run_instruction {
@@ -1146,7 +1146,7 @@ impl Pty {
                             ));
                         } else {
                             let _ =
-                                senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
+                                senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None));
                         }
                     }
                 });
@@ -1376,7 +1376,7 @@ impl Pty {
                             ));
                         } else {
                             let _ =
-                                senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
+                                senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None));
                         }
                     }
                 });

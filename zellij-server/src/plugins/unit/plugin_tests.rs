@@ -3066,7 +3066,7 @@ pub fn toggle_pane_frames_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::TogglePaneFrames,
         screen_receiver,
@@ -3106,7 +3106,7 @@ pub fn toggle_pane_frames_plugin_command() {
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::TogglePaneFrames = i {
+            if let ScreenInstruction::TogglePaneFrames(..) = i {
                 Some(i.clone())
             } else {
                 None

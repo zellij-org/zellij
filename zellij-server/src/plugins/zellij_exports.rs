@@ -1407,6 +1407,7 @@ fn show_pane_with_id(env: &PluginEnv, pane_id: PaneId, should_float_if_hidden: b
             pane_id,
             should_float_if_hidden,
             env.client_id,
+            None,
         ));
 }
 
@@ -1414,6 +1415,7 @@ fn close_self(env: &PluginEnv) {
     env.senders
         .send_to_screen(ScreenInstruction::ClosePane(
             PaneId::Plugin(env.plugin_id),
+            None,
             None,
         ))
         .with_context(|| format!("failed to close self"))
@@ -2036,7 +2038,7 @@ fn set_floating_pane_pinned(env: &PluginEnv, pane_id: PaneId, should_be_pinned: 
 fn stack_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::StackPanes(pane_ids, env.client_id));
+        .send_to_screen(ScreenInstruction::StackPanes(pane_ids, env.client_id, None));
 }
 
 fn change_floating_panes_coordinates(
@@ -2047,6 +2049,7 @@ fn change_floating_panes_coordinates(
         .senders
         .send_to_screen(ScreenInstruction::ChangeFloatingPanesCoordinates(
             pane_ids_and_coordinates,
+            None,
         ));
 }
 

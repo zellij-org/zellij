@@ -1474,6 +1474,7 @@ pub fn mouse_hover_effect() {
     let _ = mock_screen.to_screen.send(ScreenInstruction::MouseEvent(
         hover_mouse_event_1,
         client_id,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
@@ -1510,6 +1511,7 @@ pub fn disabled_mouse_hover_effect() {
     let _ = mock_screen.to_screen.send(ScreenInstruction::MouseEvent(
         hover_mouse_event_1,
         client_id,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
@@ -3636,6 +3638,7 @@ pub fn screen_can_break_pane_to_a_new_tab() {
         Box::new(Layout::default()),
         Default::default(),
         1,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
@@ -3656,12 +3659,12 @@ pub fn screen_can_break_pane_to_a_new_tab() {
     // move back to make sure the other pane is in the previous tab
     let _ = mock_screen
         .to_screen
-        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1));
+        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // move forward to make sure the broken pane is in the previous tab
     let _ = mock_screen
         .to_screen
-        .send(ScreenInstruction::MoveFocusRightOrNextTab(1));
+        .send(ScreenInstruction::MoveFocusRightOrNextTab(1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
@@ -3695,6 +3698,7 @@ pub fn screen_cannot_break_last_selectable_pane_to_a_new_tab() {
         Box::new(Layout::default()),
         Default::default(),
         1,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -3738,6 +3742,7 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
         Box::new(Layout::default()),
         Default::default(),
         1,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
@@ -3761,12 +3766,12 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
     // move back to make sure the other pane is in the previous tab
     let _ = mock_screen
         .to_screen
-        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1));
+        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
     std::thread::sleep(std::time::Duration::from_millis(200));
     // move forward to make sure the broken pane is in the previous tab
     let _ = mock_screen
         .to_screen
-        .send(ScreenInstruction::MoveFocusRightOrNextTab(1));
+        .send(ScreenInstruction::MoveFocusRightOrNextTab(1, None));
     std::thread::sleep(std::time::Duration::from_millis(200));
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
@@ -3814,6 +3819,7 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
         Box::new(Layout::default()),
         Default::default(),
         1,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
@@ -3834,12 +3840,12 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
     // move back to make sure the other pane is in the previous tab
     let _ = mock_screen
         .to_screen
-        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1));
+        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // move forward to make sure the broken pane is in the previous tab
     let _ = mock_screen
         .to_screen
-        .send(ScreenInstruction::MoveFocusRightOrNextTab(1));
+        .send(ScreenInstruction::MoveFocusRightOrNextTab(1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
@@ -3888,6 +3894,7 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
         Box::new(Layout::default()),
         Default::default(),
         1,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
@@ -3911,12 +3918,12 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
     // move back to make sure the other pane is in the previous tab
     let _ = mock_screen
         .to_screen
-        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1));
+        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // move forward to make sure the broken pane is in the previous tab
     let _ = mock_screen
         .to_screen
-        .send(ScreenInstruction::MoveFocusRightOrNextTab(1));
+        .send(ScreenInstruction::MoveFocusRightOrNextTab(1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
@@ -3956,15 +3963,16 @@ pub fn screen_can_move_pane_to_a_new_tab_right() {
         Box::new(Layout::default()),
         Default::default(),
         1,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = mock_screen
         .to_screen
-        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1));
+        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = mock_screen
         .to_screen
-        .send(ScreenInstruction::BreakPaneRight(1));
+        .send(ScreenInstruction::BreakPaneRight(1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
@@ -4004,15 +4012,16 @@ pub fn screen_can_move_pane_to_a_new_tab_left() {
         Box::new(Layout::default()),
         Default::default(),
         1,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = mock_screen
         .to_screen
-        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1));
+        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = mock_screen
         .to_screen
-        .send(ScreenInstruction::BreakPaneLeft(1));
+        .send(ScreenInstruction::BreakPaneLeft(1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
