@@ -3882,6 +3882,10 @@ pub(crate) fn screen_thread_main(
                                 Some(client_id),
                                 Event::InterceptedKeyPress(key_with_modifier),
                             )]));
+                        // Signal completion
+                        if let Some(tx) = completion_tx {
+                            tx.send();
+                        }
                         continue;
                     }
                 }
@@ -3970,6 +3974,10 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
+                // Signal completion
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::SwitchFocus(client_id, completion_tx) => {
                 active_tab_and_connected_client_id!(
@@ -4152,13 +4160,10 @@ pub(crate) fn screen_thread_main(
                     .send_to_plugin(PluginInstruction::DumpLayout(
                         session_layout_metadata,
                         client_id,
+                        completion_tx,
                     ))
                     .with_context(err_context)?;
 
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::ListClientsMetadata(default_shell, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
@@ -4169,13 +4174,10 @@ pub(crate) fn screen_thread_main(
                     .send_to_plugin(PluginInstruction::ListClientsMetadata(
                         session_layout_metadata,
                         client_id,
+                        completion_tx,
                     ))
                     .with_context(err_context)?;
 
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::DumpLayoutToPlugin(plugin_id) => {
                 let err_context = || format!("Failed to dump layout");
@@ -4878,8 +4880,9 @@ pub(crate) fn screen_thread_main(
                                     tab_index,
                                     should_change_focus_to_new_tab,
                                     (client_id, is_web_client),
-                                    None,
+                                    completion_tx,
                                 ))?;
+                            continue; // so we don't get to the completion signalling below
                         }
                     }
                 }
@@ -5293,12 +5296,9 @@ pub(crate) fn screen_thread_main(
                         cwd,
                         None,
                         None,
+                        completion_tx,
                     ))?;
 
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::NewFloatingPluginPane(
                 run_plugin,
@@ -5330,6 +5330,7 @@ pub(crate) fn screen_thread_main(
                                 cwd,
                                 None,
                                 floating_pane_coordinates,
+                                completion_tx,
                             ))?;
                     },
                     None => {
@@ -5339,10 +5340,6 @@ pub(crate) fn screen_thread_main(
                     },
                 }
 
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::NewInPlacePluginPane(
                 run_plugin,
@@ -5373,6 +5370,7 @@ pub(crate) fn screen_thread_main(
                                 None,
                                 None,
                                 None,
+                                completion_tx,
                             ))?;
                     },
                     None => {
@@ -5382,10 +5380,6 @@ pub(crate) fn screen_thread_main(
                     },
                 }
 
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::StartOrReloadPluginPane(run_plugin, pane_title, completion_tx) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
@@ -5401,12 +5395,9 @@ pub(crate) fn screen_thread_main(
                         run_plugin,
                         *tab_index,
                         size,
+                        completion_tx,
                     ))?;
 
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::AddPlugin(
                 should_float,
@@ -5644,6 +5635,7 @@ pub(crate) fn screen_thread_main(
                                         None,
                                         None,
                                         None,
+                                        completion_tx,
                                     ))?;
                             }
                         },
@@ -5654,10 +5646,6 @@ pub(crate) fn screen_thread_main(
                 },
                 }
 
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::LaunchPlugin(
                 run_plugin,
@@ -5727,6 +5715,7 @@ pub(crate) fn screen_thread_main(
                                     cwd,
                                     None,
                                     None,
+                                    completion_tx,
                                 ))?;
                         },
                         None => {
@@ -5736,10 +5725,6 @@ pub(crate) fn screen_thread_main(
                 },
                 }
 
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::SuppressPane(pane_id, client_id) => {
                 let all_tabs = screen.get_tabs_mut();
