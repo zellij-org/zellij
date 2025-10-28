@@ -655,7 +655,6 @@ impl MockScreen {
                 }
             })
             .unwrap();
-
         MockScreen {
             main_client_id,
             pty_receiver: Some(pty_receiver),
@@ -682,6 +681,34 @@ impl MockScreen {
     pub fn set_advanced_hover_effects(&mut self, advanced_mouse_actions: bool) {
         self.advanced_mouse_actions = advanced_mouse_actions;
     }
+    pub fn drop_all_pty_messages(&mut self) {
+        let pty_receiver = self.pty_receiver.take();
+        std::thread::Builder::new()
+            .name("pty_thread".to_string())
+            .spawn({
+                move || {
+                    if let Some(pty_receiver) = pty_receiver {
+
+                        loop {
+                            let (event, _err_ctx) = pty_receiver
+                                .recv()
+                                .expect("failed to receive event on channel");
+                            match event {
+                                PtyInstruction::Exit => {
+                                    break;
+                                }
+                                _ => {
+                                     // here the event will be dropped - we do this so that the completion_tx will drop and release the
+                                     // test actions
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+            .unwrap();
+    }
+
 }
 
 macro_rules! log_actions_in_thread {
@@ -2065,7 +2092,7 @@ pub fn send_cli_edit_scrollback_action() {
         .clone();
     let mut found_instruction = false;
     for instruction in received_pty_instructions.lock().unwrap().iter() {
-        if let PtyInstruction::OpenInPlaceEditor(scrollback_contents_file, terminal_id, client_id) =
+        if let PtyInstruction::OpenInPlaceEditor(scrollback_contents_file, terminal_id, client_id, _) =
             instruction
         {
             assert_eq!(scrollback_contents_file, &PathBuf::from(&dumped_file_name));
@@ -2998,6 +3025,7 @@ pub fn send_cli_close_pane_action() {
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
+    mock_screen.drop_all_pty_messages();
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
