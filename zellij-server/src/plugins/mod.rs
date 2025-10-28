@@ -74,6 +74,7 @@ pub enum PluginInstruction {
         RunPluginOrAlias,
         usize, // tab index
         Size,
+        Option<NotificationEnd>,
     ),
     ReloadPluginWithId(u32),
     Resize(PluginId, usize, usize), // plugin_id, columns, rows
@@ -117,8 +118,8 @@ pub enum PluginInstruction {
         PermissionStatus,
         Option<PathBuf>,
     ),
-    DumpLayout(SessionLayoutMetadata, ClientId),
-    ListClientsMetadata(SessionLayoutMetadata, ClientId),
+    DumpLayout(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
+    ListClientsMetadata(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
     DumpLayoutToPlugin(SessionLayoutMetadata, PluginId),
     LogLayoutToHd(SessionLayoutMetadata),
     CliPipe {
@@ -366,6 +367,7 @@ pub(crate) fn plugin_thread_main(
                 mut run_plugin_or_alias,
                 tab_index,
                 size,
+                completion_tx,
             ) => {
                 run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
                 match run_plugin_or_alias.get_run_plugin() {
@@ -410,6 +412,7 @@ pub(crate) fn plugin_thread_main(
                                                     None,
                                                     None,
                                                     None,
+                                                    completion_tx,
                                                 ),
                                             ));
                                         },
@@ -427,6 +430,9 @@ pub(crate) fn plugin_thread_main(
                     None => {
                         log::error!("Failed to find plugin info for: {:?}", run_plugin_or_alias)
                     },
+                }
+                if let Some(tx) = completion_tx {
+                    let _ = tx.send();
                 }
             },
             PluginInstruction::ReloadPluginWithId(plugin_id) => {
@@ -592,7 +598,7 @@ pub(crate) fn plugin_thread_main(
                     shutdown_send.clone(),
                 )?;
             },
-            PluginInstruction::DumpLayout(mut session_layout_metadata, client_id) => {
+            PluginInstruction::DumpLayout(mut session_layout_metadata, client_id, completion_tx) => {
                 populate_session_layout_metadata(
                     &mut session_layout_metadata,
                     &wasm_bridge,
@@ -601,9 +607,10 @@ pub(crate) fn plugin_thread_main(
                 drop(bus.senders.send_to_pty(PtyInstruction::DumpLayout(
                     session_layout_metadata,
                     client_id,
+                    completion_tx,
                 )));
             },
-            PluginInstruction::ListClientsMetadata(mut session_layout_metadata, client_id) => {
+            PluginInstruction::ListClientsMetadata(mut session_layout_metadata, client_id, completion_tx) => {
                 populate_session_layout_metadata(
                     &mut session_layout_metadata,
                     &wasm_bridge,
@@ -612,6 +619,7 @@ pub(crate) fn plugin_thread_main(
                 drop(bus.senders.send_to_pty(PtyInstruction::ListClientsMetadata(
                     session_layout_metadata,
                     client_id,
+                    completion_tx,
                 )));
             },
             PluginInstruction::DumpLayoutToPlugin(mut session_layout_metadata, plugin_id) => {

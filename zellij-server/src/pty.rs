@@ -154,7 +154,7 @@ pub enum PtyInstruction {
         bool, // close replaced pane
         ClientTabIndexOrPaneId,
     ), // String is an optional pane name
-    DumpLayout(SessionLayoutMetadata, ClientId),
+    DumpLayout(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
     DumpLayoutToPlugin(SessionLayoutMetadata, PluginId),
     LogLayoutToHd(SessionLayoutMetadata),
     FillPluginCwd(
@@ -170,8 +170,9 @@ pub enum PtyInstruction {
         Option<PathBuf>, // if Some, will not fill cwd but just forward the message
         Option<bool>,    // should focus plugin
         Option<FloatingPaneCoordinates>,
+        Option<NotificationEnd>,
     ),
-    ListClientsMetadata(SessionLayoutMetadata, ClientId),
+    ListClientsMetadata(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
     Reconfigure {
         client_id: ClientId,
         default_editor: Option<PathBuf>,
@@ -617,7 +618,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::DumpLayout(mut session_layout_metadata, client_id) => {
+            PtyInstruction::DumpLayout(mut session_layout_metadata, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 match session_serialization::serialize_session_layout(
@@ -638,8 +639,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                             .non_fatal();
                     },
                 }
+                if let Some(tx) = completion_tx {
+                    let _ = tx.send();
+                }
             },
-            PtyInstruction::ListClientsMetadata(mut session_layout_metadata, client_id) => {
+            PtyInstruction::ListClientsMetadata(mut session_layout_metadata, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 pty.bus
@@ -653,6 +657,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     ))
                     .with_context(err_context)
                     .non_fatal();
+                if let Some(tx) = completion_tx {
+                    let _ = tx.send();
+                }
             },
             PtyInstruction::DumpLayoutToPlugin(mut session_layout_metadata, plugin_id) => {
                 let err_context = || format!("Failed to dump layout");
@@ -720,6 +727,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 cwd,
                 should_focus_plugin,
                 floating_pane_coordinates,
+                completion_tx,
             ) => {
                 pty.fill_plugin_cwd(
                     should_float,
@@ -734,6 +742,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     cwd,
                     should_focus_plugin,
                     floating_pane_coordinates,
+                    completion_tx,
                 )?;
             },
             PtyInstruction::Reconfigure {
@@ -1534,6 +1543,7 @@ impl Pty {
             skip_cache,
             should_focus_plugin,
             floating_pane_coordinates,
+            completion_tx,
         ))?;
         Ok(())
     }

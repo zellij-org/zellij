@@ -5587,6 +5587,7 @@ pub(crate) fn screen_thread_main(
                                     None,
                                     None,
                                     None,
+                                    completion_tx,
                                 ))?;
                         },
                         None => {
@@ -5677,6 +5678,7 @@ pub(crate) fn screen_thread_main(
                                 cwd,
                                 None,
                                 None,
+                                completion_tx,
                             ))?;
                     },
                     None => {
