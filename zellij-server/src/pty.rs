@@ -127,7 +127,12 @@ pub enum PtyInstruction {
         Option<NotificationEnd>, // completion signal
     ), // bool (if Some) is
     // should_float, String is an optional pane name
-    OpenInPlaceEditor(PathBuf, Option<usize>, ClientTabIndexOrPaneId, Option<NotificationEnd>), // Option<usize> is the optional line number
+    OpenInPlaceEditor(
+        PathBuf,
+        Option<usize>,
+        ClientTabIndexOrPaneId,
+        Option<NotificationEnd>,
+    ), // Option<usize> is the optional line number
     UpdateActivePane(Option<PaneId>, ClientId),
     GoToTab(TabIndex, ClientId),
     NewTab(
@@ -629,7 +634,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::DumpLayout(mut session_layout_metadata, client_id,
+            PtyInstruction::DumpLayout(
+                mut session_layout_metadata,
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -654,9 +661,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::ListClientsMetadata(mut session_layout_metadata, client_id,
-                _completion_tx // the action ends here, dropping this will release anything waiting
-                               // for it
+            PtyInstruction::ListClientsMetadata(
+                mut session_layout_metadata,
+                client_id,
+                _completion_tx, // the action ends here, dropping this will release anything waiting
+                                // for it
             ) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
@@ -958,7 +967,8 @@ impl Pty {
                         command,
                     ));
                 } else {
-                    let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None));
+                    let _ =
+                        senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None));
                 }
             }
         });
@@ -1165,8 +1175,8 @@ impl Pty {
                                 command,
                             ));
                         } else {
-                            let _ =
-                                senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None));
+                            let _ = senders
+                                .send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None));
                         }
                     }
                 });
@@ -1395,8 +1405,8 @@ impl Pty {
                                 command,
                             ));
                         } else {
-                            let _ =
-                                senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None));
+                            let _ = senders
+                                .send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None));
                         }
                     }
                 });

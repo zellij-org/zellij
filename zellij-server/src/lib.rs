@@ -911,7 +911,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 );
                 session_data
                     .senders
-                    .send_to_screen(ScreenInstruction::ChangeMode(mode_info.clone(), client_id, None))
+                    .send_to_screen(ScreenInstruction::ChangeMode(
+                        mode_info.clone(),
+                        client_id,
+                        None,
+                    ))
                     .unwrap();
                 session_data
                     .senders

@@ -1241,7 +1241,11 @@ fn rerun_command_pane(env: &PluginEnv, terminal_pane_id: u32) {
 
 fn switch_tab_to(env: &PluginEnv, tab_idx: u32) {
     env.senders
-        .send_to_screen(ScreenInstruction::GoToTab(tab_idx, Some(env.client_id), None))
+        .send_to_screen(ScreenInstruction::GoToTab(
+            tab_idx,
+            Some(env.client_id),
+            None,
+        ))
         .with_context(|| {
             format!(
                 "failed to switch to tab {tab_idx} from plugin {}",
@@ -1905,9 +1909,10 @@ fn close_terminal_pane(env: &PluginEnv, terminal_pane_id: u32) {
     };
     apply_action!(action, error_msg, env);
     env.senders
-        .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(
-            terminal_pane_id,
-        ), None))
+        .send_to_pty(PtyInstruction::ClosePane(
+            PaneId::Terminal(terminal_pane_id),
+            None,
+        ))
         .non_fatal();
 }
 
@@ -2046,9 +2051,9 @@ fn set_floating_pane_pinned(env: &PluginEnv, pane_id: PaneId, should_be_pinned: 
 }
 
 fn stack_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
-    let _ = env
-        .senders
-        .send_to_screen(ScreenInstruction::StackPanes(pane_ids, env.client_id, None));
+    let _ =
+        env.senders
+            .send_to_screen(ScreenInstruction::StackPanes(pane_ids, env.client_id, None));
 }
 
 fn change_floating_panes_coordinates(
@@ -2139,7 +2144,9 @@ fn resize_pane_with_id(env: &PluginEnv, resize: ResizeStrategy, pane_id: PaneId)
 fn edit_scrollback_for_pane_with_id(env: &PluginEnv, pane_id: PaneId) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::EditScrollbackForPaneWithId(pane_id, None));
+        .send_to_screen(ScreenInstruction::EditScrollbackForPaneWithId(
+            pane_id, None,
+        ));
 }
 
 fn get_pane_scrollback(env: &PluginEnv, pane_id: PaneId, get_full_scrollback: bool) {

@@ -319,9 +319,10 @@ impl<'a> LayoutApplier<'a> {
                 .assign_geom_for_pane_with_run(run_instruction);
         }
         for (unused_pid, _) in new_terminal_ids {
-            let _ = self
-                .senders
-                .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid), None));
+            let _ = self.senders.send_to_pty(PtyInstruction::ClosePane(
+                PaneId::Terminal(*unused_pid),
+                None,
+            ));
         }
     }
     fn new_tiled_plugin_pane(

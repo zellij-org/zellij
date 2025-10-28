@@ -33,6 +33,7 @@ use layout_applier::LayoutApplier;
 use swap_layouts::SwapLayouts;
 
 use self::clipboard::ClipboardProvider;
+use crate::route::NotificationEnd;
 use crate::{
     os_input_output::ServerOsApi,
     output::{CharacterChunk, Output, SixelImageChunk},
@@ -45,7 +46,6 @@ use crate::{
     thread_bus::ThreadSenders,
     ClientId, ServerInstruction,
 };
-use crate::route::NotificationEnd;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -1229,7 +1229,7 @@ impl Tab {
         &mut self,
         client_id: Option<ClientId>,
         default_shell: Option<TerminalAction>,
-        completion_tx: Option<NotificationEnd>
+        completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         if self.floating_panes.panes_are_visible() {
             self.hide_floating_panes();
@@ -2041,7 +2041,9 @@ impl Tab {
         };
         if let Some(replaced_pane) = replaced_pane.take() {
             let pane_id = replaced_pane.pid();
-            let _ = self.senders.send_to_pty(PtyInstruction::ClosePane(pane_id, completion_tx));
+            let _ = self
+                .senders
+                .send_to_pty(PtyInstruction::ClosePane(pane_id, completion_tx));
             let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
                 None,
                 None,
@@ -3575,7 +3577,11 @@ impl Tab {
                 )
             })
     }
-    pub fn close_focused_pane(&mut self, client_id: ClientId, completion_tx: Option<NotificationEnd>) -> Result<()> {
+    pub fn close_focused_pane(
+        &mut self,
+        client_id: ClientId,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
         let err_context = |pane_id| {
             format!("failed to close focused pane (ID {pane_id:?}) for client {client_id}")
         };
@@ -3584,7 +3590,10 @@ impl Tab {
             if let Some(active_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
                 self.close_pane(active_floating_pane_id, false);
                 self.senders
-                    .send_to_pty(PtyInstruction::ClosePane(active_floating_pane_id, completion_tx))
+                    .send_to_pty(PtyInstruction::ClosePane(
+                        active_floating_pane_id,
+                        completion_tx,
+                    ))
                     .with_context(|| err_context(active_floating_pane_id))?;
                 return Ok(());
             }
@@ -3637,7 +3646,11 @@ impl Tab {
         }
         Ok(())
     }
-    pub fn edit_scrollback(&mut self, client_id: ClientId, completion_tx: Option<NotificationEnd>) -> Result<()> {
+    pub fn edit_scrollback(
+        &mut self,
+        client_id: ClientId,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
         let err_context = || format!("failed to edit scrollback for client {client_id}");
 
         let mut file = temp_dir();
@@ -3660,7 +3673,11 @@ impl Tab {
             ))
             .with_context(err_context)
     }
-    pub fn edit_scrollback_for_pane_with_id(&mut self, pane_id: PaneId, completion_tx: Option<NotificationEnd>) -> Result<()> {
+    pub fn edit_scrollback_for_pane_with_id(
+        &mut self,
+        pane_id: PaneId,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
         if let PaneId::Terminal(_terminal_pane_id) = pane_id {
             let mut file = temp_dir();
             file.push(format!("{}.dump", Uuid::new_v4()));
@@ -5162,7 +5179,11 @@ impl Tab {
             self.focus_suppressed_pane_for_all_clients(PaneId::Plugin(pid));
         }
     }
-    pub fn rerun_terminal_pane_with_id(&mut self, terminal_pane_id: u32, completion_tx: Option<NotificationEnd>) {
+    pub fn rerun_terminal_pane_with_id(
+        &mut self,
+        terminal_pane_id: u32,
+        completion_tx: Option<NotificationEnd>,
+    ) {
         let pane_id = PaneId::Terminal(terminal_pane_id);
         match self
             .floating_panes

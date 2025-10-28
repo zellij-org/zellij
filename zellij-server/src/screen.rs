@@ -165,9 +165,13 @@ pub enum ScreenInstruction {
     OpenInPlaceEditor(PaneId, ClientTabIndexOrPaneId),
     TogglePaneEmbedOrFloating(ClientId, Option<NotificationEnd>),
     ToggleFloatingPanes(ClientId, Option<TerminalAction>, Option<NotificationEnd>),
-//     HorizontalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId, Option<NotificationEnd>),
-//     VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId, Option<NotificationEnd>),
-    WriteCharacter(Option<KeyWithModifier>, Vec<u8>, bool, ClientId, Option<NotificationEnd>), // bool ->
+    WriteCharacter(
+        Option<KeyWithModifier>,
+        Vec<u8>,
+        bool,
+        ClientId,
+        Option<NotificationEnd>,
+    ), // bool ->
     // is_kitty_keyboard_protocol
     Resize(ClientId, ResizeStrategy, Option<NotificationEnd>),
     SwitchFocus(ClientId, Option<NotificationEnd>),
@@ -234,10 +238,10 @@ pub enum ScreenInstruction {
         Vec<(u32, HoldForCommand)>, // new pane pids
         Vec<(u32, HoldForCommand)>, // new floating pane pids
         HashMap<RunPluginOrAlias, Vec<u32>>,
-        usize,                       // tab_index
-        bool,                        // should change focus to new tab
-        (ClientId, bool),            // bool -> is_web_client
-        Option<NotificationEnd>,     // completion signal
+        usize,                   // tab_index
+        bool,                    // should change focus to new tab
+        (ClientId, bool),        // bool -> is_web_client
+        Option<NotificationEnd>, // completion signal
     ),
     SwitchTabNext(ClientId, Option<NotificationEnd>),
     SwitchTabPrev(ClientId, Option<NotificationEnd>),
@@ -308,7 +312,14 @@ pub enum ScreenInstruction {
     ), // Option<String> is an
     // optional pane title, bool
     // is skip cache, Option<PathBuf> is an optional cwd
-    NewInPlacePluginPane(RunPluginOrAlias, Option<String>, PaneId, bool, ClientId, Option<NotificationEnd>), // Option<String> is an
+    NewInPlacePluginPane(
+        RunPluginOrAlias,
+        Option<String>,
+        PaneId,
+        bool,
+        ClientId,
+        Option<NotificationEnd>,
+    ), // Option<String> is an
     // optional pane title, bool is skip cache
     StartOrReloadPluginPane(RunPluginOrAlias, Option<String>, Option<NotificationEnd>),
     AddPlugin(
@@ -350,7 +361,7 @@ pub enum ScreenInstruction {
         ClientId,
         Option<NotificationEnd>,
     ), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace, Option<PathBuf> is an optional cwd, bool after is skip_cache
-    SuppressPane(PaneId, ClientId),          // bool is should_float
+    SuppressPane(PaneId, ClientId), // bool is should_float
     FocusPaneWithId(PaneId, bool, ClientId, Option<NotificationEnd>), // bool is should_float
     RenamePane(PaneId, Vec<u8>, Option<NotificationEnd>),
     RenameTab(usize, Vec<u8>, Option<NotificationEnd>),
@@ -358,7 +369,12 @@ pub enum ScreenInstruction {
         u32, // u32 - plugin_id
         PluginPermission,
     ),
-    BreakPane(Box<Layout>, Option<TerminalAction>, ClientId, Option<NotificationEnd>),
+    BreakPane(
+        Box<Layout>,
+        Option<TerminalAction>,
+        ClientId,
+        Option<NotificationEnd>,
+    ),
     BreakPaneRight(ClientId, Option<NotificationEnd>),
     BreakPaneLeft(ClientId, Option<NotificationEnd>),
     UpdateSessionInfos(
@@ -428,7 +444,10 @@ pub enum ScreenInstruction {
     TogglePanePinned(ClientId, Option<NotificationEnd>),
     SetFloatingPanePinned(PaneId, bool),
     StackPanes(Vec<PaneId>, ClientId, Option<NotificationEnd>),
-    ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>, Option<NotificationEnd>),
+    ChangeFloatingPanesCoordinates(
+        Vec<(PaneId, FloatingPaneCoordinates)>,
+        Option<NotificationEnd>,
+    ),
     AddHighlightPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional
     // message
     GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, bool, ClientId), // panes_to_group, panes_to_ungroup, bool -> for all clients
@@ -2556,7 +2575,11 @@ impl Screen {
         };
         Ok(())
     }
-    pub fn rerun_command_pane_with_id(&mut self, terminal_pane_id: u32, completion_tx: Option<NotificationEnd>) {
+    pub fn rerun_command_pane_with_id(
+        &mut self,
+        terminal_pane_id: u32,
+        completion_tx: Option<NotificationEnd>,
+    ) {
         let mut found = false;
         for tab in self.tabs.values_mut() {
             if tab.has_pane_with_pid(&PaneId::Terminal(terminal_pane_id)) {
@@ -3807,7 +3830,6 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
 
                 screen.render(None)?;
-
             },
             ScreenInstruction::WriteCharacter(
                 key_with_modifier,
@@ -3815,7 +3837,7 @@ pub(crate) fn screen_thread_main(
                 is_kitty_keyboard_protocol,
                 client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
-                                 // waiting for it
+                                // waiting for it
             ) => {
                 if let Some(plugin_id) = keybind_intercepts.get(&client_id) {
                     if let Some(key_with_modifier) = key_with_modifier {
@@ -3900,7 +3922,9 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.render(None)?;
             },
-            ScreenInstruction::Resize(client_id, strategy,
+            ScreenInstruction::Resize(
+                client_id,
+                strategy,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -3914,7 +3938,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::SwitchFocus(client_id,
+            ScreenInstruction::SwitchFocus(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -3927,7 +3952,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::FocusNextPane(client_id,
+            ScreenInstruction::FocusNextPane(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -3939,7 +3965,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::FocusPreviousPane(client_id,
+            ScreenInstruction::FocusPreviousPane(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -3952,7 +3979,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::MoveFocusLeft(client_id,
+            ScreenInstruction::MoveFocusLeft(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -3967,7 +3995,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::MoveFocusLeftOrPreviousTab(client_id,
+            ScreenInstruction::MoveFocusLeftOrPreviousTab(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -3977,7 +4006,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::MoveFocusDown(client_id,
+            ScreenInstruction::MoveFocusDown(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -3992,7 +4022,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::MoveFocusRight(client_id,
+            ScreenInstruction::MoveFocusRight(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4007,7 +4038,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::MoveFocusRightOrNextTab(client_id,
+            ScreenInstruction::MoveFocusRightOrNextTab(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4017,7 +4049,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::MoveFocusUp(client_id,
+            ScreenInstruction::MoveFocusUp(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4032,7 +4065,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::ClearScreen(client_id,
+            ScreenInstruction::ClearScreen(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4047,7 +4081,10 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::DumpScreen(file, client_id, full,
+            ScreenInstruction::DumpScreen(
+                file,
+                client_id,
+                full,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4076,7 +4113,6 @@ pub(crate) fn screen_thread_main(
                         completion_tx,
                     ))
                     .with_context(err_context)?;
-
             },
             ScreenInstruction::ListClientsMetadata(default_shell, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
@@ -4090,7 +4126,6 @@ pub(crate) fn screen_thread_main(
                         completion_tx,
                     ))
                     .with_context(err_context)?;
-
             },
             ScreenInstruction::DumpLayoutToPlugin(plugin_id) => {
                 let err_context = || format!("Failed to dump layout");
@@ -4130,7 +4165,6 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
-
             },
             ScreenInstruction::GetPaneScrollback {
                 pane_id,
@@ -4165,7 +4199,8 @@ pub(crate) fn screen_thread_main(
                     );
                 }
             },
-            ScreenInstruction::ScrollUp(client_id,
+            ScreenInstruction::ScrollUp(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4177,7 +4212,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.render(None)?;
             },
-            ScreenInstruction::MovePane(client_id,
+            ScreenInstruction::MovePane(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4190,7 +4226,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::MovePaneBackwards(client_id,
+            ScreenInstruction::MovePaneBackwards(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4203,7 +4240,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::MovePaneDown(client_id,
+            ScreenInstruction::MovePaneDown(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4216,7 +4254,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::MovePaneUp(client_id,
+            ScreenInstruction::MovePaneUp(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4229,7 +4268,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::MovePaneRight(client_id,
+            ScreenInstruction::MovePaneRight(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4242,7 +4282,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::MovePaneLeft(client_id,
+            ScreenInstruction::MovePaneLeft(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4255,7 +4296,9 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::ScrollUpAt(point, client_id,
+            ScreenInstruction::ScrollUpAt(
+                point,
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4268,7 +4311,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::ScrollDown(client_id,
+            ScreenInstruction::ScrollDown(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4280,7 +4324,9 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::ScrollDownAt(point, client_id,
+            ScreenInstruction::ScrollDownAt(
+                point,
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4293,7 +4339,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::ScrollToBottom(client_id,
+            ScreenInstruction::ScrollToBottom(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4306,7 +4353,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::ScrollToTop(client_id,
+            ScreenInstruction::ScrollToTop(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4319,7 +4367,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::PageScrollUp(client_id,
+            ScreenInstruction::PageScrollUp(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4332,7 +4381,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::PageScrollDown(client_id,
+            ScreenInstruction::PageScrollDown(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4345,7 +4395,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::HalfPageScrollUp(client_id,
+            ScreenInstruction::HalfPageScrollUp(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4358,7 +4409,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::HalfPageScrollDown(client_id,
+            ScreenInstruction::HalfPageScrollDown(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4390,7 +4442,6 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
-
             },
             ScreenInstruction::SetSelectable(pid, selectable) => {
                 let all_tabs = screen.get_tabs_mut();
@@ -4427,7 +4478,9 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::ClosePane(id, client_id,
+            ScreenInstruction::ClosePane(
+                id,
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4461,7 +4514,9 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::UpdatePaneName(c, client_id,
+            ScreenInstruction::UpdatePaneName(
+                c,
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4474,7 +4529,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::UndoRenamePane(client_id,
+            ScreenInstruction::UndoRenamePane(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4486,7 +4542,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::ToggleActiveTerminalFullscreen(client_id,
+            ScreenInstruction::ToggleActiveTerminalFullscreen(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4512,7 +4569,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::SwitchTabNext(client_id,
+            ScreenInstruction::SwitchTabNext(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4520,7 +4578,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.render(None)?;
             },
-            ScreenInstruction::SwitchTabPrev(client_id,
+            ScreenInstruction::SwitchTabPrev(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4528,7 +4587,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.render(None)?;
             },
-            ScreenInstruction::CloseTab(client_id,
+            ScreenInstruction::CloseTab(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4584,7 +4644,7 @@ pub(crate) fn screen_thread_main(
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
                 _completion_tx, // the action ends here, dropping this will release anything
-                                 // waiting for it
+                                // waiting for it
             ) => {
                 screen.apply_layout(
                     layout,
@@ -4651,7 +4711,9 @@ pub(crate) fn screen_thread_main(
                     }
                 }
             },
-            ScreenInstruction::GoToTab(tab_index, client_id,
+            ScreenInstruction::GoToTab(
+                tab_index,
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4738,7 +4800,9 @@ pub(crate) fn screen_thread_main(
                     }
                 }
             },
-            ScreenInstruction::UpdateTabName(c, client_id,
+            ScreenInstruction::UpdateTabName(
+                c,
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4746,7 +4810,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.render(None)?;
             },
-            ScreenInstruction::UndoRenameTab(client_id,
+            ScreenInstruction::UndoRenameTab(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4760,7 +4825,8 @@ pub(crate) fn screen_thread_main(
                     screen.render(None)?;
                 } else {
                     // Defer execution, forward completion_tx
-                    pending_events_waiting_for_tab.push(ScreenInstruction::MoveTabLeft(client_id, completion_tx));
+                    pending_events_waiting_for_tab
+                        .push(ScreenInstruction::MoveTabLeft(client_id, completion_tx));
                 }
                 screen.unblock_input()?;
             },
@@ -4770,7 +4836,8 @@ pub(crate) fn screen_thread_main(
                     screen.render(None)?;
                 } else {
                     // Defer execution, forward completion_tx
-                    pending_events_waiting_for_tab.push(ScreenInstruction::MoveTabRight(client_id, completion_tx));
+                    pending_events_waiting_for_tab
+                        .push(ScreenInstruction::MoveTabRight(client_id, completion_tx));
                 }
                 screen.unblock_input()?;
             },
@@ -4810,7 +4877,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::ToggleActiveSyncTab(client_id,
+            ScreenInstruction::ToggleActiveSyncTab(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4823,13 +4891,16 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::MouseEvent(event, client_id,
+            ScreenInstruction::MouseEvent(
+                event,
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
                 screen.handle_mouse_event(event, client_id);
             },
-            ScreenInstruction::Copy(client_id,
+            ScreenInstruction::Copy(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4840,7 +4911,8 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::Exit => {
                 break;
             },
-            ScreenInstruction::ToggleTab(client_id,
+            ScreenInstruction::ToggleTab(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4903,7 +4975,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::ConfirmPrompt(_client_id,
+            ScreenInstruction::ConfirmPrompt(
+                _client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4918,7 +4991,8 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.unblock_input()?;
             },
-            ScreenInstruction::DenyPrompt(_client_id,
+            ScreenInstruction::DenyPrompt(
+                _client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4926,7 +5000,9 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::UpdateSearch(c, client_id,
+            ScreenInstruction::UpdateSearch(
+                c,
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4937,7 +5013,8 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
             },
-            ScreenInstruction::SearchDown(client_id,
+            ScreenInstruction::SearchDown(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4948,7 +5025,8 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
             },
-            ScreenInstruction::SearchUp(client_id,
+            ScreenInstruction::SearchUp(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4960,7 +5038,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::SearchToggleCaseSensitivity(client_id,
+            ScreenInstruction::SearchToggleCaseSensitivity(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4973,7 +5052,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::SearchToggleWrap(client_id,
+            ScreenInstruction::SearchToggleWrap(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -4985,7 +5065,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::SearchToggleWholeWord(client_id,
+            ScreenInstruction::SearchToggleWholeWord(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -5037,7 +5118,8 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
             },
-            ScreenInstruction::PreviousSwapLayout(client_id,
+            ScreenInstruction::PreviousSwapLayout(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -5051,7 +5133,8 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::NextSwapLayout(client_id,
+            ScreenInstruction::NextSwapLayout(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -5065,7 +5148,8 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::QueryTabNames(client_id,
+            ScreenInstruction::QueryTabNames(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -5109,7 +5193,6 @@ pub(crate) fn screen_thread_main(
                         None,
                         completion_tx,
                     ))?;
-
             },
             ScreenInstruction::NewFloatingPluginPane(
                 run_plugin,
@@ -5119,38 +5202,35 @@ pub(crate) fn screen_thread_main(
                 floating_pane_coordinates,
                 client_id,
                 completion_tx,
-            ) => {
-                match screen.active_tab_indices.values().next() {
-                    Some(tab_index) => {
-                        let size = Size::default();
-                        let should_float = Some(true);
-                        let should_be_opened_in_place = false;
-                        screen
-                            .bus
-                            .senders
-                            .send_to_pty(PtyInstruction::FillPluginCwd(
-                                should_float,
-                                should_be_opened_in_place,
-                                pane_title,
-                                run_plugin,
-                                *tab_index,
-                                None,
-                                client_id,
-                                size,
-                                skip_cache,
-                                cwd,
-                                None,
-                                floating_pane_coordinates,
-                                completion_tx,
-                            ))?;
-                    },
-                    None => {
-                        log::error!(
-                            "Could not find an active tab - is there at least 1 connected user?"
-                        );
-                    },
-                }
-
+            ) => match screen.active_tab_indices.values().next() {
+                Some(tab_index) => {
+                    let size = Size::default();
+                    let should_float = Some(true);
+                    let should_be_opened_in_place = false;
+                    screen
+                        .bus
+                        .senders
+                        .send_to_pty(PtyInstruction::FillPluginCwd(
+                            should_float,
+                            should_be_opened_in_place,
+                            pane_title,
+                            run_plugin,
+                            *tab_index,
+                            None,
+                            client_id,
+                            size,
+                            skip_cache,
+                            cwd,
+                            None,
+                            floating_pane_coordinates,
+                            completion_tx,
+                        ))?;
+                },
+                None => {
+                    log::error!(
+                        "Could not find an active tab - is there at least 1 connected user?"
+                    );
+                },
             },
             ScreenInstruction::NewInPlacePluginPane(
                 run_plugin,
@@ -5159,38 +5239,35 @@ pub(crate) fn screen_thread_main(
                 skip_cache,
                 client_id,
                 completion_tx,
-            ) => {
-                match screen.active_tab_indices.values().next() {
-                    Some(tab_index) => {
-                        let size = Size::default();
-                        let should_float = None;
-                        let should_be_in_place = true;
-                        screen
-                            .bus
-                            .senders
-                            .send_to_pty(PtyInstruction::FillPluginCwd(
-                                should_float,
-                                should_be_in_place,
-                                pane_title,
-                                run_plugin,
-                                *tab_index,
-                                Some(pane_id_to_replace),
-                                client_id,
-                                size,
-                                skip_cache,
-                                None,
-                                None,
-                                None,
-                                completion_tx,
-                            ))?;
-                    },
-                    None => {
-                        log::error!(
-                            "Could not find an active tab - is there at least 1 connected user?"
-                        );
-                    },
-                }
-
+            ) => match screen.active_tab_indices.values().next() {
+                Some(tab_index) => {
+                    let size = Size::default();
+                    let should_float = None;
+                    let should_be_in_place = true;
+                    screen
+                        .bus
+                        .senders
+                        .send_to_pty(PtyInstruction::FillPluginCwd(
+                            should_float,
+                            should_be_in_place,
+                            pane_title,
+                            run_plugin,
+                            *tab_index,
+                            Some(pane_id_to_replace),
+                            client_id,
+                            size,
+                            skip_cache,
+                            None,
+                            None,
+                            None,
+                            completion_tx,
+                        ))?;
+                },
+                None => {
+                    log::error!(
+                        "Could not find an active tab - is there at least 1 connected user?"
+                    );
+                },
             },
             ScreenInstruction::StartOrReloadPluginPane(run_plugin, pane_title, completion_tx) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
@@ -5208,7 +5285,6 @@ pub(crate) fn screen_thread_main(
                         size,
                         completion_tx,
                     ))?;
-
             },
             ScreenInstruction::AddPlugin(
                 should_float,
@@ -5378,8 +5454,7 @@ pub(crate) fn screen_thread_main(
                 skip_cache,
                 client_id,
                 completion_tx,
-            ) => {
-                match pane_id_to_replace {
+            ) => match pane_id_to_replace {
                 Some(pane_id_to_replace) if should_open_in_place => {
                     match screen.active_tab_indices.values().next() {
                         Some(tab_index) => {
@@ -5458,8 +5533,6 @@ pub(crate) fn screen_thread_main(
                         },
                     }
                 },
-                }
-
             },
             ScreenInstruction::LaunchPlugin(
                 run_plugin,
@@ -5470,8 +5543,7 @@ pub(crate) fn screen_thread_main(
                 cwd,
                 client_id,
                 completion_tx,
-            ) => {
-                match pane_id_to_replace {
+            ) => match pane_id_to_replace {
                 Some(pane_id_to_replace) => match screen.active_tab_indices.values().next() {
                     Some(tab_index) => {
                         let size = Size::default();
@@ -5538,8 +5610,6 @@ pub(crate) fn screen_thread_main(
                         },
                     }
                 },
-                }
-
             },
             ScreenInstruction::SuppressPane(pane_id, client_id) => {
                 let all_tabs = screen.get_tabs_mut();
@@ -5552,14 +5622,19 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::FocusPaneWithId(pane_id, should_float_if_hidden, client_id,
+            ScreenInstruction::FocusPaneWithId(
+                pane_id,
+                should_float_if_hidden,
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
                 screen.focus_pane_with_id(pane_id, should_float_if_hidden, client_id)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::RenamePane(pane_id, new_name,
+            ScreenInstruction::RenamePane(
+                pane_id,
+                new_name,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -5575,7 +5650,9 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::RenameTab(tab_index, new_name,
+            ScreenInstruction::RenameTab(
+                tab_index,
+                new_name,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -5607,19 +5684,24 @@ pub(crate) fn screen_thread_main(
                     );
                 }
             },
-            ScreenInstruction::BreakPane(default_layout, default_shell, client_id,
+            ScreenInstruction::BreakPane(
+                default_layout,
+                default_shell,
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
                 screen.break_pane(default_shell, default_layout, client_id)?;
             },
-            ScreenInstruction::BreakPaneRight(client_id,
+            ScreenInstruction::BreakPaneRight(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
                 screen.break_pane_to_new_tab(Direction::Right, client_id)?;
             },
-            ScreenInstruction::BreakPaneLeft(client_id,
+            ScreenInstruction::BreakPaneLeft(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -5636,7 +5718,7 @@ pub(crate) fn screen_thread_main(
                 close_replaced_pane,
                 client_id_tab_index_or_pane_id,
                 _completion_tx, // the action ends here, dropping this will release anything
-                                 // waiting for it
+                                // waiting for it
             ) => {
                 screen.replace_pane(
                     new_pane_id,
@@ -5649,14 +5731,15 @@ pub(crate) fn screen_thread_main(
 
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
-
             },
             ScreenInstruction::SerializeLayoutForResurrection => {
                 if screen.session_serialization {
                     screen.dump_layout_to_hd()?;
                 }
             },
-            ScreenInstruction::RenameSession(name, client_id,
+            ScreenInstruction::RenameSession(
+                name,
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -5785,7 +5868,8 @@ pub(crate) fn screen_thread_main(
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.edit_scrollback_for_pane_with_id(pane_id, completion_tx).non_fatal();
+                        tab.edit_scrollback_for_pane_with_id(pane_id, completion_tx)
+                            .non_fatal();
                         break;
                     }
                 }
@@ -6016,7 +6100,8 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.clear_pane_group(&client_id);
             },
-            ScreenInstruction::TogglePanePinned(client_id,
+            ScreenInstruction::TogglePanePinned(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -6025,7 +6110,9 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::SetFloatingPanePinned(pane_id, should_be_pinned) => {
                 screen.set_floating_pane_pinned(pane_id, should_be_pinned);
             },
-            ScreenInstruction::StackPanes(pane_ids_to_stack, client_id,
+            ScreenInstruction::StackPanes(
+                pane_ids_to_stack,
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
@@ -6068,13 +6155,15 @@ pub(crate) fn screen_thread_main(
                 );
                 let _ = screen.log_and_report_session_state();
             },
-            ScreenInstruction::TogglePaneInGroup(client_id,
+            ScreenInstruction::TogglePaneInGroup(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
                 screen.toggle_pane_in_group(client_id).non_fatal();
             },
-            ScreenInstruction::ToggleGroupMarking(client_id,
+            ScreenInstruction::ToggleGroupMarking(
+                client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {

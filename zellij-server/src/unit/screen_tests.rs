@@ -688,7 +688,6 @@ impl MockScreen {
             .spawn({
                 move || {
                     if let Some(pty_receiver) = pty_receiver {
-
                         loop {
                             let (event, _err_ctx) = pty_receiver
                                 .recv()
@@ -696,11 +695,11 @@ impl MockScreen {
                             match event {
                                 PtyInstruction::Exit => {
                                     break;
-                                }
+                                },
                                 _ => {
-                                     // here the event will be dropped - we do this so that the completion_tx will drop and release the
-                                     // test actions
-                                }
+                                    // here the event will be dropped - we do this so that the completion_tx will drop and release the
+                                    // test actions
+                                },
                             }
                         }
                     }
@@ -708,7 +707,6 @@ impl MockScreen {
             })
             .unwrap();
     }
-
 }
 
 macro_rules! log_actions_in_thread {
@@ -2092,8 +2090,12 @@ pub fn send_cli_edit_scrollback_action() {
         .clone();
     let mut found_instruction = false;
     for instruction in received_pty_instructions.lock().unwrap().iter() {
-        if let PtyInstruction::OpenInPlaceEditor(scrollback_contents_file, terminal_id, client_id, _) =
-            instruction
+        if let PtyInstruction::OpenInPlaceEditor(
+            scrollback_contents_file,
+            terminal_id,
+            client_id,
+            _,
+        ) = instruction
         {
             assert_eq!(scrollback_contents_file, &PathBuf::from(&dumped_file_name));
             assert_eq!(terminal_id, &Some(1));

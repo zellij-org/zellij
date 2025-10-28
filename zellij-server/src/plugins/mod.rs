@@ -598,7 +598,11 @@ pub(crate) fn plugin_thread_main(
                     shutdown_send.clone(),
                 )?;
             },
-            PluginInstruction::DumpLayout(mut session_layout_metadata, client_id, completion_tx) => {
+            PluginInstruction::DumpLayout(
+                mut session_layout_metadata,
+                client_id,
+                completion_tx,
+            ) => {
                 populate_session_layout_metadata(
                     &mut session_layout_metadata,
                     &wasm_bridge,
@@ -610,7 +614,11 @@ pub(crate) fn plugin_thread_main(
                     completion_tx,
                 )));
             },
-            PluginInstruction::ListClientsMetadata(mut session_layout_metadata, client_id, completion_tx) => {
+            PluginInstruction::ListClientsMetadata(
+                mut session_layout_metadata,
+                client_id,
+                completion_tx,
+            ) => {
                 populate_session_layout_metadata(
                     &mut session_layout_metadata,
                     &wasm_bridge,
