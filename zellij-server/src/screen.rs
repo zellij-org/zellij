@@ -323,6 +323,7 @@ pub enum ScreenInstruction {
         Option<FloatingPaneCoordinates>,
         Option<bool>, // should focus plugin
         Option<ClientId>,
+        Option<NotificationEnd>, // completion signal
     ),
     UpdatePluginLoadingStage(u32, LoadingIndication), // u32 - plugin_id
     StartPluginLoadingIndication(u32, LoadingIndication), // u32 - plugin_id
@@ -5412,6 +5413,7 @@ pub(crate) fn screen_thread_main(
                 floating_pane_coordinates,
                 should_focus_plugin,
                 client_id,
+                completion_tx,
             ) => {
                 let close_replaced_pane = false; // TODO: support this
                 let mut new_pane_placement = NewPanePlacement::default();
@@ -5446,6 +5448,7 @@ pub(crate) fn screen_thread_main(
                         floating_pane_coordinates,
                         should_focus_plugin,
                         client_id,
+                        completion_tx,
                     ));
                     continue;
                 }

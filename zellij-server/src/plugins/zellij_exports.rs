@@ -2381,6 +2381,7 @@ fn load_new_plugin(
                     skip_cache,
                     None,
                     None,
+                    None,
                 ));
             },
             Err(e) => {

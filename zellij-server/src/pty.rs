@@ -1501,6 +1501,7 @@ impl Pty {
         cwd: Option<PathBuf>,
         should_focus_plugin: Option<bool>,
         floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+        completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         let get_focused_cwd = || {
             self.active_panes

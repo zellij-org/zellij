@@ -1765,6 +1765,7 @@ impl WasmBridge {
                                 floating_pane_coordinates,
                                 Some(should_focus),
                                 Some(client_id),
+                                None,
                             )));
                             vec![(plugin_id, Some(client_id))]
                         },

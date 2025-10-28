@@ -64,6 +64,7 @@ pub enum PluginInstruction {
         bool,             // skip cache
         Option<bool>,     // should focus plugin
         Option<FloatingPaneCoordinates>,
+        Option<NotificationEnd>, // completion signal
     ),
     LoadBackgroundPlugin(RunPluginOrAlias, ClientId),
     Update(Vec<(Option<PluginId>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
@@ -301,6 +302,7 @@ pub(crate) fn plugin_thread_main(
                 skip_cache,
                 should_focus_plugin,
                 floating_pane_coordinates,
+                completion_tx,
             ) => {
                 run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
                 let cwd = run_plugin_or_alias.get_initial_cwd().or(cwd).or_else(|| {
@@ -334,6 +336,7 @@ pub(crate) fn plugin_thread_main(
                             floating_pane_coordinates,
                             should_focus_plugin,
                             Some(client_id),
+                            completion_tx,
                         )));
 
                         drop(bus.senders.send_to_pty(PtyInstruction::ReportPluginCwd(
@@ -377,6 +380,9 @@ pub(crate) fn plugin_thread_main(
                                 let _ = bus
                                     .senders
                                     .send_to_server(ServerInstruction::UnblockInputThread);
+                                if let Some(tx) = completion_tx {
+                                    let _ = tx.send();
+                                }
                             },
                             Err(err) => match err.downcast_ref::<ZellijError>() {
                                 Some(ZellijError::PluginDoesNotExist) => {
@@ -418,21 +424,27 @@ pub(crate) fn plugin_thread_main(
                                         },
                                         Err(e) => {
                                             log::error!("Failed to load plugin: {e}");
+                                            if let Some(tx) = completion_tx {
+                                                let _ = tx.send();
+                                            }
                                         },
                                     };
                                 },
                                 _ => {
+                                    if let Some(tx) = completion_tx {
+                                        let _ = tx.send();
+                                    }
                                     return Err(err);
                                 },
                             },
                         }
                     },
                     None => {
-                        log::error!("Failed to find plugin info for: {:?}", run_plugin_or_alias)
+                        log::error!("Failed to find plugin info for: {:?}", run_plugin_or_alias);
+                        if let Some(tx) = completion_tx {
+                            let _ = tx.send();
+                        }
                     },
-                }
-                if let Some(tx) = completion_tx {
-                    let _ = tx.send();
                 }
             },
             PluginInstruction::ReloadPluginWithId(plugin_id) => {
@@ -1156,6 +1168,7 @@ fn load_background_plugin(
                 None,
                 None,
                 Some(client_id),
+                None,
             )));
         },
         Err(e) => {
