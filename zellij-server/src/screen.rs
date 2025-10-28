@@ -3673,7 +3673,8 @@ pub(crate) fn screen_thread_main(
                 new_pane_placement,
                 start_suppressed,
                 client_or_tab_index,
-                completion_tx,
+                _completion_tx, // the action is completed here, dropping this will release
+                                // anything waiting for it
             ) => {
                 match client_or_tab_index {
                     ClientTabIndexOrPaneId::ClientId(client_id) => {
@@ -3754,10 +3755,6 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
 
                 screen.render(None)?;
-
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::OpenInPlaceEditor(pid, client_tab_index_or_pane_id) => {
                 match client_tab_index_or_pane_id {
@@ -3792,17 +3789,16 @@ pub(crate) fn screen_thread_main(
 
                 screen.render(None)?;
             },
-            ScreenInstruction::TogglePaneEmbedOrFloating(client_id, completion_tx) => {
+            ScreenInstruction::TogglePaneEmbedOrFloating(
+                client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| tab
                     .toggle_pane_embed_or_floating(client_id), ?);
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::ToggleFloatingPanes(client_id, default_shell, completion_tx) => {
                 active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| tab
@@ -3813,72 +3809,13 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
 
             },
-//             ScreenInstruction::HorizontalSplit(
-//                 pid,
-//                 initial_pane_title,
-//                 hold_for_command,
-//                 client_id,
-//                 completion_tx,
-//             ) => {
-//                 active_tab_and_connected_client_id!(
-//                     screen,
-//                     client_id,
-//                     |tab: &mut Tab, client_id: ClientId| tab.horizontal_split(pid, initial_pane_title, client_id, completion_tx.clone()),
-//                     ?
-//                 );
-//                 if let Some(hold_for_command) = hold_for_command {
-//                     let is_first_run = true;
-//                     active_tab_and_connected_client_id!(
-//                         screen,
-//                         client_id,
-//                         |tab: &mut Tab, _client_id: ClientId| tab.hold_pane(
-//                             pid,
-//                             None,
-//                             is_first_run,
-//                             hold_for_command
-//                         )
-//                     );
-//                 }
-//                 screen.unblock_input()?;
-//                 screen.log_and_report_session_state()?;
-//                 screen.render(None)?;
-//             },
-//             ScreenInstruction::VerticalSplit(
-//                 pid,
-//                 initial_pane_title,
-//                 hold_for_command,
-//                 client_id,
-//                 completion_tx,
-//             ) => {
-//                 active_tab_and_connected_client_id!(
-//                     screen,
-//                     client_id,
-//                     |tab: &mut Tab, client_id: ClientId| tab.vertical_split(pid, initial_pane_title, client_id, completion_tx.clone()),
-//                     ?
-//                 );
-//                 if let Some(hold_for_command) = hold_for_command {
-//                     let is_first_run = true;
-//                     active_tab_and_connected_client_id!(
-//                         screen,
-//                         client_id,
-//                         |tab: &mut Tab, _client_id: ClientId| tab.hold_pane(
-//                             pid,
-//                             None,
-//                             is_first_run,
-//                             hold_for_command
-//                         )
-//                     );
-//                 }
-//                 screen.unblock_input()?;
-//                 screen.log_and_report_session_state()?;
-//                 screen.render(None)?;
-//             },
             ScreenInstruction::WriteCharacter(
                 key_with_modifier,
                 raw_bytes,
                 is_kitty_keyboard_protocol,
                 client_id,
-                completion_tx,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                 // waiting for it
             ) => {
                 if let Some(plugin_id) = keybind_intercepts.get(&client_id) {
                     if let Some(key_with_modifier) = key_with_modifier {
@@ -3890,10 +3827,6 @@ pub(crate) fn screen_thread_main(
                                 Some(client_id),
                                 Event::InterceptedKeyPress(key_with_modifier),
                             )]));
-                        // Signal completion
-                        if let Some(tx) = completion_tx {
-                            tx.send();
-                        }
                         continue;
                     }
                 }
@@ -3966,13 +3899,11 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.unblock_input()?;
                 screen.render(None)?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::Resize(client_id, strategy, completion_tx) => {
+            ScreenInstruction::Resize(client_id, strategy,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -3982,12 +3913,11 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::SwitchFocus(client_id, completion_tx) => {
+            ScreenInstruction::SwitchFocus(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -3996,13 +3926,11 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::FocusNextPane(client_id, completion_tx) => {
+            ScreenInstruction::FocusNextPane(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4010,13 +3938,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::FocusPreviousPane(client_id, completion_tx) => {
+            ScreenInstruction::FocusPreviousPane(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4025,13 +3951,11 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::MoveFocusLeft(client_id, completion_tx) => {
+            ScreenInstruction::MoveFocusLeft(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4042,25 +3966,21 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::MoveFocusLeftOrPreviousTab(client_id, completion_tx) => {
+            ScreenInstruction::MoveFocusLeftOrPreviousTab(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.move_focus_left_or_previous_tab(client_id)?;
                 screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.unblock_input()?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::MoveFocusDown(client_id, completion_tx) => {
+            ScreenInstruction::MoveFocusDown(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4071,13 +3991,11 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::MoveFocusRight(client_id, completion_tx) => {
+            ScreenInstruction::MoveFocusRight(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4088,25 +4006,21 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::MoveFocusRightOrNextTab(client_id, completion_tx) => {
+            ScreenInstruction::MoveFocusRightOrNextTab(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.move_focus_right_or_next_tab(client_id)?;
                 screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.unblock_input()?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::MoveFocusUp(client_id, completion_tx) => {
+            ScreenInstruction::MoveFocusUp(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4117,13 +4031,11 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::ClearScreen(client_id, completion_tx) => {
+            ScreenInstruction::ClearScreen(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4134,13 +4046,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::DumpScreen(file, client_id, full, completion_tx) => {
+            ScreenInstruction::DumpScreen(file, client_id, full,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4153,11 +4063,6 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::DumpLayout(default_shell, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
@@ -4260,7 +4165,10 @@ pub(crate) fn screen_thread_main(
                     );
                 }
             },
-            ScreenInstruction::ScrollUp(client_id, completion_tx) => {
+            ScreenInstruction::ScrollUp(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4268,13 +4176,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.unblock_input()?;
                 screen.render(None)?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::MovePane(client_id, completion_tx) => {
+            ScreenInstruction::MovePane(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4283,13 +4189,11 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::MovePaneBackwards(client_id, completion_tx) => {
+            ScreenInstruction::MovePaneBackwards(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4298,13 +4202,11 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::MovePaneDown(client_id, completion_tx) => {
+            ScreenInstruction::MovePaneDown(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4313,13 +4215,11 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::MovePaneUp(client_id, completion_tx) => {
+            ScreenInstruction::MovePaneUp(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4328,13 +4228,11 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::MovePaneRight(client_id, completion_tx) => {
+            ScreenInstruction::MovePaneRight(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4343,13 +4241,11 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::MovePaneLeft(client_id, completion_tx) => {
+            ScreenInstruction::MovePaneLeft(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4358,13 +4254,11 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::ScrollUpAt(point, client_id, completion_tx) => {
+            ScreenInstruction::ScrollUpAt(point, client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4373,13 +4267,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::ScrollDown(client_id, completion_tx) => {
+            ScreenInstruction::ScrollDown(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4387,13 +4279,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::ScrollDownAt(point, client_id, completion_tx) => {
+            ScreenInstruction::ScrollDownAt(point, client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4402,13 +4292,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::ScrollToBottom(client_id, completion_tx) => {
+            ScreenInstruction::ScrollToBottom(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4417,13 +4305,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::ScrollToTop(client_id, completion_tx) => {
+            ScreenInstruction::ScrollToTop(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4432,13 +4318,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::PageScrollUp(client_id, completion_tx) => {
+            ScreenInstruction::PageScrollUp(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4447,13 +4331,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::PageScrollDown(client_id, completion_tx) => {
+            ScreenInstruction::PageScrollDown(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4462,13 +4344,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::HalfPageScrollUp(client_id, completion_tx) => {
+            ScreenInstruction::HalfPageScrollUp(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4477,13 +4357,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::HalfPageScrollDown(client_id, completion_tx) => {
+            ScreenInstruction::HalfPageScrollDown(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4492,11 +4370,6 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::ClearScroll(client_id) => {
                 active_tab_and_connected_client_id!(
@@ -4554,7 +4427,10 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::ClosePane(id, client_id, completion_tx) => {
+            ScreenInstruction::ClosePane(id, client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 match client_id {
                     Some(client_id) => {
                         active_tab!(screen, client_id, |tab: &mut Tab| tab
@@ -4573,11 +4449,6 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
                 screen.retain_only_existing_panes_in_pane_groups();
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::HoldPane(id, exit_status, run_command) => {
                 let is_first_run = false;
@@ -4590,7 +4461,10 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::UpdatePaneName(c, client_id, completion_tx) => {
+            ScreenInstruction::UpdatePaneName(c, client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4599,13 +4473,11 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::UndoRenamePane(client_id, completion_tx) => {
+            ScreenInstruction::UndoRenamePane(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4613,13 +4485,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::ToggleActiveTerminalFullscreen(client_id, completion_tx) => {
+            ScreenInstruction::ToggleActiveTerminalFullscreen(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4629,13 +4499,11 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::TogglePaneFrames(completion_tx) => {
+            ScreenInstruction::TogglePaneFrames(
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.draw_pane_frames = !screen.draw_pane_frames;
                 for tab in screen.tabs.values_mut() {
                     tab.set_pane_frames(screen.draw_pane_frames);
@@ -4643,41 +4511,30 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::SwitchTabNext(client_id, completion_tx) => {
+            ScreenInstruction::SwitchTabNext(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.switch_tab_next(None, true, client_id)?;
                 screen.unblock_input()?;
                 screen.render(None)?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::SwitchTabPrev(client_id, completion_tx) => {
+            ScreenInstruction::SwitchTabPrev(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.switch_tab_prev(None, true, client_id)?;
                 screen.unblock_input()?;
                 screen.render(None)?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::CloseTab(client_id, completion_tx) => {
+            ScreenInstruction::CloseTab(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.close_tab(client_id)?;
                 screen.unblock_input()?;
                 screen.render(None)?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::NewTab(
                 cwd,
@@ -4726,7 +4583,8 @@ pub(crate) fn screen_thread_main(
                 tab_index,
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
-                completion_tx,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                 // waiting for it
             ) => {
                 screen.apply_layout(
                     layout,
@@ -4792,13 +4650,11 @@ pub(crate) fn screen_thread_main(
                             .send_to_client(*client_id, ServerToClientMsg::QueryTerminalSize);
                     }
                 }
-
-                // Signal completion after layout has been applied and rendered
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::GoToTab(tab_index, client_id, completion_tx) => {
+            ScreenInstruction::GoToTab(tab_index, client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 let client_id_to_switch = if client_id.is_none() {
                     None
                 } else if screen
@@ -4825,11 +4681,6 @@ pub(crate) fn screen_thread_main(
                             pending_tab_switches.insert((tab_index as usize, client_id));
                         }
                     },
-                }
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
                 }
             },
             ScreenInstruction::GoToTabName(
@@ -4886,41 +4737,27 @@ pub(crate) fn screen_thread_main(
                         }
                     }
                 }
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::UpdateTabName(c, client_id, completion_tx) => {
+            ScreenInstruction::UpdateTabName(c, client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.update_active_tab_name(c, client_id)?;
                 screen.unblock_input()?;
                 screen.render(None)?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::UndoRenameTab(client_id, completion_tx) => {
+            ScreenInstruction::UndoRenameTab(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.undo_active_rename_tab(client_id)?;
                 screen.unblock_input()?;
                 screen.render(None)?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::MoveTabLeft(client_id, completion_tx) => {
                 if pending_tab_ids.is_empty() {
                     screen.move_active_tab_to_left(client_id)?;
                     screen.render(None)?;
-
-                    // Signal completion only if executed immediately
-                    if let Some(tx) = completion_tx {
-                        tx.send();
-                    }
                 } else {
                     // Defer execution, forward completion_tx
                     pending_events_waiting_for_tab.push(ScreenInstruction::MoveTabLeft(client_id, completion_tx));
@@ -4931,11 +4768,6 @@ pub(crate) fn screen_thread_main(
                 if pending_tab_ids.is_empty() {
                     screen.move_active_tab_to_right(client_id)?;
                     screen.render(None)?;
-
-                    // Signal completion only if executed immediately
-                    if let Some(tx) = completion_tx {
-                        tx.send();
-                    }
                 } else {
                     // Defer execution, forward completion_tx
                     pending_events_waiting_for_tab.push(ScreenInstruction::MoveTabRight(client_id, completion_tx));
@@ -4969,7 +4801,10 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::ToggleActiveSyncTab(client_id, completion_tx) => {
+            ScreenInstruction::ToggleActiveSyncTab(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -4978,42 +4813,31 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::MouseEvent(event, client_id, completion_tx) => {
+            ScreenInstruction::MouseEvent(event, client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.handle_mouse_event(event, client_id);
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::Copy(client_id, completion_tx) => {
+            ScreenInstruction::Copy(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .copy_selection(client_id), ?);
                 screen.render(None)?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::Exit => {
                 break;
             },
-            ScreenInstruction::ToggleTab(client_id, completion_tx) => {
+            ScreenInstruction::ToggleTab(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.toggle_tab(client_id)?;
                 screen.unblock_input()?;
                 screen.render(None)?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::AddClient(
                 client_id,
@@ -5070,7 +4894,10 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::ConfirmPrompt(_client_id, completion_tx) => {
+            ScreenInstruction::ConfirmPrompt(_client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 let overlay = screen.get_active_overlays_mut().pop();
                 let instruction = overlay.and_then(|o| o.prompt_confirm());
                 if let Some(instruction) = instruction {
@@ -5081,49 +4908,41 @@ pub(crate) fn screen_thread_main(
                         .context("failed to confirm prompt")?;
                 }
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::DenyPrompt(_client_id, completion_tx) => {
+            ScreenInstruction::DenyPrompt(_client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.get_active_overlays_mut().pop();
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::UpdateSearch(c, client_id, completion_tx) => {
+            ScreenInstruction::UpdateSearch(c, client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.update_search_term(c, client_id), ?
                 );
                 screen.render(None)?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::SearchDown(client_id, completion_tx) => {
+            ScreenInstruction::SearchDown(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.search_down(client_id)
                 );
                 screen.render(None)?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::SearchUp(client_id, completion_tx) => {
+            ScreenInstruction::SearchUp(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -5131,13 +4950,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::SearchToggleCaseSensitivity(client_id, completion_tx) => {
+            ScreenInstruction::SearchToggleCaseSensitivity(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -5146,13 +4963,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::SearchToggleWrap(client_id, completion_tx) => {
+            ScreenInstruction::SearchToggleWrap(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -5160,13 +4975,11 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::SearchToggleWholeWord(client_id, completion_tx) => {
+            ScreenInstruction::SearchToggleWholeWord(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -5174,11 +4987,6 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::AddRedPaneFrameColorOverride(pane_ids, error_text) => {
                 let all_tabs = screen.get_tabs_mut();
@@ -5220,7 +5028,10 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
             },
-            ScreenInstruction::PreviousSwapLayout(client_id, completion_tx) => {
+            ScreenInstruction::PreviousSwapLayout(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -5230,13 +5041,11 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::NextSwapLayout(client_id, completion_tx) => {
+            ScreenInstruction::NextSwapLayout(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -5246,13 +5055,11 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
                 screen.unblock_input()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::QueryTabNames(client_id, completion_tx) => {
+            ScreenInstruction::QueryTabNames(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 let tab_names = screen
                     .get_tabs_mut()
                     .values()
@@ -5262,11 +5069,6 @@ pub(crate) fn screen_thread_main(
                     .bus
                     .senders
                     .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::NewTiledPluginPane(
                 run_plugin,
@@ -5741,16 +5543,17 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::FocusPaneWithId(pane_id, should_float_if_hidden, client_id, completion_tx) => {
+            ScreenInstruction::FocusPaneWithId(pane_id, should_float_if_hidden, client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.focus_pane_with_id(pane_id, should_float_if_hidden, client_id)?;
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::RenamePane(pane_id, new_name, completion_tx) => {
+            ScreenInstruction::RenamePane(pane_id, new_name,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
@@ -5762,13 +5565,11 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::RenameTab(tab_index, new_name, completion_tx) => {
+            ScreenInstruction::RenameTab(tab_index, new_name,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 match screen.tabs.get_mut(&tab_index.saturating_sub(1)) {
                     Some(tab) => {
                         tab.name = String::from_utf8_lossy(&new_name).to_string();
@@ -5778,11 +5579,6 @@ pub(crate) fn screen_thread_main(
                     },
                 }
                 screen.log_and_report_session_state()?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::RequestPluginPermissions(plugin_id, plugin_permission) => {
                 let all_tabs = screen.get_tabs_mut();
@@ -5802,29 +5598,23 @@ pub(crate) fn screen_thread_main(
                     );
                 }
             },
-            ScreenInstruction::BreakPane(default_layout, default_shell, client_id, completion_tx) => {
+            ScreenInstruction::BreakPane(default_layout, default_shell, client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.break_pane(default_shell, default_layout, client_id)?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::BreakPaneRight(client_id, completion_tx) => {
+            ScreenInstruction::BreakPaneRight(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.break_pane_to_new_tab(Direction::Right, client_id)?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::BreakPaneLeft(client_id, completion_tx) => {
+            ScreenInstruction::BreakPaneLeft(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.break_pane_to_new_tab(Direction::Left, client_id)?;
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::UpdateSessionInfos(new_session_infos, resurrectable_sessions) => {
                 screen.update_session_infos(new_session_infos, resurrectable_sessions)?;
@@ -5836,7 +5626,8 @@ pub(crate) fn screen_thread_main(
                 invoked_with,
                 close_replaced_pane,
                 client_id_tab_index_or_pane_id,
-                completion_tx,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                 // waiting for it
             ) => {
                 screen.replace_pane(
                     new_pane_id,
@@ -5850,18 +5641,16 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
 
-                screen.render(None)?;
-
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::SerializeLayoutForResurrection => {
                 if screen.session_serialization {
                     screen.dump_layout_to_hd()?;
                 }
             },
-            ScreenInstruction::RenameSession(name, client_id, completion_tx) => {
+            ScreenInstruction::RenameSession(name, client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 if screen.session_infos_on_machine.contains_key(&name) {
                     let error_text = "A session by this name already exists.";
                     log::error!("{}", error_text);
@@ -5936,11 +5725,6 @@ pub(crate) fn screen_thread_main(
                             );
                         }
                     }
-                }
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
                 }
             },
             ScreenInstruction::Reconfigure {
@@ -6223,18 +6007,19 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.clear_pane_group(&client_id);
             },
-            ScreenInstruction::TogglePanePinned(client_id, completion_tx) => {
+            ScreenInstruction::TogglePanePinned(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.toggle_pane_pinned(client_id);
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::SetFloatingPanePinned(pane_id, should_be_pinned) => {
                 screen.set_floating_pane_pinned(pane_id, should_be_pinned);
             },
-            ScreenInstruction::StackPanes(pane_ids_to_stack, client_id, completion_tx) => {
+            ScreenInstruction::StackPanes(pane_ids_to_stack, client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 if let Some(last_pane_id) = screen.stack_panes(pane_ids_to_stack) {
                     let _ = screen.focus_pane_with_id(last_pane_id, false, client_id);
                     let _ = screen.unblock_input();
@@ -6250,21 +6035,15 @@ pub(crate) fn screen_thread_main(
                     }
                     screen.clear_pane_group(&client_id);
                 }
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::ChangeFloatingPanesCoordinates(pane_ids_and_coordinates, completion_tx) => {
+            ScreenInstruction::ChangeFloatingPanesCoordinates(
+                pane_ids_and_coordinates,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.change_floating_panes_coordinates(pane_ids_and_coordinates);
                 let _ = screen.unblock_input();
                 let _ = screen.render(None);
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::GroupAndUngroupPanes(
                 pane_ids_to_group,
@@ -6280,21 +6059,17 @@ pub(crate) fn screen_thread_main(
                 );
                 let _ = screen.log_and_report_session_state();
             },
-            ScreenInstruction::TogglePaneInGroup(client_id, completion_tx) => {
+            ScreenInstruction::TogglePaneInGroup(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.toggle_pane_in_group(client_id).non_fatal();
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::ToggleGroupMarking(client_id, completion_tx) => {
+            ScreenInstruction::ToggleGroupMarking(client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.toggle_group_marking(client_id).non_fatal();
-
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::SessionSharingStatusChange(web_sharing) => {
                 if web_sharing {

@@ -629,7 +629,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::DumpLayout(mut session_layout_metadata, client_id, completion_tx) => {
+            PtyInstruction::DumpLayout(mut session_layout_metadata, client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 match session_serialization::serialize_session_layout(
@@ -650,11 +653,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                             .non_fatal();
                     },
                 }
-                if let Some(tx) = completion_tx {
-                    let _ = tx.send();
-                }
             },
-            PtyInstruction::ListClientsMetadata(mut session_layout_metadata, client_id, completion_tx) => {
+            PtyInstruction::ListClientsMetadata(mut session_layout_metadata, client_id,
+                _completion_tx // the action ends here, dropping this will release anything waiting
+                               // for it
+            ) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 pty.bus
@@ -668,9 +671,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     ))
                     .with_context(err_context)
                     .non_fatal();
-                if let Some(tx) = completion_tx {
-                    let _ = tx.send();
-                }
             },
             PtyInstruction::DumpLayoutToPlugin(mut session_layout_metadata, plugin_id) => {
                 let err_context = || format!("Failed to dump layout");

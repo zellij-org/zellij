@@ -380,9 +380,6 @@ pub(crate) fn plugin_thread_main(
                                 let _ = bus
                                     .senders
                                     .send_to_server(ServerInstruction::UnblockInputThread);
-                                if let Some(tx) = completion_tx {
-                                    let _ = tx.send();
-                                }
                             },
                             Err(err) => match err.downcast_ref::<ZellijError>() {
                                 Some(ZellijError::PluginDoesNotExist) => {
@@ -424,16 +421,10 @@ pub(crate) fn plugin_thread_main(
                                         },
                                         Err(e) => {
                                             log::error!("Failed to load plugin: {e}");
-                                            if let Some(tx) = completion_tx {
-                                                let _ = tx.send();
-                                            }
                                         },
                                     };
                                 },
                                 _ => {
-                                    if let Some(tx) = completion_tx {
-                                        let _ = tx.send();
-                                    }
                                     return Err(err);
                                 },
                             },
@@ -441,9 +432,6 @@ pub(crate) fn plugin_thread_main(
                     },
                     None => {
                         log::error!("Failed to find plugin info for: {:?}", run_plugin_or_alias);
-                        if let Some(tx) = completion_tx {
-                            let _ = tx.send();
-                        }
                     },
                 }
             },

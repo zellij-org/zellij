@@ -68,9 +68,12 @@ fn wait_for_action_completion(
     }
 }
 
-// Wrapper struct for oneshot::Sender that implements Clone by always cloning as None
-// This is necessary because oneshot::Sender cannot be cloned, but some instruction types
-// need to be cloned for propagation through the thread pipeline
+// This is used to wait for actions that span multiple threads until they logically end
+// dropping this struct sends a notification through the oneshot channel to the receiver, letting
+// it know the action is ended and thus releasing it
+//
+// Note: Cloning this struct DOES NOT clone that internal receiver, it only implements Clone so
+// that it can be included in various other larger structs - DO NOT RELY ON CLONING IT!
 #[derive(Debug)]
 pub struct NotificationEnd(pub Option<oneshot::Sender<()>>);
 
@@ -85,18 +88,9 @@ impl NotificationEnd {
     pub fn new(sender: oneshot::Sender<()>) -> Self {
         NotificationEnd(Some(sender))
     }
-
-    pub fn send(mut self) {
-        if let Some(tx) = self.0.take() {
-            let _ = tx.send(());
-        }
-    }
 }
 
 
-// Auto-signal on drop in tests since test code doesn't have access to
-// deconstruct instruction enums and manually signal completion
-#[cfg(test)]
 impl Drop for NotificationEnd {
       fn drop(&mut self) {
           if let Some(tx) = self.0.take() {
