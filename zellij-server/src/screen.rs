@@ -160,6 +160,7 @@ pub enum ScreenInstruction {
         NewPanePlacement,
         bool, // start suppressed
         ClientTabIndexOrPaneId,
+        Option<NotificationEnd>, // completion signal
     ),
     OpenInPlaceEditor(PaneId, ClientTabIndexOrPaneId),
     TogglePaneEmbedOrFloating(ClientId, Option<NotificationEnd>),
@@ -371,6 +372,7 @@ pub enum ScreenInstruction {
         Option<Run>,
         bool, // close replaced pane
         ClientTabIndexOrPaneId,
+        Option<NotificationEnd>, // completion signal
     ),
     SerializeLayoutForResurrection,
     RenameSession(String, ClientId, Option<NotificationEnd>), // String -> new name
@@ -3669,6 +3671,7 @@ pub(crate) fn screen_thread_main(
                 new_pane_placement,
                 start_suppressed,
                 client_or_tab_index,
+                completion_tx,
             ) => {
                 match client_or_tab_index {
                     ClientTabIndexOrPaneId::ClientId(client_id) => {
@@ -3749,6 +3752,10 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
 
                 screen.render(None)?;
+
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::OpenInPlaceEditor(pid, client_tab_index_or_pane_id) => {
                 match client_tab_index_or_pane_id {
@@ -5837,6 +5844,7 @@ pub(crate) fn screen_thread_main(
                 invoked_with,
                 close_replaced_pane,
                 client_id_tab_index_or_pane_id,
+                completion_tx,
             ) => {
                 screen.replace_pane(
                     new_pane_id,
@@ -5851,6 +5859,10 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
 
                 screen.render(None)?;
+
+                if let Some(tx) = completion_tx {
+                    tx.send();
+                }
             },
             ScreenInstruction::SerializeLayoutForResurrection => {
                 if screen.session_serialization {

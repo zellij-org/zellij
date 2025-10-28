@@ -124,6 +124,7 @@ pub enum PtyInstruction {
         NewPanePlacement,
         bool, // start suppressed
         ClientTabIndexOrPaneId,
+        Option<NotificationEnd>, // completion signal
     ), // bool (if Some) is
     // should_float, String is an optional pane name
     OpenInPlaceEditor(PathBuf, Option<usize>, ClientTabIndexOrPaneId), // Option<usize> is the optional line number
@@ -153,6 +154,7 @@ pub enum PtyInstruction {
         Option<String>,
         bool, // close replaced pane
         ClientTabIndexOrPaneId,
+        Option<NotificationEnd>, // completion signal
     ), // String is an optional pane name
     DumpLayout(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
     DumpLayoutToPlugin(SessionLayoutMetadata, PluginId),
@@ -232,6 +234,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 new_pane_placement,
                 start_suppressed,
                 client_or_tab_index,
+                completion_tx,
             ) => {
                 let err_context =
                     || format!("failed to spawn terminal for {:?}", client_or_tab_index);
@@ -318,6 +321,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 new_pane_placement,
                                 start_suppressed,
                                 client_or_tab_index,
+                                completion_tx,
                             ))
                             .with_context(err_context)?;
                     },
@@ -335,6 +339,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         new_pane_placement,
                                         start_suppressed,
                                         client_or_tab_index,
+                                        completion_tx,
                                     ))
                                     .with_context(err_context)?;
                                 if let Some(run_command) = run_command {
@@ -360,6 +365,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 name,
                 close_replaced_pane,
                 client_id_tab_index_or_pane_id,
+                completion_tx,
             ) => {
                 let err_context = || {
                     format!(
@@ -405,6 +411,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 invoked_with,
                                 close_replaced_pane,
                                 client_id_tab_index_or_pane_id,
+                                completion_tx,
                             ))
                             .with_context(err_context)?;
                     },
@@ -421,6 +428,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         invoked_with,
                                         close_replaced_pane,
                                         client_id_tab_index_or_pane_id,
+                                        completion_tx,
                                     ))
                                     .with_context(err_context)?;
                                 if let Some(run_command) = run_command {

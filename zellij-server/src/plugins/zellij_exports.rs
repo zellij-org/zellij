@@ -761,6 +761,7 @@ fn open_file_near_plugin(
         NewPanePlacement::default(),
         start_suppressed,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        None, // no completion signal needed for plugin calls
     );
     let _ = env.senders.send_to_pty(pty_instr);
 }
@@ -789,6 +790,7 @@ fn open_file_floating_near_plugin(
         NewPanePlacement::Floating(floating_pane_coordinates),
         start_suppressed,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        None, // no completion signal needed for plugin calls
     );
     let _ = env.senders.send_to_pty(pty_instr);
 }
@@ -815,6 +817,7 @@ fn open_file_in_place_of_plugin(
         Some(title),
         close_plugin_after_replace,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        None, // no completion signal needed for plugin calls
     );
     let _ = env.senders.send_to_pty(pty_instr);
 }
@@ -859,6 +862,7 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
         NewPanePlacement::Tiled(None),
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        None, // no completion signal needed for plugin calls
     ));
 }
 
@@ -910,6 +914,7 @@ fn open_terminal_floating_near_plugin(
         NewPanePlacement::Floating(floating_pane_coordinates),
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        None, // no completion signal needed for plugin calls
     ));
 }
 
@@ -957,6 +962,7 @@ fn open_terminal_in_place_of_plugin(
             name,
             close_plugin_after_replace,
             ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+            None, // no completion signal needed for plugin calls
         ));
 }
 
@@ -996,6 +1002,7 @@ fn open_command_pane_in_place_of_plugin(
             name,
             close_plugin_after_replace,
             ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+            None, // no completion signal needed for plugin calls
         ));
 }
 
@@ -1069,6 +1076,7 @@ fn open_command_pane_near_plugin(
         NewPanePlacement::Tiled(None),
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        None, // no completion signal needed for plugin calls
     ));
 }
 
@@ -1144,6 +1152,7 @@ fn open_command_pane_floating_near_plugin(
         NewPanePlacement::Floating(floating_pane_coordinates),
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        None, // no completion signal needed for plugin calls
     ));
 }
 
@@ -1220,6 +1229,7 @@ fn open_command_pane_background(
         NewPanePlacement::default(),
         start_suppressed,
         ClientTabIndexOrPaneId::ClientId(env.client_id),
+        None, // no completion signal needed for plugin calls
     ));
 }
 

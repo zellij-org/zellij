@@ -497,18 +497,26 @@ pub(crate) fn route_action(
             pane_name,
             start_suppressed,
         } => {
+            let (completion_tx, completion_rx) = oneshot::channel();
+
             let shell = default_shell.clone();
             let new_pane_placement = match direction {
                 Some(direction) => NewPanePlacement::Tiled(Some(direction)),
                 None => NewPanePlacement::NoPreference,
             };
-            let _ = senders.send_to_pty(PtyInstruction::SpawnTerminal(
-                shell,
-                pane_name,
-                new_pane_placement,
-                start_suppressed,
-                ClientTabIndexOrPaneId::ClientId(client_id),
-            ));
+            senders
+                .send_to_pty(PtyInstruction::SpawnTerminal(
+                    shell,
+                    pane_name,
+                    new_pane_placement,
+                    start_suppressed,
+                    ClientTabIndexOrPaneId::ClientId(client_id),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "NewPane")
+                .with_context(err_context)?;
         },
         Action::EditFile {
             payload: open_file_payload,
@@ -518,6 +526,8 @@ pub(crate) fn route_action(
             start_suppressed,
             coordinates: floating_pane_coordinates,
         } => {
+            let (completion_tx, completion_rx) = oneshot::channel();
+
             let title = format!("Editing: {}", open_file_payload.path.display());
             let open_file = TerminalAction::OpenFile(open_file_payload);
             let pty_instr = if should_open_in_place {
@@ -527,12 +537,14 @@ pub(crate) fn route_action(
                         Some(title),
                         false,
                         ClientTabIndexOrPaneId::PaneId(pane_id),
+                        Some(NotificationEnd::new(completion_tx)),
                     ),
                     None => PtyInstruction::SpawnInPlaceTerminal(
                         Some(open_file),
                         Some(title),
                         false,
                         ClientTabIndexOrPaneId::ClientId(client_id),
+                        Some(NotificationEnd::new(completion_tx)),
                     ),
                 }
             } else {
@@ -546,9 +558,13 @@ pub(crate) fn route_action(
                     },
                     start_suppressed,
                     ClientTabIndexOrPaneId::ClientId(client_id),
+                    Some(NotificationEnd::new(completion_tx)),
                 )
             };
             senders.send_to_pty(pty_instr).with_context(err_context)?;
+
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "EditFile")
+                .with_context(err_context)?;
         },
         Action::SwitchModeForAllClients { input_mode } => {
             let attrs = &client_attributes;
@@ -585,6 +601,8 @@ pub(crate) fn route_action(
             pane_name: name,
             coordinates: floating_pane_coordinates,
         } => {
+            let (completion_tx, completion_rx) = oneshot::channel();
+
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
@@ -595,13 +613,19 @@ pub(crate) fn route_action(
                     NewPanePlacement::Floating(floating_pane_coordinates),
                     false,
                     ClientTabIndexOrPaneId::ClientId(client_id),
+                    Some(NotificationEnd::new(completion_tx)),
                 ))
+                .with_context(err_context)?;
+
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "NewFloatingPane")
                 .with_context(err_context)?;
         },
         Action::NewInPlacePane {
             command: run_command,
             pane_name: name,
         } => {
+            let (completion_tx, completion_rx) = oneshot::channel();
+
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
@@ -613,6 +637,7 @@ pub(crate) fn route_action(
                             name,
                             false,
                             ClientTabIndexOrPaneId::PaneId(pane_id),
+                            Some(NotificationEnd::new(completion_tx)),
                         ))
                         .with_context(err_context)?;
                 },
@@ -623,15 +648,21 @@ pub(crate) fn route_action(
                             name,
                             false,
                             ClientTabIndexOrPaneId::ClientId(client_id),
+                            Some(NotificationEnd::new(completion_tx)),
                         ))
                         .with_context(err_context)?;
                 },
             }
+
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "NewInPlacePane")
+                .with_context(err_context)?;
         },
         Action::NewStackedPane {
             command: run_command,
             pane_name: name,
         } => {
+            let (completion_tx, completion_rx) = oneshot::channel();
+
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
@@ -644,6 +675,7 @@ pub(crate) fn route_action(
                             NewPanePlacement::Stacked(Some(pane_id)),
                             false,
                             ClientTabIndexOrPaneId::PaneId(pane_id),
+                            Some(NotificationEnd::new(completion_tx)),
                         ))
                         .with_context(err_context)?;
                 },
@@ -655,26 +687,38 @@ pub(crate) fn route_action(
                             NewPanePlacement::Stacked(None),
                             false,
                             ClientTabIndexOrPaneId::ClientId(client_id),
+                            Some(NotificationEnd::new(completion_tx)),
                         ))
                         .with_context(err_context)?;
                 },
             }
+
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "NewStackedPane")
+                .with_context(err_context)?;
         },
         Action::NewTiledPane {
             direction,
             command: run_command,
             pane_name: name,
         } => {
+            let (completion_tx, completion_rx) = oneshot::channel();
+
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
-            let _ = senders.send_to_pty(PtyInstruction::SpawnTerminal(
-                run_cmd,
-                name,
-                NewPanePlacement::Tiled(direction),
-                false,
-                ClientTabIndexOrPaneId::ClientId(client_id),
-            ));
+            senders
+                .send_to_pty(PtyInstruction::SpawnTerminal(
+                    run_cmd,
+                    name,
+                    NewPanePlacement::Tiled(direction),
+                    false,
+                    ClientTabIndexOrPaneId::ClientId(client_id),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "NewTiledPane")
+                .with_context(err_context)?;
         },
         Action::TogglePaneEmbedOrFloating => {
             let (completion_tx, completion_rx) = oneshot::channel();
@@ -725,14 +769,22 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::Run { command } => {
+            let (completion_tx, completion_rx) = oneshot::channel();
+
             let run_cmd = Some(TerminalAction::RunCommand(command.clone().into()));
-            let _ = senders.send_to_pty(PtyInstruction::SpawnTerminal(
-                run_cmd,
-                None,
-                NewPanePlacement::Tiled(command.direction),
-                false,
-                ClientTabIndexOrPaneId::ClientId(client_id),
-            ));
+            senders
+                .send_to_pty(PtyInstruction::SpawnTerminal(
+                    run_cmd,
+                    None,
+                    NewPanePlacement::Tiled(command.direction),
+                    false,
+                    ClientTabIndexOrPaneId::ClientId(client_id),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "Run")
+                .with_context(err_context)?;
         },
         Action::CloseFocus => {
             let (completion_tx, completion_rx) = oneshot::channel();
