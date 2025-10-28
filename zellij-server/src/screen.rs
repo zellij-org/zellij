@@ -262,8 +262,8 @@ pub enum ScreenInstruction {
     TerminalBackgroundColor(String),
     TerminalForegroundColor(String),
     TerminalColorRegisters(Vec<(usize, String)>),
-    ChangeMode(ModeInfo, ClientId),
-    ChangeModeForAllClients(ModeInfo),
+    ChangeMode(ModeInfo, ClientId, Option<NotificationEnd>),
+    ChangeModeForAllClients(ModeInfo, Option<NotificationEnd>),
     MouseEvent(MouseEvent, ClientId, Option<NotificationEnd>),
     Copy(ClientId, Option<NotificationEnd>),
     AddClient(
@@ -4791,12 +4791,21 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::TerminalColorRegisters(color_registers) => {
                 screen.update_terminal_color_registers(color_registers);
             },
-            ScreenInstruction::ChangeMode(mode_info, client_id) => {
+            ScreenInstruction::ChangeMode(
+                mode_info,
+                client_id,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.change_mode(mode_info, client_id)?;
                 screen.render(None)?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::ChangeModeForAllClients(mode_info) => {
+            ScreenInstruction::ChangeModeForAllClients(
+                mode_info,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 screen.change_mode_for_all_clients(mode_info)?;
                 screen.render(None)?;
                 screen.unblock_input()?;

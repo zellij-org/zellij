@@ -183,6 +183,7 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::SwitchToMode { input_mode } => {
+            let (completion_tx, completion_rx) = oneshot::channel();
             let attrs = &client_attributes;
             senders
                 .send_to_server(ServerInstruction::ChangeMode(client_id, input_mode))
@@ -197,10 +198,13 @@ pub(crate) fn route_action(
                         Some(default_mode),
                     ),
                     client_id,
+                    Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
             senders
                 .send_to_screen(ScreenInstruction::Render)
+                .with_context(err_context)?;
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "WriteChars")
                 .with_context(err_context)?;
         },
         Action::Resize { resize, direction } => {
@@ -562,6 +566,7 @@ pub(crate) fn route_action(
         },
         Action::SwitchModeForAllClients { input_mode } => {
             let attrs = &client_attributes;
+            let (completion_tx, completion_rx) = oneshot::channel();
             senders
                 .send_to_plugin(PluginInstruction::Update(vec![(
                     None,
@@ -581,13 +586,18 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
 
             senders
-                .send_to_screen(ScreenInstruction::ChangeModeForAllClients(get_mode_info(
-                    input_mode,
-                    attrs,
-                    capabilities,
-                    &client_keybinds,
-                    Some(default_mode),
-                )))
+                .send_to_screen(ScreenInstruction::ChangeModeForAllClients(
+                    get_mode_info(
+                        input_mode,
+                        attrs,
+                        capabilities,
+                        &client_keybinds,
+                        Some(default_mode),
+                    ),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "EditFile")
                 .with_context(err_context)?;
         },
         Action::NewFloatingPane {
@@ -826,7 +836,6 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            // Wait for completion
             wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "NewTab")
                 .with_context(err_context)?;
         },
@@ -967,10 +976,13 @@ pub(crate) fn route_action(
             should_break = true;
         },
         Action::Detach => {
+            let (completion_tx, completion_rx) = oneshot::channel();
             senders
-                .send_to_server(ServerInstruction::DetachSession(vec![client_id]))
+                .send_to_server(ServerInstruction::DetachSession(vec![client_id], Some(NotificationEnd::new(completion_tx))))
                 .with_context(err_context)?;
             should_break = true;
+            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "UndoRenameTab")
+                .with_context(err_context)?;
         },
         Action::MouseEvent { event } => {
             let (completion_tx, completion_rx) = oneshot::channel();
@@ -1891,7 +1903,7 @@ pub(crate) fn route_thread_main(
                             should_break = true;
                         },
                         ClientToServerMsg::DetachSession { client_ids } => {
-                            let _ = to_server.send(ServerInstruction::DetachSession(client_ids));
+                            let _ = to_server.send(ServerInstruction::DetachSession(client_ids, None));
                             should_break = true;
                         },
                         ClientToServerMsg::WebServerStarted { base_url } => {

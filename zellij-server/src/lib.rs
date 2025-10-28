@@ -44,7 +44,7 @@ use crate::{
     screen::{screen_thread_main, ScreenInstruction},
     thread_bus::{Bus, ThreadSenders},
 };
-use route::route_thread_main;
+use route::{route_thread_main, NotificationEnd};
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{
@@ -86,7 +86,7 @@ pub enum ServerInstruction {
     RemoveClient(ClientId),
     Error(String),
     KillSession,
-    DetachSession(Vec<ClientId>),
+    DetachSession(Vec<ClientId>, Option<NotificationEnd>),
     AttachClient(
         CliAssets,
         Option<usize>,       // tab position to focus
@@ -911,7 +911,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 );
                 session_data
                     .senders
-                    .send_to_screen(ScreenInstruction::ChangeMode(mode_info.clone(), client_id))
+                    .send_to_screen(ScreenInstruction::ChangeMode(mode_info.clone(), client_id, None))
                     .unwrap();
                 session_data
                     .senders
@@ -1195,7 +1195,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     remove_client!(client_id, os_input, session_state);
                 }
             },
-            ServerInstruction::DetachSession(client_ids) => {
+            ServerInstruction::DetachSession(
+                client_ids,
+                _completion_tx, // the action ends here, dropping this will release anything
+                                // waiting for it
+            ) => {
                 for client_id in client_ids {
                     let _ = os_input.send_to_client(
                         client_id,
