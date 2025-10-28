@@ -321,7 +321,7 @@ impl<'a> LayoutApplier<'a> {
         for (unused_pid, _) in new_terminal_ids {
             let _ = self
                 .senders
-                .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid)));
+                .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid), None));
         }
     }
     fn new_tiled_plugin_pane(

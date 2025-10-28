@@ -127,7 +127,7 @@ pub enum PtyInstruction {
         Option<NotificationEnd>, // completion signal
     ), // bool (if Some) is
     // should_float, String is an optional pane name
-    OpenInPlaceEditor(PathBuf, Option<usize>, ClientTabIndexOrPaneId), // Option<usize> is the optional line number
+    OpenInPlaceEditor(PathBuf, Option<usize>, ClientTabIndexOrPaneId, Option<NotificationEnd>), // Option<usize> is the optional line number
     UpdateActivePane(Option<PaneId>, ClientId),
     GoToTab(TabIndex, ClientId),
     NewTab(
@@ -141,13 +141,14 @@ pub enum PtyInstruction {
         (ClientId, bool),                    // bool -> is_web_client
         Option<NotificationEnd>,             // completion signal
     ), // the String is the tab name
-    ClosePane(PaneId),
+    ClosePane(PaneId, Option<NotificationEnd>),
     CloseTab(Vec<PaneId>),
-    ReRunCommandInPane(PaneId, RunCommand),
+    ReRunCommandInPane(PaneId, RunCommand, Option<NotificationEnd>),
     DropToShellInPane {
         pane_id: PaneId,
         shell: Option<PathBuf>,
         working_dir: Option<PathBuf>,
+        completion_tx: Option<NotificationEnd>,
     },
     SpawnInPlaceTerminal(
         Option<TerminalAction>,
@@ -192,7 +193,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::OpenInPlaceEditor(..) => PtyContext::OpenInPlaceEditor,
             PtyInstruction::UpdateActivePane(..) => PtyContext::UpdateActivePane,
             PtyInstruction::GoToTab(..) => PtyContext::GoToTab,
-            PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
+            PtyInstruction::ClosePane(..) => PtyContext::ClosePane,
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab(..) => PtyContext::NewTab,
             PtyInstruction::ReRunCommandInPane(..) => PtyContext::ReRunCommandInPane,
@@ -453,6 +454,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 temp_file,
                 line_number,
                 client_tab_index_or_pane_id,
+                _completion_tx,
             ) => {
                 let err_context = || format!("failed to open in-place editor for client");
 
@@ -520,7 +522,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 )
                 .with_context(err_context)?;
             },
-            PtyInstruction::ClosePane(id) => {
+            PtyInstruction::ClosePane(id, _completion_tx) => {
                 pty.close_pane(id)
                     .and_then(|_| {
                         pty.bus
@@ -538,7 +540,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     })
                     .context("failed to close tabs")?;
             },
-            PtyInstruction::ReRunCommandInPane(pane_id, run_command) => {
+            PtyInstruction::ReRunCommandInPane(pane_id, run_command, _completion_tx) => {
                 let err_context = || format!("failed to rerun command in pane {:?}", pane_id);
 
                 match pty
@@ -579,6 +581,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 pane_id,
                 shell,
                 working_dir,
+                completion_tx: _completion_tx,
             } => {
                 let err_context = || format!("failed to rerun command in pane {:?}", pane_id);
 

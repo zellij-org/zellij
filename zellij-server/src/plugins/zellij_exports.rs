@@ -1236,7 +1236,7 @@ fn open_command_pane_background(
 fn rerun_command_pane(env: &PluginEnv, terminal_pane_id: u32) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::RerunCommandPane(terminal_pane_id));
+        .send_to_screen(ScreenInstruction::RerunCommandPane(terminal_pane_id, None));
 }
 
 fn switch_tab_to(env: &PluginEnv, tab_idx: u32) {
@@ -1907,7 +1907,7 @@ fn close_terminal_pane(env: &PluginEnv, terminal_pane_id: u32) {
     env.senders
         .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(
             terminal_pane_id,
-        )))
+        ), None))
         .non_fatal();
 }
 
@@ -2139,7 +2139,7 @@ fn resize_pane_with_id(env: &PluginEnv, resize: ResizeStrategy, pane_id: PaneId)
 fn edit_scrollback_for_pane_with_id(env: &PluginEnv, pane_id: PaneId) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::EditScrollbackForPaneWithId(pane_id));
+        .send_to_screen(ScreenInstruction::EditScrollbackForPaneWithId(pane_id, None));
 }
 
 fn get_pane_scrollback(env: &PluginEnv, pane_id: PaneId, get_full_scrollback: bool) {

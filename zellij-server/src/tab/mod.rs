@@ -851,10 +851,10 @@ impl Tab {
         ) {
             Ok(should_show_floating_panes) => {
                 if should_show_floating_panes && !self.floating_panes.panes_are_visible() {
-                    self.toggle_floating_panes(Some(client_id), None)
+                    self.toggle_floating_panes(Some(client_id), None, None)
                         .non_fatal();
                 } else if !should_show_floating_panes && self.floating_panes.panes_are_visible() {
-                    self.toggle_floating_panes(Some(client_id), None)
+                    self.toggle_floating_panes(Some(client_id), None, None)
                         .non_fatal();
                 }
                 self.tiled_panes.reapply_pane_frames();
@@ -1304,9 +1304,9 @@ impl Tab {
             NewPanePlacement::Tiled(Some(direction)) => {
                 if let Some(client_id) = client_id {
                     if direction == Direction::Left || direction == Direction::Right {
-                        self.vertical_split(pid, initial_pane_title, client_id)?;
+                        self.vertical_split(pid, initial_pane_title, client_id, None)?;
                     } else {
-                        self.horizontal_split(pid, initial_pane_title, client_id)?;
+                        self.horizontal_split(pid, initial_pane_title, client_id, None)?;
                     }
                 }
                 Ok(())
@@ -1649,6 +1649,7 @@ impl Tab {
                     pid,
                     close_replaced_pane,
                     invoked_with,
+                    None,
                 )?;
             },
             (None, Some(client_id)) => match self.get_active_pane_id(client_id) {
@@ -1658,6 +1659,7 @@ impl Tab {
                         pid,
                         close_replaced_pane,
                         invoked_with,
+                        None,
                     )?;
                 },
                 None => {
@@ -2381,6 +2383,7 @@ impl Tab {
                     raw_input_bytes_are_kitty,
                     pane_id,
                     Some(client_id),
+                    None,
                 )
                 .context("failed to write to terminals on current tab")?;
             if ui_change_triggered {
@@ -2428,6 +2431,7 @@ impl Tab {
             raw_input_bytes_are_kitty,
             pane_id,
             Some(client_id),
+            None,
         )
         .with_context(|| format!("failed to write to active terminal for client {client_id}"))
     }
@@ -2446,7 +2450,7 @@ impl Tab {
                 .get_pane_id_at(position, false)
                 .with_context(err_context)?;
             if let Some(pane_id) = pane_id {
-                self.write_to_pane_id(&None, input_bytes, false, pane_id, Some(client_id))
+                self.write_to_pane_id(&None, input_bytes, false, pane_id, Some(client_id), None)
                     .with_context(err_context)?;
                 return Ok(());
             }
@@ -2456,7 +2460,7 @@ impl Tab {
             .get_pane_id_at(position, false)
             .with_context(err_context)?;
         if let Some(pane_id) = pane_id {
-            self.write_to_pane_id(&None, input_bytes, false, pane_id, Some(client_id))
+            self.write_to_pane_id(&None, input_bytes, false, pane_id, Some(client_id), None)
                 .with_context(err_context)?;
             return Ok(());
         }
@@ -3651,7 +3655,7 @@ impl Tab {
             .send_to_pty(PtyInstruction::OpenInPlaceEditor(
                 file,
                 line_number,
-                ClientTabIndexOrPaneId::ClientId(client_id, completion_tx),
+                ClientTabIndexOrPaneId::ClientId(client_id),
                 completion_tx,
             ))
             .with_context(err_context)

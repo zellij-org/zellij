@@ -165,8 +165,8 @@ pub enum ScreenInstruction {
     OpenInPlaceEditor(PaneId, ClientTabIndexOrPaneId),
     TogglePaneEmbedOrFloating(ClientId, Option<NotificationEnd>),
     ToggleFloatingPanes(ClientId, Option<TerminalAction>, Option<NotificationEnd>),
-    HorizontalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
-    VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
+//     HorizontalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId, Option<NotificationEnd>),
+//     VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId, Option<NotificationEnd>),
     WriteCharacter(Option<KeyWithModifier>, Vec<u8>, bool, ClientId, Option<NotificationEnd>), // bool ->
     // is_kitty_keyboard_protocol
     Resize(ClientId, ResizeStrategy, Option<NotificationEnd>),
@@ -395,9 +395,9 @@ pub enum ScreenInstruction {
         default_editor: Option<PathBuf>,
         advanced_mouse_actions: bool,
     },
-    RerunCommandPane(u32), // u32 - terminal pane id
+    RerunCommandPane(u32, Option<NotificationEnd>), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
-    EditScrollbackForPaneWithId(PaneId),
+    EditScrollbackForPaneWithId(PaneId, Option<NotificationEnd>),
     WriteToPaneId(Vec<u8>, PaneId),
     MovePaneWithPaneId(PaneId),
     MovePaneWithPaneIdInDirection(PaneId, Direction),
@@ -461,8 +461,8 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::TogglePaneEmbedOrFloating
             },
             ScreenInstruction::ToggleFloatingPanes(..) => ScreenContext::ToggleFloatingPanes,
-            ScreenInstruction::HorizontalSplit(..) => ScreenContext::HorizontalSplit,
-            ScreenInstruction::VerticalSplit(..) => ScreenContext::VerticalSplit,
+            // ScreenInstruction::HorizontalSplit(..) => ScreenContext::HorizontalSplit,
+            // ScreenInstruction::VerticalSplit(..) => ScreenContext::VerticalSplit,
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
             ScreenInstruction::Resize(.., strategy, _) => match strategy {
                 ResizeStrategy {
@@ -2556,11 +2556,11 @@ impl Screen {
         };
         Ok(())
     }
-    pub fn rerun_command_pane_with_id(&mut self, terminal_pane_id: u32) {
+    pub fn rerun_command_pane_with_id(&mut self, terminal_pane_id: u32, completion_tx: Option<NotificationEnd>) {
         let mut found = false;
         for tab in self.tabs.values_mut() {
             if tab.has_pane_with_pid(&PaneId::Terminal(terminal_pane_id)) {
-                tab.rerun_terminal_pane_with_id(terminal_pane_id);
+                tab.rerun_terminal_pane_with_id(terminal_pane_id, completion_tx);
                 found = true;
                 break;
             }
@@ -2861,6 +2861,7 @@ impl Screen {
                 new_pane_id,
                 close_replaced_pane,
                 run,
+                None,
             );
             if let Some(pane_title) = pane_title {
                 let _ = tab.rename_pane(pane_title.as_bytes().to_vec(), new_pane_id);
@@ -2951,6 +2952,7 @@ impl Screen {
             tab.1.close_pane_and_replace_with_other_pane(
                 pane_id_to_replace,
                 extracted_pane_from_other_tab,
+                None,
             );
         }
         let _ = self.log_and_report_session_state();
@@ -3804,75 +3806,73 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ToggleFloatingPanes(client_id, default_shell, completion_tx) => {
                 active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| tab
-                    .toggle_floating_panes(Some(client_id), default_shell), ?);
+                    .toggle_floating_panes(Some(client_id), default_shell, completion_tx), ?);
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
 
                 screen.render(None)?;
 
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
-            ScreenInstruction::HorizontalSplit(
-                pid,
-                initial_pane_title,
-                hold_for_command,
-                client_id,
-            ) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.horizontal_split(pid, initial_pane_title, client_id),
-                    ?
-                );
-                if let Some(hold_for_command) = hold_for_command {
-                    let is_first_run = true;
-                    active_tab_and_connected_client_id!(
-                        screen,
-                        client_id,
-                        |tab: &mut Tab, _client_id: ClientId| tab.hold_pane(
-                            pid,
-                            None,
-                            is_first_run,
-                            hold_for_command
-                        )
-                    );
-                }
-                screen.unblock_input()?;
-                screen.log_and_report_session_state()?;
-                screen.render(None)?;
-            },
-            ScreenInstruction::VerticalSplit(
-                pid,
-                initial_pane_title,
-                hold_for_command,
-                client_id,
-            ) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.vertical_split(pid, initial_pane_title, client_id),
-                    ?
-                );
-                if let Some(hold_for_command) = hold_for_command {
-                    let is_first_run = true;
-                    active_tab_and_connected_client_id!(
-                        screen,
-                        client_id,
-                        |tab: &mut Tab, _client_id: ClientId| tab.hold_pane(
-                            pid,
-                            None,
-                            is_first_run,
-                            hold_for_command
-                        )
-                    );
-                }
-                screen.unblock_input()?;
-                screen.log_and_report_session_state()?;
-                screen.render(None)?;
-            },
+//             ScreenInstruction::HorizontalSplit(
+//                 pid,
+//                 initial_pane_title,
+//                 hold_for_command,
+//                 client_id,
+//                 completion_tx,
+//             ) => {
+//                 active_tab_and_connected_client_id!(
+//                     screen,
+//                     client_id,
+//                     |tab: &mut Tab, client_id: ClientId| tab.horizontal_split(pid, initial_pane_title, client_id, completion_tx.clone()),
+//                     ?
+//                 );
+//                 if let Some(hold_for_command) = hold_for_command {
+//                     let is_first_run = true;
+//                     active_tab_and_connected_client_id!(
+//                         screen,
+//                         client_id,
+//                         |tab: &mut Tab, _client_id: ClientId| tab.hold_pane(
+//                             pid,
+//                             None,
+//                             is_first_run,
+//                             hold_for_command
+//                         )
+//                     );
+//                 }
+//                 screen.unblock_input()?;
+//                 screen.log_and_report_session_state()?;
+//                 screen.render(None)?;
+//             },
+//             ScreenInstruction::VerticalSplit(
+//                 pid,
+//                 initial_pane_title,
+//                 hold_for_command,
+//                 client_id,
+//                 completion_tx,
+//             ) => {
+//                 active_tab_and_connected_client_id!(
+//                     screen,
+//                     client_id,
+//                     |tab: &mut Tab, client_id: ClientId| tab.vertical_split(pid, initial_pane_title, client_id, completion_tx.clone()),
+//                     ?
+//                 );
+//                 if let Some(hold_for_command) = hold_for_command {
+//                     let is_first_run = true;
+//                     active_tab_and_connected_client_id!(
+//                         screen,
+//                         client_id,
+//                         |tab: &mut Tab, _client_id: ClientId| tab.hold_pane(
+//                             pid,
+//                             None,
+//                             is_first_run,
+//                             hold_for_command
+//                         )
+//                     );
+//                 }
+//                 screen.unblock_input()?;
+//                 screen.log_and_report_session_state()?;
+//                 screen.render(None)?;
+//             },
             ScreenInstruction::WriteCharacter(
                 key_with_modifier,
                 raw_bytes,
@@ -4220,16 +4220,12 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.edit_scrollback(client_id),
+                    |tab: &mut Tab, client_id: ClientId| tab.edit_scrollback(client_id, completion_tx),
                     ?
                 );
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
 
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::GetPaneScrollback {
                 pane_id,
@@ -4516,16 +4512,12 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.close_focused_pane(client_id), ?
+                    |tab: &mut Tab, client_id: ClientId| tab.close_focused_pane(client_id, completion_tx), ?
                 );
                 screen.render(None)?;
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
 
-                // Signal completion
-                if let Some(tx) = completion_tx {
-                    tx.send();
-                }
             },
             ScreenInstruction::SetSelectable(pid, selectable) => {
                 let all_tabs = screen.get_tabs_mut();
@@ -5990,17 +5982,17 @@ pub(crate) fn screen_thread_main(
                     )
                     .non_fatal();
             },
-            ScreenInstruction::RerunCommandPane(terminal_pane_id) => {
-                screen.rerun_command_pane_with_id(terminal_pane_id)
+            ScreenInstruction::RerunCommandPane(terminal_pane_id, completion_tx) => {
+                screen.rerun_command_pane_with_id(terminal_pane_id, completion_tx)
             },
             ScreenInstruction::ResizePaneWithId(resize, pane_id) => {
                 screen.resize_pane_with_id(resize, pane_id)
             },
-            ScreenInstruction::EditScrollbackForPaneWithId(pane_id) => {
+            ScreenInstruction::EditScrollbackForPaneWithId(pane_id, completion_tx) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.edit_scrollback_for_pane_with_id(pane_id).non_fatal();
+                        tab.edit_scrollback_for_pane_with_id(pane_id, completion_tx).non_fatal();
                         break;
                     }
                 }
@@ -6010,7 +6002,7 @@ pub(crate) fn screen_thread_main(
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.write_to_pane_id(&None, bytes, false, pane_id, None)
+                        tab.write_to_pane_id(&None, bytes, false, pane_id, None, None)
                             .non_fatal();
                         break;
                     }
