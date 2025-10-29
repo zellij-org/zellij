@@ -123,9 +123,10 @@ pub(crate) fn route_action(
             .with_context(err_context)?;
     }
 
+    let (completion_tx, completion_rx) = oneshot::channel();
+
     match action {
         Action::ToggleTab => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ToggleTab(
@@ -134,15 +135,12 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::Write {
             key_with_modifier,
             bytes: raw_bytes,
             is_kitty_keyboard_protocol,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ClearScroll(client_id))
@@ -157,11 +155,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::WriteChars { chars } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ClearScroll(client_id))
@@ -177,11 +172,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::SwitchToMode { input_mode } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
             let attrs = &client_attributes;
             senders
                 .send_to_server(ServerInstruction::ChangeMode(client_id, input_mode))
@@ -202,11 +194,8 @@ pub(crate) fn route_action(
             senders
                 .send_to_screen(ScreenInstruction::Render)
                 .with_context(err_context)?;
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::Resize { resize, direction } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             let screen_instr = ScreenInstruction::Resize(
                 client_id,
@@ -217,11 +206,8 @@ pub(crate) fn route_action(
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::SwitchFocus => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::SwitchFocus(
@@ -230,11 +216,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::FocusNextPane => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::FocusNextPane(
@@ -243,11 +226,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::FocusPreviousPane => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::FocusPreviousPane(
@@ -256,11 +236,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::MoveFocus { direction } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
             let notification_end = Some(NotificationEnd::new(completion_tx));
 
             let screen_instr = match direction {
@@ -273,11 +250,8 @@ pub(crate) fn route_action(
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::MoveFocusOrTab { direction } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
             let notification_end = Some(NotificationEnd::new(completion_tx));
 
             let screen_instr = match direction {
@@ -294,11 +268,8 @@ pub(crate) fn route_action(
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::MovePane { direction } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
             let notification_end = Some(NotificationEnd::new(completion_tx));
 
             let screen_instr = match direction {
@@ -318,11 +289,8 @@ pub(crate) fn route_action(
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::MovePaneBackwards => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::MovePaneBackwards(
@@ -331,11 +299,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::ClearScreen => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ClearScreen(
@@ -344,14 +309,11 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::DumpScreen {
             file_path,
             include_scrollback,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::DumpScreen(
@@ -362,11 +324,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::DumpLayout => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             let default_shell = match default_shell {
                 Some(TerminalAction::RunCommand(run_command)) => Some(run_command.command),
@@ -380,11 +339,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::EditScrollback => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::EditScrollback(
@@ -393,11 +349,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::ScrollUp => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ScrollUp(
@@ -406,11 +359,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::ScrollUpAt { position } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ScrollUpAt(
@@ -420,11 +370,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::ScrollDown => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ScrollDown(
@@ -433,11 +380,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::ScrollDownAt { position } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ScrollDownAt(
@@ -447,11 +391,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::ScrollToBottom => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ScrollToBottom(
@@ -460,11 +401,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::ScrollToTop => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ScrollToTop(
@@ -473,11 +411,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::PageScrollUp => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::PageScrollUp(
@@ -486,11 +421,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::PageScrollDown => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::PageScrollDown(
@@ -499,11 +431,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::HalfPageScrollUp => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::HalfPageScrollUp(
@@ -512,11 +441,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::HalfPageScrollDown => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::HalfPageScrollDown(
@@ -525,11 +451,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::ToggleFocusFullscreen => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ToggleActiveTerminalFullscreen(
@@ -538,11 +461,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::TogglePaneFrames => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::TogglePaneFrames(Some(
@@ -550,15 +470,12 @@ pub(crate) fn route_action(
                 )))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::NewPane {
             direction,
             pane_name,
             start_suppressed,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             let shell = default_shell.clone();
             let new_pane_placement = match direction {
@@ -576,8 +493,6 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::EditFile {
             payload: open_file_payload,
@@ -587,7 +502,6 @@ pub(crate) fn route_action(
             start_suppressed,
             coordinates: floating_pane_coordinates,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             let title = format!("Editing: {}", open_file_payload.path.display());
             let open_file = TerminalAction::OpenFile(open_file_payload);
@@ -624,12 +538,9 @@ pub(crate) fn route_action(
             };
             senders.send_to_pty(pty_instr).with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::SwitchModeForAllClients { input_mode } => {
             let attrs = &client_attributes;
-            let (completion_tx, completion_rx) = oneshot::channel();
             senders
                 .send_to_plugin(PluginInstruction::Update(vec![(
                     None,
@@ -660,15 +571,12 @@ pub(crate) fn route_action(
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::NewFloatingPane {
             command: run_command,
             pane_name: name,
             coordinates: floating_pane_coordinates,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -684,14 +592,11 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::NewInPlacePane {
             command: run_command,
             pane_name: name,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -721,14 +626,11 @@ pub(crate) fn route_action(
                 },
             }
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::NewStackedPane {
             command: run_command,
             pane_name: name,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -760,15 +662,12 @@ pub(crate) fn route_action(
                 },
             }
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::NewTiledPane {
             direction,
             command: run_command,
             pane_name: name,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -784,11 +683,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::TogglePaneEmbedOrFloating => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::TogglePaneEmbedOrFloating(
@@ -797,11 +693,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::ToggleFloatingPanes => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ToggleFloatingPanes(
@@ -811,11 +704,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::PaneNameInput { input } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::UpdatePaneName(
@@ -825,11 +715,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::UndoRenamePane => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::UndoRenamePane(
@@ -838,11 +725,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::Run { command } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             let run_cmd = Some(TerminalAction::RunCommand(command.clone().into()));
             senders
@@ -856,11 +740,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::CloseFocus => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::CloseFocusedPane(
@@ -869,8 +750,6 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::NewTab {
             tiled_layout: tab_layout,
@@ -888,9 +767,6 @@ pub(crate) fn route_action(
                 .unwrap_or_else(|| default_layout.swap_floating_layouts.clone());
             let is_web_client = false; // actions cannot be initiated directly from the web
 
-            // Create completion channel
-            let (completion_tx, completion_rx) = oneshot::channel();
-
             senders
                 .send_to_screen(ScreenInstruction::NewTab(
                     cwd,
@@ -905,11 +781,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::GoToNextTab => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::SwitchTabNext(
@@ -918,11 +791,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::GoToPreviousTab => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::SwitchTabPrev(
@@ -931,11 +801,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::ToggleActiveSyncTab => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ToggleActiveSyncTab(
@@ -944,11 +811,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::CloseTab => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::CloseTab(
@@ -957,11 +821,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::GoToTab { index } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::GoToTab(
@@ -971,11 +832,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::GoToTabName { name, create } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             let shell = default_shell.clone();
             let swap_tiled_layouts = default_layout.swap_tiled_layouts.clone();
@@ -991,11 +849,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::TabNameInput { input } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::UpdateTabName(
@@ -1005,11 +860,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::UndoRenameTab => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::UndoRenameTab(
@@ -1018,29 +870,23 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::MoveTab { direction } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             let screen_instr = match direction {
-                Direction::Left => ScreenInstruction::MoveTabLeft(
+                Direction::Left | Direction::Up => ScreenInstruction::MoveTabLeft(
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
                 ),
-                Direction::Right => ScreenInstruction::MoveTabRight(
+                Direction::Right | Direction::Down => ScreenInstruction::MoveTabRight(
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
                 ),
-                _ => return Ok(false),
             };
             senders
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::Quit => {
             senders
@@ -1049,7 +895,6 @@ pub(crate) fn route_action(
             should_break = true;
         },
         Action::Detach => {
-            let (completion_tx, completion_rx) = oneshot::channel();
             senders
                 .send_to_server(ServerInstruction::DetachSession(
                     vec![client_id],
@@ -1057,11 +902,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
             should_break = true;
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::MouseEvent { event } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::MouseEvent(
@@ -1071,11 +913,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::Copy => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::Copy(
@@ -1084,11 +923,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::Confirm => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ConfirmPrompt(
@@ -1097,11 +933,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::Deny => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::DenyPrompt(
@@ -1110,8 +943,6 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         #[allow(clippy::single_match)]
         Action::SkipConfirm { action } => match *action {
@@ -1125,7 +956,6 @@ pub(crate) fn route_action(
         },
         Action::NoOp => {},
         Action::SearchInput { input } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::UpdateSearch(
@@ -1135,11 +965,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::Search { direction } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
             let notification_end = Some(NotificationEnd::new(completion_tx));
 
             let instruction = match direction {
@@ -1150,11 +977,8 @@ pub(crate) fn route_action(
                 .send_to_screen(instruction)
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::SearchToggleOption { option } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
             let notification_end = Some(NotificationEnd::new(completion_tx));
 
             let instruction = match option {
@@ -1172,12 +996,9 @@ pub(crate) fn route_action(
                 .send_to_screen(instruction)
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::ToggleMouseMode => {}, // Handled client side
         Action::PreviousSwapLayout => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::PreviousSwapLayout(
@@ -1186,11 +1007,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::NextSwapLayout => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::NextSwapLayout(
@@ -1199,11 +1017,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::QueryTabNames => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::QueryTabNames(
@@ -1212,8 +1027,6 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::NewTiledPluginPane {
             plugin: run_plugin,
@@ -1221,7 +1034,6 @@ pub(crate) fn route_action(
             skip_cache,
             cwd,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::NewTiledPluginPane(
@@ -1234,8 +1046,6 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::NewFloatingPluginPane {
             plugin: run_plugin,
@@ -1244,7 +1054,6 @@ pub(crate) fn route_action(
             cwd,
             coordinates: floating_pane_coordinates,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::NewFloatingPluginPane(
@@ -1258,8 +1067,6 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::NewInPlacePluginPane {
             plugin: run_plugin,
@@ -1267,7 +1074,6 @@ pub(crate) fn route_action(
             skip_cache,
         } => {
             if let Some(pane_id) = pane_id {
-                let (completion_tx, completion_rx) = oneshot::channel();
 
                 senders
                     .send_to_screen(ScreenInstruction::NewInPlacePluginPane(
@@ -1280,14 +1086,11 @@ pub(crate) fn route_action(
                     ))
                     .with_context(err_context)?;
 
-                wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
             } else {
                 log::error!("Must have pane_id in order to open in place pane");
             }
         },
         Action::StartOrReloadPlugin { plugin: run_plugin } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::StartOrReloadPluginPane(
@@ -1297,8 +1100,6 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::LaunchOrFocusPlugin {
             plugin: run_plugin,
@@ -1307,7 +1108,6 @@ pub(crate) fn route_action(
             should_open_in_place,
             skip_cache,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::LaunchOrFocusPlugin(
@@ -1322,8 +1122,6 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::LaunchPlugin {
             plugin: run_plugin,
@@ -1332,7 +1130,6 @@ pub(crate) fn route_action(
             skip_cache,
             cwd,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::LaunchPlugin(
@@ -1347,13 +1144,10 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::CloseTerminalPane {
             pane_id: terminal_pane_id,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ClosePane(
@@ -1364,13 +1158,10 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::ClosePluginPane {
             pane_id: plugin_pane_id,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ClosePane(
@@ -1381,14 +1172,11 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::FocusTerminalPaneWithId {
             pane_id,
             should_float_if_hidden,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::FocusPaneWithId(
@@ -1399,14 +1187,11 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::FocusPluginPaneWithId {
             pane_id,
             should_float_if_hidden,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::FocusPaneWithId(
@@ -1417,14 +1202,11 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::RenameTerminalPane {
             pane_id,
             name: name_bytes,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::RenamePane(
@@ -1434,14 +1216,11 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::RenamePluginPane {
             pane_id,
             name: name_bytes,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::RenamePane(
@@ -1451,14 +1230,11 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::RenameTab {
             tab_index: tab_position,
             name: name_bytes,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::RenameTab(
@@ -1468,11 +1244,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::BreakPane => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::BreakPane(
@@ -1483,11 +1256,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::BreakPaneRight => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::BreakPaneRight(
@@ -1496,11 +1266,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::BreakPaneLeft => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::BreakPaneLeft(
@@ -1509,11 +1276,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::RenameSession { name } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::RenameSession(
@@ -1523,8 +1287,6 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::CliPipe {
             pipe_id,
@@ -1622,7 +1384,6 @@ pub(crate) fn route_action(
             }
         },
         Action::ListClients => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             let default_shell = match default_shell {
                 Some(TerminalAction::RunCommand(run_command)) => Some(run_command.command),
@@ -1636,11 +1397,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::TogglePanePinned => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::TogglePanePinned(
@@ -1649,13 +1407,10 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::StackPanes {
             pane_ids: pane_ids_to_stack,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::StackPanes(
@@ -1665,14 +1420,11 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-                .with_context(err_context)?;
         },
         Action::ChangeFloatingPaneCoordinates {
             pane_id,
             coordinates,
         } => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ChangeFloatingPanesCoordinates(
@@ -1681,11 +1433,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::TogglePaneInGroup => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::TogglePaneInGroup(
@@ -1694,11 +1443,8 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
         Action::ToggleGroupMarking => {
-            let (completion_tx, completion_rx) = oneshot::channel();
 
             senders
                 .send_to_screen(ScreenInstruction::ToggleGroupMarking(
@@ -1707,10 +1453,10 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, &action_name)
-            .with_context(err_context)?;
         },
     }
+    wait_for_action_completion(completion_rx, &action_name)
+    .with_context(err_context)?;
     Ok(should_break)
 }
 
