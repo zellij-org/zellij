@@ -38,28 +38,16 @@ const ACTION_COMPLETION_TIMEOUT: Duration = Duration::from_secs(1);
 fn wait_for_action_completion(
     receiver: oneshot::Receiver<()>,
     action_name: &str,
-) -> Result<()> {
+) {
     let runtime = get_tokio_runtime();
     match runtime.block_on(async { tokio::time::timeout(ACTION_COMPLETION_TIMEOUT, receiver).await }) {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(_)) => {
-            log::warn!(
-                "Action {} completion channel closed without sending signal",
-                action_name
-            );
-            Ok(()) // treat as success (worker thread may have exited)
-        },
+        Ok(_) => {}
         Err(_) => {
             log::error!(
                 "Action {} did not complete within {:?} timeout",
                 action_name,
                 ACTION_COMPLETION_TIMEOUT
             );
-            Err(anyhow::anyhow!(
-                "Action {} timed out after {:?}",
-                action_name,
-                ACTION_COMPLETION_TIMEOUT
-            ))
         },
     }
 }
@@ -1460,8 +1448,7 @@ pub(crate) fn route_action(
 
         },
     }
-    wait_for_action_completion(completion_rx, &action_name)
-    .with_context(err_context)?;
+    wait_for_action_completion(completion_rx, &action_name);
     Ok(should_break)
 }
 
@@ -1607,7 +1594,19 @@ pub(crate) fn route_thread_main(
                             client_id: maybe_client_id,
                             is_cli_client,
                         } => {
-                            let client_id = maybe_client_id.unwrap_or(client_id);
+                            let client_id = if is_cli_client {
+                                // for cli clients, we want to default to the last active client
+                                // (i.e. the last client to have issued a keystroke) this is to
+                                // interpret actions that require a client_id (such as move focus,
+                                // detach, etc.) for which using the cli client id will not be
+                                // doing the right thing - using the last_active_client is almost
+                                // certainly correct in almost all cases
+                                session_state.read().unwrap().get_last_active_client()
+                                    .or(maybe_client_id)
+                                    .unwrap_or(client_id)
+                            } else {
+                                maybe_client_id.unwrap_or(client_id)
+                            };
                             if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
                                 if route_action(
                                     action,
