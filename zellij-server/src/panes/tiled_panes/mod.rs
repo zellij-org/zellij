@@ -1713,8 +1713,6 @@ impl TiledPanes {
     }
 
     pub fn focus_next_pane(&mut self, client_id: ClientId) {
-        let connected_clients: Vec<ClientId> =
-            { self.connected_clients.borrow().iter().copied().collect() };
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();
         let next_active_pane_id = {
             let pane_grid = TiledPaneGrid::new(
@@ -1736,16 +1734,12 @@ impl TiledPanes {
             self.reapply_pane_frames();
         }
 
-        for client_id in connected_clients {
-            self.active_panes
-                .insert(client_id, next_active_pane_id, &mut self.panes);
-        }
+        self.active_panes
+            .insert(client_id, next_active_pane_id, &mut self.panes);
         self.set_pane_active_at(next_active_pane_id);
         self.reset_boundaries();
     }
     pub fn focus_previous_pane(&mut self, client_id: ClientId) {
-        let connected_clients: Vec<ClientId> =
-            { self.connected_clients.borrow().iter().copied().collect() };
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();
         let next_active_pane_id = {
             let pane_grid = TiledPaneGrid::new(
@@ -1767,10 +1761,8 @@ impl TiledPanes {
                 .expand_pane(&next_active_pane_id);
             self.reapply_pane_frames();
         }
-        for client_id in connected_clients {
-            self.active_panes
-                .insert(client_id, next_active_pane_id, &mut self.panes);
-        }
+        self.active_panes
+            .insert(client_id, next_active_pane_id, &mut self.panes);
         self.set_pane_active_at(next_active_pane_id);
         self.reset_boundaries();
     }
