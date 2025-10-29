@@ -33,16 +33,14 @@ use zellij_utils::{
 
 use crate::ClientId;
 
-// Timeout for action completion (1 second)
 const ACTION_COMPLETION_TIMEOUT: Duration = Duration::from_secs(1);
 
 fn wait_for_action_completion(
     receiver: oneshot::Receiver<()>,
-    timeout: Duration,
     action_name: &str,
 ) -> Result<()> {
     let runtime = get_tokio_runtime();
-    match runtime.block_on(async { tokio::time::timeout(timeout, receiver).await }) {
+    match runtime.block_on(async { tokio::time::timeout(ACTION_COMPLETION_TIMEOUT, receiver).await }) {
         Ok(Ok(())) => Ok(()),
         Ok(Err(_)) => {
             log::warn!(
@@ -55,12 +53,12 @@ fn wait_for_action_completion(
             log::error!(
                 "Action {} did not complete within {:?} timeout",
                 action_name,
-                timeout
+                ACTION_COMPLETION_TIMEOUT
             );
             Err(anyhow::anyhow!(
                 "Action {} timed out after {:?}",
                 action_name,
-                timeout
+                ACTION_COMPLETION_TIMEOUT 
             ))
         },
     }
@@ -135,7 +133,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "ToggleTab")
+            wait_for_action_completion(completion_rx,  "ToggleTab")
                 .with_context(err_context)?;
         },
         Action::Write {
@@ -158,7 +156,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "Write")
+            wait_for_action_completion(completion_rx,  "Write")
                 .with_context(err_context)?;
         },
         Action::WriteChars { chars } => {
@@ -178,7 +176,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "WriteChars")
+            wait_for_action_completion(completion_rx,  "WriteChars")
                 .with_context(err_context)?;
         },
         Action::SwitchToMode { input_mode } => {
@@ -203,7 +201,7 @@ pub(crate) fn route_action(
             senders
                 .send_to_screen(ScreenInstruction::Render)
                 .with_context(err_context)?;
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "WriteChars")
+            wait_for_action_completion(completion_rx,  "WriteChars")
                 .with_context(err_context)?;
         },
         Action::Resize { resize, direction } => {
@@ -218,7 +216,7 @@ pub(crate) fn route_action(
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "Resize")
+            wait_for_action_completion(completion_rx,  "Resize")
                 .with_context(err_context)?;
         },
         Action::SwitchFocus => {
@@ -231,7 +229,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "SwitchFocus")
+            wait_for_action_completion(completion_rx,  "SwitchFocus")
                 .with_context(err_context)?;
         },
         Action::FocusNextPane => {
@@ -244,7 +242,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "FocusNextPane")
+            wait_for_action_completion(completion_rx,  "FocusNextPane")
                 .with_context(err_context)?;
         },
         Action::FocusPreviousPane => {
@@ -259,7 +257,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "FocusPreviousPane",
             )
             .with_context(err_context)?;
@@ -278,7 +276,7 @@ pub(crate) fn route_action(
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "MoveFocus")
+            wait_for_action_completion(completion_rx,  "MoveFocus")
                 .with_context(err_context)?;
         },
         Action::MoveFocusOrTab { direction } => {
@@ -299,7 +297,7 @@ pub(crate) fn route_action(
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "MoveFocusOrTab")
+            wait_for_action_completion(completion_rx,  "MoveFocusOrTab")
                 .with_context(err_context)?;
         },
         Action::MovePane { direction } => {
@@ -323,7 +321,7 @@ pub(crate) fn route_action(
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "MovePane")
+            wait_for_action_completion(completion_rx,  "MovePane")
                 .with_context(err_context)?;
         },
         Action::MovePaneBackwards => {
@@ -338,7 +336,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "MovePaneBackwards",
             )
             .with_context(err_context)?;
@@ -353,7 +351,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "ClearScreen")
+            wait_for_action_completion(completion_rx,  "ClearScreen")
                 .with_context(err_context)?;
         },
         Action::DumpScreen {
@@ -371,7 +369,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "DumpScreen")
+            wait_for_action_completion(completion_rx,  "DumpScreen")
                 .with_context(err_context)?;
         },
         Action::DumpLayout => {
@@ -389,7 +387,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "DumpLayout")
+            wait_for_action_completion(completion_rx,  "DumpLayout")
                 .with_context(err_context)?;
         },
         Action::EditScrollback => {
@@ -402,7 +400,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "EditScrollback")
+            wait_for_action_completion(completion_rx,  "EditScrollback")
                 .with_context(err_context)?;
         },
         Action::ScrollUp => {
@@ -415,7 +413,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "ScrollUp")
+            wait_for_action_completion(completion_rx,  "ScrollUp")
                 .with_context(err_context)?;
         },
         Action::ScrollUpAt { position } => {
@@ -429,7 +427,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "ScrollUpAt")
+            wait_for_action_completion(completion_rx,  "ScrollUpAt")
                 .with_context(err_context)?;
         },
         Action::ScrollDown => {
@@ -442,7 +440,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "ScrollDown")
+            wait_for_action_completion(completion_rx,  "ScrollDown")
                 .with_context(err_context)?;
         },
         Action::ScrollDownAt { position } => {
@@ -456,7 +454,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "ScrollDownAt")
+            wait_for_action_completion(completion_rx,  "ScrollDownAt")
                 .with_context(err_context)?;
         },
         Action::ScrollToBottom => {
@@ -469,7 +467,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "ScrollToBottom")
+            wait_for_action_completion(completion_rx,  "ScrollToBottom")
                 .with_context(err_context)?;
         },
         Action::ScrollToTop => {
@@ -482,7 +480,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "ScrollToTop")
+            wait_for_action_completion(completion_rx,  "ScrollToTop")
                 .with_context(err_context)?;
         },
         Action::PageScrollUp => {
@@ -495,7 +493,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "PageScrollUp")
+            wait_for_action_completion(completion_rx,  "PageScrollUp")
                 .with_context(err_context)?;
         },
         Action::PageScrollDown => {
@@ -508,7 +506,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "PageScrollDown")
+            wait_for_action_completion(completion_rx,  "PageScrollDown")
                 .with_context(err_context)?;
         },
         Action::HalfPageScrollUp => {
@@ -523,7 +521,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "HalfPageScrollUp",
             )
             .with_context(err_context)?;
@@ -540,7 +538,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "HalfPageScrollDown",
             )
             .with_context(err_context)?;
@@ -557,7 +555,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "ToggleFocusFullscreen",
             )
             .with_context(err_context)?;
@@ -573,7 +571,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "TogglePaneFrames",
             )
             .with_context(err_context)?;
@@ -601,7 +599,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "NewPane")
+            wait_for_action_completion(completion_rx,  "NewPane")
                 .with_context(err_context)?;
         },
         Action::EditFile {
@@ -649,7 +647,7 @@ pub(crate) fn route_action(
             };
             senders.send_to_pty(pty_instr).with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "EditFile")
+            wait_for_action_completion(completion_rx,  "EditFile")
                 .with_context(err_context)?;
         },
         Action::SwitchModeForAllClients { input_mode } => {
@@ -685,7 +683,7 @@ pub(crate) fn route_action(
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "EditFile")
+            wait_for_action_completion(completion_rx,  "EditFile")
                 .with_context(err_context)?;
         },
         Action::NewFloatingPane {
@@ -709,7 +707,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "NewFloatingPane")
+            wait_for_action_completion(completion_rx,  "NewFloatingPane")
                 .with_context(err_context)?;
         },
         Action::NewInPlacePane {
@@ -746,7 +744,7 @@ pub(crate) fn route_action(
                 },
             }
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "NewInPlacePane")
+            wait_for_action_completion(completion_rx,  "NewInPlacePane")
                 .with_context(err_context)?;
         },
         Action::NewStackedPane {
@@ -785,7 +783,7 @@ pub(crate) fn route_action(
                 },
             }
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "NewStackedPane")
+            wait_for_action_completion(completion_rx,  "NewStackedPane")
                 .with_context(err_context)?;
         },
         Action::NewTiledPane {
@@ -809,7 +807,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "NewTiledPane")
+            wait_for_action_completion(completion_rx,  "NewTiledPane")
                 .with_context(err_context)?;
         },
         Action::TogglePaneEmbedOrFloating => {
@@ -824,7 +822,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "TogglePaneEmbedOrFloating",
             )
             .with_context(err_context)?;
@@ -842,7 +840,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "ToggleFloatingPanes",
             )
             .with_context(err_context)?;
@@ -858,7 +856,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "PaneNameInput")
+            wait_for_action_completion(completion_rx,  "PaneNameInput")
                 .with_context(err_context)?;
         },
         Action::UndoRenamePane => {
@@ -871,7 +869,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "UndoRenamePane")
+            wait_for_action_completion(completion_rx,  "UndoRenamePane")
                 .with_context(err_context)?;
         },
         Action::Run { command } => {
@@ -889,7 +887,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "Run")
+            wait_for_action_completion(completion_rx,  "Run")
                 .with_context(err_context)?;
         },
         Action::CloseFocus => {
@@ -904,7 +902,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "CloseFocusedPane",
             )
             .with_context(err_context)?;
@@ -942,7 +940,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "NewTab")
+            wait_for_action_completion(completion_rx,  "NewTab")
                 .with_context(err_context)?;
         },
         Action::GoToNextTab => {
@@ -955,7 +953,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "SwitchTabNext")
+            wait_for_action_completion(completion_rx,  "SwitchTabNext")
                 .with_context(err_context)?;
         },
         Action::GoToPreviousTab => {
@@ -968,7 +966,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "SwitchTabPrev")
+            wait_for_action_completion(completion_rx,  "SwitchTabPrev")
                 .with_context(err_context)?;
         },
         Action::ToggleActiveSyncTab => {
@@ -983,7 +981,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "ToggleActiveSyncTab",
             )
             .with_context(err_context)?;
@@ -998,7 +996,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "CloseTab")
+            wait_for_action_completion(completion_rx,  "CloseTab")
                 .with_context(err_context)?;
         },
         Action::GoToTab { index } => {
@@ -1012,7 +1010,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "GoToTab")
+            wait_for_action_completion(completion_rx,  "GoToTab")
                 .with_context(err_context)?;
         },
         Action::GoToTabName { name, create } => {
@@ -1032,7 +1030,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "GoToTabName")
+            wait_for_action_completion(completion_rx,  "GoToTabName")
                 .with_context(err_context)?;
         },
         Action::TabNameInput { input } => {
@@ -1046,7 +1044,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "TabNameInput")
+            wait_for_action_completion(completion_rx,  "TabNameInput")
                 .with_context(err_context)?;
         },
         Action::UndoRenameTab => {
@@ -1059,7 +1057,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "UndoRenameTab")
+            wait_for_action_completion(completion_rx,  "UndoRenameTab")
                 .with_context(err_context)?;
         },
         Action::MoveTab { direction } => {
@@ -1086,7 +1084,7 @@ pub(crate) fn route_action(
                 Direction::Up => "MoveTabUp",
                 Direction::Down => "MoveTabDown",
             };
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, action_name)
+            wait_for_action_completion(completion_rx,  action_name)
                 .with_context(err_context)?;
         },
         Action::Quit => {
@@ -1104,7 +1102,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
             should_break = true;
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "UndoRenameTab")
+            wait_for_action_completion(completion_rx,  "UndoRenameTab")
                 .with_context(err_context)?;
         },
         Action::MouseEvent { event } => {
@@ -1118,7 +1116,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "MouseEvent")
+            wait_for_action_completion(completion_rx,  "MouseEvent")
                 .with_context(err_context)?;
         },
         Action::Copy => {
@@ -1131,7 +1129,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "Copy")
+            wait_for_action_completion(completion_rx,  "Copy")
                 .with_context(err_context)?;
         },
         Action::Confirm => {
@@ -1144,7 +1142,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "Confirm")
+            wait_for_action_completion(completion_rx,  "Confirm")
                 .with_context(err_context)?;
         },
         Action::Deny => {
@@ -1157,7 +1155,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "Deny")
+            wait_for_action_completion(completion_rx,  "Deny")
                 .with_context(err_context)?;
         },
         #[allow(clippy::single_match)]
@@ -1182,7 +1180,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "SearchInput")
+            wait_for_action_completion(completion_rx,  "SearchInput")
                 .with_context(err_context)?;
         },
         Action::Search { direction } => {
@@ -1197,7 +1195,7 @@ pub(crate) fn route_action(
                 .send_to_screen(instruction)
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "Search")
+            wait_for_action_completion(completion_rx,  "Search")
                 .with_context(err_context)?;
         },
         Action::SearchToggleOption { option } => {
@@ -1221,7 +1219,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "SearchToggleOption",
             )
             .with_context(err_context)?;
@@ -1239,7 +1237,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "PreviousSwapLayout",
             )
             .with_context(err_context)?;
@@ -1254,7 +1252,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "NextSwapLayout")
+            wait_for_action_completion(completion_rx,  "NextSwapLayout")
                 .with_context(err_context)?;
         },
         Action::QueryTabNames => {
@@ -1267,7 +1265,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "QueryTabNames")
+            wait_for_action_completion(completion_rx,  "QueryTabNames")
                 .with_context(err_context)?;
         },
         Action::NewTiledPluginPane {
@@ -1291,7 +1289,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "NewTiledPluginPane",
             )
             .with_context(err_context)?;
@@ -1319,7 +1317,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "NewFloatingPluginPane",
             )
             .with_context(err_context)?;
@@ -1345,7 +1343,7 @@ pub(crate) fn route_action(
 
                 wait_for_action_completion(
                     completion_rx,
-                    ACTION_COMPLETION_TIMEOUT,
+                    
                     "NewInPlacePluginPane",
                 )
                 .with_context(err_context)?;
@@ -1366,7 +1364,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "StartOrReloadPlugin",
             )
             .with_context(err_context)?;
@@ -1395,7 +1393,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "LaunchOrFocusPlugin",
             )
             .with_context(err_context)?;
@@ -1422,7 +1420,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "LaunchPlugin")
+            wait_for_action_completion(completion_rx,  "LaunchPlugin")
                 .with_context(err_context)?;
         },
         Action::CloseTerminalPane {
@@ -1441,7 +1439,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "CloseTerminalPane",
             )
             .with_context(err_context)?;
@@ -1460,7 +1458,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "ClosePluginPane")
+            wait_for_action_completion(completion_rx,  "ClosePluginPane")
                 .with_context(err_context)?;
         },
         Action::FocusTerminalPaneWithId {
@@ -1480,7 +1478,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "FocusTerminalPaneWithId",
             )
             .with_context(err_context)?;
@@ -1502,7 +1500,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "FocusPluginPaneWithId",
             )
             .with_context(err_context)?;
@@ -1523,7 +1521,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "RenameTerminalPane",
             )
             .with_context(err_context)?;
@@ -1544,7 +1542,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "RenamePluginPane",
             )
             .with_context(err_context)?;
@@ -1563,7 +1561,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "RenameTab")
+            wait_for_action_completion(completion_rx,  "RenameTab")
                 .with_context(err_context)?;
         },
         Action::BreakPane => {
@@ -1578,7 +1576,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "BreakPane")
+            wait_for_action_completion(completion_rx,  "BreakPane")
                 .with_context(err_context)?;
         },
         Action::BreakPaneRight => {
@@ -1591,7 +1589,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "BreakPaneRight")
+            wait_for_action_completion(completion_rx,  "BreakPaneRight")
                 .with_context(err_context)?;
         },
         Action::BreakPaneLeft => {
@@ -1604,7 +1602,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "BreakPaneLeft")
+            wait_for_action_completion(completion_rx,  "BreakPaneLeft")
                 .with_context(err_context)?;
         },
         Action::RenameSession { name } => {
@@ -1618,7 +1616,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "RenameSession")
+            wait_for_action_completion(completion_rx,  "RenameSession")
                 .with_context(err_context)?;
         },
         Action::CliPipe {
@@ -1731,7 +1729,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "ListClients")
+            wait_for_action_completion(completion_rx,  "ListClients")
                 .with_context(err_context)?;
         },
         Action::TogglePanePinned => {
@@ -1746,7 +1744,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "TogglePanePinned",
             )
             .with_context(err_context)?;
@@ -1764,7 +1762,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
 
-            wait_for_action_completion(completion_rx, ACTION_COMPLETION_TIMEOUT, "StackPanes")
+            wait_for_action_completion(completion_rx,  "StackPanes")
                 .with_context(err_context)?;
         },
         Action::ChangeFloatingPaneCoordinates {
@@ -1782,7 +1780,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "ChangeFloatingPaneCoordinates",
             )
             .with_context(err_context)?;
@@ -1799,7 +1797,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "TogglePaneInGroup",
             )
             .with_context(err_context)?;
@@ -1816,7 +1814,7 @@ pub(crate) fn route_action(
 
             wait_for_action_completion(
                 completion_rx,
-                ACTION_COMPLETION_TIMEOUT,
+                
                 "ToggleGroupMarking",
             )
             .with_context(err_context)?;
@@ -2198,6 +2196,14 @@ pub(crate) fn route_thread_main(
                 }
             },
         }
+
+        // signal to the client that the action has finished processing and it can either exit (if
+        // it's a cli client) or allow the user to perform another action (if it's an actively
+        // connected user)
+        let _ = os_input.send_to_client(
+            client_id,
+            ServerToClientMsg::UnblockInputThread,
+        );
     }
     Ok(())
 }
