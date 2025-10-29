@@ -121,6 +121,7 @@ fn pipe_client(
             },
             terminal_id: pane_id,
             client_id: None,
+            is_cli_client: true,
         }
     };
     let is_piped = !os_input.stdin_is_terminal();
@@ -208,6 +209,7 @@ fn individual_messages_client(
         action,
         terminal_id: pane_id,
         client_id: None,
+        is_cli_client: true,
     };
     os_input.send_to_server(msg);
     loop {

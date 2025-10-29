@@ -1605,6 +1605,7 @@ pub(crate) fn route_thread_main(
                             action,
                             terminal_id: maybe_pane_id,
                             client_id: maybe_client_id,
+                            is_cli_client,
                         } => {
                             let client_id = maybe_client_id.unwrap_or(client_id);
                             if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {

@@ -78,10 +78,12 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                 action,
                 terminal_id,
                 client_id,
+                is_cli_client,
             } => client_to_server_msg::Message::Action(ActionMsg {
                 action: Some(action.into()),
                 terminal_id,
                 client_id: client_id.map(|id| id as u32),
+                is_cli_client,
             }),
             ClientToServerMsg::Key {
                 key,
@@ -198,6 +200,7 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     .try_into()?,
                 terminal_id: action.terminal_id,
                 client_id: action.client_id.map(|id| id as u16),
+                is_cli_client: action.is_cli_client,
             }),
             Some(client_to_server_msg::Message::Key(key)) => Ok(ClientToServerMsg::Key {
                 key: key.key.ok_or_else(|| anyhow!("Missing key"))?.try_into()?,

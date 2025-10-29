@@ -2396,6 +2396,8 @@ pub struct ActionMsg {
     pub terminal_id: ::core::option::Option<u32>,
     #[prost(uint32, optional, tag="3")]
     pub client_id: ::core::option::Option<u32>,
+    #[prost(bool, tag="4")]
+    pub is_cli_client: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -867,6 +867,7 @@ pub fn start_client(
                                 action: on_force_close.into(),
                                 terminal_id: None,
                                 client_id: None,
+                                is_cli_client: false,
                             });
                         }
                     }),

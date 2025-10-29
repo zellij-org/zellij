@@ -121,6 +121,7 @@ pub enum ClientToServerMsg {
         action: Action,
         terminal_id: Option<u32>,
         client_id: Option<ClientId>,
+        is_cli_client: bool,
     },
     Key {
         key: KeyWithModifier,

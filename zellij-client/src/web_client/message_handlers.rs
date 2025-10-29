@@ -118,6 +118,7 @@ pub fn parse_stdin(
                     action,
                     terminal_id: None,
                     client_id: None,
+                    is_cli_client: false,
                 });
             },
             InputEvent::Paste(pasted_text) => {
@@ -129,6 +130,7 @@ pub fn parse_stdin(
                     },
                     terminal_id: None,
                     client_id: None,
+                    is_cli_client: false,
                 });
                 os_input.send_to_server(ClientToServerMsg::Action {
                     action: Action::Write {
@@ -138,6 +140,7 @@ pub fn parse_stdin(
                     },
                     terminal_id: None,
                     client_id: None,
+                    is_cli_client: false,
                 });
                 os_input.send_to_server(ClientToServerMsg::Action {
                     action: Action::Write {
@@ -147,6 +150,7 @@ pub fn parse_stdin(
                     },
                     terminal_id: None,
                     client_id: None,
+                    is_cli_client: false,
                 });
             },
             _ => {

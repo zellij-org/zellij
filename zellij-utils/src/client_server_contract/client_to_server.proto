@@ -68,6 +68,7 @@ message ActionMsg {
   Action action = 1;
   optional uint32 terminal_id = 2;
   optional uint32 client_id = 3;
+  bool is_cli_client = 4;
 }
 
 message KeyMsg {
