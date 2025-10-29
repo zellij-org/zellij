@@ -1557,6 +1557,9 @@ pub(crate) fn route_thread_main(
                             raw_bytes,
                             is_kitty_keyboard_protocol,
                         } => {
+                            // Track this as the last active client
+                            session_state.write().unwrap().set_last_active_client(client_id);
+
                             if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
                                 match rlocked_sessions.get_client_keybinds_and_mode(&client_id) {
                                     Some((keybinds, input_mode, default_input_mode)) => {

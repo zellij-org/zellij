@@ -476,6 +476,7 @@ pub(crate) struct SessionState {
     clients: HashMap<ClientId, Option<(Size, bool)>>, // bool -> is_web_client
     pipes: HashMap<String, ClientId>,                 // String => pipe_id
     watchers: HashSet<ClientId>,                      // watcher clients (read-only observers)
+    last_active_client: Option<ClientId>,             // last client that sent a Key message
 }
 
 impl SessionState {
@@ -484,6 +485,7 @@ impl SessionState {
             clients: HashMap::new(),
             pipes: HashMap::new(),
             watchers: HashSet::new(),
+            last_active_client: None,
         }
     }
     pub fn new_client(&mut self) -> ClientId {
@@ -511,6 +513,7 @@ impl SessionState {
     pub fn remove_client(&mut self, client_id: ClientId) {
         self.clients.remove(&client_id);
         self.pipes.retain(|_p_id, c_id| c_id != &client_id);
+        self.clear_last_active_client(client_id);
     }
     pub fn set_client_size(&mut self, client_id: ClientId, size: Size) {
         self.clients
@@ -588,6 +591,17 @@ impl SessionState {
     }
     pub fn remove_watcher(&mut self, client_id: ClientId) {
         self.watchers.remove(&client_id);
+    }
+    pub fn set_last_active_client(&mut self, client_id: ClientId) {
+        self.last_active_client = Some(client_id);
+    }
+    pub fn get_last_active_client(&self) -> Option<ClientId> {
+        self.last_active_client
+    }
+    pub fn clear_last_active_client(&mut self, client_id: ClientId) {
+        if self.last_active_client == Some(client_id) {
+            self.last_active_client = None;
+        }
     }
 }
 
