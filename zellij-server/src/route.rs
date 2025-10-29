@@ -123,6 +123,11 @@ pub(crate) fn route_action(
             .with_context(err_context)?;
     }
 
+    // we use this oneshot channel to wait for an action to be "logically"
+    // done, meaning that it traveled through all the threads it needed to travel through and the
+    // app has confirmed that it is complete. Once this happens, we get a signal through the
+    // wait_for_action_completion call below (or timeout after 1 second) and release this thread,
+    // allowing the client to produce another action without risking races
     let (completion_tx, completion_rx) = oneshot::channel();
 
     match action {
