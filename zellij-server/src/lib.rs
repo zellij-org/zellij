@@ -96,8 +96,8 @@ pub enum ServerInstruction {
     ),
     AttachWatcherClient(ClientId, Size),
     ConnStatus(ClientId),
-    Log(Vec<String>, ClientId),
-    LogError(Vec<String>, ClientId),
+    Log(Vec<String>, ClientId, Option<NotificationEnd>),
+    LogError(Vec<String>, ClientId, Option<NotificationEnd>),
     SwitchSession(ConnectToSession, ClientId),
     UnblockCliPipeInput(String),   // String -> Pipe name
     CliPipeOutput(String, String), // String -> Pipe name, String -> Output
@@ -1319,7 +1319,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let _ = os_input.send_to_client(client_id, ServerToClientMsg::Connected);
                 remove_client!(client_id, os_input, session_state);
             },
-            ServerInstruction::Log(lines_to_log, client_id) => {
+            ServerInstruction::Log(
+                lines_to_log,
+                client_id,
+                _completion_tx, // the action ends here, dropping this will release anything waiting
+                                // for it
+            ) => {
                 send_to_client!(
                     client_id,
                     os_input,
@@ -1329,7 +1334,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     session_state
                 );
             },
-            ServerInstruction::LogError(lines_to_log, client_id) => {
+            ServerInstruction::LogError(
+                lines_to_log,
+                client_id,
+                _completion_tx, // the action ends here, dropping this will release anything waiting
+                                // for it
+            ) => {
                 send_to_client!(
                     client_id,
                     os_input,

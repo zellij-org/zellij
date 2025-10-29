@@ -1118,7 +1118,6 @@ impl WasmBridge {
                     }
                     // Execute directly on pinned thread (no async I/O needed for pipe message processing)
                     plugin_executor.execute_for_plugin(*plugin_id, {
-                        // let senders = senders.clone();
                         let running_plugin = running_plugin.clone();
                         let pipe_message = pipe_message.clone();
                         let plugin_id = *plugin_id;
@@ -1775,6 +1774,7 @@ impl WasmBridge {
                                 let _ = self.senders.send_to_server(ServerInstruction::LogError(
                                     vec![format!("Failed to log plugin: {e}")],
                                     cli_client_id,
+                                    None,
                                 ));
                             }
                             vec![]
@@ -1872,6 +1872,7 @@ fn handle_plugin_loading_failure(
         let _ = senders.send_to_server(ServerInstruction::LogError(
             vec![format!("{:?}", error)],
             client_id,
+            None,
         ));
     }
 }

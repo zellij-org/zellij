@@ -85,6 +85,7 @@ impl Drop for NotificationEnd {
 pub(crate) fn route_action(
     action: Action,
     client_id: ClientId,
+    cli_client_id: Option<ClientId>,
     pane_id: Option<PaneId>,
     senders: ThreadSenders,
     capabilities: PluginCapabilities,
@@ -327,7 +328,9 @@ pub(crate) fn route_action(
             senders
                 .send_to_screen(ScreenInstruction::DumpLayout(
                     default_shell,
-                    client_id,
+                    cli_client_id.unwrap_or(client_id), // we prefer the cli client here because
+                                                        // this is a cli query and we want to print
+                                                        // it there
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
@@ -940,6 +943,7 @@ pub(crate) fn route_action(
         #[allow(clippy::single_match)]
         Action::SkipConfirm { action } => match *action {
             Action::Quit => {
+                drop(completion_tx);
                 senders
                     .send_to_server(ServerInstruction::ClientExit(client_id))
                     .with_context(err_context)?;
@@ -947,7 +951,9 @@ pub(crate) fn route_action(
             },
             _ => {},
         },
-        Action::NoOp => {},
+        Action::NoOp => {
+            drop(completion_tx);
+        },
         Action::SearchInput { input } => {
 
             senders
@@ -1015,7 +1021,7 @@ pub(crate) fn route_action(
 
             senders
                 .send_to_screen(ScreenInstruction::QueryTabNames(
-                    client_id,
+                    cli_client_id.unwrap_or(client_id),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
@@ -1295,13 +1301,15 @@ pub(crate) fn route_action(
             pane_title,
             ..
         } => {
+            drop(completion_tx); // releasing pipes is handled by the plugins, so we don't want
+                                 // this to block additionallu
             if let Some(seen_cli_pipes) = seen_cli_pipes.as_mut() {
                 if !seen_cli_pipes.contains(&pipe_id) {
                     seen_cli_pipes.insert(pipe_id.clone());
                     senders
                         .send_to_server(ServerInstruction::AssociatePipeWithClient {
                             pipe_id: pipe_id.clone(),
-                            client_id,
+                            client_id: cli_client_id.unwrap_or(client_id),
                         })
                         .with_context(err_context)?;
                 }
@@ -1325,7 +1333,7 @@ pub(crate) fn route_action(
                         cwd,
                         pane_title,
                         skip_cache,
-                        cli_client_id: client_id,
+                        cli_client_id: cli_client_id.unwrap_or(client_id),
                     })
                     .with_context(err_context)?;
             } else {
@@ -1385,7 +1393,9 @@ pub(crate) fn route_action(
             senders
                 .send_to_screen(ScreenInstruction::ListClientsMetadata(
                     default_shell,
-                    client_id,
+                    cli_client_id.unwrap_or(client_id), // we prefer the cli client here because
+                                                        // this is a cli query and we want to print
+                                                        // it there
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
@@ -1563,6 +1573,7 @@ pub(crate) fn route_thread_main(
                                                 action,
                                                 client_id,
                                                 None,
+                                                None,
                                                 rlocked_sessions.senders.clone(),
                                                 rlocked_sessions.capabilities.clone(),
                                                 rlocked_sessions.client_attributes.clone(),
@@ -1594,6 +1605,7 @@ pub(crate) fn route_thread_main(
                             client_id: maybe_client_id,
                             is_cli_client,
                         } => {
+                            let cli_client_id = client_id;
                             let client_id = if is_cli_client {
                                 // for cli clients, we want to default to the last active client
                                 // (i.e. the last client to have issued a keystroke) this is to
@@ -1611,6 +1623,7 @@ pub(crate) fn route_thread_main(
                                 if route_action(
                                     action,
                                     client_id,
+                                    Some(cli_client_id),
                                     maybe_pane_id.map(|p| PaneId::Terminal(p)),
                                     rlocked_sessions.senders.clone(),
                                     rlocked_sessions.capabilities.clone(),
@@ -1766,6 +1779,7 @@ pub(crate) fn route_thread_main(
                                 let _ = to_server.send(ServerInstruction::LogError(
                                     vec![error.to_owned()],
                                     client_id,
+                                    None,
                                 ));
                                 let _ = to_server
                                     .send(ServerInstruction::SendWebClientsForbidden(client_id));

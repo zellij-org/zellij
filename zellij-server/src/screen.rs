@@ -5076,8 +5076,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::QueryTabNames(
                 client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
+                completion_tx,
             ) => {
                 let tab_names = screen
                     .get_tabs_mut()
@@ -5087,7 +5086,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .bus
                     .senders
-                    .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
+                    .send_to_server(ServerInstruction::Log(tab_names, client_id, completion_tx))?;
             },
             ScreenInstruction::NewTiledPluginPane(
                 run_plugin,

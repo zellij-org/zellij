@@ -634,7 +634,7 @@ impl Action {
                 }])
             },
             CliAction::SwitchMode { input_mode } => {
-                Ok(vec![Action::SwitchModeForAllClients { input_mode }])
+                Ok(vec![Action::SwitchToMode { input_mode }])
             },
             CliAction::TogglePaneEmbedOrFloating => Ok(vec![Action::TogglePaneEmbedOrFloating]),
             CliAction::ToggleFloatingPanes => Ok(vec![Action::ToggleFloatingPanes]),

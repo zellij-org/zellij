@@ -637,8 +637,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::DumpLayout(
                 mut session_layout_metadata,
                 client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
+                completion_tx,
             ) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
@@ -648,14 +647,14 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     Ok((kdl_layout, _pane_contents)) => {
                         pty.bus
                             .senders
-                            .send_to_server(ServerInstruction::Log(vec![kdl_layout], client_id))
+                            .send_to_server(ServerInstruction::Log(vec![kdl_layout], client_id, completion_tx))
                             .with_context(err_context)
                             .non_fatal();
                     },
                     Err(e) => {
                         pty.bus
                             .senders
-                            .send_to_server(ServerInstruction::Log(vec![e.to_owned()], client_id))
+                            .send_to_server(ServerInstruction::Log(vec![e.to_owned()], client_id, completion_tx))
                             .with_context(err_context)
                             .non_fatal();
                     },
@@ -664,8 +663,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::ListClientsMetadata(
                 mut session_layout_metadata,
                 client_id,
-                _completion_tx, // the action ends here, dropping this will release anything waiting
-                                // for it
+                completion_tx,
             ) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
@@ -674,9 +672,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     .send_to_server(ServerInstruction::Log(
                         vec![format!(
                             "{}",
-                            session_layout_metadata.list_clients_metadata()
+                            session_layout_metadata.list_clients_metadata(),
                         )],
                         client_id,
+                        completion_tx,
                     ))
                     .with_context(err_context)
                     .non_fatal();

@@ -1116,6 +1116,7 @@ fn pipe_to_specific_plugins(
                 let _ = bus.senders.send_to_server(ServerInstruction::LogError(
                     vec![format!("Failed to parse plugin url: {}", e)],
                     cli_client_id,
+                    None,
                 ));
             },
             None => {
