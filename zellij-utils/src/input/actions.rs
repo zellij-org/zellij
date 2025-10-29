@@ -99,7 +99,7 @@ impl FromStr for SearchOption {
 // They might need to be adjusted in the default config
 // as well `../../assets/config/default.yaml`
 /// Actions that can be bound to keys.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, strum_macros::Display)]
 pub enum Action {
     /// Quit Zellij.
     Quit,
