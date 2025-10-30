@@ -139,6 +139,7 @@ fn send_cli_action_to_server(
             action,
             client_id,
             None,
+            None,
             senders.clone(),
             capabilities,
             client_attributes.clone(),
@@ -2927,7 +2928,7 @@ pub fn send_cli_switch_mode_action() {
         .unwrap()
         .iter()
         .find(|instruction| match instruction {
-            ServerInstruction::ChangeModeForAllClients(..) => true,
+            ServerInstruction::ChangeMode(..) => true,
             _ => false,
         })
         .cloned();
