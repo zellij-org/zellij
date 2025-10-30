@@ -939,6 +939,7 @@ impl Action {
                     }
                 }
             },
+            CliAction::Detach => Ok(vec![Action::Detach]),
         }
     }
     pub fn launches_plugin(&self, plugin_url: &str) -> bool {

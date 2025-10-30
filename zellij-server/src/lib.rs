@@ -82,7 +82,7 @@ pub enum ServerInstruction {
     ),
     Render(Option<HashMap<ClientId, String>>),
     UnblockInputThread,
-    ClientExit(ClientId),
+    ClientExit(ClientId, Option<NotificationEnd>),
     RemoveClient(ClientId),
     Error(String),
     KillSession,
@@ -1034,7 +1034,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     },
                 }
             },
-            ServerInstruction::ClientExit(client_id) => {
+            ServerInstruction::ClientExit(client_id, completion_tx) => {
                 let _ = os_input.send_to_client(
                     client_id,
                     ServerToClientMsg::Exit {
@@ -1059,6 +1059,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 } else {
                     // Handle regular client removal
                     remove_client!(client_id, os_input, session_state);
+                    drop(completion_tx); // prevent deadlock with route thread
                     if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
                     {
                         session_data
@@ -1215,17 +1216,22 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             },
             ServerInstruction::DetachSession(
                 client_ids,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
+                completion_tx,
             ) => {
-                for client_id in client_ids {
+                for client_id in &client_ids {
                     let _ = os_input.send_to_client(
-                        client_id,
+                        *client_id,
                         ServerToClientMsg::Exit {
                             exit_reason: ExitReason::Normal,
                         },
                     );
-                    remove_client!(client_id, os_input, session_state);
+                    remove_client!(*client_id, os_input, session_state);
+                }
+                drop(completion_tx); // we do this here explicitly to signal that the clients have
+                                     // already disconnected and to prevent a deadlock below caused
+                                     // by us having to wait for session_data to send cleanup
+                                     // signals to the various threads
+                for client_id in client_ids {
                     if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
                     {
                         session_data

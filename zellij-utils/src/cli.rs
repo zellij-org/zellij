@@ -940,4 +940,6 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(long)]
         pinned: Option<bool>,
     },
+    /// Detach from the current session
+    Detach,
 }

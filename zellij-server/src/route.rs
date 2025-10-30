@@ -886,7 +886,7 @@ pub(crate) fn route_action(
         },
         Action::Quit => {
             senders
-                .send_to_server(ServerInstruction::ClientExit(client_id))
+                .send_to_server(ServerInstruction::ClientExit(client_id, Some(NotificationEnd::new(completion_tx))))
                 .with_context(err_context)?;
             should_break = true;
         },
@@ -945,7 +945,7 @@ pub(crate) fn route_action(
             Action::Quit => {
                 drop(completion_tx);
                 senders
-                    .send_to_server(ServerInstruction::ClientExit(client_id))
+                    .send_to_server(ServerInstruction::ClientExit(client_id, None))
                     .with_context(err_context)?;
                 should_break = true;
             },
@@ -1793,8 +1793,6 @@ pub(crate) fn route_thread_main(
                                 .with_context(err_context)?;
                         },
                         ClientToServerMsg::ClientExited => {
-                            // we don't unwrap this because we don't really care if there's an error here (eg.
-                            // if the main server thread exited before this router thread did)
                             let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
                             return Ok(true);
                         },
@@ -1864,5 +1862,7 @@ pub(crate) fn route_thread_main(
             ServerToClientMsg::UnblockInputThread,
         );
     }
+    // route thread exited, make sure we clean up
+    let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
     Ok(())
 }
