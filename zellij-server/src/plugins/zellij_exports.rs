@@ -1655,6 +1655,7 @@ fn switch_session(
             .send_to_server(ServerInstruction::SwitchSession(
                 connect_to_session,
                 client_id,
+                None,
             ))
             .with_context(err_context)?;
     }

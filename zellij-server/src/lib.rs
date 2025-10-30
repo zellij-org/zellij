@@ -98,7 +98,7 @@ pub enum ServerInstruction {
     ConnStatus(ClientId),
     Log(Vec<String>, ClientId, Option<NotificationEnd>),
     LogError(Vec<String>, ClientId, Option<NotificationEnd>),
-    SwitchSession(ConnectToSession, ClientId),
+    SwitchSession(ConnectToSession, ClientId, Option<NotificationEnd>),
     UnblockCliPipeInput(String),   // String -> Pipe name
     CliPipeOutput(String, String), // String -> Pipe name, String -> Output
     AssociatePipeWithClient {
@@ -1355,7 +1355,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     session_state
                 );
             },
-            ServerInstruction::SwitchSession(mut connect_to_session, client_id) => {
+            ServerInstruction::SwitchSession(mut connect_to_session, client_id, completion_tx) => {
                 let current_session_name = envs::get_session_name();
                 if connect_to_session.name == current_session_name.ok() {
                     log::error!("Cannot attach to same session");
@@ -1373,6 +1373,17 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     if let Some(layout_dir) = layout_dir {
                         connect_to_session.apply_layout_dir(&layout_dir);
                     }
+                    // TODO: test that this switcheroo did not cause trouble, then
+
+                    send_to_client!(
+                        client_id,
+                        os_input,
+                        ServerToClientMsg::SwitchSession { connect_to_session },
+                        session_state
+                    );
+                    remove_client!(client_id, os_input, session_state);
+                    drop(completion_tx); // do not deadlock with route thread
+
                     if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
                     {
                         session_data
@@ -1400,13 +1411,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .senders
                         .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                         .unwrap();
-                    send_to_client!(
-                        client_id,
-                        os_input,
-                        ServerToClientMsg::SwitchSession { connect_to_session },
-                        session_state
-                    );
-                    remove_client!(client_id, os_input, session_state);
                 }
             },
             ServerInstruction::AssociatePipeWithClient { pipe_id, client_id } => {

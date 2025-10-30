@@ -918,6 +918,7 @@ pub(crate) fn route_action(
                     .send_to_server(ServerInstruction::SwitchSession(
                         connect_to_session,
                         client_id,
+                        Some(NotificationEnd::new(completion_tx)),
                     ))
                     .with_context(err_context)?;
                 should_break = true;
