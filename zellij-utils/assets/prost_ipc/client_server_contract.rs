@@ -993,6 +993,10 @@ pub struct SwitchSessionAction {
     pub tab_position: ::core::option::Option<u32>,
     #[prost(message, optional, tag="3")]
     pub pane_id: ::core::option::Option<PaneIdWithPlugin>,
+    #[prost(message, optional, tag="4")]
+    pub layout: ::core::option::Option<LayoutInfo>,
+    #[prost(string, optional, tag="5")]
+    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

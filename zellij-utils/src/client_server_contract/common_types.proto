@@ -610,6 +610,8 @@ message SwitchSessionAction {
   string name = 1;
   optional uint32 tab_position = 2;
   optional PaneIdWithPlugin pane_id = 3;
+  optional LayoutInfo layout = 4;
+  optional string cwd = 5;
 }
 
 message PaneIdWithPlugin {

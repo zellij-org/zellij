@@ -968,6 +968,8 @@ impl From<crate::input::actions::Action>
                 name,
                 tab_position,
                 pane_id,
+                layout,
+                cwd,
             } => ActionType::SwitchSession(SwitchSessionAction {
                 name: name.clone(),
                 tab_position: tab_position.map(|p| p as u32),
@@ -975,6 +977,8 @@ impl From<crate::input::actions::Action>
                     pane_id: id,
                     is_plugin: is_plugin,
                 }),
+                layout: layout.as_ref().map(|l| l.clone().into()),
+                cwd: cwd.as_ref().map(|p| p.to_string_lossy().to_string()),
             }),
             crate::input::actions::Action::LaunchOrFocusPlugin {
                 plugin,
@@ -1490,6 +1494,11 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .pane_id
                         .as_ref()
                         .map(|p| (p.pane_id, p.is_plugin)),
+                    layout: switch_session_action
+                        .layout
+                        .map(|l| l.try_into())
+                        .transpose()?,
+                    cwd: switch_session_action.cwd.map(PathBuf::from),
                 })
             },
             ActionType::LaunchOrFocusPlugin(launch_plugin_action) => {

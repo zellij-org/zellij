@@ -6,7 +6,7 @@ use super::layout::{
     SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
 use crate::cli::CliAction;
-use crate::data::{Direction, KeyWithModifier, PaneId, Resize};
+use crate::data::{Direction, KeyWithModifier, LayoutInfo, PaneId, Resize};
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
@@ -274,6 +274,8 @@ pub enum Action {
         name: String,
         tab_position: Option<usize>,
         pane_id: Option<(u32, bool)>, // (id, is_plugin)
+        layout: Option<LayoutInfo>,
+        cwd: Option<PathBuf>,
     },
     LaunchOrFocusPlugin {
         plugin: RunPluginOrAlias,
@@ -950,6 +952,9 @@ impl Action {
                 name,
                 tab_position,
                 pane_id,
+                layout,
+                layout_dir,
+                cwd,
             } => {
                 let pane_id = match pane_id {
                     Some(stringified_pane_id) => match PaneId::from_str(&stringified_pane_id) {
@@ -964,10 +969,32 @@ impl Action {
                     },
                     None => None,
                 };
+
+                let cwd = cwd.map(|cwd| {
+                    let current_dir = get_current_dir();
+                    current_dir.join(cwd)
+                });
+
+                let layout_dir = layout_dir.map(|layout_dir| {
+                    let current_dir = get_current_dir();
+                    current_dir.join(layout_dir)
+                });
+
+                let layout_info = if let Some(layout_path) = layout {
+                    let layout_dir = layout_dir
+                        .or_else(|| config.and_then(|c| c.options.layout_dir.clone()))
+                        .or_else(|| get_layout_dir(find_default_config_dir()));
+                    LayoutInfo::from_config(&layout_dir, &Some(layout_path))
+                } else {
+                    None
+                };
+
                 Ok(vec![Action::SwitchSession {
                     name: name.clone(),
                     tab_position: tab_position.clone(),
                     pane_id,
+                    layout: layout_info,
+                    cwd,
                 }])
             },
         }

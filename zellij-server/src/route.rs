@@ -904,6 +904,8 @@ pub(crate) fn route_action(
             name,
             tab_position,
             pane_id,
+            layout,
+            cwd,
         } => {
             let current_session_name = envs::get_session_name().unwrap_or_else(|_| String::new());
             if name != current_session_name {
@@ -911,8 +913,8 @@ pub(crate) fn route_action(
                     name: Some(name.clone()),
                     tab_position: tab_position.clone(),
                     pane_id: pane_id.clone(),
-                    layout: None,
-                    cwd: None,
+                    layout: layout.clone(),
+                    cwd: cwd.clone(),
                 };
                 senders
                     .send_to_server(ServerInstruction::SwitchSession(

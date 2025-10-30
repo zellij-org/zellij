@@ -952,5 +952,14 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// Optional pane ID to focus (eg. "terminal_1" for terminal pane with id 1, or "plugin_2" for plugin pane with id 2)
         #[clap(long)]
         pane_id: Option<String>,
+        /// Layout to apply when switching to the session (relative paths start at layout-dir)
+        #[clap(short, long, value_parser)]
+        layout: Option<PathBuf>,
+        /// Default folder to look for layouts
+        #[clap(long, value_parser, requires("layout"))]
+        layout_dir: Option<PathBuf>,
+        /// Change the working directory when switching
+        #[clap(short, long, value_parser)]
+        cwd: Option<PathBuf>,
     },
 }
