@@ -942,4 +942,15 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
     },
     /// Detach from the current session
     Detach,
+    /// Switch to a different session
+    SwitchSession {
+        /// Name of the session to switch to
+        name: String,
+        /// Optional tab position to focus
+        #[clap(long)]
+        tab_position: Option<usize>,
+        /// Optional pane ID to focus (eg. "terminal_1" for terminal pane with id 1, or "plugin_2" for plugin pane with id 2)
+        #[clap(long)]
+        pane_id: Option<String>,
+    },
 }

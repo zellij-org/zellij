@@ -227,10 +227,11 @@ message Action {
     ChangeFloatingPaneCoordinatesAction change_floating_pane_coordinates = 89;
     TogglePaneInGroupAction toggle_pane_in_group = 90;
     ToggleGroupMarkingAction toggle_group_marking = 91;
+    SwitchSessionAction switch_session = 92;
   }
 }
 
-// Action message definitions (all 91 variants)
+// Action message definitions (all 92 variants)
 
 // Simple action types (no data)
 message QuitAction {}
@@ -603,6 +604,12 @@ message ConnectToSession {
   optional PaneIdWithPlugin pane_id = 3;
   optional LayoutInfo layout = 4;
   optional string cwd = 5;
+}
+
+message SwitchSessionAction {
+  string name = 1;
+  optional uint32 tab_position = 2;
+  optional PaneIdWithPlugin pane_id = 3;
 }
 
 message PaneIdWithPlugin {

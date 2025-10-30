@@ -16,8 +16,9 @@ use std::thread;
 use std::time::Duration;
 use uuid::Uuid;
 use zellij_utils::{
+    envs,
     channels::SenderWithContext,
-    data::{BareKey, Direction, Event, InputMode, KeyModifier, PluginCapabilities, ResizeStrategy},
+    data::{BareKey, ConnectToSession, Direction, Event, InputMode, KeyModifier, PluginCapabilities, ResizeStrategy},
     errors::prelude::*,
     input::{
         actions::{Action, SearchDirection, SearchOption},
@@ -898,6 +899,31 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
             should_break = true;
+        },
+        Action::SwitchSession {
+            name,
+            tab_position,
+            pane_id,
+        } => {
+            let current_session_name = envs::get_session_name().unwrap_or_else(|_| String::new());
+            if name != current_session_name {
+                let connect_to_session = ConnectToSession {
+                    name: Some(name.clone()),
+                    tab_position: tab_position.clone(),
+                    pane_id: pane_id.clone(),
+                    layout: None,
+                    cwd: None,
+                };
+                senders
+                    .send_to_server(ServerInstruction::SwitchSession(
+                        connect_to_session,
+                        client_id,
+                    ))
+                    .with_context(err_context)?;
+                should_break = true;
+            } else {
+                drop(completion_tx); // no need to wait, this is a no-op
+            }
         },
         Action::MouseEvent { event } => {
 

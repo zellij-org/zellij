@@ -721,7 +721,8 @@ impl From<crate::input::actions::Action>
             ToggleFloatingPanesAction, ToggleFocusFullscreenAction, ToggleGroupMarkingAction,
             ToggleMouseModeAction, TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction,
             TogglePaneInGroupAction, TogglePanePinnedAction, ToggleTabAction, UndoRenamePaneAction,
-            UndoRenameTabAction, WriteAction, WriteCharsAction,
+            UndoRenameTabAction, WriteAction, WriteCharsAction, SwitchSessionAction,
+            PaneIdWithPlugin,
         };
         use std::collections::HashMap;
 
@@ -963,6 +964,18 @@ impl From<crate::input::actions::Action>
                 command: Some(command.into()),
             }),
             crate::input::actions::Action::Detach => ActionType::Detach(DetachAction {}),
+            crate::input::actions::Action::SwitchSession {
+                name,
+                tab_position,
+                pane_id,
+            } => ActionType::SwitchSession(SwitchSessionAction {
+                name: name.clone(),
+                tab_position: tab_position.map(|p| p as u32),
+                pane_id: pane_id.map(|(id, is_plugin)| PaneIdWithPlugin {
+                    pane_id: id,
+                    is_plugin: is_plugin,
+                }),
+            }),
             crate::input::actions::Action::LaunchOrFocusPlugin {
                 plugin,
                 should_float,
@@ -1469,6 +1482,16 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     .try_into()?,
             }),
             ActionType::Detach(_) => Ok(crate::input::actions::Action::Detach),
+            ActionType::SwitchSession(switch_session_action) => {
+                Ok(crate::input::actions::Action::SwitchSession {
+                    name: switch_session_action.name.clone(),
+                    tab_position: switch_session_action.tab_position.map(|p| p as usize),
+                    pane_id: switch_session_action
+                        .pane_id
+                        .as_ref()
+                        .map(|p| (p.pane_id, p.is_plugin)),
+                })
+            },
             ActionType::LaunchOrFocusPlugin(launch_plugin_action) => {
                 Ok(crate::input::actions::Action::LaunchOrFocusPlugin {
                     plugin: launch_plugin_action

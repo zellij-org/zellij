@@ -269,6 +269,12 @@ pub enum Action {
     },
     /// Detach session and exit
     Detach,
+    /// Switch to a different session
+    SwitchSession {
+        name: String,
+        tab_position: Option<usize>,
+        pane_id: Option<(u32, bool)>, // (id, is_plugin)
+    },
     LaunchOrFocusPlugin {
         plugin: RunPluginOrAlias,
         should_float: bool,
@@ -940,6 +946,30 @@ impl Action {
                 }
             },
             CliAction::Detach => Ok(vec![Action::Detach]),
+            CliAction::SwitchSession {
+                name,
+                tab_position,
+                pane_id,
+            } => {
+                let pane_id = match pane_id {
+                    Some(stringified_pane_id) => match PaneId::from_str(&stringified_pane_id) {
+                        Ok(PaneId::Terminal(id)) => Some((id, false)),
+                        Ok(PaneId::Plugin(id)) => Some((id, true)),
+                        Err(_e) => {
+                            return Err(format!(
+                                "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                                stringified_pane_id
+                            ));
+                        },
+                    },
+                    None => None,
+                };
+                Ok(vec![Action::SwitchSession {
+                    name: name.clone(),
+                    tab_position: tab_position.clone(),
+                    pane_id,
+                }])
+            },
         }
     }
     pub fn launches_plugin(&self, plugin_url: &str) -> bool {

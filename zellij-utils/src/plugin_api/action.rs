@@ -1388,7 +1388,8 @@ impl TryFrom<Action> for ProtobufAction {
                 pane_id: _,
                 coordinates: _,
             }
-            | Action::SkipConfirm { action: _ } => Err("Unsupported action"),
+            | Action::SkipConfirm { action: _ }
+            | Action::SwitchSession { .. } => Err("Unsupported action"),
         }
     }
 }
