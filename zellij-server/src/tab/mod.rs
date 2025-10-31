@@ -633,6 +633,7 @@ pub trait Pane {
         client_id: Option<ClientId>,
         _get_full_scrollback: bool,
     ) -> PaneContents;
+    fn update_exit_status(&mut self, _exit_status: i32) {}
 }
 
 #[derive(Clone, Debug)]
@@ -2549,7 +2550,7 @@ impl Tab {
                         should_update_ui = true;
                     },
                     Some(AdjustedInput::CloseThisPane) => {
-                        self.close_pane(PaneId::Terminal(active_terminal_id), false);
+                        self.close_pane(PaneId::Terminal(active_terminal_id), false, None);
                         should_update_ui = true;
                     },
                     Some(AdjustedInput::DropToShellInThisPane { working_dir }) => {
@@ -3336,7 +3337,7 @@ impl Tab {
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(pid, None))
                     .context("failed to close down to max terminals")?;
-                self.close_pane(pid, false);
+                self.close_pane(pid, false, None);
             }
         }
         Ok(())
@@ -3399,7 +3400,7 @@ impl Tab {
             pane.set_mouse_selection_support(selection_support);
         }
     }
-    pub fn close_pane(&mut self, id: PaneId, ignore_suppressed_panes: bool) {
+    pub fn close_pane(&mut self, id: PaneId, ignore_suppressed_panes: bool, exit_status: Option<i32>) {
         // we need to ignore suppressed panes when we toggle a pane to be floating/embedded(tiled)
         // this is because in that case, while we do use this logic, we're not actually closing the
         // pane, we're moving it
@@ -3413,8 +3414,8 @@ impl Tab {
                 },
             };
         }
-        if self.floating_panes.panes_contain(&id) {
-            let _closed_pane = self.floating_panes.remove_pane(id);
+        let closed_pane = if self.floating_panes.panes_contain(&id) {
+            let closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
             if !self.floating_panes.has_selectable_panes() {
                 self.swap_layouts.reset_floating_damage();
@@ -3431,11 +3432,12 @@ impl Tab {
                 // confusing
                 let _ = self.relayout_floating_panes(false);
             }
+            closed_pane
         } else {
             if self.tiled_panes.fullscreen_is_active() {
                 self.tiled_panes.unset_fullscreen();
             }
-            let _closed_pane = self.tiled_panes.remove_pane(id);
+            let closed_pane = self.tiled_panes.remove_pane(id);
             self.set_force_render();
             self.tiled_panes.set_force_render();
             if self.auto_layout && !self.swap_layouts.is_tiled_damaged() {
@@ -3444,7 +3446,14 @@ impl Tab {
                 // confusing
                 let _ = self.relayout_tiled_panes(false);
             }
+            closed_pane
         };
+        if let Some(exit_status) = exit_status {
+            if let Some(mut closed_pane) = closed_pane {
+                // in case we need to update on Drop
+                closed_pane.update_exit_status(exit_status);
+            }
+        }
         let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
             None,
             None,
@@ -3607,7 +3616,7 @@ impl Tab {
 
         if self.floating_panes.panes_are_visible() {
             if let Some(active_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
-                self.close_pane(active_floating_pane_id, false);
+                self.close_pane(active_floating_pane_id, false, None);
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(
                         active_floating_pane_id,
@@ -3618,7 +3627,7 @@ impl Tab {
             }
         }
         if let Some(active_pane_id) = self.tiled_panes.get_active_pane_id(client_id) {
-            self.close_pane(active_pane_id, false);
+            self.close_pane(active_pane_id, false, None);
             self.senders
                 .send_to_pty(PtyInstruction::ClosePane(active_pane_id, completion_tx))
                 .with_context(|| err_context(active_pane_id))?;

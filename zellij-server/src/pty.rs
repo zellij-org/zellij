@@ -894,7 +894,7 @@ impl Pty {
                     ));
                 } else {
                     let _ =
-                        senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None));
+                        senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None, exit_status));
                 }
             }
         });
@@ -1083,8 +1083,8 @@ impl Pty {
         let err_context = || format!("failed to apply run instruction");
         let quit_cb = Box::new({
             let senders = self.bus.senders.clone();
-            move |pane_id, _exit_status, _command| {
-                let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None));
+            move |pane_id, exit_status, _command| {
+                let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None, exit_status));
             }
         });
         match run_instruction {
@@ -1102,7 +1102,7 @@ impl Pty {
                             ));
                         } else {
                             let _ = senders
-                                .send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None));
+                                .send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None, exit_status));
                         }
                     }
                 });
@@ -1332,7 +1332,7 @@ impl Pty {
                             ));
                         } else {
                             let _ = senders
-                                .send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None));
+                                .send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None, exit_status));
                         }
                     }
                 });

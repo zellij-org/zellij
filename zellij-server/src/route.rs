@@ -1251,6 +1251,7 @@ pub(crate) fn route_action(
                     None, // we send None here so that the terminal pane would be closed anywhere
                     // in the app, not just in the client's tab
                     Some(NotificationEnd::new(completion_tx)),
+                    None,
                 ))
                 .with_context(err_context)?;
 
@@ -1265,6 +1266,7 @@ pub(crate) fn route_action(
                     None, // we send None here so that the terminal pane would be closed anywhere
                     // in the app, not just in the client's tab
                     Some(NotificationEnd::new(completion_tx)),
+                    None,
                 ))
                 .with_context(err_context)?;
 

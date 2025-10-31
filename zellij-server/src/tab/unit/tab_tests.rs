@@ -14966,7 +14966,7 @@ fn correctly_resize_frameless_panes_on_pane_close() {
         None,
     )
     .unwrap();
-    tab.close_pane(PaneId::Terminal(2), true);
+    tab.close_pane(PaneId::Terminal(2), true, None);
 
     // the size should be the same after adding and then removing a pane
     let pane = tab.tiled_panes.panes.get(&PaneId::Terminal(1)).unwrap();

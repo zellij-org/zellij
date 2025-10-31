@@ -429,6 +429,15 @@ impl RemoteTerminal {
             .unwrap();
         channel.flush().unwrap();
     }
+    pub fn send_blocking_command_through_the_cli(&mut self, command: &str) {
+        let mut channel = self.channel.lock().unwrap();
+        channel
+            .write_all(
+                format!("{} run --blocking --floating --close-on-exit -- {}", ZELLIJ_EXECUTABLE_LOCATION, command).as_bytes(),
+            )
+            .unwrap();
+        channel.flush().unwrap();
+    }
     pub fn path_to_fixture_folder(&self) -> String {
         ZELLIJ_FIXTURE_PATH.to_string()
     }

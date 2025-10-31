@@ -3520,7 +3520,7 @@ fn close_suppressing_tiled_pane() {
         .unwrap();
     tab.handle_pty_bytes(1, Vec::from("\n\n\nI am the original pane".as_bytes()))
         .unwrap();
-    tab.close_pane(new_pane_id, false);
+    tab.close_pane(new_pane_id, false, None);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3562,7 +3562,7 @@ fn close_suppressing_floating_pane() {
         .unwrap();
     tab.handle_pty_bytes(2, Vec::from("\n\n\nI am the original pane".as_bytes()))
         .unwrap();
-    tab.close_pane(editor_pane_id, false);
+    tab.close_pane(editor_pane_id, false, None);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3590,7 +3590,7 @@ fn suppress_tiled_pane_float_it_and_close() {
     tab.handle_pty_bytes(1, Vec::from("\n\n\nI am the original pane".as_bytes()))
         .unwrap();
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
-    tab.close_pane(new_pane_id, false);
+    tab.close_pane(new_pane_id, false, None);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3633,7 +3633,7 @@ fn suppress_floating_pane_embed_it_and_close_it() {
     tab.handle_pty_bytes(2, Vec::from("\n\n\nI am the original pane".as_bytes()))
         .unwrap();
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
-    tab.close_pane(editor_pane_id, false);
+    tab.close_pane(editor_pane_id, false, None);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -5754,7 +5754,7 @@ fn close_main_stacked_pane() {
         None,
     )
     .unwrap();
-    tab.close_pane(new_pane_id_2, false);
+    tab.close_pane(new_pane_id_2, false, None);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -5861,7 +5861,7 @@ fn close_main_stacked_pane_in_mid_stack() {
     tab.move_focus_right(client_id);
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
-    tab.close_pane(new_pane_id_3, false);
+    tab.close_pane(new_pane_id_3, false, None);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -5969,7 +5969,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
     tab.move_focus_right(client_id);
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
-    tab.close_pane(new_pane_id_2, false);
+    tab.close_pane(new_pane_id_2, false, None);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6076,7 +6076,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
     tab.move_focus_right(client_id);
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
-    tab.close_pane(new_pane_id_2, false);
+    tab.close_pane(new_pane_id_2, false, None);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7400,7 +7400,7 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
         client_id,
     )
     .unwrap();
-    tab.close_pane(PaneId::Terminal(4), false);
+    tab.close_pane(PaneId::Terminal(4), false, None);
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -7510,7 +7510,7 @@ fn close_pane_near_stacked_panes() {
         None,
     )
     .unwrap();
-    tab.close_pane(PaneId::Terminal(6), false);
+    tab.close_pane(PaneId::Terminal(6), false, None);
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -8771,7 +8771,7 @@ fn when_closing_a_pane_in_auto_layout_the_focus_goes_to_last_focused_pane() {
     );
     let _ = tab.move_focus_down(client_id);
     let _ = tab.move_focus_down(client_id);
-    tab.close_pane(PaneId::Terminal(3), false);
+    tab.close_pane(PaneId::Terminal(3), false, None);
     tab.render(&mut output, None).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -9717,7 +9717,7 @@ fn when_closing_a_floating_pane_in_auto_layout_the_focus_goes_to_last_focused_pa
     );
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
-    tab.close_pane(PaneId::Terminal(1), false);
+    tab.close_pane(PaneId::Terminal(1), false, None);
     tab.render(&mut output, None).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(

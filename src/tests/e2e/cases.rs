@@ -2396,6 +2396,103 @@ pub fn send_command_through_the_cli() {
 
 #[test]
 #[ignore]
+pub fn send_blocking_command_through_the_cli() {
+    // here we test the following flow:
+    // - send a blocking command through the cli with --blocking --floating --close-on-exit
+    // - the command sleeps for 2 seconds (longer than the default 1s timeout) then exits with status 42
+    // - verify that the CLI blocks for the full duration (we check after 2+ seconds)
+    // - verify that the floating pane appears while running and disappears after completion
+    // - verify that the exit status is properly propagated
+    let fake_win_size = Size {
+        cols: 150,
+        rows: 24,
+    };
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new(fake_win_size)
+            .add_step(Step {
+                name: "Run blocking command through the cli",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.status_bar_appears()
+                        && remote_terminal.cursor_position_is(3, 2)
+                    {
+                        // Send a command that sleeps for 2 seconds then exits with status 42
+                        // Using bash -c with proper escaping
+                        // remote_terminal.send_key("aaa\n".as_bytes());
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        remote_terminal.send_blocking_command_through_the_cli(
+                            // "lskdjlskdjf"
+                            "bash -c 'sleep 2 && exit 42'"
+                        );
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        remote_terminal.send_key(&ENTER);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Wait for floating pane to appear",
+                instruction: |remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    // The floating pane should appear with the running command
+                    if remote_terminal.snapshot_contains("PIN [ ]") {
+                        std::thread::sleep(std::time::Duration::from_millis(2000)); // wait for
+                                                                                    // command to
+                                                                                    // end
+                        step_is_complete = true
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Wait for command to complete and verify exit status",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    // After 2+ seconds, the command should complete and the floating pane should close
+                    // then we do echo $? to make sure we got back its exit status
+                    if !remote_terminal.snapshot_contains("PIN [ ]")
+                    {
+                        remote_terminal.send_key("echo $?".as_bytes());
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        remote_terminal.send_key(&ENTER);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        step_is_complete = true
+                    }
+                    step_is_complete
+                },
+            });
+        runner.run_all_steps();
+
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Verify CLI returned with proper exit status after command completed",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.snapshot_contains("echo $?")
+                    && remote_terminal.status_bar_appears()
+                {
+                    step_is_complete = true
+                }
+                step_is_complete
+            },
+        });
+
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
 pub fn load_plugins_in_background_on_startup() {
     let fake_win_size = Size {
         cols: 120,

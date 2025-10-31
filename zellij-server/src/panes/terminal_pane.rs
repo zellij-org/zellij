@@ -896,6 +896,11 @@ impl Pane for TerminalPane {
     ) -> PaneContents {
         self.grid.pane_contents(get_full_scrollback)
     }
+    fn update_exit_status(&mut self, exit_status: i32) {
+        if let Some(notification_end) = self.notification_end.as_mut() {
+            notification_end.set_exit_status(exit_status);
+        }
+    }
 }
 
 impl TerminalPane {

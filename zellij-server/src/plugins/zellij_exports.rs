@@ -1440,6 +1440,7 @@ fn close_self(env: &PluginEnv) {
             PaneId::Plugin(env.plugin_id),
             None,
             None,
+            None,
         ))
         .with_context(|| format!("failed to close self"))
         .non_fatal();

@@ -218,7 +218,8 @@ pub enum ScreenInstruction {
     ToggleActiveTerminalFullscreen(ClientId, Option<NotificationEnd>),
     TogglePaneFrames(Option<NotificationEnd>),
     SetSelectable(PaneId, bool),
-    ClosePane(PaneId, Option<ClientId>, Option<NotificationEnd>),
+    ClosePane(PaneId, Option<ClientId>, Option<NotificationEnd>, Option<i32>), // i32 -> optional exit
+                                                                               // status
     HoldPane(PaneId, Option<i32>, RunCommand),
     UpdatePaneName(Vec<u8>, ClientId, Option<NotificationEnd>),
     UndoRenamePane(ClientId, Option<NotificationEnd>),
@@ -4449,16 +4450,17 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
+                exit_status,
             ) => {
                 match client_id {
                     Some(client_id) => {
                         active_tab!(screen, client_id, |tab: &mut Tab| tab
-                            .close_pane(id, false,));
+                            .close_pane(id, false, exit_status));
                     },
                     None => {
                         for tab in screen.tabs.values_mut() {
                             if tab.get_all_pane_ids().contains(&id) {
-                                tab.close_pane(id, false);
+                                tab.close_pane(id, false, exit_status);
                                 break;
                             }
                         }
