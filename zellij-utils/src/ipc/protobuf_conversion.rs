@@ -707,7 +707,7 @@ impl From<crate::input::actions::Action>
             HalfPageScrollDownAction, HalfPageScrollUpAction, KeybindPipeAction,
             LaunchOrFocusPluginAction, LaunchPluginAction, ListClientsAction, MouseEventAction,
             MoveFocusAction, MoveFocusOrTabAction, MovePaneAction, MovePaneBackwardsAction,
-            MoveTabAction, NewFloatingPaneAction, NewFloatingPluginPaneAction,
+            MoveTabAction, NewBlockingPaneAction, NewFloatingPaneAction, NewFloatingPluginPaneAction,
             NewInPlacePaneAction, NewInPlacePluginPaneAction, NewPaneAction, NewStackedPaneAction,
             NewTabAction, NewTiledPaneAction, NewTiledPluginPaneAction, NextSwapLayoutAction,
             NoOpAction, PageScrollDownAction, PageScrollUpAction, PaneNameInputAction,
@@ -894,6 +894,15 @@ impl From<crate::input::actions::Action>
                     pane_name,
                 })
             },
+            crate::input::actions::Action::NewBlockingPane {
+                placement,
+                pane_name,
+                start_suppressed,
+            } => ActionType::NewBlockingPane(NewBlockingPaneAction {
+                placement: Some(placement.into()),
+                pane_name,
+                start_suppressed,
+            }),
             crate::input::actions::Action::TogglePaneEmbedOrFloating => {
                 ActionType::TogglePaneEmbedOrFloating(TogglePaneEmbedOrFloatingAction {})
             },
@@ -1401,6 +1410,16 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .map(|c| c.try_into())
                         .transpose()?,
                     pane_name: new_stacked_action.pane_name,
+                })
+            },
+            ActionType::NewBlockingPane(new_blocking_action) => {
+                Ok(crate::input::actions::Action::NewBlockingPane {
+                    placement: new_blocking_action
+                        .placement
+                        .ok_or_else(|| anyhow!("NewBlockingPane missing placement"))?
+                        .try_into()?,
+                    pane_name: new_blocking_action.pane_name,
+                    start_suppressed: new_blocking_action.start_suppressed,
                 })
             },
             ActionType::TogglePaneEmbedOrFloating(_) => {
@@ -2229,6 +2248,88 @@ impl TryFrom<crate::client_server_contract::client_server_contract::FloatingPane
             height: coords.height.map(|h| h.try_into()).transpose()?,
             pinned: coords.pinned,
         })
+    }
+}
+
+// NewPanePlacement conversion
+impl From<crate::data::NewPanePlacement>
+    for crate::client_server_contract::client_server_contract::NewPanePlacement
+{
+    fn from(placement: crate::data::NewPanePlacement) -> Self {
+        use crate::client_server_contract::client_server_contract::new_pane_placement::PlacementType;
+        let placement_type = match placement {
+            crate::data::NewPanePlacement::NoPreference => PlacementType::NoPreference(true),
+            crate::data::NewPanePlacement::Tiled(direction) => {
+                PlacementType::Tiled(direction.map(direction_to_proto_i32).unwrap_or(0))
+            },
+            crate::data::NewPanePlacement::Floating(coords) => {
+                PlacementType::Floating(coords.map(|c| c.into()).unwrap_or_default())
+            },
+            crate::data::NewPanePlacement::InPlace {
+                pane_id_to_replace,
+                close_replaced_pane,
+            } => PlacementType::InPlace(
+                crate::client_server_contract::client_server_contract::NewPanePlacementInPlace {
+                    pane_id_to_replace: pane_id_to_replace.map(|id| id.into()),
+                    close_replaced_pane,
+                },
+            ),
+            crate::data::NewPanePlacement::Stacked(pane_id) => {
+                PlacementType::Stacked(pane_id.map(|id| id.into()).unwrap_or_default())
+            },
+        };
+        Self {
+            placement_type: Some(placement_type),
+        }
+    }
+}
+
+// Reverse NewPanePlacement conversion
+impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlacement>
+    for crate::data::NewPanePlacement
+{
+    type Error = anyhow::Error;
+    fn try_from(
+        placement: crate::client_server_contract::client_server_contract::NewPanePlacement,
+    ) -> Result<Self> {
+        use crate::client_server_contract::client_server_contract::new_pane_placement::PlacementType;
+        match placement
+            .placement_type
+            .ok_or_else(|| anyhow!("NewPanePlacement missing placement_type"))?
+        {
+            PlacementType::NoPreference(_) => Ok(crate::data::NewPanePlacement::NoPreference),
+            PlacementType::Tiled(direction) => {
+                let direction = if direction == 0 {
+                    None
+                } else {
+                    Some(proto_i32_to_direction(direction)?)
+                };
+                Ok(crate::data::NewPanePlacement::Tiled(direction))
+            },
+            PlacementType::Floating(coords) => {
+                let coords = if coords == Default::default() {
+                    None
+                } else {
+                    Some(coords.try_into()?)
+                };
+                Ok(crate::data::NewPanePlacement::Floating(coords))
+            },
+            PlacementType::InPlace(in_place) => Ok(crate::data::NewPanePlacement::InPlace {
+                pane_id_to_replace: in_place
+                    .pane_id_to_replace
+                    .map(|id| id.try_into())
+                    .transpose()?,
+                close_replaced_pane: in_place.close_replaced_pane,
+            }),
+            PlacementType::Stacked(pane_id) => {
+                let pane_id = if pane_id == Default::default() {
+                    None
+                } else {
+                    Some(pane_id.try_into()?)
+                };
+                Ok(crate::data::NewPanePlacement::Stacked(pane_id))
+            },
+        }
     }
 }
 

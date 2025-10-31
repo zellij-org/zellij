@@ -8,7 +8,7 @@ use crate::{
     os_input_output::ServerOsApi,
     panes::PaneId,
     plugins::PluginInstruction,
-    pty::{ClientTabIndexOrPaneId, NewPanePlacement, PtyInstruction},
+    pty::{ClientTabIndexOrPaneId, PtyInstruction},
     screen::ScreenInstruction,
     ServerInstruction, SessionMetaData, SessionState,
 };
@@ -18,7 +18,7 @@ use uuid::Uuid;
 use zellij_utils::{
     envs,
     channels::SenderWithContext,
-    data::{BareKey, ConnectToSession, Direction, Event, InputMode, KeyModifier, PluginCapabilities, ResizeStrategy},
+    data::{BareKey, ConnectToSession, Direction, Event, InputMode, KeyModifier, PluginCapabilities, ResizeStrategy, NewPanePlacement},
     errors::prelude::*,
     input::{
         actions::{Action, SearchDirection, SearchOption},
@@ -491,6 +491,25 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
 
         },
+        Action::NewBlockingPane {
+            placement,
+            pane_name,
+            start_suppressed,
+        } => {
+
+            let shell = default_shell.clone();
+            senders
+                .send_to_pty(PtyInstruction::SpawnTerminal(
+                    shell,
+                    pane_name,
+                    placement,
+                    start_suppressed,
+                    ClientTabIndexOrPaneId::ClientId(client_id),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+
+        },
         Action::EditFile {
             payload: open_file_payload,
             direction: split_direction,
@@ -638,7 +657,7 @@ pub(crate) fn route_action(
                         .send_to_pty(PtyInstruction::SpawnTerminal(
                             run_cmd,
                             name,
-                            NewPanePlacement::Stacked(Some(pane_id)),
+                            NewPanePlacement::Stacked(Some(pane_id.into())),
                             false,
                             ClientTabIndexOrPaneId::PaneId(pane_id),
                             Some(NotificationEnd::new(completion_tx)),

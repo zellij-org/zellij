@@ -14,7 +14,7 @@ use log::{debug, warn};
 use zellij_utils::data::{
     Direction, FloatingPaneCoordinates, KeyWithModifier, PaneContents, PaneManifest,
     PaneScrollbackResponse, PluginPermission, Resize, ResizeStrategy, SessionInfo, Styling,
-    WebSharing,
+    WebSharing, NewPanePlacement
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -48,7 +48,7 @@ use crate::{
     panes::sixel::SixelImageStore,
     panes::PaneId,
     plugins::{PluginId, PluginInstruction, PluginRenderAsset},
-    pty::{get_default_shell, ClientTabIndexOrPaneId, NewPanePlacement, PtyInstruction, VteBytes},
+    pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     tab::{SuppressedPanes, Tab},
     thread_bus::Bus,
     ui::{
@@ -5241,7 +5241,7 @@ pub(crate) fn screen_thread_main(
                 }
                 if should_be_in_place {
                     new_pane_placement = NewPanePlacement::with_pane_id_to_replace(
-                        pane_id_to_replace,
+                        pane_id_to_replace.map(|id| id.into()),
                         close_replaced_pane,
                     );
                 }

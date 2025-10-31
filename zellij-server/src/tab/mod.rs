@@ -15,7 +15,7 @@ use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
     Direction, KeyWithModifier, PaneInfo, PermissionStatus, PermissionType, PluginPermission,
-    ResizeStrategy, WebSharing,
+    ResizeStrategy, WebSharing, NewPanePlacement
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -42,7 +42,7 @@ use crate::{
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
     plugins::PluginInstruction,
-    pty::{ClientTabIndexOrPaneId, NewPanePlacement, PtyInstruction, VteBytes},
+    pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
     ClientId, ServerInstruction,
 };
@@ -1326,7 +1326,7 @@ impl Tab {
                 pid,
                 initial_pane_title,
                 invoked_with,
-                pane_id_to_replace,
+                pane_id_to_replace.map(|id| id.into()),
                 close_replaced_pane,
                 client_id,
             ),
@@ -1336,7 +1336,7 @@ impl Tab {
                 invoked_with,
                 start_suppressed,
                 should_focus_pane,
-                pane_id_to_stack_under,
+                pane_id_to_stack_under.map(|id| id.into()),
                 client_id,
             ),
         }

@@ -6,7 +6,7 @@ use super::layout::{
     SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
 use crate::cli::CliAction;
-use crate::data::{Direction, KeyWithModifier, LayoutInfo, PaneId, Resize};
+use crate::data::{Direction, KeyWithModifier, LayoutInfo, PaneId, Resize, NewPanePlacement};
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
@@ -187,6 +187,11 @@ pub enum Action {
     /// If no direction is specified, will try to use the biggest available space.
     NewPane {
         direction: Option<Direction>,
+        pane_name: Option<String>,
+        start_suppressed: bool,
+    },
+    NewBlockingPane {
+        placement: NewPanePlacement,
         pane_name: Option<String>,
         start_suppressed: bool,
     },

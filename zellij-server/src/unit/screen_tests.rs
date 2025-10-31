@@ -34,14 +34,14 @@ use std::sync::{Arc, Mutex};
 
 use crate::{
     plugins::PluginInstruction,
-    pty::{ClientTabIndexOrPaneId, NewPanePlacement, PtyInstruction},
+    pty::{ClientTabIndexOrPaneId, PtyInstruction},
 };
 use zellij_utils::ipc::PixelDimensions;
 
 use interprocess::local_socket::LocalSocketStream;
 use zellij_utils::{
     channels::{self, ChannelWithContext, Receiver},
-    data::{Direction, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PluginCapabilities},
+    data::{Direction, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PluginCapabilities, NewPanePlacement},
     ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
 };
 

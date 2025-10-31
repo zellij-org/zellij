@@ -228,6 +228,7 @@ message Action {
     TogglePaneInGroupAction toggle_pane_in_group = 90;
     ToggleGroupMarkingAction toggle_group_marking = 91;
     SwitchSessionAction switch_session = 92;
+    NewBlockingPaneAction new_blocking_pane = 93;
   }
 }
 
@@ -363,6 +364,12 @@ message NewInPlacePaneAction {
 message NewStackedPaneAction {
   optional RunCommandAction command = 1;
   optional string pane_name = 2;
+}
+
+message NewBlockingPaneAction {
+  NewPanePlacement placement = 1;
+  optional string pane_name = 2;
+  bool start_suppressed = 3;
 }
 
 message PaneNameInputAction {
@@ -612,6 +619,21 @@ message SwitchSessionAction {
   optional PaneIdWithPlugin pane_id = 3;
   optional LayoutInfo layout = 4;
   optional string cwd = 5;
+}
+
+message NewPanePlacement {
+  oneof placement_type {
+    bool no_preference = 1;
+    Direction tiled = 2;
+    FloatingPaneCoordinates floating = 3;
+    NewPanePlacementInPlace in_place = 4;
+    PaneId stacked = 5;
+  }
+}
+
+message NewPanePlacementInPlace {
+  optional PaneId pane_id_to_replace = 1;
+  bool close_replaced_pane = 2;
 }
 
 message PaneIdWithPlugin {
