@@ -1,10 +1,15 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 1657
 expression: "format!(\"{:#?}\", new_tab_event)"
 ---
 Some(
     PageScrollUp(
         1,
+        Some(
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+            },
+        ),
     ),
 )

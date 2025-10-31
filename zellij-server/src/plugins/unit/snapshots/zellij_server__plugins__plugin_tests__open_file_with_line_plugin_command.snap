@@ -34,5 +34,12 @@ Some(
         ClientId(
             1,
         ),
+        Some(
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+            },
+        ),
+        false,
     ),
 )

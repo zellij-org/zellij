@@ -1,8 +1,14 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 1848
 expression: "format!(\"{:#?}\", new_tab_event)"
 ---
 Some(
-    TogglePaneFrames,
+    TogglePaneFrames(
+        Some(
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+            },
+        ),
+    ),
 )
