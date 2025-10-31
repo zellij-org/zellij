@@ -1,6 +1,5 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2929
 expression: "format!(\"{:#?}\", plugin_rename_tab_instruction)"
 ---
 Some(
@@ -17,6 +16,7 @@ Some(
                             position: 0,
                             name: "Tab #1",
                             active: true,
+                            previous: false,
                             panes_to_hide: 0,
                             is_fullscreen_active: false,
                             is_sync_panes_active: false,
