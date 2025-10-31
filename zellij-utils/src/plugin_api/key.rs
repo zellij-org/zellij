@@ -14,7 +14,9 @@ impl TryFrom<ProtobufMainKey> for BareKey {
     type Error = &'static str;
     fn try_from(protobuf_main_key: ProtobufMainKey) -> Result<Self, &'static str> {
         match protobuf_main_key {
-            ProtobufMainKey::Char(character) => Ok(BareKey::Char(char_index_to_char(character))),
+            ProtobufMainKey::Char(character) => {
+                Ok(BareKey::Char(char::from_u32(character).unwrap()))
+            },
             ProtobufMainKey::Key(key_index) => {
                 let key = ProtobufNamedKey::from_i32(key_index).ok_or("invalid_key")?;
                 Ok(named_key_to_bare_key(key))
@@ -39,7 +41,7 @@ impl TryFrom<BareKey> for ProtobufMainKey {
             BareKey::Delete => Ok(ProtobufMainKey::Key(ProtobufNamedKey::Delete as i32)),
             BareKey::Insert => Ok(ProtobufMainKey::Key(ProtobufNamedKey::Insert as i32)),
             BareKey::F(f_index) => fn_index_to_main_key(f_index),
-            BareKey::Char(character) => Ok(ProtobufMainKey::Char(character as i32)),
+            BareKey::Char(character) => Ok(ProtobufMainKey::Char(character as u32)),
             BareKey::Tab => Ok(ProtobufMainKey::Key(ProtobufNamedKey::Tab as i32)),
             BareKey::Esc => Ok(ProtobufMainKey::Key(ProtobufNamedKey::Esc as i32)),
             BareKey::Enter => Ok(ProtobufMainKey::Key(ProtobufNamedKey::Enter as i32)),
@@ -138,10 +140,6 @@ fn fn_index_to_main_key(index: u8) -> Result<ProtobufMainKey, &'static str> {
         12 => Ok(ProtobufMainKey::Key(ProtobufNamedKey::F12 as i32)),
         _ => Err("Invalid key"),
     }
-}
-
-fn char_index_to_char(char_index: i32) -> char {
-    char_index as u8 as char
 }
 
 fn named_key_to_bare_key(named_key: ProtobufNamedKey) -> BareKey {
