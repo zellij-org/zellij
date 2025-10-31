@@ -193,8 +193,7 @@ pub enum Action {
     NewBlockingPane {
         placement: NewPanePlacement,
         pane_name: Option<String>,
-        start_suppressed: bool,
-        // TODO: support cloe_on_exit and maybe more stuff
+        command: Option<RunCommandAction>,
     },
     /// Open the file in a new pane using the default editor
     EditFile {
@@ -507,6 +506,24 @@ impl Action {
                         return Err("Blocking panes do not support plugin variants".to_string());
                     }
 
+                    let command = if !command.is_empty() {
+                        let mut command = command.clone();
+                        let (command, args) = (PathBuf::from(command.remove(0)), command);
+                        let hold_on_start = start_suspended;
+                        let hold_on_close = !close_on_exit;
+                        Some(RunCommandAction {
+                            command,
+                            args,
+                            cwd,
+                            direction,
+                            hold_on_close,
+                            hold_on_start,
+                            ..Default::default()
+                        })
+                    } else {
+                        None
+                    };
+
                     let placement = if floating {
                         NewPanePlacement::Floating(FloatingPaneCoordinates::new(x, y, width, height, pinned))
                     } else if in_place {
@@ -523,7 +540,7 @@ impl Action {
                     Ok(vec![Action::NewBlockingPane {
                         placement,
                         pane_name: name,
-                        start_suppressed: start_suspended,
+                        command,
                     }])
                 } else if let Some(plugin) = plugin {
                     let plugin = match RunPluginLocation::parse(&plugin, cwd.clone()) {

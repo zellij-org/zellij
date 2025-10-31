@@ -638,8 +638,8 @@ pub struct NewBlockingPaneAction {
     pub placement: ::core::option::Option<NewPanePlacement>,
     #[prost(string, optional, tag="2")]
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(bool, tag="3")]
-    pub start_suppressed: bool,
+    #[prost(message, optional, tag="3")]
+    pub command: ::core::option::Option<RunCommandAction>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

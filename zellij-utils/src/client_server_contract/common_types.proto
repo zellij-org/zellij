@@ -369,7 +369,7 @@ message NewStackedPaneAction {
 message NewBlockingPaneAction {
   NewPanePlacement placement = 1;
   optional string pane_name = 2;
-  bool start_suppressed = 3;
+  optional RunCommandAction command = 3;
 }
 
 message PaneNameInputAction {

@@ -897,11 +897,11 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::NewBlockingPane {
                 placement,
                 pane_name,
-                start_suppressed,
+                command,
             } => ActionType::NewBlockingPane(NewBlockingPaneAction {
                 placement: Some(placement.into()),
                 pane_name,
-                start_suppressed,
+                command: command.map(|c| c.into()),
             }),
             crate::input::actions::Action::TogglePaneEmbedOrFloating => {
                 ActionType::TogglePaneEmbedOrFloating(TogglePaneEmbedOrFloatingAction {})
@@ -1419,7 +1419,10 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .ok_or_else(|| anyhow!("NewBlockingPane missing placement"))?
                         .try_into()?,
                     pane_name: new_blocking_action.pane_name,
-                    start_suppressed: new_blocking_action.start_suppressed,
+                    command: new_blocking_action
+                        .command
+                        .map(|c| c.try_into())
+                        .transpose()?,
                 })
             },
             ActionType::TogglePaneEmbedOrFloating(_) => {

@@ -507,17 +507,18 @@ pub(crate) fn route_action(
         Action::NewBlockingPane {
             placement,
             pane_name,
-            start_suppressed,
+            command,
         } => {
-
-            let shell = default_shell.clone();
+            let command = command
+                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
+                .or_else(|| default_shell.clone());
             let set_pane_blocking = true;
             senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
-                    shell,
+                    command,
                     pane_name,
                     placement,
-                    start_suppressed,
+                    false,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                     Some(NotificationEnd::new(completion_tx)),
                     set_pane_blocking,
