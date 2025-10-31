@@ -424,7 +424,7 @@ impl RemoteTerminal {
         channel
             .write_all(
                 // note that this is run with the -s flag that suspends the command on startup
-                format!("{} run -s -- \"{}\"\n", ZELLIJ_EXECUTABLE_LOCATION, command).as_bytes(),
+                format!("{} run -s -- \"{}\"", ZELLIJ_EXECUTABLE_LOCATION, command).as_bytes(),
             )
             .unwrap();
         channel.flush().unwrap();

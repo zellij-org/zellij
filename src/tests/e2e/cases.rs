@@ -2317,6 +2317,8 @@ pub fn send_command_through_the_cli() {
                             fixture_folder
                         ));
                         std::thread::sleep(std::time::Duration::from_millis(100));
+                        remote_terminal.send_key(&ENTER);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         step_is_complete = true;
                     }
                     step_is_complete
