@@ -2424,7 +2424,7 @@ pub fn send_blocking_command_through_the_cli() {
                         std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_blocking_command_through_the_cli(
                             // "lskdjlskdjf"
-                            "bash -c 'sleep 2 && exit 42'"
+                            "bash -c 'sleep 2 && exit 42'",
                         );
                         std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&ENTER);
@@ -2454,8 +2454,7 @@ pub fn send_blocking_command_through_the_cli() {
                     let mut step_is_complete = false;
                     // After 2+ seconds, the command should complete and the floating pane should close
                     // then we do echo $? to make sure we got back its exit status
-                    if !remote_terminal.snapshot_contains("PIN [ ]")
-                    {
+                    if !remote_terminal.snapshot_contains("PIN [ ]") {
                         remote_terminal.send_key("echo $?".as_bytes());
                         std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&ENTER);

@@ -389,12 +389,7 @@ pub enum Sessions {
         )]
         stacked: bool,
         /// Whether to block until this command has finished
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false)
-        )]
+        #[clap(long, value_parser, default_value("false"), takes_value(false))]
         blocking: bool,
     },
     /// Load a plugin

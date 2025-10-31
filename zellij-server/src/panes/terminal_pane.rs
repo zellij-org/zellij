@@ -6,9 +6,9 @@ use crate::panes::{
     terminal_character::{render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
 use crate::pty::VteBytes;
+use crate::route::NotificationEnd;
 use crate::tab::{AdjustedInput, Pane};
 use crate::ClientId;
-use crate::route::NotificationEnd;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;

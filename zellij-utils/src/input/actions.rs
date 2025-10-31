@@ -6,7 +6,7 @@ use super::layout::{
     SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
 use crate::cli::CliAction;
-use crate::data::{Direction, KeyWithModifier, LayoutInfo, PaneId, Resize, NewPanePlacement};
+use crate::data::{Direction, KeyWithModifier, LayoutInfo, NewPanePlacement, PaneId, Resize};
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
@@ -525,7 +525,9 @@ impl Action {
                     };
 
                     let placement = if floating {
-                        NewPanePlacement::Floating(FloatingPaneCoordinates::new(x, y, width, height, pinned))
+                        NewPanePlacement::Floating(FloatingPaneCoordinates::new(
+                            x, y, width, height, pinned,
+                        ))
                     } else if in_place {
                         NewPanePlacement::InPlace {
                             pane_id_to_replace: None,
@@ -689,9 +691,7 @@ impl Action {
                     coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
                 }])
             },
-            CliAction::SwitchMode { input_mode } => {
-                Ok(vec![Action::SwitchToMode { input_mode }])
-            },
+            CliAction::SwitchMode { input_mode } => Ok(vec![Action::SwitchToMode { input_mode }]),
             CliAction::TogglePaneEmbedOrFloating => Ok(vec![Action::TogglePaneEmbedOrFloating]),
             CliAction::ToggleFloatingPanes => Ok(vec![Action::ToggleFloatingPanes]),
             CliAction::ClosePane => Ok(vec![Action::CloseFocus]),

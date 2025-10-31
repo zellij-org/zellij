@@ -1214,10 +1214,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     remove_client!(client_id, os_input, session_state);
                 }
             },
-            ServerInstruction::DetachSession(
-                client_ids,
-                completion_tx,
-            ) => {
+            ServerInstruction::DetachSession(client_ids, completion_tx) => {
                 for client_id in &client_ids {
                     let _ = os_input.send_to_client(
                         *client_id,
@@ -1373,7 +1370,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     if let Some(layout_dir) = layout_dir {
                         connect_to_session.apply_layout_dir(&layout_dir);
                     }
-                    // TODO: test that this switcheroo did not cause trouble, then
 
                     send_to_client!(
                         client_id,

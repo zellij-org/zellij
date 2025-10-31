@@ -41,7 +41,10 @@ use zellij_utils::ipc::PixelDimensions;
 use interprocess::local_socket::LocalSocketStream;
 use zellij_utils::{
     channels::{self, ChannelWithContext, Receiver},
-    data::{Direction, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PluginCapabilities, NewPanePlacement},
+    data::{
+        Direction, FloatingPaneCoordinates, InputMode, ModeInfo, NewPanePlacement, Palette,
+        PluginCapabilities,
+    },
     ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
 };
 

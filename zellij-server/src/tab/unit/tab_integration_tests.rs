@@ -42,7 +42,7 @@ use std::rc::Rc;
 
 use interprocess::local_socket::LocalSocketStream;
 use zellij_utils::{
-    data::{InputMode, ModeInfo, Palette, Style, NewPanePlacement},
+    data::{InputMode, ModeInfo, NewPanePlacement, Palette, Style},
     input::command::{RunCommand, TerminalAction},
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };

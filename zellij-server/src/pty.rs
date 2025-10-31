@@ -17,7 +17,7 @@ use nix::unistd::Pid;
 use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::{
-    data::{Direction, Event, FloatingPaneCoordinates, OriginatingPlugin, NewPanePlacement},
+    data::{Direction, Event, FloatingPaneCoordinates, NewPanePlacement, OriginatingPlugin},
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
@@ -48,7 +48,7 @@ pub enum PtyInstruction {
         bool, // start suppressed
         ClientTabIndexOrPaneId,
         Option<NotificationEnd>, // completion signal
-        bool, // set_blocking
+        bool,                    // set_blocking
     ), // bool (if Some) is
     // should_float, String is an optional pane name
     OpenInPlaceEditor(
@@ -561,11 +561,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::DumpLayout(
-                mut session_layout_metadata,
-                client_id,
-                completion_tx,
-            ) => {
+            PtyInstruction::DumpLayout(mut session_layout_metadata, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 match session_serialization::serialize_session_layout(
@@ -574,14 +570,22 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     Ok((kdl_layout, _pane_contents)) => {
                         pty.bus
                             .senders
-                            .send_to_server(ServerInstruction::Log(vec![kdl_layout], client_id, completion_tx))
+                            .send_to_server(ServerInstruction::Log(
+                                vec![kdl_layout],
+                                client_id,
+                                completion_tx,
+                            ))
                             .with_context(err_context)
                             .non_fatal();
                     },
                     Err(e) => {
                         pty.bus
                             .senders
-                            .send_to_server(ServerInstruction::Log(vec![e.to_owned()], client_id, completion_tx))
+                            .send_to_server(ServerInstruction::Log(
+                                vec![e.to_owned()],
+                                client_id,
+                                completion_tx,
+                            ))
                             .with_context(err_context)
                             .non_fatal();
                     },
@@ -893,8 +897,12 @@ impl Pty {
                         command,
                     ));
                 } else {
-                    let _ =
-                        senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None, exit_status));
+                    let _ = senders.send_to_screen(ScreenInstruction::ClosePane(
+                        pane_id,
+                        None,
+                        None,
+                        exit_status,
+                    ));
                 }
             }
         });
@@ -1084,7 +1092,12 @@ impl Pty {
         let quit_cb = Box::new({
             let senders = self.bus.senders.clone();
             move |pane_id, exit_status, _command| {
-                let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None, exit_status));
+                let _ = senders.send_to_screen(ScreenInstruction::ClosePane(
+                    pane_id,
+                    None,
+                    None,
+                    exit_status,
+                ));
             }
         });
         match run_instruction {
@@ -1101,8 +1114,12 @@ impl Pty {
                                 command,
                             ));
                         } else {
-                            let _ = senders
-                                .send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None, exit_status));
+                            let _ = senders.send_to_screen(ScreenInstruction::ClosePane(
+                                pane_id,
+                                None,
+                                None,
+                                exit_status,
+                            ));
                         }
                     }
                 });
@@ -1331,8 +1348,12 @@ impl Pty {
                                 command,
                             ));
                         } else {
-                            let _ = senders
-                                .send_to_screen(ScreenInstruction::ClosePane(pane_id, None, None, exit_status));
+                            let _ = senders.send_to_screen(ScreenInstruction::ClosePane(
+                                pane_id,
+                                None,
+                                None,
+                                exit_status,
+                            ));
                         }
                     }
                 });

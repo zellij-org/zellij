@@ -14,8 +14,8 @@ use std::path::PathBuf;
 use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
-    Direction, KeyWithModifier, PaneInfo, PermissionStatus, PermissionType, PluginPermission,
-    ResizeStrategy, WebSharing, NewPanePlacement
+    Direction, KeyWithModifier, NewPanePlacement, PaneInfo, PermissionStatus, PermissionType,
+    PluginPermission, ResizeStrategy, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -1309,9 +1309,19 @@ impl Tab {
             NewPanePlacement::Tiled(Some(direction)) => {
                 if let Some(client_id) = client_id {
                     if direction == Direction::Left || direction == Direction::Right {
-                        self.vertical_split(pid, initial_pane_title, client_id, blocking_notification)?;
+                        self.vertical_split(
+                            pid,
+                            initial_pane_title,
+                            client_id,
+                            blocking_notification,
+                        )?;
                     } else {
-                        self.horizontal_split(pid, initial_pane_title, client_id, blocking_notification)?;
+                        self.horizontal_split(
+                            pid,
+                            initial_pane_title,
+                            client_id,
+                            blocking_notification,
+                        )?;
                     }
                 }
                 Ok(())
@@ -3400,7 +3410,12 @@ impl Tab {
             pane.set_mouse_selection_support(selection_support);
         }
     }
-    pub fn close_pane(&mut self, id: PaneId, ignore_suppressed_panes: bool, exit_status: Option<i32>) {
+    pub fn close_pane(
+        &mut self,
+        id: PaneId,
+        ignore_suppressed_panes: bool,
+        exit_status: Option<i32>,
+    ) {
         // we need to ignore suppressed panes when we toggle a pane to be floating/embedded(tiled)
         // this is because in that case, while we do use this logic, we're not actually closing the
         // pane, we're moving it

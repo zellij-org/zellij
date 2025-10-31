@@ -433,7 +433,11 @@ impl RemoteTerminal {
         let mut channel = self.channel.lock().unwrap();
         channel
             .write_all(
-                format!("{} run --blocking --floating --close-on-exit -- {}", ZELLIJ_EXECUTABLE_LOCATION, command).as_bytes(),
+                format!(
+                    "{} run --blocking --floating --close-on-exit -- {}",
+                    ZELLIJ_EXECUTABLE_LOCATION, command
+                )
+                .as_bytes(),
             )
             .unwrap();
         channel.flush().unwrap();

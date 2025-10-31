@@ -12,9 +12,9 @@ use crate::route::NotificationEnd;
 
 use log::{debug, warn};
 use zellij_utils::data::{
-    Direction, FloatingPaneCoordinates, KeyWithModifier, PaneContents, PaneManifest,
-    PaneScrollbackResponse, PluginPermission, Resize, ResizeStrategy, SessionInfo, Styling,
-    WebSharing, NewPanePlacement
+    Direction, FloatingPaneCoordinates, KeyWithModifier, NewPanePlacement, PaneContents,
+    PaneManifest, PaneScrollbackResponse, PluginPermission, Resize, ResizeStrategy, SessionInfo,
+    Styling, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -161,7 +161,7 @@ pub enum ScreenInstruction {
         bool, // start suppressed
         ClientTabIndexOrPaneId,
         Option<NotificationEnd>, // completion signal
-        bool, // set_blocking
+        bool,                    // set_blocking
     ),
     OpenInPlaceEditor(PaneId, ClientTabIndexOrPaneId),
     TogglePaneEmbedOrFloating(ClientId, Option<NotificationEnd>),
@@ -218,8 +218,13 @@ pub enum ScreenInstruction {
     ToggleActiveTerminalFullscreen(ClientId, Option<NotificationEnd>),
     TogglePaneFrames(Option<NotificationEnd>),
     SetSelectable(PaneId, bool),
-    ClosePane(PaneId, Option<ClientId>, Option<NotificationEnd>, Option<i32>), // i32 -> optional exit
-                                                                               // status
+    ClosePane(
+        PaneId,
+        Option<ClientId>,
+        Option<NotificationEnd>,
+        Option<i32>,
+    ), // i32 -> optional exit
+    // status
     HoldPane(PaneId, Option<i32>, RunCommand),
     UpdatePaneName(Vec<u8>, ClientId, Option<NotificationEnd>),
     UndoRenamePane(ClientId, Option<NotificationEnd>),
@@ -482,8 +487,6 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::TogglePaneEmbedOrFloating
             },
             ScreenInstruction::ToggleFloatingPanes(..) => ScreenContext::ToggleFloatingPanes,
-            // ScreenInstruction::HorizontalSplit(..) => ScreenContext::HorizontalSplit,
-            // ScreenInstruction::VerticalSplit(..) => ScreenContext::VerticalSplit,
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
             ScreenInstruction::Resize(.., strategy, _) => match strategy {
                 ResizeStrategy {
@@ -3692,11 +3695,7 @@ pub(crate) fn screen_thread_main(
                 completion_tx,
                 set_blocking,
             ) => {
-                let blocking_notification = if set_blocking {
-                    completion_tx
-                } else {
-                    None
-                };
+                let blocking_notification = if set_blocking { completion_tx } else { None };
 
                 match client_or_tab_index {
                     ClientTabIndexOrPaneId::ClientId(client_id) => {
@@ -4449,13 +4448,16 @@ pub(crate) fn screen_thread_main(
                 id,
                 client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
+                // waiting for it
                 exit_status,
             ) => {
                 match client_id {
                     Some(client_id) => {
-                        active_tab!(screen, client_id, |tab: &mut Tab| tab
-                            .close_pane(id, false, exit_status));
+                        active_tab!(screen, client_id, |tab: &mut Tab| tab.close_pane(
+                            id,
+                            false,
+                            exit_status
+                        ));
                     },
                     None => {
                         for tab in screen.tabs.values_mut() {
@@ -5086,19 +5088,17 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::QueryTabNames(
-                client_id,
-                completion_tx,
-            ) => {
+            ScreenInstruction::QueryTabNames(client_id, completion_tx) => {
                 let tab_names = screen
                     .get_tabs_mut()
                     .values()
                     .map(|tab| tab.name.clone())
                     .collect::<Vec<String>>();
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::Log(tab_names, client_id, completion_tx))?;
+                screen.bus.senders.send_to_server(ServerInstruction::Log(
+                    tab_names,
+                    client_id,
+                    completion_tx,
+                ))?;
             },
             ScreenInstruction::NewTiledPluginPane(
                 run_plugin,

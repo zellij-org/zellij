@@ -317,9 +317,9 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
                         ExitReason::Error(error_msg)
                     },
                     ProtoExitReason::CustomExitStatus => {
-                        let status_str =
-                            exit.payload.unwrap_or_else(|| "0".to_string());
-                        let status = status_str.parse::<i32>()
+                        let status_str = exit.payload.unwrap_or_else(|| "0".to_string());
+                        let status = status_str
+                            .parse::<i32>()
                             .map_err(|_| anyhow!("Invalid custom exit status: {}", status_str))?;
                         ExitReason::CustomExitStatus(status)
                     },
@@ -717,22 +717,22 @@ impl From<crate::input::actions::Action>
             HalfPageScrollDownAction, HalfPageScrollUpAction, KeybindPipeAction,
             LaunchOrFocusPluginAction, LaunchPluginAction, ListClientsAction, MouseEventAction,
             MoveFocusAction, MoveFocusOrTabAction, MovePaneAction, MovePaneBackwardsAction,
-            MoveTabAction, NewBlockingPaneAction, NewFloatingPaneAction, NewFloatingPluginPaneAction,
-            NewInPlacePaneAction, NewInPlacePluginPaneAction, NewPaneAction, NewStackedPaneAction,
-            NewTabAction, NewTiledPaneAction, NewTiledPluginPaneAction, NextSwapLayoutAction,
-            NoOpAction, PageScrollDownAction, PageScrollUpAction, PaneNameInputAction,
-            PreviousSwapLayoutAction, QueryTabNamesAction, QuitAction, RenamePluginPaneAction,
-            RenameSessionAction, RenameTabAction, RenameTerminalPaneAction, ResizeAction,
-            RunAction, ScrollDownAction, ScrollDownAtAction, ScrollToBottomAction,
-            ScrollToTopAction, ScrollUpAction, ScrollUpAtAction, SearchAction, SearchInputAction,
-            SearchToggleOptionAction, SkipConfirmAction, StackPanesAction,
-            StartOrReloadPluginAction, SwitchFocusAction, SwitchModeForAllClientsAction,
-            SwitchToModeAction, TabNameInputAction, ToggleActiveSyncTabAction,
-            ToggleFloatingPanesAction, ToggleFocusFullscreenAction, ToggleGroupMarkingAction,
-            ToggleMouseModeAction, TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction,
-            TogglePaneInGroupAction, TogglePanePinnedAction, ToggleTabAction, UndoRenamePaneAction,
-            UndoRenameTabAction, WriteAction, WriteCharsAction, SwitchSessionAction,
-            PaneIdWithPlugin,
+            MoveTabAction, NewBlockingPaneAction, NewFloatingPaneAction,
+            NewFloatingPluginPaneAction, NewInPlacePaneAction, NewInPlacePluginPaneAction,
+            NewPaneAction, NewStackedPaneAction, NewTabAction, NewTiledPaneAction,
+            NewTiledPluginPaneAction, NextSwapLayoutAction, NoOpAction, PageScrollDownAction,
+            PageScrollUpAction, PaneIdWithPlugin, PaneNameInputAction, PreviousSwapLayoutAction,
+            QueryTabNamesAction, QuitAction, RenamePluginPaneAction, RenameSessionAction,
+            RenameTabAction, RenameTerminalPaneAction, ResizeAction, RunAction, ScrollDownAction,
+            ScrollDownAtAction, ScrollToBottomAction, ScrollToTopAction, ScrollUpAction,
+            ScrollUpAtAction, SearchAction, SearchInputAction, SearchToggleOptionAction,
+            SkipConfirmAction, StackPanesAction, StartOrReloadPluginAction, SwitchFocusAction,
+            SwitchModeForAllClientsAction, SwitchSessionAction, SwitchToModeAction,
+            TabNameInputAction, ToggleActiveSyncTabAction, ToggleFloatingPanesAction,
+            ToggleFocusFullscreenAction, ToggleGroupMarkingAction, ToggleMouseModeAction,
+            TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction, TogglePaneInGroupAction,
+            TogglePanePinnedAction, ToggleTabAction, UndoRenamePaneAction, UndoRenameTabAction,
+            WriteAction, WriteCharsAction,
         };
         use std::collections::HashMap;
 

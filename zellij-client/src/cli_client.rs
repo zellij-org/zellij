@@ -232,7 +232,7 @@ fn individual_messages_client(
                 },
                 ExitReason::CustomExitStatus(exit_status) => {
                     process::exit(exit_status);
-                }
+                },
                 _ => {
                     break;
                 },

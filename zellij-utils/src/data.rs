@@ -2658,7 +2658,6 @@ impl NewPanePlacement {
     }
 }
 
-
 type Context = BTreeMap<String, String>;
 
 #[derive(Debug, Clone, EnumDiscriminants, ToString)]

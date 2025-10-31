@@ -1044,7 +1044,10 @@ impl Action {
                     node.push(KdlEntry::new_prop("layout", layout_info.name()));
                 }
                 if let Some(cwd_path) = cwd {
-                    node.push(KdlEntry::new_prop("cwd", cwd_path.to_string_lossy().to_string()));
+                    node.push(KdlEntry::new_prop(
+                        "cwd",
+                        cwd_path.to_string_lossy().to_string(),
+                    ));
                 }
                 Some(node)
             },
@@ -1500,16 +1503,20 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         kdl_action.span().offset(),
                         kdl_action.span().len(),
                     ))?;
-                let tab_position = crate::kdl_get_int_property_or_child_value!(kdl_action, "tab_position")
-                    .map(|i| i as usize);
-                let pane_id =
-                    crate::kdl_get_int_property_or_child_value!(kdl_action, "pane_id").map(|i| i as u32);
+                let tab_position =
+                    crate::kdl_get_int_property_or_child_value!(kdl_action, "tab_position")
+                        .map(|i| i as usize);
+                let pane_id = crate::kdl_get_int_property_or_child_value!(kdl_action, "pane_id")
+                    .map(|i| i as u32);
                 let is_plugin =
-                    crate::kdl_get_bool_property_or_child_value!(kdl_action, "is_plugin").unwrap_or(false);
+                    crate::kdl_get_bool_property_or_child_value!(kdl_action, "is_plugin")
+                        .unwrap_or(false);
                 let pane_id_tuple = pane_id.map(|id| (id, is_plugin));
 
                 // Parse layout
-                let layout = if let Some(layout_str) = kdl_get_string_property_or_child_value!(kdl_action, "layout") {
+                let layout = if let Some(layout_str) =
+                    kdl_get_string_property_or_child_value!(kdl_action, "layout")
+                {
                     let layout_path = PathBuf::from(layout_str);
                     let layout_dir = config_options
                         .layout_dir
@@ -1521,8 +1528,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 };
 
                 // Parse cwd
-                let cwd = kdl_get_string_property_or_child_value!(kdl_action, "cwd")
-                    .map(PathBuf::from);
+                let cwd =
+                    kdl_get_string_property_or_child_value!(kdl_action, "cwd").map(PathBuf::from);
 
                 Ok(Action::SwitchSession {
                     name,
