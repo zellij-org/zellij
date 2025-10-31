@@ -154,13 +154,12 @@ impl NamedColor {
 }
 
 // This enum carefully only has two variants so
-// enum niche optimisations can keep it to 8 bytes
+// enum niche optimisations can keep it at the same byte size as pointers
 #[derive(Clone, Debug, PartialEq)]
 pub enum RcCharacterStyles {
     Reset,
     Rc(Rc<CharacterStyles>),
 }
-const _: [(); 8] = [(); std::mem::size_of::<RcCharacterStyles>()];
 
 impl From<CharacterStyles> for RcCharacterStyles {
     fn from(styles: CharacterStyles) -> Self {
@@ -920,15 +919,14 @@ impl Cursor {
     }
 }
 
+// The size of this has significant memory and CPU implications for long lines,
+// be careful about allowing it to grow
 #[derive(Clone, PartialEq)]
 pub struct TerminalCharacter {
     pub character: char,
     pub styles: RcCharacterStyles,
     width: u8,
 }
-// This size has significant memory and CPU implications for long lines,
-// be careful about allowing it to grow
-const _: [(); 16] = [(); std::mem::size_of::<TerminalCharacter>()];
 
 impl TerminalCharacter {
     #[inline]
