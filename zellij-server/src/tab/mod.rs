@@ -1373,6 +1373,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    None,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1478,6 +1479,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    None,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1573,6 +1575,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    None,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1711,6 +1714,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    None,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1919,6 +1923,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    None,
                 );
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
                     self.floating_panes
@@ -2089,6 +2094,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    None,
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -2150,6 +2156,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    None,
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
@@ -5449,6 +5456,7 @@ impl Tab {
             self.arrow_fonts,
             self.styled_underlines,
             self.explicitly_disable_kitty_keyboard_protocol,
+            None,
         );
         new_pane.update_name("EDITING SCROLLBACK"); // we do this here and not in the
                                                     // constructor so it won't be overrided

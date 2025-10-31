@@ -459,6 +459,7 @@ impl<'a> LayoutApplier<'a> {
             self.arrow_fonts,
             self.styled_underlines,
             self.explicitly_disable_kitty_keyboard_protocol,
+            None,
         );
         if let Some(pane_initial_contents) = &floating_pane_layout.pane_initial_contents {
             new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
@@ -512,6 +513,7 @@ impl<'a> LayoutApplier<'a> {
             self.arrow_fonts,
             self.styled_underlines,
             self.explicitly_disable_kitty_keyboard_protocol,
+            None,
         );
         if let Some(pane_initial_contents) = &layout.pane_initial_contents {
             new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());

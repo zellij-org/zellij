@@ -8,6 +8,7 @@ use crate::panes::{
 use crate::pty::VteBytes;
 use crate::tab::{AdjustedInput, Pane};
 use crate::ClientId;
+use crate::route::NotificationEnd;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -141,6 +142,7 @@ pub struct TerminalPane {
     invoked_with: Option<Run>,
     #[allow(dead_code)]
     arrow_fonts: bool,
+    notification_end: Option<NotificationEnd>,
 }
 
 impl Pane for TerminalPane {
@@ -910,6 +912,7 @@ impl TerminalPane {
         arrow_fonts: bool,
         styled_underlines: bool,
         explicitly_disable_keyboard_protocol: bool,
+        notification_end: Option<NotificationEnd>,
     ) -> TerminalPane {
         let initial_pane_title =
             initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
@@ -951,6 +954,7 @@ impl TerminalPane {
             pane_frame_color_override: None,
             invoked_with,
             arrow_fonts,
+            notification_end,
         }
     }
     pub fn get_x(&self) -> usize {

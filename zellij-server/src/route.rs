@@ -39,17 +39,27 @@ const ACTION_COMPLETION_TIMEOUT: Duration = Duration::from_secs(1);
 fn wait_for_action_completion(
     receiver: oneshot::Receiver<()>,
     action_name: &str,
+    wait_forever: bool,
 ) {
     let runtime = get_tokio_runtime();
-    match runtime.block_on(async { tokio::time::timeout(ACTION_COMPLETION_TIMEOUT, receiver).await }) {
-        Ok(_) => {}
-        Err(_) => {
-            log::error!(
-                "Action {} did not complete within {:?} timeout",
-                action_name,
-                ACTION_COMPLETION_TIMEOUT
-            );
-        },
+    if wait_forever {
+        runtime.block_on(async { match receiver.await {
+            Ok(payload) => {}
+            Err(e) => {
+                log::error!("Failed to wait for action {}: {}", action_name, e);
+            }
+        } })
+    } else {
+        match runtime.block_on(async { tokio::time::timeout(ACTION_COMPLETION_TIMEOUT, receiver).await }) {
+            Ok(_) => {}
+            Err(_) => {
+                log::error!(
+                    "Action {} did not complete within {:?} timeout",
+                    action_name,
+                    ACTION_COMPLETION_TIMEOUT
+                );
+            },
+        }
     }
 }
 
@@ -119,6 +129,8 @@ pub(crate) fn route_action(
     // wait_for_action_completion call below (or timeout after 1 second) and release this thread,
     // allowing the client to produce another action without risking races
     let (completion_tx, completion_rx) = oneshot::channel();
+
+    let mut wait_forever = false;
 
     match action {
         Action::ToggleTab => {
@@ -508,6 +520,7 @@ pub(crate) fn route_action(
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
+            wait_forever = true;
 
         },
         Action::EditFile {
@@ -1506,7 +1519,7 @@ pub(crate) fn route_action(
 
         },
     }
-    wait_for_action_completion(completion_rx, &action_name);
+    wait_for_action_completion(completion_rx, &action_name, wait_forever);
     Ok(should_break)
 }
 
