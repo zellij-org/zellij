@@ -194,6 +194,7 @@ pub enum Action {
         placement: NewPanePlacement,
         pane_name: Option<String>,
         start_suppressed: bool,
+        // TODO: support cloe_on_exit and maybe more stuff
     },
     /// Open the file in a new pane using the default editor
     EditFile {
@@ -491,6 +492,7 @@ impl Action {
                 height,
                 pinned,
                 stacked,
+                blocking,
             } => {
                 let current_dir = get_current_dir();
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
@@ -499,7 +501,31 @@ impl Action {
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir.clone()));
-                if let Some(plugin) = plugin {
+                if blocking {
+                    // For blocking panes, we don't support plugins
+                    if plugin.is_some() {
+                        return Err("Blocking panes do not support plugin variants".to_string());
+                    }
+
+                    let placement = if floating {
+                        NewPanePlacement::Floating(FloatingPaneCoordinates::new(x, y, width, height, pinned))
+                    } else if in_place {
+                        NewPanePlacement::InPlace {
+                            pane_id_to_replace: None,
+                            close_replaced_pane: false,
+                        }
+                    } else if stacked {
+                        NewPanePlacement::Stacked(None)
+                    } else {
+                        NewPanePlacement::Tiled(direction)
+                    };
+
+                    Ok(vec![Action::NewBlockingPane {
+                        placement,
+                        pane_name: name,
+                        start_suppressed: start_suspended,
+                    }])
+                } else if let Some(plugin) = plugin {
                     let plugin = match RunPluginLocation::parse(&plugin, cwd.clone()) {
                         Ok(location) => {
                             let user_configuration = configuration.unwrap_or_default();

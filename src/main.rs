@@ -39,6 +39,7 @@ fn main() {
             height,
             pinned,
             stacked,
+            blocking,
         })) = opts.command
         {
             let cwd = cwd.or_else(|| std::env::current_dir().ok());
@@ -61,6 +62,7 @@ fn main() {
                 height,
                 pinned,
                 stacked,
+                blocking,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -80,6 +82,7 @@ fn main() {
         {
             let cwd = None;
             let stacked = false;
+            let blocking = false;
             let command_cli_action = CliAction::NewPane {
                 command: vec![],
                 plugin: Some(url),
@@ -98,6 +101,7 @@ fn main() {
                 height,
                 pinned,
                 stacked,
+                blocking,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);

@@ -388,6 +388,14 @@ pub enum Sessions {
             takes_value(false)
         )]
         stacked: bool,
+        /// Whether to block until this command has finished
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false)
+        )]
+        blocking: bool,
     },
     /// Load a plugin
     #[clap(visible_alias = "p")]
@@ -686,6 +694,8 @@ pub enum CliAction {
             takes_value(false)
         )]
         stacked: bool,
+        #[clap(short, long)]
+        blocking: bool,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
