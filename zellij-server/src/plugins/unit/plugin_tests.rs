@@ -1,4 +1,5 @@
 use super::plugin_thread_main;
+use crate::panes::PaneId;
 use crate::screen::ScreenInstruction;
 use crate::{channels::SenderWithContext, thread_bus::Bus, ServerInstruction};
 use insta::assert_snapshot;
@@ -6275,6 +6276,7 @@ pub fn unblock_input_plugin_command() {
     std::thread::sleep(std::time::Duration::from_millis(500));
 
     let _ = plugin_thread_sender.send(PluginInstruction::CliPipe {
+        pane_id: Some(PaneId::Terminal(0)),
         pipe_id: "input_pipe_id".to_owned(),
         name: "message_name".to_owned(),
         payload: Some("message_payload".to_owned()),
@@ -6362,6 +6364,7 @@ pub fn block_input_plugin_command() {
     std::thread::sleep(std::time::Duration::from_millis(5000));
 
     let _ = plugin_thread_sender.send(PluginInstruction::CliPipe {
+        pane_id: Some(PaneId::Plugin(0)),
         pipe_id: "input_pipe_id".to_owned(),
         name: "message_name_block".to_owned(),
         payload: Some("message_payload".to_owned()),
@@ -6455,6 +6458,7 @@ pub fn pipe_output_plugin_command() {
     std::thread::sleep(std::time::Duration::from_millis(500));
 
     let _ = plugin_thread_sender.send(PluginInstruction::CliPipe {
+        pane_id: None,
         pipe_id: "input_pipe_id".to_owned(),
         name: "pipe_output".to_owned(),
         payload: Some("message_payload".to_owned()),
@@ -6541,6 +6545,7 @@ pub fn pipe_message_to_plugin_plugin_command() {
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::CliPipe {
+        pane_id: None,
         pipe_id: "input_pipe_id".to_owned(),
         name: "pipe_message_to_plugin".to_owned(),
         payload: Some("payload_sent_to_self".to_owned()),
