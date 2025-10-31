@@ -965,6 +965,7 @@ fn increase_tiled_pane_sizes_with_stacked_resizes() {
             true,
             NewPanePlacement::default(),
             Some(client_id),
+            None,
         )
         .unwrap();
     }
@@ -1018,6 +1019,7 @@ fn increase_tiled_pane_sizes_with_stacked_resizes_into_uneven_panes() {
             true,
             NewPanePlacement::default(),
             Some(client_id),
+            None,
         )
         .unwrap();
     }
@@ -1080,6 +1082,7 @@ fn split_stack_vertically() {
             true,
             NewPanePlacement::default(),
             Some(client_id),
+            None,
         )
         .unwrap();
     }
@@ -1120,6 +1123,7 @@ fn split_stack_horizontally() {
             true,
             NewPanePlacement::default(),
             Some(client_id),
+            None,
         )
         .unwrap();
     }
@@ -1162,6 +1166,7 @@ fn render_stacks_without_pane_frames() {
             true,
             NewPanePlacement::default(),
             Some(client_id),
+            None,
         )
         .unwrap();
     }
@@ -1182,6 +1187,7 @@ fn render_stacks_without_pane_frames() {
             true,
             NewPanePlacement::default(),
             Some(client_id),
+            None,
         )
         .unwrap();
     }
@@ -1196,6 +1202,7 @@ fn render_stacks_without_pane_frames() {
             true,
             NewPanePlacement::default(),
             Some(client_id),
+            None,
         )
         .unwrap();
     }
@@ -1210,6 +1217,7 @@ fn render_stacks_without_pane_frames() {
             true,
             NewPanePlacement::default(),
             Some(client_id),
+            None,
         )
         .unwrap();
     }
@@ -5318,6 +5326,7 @@ fn move_focus_right_into_stacked_panes() {
             true,
             NewPanePlacement::default(),
             Some(client_id),
+            None,
         )
         .unwrap();
     }
@@ -5389,6 +5398,7 @@ fn move_focus_left_into_stacked_panes() {
             true,
             NewPanePlacement::default(),
             Some(client_id),
+            None,
         )
         .unwrap();
     }
@@ -5462,6 +5472,7 @@ fn move_focus_up_into_stacked_panes() {
             true,
             NewPanePlacement::default(),
             Some(client_id),
+            None,
         )
         .unwrap();
     }
@@ -5536,6 +5547,7 @@ fn move_focus_down_into_stacked_panes() {
             true,
             NewPanePlacement::default(),
             Some(client_id),
+            None,
         )
         .unwrap();
     }
@@ -8168,6 +8180,7 @@ fn new_pane_in_auto_layout() {
             true,
             NewPanePlacement::default(),
             Some(client_id),
+            None,
         )
         .unwrap();
         tab.render(&mut output, None).unwrap();
@@ -8238,6 +8251,7 @@ fn new_pane_in_stacked_resizes() {
             true,
             NewPanePlacement::default(),
             Some(client_id),
+            None,
         )
         .unwrap();
         tab.render(&mut output, None).unwrap();
@@ -9188,6 +9202,7 @@ fn new_floating_pane_in_auto_layout() {
             true,
             NewPanePlacement::Floating(None),
             Some(client_id),
+            None,
         )
         .unwrap();
         tab.render(&mut output, None).unwrap();

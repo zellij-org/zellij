@@ -1263,6 +1263,7 @@ impl Tab {
                         should_start_suppressed,
                         client_id_or_tab_index,
                         completion_tx,
+                        false, // set_blocking
                     );
                     self.senders
                         .send_to_pty(instruction)
@@ -1283,6 +1284,7 @@ impl Tab {
         should_focus_pane: bool,
         new_pane_placement: NewPanePlacement,
         client_id: Option<ClientId>,
+        blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
         match new_pane_placement {
             NewPanePlacement::NoPreference => self.new_no_preference_pane(
@@ -1292,6 +1294,7 @@ impl Tab {
                 start_suppressed,
                 should_focus_pane,
                 client_id,
+                blocking_notification,
             ),
             NewPanePlacement::Tiled(None) => self.new_tiled_pane(
                 pid,
@@ -1300,13 +1303,14 @@ impl Tab {
                 start_suppressed,
                 should_focus_pane,
                 client_id,
+                blocking_notification,
             ),
             NewPanePlacement::Tiled(Some(direction)) => {
                 if let Some(client_id) = client_id {
                     if direction == Direction::Left || direction == Direction::Right {
-                        self.vertical_split(pid, initial_pane_title, client_id, None)?;
+                        self.vertical_split(pid, initial_pane_title, client_id, blocking_notification)?;
                     } else {
-                        self.horizontal_split(pid, initial_pane_title, client_id, None)?;
+                        self.horizontal_split(pid, initial_pane_title, client_id, blocking_notification)?;
                     }
                 }
                 Ok(())
@@ -1318,6 +1322,7 @@ impl Tab {
                 start_suppressed,
                 should_focus_pane,
                 floating_pane_coordinates,
+                blocking_notification,
             ),
             NewPanePlacement::InPlace {
                 pane_id_to_replace,
@@ -1329,6 +1334,7 @@ impl Tab {
                 pane_id_to_replace.map(|id| id.into()),
                 close_replaced_pane,
                 client_id,
+                blocking_notification,
             ),
             NewPanePlacement::Stacked(pane_id_to_stack_under) => self.new_stacked_pane(
                 pid,
@@ -1338,6 +1344,7 @@ impl Tab {
                 should_focus_pane,
                 pane_id_to_stack_under.map(|id| id.into()),
                 client_id,
+                blocking_notification,
             ),
         }
     }
@@ -1349,6 +1356,7 @@ impl Tab {
         start_suppressed: bool,
         should_focus_pane: bool,
         client_id: Option<ClientId>,
+        blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
         self.close_down_to_max_terminals()
@@ -1373,7 +1381,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
-                    None,
+                    blocking_notification,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1452,6 +1460,7 @@ impl Tab {
         start_suppressed: bool,
         should_focus_pane: bool,
         client_id: Option<ClientId>,
+        blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
         if should_focus_pane {
@@ -1479,7 +1488,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
-                    None,
+                    blocking_notification,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1548,6 +1557,7 @@ impl Tab {
         start_suppressed: bool,
         should_focus_pane: bool,
         floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+        blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
         if should_focus_pane {
@@ -1575,7 +1585,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
-                    None,
+                    blocking_notification,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1644,6 +1654,7 @@ impl Tab {
         pane_id_to_replace: Option<PaneId>,
         close_replaced_pane: bool,
         client_id: Option<ClientId>,
+        blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
         match (pane_id_to_replace, client_id) {
             (Some(pane_id_to_replace), _) => {
@@ -1652,7 +1663,7 @@ impl Tab {
                     pid,
                     close_replaced_pane,
                     invoked_with,
-                    None,
+                    blocking_notification,
                 )?;
             },
             (None, Some(client_id)) => match self.get_active_pane_id(client_id) {
@@ -1662,7 +1673,7 @@ impl Tab {
                         pid,
                         close_replaced_pane,
                         invoked_with,
-                        None,
+                        blocking_notification,
                     )?;
                 },
                 None => {
@@ -1687,6 +1698,7 @@ impl Tab {
         should_focus_pane: bool,
         pane_id_to_stack_under: Option<PaneId>,
         client_id: Option<ClientId>,
+        blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
         if should_focus_pane {
@@ -1714,7 +1726,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
-                    None,
+                    blocking_notification,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1923,7 +1935,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
-                    None,
+                    completion_tx,
                 );
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
                     self.floating_panes
@@ -1936,7 +1948,7 @@ impl Tab {
                 if close_replaced_pane {
                     if let Some(pid) = replaced_pane.as_ref().map(|p| p.pid()) {
                         self.senders
-                            .send_to_pty(PtyInstruction::ClosePane(pid, completion_tx))
+                            .send_to_pty(PtyInstruction::ClosePane(pid, None))
                             .with_context(err_context)?;
                     }
                     drop(replaced_pane);
@@ -2094,7 +2106,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
-                    None,
+                    completion_tx,
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -2156,7 +2168,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
-                    None,
+                    completion_tx,
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);

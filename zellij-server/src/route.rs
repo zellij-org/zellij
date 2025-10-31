@@ -499,6 +499,7 @@ pub(crate) fn route_action(
                     start_suppressed,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                     Some(NotificationEnd::new(completion_tx)),
+                    false, // set_blocking
                 ))
                 .with_context(err_context)?;
 
@@ -510,6 +511,7 @@ pub(crate) fn route_action(
         } => {
 
             let shell = default_shell.clone();
+            let set_pane_blocking = true;
             senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     shell,
@@ -518,6 +520,7 @@ pub(crate) fn route_action(
                     start_suppressed,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                     Some(NotificationEnd::new(completion_tx)),
+                    set_pane_blocking,
                 ))
                 .with_context(err_context)?;
             wait_forever = true;
@@ -563,6 +566,7 @@ pub(crate) fn route_action(
                     start_suppressed,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                     Some(NotificationEnd::new(completion_tx)),
+                    false, // set_blocking
                 )
             };
             senders.send_to_pty(pty_instr).with_context(err_context)?;
@@ -618,6 +622,7 @@ pub(crate) fn route_action(
                     false,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                     Some(NotificationEnd::new(completion_tx)),
+                    false, // set_blocking
                 ))
                 .with_context(err_context)?;
 
@@ -674,6 +679,7 @@ pub(crate) fn route_action(
                             false,
                             ClientTabIndexOrPaneId::PaneId(pane_id),
                             Some(NotificationEnd::new(completion_tx)),
+                            false, // set_blocking
                         ))
                         .with_context(err_context)?;
                 },
@@ -686,6 +692,7 @@ pub(crate) fn route_action(
                             false,
                             ClientTabIndexOrPaneId::ClientId(client_id),
                             Some(NotificationEnd::new(completion_tx)),
+                            false, // set_blocking
                         ))
                         .with_context(err_context)?;
                 },
@@ -709,6 +716,7 @@ pub(crate) fn route_action(
                     false,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                     Some(NotificationEnd::new(completion_tx)),
+                    false, // set_blocking
                 ))
                 .with_context(err_context)?;
 
@@ -766,6 +774,7 @@ pub(crate) fn route_action(
                     false,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                     Some(NotificationEnd::new(completion_tx)),
+                    false, // set_blocking
                 ))
                 .with_context(err_context)?;
 

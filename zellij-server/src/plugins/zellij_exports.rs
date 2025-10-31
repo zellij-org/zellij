@@ -763,6 +763,7 @@ fn open_file_near_plugin(
         start_suppressed,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         None, // no completion signal needed for plugin calls
+        false, // set_blocking
     );
     let _ = env.senders.send_to_pty(pty_instr);
 }
@@ -792,6 +793,7 @@ fn open_file_floating_near_plugin(
         start_suppressed,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         None, // no completion signal needed for plugin calls
+        false, // set_blocking
     );
     let _ = env.senders.send_to_pty(pty_instr);
 }
@@ -864,6 +866,7 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         None, // no completion signal needed for plugin calls
+        false, // set_blocking
     ));
 }
 
@@ -916,6 +919,7 @@ fn open_terminal_floating_near_plugin(
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         None, // no completion signal needed for plugin calls
+        false, // set_blocking
     ));
 }
 
@@ -1078,6 +1082,7 @@ fn open_command_pane_near_plugin(
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         None, // no completion signal needed for plugin calls
+        false, // set_blocking
     ));
 }
 
@@ -1154,6 +1159,7 @@ fn open_command_pane_floating_near_plugin(
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         None, // no completion signal needed for plugin calls
+        false, // set_blocking
     ));
 }
 
@@ -1231,6 +1237,7 @@ fn open_command_pane_background(
         start_suppressed,
         ClientTabIndexOrPaneId::ClientId(env.client_id),
         None, // no completion signal needed for plugin calls
+        false, // set_blocking
     ));
 }
 

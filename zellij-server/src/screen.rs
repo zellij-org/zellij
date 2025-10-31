@@ -161,6 +161,7 @@ pub enum ScreenInstruction {
         bool, // start suppressed
         ClientTabIndexOrPaneId,
         Option<NotificationEnd>, // completion signal
+        bool, // set_blocking
     ),
     OpenInPlaceEditor(PaneId, ClientTabIndexOrPaneId),
     TogglePaneEmbedOrFloating(ClientId, Option<NotificationEnd>),
@@ -3687,9 +3688,15 @@ pub(crate) fn screen_thread_main(
                 new_pane_placement,
                 start_suppressed,
                 client_or_tab_index,
-                _completion_tx, // the action is completed here, dropping this will release
-                                // anything waiting for it
+                completion_tx,
+                set_blocking,
             ) => {
+                let blocking_notification = if set_blocking {
+                    completion_tx
+                } else {
+                    None
+                };
+
                 match client_or_tab_index {
                     ClientTabIndexOrPaneId::ClientId(client_id) => {
                         active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| {
@@ -3699,7 +3706,8 @@ pub(crate) fn screen_thread_main(
                                start_suppressed,
                                true,
                                new_pane_placement,
-                               Some(client_id)
+                               Some(client_id),
+                               blocking_notification
                            )
                         }, ?);
                         if let Some(hold_for_command) = hold_for_command {
@@ -3726,6 +3734,7 @@ pub(crate) fn screen_thread_main(
                                 true,
                                 new_pane_placement,
                                 None,
+                                blocking_notification,
                             )?;
                             if let Some(hold_for_command) = hold_for_command {
                                 let is_first_run = true;
@@ -3748,6 +3757,7 @@ pub(crate) fn screen_thread_main(
                                     true,
                                     new_pane_placement,
                                     None,
+                                    blocking_notification, // TODO: is this correct?
                                 )?;
                                 if let Some(hold_for_command) = hold_for_command {
                                     let is_first_run = true;
@@ -5310,6 +5320,7 @@ pub(crate) fn screen_thread_main(
                             should_focus_plugin.unwrap_or(true),
                             new_pane_placement,
                             Some(client_id),
+                            None,
                         )
                     }, ?);
                 } else if let Some(active_tab) =
@@ -5322,6 +5333,7 @@ pub(crate) fn screen_thread_main(
                         start_suppressed,
                         should_focus_plugin.unwrap_or(true),
                         new_pane_placement,
+                        None,
                         None,
                     )?;
                 } else {
