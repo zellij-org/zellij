@@ -242,6 +242,9 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
             ServerToClientMsg::Exit { exit_reason } => {
                 let (proto_exit_reason, payload) = match exit_reason {
                     ExitReason::Error(ref msg) => (ProtoExitReason::Error, Some(msg.clone())),
+                    ExitReason::CustomExitStatus(status) => {
+                        (ProtoExitReason::CustomExitStatus, Some(status.to_string()))
+                    },
                     other => (ProtoExitReason::from(other), None),
                 };
                 server_to_client_msg::Message::Exit(ExitMsg {
@@ -312,6 +315,13 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
                         let error_msg =
                             exit.payload.unwrap_or_else(|| "Protobuf error".to_string());
                         ExitReason::Error(error_msg)
+                    },
+                    ProtoExitReason::CustomExitStatus => {
+                        let status_str =
+                            exit.payload.unwrap_or_else(|| "0".to_string());
+                        let status = status_str.parse::<i32>()
+                            .map_err(|_| anyhow!("Invalid custom exit status: {}", status_str))?;
+                        ExitReason::CustomExitStatus(status)
                     },
                     other => other.try_into()?,
                 };
@@ -1927,6 +1937,7 @@ impl From<ExitReason> for ProtoExitReason {
             ExitReason::Disconnect => ProtoExitReason::Disconnect,
             ExitReason::WebClientsForbidden => ProtoExitReason::WebClientsForbidden,
             ExitReason::Error(_msg) => ProtoExitReason::Error,
+            ExitReason::CustomExitStatus(_status) => ProtoExitReason::CustomExitStatus,
         }
     }
 }
@@ -1942,6 +1953,7 @@ impl TryFrom<ProtoExitReason> for ExitReason {
             ProtoExitReason::Disconnect => Ok(ExitReason::Disconnect),
             ProtoExitReason::WebClientsForbidden => Ok(ExitReason::WebClientsForbidden),
             ProtoExitReason::Error => Ok(ExitReason::Error("Protobuf error".to_string())),
+            ProtoExitReason::CustomExitStatus => Ok(ExitReason::CustomExitStatus(0)),
             ProtoExitReason::Unspecified => Err(anyhow!("Unspecified exit reason")),
         }
     }

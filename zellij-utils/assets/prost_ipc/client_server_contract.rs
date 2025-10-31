@@ -1872,6 +1872,7 @@ pub enum ExitReason {
     Disconnect = 5,
     WebClientsForbidden = 6,
     Error = 7,
+    CustomExitStatus = 8,
 }
 impl ExitReason {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1888,6 +1889,7 @@ impl ExitReason {
             ExitReason::Disconnect => "EXIT_REASON_DISCONNECT",
             ExitReason::WebClientsForbidden => "EXIT_REASON_WEB_CLIENTS_FORBIDDEN",
             ExitReason::Error => "EXIT_REASON_ERROR",
+            ExitReason::CustomExitStatus => "EXIT_REASON_CUSTOM_EXIT_STATUS",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1901,6 +1903,7 @@ impl ExitReason {
             "EXIT_REASON_DISCONNECT" => Some(Self::Disconnect),
             "EXIT_REASON_WEB_CLIENTS_FORBIDDEN" => Some(Self::WebClientsForbidden),
             "EXIT_REASON_ERROR" => Some(Self::Error),
+            "EXIT_REASON_CUSTOM_EXIT_STATUS" => Some(Self::CustomExitStatus),
             _ => None,
         }
     }

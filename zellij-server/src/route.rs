@@ -37,27 +37,40 @@ use crate::ClientId;
 const ACTION_COMPLETION_TIMEOUT: Duration = Duration::from_secs(1);
 
 fn wait_for_action_completion(
-    receiver: oneshot::Receiver<()>,
+    receiver: oneshot::Receiver<Option<i32>>, // currently i32 signals an exit status, can be expanded as
+                                      // needed
     action_name: &str,
     wait_forever: bool,
-) {
+) -> Option<i32> {
     let runtime = get_tokio_runtime();
     if wait_forever {
         runtime.block_on(async { match receiver.await {
-            Ok(payload) => {}
+            Ok(Some(payload)) => {
+                Some(payload)
+            }
+            Ok(None) => {
+                None
+            }
             Err(e) => {
                 log::error!("Failed to wait for action {}: {}", action_name, e);
+                None
             }
         } })
     } else {
         match runtime.block_on(async { tokio::time::timeout(ACTION_COMPLETION_TIMEOUT, receiver).await }) {
-            Ok(_) => {}
-            Err(_) => {
+            Ok(Ok(Some(payload))) => {
+                Some(payload)
+            }
+            Ok(Ok(None)) => {
+                None
+            }
+            Err(_) | Ok(Err(_))=> {
                 log::error!(
                     "Action {} did not complete within {:?} timeout",
                     action_name,
                     ACTION_COMPLETION_TIMEOUT
                 );
+                None
             },
         }
     }
@@ -70,25 +83,37 @@ fn wait_for_action_completion(
 // Note: Cloning this struct DOES NOT clone that internal receiver, it only implements Clone so
 // that it can be included in various other larger structs - DO NOT RELY ON CLONING IT!
 #[derive(Debug)]
-pub struct NotificationEnd(pub Option<oneshot::Sender<()>>);
+pub struct NotificationEnd {
+    channel: Option<oneshot::Sender<Option<i32>>>,
+    exit_status: Option<i32>
+}
 
 impl Clone for NotificationEnd {
     fn clone(&self) -> Self {
         // Always clone as None - only the original holder should signal completion
-        NotificationEnd(None)
+        NotificationEnd {
+            channel: None,
+            exit_status: self.exit_status
+        }
     }
 }
 
 impl NotificationEnd {
-    pub fn new(sender: oneshot::Sender<()>) -> Self {
-        NotificationEnd(Some(sender))
+    pub fn new(sender: oneshot::Sender<Option<i32>>) -> Self {
+        NotificationEnd{
+            channel: Some(sender),
+            exit_status: None,
+        }
+    }
+    pub fn set_exit_status(&mut self, exit_status: i32) {
+        self.exit_status = Some(exit_status);
     }
 }
 
 impl Drop for NotificationEnd {
     fn drop(&mut self) {
-        if let Some(tx) = self.0.take() {
-            let _ = tx.send(());
+        if let Some(tx) = self.channel.take() {
+            let _ = tx.send(self.exit_status);
         }
     }
 }
@@ -106,6 +131,7 @@ pub(crate) fn route_action(
     mut seen_cli_pipes: Option<&mut HashSet<String>>,
     client_keybinds: Keybinds,
     default_mode: InputMode,
+    os_input: Option<Box<dyn ServerOsApi>>,
 ) -> Result<bool> {
     let mut should_break = false;
     let err_context = || format!("failed to route action for client {client_id}");
@@ -1529,7 +1555,19 @@ pub(crate) fn route_action(
 
         },
     }
-    wait_for_action_completion(completion_rx, &action_name, wait_forever);
+    let exit_status = wait_for_action_completion(completion_rx, &action_name, wait_forever);
+    if let Some(exit_status) = exit_status {
+        if let Some(cli_client_id) = cli_client_id {
+            if let Some(os_input) = os_input {
+                let _ = os_input.send_to_client(
+                    cli_client_id,
+                    ServerToClientMsg::Exit {
+                        exit_reason: ExitReason::CustomExitStatus(exit_status),
+                    },
+                );
+            }
+        }
+    }
     Ok(should_break)
 }
 
@@ -1659,6 +1697,7 @@ pub(crate) fn route_thread_main(
                                                     .default_mode
                                                     .unwrap_or(InputMode::Normal)
                                                     .clone(),
+                                                Some(os_input.clone()),
                                             )? {
                                                 should_break = true;
                                             }
@@ -1713,6 +1752,7 @@ pub(crate) fn route_thread_main(
                                         .default_mode
                                         .unwrap_or(InputMode::Normal)
                                         .clone(),
+                                    Some(os_input.clone()),
                                 )? {
                                     should_break = true;
                                 }

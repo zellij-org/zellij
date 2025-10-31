@@ -230,6 +230,9 @@ fn individual_messages_client(
                     eprintln!("{}", e);
                     process::exit(2);
                 },
+                ExitReason::CustomExitStatus(exit_status) => {
+                    process::exit(exit_status);
+                }
                 _ => {
                     break;
                 },

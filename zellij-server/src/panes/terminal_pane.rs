@@ -737,6 +737,11 @@ impl Pane for TerminalPane {
     fn hold(&mut self, exit_status: Option<i32>, is_first_run: bool, run_command: RunCommand) {
         self.invoked_with = Some(Run::Command(run_command.clone()));
         self.is_held = Some((exit_status, is_first_run, run_command));
+        if let Some(notification_end) = self.notification_end.as_mut() {
+            if let Some(exit_status) = exit_status {
+                notification_end.set_exit_status(exit_status);
+            }
+        }
         if is_first_run {
             self.render_first_run_banner();
         }

@@ -650,6 +650,7 @@ enum ExitReason {
   EXIT_REASON_DISCONNECT = 5;
   EXIT_REASON_WEB_CLIENTS_FORBIDDEN = 6;
   EXIT_REASON_ERROR = 7;
+  EXIT_REASON_CUSTOM_EXIT_STATUS = 8;
 }
 
 // Additional supporting types for Action messages

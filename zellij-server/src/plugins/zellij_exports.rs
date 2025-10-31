@@ -76,6 +76,7 @@ macro_rules! apply_action {
             None,
             $env.keybinds.clone(),
             $env.default_mode.clone(),
+            None,
         ) {
             log::error!("{}: {:?}", $error_message(), e);
         }
