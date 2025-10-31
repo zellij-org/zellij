@@ -78,10 +78,12 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                 action,
                 terminal_id,
                 client_id,
+                is_cli_client,
             } => client_to_server_msg::Message::Action(ActionMsg {
                 action: Some(action.into()),
                 terminal_id,
                 client_id: client_id.map(|id| id as u32),
+                is_cli_client,
             }),
             ClientToServerMsg::Key {
                 key,
@@ -198,6 +200,7 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     .try_into()?,
                 terminal_id: action.terminal_id,
                 client_id: action.client_id.map(|id| id as u16),
+                is_cli_client: action.is_cli_client,
             }),
             Some(client_to_server_msg::Message::Key(key)) => Ok(ClientToServerMsg::Key {
                 key: key.key.ok_or_else(|| anyhow!("Missing key"))?.try_into()?,
@@ -239,6 +242,9 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
             ServerToClientMsg::Exit { exit_reason } => {
                 let (proto_exit_reason, payload) = match exit_reason {
                     ExitReason::Error(ref msg) => (ProtoExitReason::Error, Some(msg.clone())),
+                    ExitReason::CustomExitStatus(status) => {
+                        (ProtoExitReason::CustomExitStatus, Some(status.to_string()))
+                    },
                     other => (ProtoExitReason::from(other), None),
                 };
                 server_to_client_msg::Message::Exit(ExitMsg {
@@ -309,6 +315,13 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
                         let error_msg =
                             exit.payload.unwrap_or_else(|| "Protobuf error".to_string());
                         ExitReason::Error(error_msg)
+                    },
+                    ProtoExitReason::CustomExitStatus => {
+                        let status_str = exit.payload.unwrap_or_else(|| "0".to_string());
+                        let status = status_str
+                            .parse::<i32>()
+                            .map_err(|_| anyhow!("Invalid custom exit status: {}", status_str))?;
+                        ExitReason::CustomExitStatus(status)
                     },
                     other => other.try_into()?,
                 };
@@ -704,21 +717,22 @@ impl From<crate::input::actions::Action>
             HalfPageScrollDownAction, HalfPageScrollUpAction, KeybindPipeAction,
             LaunchOrFocusPluginAction, LaunchPluginAction, ListClientsAction, MouseEventAction,
             MoveFocusAction, MoveFocusOrTabAction, MovePaneAction, MovePaneBackwardsAction,
-            MoveTabAction, NewFloatingPaneAction, NewFloatingPluginPaneAction,
-            NewInPlacePaneAction, NewInPlacePluginPaneAction, NewPaneAction, NewStackedPaneAction,
-            NewTabAction, NewTiledPaneAction, NewTiledPluginPaneAction, NextSwapLayoutAction,
-            NoOpAction, PageScrollDownAction, PageScrollUpAction, PaneNameInputAction,
-            PreviousSwapLayoutAction, QueryTabNamesAction, QuitAction, RenamePluginPaneAction,
-            RenameSessionAction, RenameTabAction, RenameTerminalPaneAction, ResizeAction,
-            RunAction, ScrollDownAction, ScrollDownAtAction, ScrollToBottomAction,
-            ScrollToTopAction, ScrollUpAction, ScrollUpAtAction, SearchAction, SearchInputAction,
-            SearchToggleOptionAction, SkipConfirmAction, StackPanesAction,
-            StartOrReloadPluginAction, SwitchFocusAction, SwitchModeForAllClientsAction,
-            SwitchToModeAction, TabNameInputAction, ToggleActiveSyncTabAction,
-            ToggleFloatingPanesAction, ToggleFocusFullscreenAction, ToggleGroupMarkingAction,
-            ToggleMouseModeAction, TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction,
-            TogglePaneInGroupAction, TogglePanePinnedAction, ToggleTabAction, UndoRenamePaneAction,
-            UndoRenameTabAction, WriteAction, WriteCharsAction,
+            MoveTabAction, NewBlockingPaneAction, NewFloatingPaneAction,
+            NewFloatingPluginPaneAction, NewInPlacePaneAction, NewInPlacePluginPaneAction,
+            NewPaneAction, NewStackedPaneAction, NewTabAction, NewTiledPaneAction,
+            NewTiledPluginPaneAction, NextSwapLayoutAction, NoOpAction, PageScrollDownAction,
+            PageScrollUpAction, PaneIdWithPlugin, PaneNameInputAction, PreviousSwapLayoutAction,
+            QueryTabNamesAction, QuitAction, RenamePluginPaneAction, RenameSessionAction,
+            RenameTabAction, RenameTerminalPaneAction, ResizeAction, RunAction, ScrollDownAction,
+            ScrollDownAtAction, ScrollToBottomAction, ScrollToTopAction, ScrollUpAction,
+            ScrollUpAtAction, SearchAction, SearchInputAction, SearchToggleOptionAction,
+            SkipConfirmAction, StackPanesAction, StartOrReloadPluginAction, SwitchFocusAction,
+            SwitchModeForAllClientsAction, SwitchSessionAction, SwitchToModeAction,
+            TabNameInputAction, ToggleActiveSyncTabAction, ToggleFloatingPanesAction,
+            ToggleFocusFullscreenAction, ToggleGroupMarkingAction, ToggleMouseModeAction,
+            TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction, TogglePaneInGroupAction,
+            TogglePanePinnedAction, ToggleTabAction, UndoRenamePaneAction, UndoRenameTabAction,
+            WriteAction, WriteCharsAction,
         };
         use std::collections::HashMap;
 
@@ -890,6 +904,15 @@ impl From<crate::input::actions::Action>
                     pane_name,
                 })
             },
+            crate::input::actions::Action::NewBlockingPane {
+                placement,
+                pane_name,
+                command,
+            } => ActionType::NewBlockingPane(NewBlockingPaneAction {
+                placement: Some(placement.into()),
+                pane_name,
+                command: command.map(|c| c.into()),
+            }),
             crate::input::actions::Action::TogglePaneEmbedOrFloating => {
                 ActionType::TogglePaneEmbedOrFloating(TogglePaneEmbedOrFloatingAction {})
             },
@@ -960,6 +983,22 @@ impl From<crate::input::actions::Action>
                 command: Some(command.into()),
             }),
             crate::input::actions::Action::Detach => ActionType::Detach(DetachAction {}),
+            crate::input::actions::Action::SwitchSession {
+                name,
+                tab_position,
+                pane_id,
+                layout,
+                cwd,
+            } => ActionType::SwitchSession(SwitchSessionAction {
+                name: name.clone(),
+                tab_position: tab_position.map(|p| p as u32),
+                pane_id: pane_id.map(|(id, is_plugin)| PaneIdWithPlugin {
+                    pane_id: id,
+                    is_plugin: is_plugin,
+                }),
+                layout: layout.as_ref().map(|l| l.clone().into()),
+                cwd: cwd.as_ref().map(|p| p.to_string_lossy().to_string()),
+            }),
             crate::input::actions::Action::LaunchOrFocusPlugin {
                 plugin,
                 should_float,
@@ -1383,6 +1422,19 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     pane_name: new_stacked_action.pane_name,
                 })
             },
+            ActionType::NewBlockingPane(new_blocking_action) => {
+                Ok(crate::input::actions::Action::NewBlockingPane {
+                    placement: new_blocking_action
+                        .placement
+                        .ok_or_else(|| anyhow!("NewBlockingPane missing placement"))?
+                        .try_into()?,
+                    pane_name: new_blocking_action.pane_name,
+                    command: new_blocking_action
+                        .command
+                        .map(|c| c.try_into())
+                        .transpose()?,
+                })
+            },
             ActionType::TogglePaneEmbedOrFloating(_) => {
                 Ok(crate::input::actions::Action::TogglePaneEmbedOrFloating)
             },
@@ -1466,6 +1518,21 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     .try_into()?,
             }),
             ActionType::Detach(_) => Ok(crate::input::actions::Action::Detach),
+            ActionType::SwitchSession(switch_session_action) => {
+                Ok(crate::input::actions::Action::SwitchSession {
+                    name: switch_session_action.name.clone(),
+                    tab_position: switch_session_action.tab_position.map(|p| p as usize),
+                    pane_id: switch_session_action
+                        .pane_id
+                        .as_ref()
+                        .map(|p| (p.pane_id, p.is_plugin)),
+                    layout: switch_session_action
+                        .layout
+                        .map(|l| l.try_into())
+                        .transpose()?,
+                    cwd: switch_session_action.cwd.map(PathBuf::from),
+                })
+            },
             ActionType::LaunchOrFocusPlugin(launch_plugin_action) => {
                 Ok(crate::input::actions::Action::LaunchOrFocusPlugin {
                     plugin: launch_plugin_action
@@ -1870,6 +1937,7 @@ impl From<ExitReason> for ProtoExitReason {
             ExitReason::Disconnect => ProtoExitReason::Disconnect,
             ExitReason::WebClientsForbidden => ProtoExitReason::WebClientsForbidden,
             ExitReason::Error(_msg) => ProtoExitReason::Error,
+            ExitReason::CustomExitStatus(_status) => ProtoExitReason::CustomExitStatus,
         }
     }
 }
@@ -1885,6 +1953,7 @@ impl TryFrom<ProtoExitReason> for ExitReason {
             ProtoExitReason::Disconnect => Ok(ExitReason::Disconnect),
             ProtoExitReason::WebClientsForbidden => Ok(ExitReason::WebClientsForbidden),
             ProtoExitReason::Error => Ok(ExitReason::Error("Protobuf error".to_string())),
+            ProtoExitReason::CustomExitStatus => Ok(ExitReason::CustomExitStatus(0)),
             ProtoExitReason::Unspecified => Err(anyhow!("Unspecified exit reason")),
         }
     }
@@ -2194,6 +2263,88 @@ impl TryFrom<crate::client_server_contract::client_server_contract::FloatingPane
             height: coords.height.map(|h| h.try_into()).transpose()?,
             pinned: coords.pinned,
         })
+    }
+}
+
+// NewPanePlacement conversion
+impl From<crate::data::NewPanePlacement>
+    for crate::client_server_contract::client_server_contract::NewPanePlacement
+{
+    fn from(placement: crate::data::NewPanePlacement) -> Self {
+        use crate::client_server_contract::client_server_contract::new_pane_placement::PlacementType;
+        let placement_type = match placement {
+            crate::data::NewPanePlacement::NoPreference => PlacementType::NoPreference(true),
+            crate::data::NewPanePlacement::Tiled(direction) => {
+                PlacementType::Tiled(direction.map(direction_to_proto_i32).unwrap_or(0))
+            },
+            crate::data::NewPanePlacement::Floating(coords) => {
+                PlacementType::Floating(coords.map(|c| c.into()).unwrap_or_default())
+            },
+            crate::data::NewPanePlacement::InPlace {
+                pane_id_to_replace,
+                close_replaced_pane,
+            } => PlacementType::InPlace(
+                crate::client_server_contract::client_server_contract::NewPanePlacementInPlace {
+                    pane_id_to_replace: pane_id_to_replace.map(|id| id.into()),
+                    close_replaced_pane,
+                },
+            ),
+            crate::data::NewPanePlacement::Stacked(pane_id) => {
+                PlacementType::Stacked(pane_id.map(|id| id.into()).unwrap_or_default())
+            },
+        };
+        Self {
+            placement_type: Some(placement_type),
+        }
+    }
+}
+
+// Reverse NewPanePlacement conversion
+impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlacement>
+    for crate::data::NewPanePlacement
+{
+    type Error = anyhow::Error;
+    fn try_from(
+        placement: crate::client_server_contract::client_server_contract::NewPanePlacement,
+    ) -> Result<Self> {
+        use crate::client_server_contract::client_server_contract::new_pane_placement::PlacementType;
+        match placement
+            .placement_type
+            .ok_or_else(|| anyhow!("NewPanePlacement missing placement_type"))?
+        {
+            PlacementType::NoPreference(_) => Ok(crate::data::NewPanePlacement::NoPreference),
+            PlacementType::Tiled(direction) => {
+                let direction = if direction == 0 {
+                    None
+                } else {
+                    Some(proto_i32_to_direction(direction)?)
+                };
+                Ok(crate::data::NewPanePlacement::Tiled(direction))
+            },
+            PlacementType::Floating(coords) => {
+                let coords = if coords == Default::default() {
+                    None
+                } else {
+                    Some(coords.try_into()?)
+                };
+                Ok(crate::data::NewPanePlacement::Floating(coords))
+            },
+            PlacementType::InPlace(in_place) => Ok(crate::data::NewPanePlacement::InPlace {
+                pane_id_to_replace: in_place
+                    .pane_id_to_replace
+                    .map(|id| id.try_into())
+                    .transpose()?,
+                close_replaced_pane: in_place.close_replaced_pane,
+            }),
+            PlacementType::Stacked(pane_id) => {
+                let pane_id = if pane_id == Default::default() {
+                    None
+                } else {
+                    Some(pane_id.try_into()?)
+                };
+                Ok(crate::data::NewPanePlacement::Stacked(pane_id))
+            },
+        }
     }
 }
 

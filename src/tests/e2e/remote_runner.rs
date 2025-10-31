@@ -273,6 +273,7 @@ fn read_from_channel(
                     arrow_fonts,
                     styled_underlines,
                     explicitly_disable_kitty_keyboard_protocol,
+                    None,
                 ); // 0 is the pane index
                 loop {
                     if !should_keep_running.load(Ordering::SeqCst) {
@@ -423,7 +424,20 @@ impl RemoteTerminal {
         channel
             .write_all(
                 // note that this is run with the -s flag that suspends the command on startup
-                format!("{} run -s -- \"{}\"\n", ZELLIJ_EXECUTABLE_LOCATION, command).as_bytes(),
+                format!("{} run -s -- \"{}\"", ZELLIJ_EXECUTABLE_LOCATION, command).as_bytes(),
+            )
+            .unwrap();
+        channel.flush().unwrap();
+    }
+    pub fn send_blocking_command_through_the_cli(&mut self, command: &str) {
+        let mut channel = self.channel.lock().unwrap();
+        channel
+            .write_all(
+                format!(
+                    "{} run --blocking --floating --close-on-exit -- {}",
+                    ZELLIJ_EXECUTABLE_LOCATION, command
+                )
+                .as_bytes(),
             )
             .unwrap();
         channel.flush().unwrap();

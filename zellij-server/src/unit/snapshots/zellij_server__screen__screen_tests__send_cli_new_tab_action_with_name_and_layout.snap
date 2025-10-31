@@ -91,4 +91,10 @@ NewTab(
         10,
         false,
     ),
+    Some(
+        NotificationEnd {
+            channel: None,
+            exit_status: None,
+        },
+    ),
 )

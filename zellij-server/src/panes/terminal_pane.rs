@@ -6,6 +6,7 @@ use crate::panes::{
     terminal_character::{render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
 use crate::pty::VteBytes;
+use crate::route::NotificationEnd;
 use crate::tab::{AdjustedInput, Pane};
 use crate::ClientId;
 use std::cell::RefCell;
@@ -141,6 +142,7 @@ pub struct TerminalPane {
     invoked_with: Option<Run>,
     #[allow(dead_code)]
     arrow_fonts: bool,
+    notification_end: Option<NotificationEnd>,
 }
 
 impl Pane for TerminalPane {
@@ -735,6 +737,11 @@ impl Pane for TerminalPane {
     fn hold(&mut self, exit_status: Option<i32>, is_first_run: bool, run_command: RunCommand) {
         self.invoked_with = Some(Run::Command(run_command.clone()));
         self.is_held = Some((exit_status, is_first_run, run_command));
+        if let Some(notification_end) = self.notification_end.as_mut() {
+            if let Some(exit_status) = exit_status {
+                notification_end.set_exit_status(exit_status);
+            }
+        }
         if is_first_run {
             self.render_first_run_banner();
         }
@@ -889,6 +896,11 @@ impl Pane for TerminalPane {
     ) -> PaneContents {
         self.grid.pane_contents(get_full_scrollback)
     }
+    fn update_exit_status(&mut self, exit_status: i32) {
+        if let Some(notification_end) = self.notification_end.as_mut() {
+            notification_end.set_exit_status(exit_status);
+        }
+    }
 }
 
 impl TerminalPane {
@@ -910,6 +922,7 @@ impl TerminalPane {
         arrow_fonts: bool,
         styled_underlines: bool,
         explicitly_disable_keyboard_protocol: bool,
+        notification_end: Option<NotificationEnd>,
     ) -> TerminalPane {
         let initial_pane_title =
             initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
@@ -951,6 +964,7 @@ impl TerminalPane {
             pane_frame_color_override: None,
             invoked_with,
             arrow_fonts,
+            notification_end,
         }
     }
     pub fn get_x(&self) -> usize {

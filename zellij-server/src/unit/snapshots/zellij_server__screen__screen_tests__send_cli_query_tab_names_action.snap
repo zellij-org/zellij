@@ -1,7 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2713
-expression: "format!(\"{:#?}\", log_tab_names_action)"
+expression: "format!(\"{:#?}\", log_tab_names_instruction)"
 ---
 Some(
     Log(
@@ -10,5 +9,11 @@ Some(
             "Tab #2",
         ],
         10,
+        Some(
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+            },
+        ),
     ),
 )

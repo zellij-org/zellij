@@ -1,4 +1,5 @@
 use crate::background_jobs::BackgroundJob;
+use crate::route::NotificationEnd;
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
     panes::PaneId,
@@ -16,7 +17,7 @@ use nix::unistd::Pid;
 use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::{
-    data::{Direction, Event, FloatingPaneCoordinates, OriginatingPlugin},
+    data::{Direction, Event, FloatingPaneCoordinates, NewPanePlacement, OriginatingPlugin},
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
@@ -37,83 +38,6 @@ pub enum ClientTabIndexOrPaneId {
     PaneId(PaneId),
 }
 
-// TODO: move elsewhere
-#[derive(Clone, Debug)]
-pub enum NewPanePlacement {
-    NoPreference,
-    Tiled(Option<Direction>),
-    Floating(Option<FloatingPaneCoordinates>),
-    InPlace {
-        pane_id_to_replace: Option<PaneId>,
-        close_replaced_pane: bool,
-    },
-    Stacked(Option<PaneId>),
-}
-
-impl Default for NewPanePlacement {
-    fn default() -> Self {
-        NewPanePlacement::NoPreference
-    }
-}
-
-impl NewPanePlacement {
-    pub fn with_floating_pane_coordinates(
-        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
-    ) -> Self {
-        NewPanePlacement::Floating(floating_pane_coordinates)
-    }
-    pub fn with_should_be_in_place(
-        self,
-        should_be_in_place: bool,
-        close_replaced_pane: bool,
-    ) -> Self {
-        if should_be_in_place {
-            NewPanePlacement::InPlace {
-                pane_id_to_replace: None,
-                close_replaced_pane,
-            }
-        } else {
-            self
-        }
-    }
-    pub fn with_pane_id_to_replace(
-        pane_id_to_replace: Option<PaneId>,
-        close_replaced_pane: bool,
-    ) -> Self {
-        NewPanePlacement::InPlace {
-            pane_id_to_replace,
-            close_replaced_pane,
-        }
-    }
-    pub fn should_float(&self) -> Option<bool> {
-        match self {
-            NewPanePlacement::Floating(_) => Some(true),
-            NewPanePlacement::Tiled(_) => Some(false),
-            _ => None,
-        }
-    }
-    pub fn floating_pane_coordinates(&self) -> Option<FloatingPaneCoordinates> {
-        match self {
-            NewPanePlacement::Floating(floating_pane_coordinates) => {
-                floating_pane_coordinates.clone()
-            },
-            _ => None,
-        }
-    }
-    pub fn should_stack(&self) -> bool {
-        match self {
-            NewPanePlacement::Stacked(_) => true,
-            _ => false,
-        }
-    }
-    pub fn id_of_stack_root(&self) -> Option<PaneId> {
-        match self {
-            NewPanePlacement::Stacked(id) => *id,
-            _ => None,
-        }
-    }
-}
-
 /// Instructions related to PTYs (pseudoterminals).
 #[derive(Clone, Debug)]
 pub enum PtyInstruction {
@@ -123,9 +47,16 @@ pub enum PtyInstruction {
         NewPanePlacement,
         bool, // start suppressed
         ClientTabIndexOrPaneId,
+        Option<NotificationEnd>, // completion signal
+        bool,                    // set_blocking
     ), // bool (if Some) is
     // should_float, String is an optional pane name
-    OpenInPlaceEditor(PathBuf, Option<usize>, ClientTabIndexOrPaneId), // Option<usize> is the optional line number
+    OpenInPlaceEditor(
+        PathBuf,
+        Option<usize>,
+        ClientTabIndexOrPaneId,
+        Option<NotificationEnd>,
+    ), // Option<usize> is the optional line number
     UpdateActivePane(Option<PaneId>, ClientId),
     GoToTab(TabIndex, ClientId),
     NewTab(
@@ -137,22 +68,25 @@ pub enum PtyInstruction {
         HashMap<RunPluginOrAlias, Vec<u32>>, // plugin_ids
         bool,                                // should change focus to new tab
         (ClientId, bool),                    // bool -> is_web_client
+        Option<NotificationEnd>,             // completion signal
     ), // the String is the tab name
-    ClosePane(PaneId),
+    ClosePane(PaneId, Option<NotificationEnd>),
     CloseTab(Vec<PaneId>),
-    ReRunCommandInPane(PaneId, RunCommand),
+    ReRunCommandInPane(PaneId, RunCommand, Option<NotificationEnd>),
     DropToShellInPane {
         pane_id: PaneId,
         shell: Option<PathBuf>,
         working_dir: Option<PathBuf>,
+        completion_tx: Option<NotificationEnd>,
     },
     SpawnInPlaceTerminal(
         Option<TerminalAction>,
         Option<String>,
         bool, // close replaced pane
         ClientTabIndexOrPaneId,
+        Option<NotificationEnd>, // completion signal
     ), // String is an optional pane name
-    DumpLayout(SessionLayoutMetadata, ClientId),
+    DumpLayout(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
     DumpLayoutToPlugin(SessionLayoutMetadata, PluginId),
     LogLayoutToHd(SessionLayoutMetadata),
     FillPluginCwd(
@@ -168,8 +102,9 @@ pub enum PtyInstruction {
         Option<PathBuf>, // if Some, will not fill cwd but just forward the message
         Option<bool>,    // should focus plugin
         Option<FloatingPaneCoordinates>,
+        Option<NotificationEnd>,
     ),
-    ListClientsMetadata(SessionLayoutMetadata, ClientId),
+    ListClientsMetadata(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
     Reconfigure {
         client_id: ClientId,
         default_editor: Option<PathBuf>,
@@ -187,7 +122,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::OpenInPlaceEditor(..) => PtyContext::OpenInPlaceEditor,
             PtyInstruction::UpdateActivePane(..) => PtyContext::UpdateActivePane,
             PtyInstruction::GoToTab(..) => PtyContext::GoToTab,
-            PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
+            PtyInstruction::ClosePane(..) => PtyContext::ClosePane,
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab(..) => PtyContext::NewTab,
             PtyInstruction::ReRunCommandInPane(..) => PtyContext::ReRunCommandInPane,
@@ -229,6 +164,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 new_pane_placement,
                 start_suppressed,
                 client_or_tab_index,
+                completion_tx,
+                set_blocking,
             ) => {
                 let err_context =
                     || format!("failed to spawn terminal for {:?}", client_or_tab_index);
@@ -315,6 +252,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 new_pane_placement,
                                 start_suppressed,
                                 client_or_tab_index,
+                                completion_tx,
+                                set_blocking,
                             ))
                             .with_context(err_context)?;
                     },
@@ -332,6 +271,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         new_pane_placement,
                                         start_suppressed,
                                         client_or_tab_index,
+                                        completion_tx,
+                                        set_blocking,
                                     ))
                                     .with_context(err_context)?;
                                 if let Some(run_command) = run_command {
@@ -357,6 +298,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 name,
                 close_replaced_pane,
                 client_id_tab_index_or_pane_id,
+                completion_tx,
             ) => {
                 let err_context = || {
                     format!(
@@ -402,6 +344,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 invoked_with,
                                 close_replaced_pane,
                                 client_id_tab_index_or_pane_id,
+                                completion_tx,
                             ))
                             .with_context(err_context)?;
                     },
@@ -418,6 +361,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         invoked_with,
                                         close_replaced_pane,
                                         client_id_tab_index_or_pane_id,
+                                        completion_tx,
                                     ))
                                     .with_context(err_context)?;
                                 if let Some(run_command) = run_command {
@@ -442,6 +386,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 temp_file,
                 line_number,
                 client_tab_index_or_pane_id,
+                _completion_tx,
             ) => {
                 let err_context = || format!("failed to open in-place editor for client");
 
@@ -473,7 +418,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::GoToTab(tab_index, client_id) => {
                 pty.bus
                     .senders
-                    .send_to_screen(ScreenInstruction::GoToTab(tab_index, Some(client_id)))
+                    .send_to_screen(ScreenInstruction::GoToTab(tab_index, Some(client_id), None))
                     .with_context(|| {
                         format!("failed to move client {} to tab {}", client_id, tab_index)
                     })?;
@@ -487,6 +432,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 plugin_ids,
                 should_change_focus_to_new_tab,
                 client_id_and_is_web_client,
+                completion_tx,
             ) => {
                 let err_context = || "failed to open new tab";
 
@@ -504,10 +450,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     tab_index,
                     should_change_focus_to_new_tab,
                     client_id_and_is_web_client,
+                    completion_tx,
                 )
                 .with_context(err_context)?;
             },
-            PtyInstruction::ClosePane(id) => {
+            PtyInstruction::ClosePane(id, _completion_tx) => {
                 pty.close_pane(id)
                     .and_then(|_| {
                         pty.bus
@@ -525,7 +472,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     })
                     .context("failed to close tabs")?;
             },
-            PtyInstruction::ReRunCommandInPane(pane_id, run_command) => {
+            PtyInstruction::ReRunCommandInPane(pane_id, run_command, _completion_tx) => {
                 let err_context = || format!("failed to rerun command in pane {:?}", pane_id);
 
                 match pty
@@ -566,6 +513,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 pane_id,
                 shell,
                 working_dir,
+                completion_tx: _completion_tx,
             } => {
                 let err_context = || format!("failed to rerun command in pane {:?}", pane_id);
 
@@ -613,7 +561,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::DumpLayout(mut session_layout_metadata, client_id) => {
+            PtyInstruction::DumpLayout(mut session_layout_metadata, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 match session_serialization::serialize_session_layout(
@@ -622,20 +570,32 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     Ok((kdl_layout, _pane_contents)) => {
                         pty.bus
                             .senders
-                            .send_to_server(ServerInstruction::Log(vec![kdl_layout], client_id))
+                            .send_to_server(ServerInstruction::Log(
+                                vec![kdl_layout],
+                                client_id,
+                                completion_tx,
+                            ))
                             .with_context(err_context)
                             .non_fatal();
                     },
                     Err(e) => {
                         pty.bus
                             .senders
-                            .send_to_server(ServerInstruction::Log(vec![e.to_owned()], client_id))
+                            .send_to_server(ServerInstruction::Log(
+                                vec![e.to_owned()],
+                                client_id,
+                                completion_tx,
+                            ))
                             .with_context(err_context)
                             .non_fatal();
                     },
                 }
             },
-            PtyInstruction::ListClientsMetadata(mut session_layout_metadata, client_id) => {
+            PtyInstruction::ListClientsMetadata(
+                mut session_layout_metadata,
+                client_id,
+                completion_tx,
+            ) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 pty.bus
@@ -643,9 +603,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     .send_to_server(ServerInstruction::Log(
                         vec![format!(
                             "{}",
-                            session_layout_metadata.list_clients_metadata()
+                            session_layout_metadata.list_clients_metadata(),
                         )],
                         client_id,
+                        completion_tx,
                     ))
                     .with_context(err_context)
                     .non_fatal();
@@ -716,6 +677,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 cwd,
                 should_focus_plugin,
                 floating_pane_coordinates,
+                completion_tx,
             ) => {
                 pty.fill_plugin_cwd(
                     should_float,
@@ -730,6 +692,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     cwd,
                     should_focus_plugin,
                     floating_pane_coordinates,
+                    completion_tx,
                 )?;
             },
             PtyInstruction::Reconfigure {
@@ -934,7 +897,12 @@ impl Pty {
                         command,
                     ));
                 } else {
-                    let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
+                    let _ = senders.send_to_screen(ScreenInstruction::ClosePane(
+                        pane_id,
+                        None,
+                        None,
+                        exit_status,
+                    ));
                 }
             }
         });
@@ -983,6 +951,7 @@ impl Pty {
         tab_index: usize,
         should_change_focus_to_new_tab: bool,
         client_id_and_is_web_client: (ClientId, bool),
+        completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context = || format!("failed to spawn terminals for layout for");
 
@@ -1049,6 +1018,7 @@ impl Pty {
                 tab_index,
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
+                completion_tx,
             ))
             .with_context(err_context)?;
         let mut terminals_to_start = vec![];
@@ -1121,8 +1091,13 @@ impl Pty {
         let err_context = || format!("failed to apply run instruction");
         let quit_cb = Box::new({
             let senders = self.bus.senders.clone();
-            move |pane_id, _exit_status, _command| {
-                let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
+            move |pane_id, exit_status, _command| {
+                let _ = senders.send_to_screen(ScreenInstruction::ClosePane(
+                    pane_id,
+                    None,
+                    None,
+                    exit_status,
+                ));
             }
         });
         match run_instruction {
@@ -1139,8 +1114,12 @@ impl Pty {
                                 command,
                             ));
                         } else {
-                            let _ =
-                                senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
+                            let _ = senders.send_to_screen(ScreenInstruction::ClosePane(
+                                pane_id,
+                                None,
+                                None,
+                                exit_status,
+                            ));
                         }
                     }
                 });
@@ -1369,8 +1348,12 @@ impl Pty {
                                 command,
                             ));
                         } else {
-                            let _ =
-                                senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
+                            let _ = senders.send_to_screen(ScreenInstruction::ClosePane(
+                                pane_id,
+                                None,
+                                None,
+                                exit_status,
+                            ));
                         }
                     }
                 });
@@ -1486,6 +1469,7 @@ impl Pty {
         cwd: Option<PathBuf>,
         should_focus_plugin: Option<bool>,
         floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+        completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         let get_focused_cwd = || {
             self.active_panes
@@ -1528,6 +1512,7 @@ impl Pty {
             skip_cache,
             should_focus_plugin,
             floating_pane_coordinates,
+            completion_tx,
         ))?;
         Ok(())
     }

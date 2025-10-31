@@ -227,10 +227,12 @@ message Action {
     ChangeFloatingPaneCoordinatesAction change_floating_pane_coordinates = 89;
     TogglePaneInGroupAction toggle_pane_in_group = 90;
     ToggleGroupMarkingAction toggle_group_marking = 91;
+    SwitchSessionAction switch_session = 92;
+    NewBlockingPaneAction new_blocking_pane = 93;
   }
 }
 
-// Action message definitions (all 91 variants)
+// Action message definitions (all 92 variants)
 
 // Simple action types (no data)
 message QuitAction {}
@@ -362,6 +364,12 @@ message NewInPlacePaneAction {
 message NewStackedPaneAction {
   optional RunCommandAction command = 1;
   optional string pane_name = 2;
+}
+
+message NewBlockingPaneAction {
+  NewPanePlacement placement = 1;
+  optional string pane_name = 2;
+  optional RunCommandAction command = 3;
 }
 
 message PaneNameInputAction {
@@ -605,6 +613,29 @@ message ConnectToSession {
   optional string cwd = 5;
 }
 
+message SwitchSessionAction {
+  string name = 1;
+  optional uint32 tab_position = 2;
+  optional PaneIdWithPlugin pane_id = 3;
+  optional LayoutInfo layout = 4;
+  optional string cwd = 5;
+}
+
+message NewPanePlacement {
+  oneof placement_type {
+    bool no_preference = 1;
+    Direction tiled = 2;
+    FloatingPaneCoordinates floating = 3;
+    NewPanePlacementInPlace in_place = 4;
+    PaneId stacked = 5;
+  }
+}
+
+message NewPanePlacementInPlace {
+  optional PaneId pane_id_to_replace = 1;
+  bool close_replaced_pane = 2;
+}
+
 message PaneIdWithPlugin {
   uint32 pane_id = 1;
   bool is_plugin = 2;
@@ -619,6 +650,7 @@ enum ExitReason {
   EXIT_REASON_DISCONNECT = 5;
   EXIT_REASON_WEB_CLIENTS_FORBIDDEN = 6;
   EXIT_REASON_ERROR = 7;
+  EXIT_REASON_CUSTOM_EXIT_STATUS = 8;
 }
 
 // Additional supporting types for Action messages

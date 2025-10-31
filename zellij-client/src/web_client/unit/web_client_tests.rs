@@ -440,6 +440,7 @@ mod web_client_tests {
                         action: _,
                         terminal_id: _,
                         client_id: _,
+                        is_cli_client: _,
                     } => {
                         found_terminal_input = true;
                     },

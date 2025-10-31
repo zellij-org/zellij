@@ -7,7 +7,7 @@ expression: last_snapshot
 │$ /usr/src/zellij/x86_64-unknown-linux-musl/release/zellij run -s -- "/us││foo                                                                      │
 │r/src/zellij/fixtures/append-echo-script.sh"                             ││foo                                                                      │
 │$                                                                        ││█                                                                        │
-│                                                                         ││                                                                         │
+│$                                                                        ││                                                                         │
 │                                                                         ││                                                                         │
 │                                                                         ││                                                                         │
 │                                                                         ││                                                                         │

@@ -6,7 +6,7 @@ use super::layout::{
     SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
 use crate::cli::CliAction;
-use crate::data::{Direction, KeyWithModifier, PaneId, Resize};
+use crate::data::{Direction, KeyWithModifier, LayoutInfo, NewPanePlacement, PaneId, Resize};
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
@@ -99,7 +99,7 @@ impl FromStr for SearchOption {
 // They might need to be adjusted in the default config
 // as well `../../assets/config/default.yaml`
 /// Actions that can be bound to keys.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, strum_macros::Display)]
 pub enum Action {
     /// Quit Zellij.
     Quit,
@@ -190,6 +190,11 @@ pub enum Action {
         pane_name: Option<String>,
         start_suppressed: bool,
     },
+    NewBlockingPane {
+        placement: NewPanePlacement,
+        pane_name: Option<String>,
+        command: Option<RunCommandAction>,
+    },
     /// Open the file in a new pane using the default editor
     EditFile {
         payload: OpenFilePayload,
@@ -269,6 +274,14 @@ pub enum Action {
     },
     /// Detach session and exit
     Detach,
+    /// Switch to a different session
+    SwitchSession {
+        name: String,
+        tab_position: Option<usize>,
+        pane_id: Option<(u32, bool)>, // (id, is_plugin)
+        layout: Option<LayoutInfo>,
+        cwd: Option<PathBuf>,
+    },
     LaunchOrFocusPlugin {
         plugin: RunPluginOrAlias,
         should_float: bool,
@@ -478,6 +491,7 @@ impl Action {
                 height,
                 pinned,
                 stacked,
+                blocking,
             } => {
                 let current_dir = get_current_dir();
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
@@ -486,7 +500,51 @@ impl Action {
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir.clone()));
-                if let Some(plugin) = plugin {
+                if blocking {
+                    // For blocking panes, we don't support plugins
+                    if plugin.is_some() {
+                        return Err("Blocking panes do not support plugin variants".to_string());
+                    }
+
+                    let command = if !command.is_empty() {
+                        let mut command = command.clone();
+                        let (command, args) = (PathBuf::from(command.remove(0)), command);
+                        let hold_on_start = start_suspended;
+                        let hold_on_close = !close_on_exit;
+                        Some(RunCommandAction {
+                            command,
+                            args,
+                            cwd,
+                            direction,
+                            hold_on_close,
+                            hold_on_start,
+                            ..Default::default()
+                        })
+                    } else {
+                        None
+                    };
+
+                    let placement = if floating {
+                        NewPanePlacement::Floating(FloatingPaneCoordinates::new(
+                            x, y, width, height, pinned,
+                        ))
+                    } else if in_place {
+                        NewPanePlacement::InPlace {
+                            pane_id_to_replace: None,
+                            close_replaced_pane: false,
+                        }
+                    } else if stacked {
+                        NewPanePlacement::Stacked(None)
+                    } else {
+                        NewPanePlacement::Tiled(direction)
+                    };
+
+                    Ok(vec![Action::NewBlockingPane {
+                        placement,
+                        pane_name: name,
+                        command,
+                    }])
+                } else if let Some(plugin) = plugin {
                     let plugin = match RunPluginLocation::parse(&plugin, cwd.clone()) {
                         Ok(location) => {
                             let user_configuration = configuration.unwrap_or_default();
@@ -633,9 +691,7 @@ impl Action {
                     coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
                 }])
             },
-            CliAction::SwitchMode { input_mode } => {
-                Ok(vec![Action::SwitchModeForAllClients { input_mode }])
-            },
+            CliAction::SwitchMode { input_mode } => Ok(vec![Action::SwitchToMode { input_mode }]),
             CliAction::TogglePaneEmbedOrFloating => Ok(vec![Action::TogglePaneEmbedOrFloating]),
             CliAction::ToggleFloatingPanes => Ok(vec![Action::ToggleFloatingPanes]),
             CliAction::ClosePane => Ok(vec![Action::CloseFocus]),
@@ -938,6 +994,56 @@ impl Action {
                         ))
                     }
                 }
+            },
+            CliAction::Detach => Ok(vec![Action::Detach]),
+            CliAction::SwitchSession {
+                name,
+                tab_position,
+                pane_id,
+                layout,
+                layout_dir,
+                cwd,
+            } => {
+                let pane_id = match pane_id {
+                    Some(stringified_pane_id) => match PaneId::from_str(&stringified_pane_id) {
+                        Ok(PaneId::Terminal(id)) => Some((id, false)),
+                        Ok(PaneId::Plugin(id)) => Some((id, true)),
+                        Err(_e) => {
+                            return Err(format!(
+                                "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                                stringified_pane_id
+                            ));
+                        },
+                    },
+                    None => None,
+                };
+
+                let cwd = cwd.map(|cwd| {
+                    let current_dir = get_current_dir();
+                    current_dir.join(cwd)
+                });
+
+                let layout_dir = layout_dir.map(|layout_dir| {
+                    let current_dir = get_current_dir();
+                    current_dir.join(layout_dir)
+                });
+
+                let layout_info = if let Some(layout_path) = layout {
+                    let layout_dir = layout_dir
+                        .or_else(|| config.and_then(|c| c.options.layout_dir.clone()))
+                        .or_else(|| get_layout_dir(find_default_config_dir()));
+                    LayoutInfo::from_config(&layout_dir, &Some(layout_path))
+                } else {
+                    None
+                };
+
+                Ok(vec![Action::SwitchSession {
+                    name: name.clone(),
+                    tab_position: tab_position.clone(),
+                    pane_id,
+                    layout: layout_info,
+                    cwd,
+                }])
             },
         }
     }

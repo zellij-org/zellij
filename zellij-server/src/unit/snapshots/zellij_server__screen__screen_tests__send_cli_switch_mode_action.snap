@@ -1,6 +1,5 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2521
 expression: "format!(\"{:?}\", switch_mode_action)"
 ---
-Some(ChangeModeForAllClients(Locked))
+Some(ChangeMode(10, Locked))

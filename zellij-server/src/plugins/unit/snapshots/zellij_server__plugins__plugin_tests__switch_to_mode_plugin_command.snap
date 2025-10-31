@@ -326,5 +326,11 @@ Some(
             web_server_capability: None,
         },
         1,
+        Some(
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+            },
+        ),
     ),
 )

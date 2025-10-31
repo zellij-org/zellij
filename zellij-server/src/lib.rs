@@ -4,6 +4,7 @@ pub mod panes;
 pub mod tab;
 
 mod background_jobs;
+mod global_async_runtime;
 mod logging_pipe;
 mod pane_groups;
 mod plugins;
@@ -43,7 +44,7 @@ use crate::{
     screen::{screen_thread_main, ScreenInstruction},
     thread_bus::{Bus, ThreadSenders},
 };
-use route::route_thread_main;
+use route::{route_thread_main, NotificationEnd};
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{
@@ -81,11 +82,11 @@ pub enum ServerInstruction {
     ),
     Render(Option<HashMap<ClientId, String>>),
     UnblockInputThread,
-    ClientExit(ClientId),
+    ClientExit(ClientId, Option<NotificationEnd>),
     RemoveClient(ClientId),
     Error(String),
     KillSession,
-    DetachSession(Vec<ClientId>),
+    DetachSession(Vec<ClientId>, Option<NotificationEnd>),
     AttachClient(
         CliAssets,
         Option<usize>,       // tab position to focus
@@ -95,9 +96,9 @@ pub enum ServerInstruction {
     ),
     AttachWatcherClient(ClientId, Size),
     ConnStatus(ClientId),
-    Log(Vec<String>, ClientId),
-    LogError(Vec<String>, ClientId),
-    SwitchSession(ConnectToSession, ClientId),
+    Log(Vec<String>, ClientId, Option<NotificationEnd>),
+    LogError(Vec<String>, ClientId, Option<NotificationEnd>),
+    SwitchSession(ConnectToSession, ClientId, Option<NotificationEnd>),
     UnblockCliPipeInput(String),   // String -> Pipe name
     CliPipeOutput(String, String), // String -> Pipe name, String -> Output
     AssociatePipeWithClient {
@@ -475,6 +476,7 @@ pub(crate) struct SessionState {
     clients: HashMap<ClientId, Option<(Size, bool)>>, // bool -> is_web_client
     pipes: HashMap<String, ClientId>,                 // String => pipe_id
     watchers: HashSet<ClientId>,                      // watcher clients (read-only observers)
+    last_active_client: Option<ClientId>,             // last client that sent a Key message
 }
 
 impl SessionState {
@@ -483,6 +485,7 @@ impl SessionState {
             clients: HashMap::new(),
             pipes: HashMap::new(),
             watchers: HashSet::new(),
+            last_active_client: None,
         }
     }
     pub fn new_client(&mut self) -> ClientId {
@@ -510,6 +513,7 @@ impl SessionState {
     pub fn remove_client(&mut self, client_id: ClientId) {
         self.clients.remove(&client_id);
         self.pipes.retain(|_p_id, c_id| c_id != &client_id);
+        self.clear_last_active_client(client_id);
     }
     pub fn set_client_size(&mut self, client_id: ClientId, size: Size) {
         self.clients
@@ -587,6 +591,17 @@ impl SessionState {
     }
     pub fn remove_watcher(&mut self, client_id: ClientId) {
         self.watchers.remove(&client_id);
+    }
+    pub fn set_last_active_client(&mut self, client_id: ClientId) {
+        self.last_active_client = Some(client_id);
+    }
+    pub fn get_last_active_client(&self) -> Option<ClientId> {
+        self.last_active_client
+    }
+    pub fn clear_last_active_client(&mut self, client_id: ClientId) {
+        if self.last_active_client == Some(client_id) {
+            self.last_active_client = None;
+        }
     }
 }
 
@@ -771,6 +786,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             swap_layouts,
                             should_focus_tab,
                             (client_id, is_web_client),
+                            None,
                         ))
                         .unwrap()
                 };
@@ -909,7 +925,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 );
                 session_data
                     .senders
-                    .send_to_screen(ScreenInstruction::ChangeMode(mode_info.clone(), client_id))
+                    .send_to_screen(ScreenInstruction::ChangeMode(
+                        mode_info.clone(),
+                        client_id,
+                        None,
+                    ))
                     .unwrap();
                 session_data
                     .senders
@@ -1014,7 +1034,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     },
                 }
             },
-            ServerInstruction::ClientExit(client_id) => {
+            ServerInstruction::ClientExit(client_id, completion_tx) => {
                 let _ = os_input.send_to_client(
                     client_id,
                     ServerToClientMsg::Exit {
@@ -1039,6 +1059,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 } else {
                     // Handle regular client removal
                     remove_client!(client_id, os_input, session_state);
+                    drop(completion_tx); // prevent deadlock with route thread
                     if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
                     {
                         session_data
@@ -1193,15 +1214,21 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     remove_client!(client_id, os_input, session_state);
                 }
             },
-            ServerInstruction::DetachSession(client_ids) => {
-                for client_id in client_ids {
+            ServerInstruction::DetachSession(client_ids, completion_tx) => {
+                for client_id in &client_ids {
                     let _ = os_input.send_to_client(
-                        client_id,
+                        *client_id,
                         ServerToClientMsg::Exit {
                             exit_reason: ExitReason::Normal,
                         },
                     );
-                    remove_client!(client_id, os_input, session_state);
+                    remove_client!(*client_id, os_input, session_state);
+                }
+                drop(completion_tx); // we do this here explicitly to signal that the clients have
+                                     // already disconnected and to prevent a deadlock below caused
+                                     // by us having to wait for session_data to send cleanup
+                                     // signals to the various threads
+                for client_id in client_ids {
                     if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
                     {
                         session_data
@@ -1295,7 +1322,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let _ = os_input.send_to_client(client_id, ServerToClientMsg::Connected);
                 remove_client!(client_id, os_input, session_state);
             },
-            ServerInstruction::Log(lines_to_log, client_id) => {
+            ServerInstruction::Log(
+                lines_to_log,
+                client_id,
+                _completion_tx, // the action ends here, dropping this will release anything waiting
+                                // for it
+            ) => {
                 send_to_client!(
                     client_id,
                     os_input,
@@ -1305,7 +1337,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     session_state
                 );
             },
-            ServerInstruction::LogError(lines_to_log, client_id) => {
+            ServerInstruction::LogError(
+                lines_to_log,
+                client_id,
+                _completion_tx, // the action ends here, dropping this will release anything waiting
+                                // for it
+            ) => {
                 send_to_client!(
                     client_id,
                     os_input,
@@ -1315,7 +1352,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     session_state
                 );
             },
-            ServerInstruction::SwitchSession(mut connect_to_session, client_id) => {
+            ServerInstruction::SwitchSession(mut connect_to_session, client_id, completion_tx) => {
                 let current_session_name = envs::get_session_name();
                 if connect_to_session.name == current_session_name.ok() {
                     log::error!("Cannot attach to same session");
@@ -1333,6 +1370,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     if let Some(layout_dir) = layout_dir {
                         connect_to_session.apply_layout_dir(&layout_dir);
                     }
+
+                    send_to_client!(
+                        client_id,
+                        os_input,
+                        ServerToClientMsg::SwitchSession { connect_to_session },
+                        session_state
+                    );
+                    remove_client!(client_id, os_input, session_state);
+                    drop(completion_tx); // do not deadlock with route thread
+
                     if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
                     {
                         session_data
@@ -1360,13 +1407,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .senders
                         .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                         .unwrap();
-                    send_to_client!(
-                        client_id,
-                        os_input,
-                        ServerToClientMsg::SwitchSession { connect_to_session },
-                        session_state
-                    );
-                    remove_client!(client_id, os_input, session_state);
                 }
             },
             ServerInstruction::AssociatePipeWithClient { pipe_id, client_id } => {

@@ -1,6 +1,5 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 250
 expression: "format!(\"{:#?}\", plugin_bytes_event)"
 ---
 Some(

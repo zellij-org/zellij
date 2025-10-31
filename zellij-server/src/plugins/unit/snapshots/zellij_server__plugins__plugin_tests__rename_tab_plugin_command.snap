@@ -1,6 +1,5 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 4089
 expression: "format!(\"{:#?}\", new_tab_event)"
 ---
 Some(
@@ -20,5 +19,11 @@ Some(
             109,
             101,
         ],
+        Some(
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+            },
+        ),
     ),
 )

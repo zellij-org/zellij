@@ -14,8 +14,8 @@ use std::path::PathBuf;
 use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
-    Direction, KeyWithModifier, PaneInfo, PermissionStatus, PermissionType, PluginPermission,
-    ResizeStrategy, WebSharing,
+    Direction, KeyWithModifier, NewPanePlacement, PaneInfo, PermissionStatus, PermissionType,
+    PluginPermission, ResizeStrategy, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -33,6 +33,7 @@ use layout_applier::LayoutApplier;
 use swap_layouts::SwapLayouts;
 
 use self::clipboard::ClipboardProvider;
+use crate::route::NotificationEnd;
 use crate::{
     os_input_output::ServerOsApi,
     output::{CharacterChunk, Output, SixelImageChunk},
@@ -41,7 +42,7 @@ use crate::{
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
     plugins::PluginInstruction,
-    pty::{ClientTabIndexOrPaneId, NewPanePlacement, PtyInstruction, VteBytes},
+    pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
     ClientId, ServerInstruction,
 };
@@ -632,6 +633,7 @@ pub trait Pane {
         client_id: Option<ClientId>,
         _get_full_scrollback: bool,
     ) -> PaneContents;
+    fn update_exit_status(&mut self, _exit_status: i32) {}
 }
 
 #[derive(Clone, Debug)]
@@ -850,10 +852,10 @@ impl Tab {
         ) {
             Ok(should_show_floating_panes) => {
                 if should_show_floating_panes && !self.floating_panes.panes_are_visible() {
-                    self.toggle_floating_panes(Some(client_id), None)
+                    self.toggle_floating_panes(Some(client_id), None, None)
                         .non_fatal();
                 } else if !should_show_floating_panes && self.floating_panes.panes_are_visible() {
-                    self.toggle_floating_panes(Some(client_id), None)
+                    self.toggle_floating_panes(Some(client_id), None, None)
                         .non_fatal();
                 }
                 self.tiled_panes.reapply_pane_frames();
@@ -1228,6 +1230,7 @@ impl Tab {
         &mut self,
         client_id: Option<ClientId>,
         default_shell: Option<TerminalAction>,
+        completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         if self.floating_panes.panes_are_visible() {
             self.hide_floating_panes();
@@ -1260,6 +1263,8 @@ impl Tab {
                         NewPanePlacement::Floating(None),
                         should_start_suppressed,
                         client_id_or_tab_index,
+                        completion_tx,
+                        false, // set_blocking
                     );
                     self.senders
                         .send_to_pty(instruction)
@@ -1280,6 +1285,7 @@ impl Tab {
         should_focus_pane: bool,
         new_pane_placement: NewPanePlacement,
         client_id: Option<ClientId>,
+        blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
         match new_pane_placement {
             NewPanePlacement::NoPreference => self.new_no_preference_pane(
@@ -1289,6 +1295,7 @@ impl Tab {
                 start_suppressed,
                 should_focus_pane,
                 client_id,
+                blocking_notification,
             ),
             NewPanePlacement::Tiled(None) => self.new_tiled_pane(
                 pid,
@@ -1297,13 +1304,24 @@ impl Tab {
                 start_suppressed,
                 should_focus_pane,
                 client_id,
+                blocking_notification,
             ),
             NewPanePlacement::Tiled(Some(direction)) => {
                 if let Some(client_id) = client_id {
                     if direction == Direction::Left || direction == Direction::Right {
-                        self.vertical_split(pid, initial_pane_title, client_id)?;
+                        self.vertical_split(
+                            pid,
+                            initial_pane_title,
+                            client_id,
+                            blocking_notification,
+                        )?;
                     } else {
-                        self.horizontal_split(pid, initial_pane_title, client_id)?;
+                        self.horizontal_split(
+                            pid,
+                            initial_pane_title,
+                            client_id,
+                            blocking_notification,
+                        )?;
                     }
                 }
                 Ok(())
@@ -1315,6 +1333,7 @@ impl Tab {
                 start_suppressed,
                 should_focus_pane,
                 floating_pane_coordinates,
+                blocking_notification,
             ),
             NewPanePlacement::InPlace {
                 pane_id_to_replace,
@@ -1323,9 +1342,10 @@ impl Tab {
                 pid,
                 initial_pane_title,
                 invoked_with,
-                pane_id_to_replace,
+                pane_id_to_replace.map(|id| id.into()),
                 close_replaced_pane,
                 client_id,
+                blocking_notification,
             ),
             NewPanePlacement::Stacked(pane_id_to_stack_under) => self.new_stacked_pane(
                 pid,
@@ -1333,8 +1353,9 @@ impl Tab {
                 invoked_with,
                 start_suppressed,
                 should_focus_pane,
-                pane_id_to_stack_under,
+                pane_id_to_stack_under.map(|id| id.into()),
                 client_id,
+                blocking_notification,
             ),
         }
     }
@@ -1346,6 +1367,7 @@ impl Tab {
         start_suppressed: bool,
         should_focus_pane: bool,
         client_id: Option<ClientId>,
+        blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
         self.close_down_to_max_terminals()
@@ -1370,6 +1392,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    blocking_notification,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1448,6 +1471,7 @@ impl Tab {
         start_suppressed: bool,
         should_focus_pane: bool,
         client_id: Option<ClientId>,
+        blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
         if should_focus_pane {
@@ -1475,6 +1499,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    blocking_notification,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1543,6 +1568,7 @@ impl Tab {
         start_suppressed: bool,
         should_focus_pane: bool,
         floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+        blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
         if should_focus_pane {
@@ -1570,6 +1596,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    blocking_notification,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1638,6 +1665,7 @@ impl Tab {
         pane_id_to_replace: Option<PaneId>,
         close_replaced_pane: bool,
         client_id: Option<ClientId>,
+        blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
         match (pane_id_to_replace, client_id) {
             (Some(pane_id_to_replace), _) => {
@@ -1646,6 +1674,7 @@ impl Tab {
                     pid,
                     close_replaced_pane,
                     invoked_with,
+                    blocking_notification,
                 )?;
             },
             (None, Some(client_id)) => match self.get_active_pane_id(client_id) {
@@ -1655,6 +1684,7 @@ impl Tab {
                         pid,
                         close_replaced_pane,
                         invoked_with,
+                        blocking_notification,
                     )?;
                 },
                 None => {
@@ -1679,6 +1709,7 @@ impl Tab {
         should_focus_pane: bool,
         pane_id_to_stack_under: Option<PaneId>,
         client_id: Option<ClientId>,
+        blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
         if should_focus_pane {
@@ -1706,6 +1737,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    blocking_notification,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1887,6 +1919,7 @@ impl Tab {
         new_pane_id: PaneId,
         close_replaced_pane: bool,
         run: Option<Run>,
+        completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         // this method creates a new pane from pid and replaces it with the active pane
         // the active pane is then suppressed (hidden and not rendered) until the current
@@ -1913,6 +1946,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    completion_tx,
                 );
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
                     self.floating_panes
@@ -1925,7 +1959,7 @@ impl Tab {
                 if close_replaced_pane {
                     if let Some(pid) = replaced_pane.as_ref().map(|p| p.pid()) {
                         self.senders
-                            .send_to_pty(PtyInstruction::ClosePane(pid))
+                            .send_to_pty(PtyInstruction::ClosePane(pid, None))
                             .with_context(err_context)?;
                     }
                     drop(replaced_pane);
@@ -2023,6 +2057,7 @@ impl Tab {
         &mut self,
         pane_id_to_replace: PaneId,
         pane_to_replace_with: Box<dyn Pane>,
+        completion_tx: Option<NotificationEnd>,
     ) {
         let mut replaced_pane = if self.floating_panes.panes_contain(&pane_id_to_replace) {
             self.floating_panes
@@ -2034,7 +2069,9 @@ impl Tab {
         };
         if let Some(replaced_pane) = replaced_pane.take() {
             let pane_id = replaced_pane.pid();
-            let _ = self.senders.send_to_pty(PtyInstruction::ClosePane(pane_id));
+            let _ = self
+                .senders
+                .send_to_pty(PtyInstruction::ClosePane(pane_id, completion_tx));
             let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
                 None,
                 None,
@@ -2048,6 +2085,7 @@ impl Tab {
         pid: PaneId,
         initial_pane_title: Option<String>,
         client_id: ClientId,
+        completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context =
             || format!("failed to split pane {pid:?} horizontally for client {client_id}");
@@ -2079,6 +2117,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    completion_tx,
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -2097,7 +2136,7 @@ impl Tab {
                     .with_context(err_context)?;
             }
             self.senders
-                .send_to_pty(PtyInstruction::ClosePane(pid))
+                .send_to_pty(PtyInstruction::ClosePane(pid, completion_tx))
                 .with_context(err_context)?;
             return Ok(());
         }
@@ -2108,6 +2147,7 @@ impl Tab {
         pid: PaneId,
         initial_pane_title: Option<String>,
         client_id: ClientId,
+        completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context =
             || format!("failed to split pane {pid:?} vertically for client {client_id}");
@@ -2139,6 +2179,7 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                     self.explicitly_disable_kitty_keyboard_protocol,
+                    completion_tx,
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
@@ -2157,7 +2198,7 @@ impl Tab {
                     .with_context(err_context)?;
             }
             self.senders
-                .send_to_pty(PtyInstruction::ClosePane(pid))
+                .send_to_pty(PtyInstruction::ClosePane(pid, completion_tx))
                 .with_context(err_context)?;
             return Ok(());
         }
@@ -2374,6 +2415,7 @@ impl Tab {
                     raw_input_bytes_are_kitty,
                     pane_id,
                     Some(client_id),
+                    None,
                 )
                 .context("failed to write to terminals on current tab")?;
             if ui_change_triggered {
@@ -2421,6 +2463,7 @@ impl Tab {
             raw_input_bytes_are_kitty,
             pane_id,
             Some(client_id),
+            None,
         )
         .with_context(|| format!("failed to write to active terminal for client {client_id}"))
     }
@@ -2439,7 +2482,7 @@ impl Tab {
                 .get_pane_id_at(position, false)
                 .with_context(err_context)?;
             if let Some(pane_id) = pane_id {
-                self.write_to_pane_id(&None, input_bytes, false, pane_id, Some(client_id))
+                self.write_to_pane_id(&None, input_bytes, false, pane_id, Some(client_id), None)
                     .with_context(err_context)?;
                 return Ok(());
             }
@@ -2449,7 +2492,7 @@ impl Tab {
             .get_pane_id_at(position, false)
             .with_context(err_context)?;
         if let Some(pane_id) = pane_id {
-            self.write_to_pane_id(&None, input_bytes, false, pane_id, Some(client_id))
+            self.write_to_pane_id(&None, input_bytes, false, pane_id, Some(client_id), None)
                 .with_context(err_context)?;
             return Ok(());
         }
@@ -2463,6 +2506,7 @@ impl Tab {
         raw_input_bytes_are_kitty: bool,
         pane_id: PaneId,
         client_id: Option<ClientId>,
+        completion_tx: Option<NotificationEnd>,
     ) -> Result<bool> {
         // returns true if we need to update the UI (eg. when a command pane is closed with ctrl-c)
         let err_context = || format!("failed to write to pane with id {pane_id:?}");
@@ -2510,12 +2554,13 @@ impl Tab {
                             .send_to_pty(PtyInstruction::ReRunCommandInPane(
                                 PaneId::Terminal(active_terminal_id),
                                 command,
+                                completion_tx,
                             ))
                             .with_context(err_context)?;
                         should_update_ui = true;
                     },
                     Some(AdjustedInput::CloseThisPane) => {
-                        self.close_pane(PaneId::Terminal(active_terminal_id), false);
+                        self.close_pane(PaneId::Terminal(active_terminal_id), false, None);
                         should_update_ui = true;
                     },
                     Some(AdjustedInput::DropToShellInThisPane { working_dir }) => {
@@ -2525,6 +2570,7 @@ impl Tab {
                                 pane_id: PaneId::Terminal(active_terminal_id),
                                 shell: Some(self.default_shell.clone()),
                                 working_dir,
+                                completion_tx,
                             })
                             .with_context(err_context)?;
                         should_update_ui = true;
@@ -3299,9 +3345,9 @@ impl Tab {
             let terminals = self.get_tiled_pane_ids();
             for &pid in terminals.iter().skip(max_panes - 1) {
                 self.senders
-                    .send_to_pty(PtyInstruction::ClosePane(pid))
+                    .send_to_pty(PtyInstruction::ClosePane(pid, None))
                     .context("failed to close down to max terminals")?;
-                self.close_pane(pid, false);
+                self.close_pane(pid, false, None);
             }
         }
         Ok(())
@@ -3364,7 +3410,12 @@ impl Tab {
             pane.set_mouse_selection_support(selection_support);
         }
     }
-    pub fn close_pane(&mut self, id: PaneId, ignore_suppressed_panes: bool) {
+    pub fn close_pane(
+        &mut self,
+        id: PaneId,
+        ignore_suppressed_panes: bool,
+        exit_status: Option<i32>,
+    ) {
         // we need to ignore suppressed panes when we toggle a pane to be floating/embedded(tiled)
         // this is because in that case, while we do use this logic, we're not actually closing the
         // pane, we're moving it
@@ -3378,8 +3429,8 @@ impl Tab {
                 },
             };
         }
-        if self.floating_panes.panes_contain(&id) {
-            let _closed_pane = self.floating_panes.remove_pane(id);
+        let closed_pane = if self.floating_panes.panes_contain(&id) {
+            let closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
             if !self.floating_panes.has_selectable_panes() {
                 self.swap_layouts.reset_floating_damage();
@@ -3396,11 +3447,12 @@ impl Tab {
                 // confusing
                 let _ = self.relayout_floating_panes(false);
             }
+            closed_pane
         } else {
             if self.tiled_panes.fullscreen_is_active() {
                 self.tiled_panes.unset_fullscreen();
             }
-            let _closed_pane = self.tiled_panes.remove_pane(id);
+            let closed_pane = self.tiled_panes.remove_pane(id);
             self.set_force_render();
             self.tiled_panes.set_force_render();
             if self.auto_layout && !self.swap_layouts.is_tiled_damaged() {
@@ -3409,7 +3461,14 @@ impl Tab {
                 // confusing
                 let _ = self.relayout_tiled_panes(false);
             }
+            closed_pane
         };
+        if let Some(exit_status) = exit_status {
+            if let Some(mut closed_pane) = closed_pane {
+                // in case we need to update on Drop
+                closed_pane.update_exit_status(exit_status);
+            }
+        }
         let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
             None,
             None,
@@ -3561,24 +3620,31 @@ impl Tab {
                 )
             })
     }
-    pub fn close_focused_pane(&mut self, client_id: ClientId) -> Result<()> {
+    pub fn close_focused_pane(
+        &mut self,
+        client_id: ClientId,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
         let err_context = |pane_id| {
             format!("failed to close focused pane (ID {pane_id:?}) for client {client_id}")
         };
 
         if self.floating_panes.panes_are_visible() {
             if let Some(active_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
-                self.close_pane(active_floating_pane_id, false);
+                self.close_pane(active_floating_pane_id, false, None);
                 self.senders
-                    .send_to_pty(PtyInstruction::ClosePane(active_floating_pane_id))
+                    .send_to_pty(PtyInstruction::ClosePane(
+                        active_floating_pane_id,
+                        completion_tx,
+                    ))
                     .with_context(|| err_context(active_floating_pane_id))?;
                 return Ok(());
             }
         }
         if let Some(active_pane_id) = self.tiled_panes.get_active_pane_id(client_id) {
-            self.close_pane(active_pane_id, false);
+            self.close_pane(active_pane_id, false, None);
             self.senders
-                .send_to_pty(PtyInstruction::ClosePane(active_pane_id))
+                .send_to_pty(PtyInstruction::ClosePane(active_pane_id, completion_tx))
                 .with_context(|| err_context(active_pane_id))?;
         }
         Ok(())
@@ -3623,7 +3689,11 @@ impl Tab {
         }
         Ok(())
     }
-    pub fn edit_scrollback(&mut self, client_id: ClientId) -> Result<()> {
+    pub fn edit_scrollback(
+        &mut self,
+        client_id: ClientId,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
         let err_context = || format!("failed to edit scrollback for client {client_id}");
 
         let mut file = temp_dir();
@@ -3642,10 +3712,15 @@ impl Tab {
                 file,
                 line_number,
                 ClientTabIndexOrPaneId::ClientId(client_id),
+                completion_tx,
             ))
             .with_context(err_context)
     }
-    pub fn edit_scrollback_for_pane_with_id(&mut self, pane_id: PaneId) -> Result<()> {
+    pub fn edit_scrollback_for_pane_with_id(
+        &mut self,
+        pane_id: PaneId,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
         if let PaneId::Terminal(_terminal_pane_id) = pane_id {
             let mut file = temp_dir();
             file.push(format!("{}.dump", Uuid::new_v4()));
@@ -3658,6 +3733,7 @@ impl Tab {
                 file,
                 line_number,
                 ClientTabIndexOrPaneId::PaneId(pane_id),
+                completion_tx,
             ))
         } else {
             log::error!("Editing plugin pane scrollback is currently unsupported.");
@@ -5146,7 +5222,11 @@ impl Tab {
             self.focus_suppressed_pane_for_all_clients(PaneId::Plugin(pid));
         }
     }
-    pub fn rerun_terminal_pane_with_id(&mut self, terminal_pane_id: u32) {
+    pub fn rerun_terminal_pane_with_id(
+        &mut self,
+        terminal_pane_id: u32,
+        completion_tx: Option<NotificationEnd>,
+    ) {
         let pane_id = PaneId::Terminal(terminal_pane_id);
         match self
             .floating_panes
@@ -5160,6 +5240,7 @@ impl Tab {
                     let _ = self.senders.send_to_pty(PtyInstruction::ReRunCommandInPane(
                         pane_id,
                         command_to_rerun,
+                        completion_tx,
                     ));
                 } else {
                     log::error!("Pane is still running!")
@@ -5411,6 +5492,7 @@ impl Tab {
             self.arrow_fonts,
             self.styled_underlines,
             self.explicitly_disable_kitty_keyboard_protocol,
+            None,
         );
         new_pane.update_name("EDITING SCROLLBACK"); // we do this here and not in the
                                                     // constructor so it won't be overrided

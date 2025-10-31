@@ -388,6 +388,9 @@ pub enum Sessions {
             takes_value(false)
         )]
         stacked: bool,
+        /// Whether to block until this command has finished
+        #[clap(long, value_parser, default_value("false"), takes_value(false))]
+        blocking: bool,
     },
     /// Load a plugin
     #[clap(visible_alias = "p")]
@@ -686,6 +689,8 @@ pub enum CliAction {
             takes_value(false)
         )]
         stacked: bool,
+        #[clap(short, long)]
+        blocking: bool,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
@@ -939,5 +944,27 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long)]
         pinned: Option<bool>,
+    },
+    /// Detach from the current session
+    Detach,
+    /// Switch to a different session
+    SwitchSession {
+        /// Name of the session to switch to
+        name: String,
+        /// Optional tab position to focus
+        #[clap(long)]
+        tab_position: Option<usize>,
+        /// Optional pane ID to focus (eg. "terminal_1" for terminal pane with id 1, or "plugin_2" for plugin pane with id 2)
+        #[clap(long)]
+        pane_id: Option<String>,
+        /// Layout to apply when switching to the session (relative paths start at layout-dir)
+        #[clap(short, long, value_parser)]
+        layout: Option<PathBuf>,
+        /// Default folder to look for layouts
+        #[clap(long, value_parser, requires("layout"))]
+        layout_dir: Option<PathBuf>,
+        /// Change the working directory when switching
+        #[clap(short, long, value_parser)]
+        cwd: Option<PathBuf>,
     },
 }

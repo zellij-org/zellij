@@ -1,8 +1,9 @@
 use super::PluginInstruction;
 use crate::background_jobs::BackgroundJob;
+use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::plugin_map::PluginEnv;
-use crate::plugins::wasm_bridge::{get_tokio_runtime, handle_plugin_crash};
-use crate::pty::{ClientTabIndexOrPaneId, NewPanePlacement, PtyInstruction};
+use crate::plugins::wasm_bridge::handle_plugin_crash;
+use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::route_action;
 use crate::ServerInstruction;
 use interprocess::local_socket::LocalSocketStream;
@@ -20,8 +21,8 @@ use std::{
 use wasmi::{Caller, Linker};
 use zellij_utils::data::{
     CommandType, ConnectToSession, FloatingPaneCoordinates, HttpVerb, KeyWithModifier, LayoutInfo,
-    MessageToPlugin, OriginatingPlugin, PaneScrollbackResponse, PermissionStatus, PermissionType,
-    PluginPermission,
+    MessageToPlugin, NewPanePlacement, OriginatingPlugin, PaneScrollbackResponse, PermissionStatus,
+    PermissionType, PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
@@ -65,6 +66,7 @@ macro_rules! apply_action {
         if let Err(e) = route_action(
             $action,
             $env.client_id,
+            None,
             Some(PaneId::Plugin($env.plugin_id)),
             $env.senders.clone(),
             $env.capabilities.clone(),
@@ -74,6 +76,7 @@ macro_rules! apply_action {
             None,
             $env.keybinds.clone(),
             $env.default_mode.clone(),
+            None,
         ) {
             log::error!("{}: {:?}", $error_message(), e);
         }
@@ -760,6 +763,8 @@ fn open_file_near_plugin(
         NewPanePlacement::default(),
         start_suppressed,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        None,  // no completion signal needed for plugin calls
+        false, // set_blocking
     );
     let _ = env.senders.send_to_pty(pty_instr);
 }
@@ -788,6 +793,8 @@ fn open_file_floating_near_plugin(
         NewPanePlacement::Floating(floating_pane_coordinates),
         start_suppressed,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        None,  // no completion signal needed for plugin calls
+        false, // set_blocking
     );
     let _ = env.senders.send_to_pty(pty_instr);
 }
@@ -814,6 +821,7 @@ fn open_file_in_place_of_plugin(
         Some(title),
         close_plugin_after_replace,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        None, // no completion signal needed for plugin calls
     );
     let _ = env.senders.send_to_pty(pty_instr);
 }
@@ -858,6 +866,8 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
         NewPanePlacement::Tiled(None),
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        None,  // no completion signal needed for plugin calls
+        false, // set_blocking
     ));
 }
 
@@ -909,6 +919,8 @@ fn open_terminal_floating_near_plugin(
         NewPanePlacement::Floating(floating_pane_coordinates),
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        None,  // no completion signal needed for plugin calls
+        false, // set_blocking
     ));
 }
 
@@ -956,6 +968,7 @@ fn open_terminal_in_place_of_plugin(
             name,
             close_plugin_after_replace,
             ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+            None, // no completion signal needed for plugin calls
         ));
 }
 
@@ -995,6 +1008,7 @@ fn open_command_pane_in_place_of_plugin(
             name,
             close_plugin_after_replace,
             ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+            None, // no completion signal needed for plugin calls
         ));
 }
 
@@ -1068,6 +1082,8 @@ fn open_command_pane_near_plugin(
         NewPanePlacement::Tiled(None),
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        None,  // no completion signal needed for plugin calls
+        false, // set_blocking
     ));
 }
 
@@ -1143,6 +1159,8 @@ fn open_command_pane_floating_near_plugin(
         NewPanePlacement::Floating(floating_pane_coordinates),
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        None,  // no completion signal needed for plugin calls
+        false, // set_blocking
     ));
 }
 
@@ -1219,18 +1237,24 @@ fn open_command_pane_background(
         NewPanePlacement::default(),
         start_suppressed,
         ClientTabIndexOrPaneId::ClientId(env.client_id),
+        None,  // no completion signal needed for plugin calls
+        false, // set_blocking
     ));
 }
 
 fn rerun_command_pane(env: &PluginEnv, terminal_pane_id: u32) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::RerunCommandPane(terminal_pane_id));
+        .send_to_screen(ScreenInstruction::RerunCommandPane(terminal_pane_id, None));
 }
 
 fn switch_tab_to(env: &PluginEnv, tab_idx: u32) {
     env.senders
-        .send_to_screen(ScreenInstruction::GoToTab(tab_idx, Some(env.client_id)))
+        .send_to_screen(ScreenInstruction::GoToTab(
+            tab_idx,
+            Some(env.client_id),
+            None,
+        ))
         .with_context(|| {
             format!(
                 "failed to switch to tab {tab_idx} from plugin {}",
@@ -1406,6 +1430,7 @@ fn show_pane_with_id(env: &PluginEnv, pane_id: PaneId, should_float_if_hidden: b
             pane_id,
             should_float_if_hidden,
             env.client_id,
+            None,
         ));
 }
 
@@ -1413,6 +1438,8 @@ fn close_self(env: &PluginEnv) {
     env.senders
         .send_to_screen(ScreenInstruction::ClosePane(
             PaneId::Plugin(env.plugin_id),
+            None,
+            None,
             None,
         ))
         .with_context(|| format!("failed to close self"))
@@ -1637,6 +1664,7 @@ fn switch_session(
             .send_to_server(ServerInstruction::SwitchSession(
                 connect_to_session,
                 client_id,
+                None,
             ))
             .with_context(err_context)?;
     }
@@ -1892,9 +1920,10 @@ fn close_terminal_pane(env: &PluginEnv, terminal_pane_id: u32) {
     };
     apply_action!(action, error_msg, env);
     env.senders
-        .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(
-            terminal_pane_id,
-        )))
+        .send_to_pty(PtyInstruction::ClosePane(
+            PaneId::Terminal(terminal_pane_id),
+            None,
+        ))
         .non_fatal();
 }
 
@@ -2033,9 +2062,9 @@ fn set_floating_pane_pinned(env: &PluginEnv, pane_id: PaneId, should_be_pinned: 
 }
 
 fn stack_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
-    let _ = env
-        .senders
-        .send_to_screen(ScreenInstruction::StackPanes(pane_ids, env.client_id));
+    let _ =
+        env.senders
+            .send_to_screen(ScreenInstruction::StackPanes(pane_ids, env.client_id, None));
 }
 
 fn change_floating_panes_coordinates(
@@ -2046,6 +2075,7 @@ fn change_floating_panes_coordinates(
         .senders
         .send_to_screen(ScreenInstruction::ChangeFloatingPanesCoordinates(
             pane_ids_and_coordinates,
+            None,
         ));
 }
 
@@ -2125,7 +2155,9 @@ fn resize_pane_with_id(env: &PluginEnv, resize: ResizeStrategy, pane_id: PaneId)
 fn edit_scrollback_for_pane_with_id(env: &PluginEnv, pane_id: PaneId) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::EditScrollbackForPaneWithId(pane_id));
+        .send_to_screen(ScreenInstruction::EditScrollbackForPaneWithId(
+            pane_id, None,
+        ));
 }
 
 fn get_pane_scrollback(env: &PluginEnv, pane_id: PaneId, get_full_scrollback: bool) {
@@ -2375,6 +2407,7 @@ fn load_new_plugin(
                     cwd,
                     None,
                     skip_cache,
+                    None,
                     None,
                     None,
                 ));

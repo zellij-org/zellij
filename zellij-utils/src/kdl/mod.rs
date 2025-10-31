@@ -1022,6 +1022,35 @@ impl Action {
                 },
             },
             Action::Detach => Some(KdlNode::new("Detach")),
+            Action::SwitchSession {
+                name,
+                tab_position,
+                pane_id,
+                layout,
+                cwd,
+            } => {
+                let mut node = KdlNode::new("SwitchSession");
+                node.push(KdlEntry::new_prop("name", name.clone()));
+                if let Some(pos) = tab_position {
+                    node.push(KdlEntry::new_prop("tab_position", *pos as i64));
+                }
+                if let Some((id, is_plugin)) = pane_id {
+                    node.push(KdlEntry::new_prop("pane_id", *id as i64));
+                    if *is_plugin {
+                        node.push(KdlEntry::new_prop("is_plugin", true));
+                    }
+                }
+                if let Some(layout_info) = layout {
+                    node.push(KdlEntry::new_prop("layout", layout_info.name()));
+                }
+                if let Some(cwd_path) = cwd {
+                    node.push(KdlEntry::new_prop(
+                        "cwd",
+                        cwd_path.to_string_lossy().to_string(),
+                    ));
+                }
+                Some(node)
+            },
             Action::LaunchOrFocusPlugin {
                 plugin: run_plugin_or_alias,
                 should_float,
@@ -1466,6 +1495,50 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "Detach" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "SwitchSession" => {
+                let name = kdl_get_string_property_or_child_value!(kdl_action, "name")
+                    .map(|s| s.to_string())
+                    .ok_or(ConfigError::new_kdl_error(
+                        "SwitchSession action requires a 'name' property".into(),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    ))?;
+                let tab_position =
+                    crate::kdl_get_int_property_or_child_value!(kdl_action, "tab_position")
+                        .map(|i| i as usize);
+                let pane_id = crate::kdl_get_int_property_or_child_value!(kdl_action, "pane_id")
+                    .map(|i| i as u32);
+                let is_plugin =
+                    crate::kdl_get_bool_property_or_child_value!(kdl_action, "is_plugin")
+                        .unwrap_or(false);
+                let pane_id_tuple = pane_id.map(|id| (id, is_plugin));
+
+                // Parse layout
+                let layout = if let Some(layout_str) =
+                    kdl_get_string_property_or_child_value!(kdl_action, "layout")
+                {
+                    let layout_path = PathBuf::from(layout_str);
+                    let layout_dir = config_options
+                        .layout_dir
+                        .clone()
+                        .or_else(|| get_layout_dir(find_default_config_dir()));
+                    LayoutInfo::from_config(&layout_dir, &Some(layout_path))
+                } else {
+                    None
+                };
+
+                // Parse cwd
+                let cwd =
+                    kdl_get_string_property_or_child_value!(kdl_action, "cwd").map(PathBuf::from);
+
+                Ok(Action::SwitchSession {
+                    name,
+                    tab_position,
+                    pane_id: pane_id_tuple,
+                    layout,
+                    cwd,
+                })
+            },
             "Copy" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Clear" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Confirm" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),

@@ -22,5 +22,11 @@ Some(
             1,
             false,
         ),
+        Some(
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+            },
+        ),
     ),
 )

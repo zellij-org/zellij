@@ -121,6 +121,7 @@ pub enum ClientToServerMsg {
         action: Action,
         terminal_id: Option<u32>,
         client_id: Option<ClientId>,
+        is_cli_client: bool,
     },
     Key {
         key: KeyWithModifier,
@@ -181,6 +182,7 @@ pub enum ExitReason {
     CannotAttach,
     Disconnect,
     WebClientsForbidden,
+    CustomExitStatus(i32),
     Error(String),
 }
 
@@ -225,6 +227,7 @@ There are a few things you can try now:
     "
                 )
             },
+            Self::CustomExitStatus(exit_status) => write!(f, "Exit {}", exit_status),
             Self::Error(e) => write!(f, "Error occurred in server:\n{}", e),
         }
     }

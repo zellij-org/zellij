@@ -2582,6 +2582,82 @@ impl FromStr for WebSharing {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum NewPanePlacement {
+    NoPreference,
+    Tiled(Option<Direction>),
+    Floating(Option<FloatingPaneCoordinates>),
+    InPlace {
+        pane_id_to_replace: Option<PaneId>,
+        close_replaced_pane: bool,
+    },
+    Stacked(Option<PaneId>),
+}
+
+impl Default for NewPanePlacement {
+    fn default() -> Self {
+        NewPanePlacement::NoPreference
+    }
+}
+
+impl NewPanePlacement {
+    pub fn with_floating_pane_coordinates(
+        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+    ) -> Self {
+        NewPanePlacement::Floating(floating_pane_coordinates)
+    }
+    pub fn with_should_be_in_place(
+        self,
+        should_be_in_place: bool,
+        close_replaced_pane: bool,
+    ) -> Self {
+        if should_be_in_place {
+            NewPanePlacement::InPlace {
+                pane_id_to_replace: None,
+                close_replaced_pane,
+            }
+        } else {
+            self
+        }
+    }
+    pub fn with_pane_id_to_replace(
+        pane_id_to_replace: Option<PaneId>,
+        close_replaced_pane: bool,
+    ) -> Self {
+        NewPanePlacement::InPlace {
+            pane_id_to_replace,
+            close_replaced_pane,
+        }
+    }
+    pub fn should_float(&self) -> Option<bool> {
+        match self {
+            NewPanePlacement::Floating(_) => Some(true),
+            NewPanePlacement::Tiled(_) => Some(false),
+            _ => None,
+        }
+    }
+    pub fn floating_pane_coordinates(&self) -> Option<FloatingPaneCoordinates> {
+        match self {
+            NewPanePlacement::Floating(floating_pane_coordinates) => {
+                floating_pane_coordinates.clone()
+            },
+            _ => None,
+        }
+    }
+    pub fn should_stack(&self) -> bool {
+        match self {
+            NewPanePlacement::Stacked(_) => true,
+            _ => false,
+        }
+    }
+    pub fn id_of_stack_root(&self) -> Option<PaneId> {
+        match self {
+            NewPanePlacement::Stacked(id) => *id,
+            _ => None,
+        }
+    }
+}
+
 type Context = BTreeMap<String, String>;
 
 #[derive(Debug, Clone, EnumDiscriminants, ToString)]
