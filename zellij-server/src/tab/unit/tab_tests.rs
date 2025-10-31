@@ -635,6 +635,7 @@ fn split_largest_pane() {
             true,
             NewPanePlacement::default(),
             Some(1),
+            None,
         )
         .unwrap();
     }
@@ -854,6 +855,7 @@ pub fn cannot_split_largest_pane_when_there_is_no_room() {
         true,
         NewPanePlacement::default(),
         Some(1),
+        None,
     )
     .unwrap();
     assert_eq!(
@@ -909,6 +911,7 @@ pub fn toggle_focused_pane_fullscreen() {
             true,
             NewPanePlacement::default(),
             Some(1),
+            None,
         )
         .unwrap();
     }
@@ -993,6 +996,7 @@ pub fn toggle_focused_pane_fullscreen_with_stacked_resizes() {
             true,
             NewPanePlacement::default(),
             Some(1),
+            None,
         )
         .unwrap();
     }
@@ -1077,6 +1081,7 @@ fn switch_to_next_pane_fullscreen() {
             true,
             NewPanePlacement::default(),
             Some(1),
+            None,
         )
         .unwrap();
     active_tab
@@ -1088,6 +1093,7 @@ fn switch_to_next_pane_fullscreen() {
             true,
             NewPanePlacement::default(),
             Some(1),
+            None,
         )
         .unwrap();
     active_tab
@@ -1099,6 +1105,7 @@ fn switch_to_next_pane_fullscreen() {
             true,
             NewPanePlacement::default(),
             Some(1),
+            None,
         )
         .unwrap();
     active_tab
@@ -1110,6 +1117,7 @@ fn switch_to_next_pane_fullscreen() {
             true,
             NewPanePlacement::default(),
             Some(1),
+            None,
         )
         .unwrap();
     active_tab.toggle_active_pane_fullscreen(1);
@@ -1150,6 +1158,7 @@ fn switch_to_prev_pane_fullscreen() {
             true,
             NewPanePlacement::default(),
             Some(1),
+            None,
         )
         .unwrap();
     active_tab
@@ -1161,6 +1170,7 @@ fn switch_to_prev_pane_fullscreen() {
             true,
             NewPanePlacement::default(),
             Some(1),
+            None,
         )
         .unwrap();
     active_tab
@@ -1172,6 +1182,7 @@ fn switch_to_prev_pane_fullscreen() {
             true,
             NewPanePlacement::default(),
             Some(1),
+            None,
         )
         .unwrap();
     active_tab
@@ -1183,6 +1194,7 @@ fn switch_to_prev_pane_fullscreen() {
             true,
             NewPanePlacement::default(),
             Some(1),
+            None,
         )
         .unwrap();
     active_tab.toggle_active_pane_fullscreen(1);
@@ -14951,6 +14963,7 @@ fn correctly_resize_frameless_panes_on_pane_close() {
         true,
         NewPanePlacement::default(),
         Some(1),
+        None,
     )
     .unwrap();
     tab.close_pane(PaneId::Terminal(2), true);

@@ -1261,6 +1261,7 @@ fn dump_screen() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(2, Vec::from("scratch".as_bytes()))
@@ -1297,6 +1298,7 @@ fn clear_screen() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(2, Vec::from("scratch".as_bytes()))
@@ -1332,6 +1334,7 @@ fn new_floating_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -1367,6 +1370,7 @@ fn new_stacked_pane() {
         true,
         NewPanePlacement::Stacked(None),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.render(&mut output, None).unwrap();
@@ -1399,6 +1403,7 @@ fn floating_panes_persist_across_toggles() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.toggle_floating_panes(Some(client_id), None, None)
@@ -1442,6 +1447,7 @@ fn toggle_floating_panes_off() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -1481,6 +1487,7 @@ fn toggle_floating_panes_on() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -1526,6 +1533,7 @@ fn five_new_floating_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -1536,6 +1544,7 @@ fn five_new_floating_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -1546,6 +1555,7 @@ fn five_new_floating_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -1556,6 +1566,7 @@ fn five_new_floating_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -1566,6 +1577,7 @@ fn five_new_floating_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -1611,6 +1623,7 @@ fn increase_floating_pane_size() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -1650,6 +1663,7 @@ fn decrease_floating_pane_size() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -1689,6 +1703,7 @@ fn resize_floating_pane_left() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -1731,6 +1746,7 @@ fn resize_floating_pane_right() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -1773,6 +1789,7 @@ fn resize_floating_pane_up() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -1815,6 +1832,7 @@ fn resize_floating_pane_down() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -1861,6 +1879,7 @@ fn move_floating_pane_focus_left() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -1871,6 +1890,7 @@ fn move_floating_pane_focus_left() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -1881,6 +1901,7 @@ fn move_floating_pane_focus_left() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -1891,6 +1912,7 @@ fn move_floating_pane_focus_left() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -1901,6 +1923,7 @@ fn move_floating_pane_focus_left() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -1957,6 +1980,7 @@ fn move_floating_pane_focus_right() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -1967,6 +1991,7 @@ fn move_floating_pane_focus_right() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -1977,6 +2002,7 @@ fn move_floating_pane_focus_right() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -1987,6 +2013,7 @@ fn move_floating_pane_focus_right() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -1997,6 +2024,7 @@ fn move_floating_pane_focus_right() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -2054,6 +2082,7 @@ fn move_floating_pane_focus_up() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2064,6 +2093,7 @@ fn move_floating_pane_focus_up() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2074,6 +2104,7 @@ fn move_floating_pane_focus_up() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2084,6 +2115,7 @@ fn move_floating_pane_focus_up() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2094,6 +2126,7 @@ fn move_floating_pane_focus_up() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -2150,6 +2183,7 @@ fn move_floating_pane_focus_down() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2160,6 +2194,7 @@ fn move_floating_pane_focus_down() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2170,6 +2205,7 @@ fn move_floating_pane_focus_down() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2180,6 +2216,7 @@ fn move_floating_pane_focus_down() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2190,6 +2227,7 @@ fn move_floating_pane_focus_down() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -2247,6 +2285,7 @@ fn move_floating_pane_focus_with_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2257,6 +2296,7 @@ fn move_floating_pane_focus_with_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2267,6 +2307,7 @@ fn move_floating_pane_focus_with_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2277,6 +2318,7 @@ fn move_floating_pane_focus_with_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2287,6 +2329,7 @@ fn move_floating_pane_focus_with_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -2352,6 +2395,7 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2362,6 +2406,7 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2372,6 +2417,7 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2382,6 +2428,7 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2392,6 +2439,7 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -2457,6 +2505,7 @@ fn drag_pane_with_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2467,6 +2516,7 @@ fn drag_pane_with_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2477,6 +2527,7 @@ fn drag_pane_with_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2487,6 +2538,7 @@ fn drag_pane_with_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2497,6 +2549,7 @@ fn drag_pane_with_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -2562,6 +2615,7 @@ fn mark_text_inside_floating_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2572,6 +2626,7 @@ fn mark_text_inside_floating_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2582,6 +2637,7 @@ fn mark_text_inside_floating_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2592,6 +2648,7 @@ fn mark_text_inside_floating_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2602,6 +2659,7 @@ fn mark_text_inside_floating_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -2675,6 +2733,7 @@ fn resize_tab_with_floating_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2685,6 +2744,7 @@ fn resize_tab_with_floating_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2695,6 +2755,7 @@ fn resize_tab_with_floating_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2705,6 +2766,7 @@ fn resize_tab_with_floating_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2715,6 +2777,7 @@ fn resize_tab_with_floating_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -2770,6 +2833,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2780,6 +2844,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2790,6 +2855,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2800,6 +2866,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2810,6 +2877,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -2861,6 +2929,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically_and_expand_b
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2871,6 +2940,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically_and_expand_b
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2881,6 +2951,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically_and_expand_b
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2891,6 +2962,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically_and_expand_b
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -2901,6 +2973,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically_and_expand_b
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -2953,6 +3026,7 @@ fn embed_floating_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -2989,6 +3063,7 @@ fn float_embedded_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -3028,6 +3103,7 @@ fn embed_floating_pane_without_pane_frames() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -3065,6 +3141,7 @@ fn float_embedded_pane_without_pane_frames() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -3176,6 +3253,7 @@ fn rename_floating_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -3281,6 +3359,7 @@ fn move_floating_pane_with_sixel_image() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     let fixture = read_fixture("sixel-image-500px.six");
@@ -3334,6 +3413,7 @@ fn floating_pane_above_sixel_image() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     let fixture = read_fixture("sixel-image-500px.six");
@@ -3407,6 +3487,7 @@ fn suppress_floating_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
@@ -3472,6 +3553,7 @@ fn close_suppressing_floating_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
@@ -3541,6 +3623,7 @@ fn suppress_floating_pane_embed_it_and_close_it() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
@@ -3612,6 +3695,7 @@ fn resize_whole_tab_while_floting_pane_is_suppressed() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
@@ -3723,6 +3807,7 @@ fn enter_search_floating_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
 
@@ -4498,6 +4583,7 @@ fn move_pane_focus_sends_tty_csi_event() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -4542,6 +4628,7 @@ fn move_floating_pane_focus_sends_tty_csi_event() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -4552,6 +4639,7 @@ fn move_floating_pane_focus_sends_tty_csi_event() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -4602,6 +4690,7 @@ fn toggle_floating_panes_on_sends_tty_csi_event() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -4612,6 +4701,7 @@ fn toggle_floating_panes_on_sends_tty_csi_event() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.toggle_floating_panes(Some(client_id), None, None)
@@ -4665,6 +4755,7 @@ fn toggle_floating_panes_off_sends_tty_csi_event() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -4675,6 +4766,7 @@ fn toggle_floating_panes_off_sends_tty_csi_event() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_pty_bytes(
@@ -4746,6 +4838,7 @@ fn can_swap_tiled_layout_at_runtime() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.next_swap_layout().unwrap();
@@ -4812,6 +4905,7 @@ fn can_swap_floating_layout_at_runtime() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -4822,6 +4916,7 @@ fn can_swap_floating_layout_at_runtime() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.next_swap_layout().unwrap();
@@ -4883,6 +4978,7 @@ fn swapping_layouts_after_resize_snaps_to_current_layout() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.next_swap_layout().unwrap();
@@ -4943,6 +5039,7 @@ fn swap_tiled_layout_with_stacked_children() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -4953,6 +5050,7 @@ fn swap_tiled_layout_with_stacked_children() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -4963,6 +5061,7 @@ fn swap_tiled_layout_with_stacked_children() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.render(&mut output, None).unwrap();
@@ -5016,6 +5115,7 @@ fn swap_tiled_layout_with_only_stacked_children() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5026,6 +5126,7 @@ fn swap_tiled_layout_with_only_stacked_children() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5036,6 +5137,7 @@ fn swap_tiled_layout_with_only_stacked_children() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.render(&mut output, None).unwrap();
@@ -5092,6 +5194,7 @@ fn swap_tiled_layout_with_stacked_children_and_no_pane_frames() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5102,6 +5205,7 @@ fn swap_tiled_layout_with_stacked_children_and_no_pane_frames() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5112,6 +5216,7 @@ fn swap_tiled_layout_with_stacked_children_and_no_pane_frames() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.render(&mut output, None).unwrap();
@@ -5168,6 +5273,7 @@ fn move_focus_up_with_stacked_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5178,6 +5284,7 @@ fn move_focus_up_with_stacked_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5188,6 +5295,7 @@ fn move_focus_up_with_stacked_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.move_focus_right(client_id);
@@ -5246,6 +5354,7 @@ fn move_focus_down_with_stacked_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5256,6 +5365,7 @@ fn move_focus_down_with_stacked_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5266,6 +5376,7 @@ fn move_focus_down_with_stacked_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.move_focus_right(client_id);
@@ -5618,6 +5729,7 @@ fn close_main_stacked_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5628,6 +5740,7 @@ fn close_main_stacked_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5638,6 +5751,7 @@ fn close_main_stacked_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.close_pane(new_pane_id_2, false);
@@ -5697,6 +5811,7 @@ fn close_main_stacked_pane_in_mid_stack() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5707,6 +5822,7 @@ fn close_main_stacked_pane_in_mid_stack() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5717,6 +5833,7 @@ fn close_main_stacked_pane_in_mid_stack() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5727,6 +5844,7 @@ fn close_main_stacked_pane_in_mid_stack() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5737,6 +5855,7 @@ fn close_main_stacked_pane_in_mid_stack() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.move_focus_right(client_id);
@@ -5799,6 +5918,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5809,6 +5929,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5819,6 +5940,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5829,6 +5951,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5839,6 +5962,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.move_focus_left(client_id);
@@ -5902,6 +6026,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5912,6 +6037,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5922,6 +6048,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5932,6 +6059,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -5942,6 +6070,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.move_focus_right(client_id);
@@ -6004,6 +6133,7 @@ fn can_increase_size_of_main_pane_in_stack_horizontally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6014,6 +6144,7 @@ fn can_increase_size_of_main_pane_in_stack_horizontally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6024,6 +6155,7 @@ fn can_increase_size_of_main_pane_in_stack_horizontally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6034,6 +6166,7 @@ fn can_increase_size_of_main_pane_in_stack_horizontally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6044,6 +6177,7 @@ fn can_increase_size_of_main_pane_in_stack_horizontally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.move_focus_right(client_id);
@@ -6110,6 +6244,7 @@ fn can_increase_size_of_main_pane_in_stack_vertically() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6120,6 +6255,7 @@ fn can_increase_size_of_main_pane_in_stack_vertically() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6130,6 +6266,7 @@ fn can_increase_size_of_main_pane_in_stack_vertically() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6140,6 +6277,7 @@ fn can_increase_size_of_main_pane_in_stack_vertically() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6150,6 +6288,7 @@ fn can_increase_size_of_main_pane_in_stack_vertically() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.move_focus_right(client_id);
@@ -6216,6 +6355,7 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6226,6 +6366,7 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6236,6 +6377,7 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6246,6 +6388,7 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6256,6 +6399,7 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     let _ = tab.move_focus_right(client_id);
@@ -6317,6 +6461,7 @@ fn can_increase_size_into_pane_stack_horizontally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6327,6 +6472,7 @@ fn can_increase_size_into_pane_stack_horizontally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6337,6 +6483,7 @@ fn can_increase_size_into_pane_stack_horizontally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6347,6 +6494,7 @@ fn can_increase_size_into_pane_stack_horizontally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6357,6 +6505,7 @@ fn can_increase_size_into_pane_stack_horizontally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.resize(
@@ -6422,6 +6571,7 @@ fn can_increase_size_into_pane_stack_vertically() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6432,6 +6582,7 @@ fn can_increase_size_into_pane_stack_vertically() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6442,6 +6593,7 @@ fn can_increase_size_into_pane_stack_vertically() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6452,6 +6604,7 @@ fn can_increase_size_into_pane_stack_vertically() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6462,6 +6615,7 @@ fn can_increase_size_into_pane_stack_vertically() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.move_focus_right(client_id);
@@ -6530,6 +6684,7 @@ fn can_increase_size_into_pane_stack_non_directionally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6540,6 +6695,7 @@ fn can_increase_size_into_pane_stack_non_directionally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6550,6 +6706,7 @@ fn can_increase_size_into_pane_stack_non_directionally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6560,6 +6717,7 @@ fn can_increase_size_into_pane_stack_non_directionally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6570,6 +6728,7 @@ fn can_increase_size_into_pane_stack_non_directionally() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
@@ -6630,6 +6789,7 @@ fn decreasing_size_of_whole_tab_treats_stacked_panes_properly() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6640,6 +6800,7 @@ fn decreasing_size_of_whole_tab_treats_stacked_panes_properly() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6650,6 +6811,7 @@ fn decreasing_size_of_whole_tab_treats_stacked_panes_properly() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6660,6 +6822,7 @@ fn decreasing_size_of_whole_tab_treats_stacked_panes_properly() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6670,6 +6833,7 @@ fn decreasing_size_of_whole_tab_treats_stacked_panes_properly() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.resize_whole_tab(Size {
@@ -6732,6 +6896,7 @@ fn increasing_size_of_whole_tab_treats_stacked_panes_properly() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6742,6 +6907,7 @@ fn increasing_size_of_whole_tab_treats_stacked_panes_properly() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6752,6 +6918,7 @@ fn increasing_size_of_whole_tab_treats_stacked_panes_properly() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6762,6 +6929,7 @@ fn increasing_size_of_whole_tab_treats_stacked_panes_properly() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6772,6 +6940,7 @@ fn increasing_size_of_whole_tab_treats_stacked_panes_properly() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.resize_whole_tab(Size {
@@ -6839,6 +7008,7 @@ fn cannot_decrease_stack_size_beyond_minimum_height() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6849,6 +7019,7 @@ fn cannot_decrease_stack_size_beyond_minimum_height() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6859,6 +7030,7 @@ fn cannot_decrease_stack_size_beyond_minimum_height() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6869,6 +7041,7 @@ fn cannot_decrease_stack_size_beyond_minimum_height() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6879,6 +7052,7 @@ fn cannot_decrease_stack_size_beyond_minimum_height() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.move_focus_down(client_id);
@@ -6946,6 +7120,7 @@ fn focus_stacked_pane_over_flexible_pane_with_the_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6956,6 +7131,7 @@ fn focus_stacked_pane_over_flexible_pane_with_the_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6966,6 +7142,7 @@ fn focus_stacked_pane_over_flexible_pane_with_the_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6976,6 +7153,7 @@ fn focus_stacked_pane_over_flexible_pane_with_the_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -6986,6 +7164,7 @@ fn focus_stacked_pane_over_flexible_pane_with_the_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_mouse_event(
@@ -7050,6 +7229,7 @@ fn focus_stacked_pane_under_flexible_pane_with_the_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7060,6 +7240,7 @@ fn focus_stacked_pane_under_flexible_pane_with_the_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7070,6 +7251,7 @@ fn focus_stacked_pane_under_flexible_pane_with_the_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7080,6 +7262,7 @@ fn focus_stacked_pane_under_flexible_pane_with_the_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7090,6 +7273,7 @@ fn focus_stacked_pane_under_flexible_pane_with_the_mouse() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_mouse_event(
@@ -7159,6 +7343,7 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7169,6 +7354,7 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7179,6 +7365,7 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7189,6 +7376,7 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7199,6 +7387,7 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.handle_mouse_event(
@@ -7274,6 +7463,7 @@ fn close_pane_near_stacked_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7284,6 +7474,7 @@ fn close_pane_near_stacked_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7294,6 +7485,7 @@ fn close_pane_near_stacked_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7304,6 +7496,7 @@ fn close_pane_near_stacked_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7314,6 +7507,7 @@ fn close_pane_near_stacked_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.close_pane(PaneId::Terminal(6), false);
@@ -7380,6 +7574,7 @@ fn focus_next_pane_expands_stacked_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7390,6 +7585,7 @@ fn focus_next_pane_expands_stacked_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7400,6 +7596,7 @@ fn focus_next_pane_expands_stacked_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7410,6 +7607,7 @@ fn focus_next_pane_expands_stacked_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7420,6 +7618,7 @@ fn focus_next_pane_expands_stacked_panes() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.move_focus_left(client_id);
@@ -7482,6 +7681,7 @@ fn stacked_panes_can_become_fullscreen() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7492,6 +7692,7 @@ fn stacked_panes_can_become_fullscreen() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7502,6 +7703,7 @@ fn stacked_panes_can_become_fullscreen() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7512,6 +7714,7 @@ fn stacked_panes_can_become_fullscreen() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.new_pane(
@@ -7522,6 +7725,7 @@ fn stacked_panes_can_become_fullscreen() {
         true,
         NewPanePlacement::default(),
         Some(client_id),
+        None,
     )
     .unwrap();
     tab.move_focus_up(client_id);

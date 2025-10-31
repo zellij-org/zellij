@@ -10,9 +10,10 @@ Some(
         ],
         10,
         Some(
-            NotificationEnd(
-                None,
-            ),
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+            },
         ),
     ),
 )

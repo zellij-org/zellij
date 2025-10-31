@@ -148,6 +148,7 @@ fn send_cli_action_to_server(
             None,
             client_keybinds.clone(),
             default_mode,
+            None,
         )
         .unwrap();
     }
@@ -1273,6 +1274,7 @@ fn switch_to_tab_with_fullscreen() {
                 true,
                 NewPanePlacement::default(),
                 Some(1),
+                None,
             )
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
@@ -1396,6 +1398,7 @@ fn attach_after_first_tab_closed() {
                 true,
                 NewPanePlacement::default(),
                 Some(1),
+                None,
             )
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
@@ -1432,6 +1435,7 @@ fn open_new_floating_pane_with_custom_coordinates() {
                 pinned: None,
             })),
             Some(1),
+            None,
         )
         .unwrap();
     let active_pane = active_tab.get_active_pane(1).unwrap();
@@ -1466,6 +1470,7 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
                 pinned: None,
             })),
             Some(1),
+            None,
         )
         .unwrap();
     let active_pane = active_tab.get_active_pane(1).unwrap();
@@ -1651,6 +1656,7 @@ fn group_panes_following_focus() {
                     true,
                     NewPanePlacement::Tiled(None),
                     Some(client_id),
+                    None,
                 )
                 .unwrap();
         }
@@ -1708,6 +1714,7 @@ fn break_group_with_mouse() {
                     true,
                     NewPanePlacement::Tiled(None),
                     Some(client_id),
+                    None,
                 )
                 .unwrap();
         }
@@ -2627,6 +2634,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         height: None,
         pinned: None,
         stacked: false,
+        blocking: false,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2672,6 +2680,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         height: None,
         pinned: None,
         stacked: false,
+        blocking: false,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2717,6 +2726,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         height: None,
         pinned: None,
         stacked: false,
+        blocking: false,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2773,6 +2783,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         height: None,
         pinned: None,
         stacked: false,
+        blocking: false,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
