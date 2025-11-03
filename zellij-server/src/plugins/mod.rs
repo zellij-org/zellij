@@ -30,12 +30,13 @@ use wasm_bridge::WasmBridge;
 use async_std::{channel, future::timeout, task};
 use zellij_utils::{
     data::{
-        ClientInfo, Event, EventType, FloatingPaneCoordinates, InputMode, MessageToPlugin,
-        PermissionStatus, PermissionType, PipeMessage, PipeSource, PluginCapabilities,
-        WebServerStatus,
+        ClientInfo, Event, EventType, FloatingPaneCoordinates, InputMode, KeyWithModifier,
+        MessageToPlugin, PermissionStatus, PermissionType, PipeMessage, PipeSource,
+        PluginCapabilities, WebServerStatus,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
+        actions::Action,
         command::TerminalAction,
         keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout},
@@ -47,6 +48,19 @@ use zellij_utils::{
 };
 
 pub type PluginId = u32;
+
+#[derive(Clone, Debug)]
+pub enum UserInputType {
+    Key {
+        key: KeyWithModifier,
+        raw_bytes: Vec<u8>,
+        is_kitty_keyboard_protocol: bool,
+    },
+    Action {
+        action: Action,
+        terminal_id: Option<u32>,
+    },
+}
 
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
@@ -175,6 +189,10 @@ pub enum PluginInstruction {
     WebServerStarted(String), // String -> the base url of the web server
     FailedToStartWebServer(String),
     PaneRenderReport(PaneRenderReport),
+    UserInput {
+        client_id: ClientId,
+        input_type: UserInputType,
+    },
     Exit,
 }
 
@@ -225,6 +243,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::WebServerStarted(..) => PluginContext::WebServerStarted,
             PluginInstruction::FailedToStartWebServer(..) => PluginContext::FailedToStartWebServer,
             PluginInstruction::PaneRenderReport(..) => PluginContext::PaneRenderReport,
+            PluginInstruction::UserInput { .. } => PluginContext::UserInput,
         }
     }
 }
@@ -988,6 +1007,11 @@ pub(crate) fn plugin_thread_main(
                 wasm_bridge
                     .handle_pane_render_report(pane_render_report, shutdown_send.clone())
                     .non_fatal();
+            },
+            PluginInstruction::UserInput { client_id, input_type } => {
+                log::info!("client_id: {:?}, input:\n{:#?}", client_id, input_type);
+                // No-op for now - this is where future logging logic will go
+                // The instruction is received and discarded
             },
             PluginInstruction::Exit => {
                 break;

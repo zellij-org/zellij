@@ -7,7 +7,7 @@ use crate::thread_bus::ThreadSenders;
 use crate::{
     os_input_output::ServerOsApi,
     panes::PaneId,
-    plugins::PluginInstruction,
+    plugins::{PluginInstruction, UserInputType},
     pty::{ClientTabIndexOrPaneId, PtyInstruction},
     screen::ScreenInstruction,
     ServerInstruction, SessionMetaData, SessionState,
@@ -1513,6 +1513,7 @@ pub(crate) fn route_thread_main(
                                 .unwrap()
                                 .set_last_active_client(client_id);
 
+
                             let session_data_assets = session_data.read().as_ref().unwrap().as_ref().map(|s| (
                                 s.senders.clone(),
                                 s.capabilities.clone(),
@@ -1538,6 +1539,16 @@ pub(crate) fn route_thread_main(
                                             is_kitty_keyboard_protocol,
                                         )
                                     {
+
+                                        // Send user input to plugin thread for logging
+                                        let _ = senders.send_to_plugin(PluginInstruction::UserInput {
+                                            client_id,
+                                            input_type: UserInputType::Action {
+                                                action: action.clone(),
+                                                terminal_id: None,
+                                            },
+                                        });
+
                                         if route_action(
                                             action,
                                             client_id,
@@ -1583,6 +1594,16 @@ pub(crate) fn route_thread_main(
                                 maybe_client_id.unwrap_or(client_id)
                             };
 
+                            // Send user input to plugin thread for logging
+                            if let Some(ref senders) = senders {
+                                let _ = senders.send_to_plugin(PluginInstruction::UserInput {
+                                    client_id,
+                                    input_type: UserInputType::Action {
+                                        action: action.clone(),
+                                        terminal_id: maybe_pane_id,
+                                    },
+                                });
+                            }
 
                             let session_data_assets = session_data.read().unwrap().as_ref().map(|s| (
                                 s.senders.clone(),

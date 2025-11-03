@@ -460,6 +460,7 @@ pub enum PluginContext {
     WebServerStarted,
     FailedToStartWebServer,
     PaneRenderReport,
+    UserInput,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
