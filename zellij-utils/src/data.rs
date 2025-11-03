@@ -946,6 +946,8 @@ pub enum Event {
     FailedToStartWebServer(String),
     BeforeClose,
     InterceptedKeyPress(KeyWithModifier),
+    /// An action was performed by the user (requires InterceptInput permission)
+    UserAction(Action, ClientId, Option<u32>, Option<ClientId>), // Action, client_id, terminal_id, cli_client_id
     PaneRenderReport(HashMap<PaneId, PaneContents>),
 }
 

@@ -1003,15 +1003,13 @@ pub(crate) fn plugin_thread_main(
                 terminal_id,
                 cli_client_id,
             } => {
-                log::info!(
-                    "client_id: {:?}, action: {:#?}, terminal_id: {:?}, cli_client_id: {:?}",
-                    client_id,
-                    action,
-                    terminal_id,
-                    cli_client_id
-                );
-                // No-op for now - this is where future logging logic will go
-                // The instruction is received and discarded
+                // Fire Event::UserAction to all subscribed plugins with InterceptInput permission
+                let updates = vec![(
+                    None,
+                    None,
+                    Event::UserAction(action, client_id, terminal_id, cli_client_id),
+                )];
+                wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
             PluginInstruction::Exit => {
                 break;

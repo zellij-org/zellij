@@ -59,6 +59,7 @@ enum EventType {
     FailedToStartWebServer = 34;
     InterceptedKeyPress = 35;
     PaneRenderReport = 36;
+    UserAction = 37;
 }
 
 message EventNameList {
@@ -97,6 +98,7 @@ message Event {
     FailedToStartWebServerPayload failed_to_start_web_server_payload = 28;
     key.Key intercepted_key_payload = 29;
     PaneRenderReportPayload pane_render_report_payload = 30;
+    UserActionPayload user_action_payload = 31;
   }
 }
 
@@ -417,4 +419,11 @@ message PaneScrollbackResponse {
 message SelectedText {
   action.Position start = 1;
   action.Position end = 2;
+}
+
+message UserActionPayload {
+  action.Action action = 1;
+  uint32 client_id = 2;
+  optional uint32 terminal_id = 3;
+  optional uint32 cli_client_id = 4;
 }

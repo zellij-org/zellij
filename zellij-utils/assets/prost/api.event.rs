@@ -9,7 +9,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -75,6 +75,8 @@ pub mod event {
         InterceptedKeyPayload(super::super::key::Key),
         #[prost(message, tag="30")]
         PaneRenderReportPayload(super::PaneRenderReportPayload),
+        #[prost(message, tag="31")]
+        UserActionPayload(super::UserActionPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -569,6 +571,18 @@ pub struct SelectedText {
     #[prost(message, optional, tag="2")]
     pub end: ::core::option::Option<super::action::Position>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UserActionPayload {
+    #[prost(message, optional, tag="1")]
+    pub action: ::core::option::Option<super::action::Action>,
+    #[prost(uint32, tag="2")]
+    pub client_id: u32,
+    #[prost(uint32, optional, tag="3")]
+    pub terminal_id: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag="4")]
+    pub cli_client_id: ::core::option::Option<u32>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum EventType {
@@ -623,6 +637,7 @@ pub enum EventType {
     FailedToStartWebServer = 34,
     InterceptedKeyPress = 35,
     PaneRenderReport = 36,
+    UserAction = 37,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -667,6 +682,7 @@ impl EventType {
             EventType::FailedToStartWebServer => "FailedToStartWebServer",
             EventType::InterceptedKeyPress => "InterceptedKeyPress",
             EventType::PaneRenderReport => "PaneRenderReport",
+            EventType::UserAction => "UserAction",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -708,6 +724,7 @@ impl EventType {
             "FailedToStartWebServer" => Some(Self::FailedToStartWebServer),
             "InterceptedKeyPress" => Some(Self::InterceptedKeyPress),
             "PaneRenderReport" => Some(Self::PaneRenderReport),
+            "UserAction" => Some(Self::UserAction),
             _ => None,
         }
     }
