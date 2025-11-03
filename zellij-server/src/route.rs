@@ -1418,9 +1418,9 @@ pub(crate) fn route_action(
 
 // this should only be used for one-off startup instructions
 macro_rules! send_to_screen_or_retry_queue {
-    ($rlocked_sessions:expr, $message:expr, $instruction: expr, $retry_queue:expr) => {{
-        match $rlocked_sessions.as_ref() {
-            Some(session_metadata) => session_metadata.senders.send_to_screen($message),
+    ($senders:expr, $message:expr, $instruction: expr, $retry_queue:expr) => {{
+        match $senders.as_ref() {
+            Some(senders) => senders.send_to_screen($message),
             None => {
                 log::warn!("Server not ready, trying to place instruction in retry queue...");
                 if let Some(retry_queue) = $retry_queue.as_mut() {
@@ -1455,8 +1455,7 @@ pub(crate) fn route_thread_main(
                 >|
                  -> Result<bool> {
                     let mut should_break = false;
-                    let rlocked_sessions =
-                        session_data.read().to_anyhow().with_context(err_context)?;
+                    let senders = session_data.read().to_anyhow().ok().and_then(|r| r.as_ref().map(|r| r.senders.clone()));
 
                     // Check if this is a watcher client and ignore input messages
                     let is_watcher = session_state.read().unwrap().is_watcher(&client_id);
@@ -1475,8 +1474,8 @@ pub(crate) fn route_thread_main(
                                             exit_reason: ExitReason::Normal,
                                         },
                                     );
-                                    let _ = rlocked_sessions.as_ref().map(|r| {
-                                        r.senders.send_to_screen(
+                                    let _ = senders.as_ref().map(|s| {
+                                        s.send_to_screen(
                                             ScreenInstruction::RemoveWatcherClient(client_id),
                                         )
                                     });
@@ -1487,7 +1486,7 @@ pub(crate) fn route_thread_main(
                                 // For watchers: send size to Screen for rendering adjustments, but
                                 // this does not affect the screen size
                                 send_to_screen_or_retry_queue!(
-                                    rlocked_sessions,
+                                    senders,
                                     ScreenInstruction::WatcherTerminalResize(client_id, *new_size),
                                     instruction.clone(),
                                     retry_queue
@@ -1514,46 +1513,49 @@ pub(crate) fn route_thread_main(
                                 .unwrap()
                                 .set_last_active_client(client_id);
 
-                            if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
-                                match rlocked_sessions.get_client_keybinds_and_mode(&client_id) {
-                                    Some((keybinds, input_mode, default_input_mode)) => {
-                                        for action in keybinds
-                                            .get_actions_for_key_in_mode_or_default_action(
-                                                &input_mode,
-                                                &key,
-                                                raw_bytes,
-                                                default_input_mode,
-                                                is_kitty_keyboard_protocol,
-                                            )
-                                        {
-                                            if route_action(
-                                                action,
-                                                client_id,
-                                                None,
-                                                None,
-                                                rlocked_sessions.senders.clone(),
-                                                rlocked_sessions.capabilities.clone(),
-                                                rlocked_sessions.client_attributes.clone(),
-                                                rlocked_sessions.default_shell.clone(),
-                                                rlocked_sessions.layout.clone(),
-                                                Some(&mut seen_cli_pipes),
-                                                keybinds.clone(),
-                                                rlocked_sessions
-                                                    .session_configuration
-                                                    .get_client_configuration(&client_id)
-                                                    .options
-                                                    .default_mode
-                                                    .unwrap_or(InputMode::Normal)
-                                                    .clone(),
-                                                Some(os_input.clone()),
-                                            )? {
-                                                should_break = true;
-                                            }
+                            let session_data_assets = session_data.read().as_ref().unwrap().as_ref().map(|s| (
+                                s.senders.clone(),
+                                s.capabilities.clone(),
+                                s.client_attributes.clone(),
+                                s.default_shell.clone(),
+                                s.layout.clone(),
+                                s
+                                .session_configuration
+                                .get_client_configuration(&client_id)
+                                .options
+                                .default_mode
+                                .unwrap_or(InputMode::Normal)
+                                .clone()
+                            ));
+                            if let Some((keybinds, input_mode, default_input_mode)) = session_data.read().unwrap().as_ref().and_then(|s| s.get_client_keybinds_and_mode(&client_id)) {
+                                if let Some((senders, capabilities, client_attributes, default_shell, layout, client_input_mode)) = session_data_assets {
+                                    for action in keybinds
+                                        .get_actions_for_key_in_mode_or_default_action(
+                                            &input_mode,
+                                            &key,
+                                            raw_bytes,
+                                            default_input_mode,
+                                            is_kitty_keyboard_protocol,
+                                        )
+                                    {
+                                        if route_action(
+                                            action,
+                                            client_id,
+                                            None,
+                                            None,
+                                            senders.clone(),
+                                            capabilities,
+                                            client_attributes.clone(),
+                                            default_shell.clone(),
+                                            layout.clone(),
+                                            Some(&mut seen_cli_pipes),
+                                            keybinds.clone(),
+                                            client_input_mode,
+                                            Some(os_input.clone()),
+                                        )? {
+                                            should_break = true;
                                         }
-                                    },
-                                    None => {
-                                        log::error!("Failed to get keybindings for client");
-                                    },
+                                    }
                                 }
                             }
                         },
@@ -1580,29 +1582,40 @@ pub(crate) fn route_thread_main(
                             } else {
                                 maybe_client_id.unwrap_or(client_id)
                             };
-                            if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
+
+
+                            let session_data_assets = session_data.read().unwrap().as_ref().map(|s| (
+                                s.senders.clone(),
+                                s.capabilities.clone(),
+                                s.client_attributes.clone(),
+                                s.default_shell.clone(),
+                                s.layout.clone(),
+                                s
+                                .session_configuration
+                                .get_client_configuration(&client_id)
+                                .options
+                                .default_mode
+                                .unwrap_or(InputMode::Normal)
+                                .clone(),
+                                s
+                                    .session_configuration
+                                    .get_client_keybinds(&client_id)
+                                    .clone(),
+                            ));
+                            if let Some((senders, capabilities, client_attributes, default_shell, layout, client_input_mode, client_keybinds)) = session_data_assets {
                                 if route_action(
                                     action,
                                     client_id,
                                     Some(cli_client_id),
                                     maybe_pane_id.map(|p| PaneId::Terminal(p)),
-                                    rlocked_sessions.senders.clone(),
-                                    rlocked_sessions.capabilities.clone(),
-                                    rlocked_sessions.client_attributes.clone(),
-                                    rlocked_sessions.default_shell.clone(),
-                                    rlocked_sessions.layout.clone(),
+                                    senders,
+                                    capabilities,
+                                    client_attributes,
+                                    default_shell,
+                                    layout,
                                     Some(&mut seen_cli_pipes),
-                                    rlocked_sessions
-                                        .session_configuration
-                                        .get_client_keybinds(&client_id)
-                                        .clone(),
-                                    rlocked_sessions
-                                        .session_configuration
-                                        .get_client_configuration(&client_id)
-                                        .options
-                                        .default_mode
-                                        .unwrap_or(InputMode::Normal)
-                                        .clone(),
+                                    client_keybinds,
+                                    client_input_mode,
                                     Some(os_input.clone()),
                                 )? {
                                     should_break = true;
@@ -1614,7 +1627,7 @@ pub(crate) fn route_thread_main(
                             if is_watcher {
                                 // For watchers: send size to Screen for tracking, don't affect screen size
                                 send_to_screen_or_retry_queue!(
-                                    rlocked_sessions,
+                                    senders.clone(),
                                     ScreenInstruction::WatcherTerminalResize(client_id, new_size),
                                     instruction,
                                     retry_queue
@@ -1635,22 +1648,18 @@ pub(crate) fn route_thread_main(
                                         ))
                                     })
                                     .and_then(|min_size| {
-                                        rlocked_sessions
-                                            .as_ref()
-                                            .context(
-                                                "couldn't get reference to read-locked session",
-                                            )?
-                                            .senders
-                                            .send_to_screen(ScreenInstruction::TerminalResize(
-                                                min_size,
-                                            ))
+                                        let _ = senders.as_ref().map(|s| {
+                                        s.send_to_screen(ScreenInstruction::TerminalResize(
+                                            min_size,
+                                        ))});
+                                        Ok(())
                                     })
                                     .with_context(err_context)?;
                             }
                         },
                         ClientToServerMsg::TerminalPixelDimensions { pixel_dimensions } => {
                             send_to_screen_or_retry_queue!(
-                                rlocked_sessions,
+                                senders,
                                 ScreenInstruction::TerminalPixelDimensions(pixel_dimensions),
                                 instruction,
                                 retry_queue
@@ -1661,7 +1670,7 @@ pub(crate) fn route_thread_main(
                             color: ref background_color_instruction,
                         } => {
                             send_to_screen_or_retry_queue!(
-                                rlocked_sessions,
+                                senders,
                                 ScreenInstruction::TerminalBackgroundColor(
                                     background_color_instruction.clone()
                                 ),
@@ -1674,7 +1683,7 @@ pub(crate) fn route_thread_main(
                             color: ref foreground_color_instruction,
                         } => {
                             send_to_screen_or_retry_queue!(
-                                rlocked_sessions,
+                                senders,
                                 ScreenInstruction::TerminalForegroundColor(
                                     foreground_color_instruction.clone()
                                 ),
@@ -1687,7 +1696,7 @@ pub(crate) fn route_thread_main(
                             ref color_registers,
                         } => {
                             send_to_screen_or_retry_queue!(
-                                rlocked_sessions,
+                                senders,
                                 ScreenInstruction::TerminalColorRegisters(
                                     color_registers
                                         .iter()
@@ -1718,10 +1727,9 @@ pub(crate) fn route_thread_main(
                             pane_to_focus: pane_id_to_focus,
                             is_web_client,
                         } => {
-                            let allow_web_connections = rlocked_sessions
-                                .as_ref()
-                                .map(|rlocked_sessions| {
-                                    rlocked_sessions.web_sharing.web_clients_allowed()
+                            let allow_web_connections = session_data.read().ok()
+                                .and_then(|s| {
+                                    s.as_ref().map(|s| s.web_sharing.web_clients_allowed())
                                 })
                                 .unwrap_or(false);
                             let should_allow_connection = !is_web_client || allow_web_connections;
