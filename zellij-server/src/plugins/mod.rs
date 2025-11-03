@@ -30,9 +30,9 @@ use wasm_bridge::WasmBridge;
 use async_std::{channel, future::timeout, task};
 use zellij_utils::{
     data::{
-        ClientInfo, Event, EventType, FloatingPaneCoordinates, InputMode, KeyWithModifier,
-        MessageToPlugin, PermissionStatus, PermissionType, PipeMessage, PipeSource,
-        PluginCapabilities, WebServerStatus,
+        ClientInfo, Event, EventType, FloatingPaneCoordinates, InputMode, MessageToPlugin,
+        PermissionStatus, PermissionType, PipeMessage, PipeSource, PluginCapabilities,
+        WebServerStatus,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -48,19 +48,6 @@ use zellij_utils::{
 };
 
 pub type PluginId = u32;
-
-#[derive(Clone, Debug)]
-pub enum UserInputType {
-    Key {
-        key: KeyWithModifier,
-        raw_bytes: Vec<u8>,
-        is_kitty_keyboard_protocol: bool,
-    },
-    Action {
-        action: Action,
-        terminal_id: Option<u32>,
-    },
-}
 
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
@@ -191,7 +178,9 @@ pub enum PluginInstruction {
     PaneRenderReport(PaneRenderReport),
     UserInput {
         client_id: ClientId,
-        input_type: UserInputType,
+        action: Action,
+        terminal_id: Option<u32>,
+        cli_client_id: Option<ClientId>,
     },
     Exit,
 }
@@ -1008,8 +997,19 @@ pub(crate) fn plugin_thread_main(
                     .handle_pane_render_report(pane_render_report, shutdown_send.clone())
                     .non_fatal();
             },
-            PluginInstruction::UserInput { client_id, input_type } => {
-                log::info!("client_id: {:?}, input:\n{:#?}", client_id, input_type);
+            PluginInstruction::UserInput {
+                client_id,
+                action,
+                terminal_id,
+                cli_client_id,
+            } => {
+                log::info!(
+                    "client_id: {:?}, action: {:#?}, terminal_id: {:?}, cli_client_id: {:?}",
+                    client_id,
+                    action,
+                    terminal_id,
+                    cli_client_id
+                );
                 // No-op for now - this is where future logging logic will go
                 // The instruction is received and discarded
             },

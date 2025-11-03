@@ -7,7 +7,7 @@ use crate::thread_bus::ThreadSenders;
 use crate::{
     os_input_output::ServerOsApi,
     panes::PaneId,
-    plugins::{PluginInstruction, UserInputType},
+    plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction},
     screen::ScreenInstruction,
     ServerInstruction, SessionMetaData, SessionState,
@@ -1543,10 +1543,9 @@ pub(crate) fn route_thread_main(
                                         // Send user input to plugin thread for logging
                                         let _ = senders.send_to_plugin(PluginInstruction::UserInput {
                                             client_id,
-                                            input_type: UserInputType::Action {
-                                                action: action.clone(),
-                                                terminal_id: None,
-                                            },
+                                            action: action.clone(),
+                                            terminal_id: None,
+                                            cli_client_id: None,
                                         });
 
                                         if route_action(
@@ -1598,10 +1597,9 @@ pub(crate) fn route_thread_main(
                             if let Some(ref senders) = senders {
                                 let _ = senders.send_to_plugin(PluginInstruction::UserInput {
                                     client_id,
-                                    input_type: UserInputType::Action {
-                                        action: action.clone(),
-                                        terminal_id: maybe_pane_id,
-                                    },
+                                    action: action.clone(),
+                                    terminal_id: maybe_pane_id,
+                                    cli_client_id: if is_cli_client { Some(cli_client_id) } else { None },
                                 });
                             }
 
