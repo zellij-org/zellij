@@ -370,6 +370,7 @@ message NewBlockingPaneAction {
   NewPanePlacement placement = 1;
   optional string pane_name = 2;
   optional RunCommandAction command = 3;
+  optional UnblockCondition unblock_condition = 4;
 }
 
 message PaneNameInputAction {
@@ -569,6 +570,13 @@ enum Direction {
   DIRECTION_RIGHT = 2;
   DIRECTION_UP = 3;
   DIRECTION_DOWN = 4;
+}
+
+enum UnblockCondition {
+  UNBLOCK_CONDITION_UNSPECIFIED = 0;
+  UNBLOCK_CONDITION_ON_EXIT_SUCCESS = 1;
+  UNBLOCK_CONDITION_ON_EXIT_FAILURE = 2;
+  UNBLOCK_CONDITION_ON_ANY_EXIT = 3;
 }
 
 enum ResizeType {

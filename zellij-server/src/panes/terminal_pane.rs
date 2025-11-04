@@ -740,6 +740,14 @@ impl Pane for TerminalPane {
         if let Some(notification_end) = self.notification_end.as_mut() {
             if let Some(exit_status) = exit_status {
                 notification_end.set_exit_status(exit_status);
+
+                // Check if unblock condition is met
+                if let Some(condition) = notification_end.unblock_condition() {
+                    if condition.is_met(exit_status) {
+                        // Condition met - drop the NotificationEnd now to unblock
+                        drop(self.notification_end.take());
+                    }
+                }
             }
         }
         if is_first_run {
@@ -899,6 +907,13 @@ impl Pane for TerminalPane {
     fn update_exit_status(&mut self, exit_status: i32) {
         if let Some(notification_end) = self.notification_end.as_mut() {
             notification_end.set_exit_status(exit_status);
+            // Check if unblock condition is met
+            if let Some(condition) = notification_end.unblock_condition() {
+                if condition.is_met(exit_status) {
+                    // Condition met - drop the NotificationEnd now to unblock
+                    drop(self.notification_end.take());
+                }
+            }
         }
     }
 }

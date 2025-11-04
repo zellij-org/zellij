@@ -6,6 +6,7 @@ use clap::Parser;
 use zellij_utils::{
     cli::{CliAction, CliArgs, Command, Sessions},
     consts::{create_config_and_cache_folders, VERSION},
+    data::UnblockCondition,
     envs,
     input::config::Config,
     logging::*,
@@ -40,10 +41,25 @@ fn main() {
             pinned,
             stacked,
             blocking,
+            block_until_exit_success,
+            block_until_exit_failure,
+            block_until_exit,
         })) = opts.command
         {
             let cwd = cwd.or_else(|| std::env::current_dir().ok());
             let skip_plugin_cache = false; // N/A for this action
+
+            // Compute the unblock condition
+            let unblock_condition = if block_until_exit_success {
+                Some(UnblockCondition::OnExitSuccess)
+            } else if block_until_exit_failure {
+                Some(UnblockCondition::OnExitFailure)
+            } else if block_until_exit {
+                Some(UnblockCondition::OnAnyExit)
+            } else {
+                None
+            };
+
             let command_cli_action = CliAction::NewPane {
                 command,
                 plugin: None,
@@ -63,6 +79,7 @@ fn main() {
                 pinned,
                 stacked,
                 blocking,
+                unblock_condition,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -83,6 +100,7 @@ fn main() {
             let cwd = None;
             let stacked = false;
             let blocking = false;
+            let unblock_condition = None;
             let command_cli_action = CliAction::NewPane {
                 command: vec![],
                 plugin: Some(url),
@@ -102,6 +120,7 @@ fn main() {
                 pinned,
                 stacked,
                 blocking,
+                unblock_condition,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);

@@ -6,7 +6,7 @@ use super::layout::{
     SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
 use crate::cli::CliAction;
-use crate::data::{Direction, KeyWithModifier, LayoutInfo, NewPanePlacement, PaneId, Resize};
+use crate::data::{Direction, KeyWithModifier, LayoutInfo, NewPanePlacement, PaneId, Resize, UnblockCondition};
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
@@ -194,6 +194,7 @@ pub enum Action {
         placement: NewPanePlacement,
         pane_name: Option<String>,
         command: Option<RunCommandAction>,
+        unblock_condition: Option<UnblockCondition>,
     },
     /// Open the file in a new pane using the default editor
     EditFile {
@@ -492,6 +493,7 @@ impl Action {
                 pinned,
                 stacked,
                 blocking,
+                unblock_condition,
             } => {
                 let current_dir = get_current_dir();
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
@@ -543,6 +545,7 @@ impl Action {
                         placement,
                         pane_name: name,
                         command,
+                        unblock_condition,
                     }])
                 } else if let Some(plugin) = plugin {
                     let plugin = match RunPluginLocation::parse(&plugin, cwd.clone()) {

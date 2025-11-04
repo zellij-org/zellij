@@ -19,7 +19,7 @@ use zellij_utils::{
     channels::SenderWithContext,
     data::{
         BareKey, ConnectToSession, Direction, Event, InputMode, KeyModifier, NewPanePlacement,
-        PluginCapabilities, ResizeStrategy,
+        PluginCapabilities, ResizeStrategy, UnblockCondition,
     },
     envs,
     errors::prelude::*,
@@ -85,6 +85,7 @@ fn wait_for_action_completion(
 pub struct NotificationEnd {
     channel: Option<oneshot::Sender<Option<i32>>>,
     exit_status: Option<i32>,
+    unblock_condition: Option<UnblockCondition>,
 }
 
 impl Clone for NotificationEnd {
@@ -93,6 +94,7 @@ impl Clone for NotificationEnd {
         NotificationEnd {
             channel: None,
             exit_status: self.exit_status,
+            unblock_condition: self.unblock_condition,
         }
     }
 }
@@ -102,10 +104,27 @@ impl NotificationEnd {
         NotificationEnd {
             channel: Some(sender),
             exit_status: None,
+            unblock_condition: None,
         }
     }
+
+    pub fn new_with_condition(
+        sender: oneshot::Sender<Option<i32>>,
+        unblock_condition: UnblockCondition,
+    ) -> Self {
+        NotificationEnd {
+            channel: Some(sender),
+            exit_status: None,
+            unblock_condition: Some(unblock_condition),
+        }
+    }
+
     pub fn set_exit_status(&mut self, exit_status: i32) {
         self.exit_status = Some(exit_status);
+    }
+
+    pub fn unblock_condition(&self) -> Option<UnblockCondition> {
+        self.unblock_condition
     }
 }
 
@@ -480,11 +499,19 @@ pub(crate) fn route_action(
             placement,
             pane_name,
             command,
+            unblock_condition,
         } => {
             let command = command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
             let set_pane_blocking = true;
+
+            let notification_end = if let Some(condition) = unblock_condition {
+                Some(NotificationEnd::new_with_condition(completion_tx, condition))
+            } else {
+                Some(NotificationEnd::new(completion_tx))
+            };
+
             senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     command,
@@ -492,7 +519,7 @@ pub(crate) fn route_action(
                     placement,
                     false,
                     ClientTabIndexOrPaneId::ClientId(client_id),
-                    Some(NotificationEnd::new(completion_tx)),
+                    notification_end,
                     set_pane_blocking,
                 ))
                 .with_context(err_context)?;

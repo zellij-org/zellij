@@ -1,4 +1,4 @@
-use crate::data::{Direction, InputMode, Resize};
+use crate::data::{Direction, InputMode, Resize, UnblockCondition};
 use crate::setup::Setup;
 use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
@@ -388,9 +388,46 @@ pub enum Sessions {
             takes_value(false)
         )]
         stacked: bool,
-        /// Whether to block until this command has finished
+        /// Block until the command has finished and its pane has been closed
         #[clap(long, value_parser, default_value("false"), takes_value(false))]
         blocking: bool,
+
+        /// Block until the command exits successfully (exit status 0) OR its pane has been closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("blocking"),
+            conflicts_with("block-until-exit-failure"),
+            conflicts_with("block-until-exit")
+        )]
+        block_until_exit_success: bool,
+
+        /// Block until the command exits with failure (non-zero exit status) OR its pane has been
+        /// closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("blocking"),
+            conflicts_with("block-until-exit-success"),
+            conflicts_with("block-until-exit")
+        )]
+        block_until_exit_failure: bool,
+
+        /// Block until the command exits (regardless of exit status) OR its pane has been closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("blocking"),
+            conflicts_with("block-until-exit-success"),
+            conflicts_with("block-until-exit-failure")
+        )]
+        block_until_exit: bool,
     },
     /// Load a plugin
     #[clap(visible_alias = "p")]
@@ -691,6 +728,9 @@ pub enum CliAction {
         stacked: bool,
         #[clap(short, long)]
         blocking: bool,
+
+        #[clap(skip)]
+        unblock_condition: Option<UnblockCondition>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {

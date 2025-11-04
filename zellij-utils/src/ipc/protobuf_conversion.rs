@@ -908,11 +908,15 @@ impl From<crate::input::actions::Action>
                 placement,
                 pane_name,
                 command,
-            } => ActionType::NewBlockingPane(NewBlockingPaneAction {
-                placement: Some(placement.into()),
-                pane_name,
-                command: command.map(|c| c.into()),
-            }),
+                unblock_condition,
+            } => {
+                ActionType::NewBlockingPane(NewBlockingPaneAction {
+                    placement: Some(placement.into()),
+                    pane_name,
+                    command: command.map(|c| c.into()),
+                    unblock_condition: unblock_condition.map(|c| unblock_condition_to_proto_i32(c))
+                })
+            },
             crate::input::actions::Action::TogglePaneEmbedOrFloating => {
                 ActionType::TogglePaneEmbedOrFloating(TogglePaneEmbedOrFloatingAction {})
             },
@@ -1432,6 +1436,10 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     command: new_blocking_action
                         .command
                         .map(|c| c.try_into())
+                        .transpose()?,
+                    unblock_condition: new_blocking_action
+                        .unblock_condition
+                        .map(|c| proto_i32_to_unblock_condition(c))
                         .transpose()?,
                 })
             },
@@ -2037,6 +2045,15 @@ fn search_option_to_proto_i32(option: crate::input::actions::SearchOption) -> i3
     }
 }
 
+fn unblock_condition_to_proto_i32(condition: crate::data::UnblockCondition) -> i32 {
+    use crate::client_server_contract::client_server_contract::UnblockCondition as ProtoUnblockCondition;
+    match condition {
+        crate::data::UnblockCondition::OnExitSuccess => ProtoUnblockCondition::OnExitSuccess as i32,
+        crate::data::UnblockCondition::OnExitFailure => ProtoUnblockCondition::OnExitFailure as i32,
+        crate::data::UnblockCondition::OnAnyExit => ProtoUnblockCondition::OnAnyExit as i32,
+    }
+}
+
 // Reverse helper functions for Action conversion
 
 fn proto_i32_to_resize(resize: i32) -> Result<crate::data::Resize> {
@@ -2100,6 +2117,24 @@ fn proto_i32_to_search_option(option: i32) -> Result<crate::input::actions::Sear
         ProtoSearchOption::Wrap => Ok(crate::input::actions::SearchOption::Wrap),
         ProtoSearchOption::WholeWord => Ok(crate::input::actions::SearchOption::WholeWord),
         ProtoSearchOption::Unspecified => Err(anyhow!("Unspecified search option")),
+    }
+}
+
+fn proto_i32_to_unblock_condition(condition: i32) -> Result<crate::data::UnblockCondition> {
+    log::info!("converting condition: {:?}", condition);
+    use crate::client_server_contract::client_server_contract::UnblockCondition as ProtoUnblockCondition;
+    let proto_condition = match condition {
+        x if x == ProtoUnblockCondition::OnExitSuccess as i32 => ProtoUnblockCondition::OnExitSuccess,
+        x if x == ProtoUnblockCondition::OnExitFailure as i32 => ProtoUnblockCondition::OnExitFailure,
+        x if x == ProtoUnblockCondition::OnAnyExit as i32 => ProtoUnblockCondition::OnAnyExit,
+        _ => return Err(anyhow!("Invalid UnblockCondition: {}", condition)),
+    };
+    log::info!("proto_condition: {:?}", proto_condition);
+    match proto_condition {
+        ProtoUnblockCondition::OnExitSuccess => Ok(crate::data::UnblockCondition::OnExitSuccess),
+        ProtoUnblockCondition::OnExitFailure => Ok(crate::data::UnblockCondition::OnExitFailure),
+        ProtoUnblockCondition::OnAnyExit => Ok(crate::data::UnblockCondition::OnAnyExit),
+        ProtoUnblockCondition::Unspecified => Err(anyhow!("Unspecified unblock condition")),
     }
 }
 

@@ -640,6 +640,8 @@ pub struct NewBlockingPaneAction {
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, optional, tag="3")]
     pub command: ::core::option::Option<RunCommandAction>,
+    #[prost(enumeration="UnblockCondition", optional, tag="4")]
+    pub unblock_condition: ::core::option::Option<i32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1828,6 +1830,38 @@ impl Direction {
             "DIRECTION_RIGHT" => Some(Self::Right),
             "DIRECTION_UP" => Some(Self::Up),
             "DIRECTION_DOWN" => Some(Self::Down),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum UnblockCondition {
+    Unspecified = 0,
+    OnExitSuccess = 1,
+    OnExitFailure = 2,
+    OnAnyExit = 3,
+}
+impl UnblockCondition {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            UnblockCondition::Unspecified => "UNBLOCK_CONDITION_UNSPECIFIED",
+            UnblockCondition::OnExitSuccess => "UNBLOCK_CONDITION_ON_EXIT_SUCCESS",
+            UnblockCondition::OnExitFailure => "UNBLOCK_CONDITION_ON_EXIT_FAILURE",
+            UnblockCondition::OnAnyExit => "UNBLOCK_CONDITION_ON_ANY_EXIT",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "UNBLOCK_CONDITION_UNSPECIFIED" => Some(Self::Unspecified),
+            "UNBLOCK_CONDITION_ON_EXIT_SUCCESS" => Some(Self::OnExitSuccess),
+            "UNBLOCK_CONDITION_ON_EXIT_FAILURE" => Some(Self::OnExitFailure),
+            "UNBLOCK_CONDITION_ON_ANY_EXIT" => Some(Self::OnAnyExit),
             _ => None,
         }
     }

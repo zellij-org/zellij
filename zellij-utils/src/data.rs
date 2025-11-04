@@ -26,6 +26,27 @@ use termwiz::{
 
 pub type ClientId = u16; // TODO: merge with crate type?
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UnblockCondition {
+    /// Unblock only when exit status is 0 (success)
+    OnExitSuccess,
+    /// Unblock only when exit status is non-zero (failure)
+    OnExitFailure,
+    /// Unblock on any exit (success or failure)
+    OnAnyExit,
+}
+
+impl UnblockCondition {
+    /// Check if the condition is met for the given exit status
+    pub fn is_met(&self, exit_status: i32) -> bool {
+        match self {
+            UnblockCondition::OnExitSuccess => exit_status == 0,
+            UnblockCondition::OnExitFailure => exit_status != 0,
+            UnblockCondition::OnAnyExit => true,
+        }
+    }
+}
+
 pub fn client_id_to_colors(
     client_id: ClientId,
     colors: MultiplayerColors,
