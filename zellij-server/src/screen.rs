@@ -1981,6 +1981,10 @@ impl Screen {
                 position: tab.position,
                 name: tab.name.clone(),
                 active: self.active_tab_indices.values().any(|i| i == &tab.index),
+                previous: self
+                    .tab_history
+                    .values()
+                    .any(|h| h.last() == Some(&tab.index)),
                 panes_to_hide: tab.panes_to_hide_count(),
                 is_fullscreen_active: tab.is_fullscreen_active(),
                 is_sync_panes_active: tab.is_sync_panes_active(),
@@ -2017,10 +2021,16 @@ impl Screen {
                 let tab_display_area = tab.get_display_area();
                 let selectable_tiled_panes_count = tab.get_selectable_tiled_panes_count();
                 let selectable_floating_panes_count = tab.get_selectable_floating_panes_count();
+                let previous_tab = self
+                    .tab_history
+                    .get(client_id)
+                    .and_then(|h| h.last())
+                    .copied();
                 let tab_info_for_plugins = TabInfo {
                     position: tab.position,
                     name: tab.name.clone(),
                     active: *active_tab_index == tab.index,
+                    previous: previous_tab == Some(tab.index),
                     panes_to_hide: tab.panes_to_hide_count(),
                     is_fullscreen_active: tab.is_fullscreen_active(),
                     is_sync_panes_active: tab.is_sync_panes_active(),

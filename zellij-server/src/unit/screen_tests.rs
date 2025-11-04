@@ -4164,3 +4164,64 @@ pub fn send_cli_change_floating_pane_coordinates_action() {
     }
     assert_snapshot!(format!("{}", snapshot_count));
 }
+
+#[test]
+fn set_previous_tab_initial_state() {
+    let mut screen = create_fixed_size_screen();
+    new_tab(&mut screen, 1, 0);
+    let infos = screen.generate_and_report_tab_state().unwrap();
+    assert!(
+        infos.iter().all(|t| !t.previous),
+        "No tab should be previous on startup"
+    );
+}
+
+#[test]
+fn set_previous_tab_after_switch() {
+    let mut screen = create_fixed_size_screen();
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.switch_tab_prev(None, true, 1).unwrap();
+    let infos = screen.generate_and_report_tab_state().unwrap();
+    assert_eq!(
+        infos[0].previous, false,
+        "First tab should not be previous after switch, currently active"
+    );
+    assert_eq!(
+        infos[1].previous, true,
+        "Second tab should be previous after switch"
+    );
+}
+
+#[test]
+fn set_previous_tab_after_switch_and_new_tab() {
+    let mut screen = create_fixed_size_screen();
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.switch_tab_prev(None, true, 1).unwrap();
+    screen.switch_tab_next(None, true, 1).unwrap();
+    new_tab(&mut screen, 3, 2);
+    let infos = screen.generate_and_report_tab_state().unwrap();
+    assert_eq!(
+        infos[0].previous, false,
+        "First tab should not be previous after switching back"
+    );
+    assert_eq!(
+        infos[1].previous, true,
+        "Second tab should be previous after switching back"
+    );
+}
+
+#[test]
+fn set_previous_tab_after_closing_tab() {
+    let mut screen = create_fixed_size_screen();
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.switch_tab_prev(None, true, 1).unwrap();
+    screen.close_tab(1).unwrap();
+    let infos = screen.generate_and_report_tab_state().unwrap();
+    assert!(
+        infos.iter().all(|t| !t.previous),
+        "No tab should be previous after closing second tab"
+    );
+}

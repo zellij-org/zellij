@@ -285,6 +285,7 @@ pub(crate) struct TabData {
     pub position: usize,
     pub name: String,
     pub active: bool,
+    pub previous: bool,
     pub mode_info: ModeInfo,
     pub colors: Styling,
 }

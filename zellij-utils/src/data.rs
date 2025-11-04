@@ -1758,6 +1758,8 @@ pub struct TabInfo {
     pub name: String,
     /// Whether this tab is focused
     pub active: bool,
+    /// Whether this tab was previously focused
+    pub previous: bool,
     /// The number of suppressed panes this tab has
     pub panes_to_hide: usize,
     /// Whether there's one pane taking up the whole display area on this tab
