@@ -1,6 +1,6 @@
 //! Definition of the actions that can be bound to keys.
 
-use super::command::{OpenFilePayload, RunCommandAction};
+pub use super::command::{OpenFilePayload, RunCommandAction};
 use super::layout::{
     FloatingPaneLayout, Layout, PluginAlias, RunPlugin, RunPluginLocation, RunPluginOrAlias,
     SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,

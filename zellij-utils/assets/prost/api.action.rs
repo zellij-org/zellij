@@ -3,7 +3,7 @@
 pub struct Action {
     #[prost(enumeration="ActionName", tag="1")]
     pub name: i32,
-    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49")]
+    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50")]
     pub optional_payload: ::core::option::Option<action::OptionalPayload>,
 }
 /// Nested message and enum types in `Action`.
@@ -101,6 +101,8 @@ pub mod action {
         MoveTabPayload(i32),
         #[prost(message, tag="49")]
         MouseEventPayload(super::MouseEventPayload),
+        #[prost(message, tag="50")]
+        NewBlockingPanePayload(super::NewBlockingPanePayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -215,6 +217,18 @@ pub struct NewPanePayload {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NewBlockingPanePayload {
+    #[prost(message, optional, tag="1")]
+    pub placement: ::core::option::Option<NewPanePlacement>,
+    #[prost(string, optional, tag="2")]
+    pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag="3")]
+    pub command: ::core::option::Option<RunCommandAction>,
+    #[prost(enumeration="UnblockCondition", optional, tag="4")]
+    pub unblock_condition: ::core::option::Option<i32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SwitchToModePayload {
     #[prost(enumeration="super::input_mode::InputMode", tag="1")]
     pub input_mode: i32,
@@ -250,6 +264,109 @@ pub struct Position {
     pub line: i64,
     #[prost(int64, tag="2")]
     pub column: i64,
+}
+/// SplitSize represents a dimension that can be either a percentage or fixed size
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SplitSize {
+    #[prost(oneof="split_size::SplitSizeVariant", tags="1, 2")]
+    pub split_size_variant: ::core::option::Option<split_size::SplitSizeVariant>,
+}
+/// Nested message and enum types in `SplitSize`.
+pub mod split_size {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum SplitSizeVariant {
+        /// 1 to 100
+        #[prost(uint32, tag="1")]
+        Percent(u32),
+        /// absolute number of columns or rows
+        #[prost(uint32, tag="2")]
+        Fixed(u32),
+    }
+}
+/// PaneId identifies either a terminal or plugin pane
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneId {
+    #[prost(oneof="pane_id::PaneIdVariant", tags="1, 2")]
+    pub pane_id_variant: ::core::option::Option<pane_id::PaneIdVariant>,
+}
+/// Nested message and enum types in `PaneId`.
+pub mod pane_id {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum PaneIdVariant {
+        #[prost(uint32, tag="1")]
+        Terminal(u32),
+        #[prost(uint32, tag="2")]
+        Plugin(u32),
+    }
+}
+/// FloatingPaneCoordinates specifies the position and size of a floating pane
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FloatingPaneCoordinates {
+    #[prost(message, optional, tag="1")]
+    pub x: ::core::option::Option<SplitSize>,
+    #[prost(message, optional, tag="2")]
+    pub y: ::core::option::Option<SplitSize>,
+    #[prost(message, optional, tag="3")]
+    pub width: ::core::option::Option<SplitSize>,
+    #[prost(message, optional, tag="4")]
+    pub height: ::core::option::Option<SplitSize>,
+    #[prost(bool, optional, tag="5")]
+    pub pinned: ::core::option::Option<bool>,
+}
+/// NewPanePlacement specifies where a new pane should be placed
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NewPanePlacement {
+    #[prost(oneof="new_pane_placement::PlacementVariant", tags="1, 2, 3, 4, 5")]
+    pub placement_variant: ::core::option::Option<new_pane_placement::PlacementVariant>,
+}
+/// Nested message and enum types in `NewPanePlacement`.
+pub mod new_pane_placement {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum PlacementVariant {
+        #[prost(bool, tag="1")]
+        NoPreference(bool),
+        #[prost(message, tag="2")]
+        Tiled(super::TiledPlacement),
+        #[prost(message, tag="3")]
+        Floating(super::FloatingPlacement),
+        #[prost(message, tag="4")]
+        InPlace(super::InPlaceConfig),
+        #[prost(message, tag="5")]
+        Stacked(super::StackedPlacement),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TiledPlacement {
+    #[prost(enumeration="super::resize::ResizeDirection", optional, tag="1")]
+    pub direction: ::core::option::Option<i32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FloatingPlacement {
+    #[prost(message, optional, tag="1")]
+    pub coordinates: ::core::option::Option<FloatingPaneCoordinates>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InPlaceConfig {
+    #[prost(message, optional, tag="1")]
+    pub pane_id_to_replace: ::core::option::Option<PaneId>,
+    #[prost(bool, tag="2")]
+    pub close_replaced_pane: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StackedPlacement {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -492,6 +609,7 @@ pub enum ActionName {
     ToggleGroupMarking = 88,
     NewStackedPane = 89,
     SwitchSession = 90,
+    NewBlockingPane = 91,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -588,6 +706,7 @@ impl ActionName {
             ActionName::ToggleGroupMarking => "ToggleGroupMarking",
             ActionName::NewStackedPane => "NewStackedPane",
             ActionName::SwitchSession => "SwitchSession",
+            ActionName::NewBlockingPane => "NewBlockingPane",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -681,6 +800,37 @@ impl ActionName {
             "ToggleGroupMarking" => Some(Self::ToggleGroupMarking),
             "NewStackedPane" => Some(Self::NewStackedPane),
             "SwitchSession" => Some(Self::SwitchSession),
+            "NewBlockingPane" => Some(Self::NewBlockingPane),
+            _ => None,
+        }
+    }
+}
+/// UnblockCondition specifies when a blocking pane should unblock
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum UnblockCondition {
+    UnblockOnExitSuccess = 0,
+    UnblockOnExitFailure = 1,
+    UnblockOnAnyExit = 2,
+}
+impl UnblockCondition {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            UnblockCondition::UnblockOnExitSuccess => "UNBLOCK_ON_EXIT_SUCCESS",
+            UnblockCondition::UnblockOnExitFailure => "UNBLOCK_ON_EXIT_FAILURE",
+            UnblockCondition::UnblockOnAnyExit => "UNBLOCK_ON_ANY_EXIT",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "UNBLOCK_ON_EXIT_SUCCESS" => Some(Self::UnblockOnExitSuccess),
+            "UNBLOCK_ON_EXIT_FAILURE" => Some(Self::UnblockOnExitFailure),
+            "UNBLOCK_ON_ANY_EXIT" => Some(Self::UnblockOnAnyExit),
             _ => None,
         }
     }

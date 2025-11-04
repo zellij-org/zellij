@@ -1,22 +1,32 @@
 pub use super::generated_api::api::{
     action::{
         action::OptionalPayload, Action as ProtobufAction, ActionName as ProtobufActionName,
-        BareKey as ProtobufBareKey, DumpScreenPayload, EditFilePayload, GoToTabNamePayload,
-        IdAndName, KeyModifier as ProtobufKeyModifier,
+        BareKey as ProtobufBareKey, DumpScreenPayload, EditFilePayload,
+        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates,
+        FloatingPlacement as ProtobufFloatingPlacement, GoToTabNamePayload, IdAndName,
+        InPlaceConfig as ProtobufInPlaceConfig, KeyModifier as ProtobufKeyModifier,
         KeyWithModifier as ProtobufKeyWithModifier, LaunchOrFocusPluginPayload,
         MouseEventPayload as ProtobufMouseEventPayload, MovePanePayload,
         MoveTabDirection as ProtobufMoveTabDirection, NameAndValue as ProtobufNameAndValue,
-        NewFloatingPanePayload, NewPanePayload, NewPluginPanePayload, NewTiledPanePayload,
-        PaneIdAndShouldFloat, PluginConfiguration as ProtobufPluginConfiguration,
+        NewBlockingPanePayload, NewFloatingPanePayload,
+        NewPanePlacement as ProtobufNewPanePlacement, NewPanePayload, NewPluginPanePayload,
+        NewTiledPanePayload, PaneId as ProtobufPaneId, PaneIdAndShouldFloat,
+        PluginConfiguration as ProtobufPluginConfiguration,
         Position as ProtobufPosition, RunCommandAction as ProtobufRunCommandAction,
         ScrollAtPayload, SearchDirection as ProtobufSearchDirection,
-        SearchOption as ProtobufSearchOption, SwitchToModePayload, WriteCharsPayload,
-        WritePayload,
+        SearchOption as ProtobufSearchOption, SplitSize as ProtobufSplitSize,
+        StackedPlacement as ProtobufStackedPlacement, SwitchToModePayload,
+        TiledPlacement as ProtobufTiledPlacement, UnblockCondition as ProtobufUnblockCondition,
+        WriteCharsPayload, WritePayload,
     },
     input_mode::InputMode as ProtobufInputMode,
     resize::{Resize as ProtobufResize, ResizeDirection as ProtobufResizeDirection},
 };
-use crate::data::{Direction, InputMode, KeyWithModifier, ResizeStrategy};
+use crate::data::{
+    Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, NewPanePlacement, PaneId,
+    ResizeStrategy, UnblockCondition,
+};
+use crate::input::layout::SplitSize;
 use crate::errors::prelude::*;
 use crate::input::actions::Action;
 use crate::input::actions::{SearchDirection, SearchOption};
@@ -776,6 +786,27 @@ impl TryFrom<ProtobufAction> for Action {
                     pane_name: None,
                 }),
             },
+            Some(ProtobufActionName::NewBlockingPane) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::NewBlockingPanePayload(payload)) => {
+                    let placement: NewPanePlacement = payload
+                        .placement
+                        .ok_or("NewBlockingPanePayload must have a placement")?
+                        .try_into()?;
+                    let pane_name = payload.pane_name;
+                    let command = payload.command.and_then(|c| c.try_into().ok());
+                    let unblock_condition = payload
+                        .unblock_condition
+                        .and_then(|uc| ProtobufUnblockCondition::from_i32(uc))
+                        .and_then(|uc| uc.try_into().ok());
+                    Ok(Action::NewBlockingPane {
+                        placement,
+                        pane_name,
+                        command,
+                        unblock_condition,
+                    })
+                },
+                _ => Err("Wrong payload for Action::NewBlockingPane"),
+            },
             _ => Err("Unknown Action"),
         }
     }
@@ -1379,6 +1410,33 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::NewStackedPane as i32,
                 optional_payload: None,
             }),
+            Action::NewBlockingPane {
+                placement,
+                pane_name,
+                command,
+                unblock_condition,
+            } => {
+                let placement: ProtobufNewPanePlacement = placement.try_into()?;
+                let command = command.and_then(|c| {
+                    let protobuf_command: ProtobufRunCommandAction = c.try_into().ok()?;
+                    Some(protobuf_command)
+                });
+                let unblock_condition = unblock_condition.map(|uc| {
+                    let protobuf_uc: ProtobufUnblockCondition = uc.try_into().ok()?;
+                    Some(protobuf_uc as i32)
+                }).flatten();
+                Ok(ProtobufAction {
+                    name: ProtobufActionName::NewBlockingPane as i32,
+                    optional_payload: Some(OptionalPayload::NewBlockingPanePayload(
+                        NewBlockingPanePayload {
+                            placement: Some(placement),
+                            pane_name,
+                            command,
+                            unblock_condition,
+                        },
+                    )),
+                })
+            },
             Action::NoOp
             | Action::Confirm
             | Action::NewInPlacePane {
@@ -1401,7 +1459,6 @@ impl TryFrom<Action> for ProtobufAction {
                 coordinates: _,
             }
             | Action::SkipConfirm { action: _ }
-            | Action::NewBlockingPane { .. }
             | Action::SwitchSession { .. } => Err("Unsupported action"),
         }
     }
@@ -1749,5 +1806,182 @@ impl TryFrom<KeyWithModifier> for ProtobufKeyWithModifier {
             key_modifiers,
             character,
         })
+    }
+}
+
+// UnblockCondition conversions
+impl TryFrom<ProtobufUnblockCondition> for UnblockCondition {
+    type Error = &'static str;
+    fn try_from(protobuf_uc: ProtobufUnblockCondition) -> Result<Self, &'static str> {
+        match protobuf_uc {
+            ProtobufUnblockCondition::UnblockOnExitSuccess => Ok(UnblockCondition::OnExitSuccess),
+            ProtobufUnblockCondition::UnblockOnExitFailure => Ok(UnblockCondition::OnExitFailure),
+            ProtobufUnblockCondition::UnblockOnAnyExit => Ok(UnblockCondition::OnAnyExit),
+        }
+    }
+}
+
+impl TryFrom<UnblockCondition> for ProtobufUnblockCondition {
+    type Error = &'static str;
+    fn try_from(uc: UnblockCondition) -> Result<Self, &'static str> {
+        match uc {
+            UnblockCondition::OnExitSuccess => Ok(ProtobufUnblockCondition::UnblockOnExitSuccess),
+            UnblockCondition::OnExitFailure => Ok(ProtobufUnblockCondition::UnblockOnExitFailure),
+            UnblockCondition::OnAnyExit => Ok(ProtobufUnblockCondition::UnblockOnAnyExit),
+        }
+    }
+}
+
+// PaneId conversions
+impl TryFrom<ProtobufPaneId> for PaneId {
+    type Error = &'static str;
+    fn try_from(protobuf_pane_id: ProtobufPaneId) -> Result<Self, &'static str> {
+        use super::generated_api::api::action::pane_id::PaneIdVariant;
+
+        match protobuf_pane_id.pane_id_variant {
+            Some(PaneIdVariant::Terminal(id)) => Ok(PaneId::Terminal(id)),
+            Some(PaneIdVariant::Plugin(id)) => Ok(PaneId::Plugin(id)),
+            None => Err("PaneId must have either terminal or plugin id"),
+        }
+    }
+}
+
+impl TryFrom<PaneId> for ProtobufPaneId {
+    type Error = &'static str;
+    fn try_from(pane_id: PaneId) -> Result<Self, &'static str> {
+        use super::generated_api::api::action::pane_id::PaneIdVariant;
+
+        let pane_id_variant = match pane_id {
+            PaneId::Terminal(id) => Some(PaneIdVariant::Terminal(id)),
+            PaneId::Plugin(id) => Some(PaneIdVariant::Plugin(id)),
+        };
+        Ok(ProtobufPaneId { pane_id_variant })
+    }
+}
+
+// SplitSize conversions
+impl TryFrom<ProtobufSplitSize> for SplitSize {
+    type Error = &'static str;
+    fn try_from(protobuf_split_size: ProtobufSplitSize) -> Result<Self, &'static str> {
+        use super::generated_api::api::action::split_size::SplitSizeVariant;
+
+        match protobuf_split_size.split_size_variant {
+            Some(SplitSizeVariant::Percent(p)) => Ok(SplitSize::Percent(p as usize)),
+            Some(SplitSizeVariant::Fixed(f)) => Ok(SplitSize::Fixed(f as usize)),
+            None => Err("SplitSize must have either percent or fixed value"),
+        }
+    }
+}
+
+impl TryFrom<SplitSize> for ProtobufSplitSize {
+    type Error = &'static str;
+    fn try_from(split_size: SplitSize) -> Result<Self, &'static str> {
+        use super::generated_api::api::action::split_size::SplitSizeVariant;
+
+        let split_size_variant = match split_size {
+            SplitSize::Percent(p) => Some(SplitSizeVariant::Percent(p as u32)),
+            SplitSize::Fixed(f) => Some(SplitSizeVariant::Fixed(f as u32)),
+        };
+        Ok(ProtobufSplitSize { split_size_variant })
+    }
+}
+
+// FloatingPaneCoordinates conversions
+impl TryFrom<ProtobufFloatingPaneCoordinates> for FloatingPaneCoordinates {
+    type Error = &'static str;
+    fn try_from(protobuf_coords: ProtobufFloatingPaneCoordinates) -> Result<Self, &'static str> {
+        Ok(FloatingPaneCoordinates {
+            x: protobuf_coords.x.and_then(|x| x.try_into().ok()),
+            y: protobuf_coords.y.and_then(|y| y.try_into().ok()),
+            width: protobuf_coords.width.and_then(|w| w.try_into().ok()),
+            height: protobuf_coords.height.and_then(|h| h.try_into().ok()),
+            pinned: protobuf_coords.pinned,
+        })
+    }
+}
+
+impl TryFrom<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
+    type Error = &'static str;
+    fn try_from(coords: FloatingPaneCoordinates) -> Result<Self, &'static str> {
+        Ok(ProtobufFloatingPaneCoordinates {
+            x: coords.x.and_then(|x| x.try_into().ok()),
+            y: coords.y.and_then(|y| y.try_into().ok()),
+            width: coords.width.and_then(|w| w.try_into().ok()),
+            height: coords.height.and_then(|h| h.try_into().ok()),
+            pinned: coords.pinned,
+        })
+    }
+}
+
+// NewPanePlacement conversions
+impl TryFrom<ProtobufNewPanePlacement> for NewPanePlacement {
+    type Error = &'static str;
+    fn try_from(protobuf_placement: ProtobufNewPanePlacement) -> Result<Self, &'static str> {
+        use super::generated_api::api::action::new_pane_placement::PlacementVariant;
+
+        match protobuf_placement.placement_variant {
+            Some(PlacementVariant::NoPreference(_)) => Ok(NewPanePlacement::NoPreference),
+            Some(PlacementVariant::Tiled(tiled)) => {
+                let direction = tiled
+                    .direction
+                    .and_then(|d| ProtobufResizeDirection::from_i32(d))
+                    .and_then(|d| d.try_into().ok());
+                Ok(NewPanePlacement::Tiled(direction))
+            },
+            Some(PlacementVariant::Floating(floating)) => {
+                let coords = floating.coordinates.and_then(|c| c.try_into().ok());
+                Ok(NewPanePlacement::Floating(coords))
+            },
+            Some(PlacementVariant::InPlace(config)) => {
+                let pane_id_to_replace = config.pane_id_to_replace.and_then(|id| id.try_into().ok());
+                Ok(NewPanePlacement::InPlace {
+                    pane_id_to_replace,
+                    close_replaced_pane: config.close_replaced_pane,
+                })
+            },
+            Some(PlacementVariant::Stacked(stacked)) => {
+                let pane_id = stacked.pane_id.and_then(|id| id.try_into().ok());
+                Ok(NewPanePlacement::Stacked(pane_id))
+            },
+            None => Err("NewPanePlacement must have a placement variant"),
+        }
+    }
+}
+
+impl TryFrom<NewPanePlacement> for ProtobufNewPanePlacement {
+    type Error = &'static str;
+    fn try_from(placement: NewPanePlacement) -> Result<Self, &'static str> {
+        use super::generated_api::api::action::new_pane_placement::PlacementVariant;
+
+        let placement_variant = match placement {
+            NewPanePlacement::NoPreference => Some(PlacementVariant::NoPreference(true)),
+            NewPanePlacement::Tiled(direction) => {
+                let direction = direction.and_then(|d| {
+                    let protobuf_direction: ProtobufResizeDirection = d.try_into().ok()?;
+                    Some(protobuf_direction as i32)
+                });
+                Some(PlacementVariant::Tiled(ProtobufTiledPlacement { direction }))
+            },
+            NewPanePlacement::Floating(coords) => {
+                let coordinates = coords.and_then(|c| c.try_into().ok());
+                Some(PlacementVariant::Floating(ProtobufFloatingPlacement { coordinates }))
+            },
+            NewPanePlacement::InPlace {
+                pane_id_to_replace,
+                close_replaced_pane,
+            } => {
+                let pane_id_to_replace = pane_id_to_replace.and_then(|id| id.try_into().ok());
+                Some(PlacementVariant::InPlace(ProtobufInPlaceConfig {
+                    pane_id_to_replace,
+                    close_replaced_pane,
+                }))
+            },
+            NewPanePlacement::Stacked(pane_id) => {
+                let pane_id = pane_id.and_then(|id| id.try_into().ok());
+                Some(PlacementVariant::Stacked(ProtobufStackedPlacement { pane_id }))
+            },
+        };
+
+        Ok(ProtobufNewPanePlacement { placement_variant })
     }
 }

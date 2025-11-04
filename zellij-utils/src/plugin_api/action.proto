@@ -53,6 +53,7 @@ message Action {
     CliPipePayload message_payload = 47;
     MoveTabDirection move_tab_payload = 48;
     MouseEventPayload mouse_event_payload = 49;
+    NewBlockingPanePayload new_blocking_pane_payload = 50;
   }
 }
 
@@ -137,6 +138,13 @@ message ScrollAtPayload {
 message NewPanePayload {
   optional resize.ResizeDirection direction = 1;
   optional string pane_name = 2;
+}
+
+message NewBlockingPanePayload {
+  NewPanePlacement placement = 1;
+  optional string pane_name = 2;
+  optional RunCommandAction command = 3;
+  optional UnblockCondition unblock_condition = 4;
 }
 
 message SwitchToModePayload {
@@ -247,11 +255,72 @@ enum ActionName {
     ToggleGroupMarking = 88;
     NewStackedPane = 89;
     SwitchSession = 90;
+    NewBlockingPane = 91;
 }
 
 message Position {
   int64 line = 1;
   int64 column = 2;
+}
+
+// SplitSize represents a dimension that can be either a percentage or fixed size
+message SplitSize {
+  oneof split_size_variant {
+    uint32 percent = 1;  // 1 to 100
+    uint32 fixed = 2;    // absolute number of columns or rows
+  }
+}
+
+// PaneId identifies either a terminal or plugin pane
+message PaneId {
+  oneof pane_id_variant {
+    uint32 terminal = 1;
+    uint32 plugin = 2;
+  }
+}
+
+// FloatingPaneCoordinates specifies the position and size of a floating pane
+message FloatingPaneCoordinates {
+  optional SplitSize x = 1;
+  optional SplitSize y = 2;
+  optional SplitSize width = 3;
+  optional SplitSize height = 4;
+  optional bool pinned = 5;
+}
+
+// UnblockCondition specifies when a blocking pane should unblock
+enum UnblockCondition {
+  UNBLOCK_ON_EXIT_SUCCESS = 0;
+  UNBLOCK_ON_EXIT_FAILURE = 1;
+  UNBLOCK_ON_ANY_EXIT = 2;
+}
+
+// NewPanePlacement specifies where a new pane should be placed
+message NewPanePlacement {
+  oneof placement_variant {
+    bool no_preference = 1;
+    TiledPlacement tiled = 2;
+    FloatingPlacement floating = 3;
+    InPlaceConfig in_place = 4;
+    StackedPlacement stacked = 5;
+  }
+}
+
+message TiledPlacement {
+  optional resize.ResizeDirection direction = 1;
+}
+
+message FloatingPlacement {
+  optional FloatingPaneCoordinates coordinates = 1;
+}
+
+message InPlaceConfig {
+  optional PaneId pane_id_to_replace = 1;
+  bool close_replaced_pane = 2;
+}
+
+message StackedPlacement {
+  optional PaneId pane_id = 1;
 }
 
 message MouseEventPayload {
