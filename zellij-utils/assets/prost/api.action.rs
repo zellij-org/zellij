@@ -224,6 +224,10 @@ pub struct SwitchToModePayload {
 pub struct WritePayload {
     #[prost(bytes="vec", tag="1")]
     pub bytes_to_write: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag="2")]
+    pub key_with_modifier: ::core::option::Option<KeyWithModifier>,
+    #[prost(bool, tag="3")]
+    pub is_kitty_keyboard_protocol: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -304,6 +308,17 @@ pub struct NameAndValue {
     pub name: ::prost::alloc::string::String,
     #[prost(string, tag="2")]
     pub value: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct KeyWithModifier {
+    #[prost(enumeration="BareKey", tag="1")]
+    pub bare_key: i32,
+    #[prost(enumeration="KeyModifier", repeated, tag="2")]
+    pub key_modifiers: ::prost::alloc::vec::Vec<i32>,
+    /// Only set when bare_key is CHAR
+    #[prost(string, optional, tag="3")]
+    pub character: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -666,6 +681,163 @@ impl ActionName {
             "ToggleGroupMarking" => Some(Self::ToggleGroupMarking),
             "NewStackedPane" => Some(Self::NewStackedPane),
             "SwitchSession" => Some(Self::SwitchSession),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum BareKey {
+    Unspecified = 0,
+    PageDown = 1,
+    PageUp = 2,
+    Left = 3,
+    Down = 4,
+    Up = 5,
+    Right = 6,
+    Home = 7,
+    End = 8,
+    Backspace = 9,
+    Delete = 10,
+    Insert = 11,
+    F1 = 12,
+    F2 = 13,
+    F3 = 14,
+    F4 = 15,
+    F5 = 16,
+    F6 = 17,
+    F7 = 18,
+    F8 = 19,
+    F9 = 20,
+    F10 = 21,
+    F11 = 22,
+    F12 = 23,
+    Char = 24,
+    Tab = 25,
+    Esc = 26,
+    Enter = 27,
+    CapsLock = 28,
+    ScrollLock = 29,
+    NumLock = 30,
+    PrintScreen = 31,
+    Pause = 32,
+    Menu = 33,
+}
+impl BareKey {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            BareKey::Unspecified => "BARE_KEY_UNSPECIFIED",
+            BareKey::PageDown => "BARE_KEY_PAGE_DOWN",
+            BareKey::PageUp => "BARE_KEY_PAGE_UP",
+            BareKey::Left => "BARE_KEY_LEFT",
+            BareKey::Down => "BARE_KEY_DOWN",
+            BareKey::Up => "BARE_KEY_UP",
+            BareKey::Right => "BARE_KEY_RIGHT",
+            BareKey::Home => "BARE_KEY_HOME",
+            BareKey::End => "BARE_KEY_END",
+            BareKey::Backspace => "BARE_KEY_BACKSPACE",
+            BareKey::Delete => "BARE_KEY_DELETE",
+            BareKey::Insert => "BARE_KEY_INSERT",
+            BareKey::F1 => "BARE_KEY_F1",
+            BareKey::F2 => "BARE_KEY_F2",
+            BareKey::F3 => "BARE_KEY_F3",
+            BareKey::F4 => "BARE_KEY_F4",
+            BareKey::F5 => "BARE_KEY_F5",
+            BareKey::F6 => "BARE_KEY_F6",
+            BareKey::F7 => "BARE_KEY_F7",
+            BareKey::F8 => "BARE_KEY_F8",
+            BareKey::F9 => "BARE_KEY_F9",
+            BareKey::F10 => "BARE_KEY_F10",
+            BareKey::F11 => "BARE_KEY_F11",
+            BareKey::F12 => "BARE_KEY_F12",
+            BareKey::Char => "BARE_KEY_CHAR",
+            BareKey::Tab => "BARE_KEY_TAB",
+            BareKey::Esc => "BARE_KEY_ESC",
+            BareKey::Enter => "BARE_KEY_ENTER",
+            BareKey::CapsLock => "BARE_KEY_CAPS_LOCK",
+            BareKey::ScrollLock => "BARE_KEY_SCROLL_LOCK",
+            BareKey::NumLock => "BARE_KEY_NUM_LOCK",
+            BareKey::PrintScreen => "BARE_KEY_PRINT_SCREEN",
+            BareKey::Pause => "BARE_KEY_PAUSE",
+            BareKey::Menu => "BARE_KEY_MENU",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "BARE_KEY_UNSPECIFIED" => Some(Self::Unspecified),
+            "BARE_KEY_PAGE_DOWN" => Some(Self::PageDown),
+            "BARE_KEY_PAGE_UP" => Some(Self::PageUp),
+            "BARE_KEY_LEFT" => Some(Self::Left),
+            "BARE_KEY_DOWN" => Some(Self::Down),
+            "BARE_KEY_UP" => Some(Self::Up),
+            "BARE_KEY_RIGHT" => Some(Self::Right),
+            "BARE_KEY_HOME" => Some(Self::Home),
+            "BARE_KEY_END" => Some(Self::End),
+            "BARE_KEY_BACKSPACE" => Some(Self::Backspace),
+            "BARE_KEY_DELETE" => Some(Self::Delete),
+            "BARE_KEY_INSERT" => Some(Self::Insert),
+            "BARE_KEY_F1" => Some(Self::F1),
+            "BARE_KEY_F2" => Some(Self::F2),
+            "BARE_KEY_F3" => Some(Self::F3),
+            "BARE_KEY_F4" => Some(Self::F4),
+            "BARE_KEY_F5" => Some(Self::F5),
+            "BARE_KEY_F6" => Some(Self::F6),
+            "BARE_KEY_F7" => Some(Self::F7),
+            "BARE_KEY_F8" => Some(Self::F8),
+            "BARE_KEY_F9" => Some(Self::F9),
+            "BARE_KEY_F10" => Some(Self::F10),
+            "BARE_KEY_F11" => Some(Self::F11),
+            "BARE_KEY_F12" => Some(Self::F12),
+            "BARE_KEY_CHAR" => Some(Self::Char),
+            "BARE_KEY_TAB" => Some(Self::Tab),
+            "BARE_KEY_ESC" => Some(Self::Esc),
+            "BARE_KEY_ENTER" => Some(Self::Enter),
+            "BARE_KEY_CAPS_LOCK" => Some(Self::CapsLock),
+            "BARE_KEY_SCROLL_LOCK" => Some(Self::ScrollLock),
+            "BARE_KEY_NUM_LOCK" => Some(Self::NumLock),
+            "BARE_KEY_PRINT_SCREEN" => Some(Self::PrintScreen),
+            "BARE_KEY_PAUSE" => Some(Self::Pause),
+            "BARE_KEY_MENU" => Some(Self::Menu),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum KeyModifier {
+    Unspecified = 0,
+    Ctrl = 1,
+    Alt = 2,
+    Shift = 3,
+    Super = 4,
+}
+impl KeyModifier {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            KeyModifier::Unspecified => "KEY_MODIFIER_UNSPECIFIED",
+            KeyModifier::Ctrl => "KEY_MODIFIER_CTRL",
+            KeyModifier::Alt => "KEY_MODIFIER_ALT",
+            KeyModifier::Shift => "KEY_MODIFIER_SHIFT",
+            KeyModifier::Super => "KEY_MODIFIER_SUPER",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "KEY_MODIFIER_UNSPECIFIED" => Some(Self::Unspecified),
+            "KEY_MODIFIER_CTRL" => Some(Self::Ctrl),
+            "KEY_MODIFIER_ALT" => Some(Self::Alt),
+            "KEY_MODIFIER_SHIFT" => Some(Self::Shift),
+            "KEY_MODIFIER_SUPER" => Some(Self::Super),
             _ => None,
         }
     }

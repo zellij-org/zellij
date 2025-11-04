@@ -145,6 +145,8 @@ message SwitchToModePayload {
 
 message WritePayload {
   bytes bytes_to_write = 1;
+  optional KeyWithModifier key_with_modifier = 2;
+  bool is_kitty_keyboard_protocol = 3;
 }
 
 message WriteCharsPayload {
@@ -283,4 +285,55 @@ message PluginConfiguration {
 message NameAndValue {
   string name = 1;
   string value = 2;
+}
+
+message KeyWithModifier {
+  BareKey bare_key = 1;
+  repeated KeyModifier key_modifiers = 2;
+  optional string character = 3; // Only set when bare_key is CHAR
+}
+
+enum BareKey {
+  BARE_KEY_UNSPECIFIED = 0;
+  BARE_KEY_PAGE_DOWN = 1;
+  BARE_KEY_PAGE_UP = 2;
+  BARE_KEY_LEFT = 3;
+  BARE_KEY_DOWN = 4;
+  BARE_KEY_UP = 5;
+  BARE_KEY_RIGHT = 6;
+  BARE_KEY_HOME = 7;
+  BARE_KEY_END = 8;
+  BARE_KEY_BACKSPACE = 9;
+  BARE_KEY_DELETE = 10;
+  BARE_KEY_INSERT = 11;
+  BARE_KEY_F1 = 12;
+  BARE_KEY_F2 = 13;
+  BARE_KEY_F3 = 14;
+  BARE_KEY_F4 = 15;
+  BARE_KEY_F5 = 16;
+  BARE_KEY_F6 = 17;
+  BARE_KEY_F7 = 18;
+  BARE_KEY_F8 = 19;
+  BARE_KEY_F9 = 20;
+  BARE_KEY_F10 = 21;
+  BARE_KEY_F11 = 22;
+  BARE_KEY_F12 = 23;
+  BARE_KEY_CHAR = 24;
+  BARE_KEY_TAB = 25;
+  BARE_KEY_ESC = 26;
+  BARE_KEY_ENTER = 27;
+  BARE_KEY_CAPS_LOCK = 28;
+  BARE_KEY_SCROLL_LOCK = 29;
+  BARE_KEY_NUM_LOCK = 30;
+  BARE_KEY_PRINT_SCREEN = 31;
+  BARE_KEY_PAUSE = 32;
+  BARE_KEY_MENU = 33;
+}
+
+enum KeyModifier {
+  KEY_MODIFIER_UNSPECIFIED = 0;
+  KEY_MODIFIER_CTRL = 1;
+  KEY_MODIFIER_ALT = 2;
+  KEY_MODIFIER_SHIFT = 3;
+  KEY_MODIFIER_SUPER = 4;
 }

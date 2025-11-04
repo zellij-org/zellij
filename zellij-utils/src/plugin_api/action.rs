@@ -1,20 +1,22 @@
 pub use super::generated_api::api::{
     action::{
         action::OptionalPayload, Action as ProtobufAction, ActionName as ProtobufActionName,
-        DumpScreenPayload, EditFilePayload, GoToTabNamePayload, IdAndName,
-        LaunchOrFocusPluginPayload, MouseEventPayload as ProtobufMouseEventPayload,
-        MovePanePayload, MoveTabDirection as ProtobufMoveTabDirection,
-        NameAndValue as ProtobufNameAndValue, NewFloatingPanePayload, NewPanePayload,
-        NewPluginPanePayload, NewTiledPanePayload, PaneIdAndShouldFloat,
-        PluginConfiguration as ProtobufPluginConfiguration, Position as ProtobufPosition,
-        RunCommandAction as ProtobufRunCommandAction, ScrollAtPayload,
-        SearchDirection as ProtobufSearchDirection, SearchOption as ProtobufSearchOption,
-        SwitchToModePayload, WriteCharsPayload, WritePayload,
+        BareKey as ProtobufBareKey, DumpScreenPayload, EditFilePayload, GoToTabNamePayload,
+        IdAndName, KeyModifier as ProtobufKeyModifier,
+        KeyWithModifier as ProtobufKeyWithModifier, LaunchOrFocusPluginPayload,
+        MouseEventPayload as ProtobufMouseEventPayload, MovePanePayload,
+        MoveTabDirection as ProtobufMoveTabDirection, NameAndValue as ProtobufNameAndValue,
+        NewFloatingPanePayload, NewPanePayload, NewPluginPanePayload, NewTiledPanePayload,
+        PaneIdAndShouldFloat, PluginConfiguration as ProtobufPluginConfiguration,
+        Position as ProtobufPosition, RunCommandAction as ProtobufRunCommandAction,
+        ScrollAtPayload, SearchDirection as ProtobufSearchDirection,
+        SearchOption as ProtobufSearchOption, SwitchToModePayload, WriteCharsPayload,
+        WritePayload,
     },
     input_mode::InputMode as ProtobufInputMode,
     resize::{Resize as ProtobufResize, ResizeDirection as ProtobufResizeDirection},
 };
-use crate::data::{Direction, InputMode, ResizeStrategy};
+use crate::data::{Direction, InputMode, KeyWithModifier, ResizeStrategy};
 use crate::errors::prelude::*;
 use crate::input::actions::Action;
 use crate::input::actions::{SearchDirection, SearchOption};
@@ -38,11 +40,15 @@ impl TryFrom<ProtobufAction> for Action {
                 None => Ok(Action::Quit),
             },
             Some(ProtobufActionName::Write) => match protobuf_action.optional_payload {
-                Some(OptionalPayload::WritePayload(write_payload)) => Ok(Action::Write {
-                    key_with_modifier: None,
-                    bytes: write_payload.bytes_to_write,
-                    is_kitty_keyboard_protocol: false,
-                }),
+                Some(OptionalPayload::WritePayload(write_payload)) => {
+                    let key_with_modifier = write_payload.key_with_modifier
+                        .and_then(|k| k.try_into().ok());
+                    Ok(Action::Write {
+                        key_with_modifier,
+                        bytes: write_payload.bytes_to_write,
+                        is_kitty_keyboard_protocol: write_payload.is_kitty_keyboard_protocol,
+                    })
+                },
                 _ => Err("Wrong payload for Action::Write"),
             },
             Some(ProtobufActionName::WriteChars) => match protobuf_action.optional_payload {
@@ -784,15 +790,21 @@ impl TryFrom<Action> for ProtobufAction {
                 optional_payload: None,
             }),
             Action::Write {
-                key_with_modifier: _,
+                key_with_modifier,
                 bytes,
-                is_kitty_keyboard_protocol: _,
-            } => Ok(ProtobufAction {
-                name: ProtobufActionName::Write as i32,
-                optional_payload: Some(OptionalPayload::WritePayload(WritePayload {
-                    bytes_to_write: bytes,
-                })),
-            }),
+                is_kitty_keyboard_protocol,
+            } => {
+                let protobuf_key_with_modifier = key_with_modifier
+                    .and_then(|k| k.try_into().ok());
+                Ok(ProtobufAction {
+                    name: ProtobufActionName::Write as i32,
+                    optional_payload: Some(OptionalPayload::WritePayload(WritePayload {
+                        key_with_modifier: protobuf_key_with_modifier,
+                        bytes_to_write: bytes,
+                        is_kitty_keyboard_protocol,
+                    })),
+                })
+            },
             Action::WriteChars {
                 chars: chars_to_write,
             } => Ok(ProtobufAction {
@@ -1614,5 +1626,128 @@ impl TryFrom<&ProtobufPluginConfiguration> for BTreeMap<String, String> {
             );
         }
         Ok(converted)
+    }
+}
+
+impl TryFrom<ProtobufKeyWithModifier> for KeyWithModifier {
+    type Error = &'static str;
+    fn try_from(protobuf_key: ProtobufKeyWithModifier) -> Result<Self, &'static str> {
+        let bare_key = match ProtobufBareKey::from_i32(protobuf_key.bare_key) {
+            Some(ProtobufBareKey::PageDown) => crate::data::BareKey::PageDown,
+            Some(ProtobufBareKey::PageUp) => crate::data::BareKey::PageUp,
+            Some(ProtobufBareKey::Left) => crate::data::BareKey::Left,
+            Some(ProtobufBareKey::Down) => crate::data::BareKey::Down,
+            Some(ProtobufBareKey::Up) => crate::data::BareKey::Up,
+            Some(ProtobufBareKey::Right) => crate::data::BareKey::Right,
+            Some(ProtobufBareKey::Home) => crate::data::BareKey::Home,
+            Some(ProtobufBareKey::End) => crate::data::BareKey::End,
+            Some(ProtobufBareKey::Backspace) => crate::data::BareKey::Backspace,
+            Some(ProtobufBareKey::Delete) => crate::data::BareKey::Delete,
+            Some(ProtobufBareKey::Insert) => crate::data::BareKey::Insert,
+            Some(ProtobufBareKey::F1) => crate::data::BareKey::F(1),
+            Some(ProtobufBareKey::F2) => crate::data::BareKey::F(2),
+            Some(ProtobufBareKey::F3) => crate::data::BareKey::F(3),
+            Some(ProtobufBareKey::F4) => crate::data::BareKey::F(4),
+            Some(ProtobufBareKey::F5) => crate::data::BareKey::F(5),
+            Some(ProtobufBareKey::F6) => crate::data::BareKey::F(6),
+            Some(ProtobufBareKey::F7) => crate::data::BareKey::F(7),
+            Some(ProtobufBareKey::F8) => crate::data::BareKey::F(8),
+            Some(ProtobufBareKey::F9) => crate::data::BareKey::F(9),
+            Some(ProtobufBareKey::F10) => crate::data::BareKey::F(10),
+            Some(ProtobufBareKey::F11) => crate::data::BareKey::F(11),
+            Some(ProtobufBareKey::F12) => crate::data::BareKey::F(12),
+            Some(ProtobufBareKey::Char) => {
+                if let Some(character) = protobuf_key.character {
+                    let ch = character.chars().next().ok_or("BareKey::Char requires a character")?;
+                    crate::data::BareKey::Char(ch)
+                } else {
+                    return Err("BareKey::Char requires a character");
+                }
+            },
+            Some(ProtobufBareKey::Tab) => crate::data::BareKey::Tab,
+            Some(ProtobufBareKey::Esc) => crate::data::BareKey::Esc,
+            Some(ProtobufBareKey::Enter) => crate::data::BareKey::Enter,
+            Some(ProtobufBareKey::CapsLock) => crate::data::BareKey::CapsLock,
+            Some(ProtobufBareKey::ScrollLock) => crate::data::BareKey::ScrollLock,
+            Some(ProtobufBareKey::NumLock) => crate::data::BareKey::NumLock,
+            Some(ProtobufBareKey::PrintScreen) => crate::data::BareKey::PrintScreen,
+            Some(ProtobufBareKey::Pause) => crate::data::BareKey::Pause,
+            Some(ProtobufBareKey::Menu) => crate::data::BareKey::Menu,
+            _ => return Err("Unknown BareKey"),
+        };
+
+        let mut key_modifiers = std::collections::BTreeSet::new();
+        for modifier in protobuf_key.key_modifiers {
+            let key_modifier = match ProtobufKeyModifier::from_i32(modifier) {
+                Some(ProtobufKeyModifier::Ctrl) => crate::data::KeyModifier::Ctrl,
+                Some(ProtobufKeyModifier::Alt) => crate::data::KeyModifier::Alt,
+                Some(ProtobufKeyModifier::Shift) => crate::data::KeyModifier::Shift,
+                Some(ProtobufKeyModifier::Super) => crate::data::KeyModifier::Super,
+                _ => continue,
+            };
+            key_modifiers.insert(key_modifier);
+        }
+
+        Ok(KeyWithModifier {
+            bare_key,
+            key_modifiers,
+        })
+    }
+}
+
+impl TryFrom<KeyWithModifier> for ProtobufKeyWithModifier {
+    type Error = &'static str;
+    fn try_from(key: KeyWithModifier) -> Result<Self, &'static str> {
+        let (bare_key, character) = match key.bare_key {
+            crate::data::BareKey::PageDown => (ProtobufBareKey::PageDown as i32, None),
+            crate::data::BareKey::PageUp => (ProtobufBareKey::PageUp as i32, None),
+            crate::data::BareKey::Left => (ProtobufBareKey::Left as i32, None),
+            crate::data::BareKey::Down => (ProtobufBareKey::Down as i32, None),
+            crate::data::BareKey::Up => (ProtobufBareKey::Up as i32, None),
+            crate::data::BareKey::Right => (ProtobufBareKey::Right as i32, None),
+            crate::data::BareKey::Home => (ProtobufBareKey::Home as i32, None),
+            crate::data::BareKey::End => (ProtobufBareKey::End as i32, None),
+            crate::data::BareKey::Backspace => (ProtobufBareKey::Backspace as i32, None),
+            crate::data::BareKey::Delete => (ProtobufBareKey::Delete as i32, None),
+            crate::data::BareKey::Insert => (ProtobufBareKey::Insert as i32, None),
+            crate::data::BareKey::F(1) => (ProtobufBareKey::F1 as i32, None),
+            crate::data::BareKey::F(2) => (ProtobufBareKey::F2 as i32, None),
+            crate::data::BareKey::F(3) => (ProtobufBareKey::F3 as i32, None),
+            crate::data::BareKey::F(4) => (ProtobufBareKey::F4 as i32, None),
+            crate::data::BareKey::F(5) => (ProtobufBareKey::F5 as i32, None),
+            crate::data::BareKey::F(6) => (ProtobufBareKey::F6 as i32, None),
+            crate::data::BareKey::F(7) => (ProtobufBareKey::F7 as i32, None),
+            crate::data::BareKey::F(8) => (ProtobufBareKey::F8 as i32, None),
+            crate::data::BareKey::F(9) => (ProtobufBareKey::F9 as i32, None),
+            crate::data::BareKey::F(10) => (ProtobufBareKey::F10 as i32, None),
+            crate::data::BareKey::F(11) => (ProtobufBareKey::F11 as i32, None),
+            crate::data::BareKey::F(12) => (ProtobufBareKey::F12 as i32, None),
+            crate::data::BareKey::Char(c) => (ProtobufBareKey::Char as i32, Some(c.to_string())),
+            crate::data::BareKey::Tab => (ProtobufBareKey::Tab as i32, None),
+            crate::data::BareKey::Esc => (ProtobufBareKey::Esc as i32, None),
+            crate::data::BareKey::Enter => (ProtobufBareKey::Enter as i32, None),
+            crate::data::BareKey::CapsLock => (ProtobufBareKey::CapsLock as i32, None),
+            crate::data::BareKey::ScrollLock => (ProtobufBareKey::ScrollLock as i32, None),
+            crate::data::BareKey::NumLock => (ProtobufBareKey::NumLock as i32, None),
+            crate::data::BareKey::PrintScreen => (ProtobufBareKey::PrintScreen as i32, None),
+            crate::data::BareKey::Pause => (ProtobufBareKey::Pause as i32, None),
+            crate::data::BareKey::Menu => (ProtobufBareKey::Menu as i32, None),
+            _ => return Err("Unsupported BareKey"),
+        };
+
+        let key_modifiers: Vec<i32> = key.key_modifiers.iter().map(|m| {
+            match m {
+                crate::data::KeyModifier::Ctrl => ProtobufKeyModifier::Ctrl as i32,
+                crate::data::KeyModifier::Alt => ProtobufKeyModifier::Alt as i32,
+                crate::data::KeyModifier::Shift => ProtobufKeyModifier::Shift as i32,
+                crate::data::KeyModifier::Super => ProtobufKeyModifier::Super as i32,
+            }
+        }).collect();
+
+        Ok(ProtobufKeyWithModifier {
+            bare_key,
+            key_modifiers,
+            character,
+        })
     }
 }
