@@ -15,6 +15,7 @@ pub use super::generated_api::api::{
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SelectedText as ProtobufSelectedText, SessionManifest as ProtobufSessionManifest,
         TabInfo as ProtobufTabInfo, UserActionPayload as ProtobufUserActionPayload,
+        ActionCompletePayload as ProtobufActionCompletePayload,
         WebServerStatusPayload as ProtobufWebServerStatusPayload, WebSharing as ProtobufWebSharing,
         *,
     },
@@ -411,6 +412,18 @@ impl TryFrom<ProtobufEvent> for Event {
                     Ok(Event::UserAction(action, client_id, terminal_id, cli_client_id))
                 },
                 _ => Err("Malformed payload for the UserAction Event"),
+            },
+            Some(ProtobufEventType::ActionComplete) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::ActionCompletePayload(protobuf_payload)) => {
+                    let action: Action = protobuf_payload
+                        .action
+                        .ok_or("Missing action in ActionComplete payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert Action in ActionComplete payload")?;
+                    let payload = protobuf_payload.payload;
+                    Ok(Event::ActionComplete(action, payload))
+                },
+                _ => Err("Malformed payload for the ActionComplete Event"),
             },
             None => Err("Unknown Protobuf Event"),
         }
@@ -825,6 +838,17 @@ impl TryFrom<Event> for ProtobufEvent {
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::UserAction as i32,
                     payload: Some(event::Payload::UserActionPayload(protobuf_payload)),
+                })
+            },
+            Event::ActionComplete(action, payload) => {
+                let protobuf_action = action.try_into()?;
+                let action_complete_payload = ProtobufActionCompletePayload {
+                    action: Some(protobuf_action),
+                    payload,
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::ActionComplete as i32,
+                    payload: Some(event::Payload::ActionCompletePayload(action_complete_payload)),
                 })
             },
         }
@@ -1507,6 +1531,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::InterceptedKeyPress => EventType::InterceptedKeyPress,
             ProtobufEventType::PaneRenderReport => EventType::PaneRenderReport,
             ProtobufEventType::UserAction => EventType::UserAction,
+            ProtobufEventType::ActionComplete => EventType::ActionComplete,
         })
     }
 }
@@ -1552,6 +1577,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::InterceptedKeyPress => ProtobufEventType::InterceptedKeyPress,
             EventType::PaneRenderReport => ProtobufEventType::PaneRenderReport,
             EventType::UserAction => ProtobufEventType::UserAction,
+            EventType::ActionComplete => ProtobufEventType::ActionComplete,
         })
     }
 }

@@ -9,7 +9,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -77,6 +77,8 @@ pub mod event {
         PaneRenderReportPayload(super::PaneRenderReportPayload),
         #[prost(message, tag="31")]
         UserActionPayload(super::UserActionPayload),
+        #[prost(message, tag="32")]
+        ActionCompletePayload(super::ActionCompletePayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -583,6 +585,14 @@ pub struct UserActionPayload {
     #[prost(uint32, optional, tag="4")]
     pub cli_client_id: ::core::option::Option<u32>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ActionCompletePayload {
+    #[prost(message, optional, tag="1")]
+    pub action: ::core::option::Option<super::action::Action>,
+    #[prost(string, tag="2")]
+    pub payload: ::prost::alloc::string::String,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum EventType {
@@ -638,6 +648,7 @@ pub enum EventType {
     InterceptedKeyPress = 35,
     PaneRenderReport = 36,
     UserAction = 37,
+    ActionComplete = 38,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -683,6 +694,7 @@ impl EventType {
             EventType::InterceptedKeyPress => "InterceptedKeyPress",
             EventType::PaneRenderReport => "PaneRenderReport",
             EventType::UserAction => "UserAction",
+            EventType::ActionComplete => "ActionComplete",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -725,6 +737,7 @@ impl EventType {
             "InterceptedKeyPress" => Some(Self::InterceptedKeyPress),
             "PaneRenderReport" => Some(Self::PaneRenderReport),
             "UserAction" => Some(Self::UserAction),
+            "ActionComplete" => Some(Self::ActionComplete),
             _ => None,
         }
     }

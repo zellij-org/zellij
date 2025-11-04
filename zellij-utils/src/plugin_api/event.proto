@@ -60,6 +60,7 @@ enum EventType {
     InterceptedKeyPress = 35;
     PaneRenderReport = 36;
     UserAction = 37;
+    ActionComplete = 38;
 }
 
 message EventNameList {
@@ -99,6 +100,7 @@ message Event {
     key.Key intercepted_key_payload = 29;
     PaneRenderReportPayload pane_render_report_payload = 30;
     UserActionPayload user_action_payload = 31;
+    ActionCompletePayload action_complete_payload = 32;
   }
 }
 
@@ -426,4 +428,9 @@ message UserActionPayload {
   uint32 client_id = 2;
   optional uint32 terminal_id = 3;
   optional uint32 cli_client_id = 4;
+}
+
+message ActionCompletePayload {
+  action.Action action = 1;
+  string payload = 2;
 }

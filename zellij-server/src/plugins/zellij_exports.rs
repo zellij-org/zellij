@@ -20,9 +20,9 @@ use std::{
 };
 use wasmi::{Caller, Linker};
 use zellij_utils::data::{
-    CommandType, ConnectToSession, FloatingPaneCoordinates, HttpVerb, KeyWithModifier, LayoutInfo,
-    MessageToPlugin, NewPanePlacement, OriginatingPlugin, PaneScrollbackResponse, PermissionStatus,
-    PermissionType, PluginPermission,
+    CommandType, ConnectToSession, Event, FloatingPaneCoordinates, HttpVerb, KeyWithModifier,
+    LayoutInfo, MessageToPlugin, NewPanePlacement, OriginatingPlugin, PaneScrollbackResponse,
+    PermissionStatus, PermissionType, PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
@@ -39,7 +39,7 @@ use prost::Message;
 use zellij_utils::{
     consts::{VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR},
     data::{
-        CommandToRun, Direction, Event, EventType, FileToOpen, InputMode, PluginCommand, PluginIds,
+        CommandToRun, Direction, EventType, FileToOpen, InputMode, PluginCommand, PluginIds,
         PluginMessage, Resize, ResizeStrategy,
     },
     errors::prelude::*,
@@ -686,8 +686,53 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
 }
 
 fn run_action(env: &PluginEnv, action: Action) {
-    let error_msg = || format!("failed to run action in plugin {}", env.name());
-    apply_action!(action, error_msg, env);
+    // Clone the necessary data to move into the thread
+    let action_clone = action.clone();
+    let client_id = env.client_id;
+    let plugin_id = env.plugin_id;
+    let senders = env.senders.clone();
+    let capabilities = env.capabilities.clone();
+    let client_attributes = env.client_attributes.clone();
+    let default_shell = env.default_shell.clone();
+    let default_layout = env.default_layout.clone();
+    let keybinds = env.keybinds.clone();
+    let default_mode = env.default_mode.clone();
+    let plugin_name = env.name().to_string();
+
+    // Spawn a new thread to execute the action
+    thread::spawn(move || {
+        // Execute the action
+        if let Err(e) = route_action(
+            action,
+            client_id,
+            None,
+            Some(PaneId::Plugin(plugin_id)),
+            senders.clone(),
+            capabilities,
+            client_attributes,
+            default_shell,
+            default_layout,
+            None,
+            keybinds,
+            default_mode,
+            None,
+        ) {
+            log::error!("failed to run action in plugin {}: {:?}", plugin_name, e);
+        }
+
+        // After action completes, send ActionComplete event
+        let payload = String::new(); // Empty payload for now, can be extended later
+        let updates = vec![(
+            Some(plugin_id),
+            Some(client_id),
+            Event::ActionComplete(action_clone, payload),
+        )];
+
+        // Send the ActionComplete event back to the plugin
+        if let Err(e) = senders.send_to_plugin(PluginInstruction::Update(updates)) {
+            log::error!("Failed to send ActionComplete event: {:?}", e);
+        }
+    });
 }
 
 fn open_file_floating(
