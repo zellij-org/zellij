@@ -13,6 +13,7 @@ Some(
             NotificationEnd {
                 channel: None,
                 exit_status: None,
+                unblock_condition: None,
             },
         ),
     ),

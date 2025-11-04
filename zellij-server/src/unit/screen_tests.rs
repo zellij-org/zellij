@@ -2638,6 +2638,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         pinned: None,
         stacked: false,
         blocking: false,
+        unblock_condition: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2684,6 +2685,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         pinned: None,
         stacked: false,
         blocking: false,
+        unblock_condition: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2730,6 +2732,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         pinned: None,
         stacked: false,
         blocking: false,
+        unblock_condition: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2787,6 +2790,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         pinned: None,
         stacked: false,
         blocking: false,
+        unblock_condition: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
