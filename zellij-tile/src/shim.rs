@@ -1580,6 +1580,16 @@ pub fn post_message_to_plugin(plugin_message: PluginMessage) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Execute an arbitrary Zellij action
+///
+/// Requires the `RunActionsAsUser` permission.
+pub fn run_action(action: Action) { // TODO: also accept reference
+    let plugin_command = PluginCommand::RunAction(action);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 #[link(wasm_import_module = "zellij")]
 extern "C" {
     fn host_run_plugin_command();

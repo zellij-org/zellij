@@ -29,6 +29,7 @@ impl TryFrom<ProtobufPermissionType> for PermissionType {
             ProtobufPermissionType::StartWebServer => Ok(PermissionType::StartWebServer),
             ProtobufPermissionType::InterceptInput => Ok(PermissionType::InterceptInput),
             ProtobufPermissionType::ReadPaneContents => Ok(PermissionType::ReadPaneContents),
+            ProtobufPermissionType::RunActionsAsUser => Ok(PermissionType::RunActionsAsUser),
         }
     }
 }
@@ -59,6 +60,7 @@ impl TryFrom<PermissionType> for ProtobufPermissionType {
             PermissionType::StartWebServer => Ok(ProtobufPermissionType::StartWebServer),
             PermissionType::InterceptInput => Ok(ProtobufPermissionType::InterceptInput),
             PermissionType::ReadPaneContents => Ok(ProtobufPermissionType::ReadPaneContents),
+            PermissionType::RunActionsAsUser => Ok(ProtobufPermissionType::RunActionsAsUser),
         }
     }
 }

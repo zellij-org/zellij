@@ -990,6 +990,7 @@ pub enum Permission {
     StartWebServer,
     InterceptInput,
     ReadPaneContents,
+    RunActionsAsUser,
 }
 
 impl PermissionType {
@@ -1018,6 +1019,9 @@ impl PermissionType {
             PermissionType::InterceptInput => "Intercept Input (keyboard & mouse)".to_owned(),
             PermissionType::ReadPaneContents => {
                 "Read pane contents (viewport and selection)".to_owned()
+            },
+            PermissionType::RunActionsAsUser => {
+                "Execute actions as the user".to_owned()
             },
         }
     }
@@ -2847,4 +2851,5 @@ pub enum PluginCommand {
     InterceptKeyPresses,
     ClearKeyPressesIntercepts,
     ReplacePaneWithExistingPane(PaneId, PaneId), // (pane id to replace, pane id of existing)
+    RunAction(Action),
 }

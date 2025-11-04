@@ -160,6 +160,7 @@ enum CommandName {
   ClearKeyPressesIntercepts = 144;
   ReplacePaneWithExistingPane = 155;
   GetPaneScrollback = 163;
+  RunAction = 164;
 }
 
 message PluginCommand {
@@ -268,6 +269,7 @@ message PluginCommand {
     ReplacePaneWithExistingPanePayload replace_pane_with_existing_pane_payload = 111;
     NewTabPayload new_tab_payload = 112;
     GetPaneScrollbackPayload get_pane_scrollback_payload = 113;
+    action.Action run_action_payload = 114;
   }
 }
 

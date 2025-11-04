@@ -3,7 +3,7 @@
 pub struct PluginCommand {
     #[prost(enumeration="CommandName", tag="1")]
     pub name: i32,
-    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113")]
+    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114")]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
 /// Nested message and enum types in `PluginCommand`.
@@ -217,6 +217,8 @@ pub mod plugin_command {
         NewTabPayload(super::NewTabPayload),
         #[prost(message, tag="113")]
         GetPaneScrollbackPayload(super::GetPaneScrollbackPayload),
+        #[prost(message, tag="114")]
+        RunActionPayload(super::super::action::Action),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1049,6 +1051,7 @@ pub enum CommandName {
     ClearKeyPressesIntercepts = 144,
     ReplacePaneWithExistingPane = 155,
     GetPaneScrollback = 163,
+    RunAction = 164,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1204,6 +1207,7 @@ impl CommandName {
             CommandName::ClearKeyPressesIntercepts => "ClearKeyPressesIntercepts",
             CommandName::ReplacePaneWithExistingPane => "ReplacePaneWithExistingPane",
             CommandName::GetPaneScrollback => "GetPaneScrollback",
+            CommandName::RunAction => "RunAction",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1356,6 +1360,7 @@ impl CommandName {
             "ClearKeyPressesIntercepts" => Some(Self::ClearKeyPressesIntercepts),
             "ReplacePaneWithExistingPane" => Some(Self::ReplacePaneWithExistingPane),
             "GetPaneScrollback" => Some(Self::GetPaneScrollback),
+            "RunAction" => Some(Self::RunAction),
             _ => None,
         }
     }

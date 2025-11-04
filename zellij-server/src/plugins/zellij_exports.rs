@@ -514,6 +514,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         pane_id_to_replace.into(),
                         existing_pane_id.into(),
                     ),
+                    PluginCommand::RunAction(action) => run_action(&env, action),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -681,6 +682,11 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
         start_suppressed,
         coordinates: None,
     };
+    apply_action!(action, error_msg, env);
+}
+
+fn run_action(env: &PluginEnv, action: Action) {
+    let error_msg = || format!("failed to run action in plugin {}", env.name());
     apply_action!(action, error_msg, env);
 }
 
@@ -2868,6 +2874,7 @@ fn check_command_permission(
             PermissionType::InterceptInput
         },
         PluginCommand::GetPaneScrollback { .. } => PermissionType::ReadPaneContents,
+        PluginCommand::RunAction(..) => PermissionType::RunActionsAsUser,
         _ => return (PermissionStatus::Granted, None),
     };
 

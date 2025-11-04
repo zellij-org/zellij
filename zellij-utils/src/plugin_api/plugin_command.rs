@@ -1,5 +1,5 @@
 pub use super::generated_api::api::{
-    action::{PaneIdAndShouldFloat, SwitchToModePayload},
+    action::{Action as ProtobufAction, PaneIdAndShouldFloat, SwitchToModePayload},
     event::{EventNameList as ProtobufEventNameList, Header},
     input_mode::InputMode as ProtobufInputMode,
     plugin_command::{
@@ -1748,6 +1748,14 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 )),
                 _ => Err("Mismatched payload for ReplacePaneWithExistingPane"),
             },
+            Some(CommandName::RunAction) => match protobuf_plugin_command.payload {
+                Some(Payload::RunActionPayload(protobuf_action)) => {
+                    let action = Action::try_from(protobuf_action)
+                        .map_err(|_| "Failed to convert protobuf action")?;
+                    Ok(PluginCommand::RunAction(action))
+                },
+                _ => Err("Mismatched payload for RunAction"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -2910,6 +2918,14 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                             existing_pane_id: ProtobufPaneId::try_from(existing_pane_id).ok(),
                         },
                     )),
+                })
+            },
+            PluginCommand::RunAction(action) => {
+                let protobuf_action = ProtobufAction::try_from(action)
+                    .map_err(|_| "Failed to convert action to protobuf")?;
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::RunAction as i32,
+                    payload: Some(Payload::RunActionPayload(protobuf_action)),
                 })
             },
         }
