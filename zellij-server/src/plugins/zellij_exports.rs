@@ -514,7 +514,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         pane_id_to_replace.into(),
                         existing_pane_id.into(),
                     ),
-                    PluginCommand::RunAction(action) => run_action(&env, action),
+                    PluginCommand::RunAction(action, context) => run_action(&env, action, context),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -685,7 +685,7 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
     apply_action!(action, error_msg, env);
 }
 
-fn run_action(env: &PluginEnv, action: Action) {
+fn run_action(env: &PluginEnv, action: Action, context: BTreeMap<String, String>) {
     // Clone the necessary data to move into the thread
     let action_clone = action.clone();
     let client_id = env.client_id;
@@ -720,12 +720,12 @@ fn run_action(env: &PluginEnv, action: Action) {
             log::error!("failed to run action in plugin {}: {:?}", plugin_name, e);
         }
 
-        // After action completes, send ActionComplete event
+        // After action completes, send ActionComplete event with context
         let payload = String::new(); // Empty payload for now, can be extended later
         let updates = vec![(
             Some(plugin_id),
             Some(client_id),
-            Event::ActionComplete(action_clone, payload),
+            Event::ActionComplete(action_clone, payload, context),
         )];
 
         // Send the ActionComplete event back to the plugin

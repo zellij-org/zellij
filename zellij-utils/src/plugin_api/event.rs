@@ -3,13 +3,14 @@ pub use super::generated_api::api::{
     event::{
         event::Payload as ProtobufEventPayload, pane_scrollback_response,
         ClientInfo as ProtobufClientInfo, ClientTabHistory as ProtobufClientTabHistory,
-        CopyDestination as ProtobufCopyDestination, Event as ProtobufEvent,
-        EventNameList as ProtobufEventNameList, EventType as ProtobufEventType,
-        FileMetadata as ProtobufFileMetadata, InputModeKeybinds as ProtobufInputModeKeybinds,
-        KeyBind as ProtobufKeyBind, LayoutInfo as ProtobufLayoutInfo,
-        ModeUpdatePayload as ProtobufModeUpdatePayload, PaneContents as ProtobufPaneContents,
-        PaneContentsEntry as ProtobufPaneContentsEntry, PaneId as ProtobufPaneId,
-        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
+        ContextItem as ProtobufContextItem, CopyDestination as ProtobufCopyDestination,
+        Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
+        EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
+        InputModeKeybinds as ProtobufInputModeKeybinds, KeyBind as ProtobufKeyBind,
+        LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
+        PaneContents as ProtobufPaneContents, PaneContentsEntry as ProtobufPaneContentsEntry,
+        PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
+        PaneManifest as ProtobufPaneManifest,
         PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
         PaneScrollbackResponse as ProtobufPaneScrollbackResponse, PaneType as ProtobufPaneType,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
@@ -421,7 +422,12 @@ impl TryFrom<ProtobufEvent> for Event {
                         .try_into()
                         .map_err(|_| "Failed to convert Action in ActionComplete payload")?;
                     let payload = protobuf_payload.payload;
-                    Ok(Event::ActionComplete(action, payload))
+                    let context: BTreeMap<String, String> = protobuf_payload
+                        .context
+                        .into_iter()
+                        .map(|item| (item.name, item.value))
+                        .collect();
+                    Ok(Event::ActionComplete(action, payload, context))
                 },
                 _ => Err("Malformed payload for the ActionComplete Event"),
             },
@@ -840,11 +846,16 @@ impl TryFrom<Event> for ProtobufEvent {
                     payload: Some(event::Payload::UserActionPayload(protobuf_payload)),
                 })
             },
-            Event::ActionComplete(action, payload) => {
+            Event::ActionComplete(action, payload, context) => {
                 let protobuf_action = action.try_into()?;
+                let context_items: Vec<ProtobufContextItem> = context
+                    .into_iter()
+                    .map(|(name, value)| ProtobufContextItem { name, value })
+                    .collect();
                 let action_complete_payload = ProtobufActionCompletePayload {
                     action: Some(protobuf_action),
                     payload,
+                    context: context_items,
                 };
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::ActionComplete as i32,

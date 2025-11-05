@@ -1583,8 +1583,8 @@ pub fn post_message_to_plugin(plugin_message: PluginMessage) {
 /// Execute an arbitrary Zellij action
 ///
 /// Requires the `RunActionsAsUser` permission.
-pub fn run_action(action: Action) { // TODO: also accept reference
-    let plugin_command = PluginCommand::RunAction(action);
+pub fn run_action(action: Action, context: BTreeMap<String, String>) { // TODO: also accept reference
+    let plugin_command = PluginCommand::RunAction(action, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

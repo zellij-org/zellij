@@ -29,7 +29,7 @@ pub use super::generated_api::api::{
         RenameWebTokenResponse, ReplacePaneWithExistingPanePayload, RequestPluginPermissionPayload,
         RerunCommandPanePayload, ResizePaneIdWithDirectionPayload, ResizePayload,
         RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
-        RunCommandPayload, ScrollDownInPaneIdPayload, ScrollToBottomInPaneIdPayload,
+        RunActionPayload, RunCommandPayload, ScrollDownInPaneIdPayload, ScrollToBottomInPaneIdPayload,
         ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetFloatingPanePinnedPayload,
         SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowPaneWithIdPayload,
         StackPanesPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToPayload,
@@ -1749,10 +1749,20 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 _ => Err("Mismatched payload for ReplacePaneWithExistingPane"),
             },
             Some(CommandName::RunAction) => match protobuf_plugin_command.payload {
-                Some(Payload::RunActionPayload(protobuf_action)) => {
-                    let action = Action::try_from(protobuf_action)
-                        .map_err(|_| "Failed to convert protobuf action")?;
-                    Ok(PluginCommand::RunAction(action))
+                Some(Payload::RunActionPayload(protobuf_payload)) => {
+                    let action = Action::try_from(
+                        protobuf_payload.action
+                            .ok_or("Missing action in RunAction payload")?
+                    )
+                    .map_err(|_| "Failed to convert protobuf action")?;
+
+                    let context: BTreeMap<String, String> = protobuf_payload
+                        .context
+                        .into_iter()
+                        .map(|item| (item.name, item.value))
+                        .collect();
+
+                    Ok(PluginCommand::RunAction(action, context))
                 },
                 _ => Err("Mismatched payload for RunAction"),
             },
@@ -2920,12 +2930,21 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
-            PluginCommand::RunAction(action) => {
+            PluginCommand::RunAction(action, context) => {
                 let protobuf_action = ProtobufAction::try_from(action)
                     .map_err(|_| "Failed to convert action to protobuf")?;
+
+                let context_items: Vec<ContextItem> = context
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+
                 Ok(ProtobufPluginCommand {
                     name: CommandName::RunAction as i32,
-                    payload: Some(Payload::RunActionPayload(protobuf_action)),
+                    payload: Some(Payload::RunActionPayload(RunActionPayload {
+                        action: Some(protobuf_action),
+                        context: context_items,
+                    })),
                 })
             },
         }

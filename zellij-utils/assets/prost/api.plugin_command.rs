@@ -218,7 +218,7 @@ pub mod plugin_command {
         #[prost(message, tag="113")]
         GetPaneScrollbackPayload(super::GetPaneScrollbackPayload),
         #[prost(message, tag="114")]
-        RunActionPayload(super::super::action::Action),
+        RunActionPayload(super::RunActionPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -228,6 +228,14 @@ pub struct NewTabPayload {
     pub name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag="2")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RunActionPayload {
+    #[prost(message, optional, tag="1")]
+    pub action: ::core::option::Option<super::action::Action>,
+    #[prost(message, repeated, tag="2")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

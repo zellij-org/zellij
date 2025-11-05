@@ -269,13 +269,18 @@ message PluginCommand {
     ReplacePaneWithExistingPanePayload replace_pane_with_existing_pane_payload = 111;
     NewTabPayload new_tab_payload = 112;
     GetPaneScrollbackPayload get_pane_scrollback_payload = 113;
-    action.Action run_action_payload = 114;
+    RunActionPayload run_action_payload = 114;
   }
 }
 
 message NewTabPayload {
   optional string name = 1;
   optional string cwd = 2;
+}
+
+message RunActionPayload {
+  action.Action action = 1;
+  repeated ContextItem context = 2;
 }
 
 message ReplacePaneWithExistingPanePayload {

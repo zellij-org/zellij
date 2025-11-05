@@ -970,7 +970,7 @@ pub enum Event {
     /// An action was performed by the user (requires InterceptInput permission)
     UserAction(Action, ClientId, Option<u32>, Option<ClientId>), // Action, client_id, terminal_id, cli_client_id
     PaneRenderReport(HashMap<PaneId, PaneContents>),
-    ActionComplete(Action, String), // Action, payload
+    ActionComplete(Action, String, BTreeMap<String, String>), // Action, payload, context
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, ToString, Serialize, Deserialize)]
@@ -2873,5 +2873,5 @@ pub enum PluginCommand {
     InterceptKeyPresses,
     ClearKeyPressesIntercepts,
     ReplacePaneWithExistingPane(PaneId, PaneId), // (pane id to replace, pane id of existing)
-    RunAction(Action),
+    RunAction(Action, BTreeMap<String, String>),
 }

@@ -592,6 +592,8 @@ pub struct ActionCompletePayload {
     pub action: ::core::option::Option<super::action::Action>,
     #[prost(string, tag="2")]
     pub payload: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag="3")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
