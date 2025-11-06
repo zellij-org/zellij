@@ -122,6 +122,12 @@ pub enum ServerInstruction {
         keys_to_unbind: Vec<(InputMode, KeyWithModifier)>,
         write_config_to_disk: bool,
     },
+    UpdateMacros {
+        client_id: ClientId,
+        macro_name: String,
+        actions: Option<Vec<Action>>,  // None means remove
+        write_config_to_disk: bool,
+    },
     StartWebServer(ClientId),
     ShareCurrentSession(ClientId),
     StopSharingCurrentSession(ClientId),
@@ -164,6 +170,7 @@ impl From<&ServerInstruction> for ServerContext {
                 ServerContext::FailedToWriteConfigToDisk
             },
             ServerInstruction::RebindKeys { .. } => ServerContext::RebindKeys,
+            ServerInstruction::UpdateMacros { .. } => ServerContext::UpdateMacros,
             ServerInstruction::StartWebServer(..) => ServerContext::StartWebServer,
             ServerInstruction::ShareCurrentSession(..) => ServerContext::ShareCurrentSession,
             ServerInstruction::StopSharingCurrentSession(..) => {
@@ -303,6 +310,46 @@ impl SessionConfiguration {
                 log::error!(
                     "Could not find runtime or saved configuration for client, cannot rebind keys"
                 );
+            },
+        }
+
+        (full_reconfigured_config, config_changed)
+    }
+    pub fn update_macros(
+        &mut self,
+        client_id: &ClientId,
+        macro_name: String,
+        actions: Option<Vec<Action>>,
+    ) -> (Option<Config>, bool) {
+        let mut full_reconfigured_config = None;
+        let mut config_changed = false;
+
+        // Ensure client has a runtime config
+        if self.runtime_config.get(client_id).is_none() {
+            self.runtime_config
+                .insert(*client_id, self.saved_config.clone());
+        }
+
+        // Modify the runtime config for this client
+        match self.runtime_config.get_mut(client_id) {
+            Some(config) => {
+                if let Some(actions) = actions {
+                    // Set or update macro
+                    config.macros.insert(macro_name, actions);
+                    config_changed = true;
+                } else {
+                    // Remove macro
+                    let removed = config.macros.remove(&macro_name);
+                    if removed.is_some() {
+                        config_changed = true;
+                    }
+                }
+                if config_changed {
+                    full_reconfigured_config = Some(config.clone());
+                }
+            },
+            None => {
+                log::error!("Failed to get config for client_id: {}", client_id);
             },
         }
 
@@ -1503,6 +1550,30 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .session_configuration
                     .rebind_keys(&client_id, keys_to_rebind, keys_to_unbind);
 
+                update_new_saved_config(
+                    new_config,
+                    write_config_to_disk,
+                    runtime_config_changed,
+                    &session_data,
+                    client_id,
+                );
+            },
+            ServerInstruction::UpdateMacros {
+                client_id,
+                macro_name,
+                actions,
+                write_config_to_disk,
+            } => {
+                // Update the SessionConfiguration runtime config
+                let (new_config, runtime_config_changed) = session_data
+                    .write()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .session_configuration
+                    .update_macros(&client_id, macro_name, actions);
+
+                // Propagate changes to all threads
                 update_new_saved_config(
                     new_config,
                     write_config_to_disk,

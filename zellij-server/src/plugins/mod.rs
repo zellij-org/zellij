@@ -266,8 +266,6 @@ pub(crate) fn plugin_thread_main(
     let plugin_global_data_dir = plugin_dir.join("data");
     layout.populate_plugin_aliases_in_layout(&plugin_aliases);
 
-    let mut _macros = default_macros; // Will be updated during reconfiguration
-
     // use this channel to ensure that tasks spawned from this thread terminate before exiting
     // https://tokio.rs/tokio/topics/shutdown#waiting-for-things-to-finish-shutting-down
     let (shutdown_send, shutdown_receive) = channel::bounded::<()>(1);
@@ -285,6 +283,7 @@ pub(crate) fn plugin_thread_main(
         layout_dir,
         default_mode,
         default_keybinds,
+        default_macros,
     );
 
     for run_plugin_or_alias in background_plugins {
@@ -943,13 +942,8 @@ pub(crate) fn plugin_thread_main(
                 default_shell,
                 was_written_to_disk,
             } => {
-                // Update stored macros
-                if let Some(new_macros) = new_macros {
-                    _macros = new_macros;
-                }
-
                 wasm_bridge
-                    .reconfigure(client_id, keybinds, default_mode, default_shell)
+                    .reconfigure(client_id, keybinds, new_macros, default_mode, default_shell)
                     .non_fatal();
                 // TODO: notify plugins that this happened so that they can eg. rebind temporary keys that
                 // were lost

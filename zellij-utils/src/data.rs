@@ -2872,4 +2872,7 @@ pub enum PluginCommand {
     ClearKeyPressesIntercepts,
     ReplacePaneWithExistingPane(PaneId, PaneId), // (pane id to replace, pane id of existing)
     RunAction(Action, BTreeMap<String, String>),
+    GetMacros,
+    SetMacro(String, Vec<Action>),
+    RemoveMacro(String),
 }

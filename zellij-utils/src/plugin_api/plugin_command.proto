@@ -161,6 +161,9 @@ enum CommandName {
   ReplacePaneWithExistingPane = 155;
   GetPaneScrollback = 163;
   RunAction = 164;
+  GetMacros = 165;
+  SetMacro = 166;
+  RemoveMacro = 167;
 }
 
 message PluginCommand {
@@ -270,6 +273,8 @@ message PluginCommand {
     NewTabPayload new_tab_payload = 112;
     GetPaneScrollbackPayload get_pane_scrollback_payload = 113;
     RunActionPayload run_action_payload = 114;
+    SetMacroPayload set_macro_payload = 115;
+    RemoveMacroPayload remove_macro_payload = 116;
   }
 }
 
@@ -716,4 +721,22 @@ message RenameWebTokenResponse {
 message GetPaneScrollbackPayload {
   PaneId pane_id = 1;
   bool get_full_scrollback = 2;
+}
+
+message MacrosPayload {
+  repeated MacroEntry macros = 1;
+}
+
+message MacroEntry {
+  string name = 1;
+  repeated action.Action actions = 2;
+}
+
+message SetMacroPayload {
+  string name = 1;
+  repeated action.Action actions = 2;
+}
+
+message RemoveMacroPayload {
+  string name = 1;
 }
