@@ -63,6 +63,7 @@ use zellij_utils::{
         get_mode_info,
         keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, PluginAlias, Run, RunPluginOrAlias},
+        macros::Macros,
         options::Options,
         plugins::PluginAliases,
     },
@@ -399,6 +400,7 @@ impl SessionMetaData {
                 .send_to_plugin(PluginInstruction::Reconfigure {
                     client_id,
                     keybinds: Some(new_config.keybinds),
+                    macros: Some(new_config.macros),
                     default_mode: new_config.options.default_mode,
                     default_shell: self.default_shell.clone(),
                     was_written_to_disk: config_was_written_to_disk,
@@ -1682,6 +1684,7 @@ fn init_session(
 
     let default_mode = config_options.default_mode.unwrap_or_default();
     let default_keybinds = config.keybinds.clone();
+    let default_macros = config.macros.clone();
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
@@ -1778,6 +1781,7 @@ fn init_session(
                     plugin_aliases,
                     default_mode,
                     default_keybinds,
+                    default_macros,
                     background_plugins,
                     client_id,
                 )

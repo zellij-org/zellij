@@ -40,6 +40,7 @@ use zellij_utils::{
         command::TerminalAction,
         keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout},
+        macros::Macros,
         plugins::PluginAliases,
     },
     ipc::ClientAttributes,
@@ -163,6 +164,7 @@ pub enum PluginInstruction {
     Reconfigure {
         client_id: ClientId,
         keybinds: Option<Keybinds>,
+        macros: Option<Macros>,
         default_mode: Option<InputMode>,
         default_shell: Option<TerminalAction>,
         was_written_to_disk: bool,
@@ -251,6 +253,7 @@ pub(crate) fn plugin_thread_main(
     plugin_aliases: PluginAliases,
     default_mode: InputMode,
     default_keybinds: Keybinds,
+    default_macros: Macros,
     background_plugins: HashSet<RunPluginOrAlias>,
     // the client id that started the session,
     // we need it here because the thread's own list of connected clients might not yet be updated
@@ -262,6 +265,8 @@ pub(crate) fn plugin_thread_main(
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
     layout.populate_plugin_aliases_in_layout(&plugin_aliases);
+
+    let mut _macros = default_macros; // Will be updated during reconfiguration
 
     // use this channel to ensure that tasks spawned from this thread terminate before exiting
     // https://tokio.rs/tokio/topics/shutdown#waiting-for-things-to-finish-shutting-down
@@ -933,10 +938,16 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::Reconfigure {
                 client_id,
                 keybinds,
+                macros: new_macros,
                 default_mode,
                 default_shell,
                 was_written_to_disk,
             } => {
+                // Update stored macros
+                if let Some(new_macros) = new_macros {
+                    _macros = new_macros;
+                }
+
                 wasm_bridge
                     .reconfigure(client_id, keybinds, default_mode, default_shell)
                     .non_fatal();
