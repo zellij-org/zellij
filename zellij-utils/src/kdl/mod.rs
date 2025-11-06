@@ -8,6 +8,7 @@ use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
+use crate::input::macros::Macros;
 use crate::input::layout::{
     Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, SplitSize,
 };
@@ -4281,6 +4282,78 @@ impl Keybinds {
     }
 }
 
+impl Macros {
+    pub fn from_kdl(kdl_macros: &KdlNode, config_options: &Options) -> Result<Self, ConfigError> {
+        let mut macros = Macros::new();
+
+        // Iterate through child nodes (each is a macro definition)
+        let macro_nodes = match kdl_children_nodes!(kdl_macros) {
+            Some(nodes) => nodes,
+            None => return Ok(macros), // Empty macros section is valid
+        };
+
+        for macro_node in macro_nodes {
+            let macro_name = macro_node.name().to_string();
+
+            // Check for duplicate macro names
+            if macros.0.contains_key(&macro_name) {
+                return Err(ConfigError::new_kdl_error(
+                    format!("Duplicate macro name: {}", macro_name),
+                    macro_node.span().offset(),
+                    macro_node.span().len(),
+                ));
+            }
+
+            // Parse actions from child nodes
+            let mut actions = Vec::new();
+            if let Some(action_nodes) = kdl_children_nodes!(macro_node) {
+                for action_node in action_nodes {
+                    let action = Action::try_from((action_node, config_options))?;
+                    actions.push(action);
+                }
+            }
+
+            if actions.is_empty() {
+                return Err(ConfigError::new_kdl_error(
+                    format!("Macro '{}' has no actions", macro_name),
+                    macro_node.span().offset(),
+                    macro_node.span().len(),
+                ));
+            }
+
+            macros.insert(macro_name, actions);
+        }
+
+        Ok(macros)
+    }
+
+    pub fn to_kdl(&self) -> KdlNode {
+        let mut macros_node = KdlNode::new("macros");
+        let mut macros_children = KdlDocument::new();
+
+        // Sort macro names for consistent output
+        let mut sorted_macros: Vec<_> = self.0.iter().collect();
+        sorted_macros.sort_by_key(|(name, _)| *name);
+
+        for (macro_name, actions) in sorted_macros {
+            let mut macro_node = KdlNode::new(macro_name.as_str());
+            let mut action_children = KdlDocument::new();
+
+            for action in actions {
+                if let Some(action_node) = action.to_kdl() {
+                    action_children.nodes_mut().push(action_node);
+                }
+            }
+
+            macro_node.set_children(action_children);
+            macros_children.nodes_mut().push(macro_node);
+        }
+
+        macros_node.set_children(macros_children);
+        macros_node
+    }
+}
+
 impl KeyWithModifier {
     pub fn to_kdl(&self) -> String {
         if self.key_modifiers.is_empty() {
@@ -4342,6 +4415,9 @@ impl Config {
         if let Some(kdl_keybinds) = kdl_config.get("keybinds") {
             config.keybinds = Keybinds::from_kdl(&kdl_keybinds, config.keybinds, &config.options)?;
         }
+        if let Some(kdl_macros) = kdl_config.get("macros") {
+            config.macros = Macros::from_kdl(&kdl_macros, &config.options)?;
+        }
         if let Some(kdl_themes) = kdl_config.get("themes") {
             let sourced_from_external_file = false;
             let config_themes = Themes::from_kdl(kdl_themes, sourced_from_external_file)?;
@@ -4375,6 +4451,11 @@ impl Config {
         let clear_defaults = true;
         let keybinds = self.keybinds.to_kdl(clear_defaults);
         document.nodes_mut().push(keybinds);
+
+        if !self.macros.is_empty() {
+            let macros_node = self.macros.to_kdl();
+            document.nodes_mut().push(macros_node);
+        }
 
         if let Some(themes) = self.themes.to_kdl() {
             document.nodes_mut().push(themes);
@@ -6599,4 +6680,182 @@ fn bare_config_from_default_assets_to_string_with_comments() {
         "Deserialized serialized config equals original config"
     );
     insta::assert_snapshot!(fake_config_stringified);
+}
+
+#[test]
+fn macros_to_string_basic() {
+    let fake_config = r#"
+        macros {
+            test_macro {
+                NewTab
+                FocusNextPane
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Macros::from_kdl(
+        document.get("macros").unwrap(),
+        &Default::default(),
+    )
+    .unwrap();
+    let serialized = Macros::to_kdl(&deserialized);
+    let deserialized_from_serialized = Macros::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("macros")
+            .unwrap(),
+        &Default::default(),
+    )
+    .unwrap();
+    insta::assert_snapshot!(serialized.to_string());
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized macros equals original macros"
+    );
+}
+
+#[test]
+fn macros_to_string_multiple_macros() {
+    let fake_config = r#"
+        macros {
+            macro1 {
+                NewTab
+                FocusNextPane
+            }
+            macro2 {
+                Quit
+            }
+            macro3 {
+                SwitchToMode "Normal"
+                CloseFocus
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Macros::from_kdl(
+        document.get("macros").unwrap(),
+        &Default::default(),
+    )
+    .unwrap();
+    let serialized = Macros::to_kdl(&deserialized);
+    let deserialized_from_serialized = Macros::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("macros")
+            .unwrap(),
+        &Default::default(),
+    )
+    .unwrap();
+    insta::assert_snapshot!(serialized.to_string());
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized macros equals original macros"
+    );
+}
+
+#[test]
+fn macros_to_string_with_complex_actions() {
+    let fake_config = r#"
+        macros {
+            complex_macro {
+                NewTab
+                SwitchToMode "Normal"
+                MoveFocus "Left"
+                LaunchOrFocusPlugin "configuration" {
+                    floating true
+                    move_to_focused_tab true
+                }
+                GoToTab 1
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Macros::from_kdl(
+        document.get("macros").unwrap(),
+        &Default::default(),
+    )
+    .unwrap();
+    let serialized = Macros::to_kdl(&deserialized);
+    let deserialized_from_serialized = Macros::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("macros")
+            .unwrap(),
+        &Default::default(),
+    )
+    .unwrap();
+    insta::assert_snapshot!(serialized.to_string());
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized macros equals original macros"
+    );
+}
+
+#[test]
+fn macros_empty_section_is_valid() {
+    let fake_config = r#"
+        macros {
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let result = Macros::from_kdl(
+        document.get("macros").unwrap(),
+        &Default::default(),
+    );
+    assert!(result.is_ok(), "Empty macros section should be valid");
+    assert!(result.unwrap().is_empty(), "Should have no macros");
+}
+
+#[test]
+fn config_with_macros_roundtrip() {
+    let fake_config = r#"
+        keybinds clear-defaults=true {
+            normal {
+                bind "Ctrl g" { SwitchToMode "Locked"; }
+            }
+        }
+        macros {
+            test_macro {
+                NewTab
+                FocusNextPane
+            }
+        }
+        "#;
+    let deserialized = Config::from_kdl(fake_config, None).unwrap();
+    let serialized = deserialized.to_string(false);
+    let deserialized_from_serialized = Config::from_kdl(&serialized, None).unwrap();
+
+    assert_eq!(
+        deserialized.macros, deserialized_from_serialized.macros,
+        "Macros should survive roundtrip serialization"
+    );
+    assert_eq!(
+        deserialized.macros.len(),
+        1,
+        "Should have one macro"
+    );
+    assert_eq!(
+        deserialized.macros.get_actions("test_macro").unwrap().len(),
+        2,
+        "Macro should have two actions"
+    );
+}
+
+#[test]
+fn config_without_macros_section_uses_empty_default() {
+    let fake_config = r#"
+        keybinds clear-defaults=true {
+            normal {
+                bind "Ctrl g" { SwitchToMode "Locked"; }
+            }
+        }
+        "#;
+    let deserialized = Config::from_kdl(fake_config, None).unwrap();
+
+    assert!(
+        deserialized.macros.is_empty(),
+        "Config without macros section should have empty macros"
+    );
 }

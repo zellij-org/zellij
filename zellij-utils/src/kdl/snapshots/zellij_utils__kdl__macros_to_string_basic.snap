@@ -1,0 +1,10 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+expression: serialized.to_string()
+---
+macros {
+    test_macro {
+        NewTab
+        FocusNextPane
+    }
+}

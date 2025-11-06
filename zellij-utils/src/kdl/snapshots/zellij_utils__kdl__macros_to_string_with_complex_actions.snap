@@ -1,0 +1,16 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+expression: serialized.to_string()
+---
+macros {
+    complex_macro {
+        NewTab
+        SwitchToMode "normal"
+        MoveFocus "left"
+        LaunchOrFocusPlugin "configuration" {
+            floating true
+            move_to_focused_tab true
+        }
+        GoToTab 1
+    }
+}
