@@ -440,7 +440,7 @@ impl Pane for PluginPane {
         let res = match self.frame.get(&client_id) {
             // TODO: use and_then or something?
             Some(last_frame) => {
-                if &frame != last_frame {
+                if &frame != last_frame || is_pinned {
                     if !self.borderless {
                         let frame_output = frame.render().with_context(err_context)?;
                         self.frame.insert(client_id, frame);
