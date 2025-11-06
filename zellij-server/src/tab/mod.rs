@@ -3381,21 +3381,16 @@ impl Tab {
         if let Some(pane) = self.tiled_panes.get_pane_mut(id) {
             pane.set_selectable(selectable);
             if !selectable {
-                // there are some edge cases in which this causes a hard crash when there are no
-                // other selectable panes - ideally this should never happen unless it's a
-                // configuration error - but this *does* sometimes happen with the default
-                // configuration as well since we set this at run time. I left this here because
-                // this should very rarely happen and I hope in my heart that we will stop setting
-                // this at runtime in the default configuration at some point
-                //
-                // If however this is not the case and we find this does cause crashes, we can
-                // solve it by adding a "dangling_clients" struct to Tab which we would fill with
-                // the relevant client ids in this case and drain as soon as a new selectable pane
-                // is opened
                 self.tiled_panes.move_clients_out_of_pane(id);
             }
         } else if let Some(pane) = self.floating_panes.get_pane_mut(id) {
             pane.set_selectable(selectable);
+            if !selectable {
+                self.floating_panes.move_clients_out_of_pane(id);
+                if !self.floating_panes.has_selectable_panes() {
+                    self.hide_floating_panes();
+                }
+            }
         }
         // we do this here because if there is a non-selectable pane on the edge, we consider it
         // outside the viewport (a ui-pane, eg. the status-bar and tab-bar) and need to adjust for it

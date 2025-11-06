@@ -6,7 +6,9 @@ use super::layout::{
     SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
 use crate::cli::CliAction;
-use crate::data::{Direction, KeyWithModifier, LayoutInfo, NewPanePlacement, PaneId, Resize, UnblockCondition};
+use crate::data::{
+    Direction, KeyWithModifier, LayoutInfo, NewPanePlacement, PaneId, Resize, UnblockCondition,
+};
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};

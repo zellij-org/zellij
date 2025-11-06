@@ -29,12 +29,12 @@ pub use super::generated_api::api::{
         RenameWebTokenResponse, ReplacePaneWithExistingPanePayload, RequestPluginPermissionPayload,
         RerunCommandPanePayload, ResizePaneIdWithDirectionPayload, ResizePayload,
         RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
-        RunActionPayload, RunCommandPayload, ScrollDownInPaneIdPayload, ScrollToBottomInPaneIdPayload,
-        ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetFloatingPanePinnedPayload,
-        SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowPaneWithIdPayload,
-        StackPanesPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToPayload,
-        TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
-        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        RunActionPayload, RunCommandPayload, ScrollDownInPaneIdPayload,
+        ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
+        SetFloatingPanePinnedPayload, SetSelfMouseSelectionSupportPayload, SetTimeoutPayload,
+        ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload, SwitchSessionPayload,
+        SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload,
+        UnsubscribePayload, WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1751,8 +1751,9 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::RunAction) => match protobuf_plugin_command.payload {
                 Some(Payload::RunActionPayload(protobuf_payload)) => {
                     let action = Action::try_from(
-                        protobuf_payload.action
-                            .ok_or("Missing action in RunAction payload")?
+                        protobuf_payload
+                            .action
+                            .ok_or("Missing action in RunAction payload")?,
                     )
                     .map_err(|_| "Failed to convert protobuf action")?;
 

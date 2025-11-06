@@ -507,7 +507,10 @@ pub(crate) fn route_action(
             let set_pane_blocking = true;
 
             let notification_end = if let Some(condition) = unblock_condition {
-                Some(NotificationEnd::new_with_condition(completion_tx, condition))
+                Some(NotificationEnd::new_with_condition(
+                    completion_tx,
+                    condition,
+                ))
             } else {
                 Some(NotificationEnd::new(completion_tx))
             };
@@ -1482,7 +1485,11 @@ pub(crate) fn route_thread_main(
                 >|
                  -> Result<bool> {
                     let mut should_break = false;
-                    let senders = session_data.read().to_anyhow().ok().and_then(|r| r.as_ref().map(|r| r.senders.clone()));
+                    let senders = session_data
+                        .read()
+                        .to_anyhow()
+                        .ok()
+                        .and_then(|r| r.as_ref().map(|r| r.senders.clone()));
 
                     // Check if this is a watcher client and ignore input messages
                     let is_watcher = session_state.read().unwrap().is_watcher(&client_id);
@@ -1502,9 +1509,9 @@ pub(crate) fn route_thread_main(
                                         },
                                     );
                                     let _ = senders.as_ref().map(|s| {
-                                        s.send_to_screen(
-                                            ScreenInstruction::RemoveWatcherClient(client_id),
-                                        )
+                                        s.send_to_screen(ScreenInstruction::RemoveWatcherClient(
+                                            client_id,
+                                        ))
                                     });
                                     should_break = true;
                                 }
@@ -1540,23 +1547,37 @@ pub(crate) fn route_thread_main(
                                 .unwrap()
                                 .set_last_active_client(client_id);
 
-
-                            let session_data_assets = session_data.read().as_ref().unwrap().as_ref().map(|s| (
-                                s.senders.clone(),
-                                s.capabilities.clone(),
-                                s.client_attributes.clone(),
-                                s.default_shell.clone(),
-                                s.layout.clone(),
-                                s
-                                .session_configuration
-                                .get_client_configuration(&client_id)
-                                .options
-                                .default_mode
-                                .unwrap_or(InputMode::Normal)
-                                .clone()
-                            ));
-                            if let Some((keybinds, input_mode, default_input_mode)) = session_data.read().unwrap().as_ref().and_then(|s| s.get_client_keybinds_and_mode(&client_id)) {
-                                if let Some((senders, capabilities, client_attributes, default_shell, layout, client_input_mode)) = session_data_assets {
+                            let session_data_assets =
+                                session_data.read().as_ref().unwrap().as_ref().map(|s| {
+                                    (
+                                        s.senders.clone(),
+                                        s.capabilities.clone(),
+                                        s.client_attributes.clone(),
+                                        s.default_shell.clone(),
+                                        s.layout.clone(),
+                                        s.session_configuration
+                                            .get_client_configuration(&client_id)
+                                            .options
+                                            .default_mode
+                                            .unwrap_or(InputMode::Normal)
+                                            .clone(),
+                                    )
+                                });
+                            if let Some((keybinds, input_mode, default_input_mode)) = session_data
+                                .read()
+                                .unwrap()
+                                .as_ref()
+                                .and_then(|s| s.get_client_keybinds_and_mode(&client_id))
+                            {
+                                if let Some((
+                                    senders,
+                                    capabilities,
+                                    client_attributes,
+                                    default_shell,
+                                    layout,
+                                    client_input_mode,
+                                )) = session_data_assets
+                                {
                                     for action in keybinds
                                         .get_actions_for_key_in_mode_or_default_action(
                                             &input_mode,
@@ -1566,14 +1587,14 @@ pub(crate) fn route_thread_main(
                                             is_kitty_keyboard_protocol,
                                         )
                                     {
-
                                         // Send user input to plugin thread for logging
-                                        let _ = senders.send_to_plugin(PluginInstruction::UserInput {
-                                            client_id,
-                                            action: action.clone(),
-                                            terminal_id: None,
-                                            cli_client_id: None,
-                                        });
+                                        let _ =
+                                            senders.send_to_plugin(PluginInstruction::UserInput {
+                                                client_id,
+                                                action: action.clone(),
+                                                terminal_id: None,
+                                                cli_client_id: None,
+                                            });
 
                                         if route_action(
                                             action,
@@ -1626,29 +1647,43 @@ pub(crate) fn route_thread_main(
                                     client_id,
                                     action: action.clone(),
                                     terminal_id: maybe_pane_id,
-                                    cli_client_id: if is_cli_client { Some(cli_client_id) } else { None },
+                                    cli_client_id: if is_cli_client {
+                                        Some(cli_client_id)
+                                    } else {
+                                        None
+                                    },
                                 });
                             }
 
-                            let session_data_assets = session_data.read().unwrap().as_ref().map(|s| (
-                                s.senders.clone(),
-                                s.capabilities.clone(),
-                                s.client_attributes.clone(),
-                                s.default_shell.clone(),
-                                s.layout.clone(),
-                                s
-                                .session_configuration
-                                .get_client_configuration(&client_id)
-                                .options
-                                .default_mode
-                                .unwrap_or(InputMode::Normal)
-                                .clone(),
-                                s
-                                    .session_configuration
-                                    .get_client_keybinds(&client_id)
-                                    .clone(),
-                            ));
-                            if let Some((senders, capabilities, client_attributes, default_shell, layout, client_input_mode, client_keybinds)) = session_data_assets {
+                            let session_data_assets =
+                                session_data.read().unwrap().as_ref().map(|s| {
+                                    (
+                                        s.senders.clone(),
+                                        s.capabilities.clone(),
+                                        s.client_attributes.clone(),
+                                        s.default_shell.clone(),
+                                        s.layout.clone(),
+                                        s.session_configuration
+                                            .get_client_configuration(&client_id)
+                                            .options
+                                            .default_mode
+                                            .unwrap_or(InputMode::Normal)
+                                            .clone(),
+                                        s.session_configuration
+                                            .get_client_keybinds(&client_id)
+                                            .clone(),
+                                    )
+                                });
+                            if let Some((
+                                senders,
+                                capabilities,
+                                client_attributes,
+                                default_shell,
+                                layout,
+                                client_input_mode,
+                                client_keybinds,
+                            )) = session_data_assets
+                            {
                                 if route_action(
                                     action,
                                     client_id,
@@ -1695,9 +1730,10 @@ pub(crate) fn route_thread_main(
                                     })
                                     .and_then(|min_size| {
                                         let _ = senders.as_ref().map(|s| {
-                                        s.send_to_screen(ScreenInstruction::TerminalResize(
-                                            min_size,
-                                        ))});
+                                            s.send_to_screen(ScreenInstruction::TerminalResize(
+                                                min_size,
+                                            ))
+                                        });
                                         Ok(())
                                     })
                                     .with_context(err_context)?;
@@ -1773,7 +1809,9 @@ pub(crate) fn route_thread_main(
                             pane_to_focus: pane_id_to_focus,
                             is_web_client,
                         } => {
-                            let allow_web_connections = session_data.read().ok()
+                            let allow_web_connections = session_data
+                                .read()
+                                .ok()
                                 .and_then(|s| {
                                     s.as_ref().map(|s| s.web_sharing.web_clients_allowed())
                                 })

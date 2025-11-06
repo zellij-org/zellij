@@ -2,21 +2,20 @@ pub use super::generated_api::api::{
     action::{Action as ProtobufAction, Position as ProtobufPosition},
     event::{
         event::Payload as ProtobufEventPayload, pane_scrollback_response,
-        ClientInfo as ProtobufClientInfo, ClientTabHistory as ProtobufClientTabHistory,
-        ContextItem as ProtobufContextItem, CopyDestination as ProtobufCopyDestination,
-        Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
-        EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
-        InputModeKeybinds as ProtobufInputModeKeybinds, KeyBind as ProtobufKeyBind,
-        LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
-        PaneContents as ProtobufPaneContents, PaneContentsEntry as ProtobufPaneContentsEntry,
-        PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
-        PaneManifest as ProtobufPaneManifest,
+        ActionCompletePayload as ProtobufActionCompletePayload, ClientInfo as ProtobufClientInfo,
+        ClientTabHistory as ProtobufClientTabHistory, ContextItem as ProtobufContextItem,
+        CopyDestination as ProtobufCopyDestination, Event as ProtobufEvent,
+        EventNameList as ProtobufEventNameList, EventType as ProtobufEventType,
+        FileMetadata as ProtobufFileMetadata, InputModeKeybinds as ProtobufInputModeKeybinds,
+        KeyBind as ProtobufKeyBind, LayoutInfo as ProtobufLayoutInfo,
+        ModeUpdatePayload as ProtobufModeUpdatePayload, PaneContents as ProtobufPaneContents,
+        PaneContentsEntry as ProtobufPaneContentsEntry, PaneId as ProtobufPaneId,
+        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
         PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
         PaneScrollbackResponse as ProtobufPaneScrollbackResponse, PaneType as ProtobufPaneType,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SelectedText as ProtobufSelectedText, SessionManifest as ProtobufSessionManifest,
         TabInfo as ProtobufTabInfo, UserActionPayload as ProtobufUserActionPayload,
-        ActionCompletePayload as ProtobufActionCompletePayload,
         WebServerStatusPayload as ProtobufWebServerStatusPayload, WebSharing as ProtobufWebSharing,
         *,
     },
@@ -410,7 +409,12 @@ impl TryFrom<ProtobufEvent> for Event {
                     let client_id = protobuf_payload.client_id as u16;
                     let terminal_id = protobuf_payload.terminal_id;
                     let cli_client_id = protobuf_payload.cli_client_id.map(|id| id as u16);
-                    Ok(Event::UserAction(action, client_id, terminal_id, cli_client_id))
+                    Ok(Event::UserAction(
+                        action,
+                        client_id,
+                        terminal_id,
+                        cli_client_id,
+                    ))
                 },
                 _ => Err("Malformed payload for the UserAction Event"),
             },
@@ -859,7 +863,9 @@ impl TryFrom<Event> for ProtobufEvent {
                 };
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::ActionComplete as i32,
-                    payload: Some(event::Payload::ActionCompletePayload(action_complete_payload)),
+                    payload: Some(event::Payload::ActionCompletePayload(
+                        action_complete_payload,
+                    )),
                 })
             },
         }

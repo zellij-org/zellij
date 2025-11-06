@@ -415,21 +415,10 @@ impl FloatingPanes {
             vec![]
         };
         floating_panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
-            self.z_indices
-                .iter()
-                .position(|id| id == *a_id)
-                .with_context(err_context)
-                .fatal()
-                .cmp(
-                    &self
-                        .z_indices
-                        .iter()
-                        .position(|id| id == *b_id)
-                        .with_context(err_context)
-                        .fatal(),
-                )
+            let a_pos = self.z_indices.iter().position(|id| id == *a_id);
+            let b_pos = self.z_indices.iter().position(|id| id == *b_id);
+            a_pos.cmp(&b_pos)
         });
-
         for (z_index, (kind, pane)) in floating_panes.iter_mut().enumerate() {
             let mut active_panes = active_panes.clone();
             let multiple_users_exist_in_session =

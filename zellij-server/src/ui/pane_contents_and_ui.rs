@@ -279,6 +279,7 @@ impl<'a> PaneContentsAndUi<'a> {
                     .add_post_vte_instruction_to_client(client_id, &vte_output);
             }
         }
+
         Ok(())
     }
     pub fn render_pane_boundaries(

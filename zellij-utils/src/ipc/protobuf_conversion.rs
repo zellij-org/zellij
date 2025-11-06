@@ -909,14 +909,12 @@ impl From<crate::input::actions::Action>
                 pane_name,
                 command,
                 unblock_condition,
-            } => {
-                ActionType::NewBlockingPane(NewBlockingPaneAction {
-                    placement: Some(placement.into()),
-                    pane_name,
-                    command: command.map(|c| c.into()),
-                    unblock_condition: unblock_condition.map(|c| unblock_condition_to_proto_i32(c))
-                })
-            },
+            } => ActionType::NewBlockingPane(NewBlockingPaneAction {
+                placement: Some(placement.into()),
+                pane_name,
+                command: command.map(|c| c.into()),
+                unblock_condition: unblock_condition.map(|c| unblock_condition_to_proto_i32(c)),
+            }),
             crate::input::actions::Action::TogglePaneEmbedOrFloating => {
                 ActionType::TogglePaneEmbedOrFloating(TogglePaneEmbedOrFloatingAction {})
             },
@@ -2124,8 +2122,12 @@ fn proto_i32_to_unblock_condition(condition: i32) -> Result<crate::data::Unblock
     log::info!("converting condition: {:?}", condition);
     use crate::client_server_contract::client_server_contract::UnblockCondition as ProtoUnblockCondition;
     let proto_condition = match condition {
-        x if x == ProtoUnblockCondition::OnExitSuccess as i32 => ProtoUnblockCondition::OnExitSuccess,
-        x if x == ProtoUnblockCondition::OnExitFailure as i32 => ProtoUnblockCondition::OnExitFailure,
+        x if x == ProtoUnblockCondition::OnExitSuccess as i32 => {
+            ProtoUnblockCondition::OnExitSuccess
+        },
+        x if x == ProtoUnblockCondition::OnExitFailure as i32 => {
+            ProtoUnblockCondition::OnExitFailure
+        },
         x if x == ProtoUnblockCondition::OnAnyExit as i32 => ProtoUnblockCondition::OnAnyExit,
         _ => return Err(anyhow!("Invalid UnblockCondition: {}", condition)),
     };

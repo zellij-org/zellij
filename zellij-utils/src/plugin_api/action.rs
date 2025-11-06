@@ -8,16 +8,15 @@ pub use super::generated_api::api::{
         KeyWithModifier as ProtobufKeyWithModifier, LaunchOrFocusPluginPayload,
         MouseEventPayload as ProtobufMouseEventPayload, MovePanePayload,
         MoveTabDirection as ProtobufMoveTabDirection, NameAndValue as ProtobufNameAndValue,
-        NewBlockingPanePayload, NewFloatingPanePayload,
-        NewPanePlacement as ProtobufNewPanePlacement, NewPanePayload, NewPluginPanePayload,
-        NewTiledPanePayload, PaneId as ProtobufPaneId, PaneIdAndShouldFloat,
-        PluginConfiguration as ProtobufPluginConfiguration,
-        Position as ProtobufPosition, RunCommandAction as ProtobufRunCommandAction,
-        ScrollAtPayload, SearchDirection as ProtobufSearchDirection,
-        SearchOption as ProtobufSearchOption, SplitSize as ProtobufSplitSize,
-        StackedPlacement as ProtobufStackedPlacement, SwitchToModePayload,
-        TiledPlacement as ProtobufTiledPlacement, UnblockCondition as ProtobufUnblockCondition,
-        WriteCharsPayload, WritePayload,
+        NewBlockingPanePayload, NewFloatingPanePayload, NewPanePayload,
+        NewPanePlacement as ProtobufNewPanePlacement, NewPluginPanePayload, NewTiledPanePayload,
+        PaneId as ProtobufPaneId, PaneIdAndShouldFloat,
+        PluginConfiguration as ProtobufPluginConfiguration, Position as ProtobufPosition,
+        RunCommandAction as ProtobufRunCommandAction, ScrollAtPayload,
+        SearchDirection as ProtobufSearchDirection, SearchOption as ProtobufSearchOption,
+        SplitSize as ProtobufSplitSize, StackedPlacement as ProtobufStackedPlacement,
+        SwitchToModePayload, TiledPlacement as ProtobufTiledPlacement,
+        UnblockCondition as ProtobufUnblockCondition, WriteCharsPayload, WritePayload,
     },
     input_mode::InputMode as ProtobufInputMode,
     resize::{Resize as ProtobufResize, ResizeDirection as ProtobufResizeDirection},
@@ -26,11 +25,11 @@ use crate::data::{
     Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, NewPanePlacement, PaneId,
     ResizeStrategy, UnblockCondition,
 };
-use crate::input::layout::SplitSize;
 use crate::errors::prelude::*;
 use crate::input::actions::Action;
 use crate::input::actions::{SearchDirection, SearchOption};
 use crate::input::command::{OpenFilePayload, RunCommandAction};
+use crate::input::layout::SplitSize;
 use crate::input::layout::{
     PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
@@ -51,7 +50,8 @@ impl TryFrom<ProtobufAction> for Action {
             },
             Some(ProtobufActionName::Write) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::WritePayload(write_payload)) => {
-                    let key_with_modifier = write_payload.key_with_modifier
+                    let key_with_modifier = write_payload
+                        .key_with_modifier
                         .and_then(|k| k.try_into().ok());
                     Ok(Action::Write {
                         key_with_modifier,
@@ -825,8 +825,7 @@ impl TryFrom<Action> for ProtobufAction {
                 bytes,
                 is_kitty_keyboard_protocol,
             } => {
-                let protobuf_key_with_modifier = key_with_modifier
-                    .and_then(|k| k.try_into().ok());
+                let protobuf_key_with_modifier = key_with_modifier.and_then(|k| k.try_into().ok());
                 Ok(ProtobufAction {
                     name: ProtobufActionName::Write as i32,
                     optional_payload: Some(OptionalPayload::WritePayload(WritePayload {
@@ -1421,10 +1420,12 @@ impl TryFrom<Action> for ProtobufAction {
                     let protobuf_command: ProtobufRunCommandAction = c.try_into().ok()?;
                     Some(protobuf_command)
                 });
-                let unblock_condition = unblock_condition.map(|uc| {
-                    let protobuf_uc: ProtobufUnblockCondition = uc.try_into().ok()?;
-                    Some(protobuf_uc as i32)
-                }).flatten();
+                let unblock_condition = unblock_condition
+                    .map(|uc| {
+                        let protobuf_uc: ProtobufUnblockCondition = uc.try_into().ok()?;
+                        Some(protobuf_uc as i32)
+                    })
+                    .flatten();
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewBlockingPane as i32,
                     optional_payload: Some(OptionalPayload::NewBlockingPanePayload(
@@ -1715,7 +1716,10 @@ impl TryFrom<ProtobufKeyWithModifier> for KeyWithModifier {
             Some(ProtobufBareKey::F12) => crate::data::BareKey::F(12),
             Some(ProtobufBareKey::Char) => {
                 if let Some(character) = protobuf_key.character {
-                    let ch = character.chars().next().ok_or("BareKey::Char requires a character")?;
+                    let ch = character
+                        .chars()
+                        .next()
+                        .ok_or("BareKey::Char requires a character")?;
                     crate::data::BareKey::Char(ch)
                 } else {
                     return Err("BareKey::Char requires a character");
@@ -1792,14 +1796,16 @@ impl TryFrom<KeyWithModifier> for ProtobufKeyWithModifier {
             _ => return Err("Unsupported BareKey"),
         };
 
-        let key_modifiers: Vec<i32> = key.key_modifiers.iter().map(|m| {
-            match m {
+        let key_modifiers: Vec<i32> = key
+            .key_modifiers
+            .iter()
+            .map(|m| match m {
                 crate::data::KeyModifier::Ctrl => ProtobufKeyModifier::Ctrl as i32,
                 crate::data::KeyModifier::Alt => ProtobufKeyModifier::Alt as i32,
                 crate::data::KeyModifier::Shift => ProtobufKeyModifier::Shift as i32,
                 crate::data::KeyModifier::Super => ProtobufKeyModifier::Super as i32,
-            }
-        }).collect();
+            })
+            .collect();
 
         Ok(ProtobufKeyWithModifier {
             bare_key,
@@ -1933,7 +1939,8 @@ impl TryFrom<ProtobufNewPanePlacement> for NewPanePlacement {
                 Ok(NewPanePlacement::Floating(coords))
             },
             Some(PlacementVariant::InPlace(config)) => {
-                let pane_id_to_replace = config.pane_id_to_replace.and_then(|id| id.try_into().ok());
+                let pane_id_to_replace =
+                    config.pane_id_to_replace.and_then(|id| id.try_into().ok());
                 Ok(NewPanePlacement::InPlace {
                     pane_id_to_replace,
                     close_replaced_pane: config.close_replaced_pane,
@@ -1960,11 +1967,15 @@ impl TryFrom<NewPanePlacement> for ProtobufNewPanePlacement {
                     let protobuf_direction: ProtobufResizeDirection = d.try_into().ok()?;
                     Some(protobuf_direction as i32)
                 });
-                Some(PlacementVariant::Tiled(ProtobufTiledPlacement { direction }))
+                Some(PlacementVariant::Tiled(ProtobufTiledPlacement {
+                    direction,
+                }))
             },
             NewPanePlacement::Floating(coords) => {
                 let coordinates = coords.and_then(|c| c.try_into().ok());
-                Some(PlacementVariant::Floating(ProtobufFloatingPlacement { coordinates }))
+                Some(PlacementVariant::Floating(ProtobufFloatingPlacement {
+                    coordinates,
+                }))
             },
             NewPanePlacement::InPlace {
                 pane_id_to_replace,
@@ -1978,7 +1989,9 @@ impl TryFrom<NewPanePlacement> for ProtobufNewPanePlacement {
             },
             NewPanePlacement::Stacked(pane_id) => {
                 let pane_id = pane_id.and_then(|id| id.try_into().ok());
-                Some(PlacementVariant::Stacked(ProtobufStackedPlacement { pane_id }))
+                Some(PlacementVariant::Stacked(ProtobufStackedPlacement {
+                    pane_id,
+                }))
             },
         };
 

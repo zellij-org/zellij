@@ -1042,9 +1042,7 @@ impl PermissionType {
             PermissionType::ReadPaneContents => {
                 "Read pane contents (viewport and selection)".to_owned()
             },
-            PermissionType::RunActionsAsUser => {
-                "Execute actions as the user".to_owned()
-            },
+            PermissionType::RunActionsAsUser => "Execute actions as the user".to_owned(),
         }
     }
 }
