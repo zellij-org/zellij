@@ -971,6 +971,7 @@ pub enum Event {
     UserAction(Action, ClientId, Option<u32>, Option<ClientId>), // Action, client_id, terminal_id, cli_client_id
     PaneRenderReport(HashMap<PaneId, PaneContents>),
     ActionComplete(Action, String, BTreeMap<String, String>), // Action, payload, context
+    MacrosUpdated,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, ToString, Serialize, Deserialize)]

@@ -651,6 +651,7 @@ pub enum EventType {
     PaneRenderReport = 36,
     UserAction = 37,
     ActionComplete = 38,
+    MacrosUpdated = 39,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -697,6 +698,7 @@ impl EventType {
             EventType::PaneRenderReport => "PaneRenderReport",
             EventType::UserAction => "UserAction",
             EventType::ActionComplete => "ActionComplete",
+            EventType::MacrosUpdated => "MacrosUpdated",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -740,6 +742,7 @@ impl EventType {
             "PaneRenderReport" => Some(Self::PaneRenderReport),
             "UserAction" => Some(Self::UserAction),
             "ActionComplete" => Some(Self::ActionComplete),
+            "MacrosUpdated" => Some(Self::MacrosUpdated),
             _ => None,
         }
     }

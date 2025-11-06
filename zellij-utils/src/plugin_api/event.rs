@@ -435,6 +435,10 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the ActionComplete Event"),
             },
+            Some(ProtobufEventType::MacrosUpdated) => match protobuf_event.payload {
+                None => Ok(Event::MacrosUpdated),
+                _ => Err("Malformed payload for the MacrosUpdated Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -868,6 +872,10 @@ impl TryFrom<Event> for ProtobufEvent {
                     )),
                 })
             },
+            Event::MacrosUpdated => Ok(ProtobufEvent {
+                name: ProtobufEventType::MacrosUpdated as i32,
+                payload: None,
+            }),
         }
     }
 }
@@ -1549,6 +1557,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::PaneRenderReport => EventType::PaneRenderReport,
             ProtobufEventType::UserAction => EventType::UserAction,
             ProtobufEventType::ActionComplete => EventType::ActionComplete,
+            ProtobufEventType::MacrosUpdated => EventType::MacrosUpdated,
         })
     }
 }
@@ -1595,6 +1604,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::PaneRenderReport => ProtobufEventType::PaneRenderReport,
             EventType::UserAction => ProtobufEventType::UserAction,
             EventType::ActionComplete => ProtobufEventType::ActionComplete,
+            EventType::MacrosUpdated => ProtobufEventType::MacrosUpdated,
         })
     }
 }

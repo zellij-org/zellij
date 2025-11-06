@@ -191,7 +191,7 @@ pub struct WasmBridge {
     default_mode: InputMode,
     default_keybinds: Keybinds,
     keybinds: HashMap<ClientId, Keybinds>,
-    default_macros: Macros,
+    default_macros: Macros, // TODO: remove this
     macros: HashMap<ClientId, Macros>,
     base_modes: HashMap<ClientId, InputMode>,
     downloader: Downloader,
@@ -255,7 +255,7 @@ impl WasmBridge {
             default_mode,
             default_keybinds,
             keybinds: HashMap::new(),
-            default_macros,
+            default_macros, // 
             macros: HashMap::new(),
             base_modes: HashMap::new(),
             downloader,
@@ -1371,7 +1371,7 @@ impl WasmBridge {
                 let keybinds = keybinds.clone();
                 let macros = macros.clone();
                 let default_shell = default_shell.clone();
-                move |_senders,
+                move |senders,
                       _plugin_map,
                       _connected_clients,
                       _default_layout,
@@ -1381,8 +1381,14 @@ impl WasmBridge {
                     if let Some(keybinds) = keybinds {
                         running_plugin.update_keybinds(keybinds);
                     }
-                    if let Some(macros) = macros {
+                    if let Some(macros) = macros.clone() {
                         running_plugin.update_macros(macros);
+                        // Fire MacrosUpdated event after updating the plugin environment
+                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                            Some(plugin_id),
+                            Some(client_id),
+                            Event::MacrosUpdated,
+                        )]));
                     }
                     if let Some(default_mode) = default_mode {
                         running_plugin.update_default_mode(default_mode);
@@ -1923,7 +1929,8 @@ fn check_event_permission(
         | Event::EditPaneExited(..)
         | Event::FailedToWriteConfigToDisk(..)
         | Event::CommandPaneReRun(..)
-        | Event::InputReceived => PermissionType::ReadApplicationState,
+        | Event::InputReceived
+        | Event::MacrosUpdated => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,
         Event::UserAction(..) => PermissionType::InterceptInput,
