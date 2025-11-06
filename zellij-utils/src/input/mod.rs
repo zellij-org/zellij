@@ -4,6 +4,7 @@ pub mod command;
 pub mod config;
 pub mod keybinds;
 pub mod layout;
+pub mod macros;
 pub mod mouse;
 pub mod options;
 pub mod permission;
