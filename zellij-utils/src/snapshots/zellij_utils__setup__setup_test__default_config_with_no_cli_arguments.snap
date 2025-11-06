@@ -5930,6 +5930,9 @@ Config {
             ],
         },
     },
+    macros: Macros(
+        {},
+    ),
     options: Options {
         simplified_ui: None,
         theme: None,
