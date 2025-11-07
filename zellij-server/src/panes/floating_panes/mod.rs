@@ -829,7 +829,7 @@ impl FloatingPanes {
                         self.focus_pane(next_active_pane_id, client_id);
                     },
                     None => {
-                        self.defocus_pane(pane_id, client_id);
+                        self.defocus_pane(client_id);
                     },
                 }
             }
@@ -877,8 +877,7 @@ impl FloatingPanes {
             },
         }
     }
-    pub fn defocus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
-        self.z_indices.retain(|p_id| *p_id != pane_id);
+    pub fn defocus_pane(&mut self, client_id: ClientId) {
         self.active_panes.remove(&client_id, &mut self.panes);
         self.set_force_render();
     }
