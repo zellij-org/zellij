@@ -128,6 +128,12 @@ pub enum ServerInstruction {
         actions: Option<Vec<Action>>,  // None means remove
         write_config_to_disk: bool,
     },
+    RenameMacro {
+        client_id: ClientId,
+        old_name: String,
+        new_name: String,
+        write_config_to_disk: bool,
+    },
     StartWebServer(ClientId),
     ShareCurrentSession(ClientId),
     StopSharingCurrentSession(ClientId),
@@ -171,6 +177,7 @@ impl From<&ServerInstruction> for ServerContext {
             },
             ServerInstruction::RebindKeys { .. } => ServerContext::RebindKeys,
             ServerInstruction::UpdateMacros { .. } => ServerContext::UpdateMacros,
+            ServerInstruction::RenameMacro { .. } => ServerContext::RenameMacro,
             ServerInstruction::StartWebServer(..) => ServerContext::StartWebServer,
             ServerInstruction::ShareCurrentSession(..) => ServerContext::ShareCurrentSession,
             ServerInstruction::StopSharingCurrentSession(..) => {
@@ -354,6 +361,42 @@ impl SessionConfiguration {
         }
 
         (full_reconfigured_config, config_changed)
+    }
+
+    pub fn rename_macro(
+        &mut self,
+        client_id: &ClientId,
+        old_name: String,
+        new_name: String,
+    ) -> Result<(Option<Config>, bool), String> {
+        // Ensure client has a runtime config (create from saved_config if needed)
+        if self.runtime_config.get(client_id).is_none() {
+            self.runtime_config.insert(*client_id, self.saved_config.clone());
+        }
+
+        match self.runtime_config.get_mut(client_id) {
+            Some(config) => {
+                // Validate: check if old_name exists
+                if !config.macros.0.contains_key(&old_name) {
+                    return Err(format!("Macro '{}' does not exist", old_name));
+                }
+
+                // Validate: check if new_name already exists (prevent overwrites)
+                if config.macros.0.contains_key(&new_name) && old_name != new_name {
+                    return Err(format!("Macro '{}' already exists", new_name));
+                }
+
+                // Perform the rename: remove old entry and insert with new name
+                if let Some(actions) = config.macros.remove(&old_name) {
+                    config.macros.insert(new_name, actions);
+                    Ok((Some(config.clone()), true))
+                } else {
+                    // This shouldn't happen since we checked above, but handle it
+                    Err(format!("Failed to rename macro '{}': not found", old_name))
+                }
+            }
+            None => Err(format!("No config found for client {}", client_id)),
+        }
     }
 }
 
@@ -1581,6 +1624,37 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     &session_data,
                     client_id,
                 );
+            },
+            ServerInstruction::RenameMacro {
+                client_id,
+                old_name,
+                new_name,
+                write_config_to_disk,
+            } => {
+                match session_data
+                    .write()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .session_configuration
+                    .rename_macro(&client_id, old_name.clone(), new_name.clone())
+                {
+                    Ok((new_config, config_changed)) => {
+                        if config_changed {
+                            update_new_saved_config(
+                                new_config,
+                                write_config_to_disk,
+                                config_changed,
+                                &session_data,
+                                client_id,
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to rename macro '{}' to '{}': {}", old_name, new_name, e);
+                        // Optionally: send error event back to plugin
+                    }
+                }
             },
             ServerInstruction::StartWebServer(client_id) => {
                 if cfg!(feature = "web_server_capability") {

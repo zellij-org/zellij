@@ -2876,4 +2876,5 @@ pub enum PluginCommand {
     GetMacros,
     SetMacro(String, Vec<Action>),
     RemoveMacro(String),
+    RenameMacro(String, String), // (old_name, new_name)
 }

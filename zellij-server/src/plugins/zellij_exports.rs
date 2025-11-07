@@ -109,6 +109,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::GetMacros => get_macros(env),
                     PluginCommand::SetMacro(name, actions) => set_macro(env, name, actions)?,
                     PluginCommand::RemoveMacro(name) => remove_macro(env, name)?,
+                    PluginCommand::RenameMacro(old_name, new_name) => rename_macro(env, old_name, new_name)?,
                     PluginCommand::OpenFile(file_to_open, context) => {
                         open_file(env, file_to_open, context)
                     },
@@ -728,6 +729,26 @@ fn remove_macro(env: &PluginEnv, name: String) -> Result<()> {
             write_config_to_disk: false,
         })
         .with_context(|| format!("Failed to remove macro '{}'", name))?;
+    Ok(())
+}
+
+fn rename_macro(env: &PluginEnv, old_name: String, new_name: String) -> Result<()> {
+    let client_id = env.client_id;
+
+    env.senders
+        .send_to_server(ServerInstruction::RenameMacro {
+            client_id,
+            old_name: old_name.clone(),
+            new_name: new_name.clone(),
+            write_config_to_disk: false,
+        })
+        .with_context(|| {
+            format!(
+                "failed to rename macro '{}' to '{}' for plugin {}",
+                old_name, new_name, env.name()
+            )
+        })?;
+
     Ok(())
 }
 
@@ -2970,7 +2991,7 @@ fn check_command_permission(
         PluginCommand::ListClients | PluginCommand::DumpSessionLayout | PluginCommand::GetMacros => {
             PermissionType::ReadApplicationState
         },
-        PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) | PluginCommand::SetMacro(..) | PluginCommand::RemoveMacro(..) => {
+        PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) | PluginCommand::SetMacro(..) | PluginCommand::RemoveMacro(..) | PluginCommand::RenameMacro(..) => {
             PermissionType::Reconfigure
         },
         PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,

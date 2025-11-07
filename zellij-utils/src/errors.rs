@@ -516,6 +516,7 @@ pub enum ServerContext {
     FailedToWriteConfigToDisk,
     RebindKeys,
     UpdateMacros,
+    RenameMacro,
     StartWebServer,
     ShareCurrentSession,
     StopSharingCurrentSession,

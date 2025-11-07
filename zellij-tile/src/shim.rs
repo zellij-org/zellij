@@ -123,6 +123,13 @@ pub fn remove_macro(name: String) {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn rename_macro(old_name: String, new_name: String) {
+    let plugin_command = PluginCommand::RenameMacro(old_name, new_name);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Host Functions
 
 /// Open a file in the user's default `$EDITOR` in a new pane
