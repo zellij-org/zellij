@@ -104,6 +104,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::Subscribe(event_list) => subscribe(env, event_list)?,
                     PluginCommand::Unsubscribe(event_list) => unsubscribe(env, event_list)?,
                     PluginCommand::SetSelectable(selectable) => set_selectable(env, selectable),
+                    PluginCommand::ShowCursor(show) => show_cursor(env, show),
                     PluginCommand::GetPluginIds => get_plugin_ids(env),
                     PluginCommand::GetZellijVersion => get_zellij_version(env),
                     PluginCommand::GetMacros => get_macros(env),
@@ -594,6 +595,23 @@ fn set_selectable(env: &PluginEnv, selectable: bool) {
             format!(
                 "failed to set plugin {} selectable from plugin {}",
                 selectable,
+                env.name()
+            )
+        })
+        .non_fatal();
+}
+
+fn show_cursor(env: &PluginEnv, show: bool) {
+    env.senders
+        .send_to_screen(ScreenInstruction::ShowPluginCursor(
+            env.plugin_id,
+            env.client_id,
+            show,
+        ))
+        .with_context(|| {
+            format!(
+                "failed to {} plugin cursor from plugin {}",
+                if show { "show" } else { "hide" },
                 env.name()
             )
         })

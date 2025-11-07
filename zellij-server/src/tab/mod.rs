@@ -304,7 +304,8 @@ pub trait Pane {
     fn set_geom_override(&mut self, pane_geom: PaneGeom);
     fn handle_pty_bytes(&mut self, _bytes: VteBytes) {}
     fn handle_plugin_bytes(&mut self, _client_id: ClientId, _bytes: VteBytes) {}
-    fn cursor_coordinates(&self) -> Option<(usize, usize)>;
+    fn show_cursor(&mut self, _client_id: ClientId, _show: bool) {}
+    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)>;
     fn is_mid_frame(&self) -> bool {
         false
     }
@@ -2683,7 +2684,7 @@ impl Tab {
             .get(&active_pane_id)
             .or_else(|| self.tiled_panes.get_pane(active_pane_id))?;
         active_terminal
-            .cursor_coordinates()
+            .cursor_coordinates(Some(client_id))
             .map(|(x_in_terminal, y_in_terminal)| {
                 let x = active_terminal.x() + x_in_terminal;
                 let y = active_terminal.y() + y_in_terminal;
@@ -4945,6 +4946,21 @@ impl Tab {
             plugin_pane.update_loading_indication(loading_indication);
         }
     }
+    pub fn show_plugin_cursor(&mut self, pid: u32, client_id: ClientId, show: bool) {
+        if let Some(plugin_pane) = self
+            .tiled_panes
+            .get_pane_mut(PaneId::Plugin(pid))
+            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Plugin(pid)))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == PaneId::Plugin(pid))
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            plugin_pane.show_cursor(client_id, show);
+        }
+    }
     pub fn start_plugin_loading_indication(
         &mut self,
         pid: u32,
@@ -5526,7 +5542,7 @@ pub fn pane_info_for_pane(
     pane_info.pane_content_rows = pane.get_content_rows();
     pane_info.pane_columns = pane.cols();
     pane_info.pane_content_columns = pane.get_content_columns();
-    pane_info.cursor_coordinates_in_pane = pane.cursor_coordinates();
+    pane_info.cursor_coordinates_in_pane = pane.cursor_coordinates(None);
     pane_info.is_selectable = pane.selectable();
     pane_info.title = pane.current_title();
     pane_info.exited = pane.exited();

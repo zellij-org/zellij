@@ -165,6 +165,7 @@ enum CommandName {
   SetMacro = 166;
   RemoveMacro = 167;
   RenameMacro = 168;
+  ShowCursor = 169;
 }
 
 message PluginCommand {
@@ -277,6 +278,7 @@ message PluginCommand {
     SetMacroPayload set_macro_payload = 115;
     RemoveMacroPayload remove_macro_payload = 116;
     RenameMacroPayload rename_macro_payload = 117;
+    bool show_cursor_payload = 119;
   }
 }
 

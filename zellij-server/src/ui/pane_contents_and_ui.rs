@@ -159,7 +159,7 @@ impl<'a> PaneContentsAndUi<'a> {
             ) {
                 let cursor_is_visible = self
                     .pane
-                    .cursor_coordinates()
+                    .cursor_coordinates(Some(*fake_cursor_client_id))
                     .map(|(x, y)| {
                         self.output
                             .cursor_is_visible(self.pane.x() + x, self.pane.y() + y)

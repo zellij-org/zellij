@@ -289,6 +289,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for SetSelectable"),
             },
+            Some(CommandName::ShowCursor) => match protobuf_plugin_command.payload {
+                Some(Payload::ShowCursorPayload(show)) => {
+                    Ok(PluginCommand::ShowCursor(show))
+                },
+                _ => Err("Mismatched payload for ShowCursor"),
+            },
             Some(CommandName::GetPluginIds) => {
                 if protobuf_plugin_command.payload.is_some() {
                     Err("GetPluginIds should not have a payload")
@@ -1827,6 +1833,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::SetSelectable(should_be_selectable) => Ok(ProtobufPluginCommand {
                 name: CommandName::SetSelectable as i32,
                 payload: Some(Payload::SetSelectablePayload(should_be_selectable)),
+            }),
+            PluginCommand::ShowCursor(show) => Ok(ProtobufPluginCommand {
+                name: CommandName::ShowCursor as i32,
+                payload: Some(Payload::ShowCursorPayload(show)),
             }),
             PluginCommand::GetPluginIds => Ok(ProtobufPluginCommand {
                 name: CommandName::GetPluginIds as i32,

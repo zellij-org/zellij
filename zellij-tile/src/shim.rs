@@ -48,6 +48,14 @@ pub fn set_selectable(selectable: bool) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Shows or hides the cursor for the plugin pane
+pub fn show_cursor(show: bool) {
+    let plugin_command = PluginCommand::ShowCursor(show);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 pub fn request_permission(permissions: &[PermissionType]) {
     let plugin_command = PluginCommand::RequestPluginPermissions(permissions.into());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();

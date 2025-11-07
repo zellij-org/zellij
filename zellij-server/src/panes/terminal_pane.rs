@@ -197,7 +197,7 @@ impl Pane for TerminalPane {
             self.vte_parser.advance(&mut self.grid, byte);
         }
     }
-    fn cursor_coordinates(&self) -> Option<(usize, usize)> {
+    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)> {
         // (x, y)
         if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
             // do not render cursor if there's no room for it
