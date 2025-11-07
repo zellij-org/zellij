@@ -1631,14 +1631,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 new_name,
                 write_config_to_disk,
             } => {
-                match session_data
+                let rename_result = session_data
                     .write()
                     .unwrap()
                     .as_mut()
                     .unwrap()
                     .session_configuration
-                    .rename_macro(&client_id, old_name.clone(), new_name.clone())
-                {
+                    .rename_macro(&client_id, old_name.clone(), new_name.clone());
+                match rename_result {
                     Ok((new_config, config_changed)) => {
                         if config_changed {
                             update_new_saved_config(
