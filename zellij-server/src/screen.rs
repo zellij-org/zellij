@@ -218,7 +218,7 @@ pub enum ScreenInstruction {
     ToggleActiveTerminalFullscreen(ClientId, Option<NotificationEnd>),
     TogglePaneFrames(Option<NotificationEnd>),
     SetSelectable(PaneId, bool),
-    ShowPluginCursor(u32, ClientId, bool),
+    ShowPluginCursor(u32, ClientId, Option<(usize, usize)>),
     ClosePane(
         PaneId,
         Option<ClientId>,
@@ -4428,19 +4428,19 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::ShowPluginCursor(pid, client_id, show) => {
+            ScreenInstruction::ShowPluginCursor(pid, client_id, cursor_position) => {
                 let all_tabs = screen.get_tabs_mut();
                 let mut found_plugin = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_plugin(pid) {
-                        tab.show_plugin_cursor(pid, client_id, show);
+                        tab.show_plugin_cursor(pid, client_id, cursor_position);
                         found_plugin = true;
                         break;
                     }
                 }
                 if !found_plugin {
                     pending_events_waiting_for_tab
-                        .push(ScreenInstruction::ShowPluginCursor(pid, client_id, show));
+                        .push(ScreenInstruction::ShowPluginCursor(pid, client_id, cursor_position));
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;

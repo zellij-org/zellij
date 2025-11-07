@@ -2694,7 +2694,7 @@ pub enum PluginCommand {
     Subscribe(HashSet<EventType>),
     Unsubscribe(HashSet<EventType>),
     SetSelectable(bool),
-    ShowCursor(bool),
+    ShowCursor(Option<(usize, usize)>),
     GetPluginIds,
     GetZellijVersion,
     OpenFile(FileToOpen, Context),

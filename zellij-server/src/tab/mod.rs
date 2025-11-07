@@ -304,7 +304,7 @@ pub trait Pane {
     fn set_geom_override(&mut self, pane_geom: PaneGeom);
     fn handle_pty_bytes(&mut self, _bytes: VteBytes) {}
     fn handle_plugin_bytes(&mut self, _client_id: ClientId, _bytes: VteBytes) {}
-    fn show_cursor(&mut self, _client_id: ClientId, _show: bool) {}
+    fn show_cursor(&mut self, _client_id: ClientId, _cursor_position: Option<(usize, usize)>) {}
     fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)>;
     fn is_mid_frame(&self) -> bool {
         false
@@ -4946,7 +4946,7 @@ impl Tab {
             plugin_pane.update_loading_indication(loading_indication);
         }
     }
-    pub fn show_plugin_cursor(&mut self, pid: u32, client_id: ClientId, show: bool) {
+    pub fn show_plugin_cursor(&mut self, pid: u32, client_id: ClientId, cursor_position: Option<(usize, usize)>) {
         if let Some(plugin_pane) = self
             .tiled_panes
             .get_pane_mut(PaneId::Plugin(pid))
@@ -4958,7 +4958,7 @@ impl Tab {
                     .map(|s_p| &mut s_p.1)
             })
         {
-            plugin_pane.show_cursor(client_id, show);
+            plugin_pane.show_cursor(client_id, cursor_position);
         }
     }
     pub fn start_plugin_loading_indication(

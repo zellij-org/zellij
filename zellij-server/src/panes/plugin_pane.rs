@@ -5,6 +5,7 @@ use crate::output::{CharacterChunk, SixelImageChunk};
 use crate::panes::{
     grid::Grid,
     sixel::SixelImageStore,
+    terminal_character::EMPTY_TERMINAL_CHARACTER,
     terminal_pane::{BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END},
     LinkHandler, PaneId,
 };
@@ -65,11 +66,7 @@ macro_rules! get_or_create_grid {
                 $self.styled_underlines,
                 explicitly_disable_kitty_keyboard_protocol,
             );
-            if !$self.cursor_visibility.get(&$client_id).copied().unwrap_or(false) {
-                grid.show_cursor();
-            } else {
-                grid.hide_cursor();
-            }
+            grid.hide_cursor();
             grid
         })
     }};
@@ -94,7 +91,7 @@ pub(crate) struct PluginPane {
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     vte_parsers: HashMap<ClientId, vte::Parser>,
     grids: HashMap<ClientId, Grid>,
-    cursor_visibility: HashMap<ClientId, bool>,
+    cursor_visibility: HashMap<ClientId, Option<(usize, usize)>>,
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
@@ -240,12 +237,7 @@ impl Pane for PluginPane {
         // this is part of the plugin contract, whenever we update the plugin and call its render function, we delete the existing viewport
         // and scroll, reset the cursor position and make sure all the viewport is rendered
         grid.delete_viewport_and_scroll();
-
-        // Only reset cursor position if the cursor is not explicitly shown
-        if !self.cursor_visibility.get(&client_id).copied().unwrap_or(false) {
-            grid.reset_cursor_position();
-        }
-
+        grid.reset_cursor_position();
         grid.render_full_viewport();
 
         let vte_parser = self
@@ -260,9 +252,12 @@ impl Pane for PluginPane {
         self.should_render.insert(client_id, true);
     }
     fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize)> {
-        client_id
-            .and_then(|client_id| self.grids.get(&client_id))
-            .and_then(|grid| grid.cursor_coordinates())
+        if let Some(coordinates) = client_id
+            .and_then(|client_id| self.cursor_visibility.get(&client_id)) {
+                coordinates.map(|(x, y)| (x + 1, y + 1)) // these are 0 indexed
+        } else {
+            None
+        }
     }
     fn adjust_input_to_terminal(
         &mut self,
@@ -373,16 +368,9 @@ impl Pane for PluginPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
-    fn show_cursor(&mut self, client_id: ClientId, show: bool) {
-        self.cursor_visibility.insert(client_id, show);
-        if let Some(grid) = self.grids.get_mut(&client_id) {
-            if show {
-                grid.show_cursor();
-            } else {
-                grid.hide_cursor();
-            }
-            self.should_render.insert(client_id, true);
-        }
+    fn show_cursor(&mut self, client_id: ClientId, cursor_position: Option<(usize, usize)>) {
+        self.cursor_visibility.insert(client_id, cursor_position);
+        self.should_render.insert(client_id, true);
     }
     fn request_permissions_from_user(&mut self, permissions: Option<PluginPermission>) {
         self.requesting_permissions = permissions;

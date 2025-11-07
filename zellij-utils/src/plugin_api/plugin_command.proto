@@ -278,7 +278,7 @@ message PluginCommand {
     SetMacroPayload set_macro_payload = 115;
     RemoveMacroPayload remove_macro_payload = 116;
     RenameMacroPayload rename_macro_payload = 117;
-    bool show_cursor_payload = 119;
+    ShowCursorPayload show_cursor_payload = 119;
   }
 }
 
@@ -748,4 +748,13 @@ message RemoveMacroPayload {
 message RenameMacroPayload {
   string old_name = 1;
   string new_name = 2;
+}
+
+message ShowCursorPayload {
+  optional CursorPosition position = 1;
+}
+
+message CursorPosition {
+  uint32 x = 1;
+  uint32 y = 2;
 }

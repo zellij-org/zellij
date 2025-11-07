@@ -48,9 +48,12 @@ pub fn set_selectable(selectable: bool) {
     unsafe { host_run_plugin_command() };
 }
 
-/// Shows or hides the cursor for the plugin pane
-pub fn show_cursor(show: bool) {
-    let plugin_command = PluginCommand::ShowCursor(show);
+/// Shows the cursor at specific coordinates or hides it
+///
+/// # Arguments
+/// * `cursor_position` - None to hide cursor, Some((x, y)) to show at coordinates
+pub fn show_cursor(cursor_position: Option<(usize, usize)>) {
+    let plugin_command = PluginCommand::ShowCursor(cursor_position);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

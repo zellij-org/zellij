@@ -225,8 +225,8 @@ pub mod plugin_command {
         RemoveMacroPayload(super::RemoveMacroPayload),
         #[prost(message, tag="117")]
         RenameMacroPayload(super::RenameMacroPayload),
-        #[prost(bool, tag="119")]
-        ShowCursorPayload(bool),
+        #[prost(message, tag="119")]
+        ShowCursorPayload(super::ShowCursorPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -952,6 +952,20 @@ pub struct RenameMacroPayload {
     pub old_name: ::prost::alloc::string::String,
     #[prost(string, tag="2")]
     pub new_name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ShowCursorPayload {
+    #[prost(message, optional, tag="1")]
+    pub position: ::core::option::Option<CursorPosition>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CursorPosition {
+    #[prost(uint32, tag="1")]
+    pub x: u32,
+    #[prost(uint32, tag="2")]
+    pub y: u32,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

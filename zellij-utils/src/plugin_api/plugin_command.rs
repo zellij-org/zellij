@@ -33,7 +33,7 @@ pub use super::generated_api::api::{
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
         SetFloatingPanePinnedPayload, SetMacroPayload, SetSelfMouseSelectionSupportPayload, SetTimeoutPayload,
         MacrosPayload as ProtobufMacrosPayload, MacroEntry as ProtobufMacroEntry, RemoveMacroPayload, RenameMacroPayload,
-        ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload, SwitchSessionPayload,
+        ShowCursorPayload, CursorPosition, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload, SwitchSessionPayload,
         SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload,
         UnsubscribePayload, WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
@@ -290,8 +290,9 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 _ => Err("Mismatched payload for SetSelectable"),
             },
             Some(CommandName::ShowCursor) => match protobuf_plugin_command.payload {
-                Some(Payload::ShowCursorPayload(show)) => {
-                    Ok(PluginCommand::ShowCursor(show))
+                Some(Payload::ShowCursorPayload(payload)) => {
+                    let cursor_position = payload.position.map(|pos| (pos.x as usize, pos.y as usize));
+                    Ok(PluginCommand::ShowCursor(cursor_position))
                 },
                 _ => Err("Mismatched payload for ShowCursor"),
             },
@@ -1834,10 +1835,16 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::SetSelectable as i32,
                 payload: Some(Payload::SetSelectablePayload(should_be_selectable)),
             }),
-            PluginCommand::ShowCursor(show) => Ok(ProtobufPluginCommand {
-                name: CommandName::ShowCursor as i32,
-                payload: Some(Payload::ShowCursorPayload(show)),
-            }),
+            PluginCommand::ShowCursor(cursor_position) => {
+                let position = cursor_position.map(|(x, y)| CursorPosition {
+                    x: x as u32,
+                    y: y as u32,
+                });
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::ShowCursor as i32,
+                    payload: Some(Payload::ShowCursorPayload(ShowCursorPayload { position })),
+                })
+            },
             PluginCommand::GetPluginIds => Ok(ProtobufPluginCommand {
                 name: CommandName::GetPluginIds as i32,
                 payload: None,
