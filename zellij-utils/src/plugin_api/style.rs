@@ -21,6 +21,7 @@ impl TryFrom<ProtobufStyle> for Style {
             colors: s,
             rounded_corners: protobuf_style.rounded_corners,
             hide_session_name: protobuf_style.hide_session_name,
+            tabline_prefix_text: protobuf_style.tabline_prefix_text,
         })
     }
 }
@@ -36,6 +37,7 @@ impl TryFrom<Style> for ProtobufStyle {
             rounded_corners: style.rounded_corners,
             hide_session_name: style.hide_session_name,
             styling: Some(s),
+            tabline_prefix_text: style.tabline_prefix_text,
         })
     }
 }

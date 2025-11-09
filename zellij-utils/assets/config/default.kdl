@@ -282,6 +282,34 @@ load_plugins {
 //
 // auto_layout true
 
+// UI configuration options
+// ui {
+//     pane_frames {
+//         // Whether to show rounded corners on pane frames
+//         // Options:
+//         //   - true
+//         //   - false (default)
+//         // rounded_corners true
+//
+//         // Whether to hide the session name in the status bar
+//         // Options:
+//         //   - true
+//         //   - false (default)
+//         // hide_session_name true
+//
+//         // Custom prefix text to show before tabs in the compact-bar
+//         // Options:
+//         //   - Not set: Shows "Zellij" (default)
+//         //   - "": Shows no prefix
+//         //   - "MyPrefix": Shows your custom text
+//         //   - "$(command)": Executes a shell command and shows its output
+//         // Examples:
+//         //   tabline_prefix_text ""              // No prefix
+//         //   tabline_prefix_text "MyTerm"        // Show "MyTerm"
+//         //   tabline_prefix_text "$(hostname)"   // Show the hostname
+//     }
+// }
+
 // Whether sessions should be serialized to the cache folder (including their tabs/panes, cwds and running commands) so that they can later be resurrected
 // (Requires restart)
 // Options:

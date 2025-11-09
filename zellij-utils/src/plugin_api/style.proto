@@ -7,6 +7,7 @@ message Style {
   bool rounded_corners = 2;
   bool hide_session_name = 3;
   Styling styling = 4;
+  optional string tabline_prefix_text = 5;
 }
 
 message Palette {

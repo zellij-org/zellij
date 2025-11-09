@@ -414,6 +414,7 @@ pub enum ScreenInstruction {
         auto_layout: bool,
         rounded_corners: bool,
         hide_session_name: bool,
+        tabline_prefix_text: Option<String>,
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
         advanced_mouse_actions: bool,
@@ -938,7 +939,7 @@ impl Screen {
             character_cell_size: Rc::new(RefCell::new(None)),
             stacked_resize: Rc::new(RefCell::new(stacked_resize)),
             sixel_image_store: Rc::new(RefCell::new(SixelImageStore::default())),
-            style: client_attributes.style,
+            style: client_attributes.style.clone(),
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
             active_tab_indices: BTreeMap::new(),
             tabs: BTreeMap::new(),
@@ -1692,7 +1693,7 @@ impl Screen {
                 .clone(),
             self.bus.senders.clone(),
             self.max_panes,
-            self.style,
+            self.style.clone(),
             self.default_mode_info.clone(),
             self.draw_pane_frames,
             self.auto_layout,
@@ -2337,7 +2338,7 @@ impl Screen {
             .get(&client_id)
             .unwrap_or(&self.default_mode_info);
         let previous_mode = previous_mode_info.mode;
-        mode_info.style = previous_mode_info.style;
+        mode_info.style = previous_mode_info.style.clone();
         mode_info.capabilities = previous_mode_info.capabilities;
 
         let err_context = || {
@@ -2381,7 +2382,7 @@ impl Screen {
             }
         }
 
-        self.style = mode_info.style;
+        self.style = mode_info.style.clone();
         self.mode_info.insert(client_id, mode_info.clone());
         for tab in self.tabs.values_mut() {
             tab.change_mode_info(mode_info.clone(), client_id);
@@ -2997,6 +2998,7 @@ impl Screen {
         auto_layout: bool,
         rounded_corners: bool,
         hide_session_name: bool,
+        tabline_prefix_text: Option<String>,
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
         advanced_mouse_actions: bool,
@@ -3019,6 +3021,8 @@ impl Screen {
             .update_arrow_fonts(should_support_arrow_fonts);
         self.default_mode_info
             .update_hide_session_name(hide_session_name);
+        self.default_mode_info
+            .update_tabline_prefix_text(tabline_prefix_text.clone());
         {
             *self.stacked_resize.borrow_mut() = stacked_resize;
         }
@@ -3048,6 +3052,7 @@ impl Screen {
             mode_info.update_theme(theme);
             mode_info.update_arrow_fonts(should_support_arrow_fonts);
             mode_info.update_hide_session_name(hide_session_name);
+            mode_info.update_tabline_prefix_text(tabline_prefix_text.clone());
             for tab in self.tabs.values_mut() {
                 tab.change_mode_info(mode_info.clone(), client_id);
                 tab.mark_active_pane_for_rerender(client_id);
@@ -5769,6 +5774,7 @@ pub(crate) fn screen_thread_main(
                 auto_layout,
                 rounded_corners,
                 hide_session_name,
+                tabline_prefix_text,
                 stacked_resize,
                 default_editor,
                 advanced_mouse_actions,
@@ -5787,6 +5793,7 @@ pub(crate) fn screen_thread_main(
                         auto_layout,
                         rounded_corners,
                         hide_session_name,
+                        tabline_prefix_text,
                         stacked_resize,
                         default_editor,
                         advanced_mouse_actions,

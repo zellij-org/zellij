@@ -15,6 +15,7 @@ pub fn tab_line(
     let config = TabLineConfig {
         session_name: mode_info.session_name.to_owned(),
         hide_session_name: mode_info.style.hide_session_name,
+        tabline_prefix_text: mode_info.style.tabline_prefix_text.clone(),
         mode: mode_info.mode,
         active_swap_layout_name: tab_data.active_swap_layout_name,
         is_swap_layout_dirty: tab_data.is_swap_layout_dirty,
@@ -30,6 +31,7 @@ pub fn tab_line(
 pub struct TabLineConfig {
     pub session_name: Option<String>,
     pub hide_session_name: bool,
+    pub tabline_prefix_text: Option<String>,
     pub mode: InputMode,
     pub active_swap_layout_name: Option<String>,
     pub is_swap_layout_dirty: bool,
@@ -274,8 +276,13 @@ impl TabLinePrefixBuilder {
         Self { palette, cols }
     }
 
-    fn build(&self, session_name: Option<&str>, mode: InputMode) -> Vec<LinePart> {
-        let mut parts = vec![self.create_zellij_part()];
+    fn build(
+        &self,
+        tabline_prefix_text: Option<&str>,
+        session_name: Option<&str>,
+        mode: InputMode,
+    ) -> Vec<LinePart> {
+        let mut parts = vec![self.create_prefix_part(tabline_prefix_text)];
         let mut used_len = parts.get(0).map_or(0, |p| p.len);
 
         if let Some(name) = session_name {
@@ -292,17 +299,25 @@ impl TabLinePrefixBuilder {
         parts
     }
 
-    fn create_zellij_part(&self) -> LinePart {
-        let prefix_text = " Zellij ";
-        let colors = self.get_text_colors();
+    fn create_prefix_part(&self, prefix_text: Option<&str>) -> LinePart {
+        // Default to "Zellij" if no prefix is configured
+        // Use empty string if explicitly set to ""
+        let text = prefix_text.unwrap_or("Zellij");
 
-        LinePart {
-            part: style!(colors.text, colors.background)
-                .bold()
-                .paint(prefix_text)
-                .to_string(),
-            len: prefix_text.chars().count(),
-            tab_index: None,
+        if text.is_empty() {
+            LinePart::default()
+        } else {
+            let formatted_text = format!(" {} ", text);
+            let colors = self.get_text_colors();
+
+            LinePart {
+                part: style!(colors.text, colors.background)
+                    .bold()
+                    .paint(&formatted_text)
+                    .to_string(),
+                len: formatted_text.chars().count(),
+                tab_index: None,
+            }
         }
     }
 
@@ -528,7 +543,11 @@ impl TabLineBuilder {
             self.config.session_name.as_deref()
         };
 
-        let mut prefix = prefix_builder.build(session_name, self.config.mode);
+        let mut prefix = prefix_builder.build(
+            self.config.tabline_prefix_text.as_deref(),
+            session_name,
+            self.config.mode,
+        );
         let prefix_len = calculate_total_length(&prefix);
 
         if prefix_len + active_tab.len > self.cols {

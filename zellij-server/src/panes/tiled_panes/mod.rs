@@ -1064,7 +1064,7 @@ impl TiledPanes {
                 let mut pane_contents_and_ui = PaneContentsAndUi::new(
                     pane,
                     output,
-                    self.style,
+                    self.style.clone(),
                     &active_panes,
                     multiple_users_exist_in_session,
                     None,

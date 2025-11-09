@@ -42,7 +42,7 @@ mod not_wasm {
             mode,
             base_mode,
             keybinds,
-            style: attributes.style,
+            style: attributes.style.clone(),
             capabilities,
             session_name,
             editor: None,

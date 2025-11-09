@@ -4583,9 +4583,13 @@ impl UiConfig {
                     .unwrap_or(false);
             let hide_session_name =
                 kdl_get_child_entry_bool_value!(pane_frames, "hide_session_name").unwrap_or(false);
+            let tabline_prefix_text =
+                kdl_get_child_entry_string_value!(pane_frames, "tabline_prefix_text")
+                    .map(|s| s.to_string());
             let frame_config = FrameConfig {
                 rounded_corners,
                 hide_session_name,
+                tabline_prefix_text,
             };
             ui_config.pane_frames = frame_config;
         }
