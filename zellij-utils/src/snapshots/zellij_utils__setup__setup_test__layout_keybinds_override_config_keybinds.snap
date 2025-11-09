@@ -263,6 +263,7 @@ Config {
         pane_frames: FrameConfig {
             rounded_corners: false,
             hide_session_name: false,
+            tabline_prefix_text: None,
         },
     },
     env: {},

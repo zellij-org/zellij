@@ -176,22 +176,37 @@ fn right_more_message(
     }
 }
 
-fn tab_line_prefix(session_name: Option<&str>, palette: Styling, cols: usize) -> Vec<LinePart> {
-    let prefix_text = " Zellij ".to_string();
+fn tab_line_prefix(
+    tabline_prefix_text: Option<&str>,
+    session_name: Option<&str>,
+    palette: Styling,
+    cols: usize,
+) -> Vec<LinePart> {
+    // Default to "Zellij" if no prefix is configured
+    // Use empty string if explicitly set to ""
+    let prefix_text = tabline_prefix_text.unwrap_or("Zellij");
 
-    let running_text_len = prefix_text.chars().count();
-    let text_color = palette.text_unselected.base;
-    let bg_color = palette.text_unselected.background;
-    let prefix_styled_text = style!(text_color, bg_color).bold().paint(prefix_text);
-    let mut parts = vec![LinePart {
-        part: prefix_styled_text.to_string(),
-        len: running_text_len,
-        tab_index: None,
-    }];
+    let mut parts = vec![];
+    let mut running_text_len = 0;
+
+    if !prefix_text.is_empty() {
+        let formatted_prefix = format!(" {} ", prefix_text);
+        running_text_len = formatted_prefix.chars().count();
+        let text_color = palette.text_unselected.base;
+        let bg_color = palette.text_unselected.background;
+        let prefix_styled_text = style!(text_color, bg_color).bold().paint(formatted_prefix);
+        parts.push(LinePart {
+            part: prefix_styled_text.to_string(),
+            len: running_text_len,
+            tab_index: None,
+        });
+    }
+
     if let Some(name) = session_name {
         let name_part = format!("({}) ", name);
         let name_part_len = name_part.width();
         let text_color = palette.text_unselected.base;
+        let bg_color = palette.text_unselected.background;
         let name_part_styled_text = style!(text_color, bg_color).bold().paint(name_part);
         if cols.saturating_sub(running_text_len) >= name_part_len {
             parts.push(LinePart {
@@ -232,9 +247,10 @@ pub fn tab_line(
     } else {
         tabs_before_active.pop().unwrap()
     };
+    let tabline_prefix_text = mode_info.style.tabline_prefix_text.as_deref();
     let mut prefix = match hide_session_name {
-        true => tab_line_prefix(None, palette, cols),
-        false => tab_line_prefix(session_name, palette, cols),
+        true => tab_line_prefix(tabline_prefix_text, None, palette, cols),
+        false => tab_line_prefix(tabline_prefix_text, session_name, palette, cols),
     };
 
     let mut swap_layout_indicator = if hide_swap_layout_indicator {

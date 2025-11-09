@@ -1222,11 +1222,12 @@ pub struct Palette {
     pub brown: PaletteColor,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct Style {
     pub colors: Styling,
     pub rounded_corners: bool,
     pub hide_session_name: bool,
+    pub tabline_prefix_text: Option<String>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -1623,6 +1624,9 @@ impl ModeInfo {
     }
     pub fn update_hide_session_name(&mut self, hide_session_name: bool) {
         self.style.hide_session_name = hide_session_name;
+    }
+    pub fn update_tabline_prefix_text(&mut self, tabline_prefix_text: Option<String>) {
+        self.style.tabline_prefix_text = tabline_prefix_text;
     }
     pub fn change_to_default_mode(&mut self) {
         if let Some(base_mode) = self.base_mode {

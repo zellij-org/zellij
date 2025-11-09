@@ -732,7 +732,7 @@ impl Tab {
             session_is_mirrored,
             draw_pane_frames,
             default_mode_info.clone(),
-            style,
+            style.clone(),
             os_api.clone(),
             senders.clone(),
         );
@@ -745,7 +745,7 @@ impl Tab {
             character_cell_size.clone(),
             session_is_mirrored,
             default_mode_info.clone(),
-            style,
+            style.clone(),
             os_api.clone(),
             senders.clone(),
         );
@@ -1378,7 +1378,7 @@ impl Tab {
                 Box::new(TerminalPane::new(
                     term_pid,
                     PaneGeom::default(), // this will be filled out later
-                    self.style,
+                    self.style.clone(),
                     next_terminal_position,
                     String::new(),
                     self.link_handler.clone(),
@@ -1416,7 +1416,7 @@ impl Tab {
                         .keys()
                         .copied()
                         .collect(),
-                    self.style,
+                    self.style.clone(),
                     invoked_with,
                     self.debug,
                     self.arrow_fonts,
@@ -1485,7 +1485,7 @@ impl Tab {
                 Box::new(TerminalPane::new(
                     term_pid,
                     PaneGeom::default(), // this will be filled out later
-                    self.style,
+                    self.style.clone(),
                     next_terminal_position,
                     String::new(),
                     self.link_handler.clone(),
@@ -1523,7 +1523,7 @@ impl Tab {
                         .keys()
                         .copied()
                         .collect(),
-                    self.style,
+                    self.style.clone(),
                     invoked_with,
                     self.debug,
                     self.arrow_fonts,
@@ -1582,7 +1582,7 @@ impl Tab {
                 Box::new(TerminalPane::new(
                     term_pid,
                     PaneGeom::default(), // this will be filled out later
-                    self.style,
+                    self.style.clone(),
                     next_terminal_position,
                     String::new(),
                     self.link_handler.clone(),
@@ -1620,7 +1620,7 @@ impl Tab {
                         .keys()
                         .copied()
                         .collect(),
-                    self.style,
+                    self.style.clone(),
                     invoked_with,
                     self.debug,
                     self.arrow_fonts,
@@ -1723,7 +1723,7 @@ impl Tab {
                 Box::new(TerminalPane::new(
                     term_pid,
                     PaneGeom::default(), // this will be filled out later
-                    self.style,
+                    self.style.clone(),
                     next_terminal_position,
                     String::new(),
                     self.link_handler.clone(),
@@ -1761,7 +1761,7 @@ impl Tab {
                         .keys()
                         .copied()
                         .collect(),
-                    self.style,
+                    self.style.clone(),
                     invoked_with,
                     self.debug,
                     self.arrow_fonts,
@@ -1932,7 +1932,7 @@ impl Tab {
                 let new_pane = TerminalPane::new(
                     new_pane_id,
                     PaneGeom::default(), // the initial size will be set later
-                    self.style,
+                    self.style.clone(),
                     next_terminal_position,
                     String::new(),
                     self.link_handler.clone(),
@@ -2009,7 +2009,7 @@ impl Tab {
                         .keys()
                         .copied()
                         .collect(),
-                    self.style,
+                    self.style.clone(),
                     run,
                     self.debug,
                     self.arrow_fonts,
@@ -2103,7 +2103,7 @@ impl Tab {
                 let new_terminal = TerminalPane::new(
                     term_pid,
                     PaneGeom::default(), // the initial size will be set later
-                    self.style,
+                    self.style.clone(),
                     next_terminal_position,
                     String::new(),
                     self.link_handler.clone(),
@@ -2165,7 +2165,7 @@ impl Tab {
                 let new_terminal = TerminalPane::new(
                     term_pid,
                     PaneGeom::default(), // the initial size will be set later
-                    self.style,
+                    self.style.clone(),
                     next_terminal_position,
                     String::new(),
                     self.link_handler.clone(),
@@ -5478,7 +5478,7 @@ impl Tab {
         let mut new_pane = TerminalPane::new(
             pid,
             PaneGeom::default(), // the initial size will be set later
-            self.style,
+            self.style.clone(),
             next_terminal_position,
             String::new(),
             self.link_handler.clone(),

@@ -9,7 +9,7 @@ use std::{
 
 use crate::data::Styling;
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
 pub struct UiConfig {
     pub pane_frames: FrameConfig,
 }
@@ -22,10 +22,11 @@ impl UiConfig {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
 pub struct FrameConfig {
     pub rounded_corners: bool,
     pub hide_session_name: bool,
+    pub tabline_prefix_text: Option<String>,
 }
 
 impl FrameConfig {
@@ -33,6 +34,9 @@ impl FrameConfig {
         let mut merged = self.clone();
         merged.rounded_corners = other.rounded_corners;
         merged.hide_session_name = other.hide_session_name;
+        if other.tabline_prefix_text.is_some() {
+            merged.tabline_prefix_text = other.tabline_prefix_text;
+        }
         merged
     }
 }

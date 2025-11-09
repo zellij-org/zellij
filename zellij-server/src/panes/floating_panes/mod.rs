@@ -439,7 +439,7 @@ impl FloatingPanes {
             let mut pane_contents_and_ui = PaneContentsAndUi::new(
                 pane,
                 output,
-                self.style,
+                self.style.clone(),
                 &active_panes,
                 multiple_users_exist_in_session,
                 Some(z_index + 1), // +1 because 0 is reserved for non-floating panes

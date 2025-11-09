@@ -17,6 +17,8 @@ mod terminal_bytes;
 mod thread_bus;
 mod ui;
 
+use global_async_runtime::get_tokio_runtime;
+
 pub use daemonize;
 
 use background_jobs::{background_jobs_main, BackgroundJob};
@@ -26,9 +28,11 @@ use pty_writer::{pty_writer_main, PtyWriteInstruction};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::{
     net::{IpAddr, Ipv4Addr},
-    path::PathBuf,
+    path::{Path, PathBuf},
+    process::Stdio,
     sync::{Arc, RwLock},
     thread,
+    time::Duration,
 };
 use zellij_utils::envs;
 use zellij_utils::pane_size::Size;
@@ -309,6 +313,75 @@ impl SessionConfiguration {
     }
 }
 
+// Executes a shell command with a 1 second timeout. Returns the trimmed stdout on success.
+// Note: Commands execute with the same permissions as Zellij. Use trusted config files only.
+fn execute_command(command_str: &str, shell: &Path) -> Result<Option<String>> {
+    use tokio::process::Command as TokioCommand;
+
+    let command_str = command_str.to_string();
+    let shell = shell.to_path_buf();
+
+    get_tokio_runtime().block_on(async {
+        let timeout = Duration::from_secs(1);
+
+        let result = tokio::time::timeout(
+            timeout,
+            TokioCommand::new(&shell)
+                .arg("-c")
+                .arg(&command_str)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .output(),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(output)) if output.status.success() => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let trimmed = stdout.trim();
+                if !trimmed.is_empty() {
+                    Ok(Some(trimmed.to_string()))
+                } else {
+                    Ok(None)
+                }
+            },
+            Ok(Ok(_)) => {
+                log::warn!("Command '{}' failed", command_str);
+                Ok(None)
+            },
+            Ok(Err(e)) => {
+                log::error!("Error executing command '{}': {}", command_str, e);
+                Ok(None)
+            },
+            Err(_) => {
+                log::error!("Command '{}' timed out after 1 second", command_str);
+                Ok(None)
+            },
+        }
+    })
+}
+
+// Processes tabline_prefix_text: if text matches $(command) pattern, executes the command,
+// otherwise returns the text as-is.
+fn process_tabline_prefix_text(text: Option<String>, shell: &Path) -> Result<Option<String>> {
+    match text {
+        Some(t) => {
+            let trimmed = t.trim();
+
+            // Check for $(command) syntax
+            if trimmed.starts_with("$(") && trimmed.ends_with(")") {
+                let command = &trimmed[2..trimmed.len() - 1];
+                execute_command(command, shell).context("failed to process tabline prefix command")
+            }
+            // Plain text, return as-is
+            else {
+                Ok(Some(t))
+            }
+        },
+        None => Ok(None),
+    }
+}
+
 pub(crate) struct SessionMetaData {
     pub senders: ThreadSenders,
     pub capabilities: PluginCapabilities,
@@ -321,6 +394,7 @@ pub(crate) struct SessionMetaData {
     // initialization because we don't want it to be overridden by
     // configuration changes, the only way it can be overwritten is by
     // explicit plugin action
+    cached_tabline_prefix: Option<String>,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
@@ -367,6 +441,31 @@ impl SessionMetaData {
                     ..Default::default()
                 })
             });
+
+            // Get the shell to use for command execution
+            let default_shell = get_default_shell();
+            let shell = new_config
+                .options
+                .default_shell
+                .as_ref()
+                .unwrap_or(&default_shell);
+
+            // Process tabline_prefix_text to execute commands if present
+            let processed_tabline_prefix_text = match process_tabline_prefix_text(
+                new_config.ui.pane_frames.tabline_prefix_text.clone(),
+                shell,
+            )
+            .context("failed to process tabline prefix text")
+            {
+                Ok(result) => result,
+                Err(err) => {
+                    Err::<(), _>(err).non_fatal();
+                    None
+                },
+            };
+
+            self.cached_tabline_prefix = processed_tabline_prefix_text.clone();
+
             self.senders
                 .send_to_screen(ScreenInstruction::Reconfigure {
                     client_id,
@@ -387,6 +486,7 @@ impl SessionMetaData {
                     auto_layout: new_config.options.auto_layout.unwrap_or(true),
                     rounded_corners: new_config.ui.pane_frames.rounded_corners,
                     hide_session_name: new_config.ui.pane_frames.hide_session_name,
+                    tabline_prefix_text: processed_tabline_prefix_text,
                     stacked_resize: new_config.options.stacked_resize.unwrap_or(true),
                     default_editor: new_config.options.scrollback_editor.clone(),
                     advanced_mouse_actions: new_config
@@ -712,6 +812,25 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     None => config.options.clone(),
                 };
 
+                // Get shell for command execution and process tabline_prefix_text
+                let default_shell = get_default_shell();
+                let shell = runtime_config_options
+                    .default_shell
+                    .as_ref()
+                    .unwrap_or(&default_shell);
+                let processed_tabline_prefix_text = match process_tabline_prefix_text(
+                    config.ui.pane_frames.tabline_prefix_text.clone(),
+                    shell,
+                )
+                .context("failed to process tabline prefix text")
+                {
+                    Ok(result) => result,
+                    Err(err) => {
+                        Err::<(), _>(err).non_fatal();
+                        None
+                    },
+                };
+
                 let client_attributes = ClientAttributes {
                     size: cli_assets.terminal_window_size,
                     style: Style {
@@ -720,6 +839,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .unwrap_or_else(|| default_palette().into()),
                         rounded_corners: config.ui.pane_frames.rounded_corners,
                         hide_session_name: config.ui.pane_frames.hide_session_name,
+                        tabline_prefix_text: processed_tabline_prefix_text,
                     },
                 };
 
@@ -864,6 +984,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     None => config.options.clone(),
                 };
 
+                let processed_tabline_prefix_text = session_data.cached_tabline_prefix.clone();
+
                 let client_attributes = ClientAttributes {
                     size: cli_assets.terminal_window_size,
                     style: Style {
@@ -872,6 +994,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .unwrap_or_else(|| default_palette().into()),
                         rounded_corners: config.ui.pane_frames.rounded_corners,
                         hide_session_name: config.ui.pane_frames.hide_session_name,
+                        tabline_prefix_text: processed_tabline_prefix_text,
                     },
                 };
 
@@ -1849,6 +1972,7 @@ fn init_session(
         },
         capabilities,
         default_shell,
+        cached_tabline_prefix: client_attributes.style.tabline_prefix_text.clone(),
         client_attributes,
         layout,
         session_configuration: Default::default(),

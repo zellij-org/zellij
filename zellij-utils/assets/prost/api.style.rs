@@ -10,6 +10,8 @@ pub struct Style {
     pub hide_session_name: bool,
     #[prost(message, optional, tag="4")]
     pub styling: ::core::option::Option<Styling>,
+    #[prost(string, optional, tag="5")]
+    pub tabline_prefix_text: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
