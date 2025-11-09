@@ -252,9 +252,19 @@ impl Pane for PluginPane {
         self.should_render.insert(client_id, true);
     }
     fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize)> {
+        let own_content_columns = self.get_content_columns();
+        let own_content_rows = self.get_content_rows();
         if let Some(coordinates) = client_id
             .and_then(|client_id| self.cursor_visibility.get(&client_id)) {
-                coordinates.map(|(x, y)| (x + 1, y + 1)) // these are 0 indexed
+                coordinates.and_then(|(x, y)| {
+                    // TODO: there's an off-by-1 error somewhere in the whole plugin to here
+                    // process
+                    if x >= own_content_columns || y >= own_content_rows {
+                        None
+                    } else {
+                        Some((x + 1, y + 1)) // these are 0 indexed
+                    }
+                })
         } else {
             None
         }

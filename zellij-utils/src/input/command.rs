@@ -30,6 +30,17 @@ pub struct OpenFilePayload {
     pub originating_plugin: Option<OriginatingPlugin>,
 }
 
+impl Default for OpenFilePayload {
+    fn default() -> Self {
+        OpenFilePayload {
+            path: PathBuf::new(),
+            line_number: None,
+            cwd: None,
+            originating_plugin: None,
+        }
+    }
+}
+
 impl OpenFilePayload {
     pub fn new(path: PathBuf, line_number: Option<usize>, cwd: Option<PathBuf>) -> Self {
         OpenFilePayload {

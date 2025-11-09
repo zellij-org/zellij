@@ -239,3 +239,9 @@ impl MouseEvent {
         event
     }
 }
+
+impl Default for MouseEvent {
+    fn default() -> Self {
+        MouseEvent::new()
+    }
+}

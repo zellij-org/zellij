@@ -610,6 +610,12 @@ pub enum Direction {
     Down,
 }
 
+impl Default for Direction {
+    fn default() -> Self {
+        Direction::Left
+    }
+}
+
 impl Direction {
     pub fn invert(&self) -> Direction {
         match *self {
@@ -661,6 +667,12 @@ impl FromStr for Direction {
 pub enum Resize {
     Increase,
     Decrease,
+}
+
+impl Default for Resize {
+    fn default() -> Self {
+        Resize::Increase
+    }
 }
 
 impl Resize {
@@ -2251,6 +2263,12 @@ pub struct NewPluginArgs {
 pub enum PaneId {
     Terminal(u32),
     Plugin(u32),
+}
+
+impl Default for PaneId {
+    fn default() -> Self {
+        PaneId::Terminal(0)
+    }
 }
 
 impl FromStr for PaneId {

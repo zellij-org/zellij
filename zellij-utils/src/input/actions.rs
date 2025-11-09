@@ -101,7 +101,8 @@ impl FromStr for SearchOption {
 // They might need to be adjusted in the default config
 // as well `../../assets/config/default.yaml`
 /// Actions that can be bound to keys.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, strum_macros::Display)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, strum_macros::Display, strum_macros::EnumString)]
+#[strum(ascii_case_insensitive)]
 pub enum Action {
     /// Quit Zellij.
     Quit,
@@ -421,6 +422,24 @@ pub enum Action {
     },
     TogglePaneInGroup,
     ToggleGroupMarking,
+}
+
+impl Default for Action {
+    fn default() -> Self {
+        Action::NoOp
+    }
+}
+
+impl Default for SearchDirection {
+    fn default() -> Self {
+        SearchDirection::Down
+    }
+}
+
+impl Default for SearchOption {
+    fn default() -> Self {
+        SearchOption::CaseSensitivity
+    }
 }
 
 impl Action {
