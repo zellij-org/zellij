@@ -835,6 +835,14 @@ pub enum CliAction {
         /// Change the working directory of the new tab
         #[clap(short, long, value_parser)]
         cwd: Option<PathBuf>,
+
+        /// Initial command to run in the new tab (space-delimited string)
+        #[clap(long, value_parser, conflicts_with("initial-plugin"), multiple_values(true))]
+        initial_command: Option<Vec<String>>,
+
+        /// Initial plugin to load in the new tab
+        #[clap(long, value_parser, conflicts_with("initial-command"))]
+        initial_plugin: Option<String>,
     },
     /// Move the focused tab in the specified direction. [right|left]
     MoveTab {

@@ -779,6 +779,7 @@ pub(crate) fn route_action(
             cwd,
             initial_panes,
         } => {
+            log::info!("route.rs, initial_panes: {:#?}", initial_panes);
             let shell = default_shell.clone();
             let swap_tiled_layouts =
                 swap_tiled_layouts.unwrap_or_else(|| default_layout.swap_tiled_layouts.clone());

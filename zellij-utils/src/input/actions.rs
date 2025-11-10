@@ -746,11 +746,56 @@ impl Action {
                 layout,
                 layout_dir,
                 cwd,
+                initial_command,
+                initial_plugin,
             } => {
                 let current_dir = get_current_dir();
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
-                    .or_else(|| Some(current_dir));
+                    .or_else(|| Some(current_dir.clone()));
+
+                // Parse initial_panes from initial_command or initial_plugin
+                let initial_panes = if let Some(plugin_url) = initial_plugin {
+                    let plugin = match RunPluginLocation::parse(&plugin_url, cwd.clone()) {
+                        Ok(location) => {
+                            RunPluginOrAlias::RunPlugin(RunPlugin {
+                                _allow_exec_host_cmd: false,
+                                location,
+                                configuration: Default::default(),
+                                initial_cwd: cwd.clone(),
+                            })
+                        },
+                        Err(_) => {
+                            let mut plugin_alias = PluginAlias::new(
+                                &plugin_url,
+                                &None,
+                                cwd.clone(),
+                            );
+                            plugin_alias.set_caller_cwd_if_not_set(Some(current_dir.clone()));
+                            RunPluginOrAlias::Alias(plugin_alias)
+                        },
+                    };
+                    Some(vec![crate::data::CommandOrPlugin::Plugin(plugin)])
+                } else if let Some(command_vec) = initial_command {
+                    if !command_vec.is_empty() {
+                        let mut command = command_vec.clone();
+                        let (command, args) = (PathBuf::from(command.remove(0)), command);
+                        let run_command_action = RunCommandAction {
+                            command,
+                            args,
+                            cwd: cwd.clone(),
+                            direction: None,
+                            hold_on_close: false,
+                            hold_on_start: false,
+                            ..Default::default()
+                        };
+                        Some(vec![crate::data::CommandOrPlugin::Command(run_command_action)])
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
                 if let Some(layout_path) = layout {
                     let layout_dir = layout_dir
                         .or_else(|| config.and_then(|c| c.options.layout_dir))
@@ -838,7 +883,7 @@ impl Action {
                                 tab_name: name,
                                 should_change_focus_to_new_tab,
                                 cwd: None, // the cwd is done through the layout
-                                initial_panes: None,
+                                initial_panes: initial_panes.clone(),
                             });
                         }
                         Ok(new_tab_actions)
@@ -855,7 +900,7 @@ impl Action {
                             tab_name: name,
                             should_change_focus_to_new_tab,
                             cwd: None, // the cwd is done through the layout
-                            initial_panes: None,
+                            initial_panes,
                         }])
                     }
                 } else {
@@ -868,7 +913,7 @@ impl Action {
                         tab_name: name,
                         should_change_focus_to_new_tab,
                         cwd,
-                        initial_panes: None,
+                        initial_panes,
                     }])
                 }
             },

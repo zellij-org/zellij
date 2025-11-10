@@ -1853,6 +1853,7 @@ Config {
                     tab_name: None,
                     should_change_focus_to_new_tab: true,
                     cwd: None,
+                    initial_panes: None,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -5584,6 +5585,7 @@ Config {
                     tab_name: None,
                     should_change_focus_to_new_tab: true,
                     cwd: None,
+                    initial_panes: None,
                 },
                 SwitchToMode {
                     input_mode: Normal,
