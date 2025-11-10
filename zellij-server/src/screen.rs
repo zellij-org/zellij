@@ -12,9 +12,9 @@ use crate::route::NotificationEnd;
 
 use log::{debug, warn};
 use zellij_utils::data::{
-    Direction, FloatingPaneCoordinates, KeyWithModifier, NewPanePlacement, PaneContents,
-    PaneManifest, PaneScrollbackResponse, PluginPermission, Resize, ResizeStrategy, SessionInfo,
-    Styling, WebSharing,
+    CommandOrPlugin, Direction, FloatingPaneCoordinates, KeyWithModifier, NewPanePlacement,
+    PaneContents, PaneManifest, PaneScrollbackResponse, PluginPermission, Resize, ResizeStrategy,
+    SessionInfo, Styling, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -236,6 +236,7 @@ pub enum ScreenInstruction {
         Vec<FloatingPaneLayout>,
         Option<String>,
         (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), // swap layouts
+        Option<Vec<CommandOrPlugin>>,                    // initial_panes
         bool,                                            // should_change_focus_to_new_tab
         (ClientId, bool),                                // bool -> is_web_client
         Option<NotificationEnd>,                         // completion signal
@@ -2668,6 +2669,7 @@ impl Screen {
                 Some(tiled_panes_layout),
                 floating_panes_layout,
                 tab_index,
+                None, // initial_panes
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
                 None,
@@ -2744,6 +2746,7 @@ impl Screen {
             Some(tiled_panes_layout),
             floating_panes_layout,
             tab_index,
+            None, // initial_panes
             should_change_focus_to_new_tab,
             (client_id, is_web_client),
             None,
@@ -4583,6 +4586,7 @@ pub(crate) fn screen_thread_main(
                 floating_panes_layout,
                 tab_name,
                 swap_layouts,
+                initial_panes,
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
                 completion_tx,
@@ -4609,6 +4613,7 @@ pub(crate) fn screen_thread_main(
                         layout,
                         floating_panes_layout,
                         tab_index,
+                        initial_panes,
                         should_change_focus_to_new_tab,
                         (client_id, is_web_client),
                         completion_tx,
@@ -4768,6 +4773,7 @@ pub(crate) fn screen_thread_main(
                                     None,
                                     vec![],
                                     tab_index,
+                                    None, // initial_panes
                                     should_change_focus_to_new_tab,
                                     (client_id, is_web_client),
                                     completion_tx,

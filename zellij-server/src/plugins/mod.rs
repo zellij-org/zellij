@@ -30,9 +30,9 @@ use wasm_bridge::WasmBridge;
 use async_std::{channel, future::timeout, task};
 use zellij_utils::{
     data::{
-        ClientInfo, Event, EventType, FloatingPaneCoordinates, InputMode, MessageToPlugin,
-        PermissionStatus, PermissionType, PipeMessage, PipeSource, PluginCapabilities,
-        WebServerStatus,
+        ClientInfo, CommandOrPlugin, Event, EventType, FloatingPaneCoordinates, InputMode,
+        MessageToPlugin, PermissionStatus, PermissionType, PipeMessage, PipeSource,
+        PluginCapabilities, WebServerStatus,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -88,10 +88,11 @@ pub enum PluginInstruction {
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
-        usize,                   // tab_index
-        bool,                    // should change focus to new tab
-        (ClientId, bool),        // bool -> is_web_client
-        Option<NotificationEnd>, // completion signal
+        usize,                        // tab_index
+        Option<Vec<CommandOrPlugin>>, // initial_panes
+        bool,                         // should change focus to new tab
+        (ClientId, bool),             // bool -> is_web_client
+        Option<NotificationEnd>,      // completion signal
     ),
     ApplyCachedEvents {
         plugin_ids: Vec<PluginId>,
@@ -465,6 +466,7 @@ pub(crate) fn plugin_thread_main(
                 mut tab_layout,
                 mut floating_panes_layout,
                 tab_index,
+                initial_panes,
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
                 completion_tx,
@@ -481,6 +483,22 @@ pub(crate) fn plugin_thread_main(
 
                 let mut plugin_ids: HashMap<RunPluginOrAlias, Vec<PluginId>> = HashMap::new();
                 tab_layout = tab_layout.or_else(|| Some(layout.new_tab().0));
+
+                // Match initial_panes plugins to empty slots in the layout
+                if let Some(ref initial_panes_vec) = initial_panes {
+                    if let Some(ref mut tiled_layout) = tab_layout {
+                        for initial_pane in initial_panes_vec.iter() {
+                            if let CommandOrPlugin::Plugin(run_plugin_or_alias) = initial_pane {
+                                if !tiled_layout.replace_next_empty_slot_with_run(Run::Plugin(run_plugin_or_alias.clone())) {
+                                    log::warn!("More initial_panes provided than empty slots available");
+                                    break;
+                                }
+                            }
+                            // Skip CommandOrPlugin::Command entries (handled by pty thread)
+                        }
+                    }
+                }
+
                 tab_layout.as_mut().map(|t| {
                     t.populate_plugin_aliases_in_layout(&plugin_aliases);
                     if let Some(cwd) = cwd.as_ref() {
@@ -493,7 +511,7 @@ pub(crate) fn plugin_thread_main(
                         .as_mut()
                         .map(|f| f.populate_run_plugin_if_needed(&plugin_aliases));
                 });
-                let mut extracted_run_instructions = tab_layout
+                let extracted_run_instructions = tab_layout
                     .clone()
                     .unwrap_or_else(|| layout.new_tab().0)
                     .extract_run_instructions();
@@ -508,8 +526,10 @@ pub(crate) fn plugin_thread_main(
                     .filter(|f| !f.already_running)
                     .map(|f| f.run.clone())
                     .collect();
-                extracted_run_instructions.append(&mut extracted_floating_plugins);
-                for run_instruction in extracted_run_instructions {
+                let mut all_run_instructions = extracted_run_instructions;
+                all_run_instructions.append(&mut extracted_floating_plugins);
+
+                for run_instruction in all_run_instructions {
                     if let Some(Run::Plugin(run_plugin_or_alias)) = run_instruction {
                         let run_plugin = run_plugin_or_alias.get_run_plugin();
                         let cwd = run_plugin_or_alias
@@ -537,6 +557,7 @@ pub(crate) fn plugin_thread_main(
                     floating_panes_layout,
                     tab_index,
                     plugin_ids,
+                    initial_panes,
                     should_change_focus_to_new_tab,
                     (client_id, is_web_client),
                     completion_tx,

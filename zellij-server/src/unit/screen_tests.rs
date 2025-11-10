@@ -402,6 +402,7 @@ impl MockScreen {
             initial_floating_panes_layout.clone(),
             tab_name,
             (vec![], vec![]), // swap layouts
+            None,             // initial_panes
             should_change_focus_to_new_tab,
             (self.main_client_id, false),
             None,
@@ -492,6 +493,7 @@ impl MockScreen {
             initial_floating_panes_layout.clone(),
             tab_name,
             (vec![], vec![]), // swap layouts
+            None,             // initial_panes
             should_change_focus_to_new_tab,
             (self.main_client_id, false),
             None,
@@ -528,6 +530,7 @@ impl MockScreen {
             vec![], // floating_panes_layout
             tab_name,
             (vec![], vec![]), // swap layouts
+            None,             // initial_panes
             should_change_focus_to_new_tab,
             (self.main_client_id, false),
             None,

@@ -17,7 +17,10 @@ use nix::unistd::Pid;
 use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::{
-    data::{Direction, Event, FloatingPaneCoordinates, NewPanePlacement, OriginatingPlugin},
+    data::{
+        CommandOrPlugin, Direction, Event, FloatingPaneCoordinates, NewPanePlacement,
+        OriginatingPlugin,
+    },
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
@@ -66,6 +69,7 @@ pub enum PtyInstruction {
         Vec<FloatingPaneLayout>,
         usize,                               // tab_index
         HashMap<RunPluginOrAlias, Vec<u32>>, // plugin_ids
+        Option<Vec<CommandOrPlugin>>,        // initial_panes
         bool,                                // should change focus to new tab
         (ClientId, bool),                    // bool -> is_web_client
         Option<NotificationEnd>,             // completion signal
@@ -431,6 +435,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 floating_panes_layout,
                 tab_index,
                 plugin_ids,
+                initial_panes,
                 should_change_focus_to_new_tab,
                 client_id_and_is_web_client,
                 completion_tx,
@@ -448,6 +453,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     floating_panes_layout,
                     terminal_action.clone(),
                     plugin_ids,
+                    initial_panes,
                     tab_index,
                     should_change_focus_to_new_tab,
                     client_id_and_is_web_client,
@@ -962,6 +968,7 @@ impl Pty {
         floating_panes_layout: Vec<FloatingPaneLayout>,
         default_shell: Option<TerminalAction>,
         plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
+        initial_panes: Option<Vec<CommandOrPlugin>>,
         tab_index: usize,
         should_change_focus_to_new_tab: bool,
         client_id_and_is_web_client: (ClientId, bool),
@@ -973,6 +980,22 @@ impl Pty {
             default_shell.unwrap_or_else(|| self.get_default_terminal(cwd, None));
         let (client_id, is_web_client) = client_id_and_is_web_client;
         self.fill_cwd(&mut default_shell, client_id);
+
+        // Match initial_panes commands to empty slots in the layout
+        let mut layout = layout;
+        if let Some(ref initial_panes_vec) = initial_panes {
+            for initial_pane in initial_panes_vec.iter() {
+                if let CommandOrPlugin::Command(run_command_action) = initial_pane {
+                    let run_command: RunCommand = run_command_action.clone().into();
+                    if !layout.replace_next_empty_slot_with_run(Run::Command(run_command)) {
+                        log::warn!("More initial_panes provided than empty slots available");
+                        break;
+                    }
+                }
+                // Skip CommandOrPlugin::Plugin entries (already handled by plugin thread)
+            }
+        }
+
         let extracted_run_instructions = layout.extract_run_instructions();
         let extracted_floating_run_instructions = floating_panes_layout
             .iter()

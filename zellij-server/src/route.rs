@@ -795,6 +795,7 @@ pub(crate) fn route_action(
                     floating_panes_layout,
                     tab_name,
                     (swap_tiled_layouts, swap_floating_layouts),
+                    initial_panes,
                     should_change_focus_to_new_tab,
                     (client_id, is_web_client),
                     Some(NotificationEnd::new(completion_tx)),

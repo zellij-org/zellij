@@ -86,6 +86,7 @@ NewTab(
     ),
     [],
     1,
+    None,
     true,
     (
         10,

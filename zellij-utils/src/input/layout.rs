@@ -995,6 +995,44 @@ impl TiledPaneLayout {
         }
         run_instructions
     }
+    pub fn replace_next_empty_slot_with_run(&mut self, run_to_insert: Run) -> bool {
+        // Replaces the first empty slot (None or Run::Cwd) with the given Run instruction.
+        // Returns true if a replacement was made, false if no empty slot was found.
+        // Traversal order matches extract_run_instructions (breadth-first).
+
+        if self.children.is_empty() {
+            // This is a leaf node - check if it's an empty slot
+            match &self.run {
+                None | Some(Run::Cwd(_)) => {
+                    self.run = Some(run_to_insert);
+                    return true;
+                },
+                _ => return false,
+            }
+        }
+
+        // Check first child of each child (breadth-first first level)
+        for child in self.children.iter_mut() {
+            if child.children.is_empty() {
+                match &child.run {
+                    None | Some(Run::Cwd(_)) => {
+                        child.run = Some(run_to_insert);
+                        return true;
+                    },
+                    _ => {},
+                }
+            }
+        }
+
+        // Recursively check deeper levels (breadth-first continuation)
+        for child in self.children.iter_mut() {
+            if child.replace_next_empty_slot_with_run(run_to_insert.clone()) {
+                return true;
+            }
+        }
+
+        false
+    }
     pub fn ignore_run_instruction(&mut self, run_instruction: Option<Run>) {
         self.run_instructions_to_ignore.push(run_instruction);
     }
