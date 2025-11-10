@@ -748,6 +748,8 @@ impl Action {
                 cwd,
                 initial_command,
                 initial_plugin,
+                close_on_exit,
+                start_suspended,
             } => {
                 let current_dir = get_current_dir();
                 let cwd = cwd
@@ -780,13 +782,15 @@ impl Action {
                     if !command_vec.is_empty() {
                         let mut command = command_vec.clone();
                         let (command, args) = (PathBuf::from(command.remove(0)), command);
+                        let hold_on_close = !close_on_exit;
+                        let hold_on_start = start_suspended;
                         let run_command_action = RunCommandAction {
                             command,
                             args,
                             cwd: cwd.clone(),
                             direction: None,
-                            hold_on_close: false,
-                            hold_on_start: false,
+                            hold_on_close,
+                            hold_on_start,
                             ..Default::default()
                         };
                         Some(vec![crate::data::CommandOrPlugin::Command(run_command_action)])

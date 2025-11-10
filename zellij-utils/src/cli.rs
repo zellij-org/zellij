@@ -843,6 +843,26 @@ pub enum CliAction {
         /// Initial plugin to load in the new tab
         #[clap(long, value_parser, conflicts_with("initial-command"))]
         initial_plugin: Option<String>,
+
+        /// Close the pane immediately when its command exits
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("initial-command")
+        )]
+        close_on_exit: bool,
+
+        /// Start the command suspended, only running it after you first press ENTER
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("initial-command")
+        )]
+        start_suspended: bool,
     },
     /// Move the focused tab in the specified direction. [right|left]
     MoveTab {
