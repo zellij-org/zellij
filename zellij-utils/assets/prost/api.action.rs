@@ -1,9 +1,264 @@
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PercentOrFixed {
+    #[prost(oneof="percent_or_fixed::SizeType", tags="1, 2")]
+    pub size_type: ::core::option::Option<percent_or_fixed::SizeType>,
+}
+/// Nested message and enum types in `PercentOrFixed`.
+pub mod percent_or_fixed {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum SizeType {
+        #[prost(uint32, tag="1")]
+        Percent(u32),
+        #[prost(uint32, tag="2")]
+        Fixed(u32),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LayoutConstraintWithValue {
+    #[prost(enumeration="LayoutConstraint", tag="1")]
+    pub constraint_type: i32,
+    #[prost(uint32, optional, tag="2")]
+    pub value: ::core::option::Option<u32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginUserConfiguration {
+    #[prost(map="string, string", tag="1")]
+    pub configuration: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RunPluginLocationData {
+    #[prost(enumeration="RunPluginLocation", tag="1")]
+    pub location_type: i32,
+    #[prost(oneof="run_plugin_location_data::LocationData", tags="2, 3, 4")]
+    pub location_data: ::core::option::Option<run_plugin_location_data::LocationData>,
+}
+/// Nested message and enum types in `RunPluginLocationData`.
+pub mod run_plugin_location_data {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum LocationData {
+        #[prost(string, tag="2")]
+        FilePath(::prost::alloc::string::String),
+        #[prost(message, tag="3")]
+        ZellijTag(super::PluginTag),
+        #[prost(string, tag="4")]
+        RemoteUrl(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginTag {
+    #[prost(string, tag="1")]
+    pub tag: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RunPlugin {
+    #[prost(bool, tag="1")]
+    pub allow_exec_host_cmd: bool,
+    #[prost(message, optional, tag="2")]
+    pub location: ::core::option::Option<RunPluginLocationData>,
+    #[prost(message, optional, tag="3")]
+    pub configuration: ::core::option::Option<PluginUserConfiguration>,
+    #[prost(string, optional, tag="4")]
+    pub initial_cwd: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginAlias {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub configuration: ::core::option::Option<PluginUserConfiguration>,
+    #[prost(string, optional, tag="3")]
+    pub initial_cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag="4")]
+    pub run_plugin: ::core::option::Option<RunPlugin>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RunPluginOrAlias {
+    #[prost(oneof="run_plugin_or_alias::PluginType", tags="1, 2")]
+    pub plugin_type: ::core::option::Option<run_plugin_or_alias::PluginType>,
+}
+/// Nested message and enum types in `RunPluginOrAlias`.
+pub mod run_plugin_or_alias {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum PluginType {
+        #[prost(message, tag="1")]
+        Plugin(super::RunPlugin),
+        #[prost(message, tag="2")]
+        Alias(super::PluginAlias),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RunEditFileAction {
+    #[prost(string, tag="1")]
+    pub file_path: ::prost::alloc::string::String,
+    #[prost(uint32, optional, tag="2")]
+    pub line_number: ::core::option::Option<u32>,
+    #[prost(string, optional, tag="3")]
+    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneRun {
+    #[prost(oneof="pane_run::RunType", tags="1, 2, 3, 4")]
+    pub run_type: ::core::option::Option<pane_run::RunType>,
+}
+/// Nested message and enum types in `PaneRun`.
+pub mod pane_run {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum RunType {
+        #[prost(message, tag="1")]
+        Command(super::RunCommandAction),
+        #[prost(message, tag="2")]
+        Plugin(super::RunPluginOrAlias),
+        #[prost(message, tag="3")]
+        EditFile(super::RunEditFileAction),
+        #[prost(string, tag="4")]
+        Cwd(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TiledPaneLayout {
+    #[prost(enumeration="SplitDirection", tag="1")]
+    pub children_split_direction: i32,
+    #[prost(string, optional, tag="2")]
+    pub name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag="3")]
+    pub children: ::prost::alloc::vec::Vec<TiledPaneLayout>,
+    #[prost(message, optional, tag="4")]
+    pub split_size: ::core::option::Option<SplitSize>,
+    #[prost(message, optional, tag="5")]
+    pub run: ::core::option::Option<PaneRun>,
+    #[prost(bool, tag="6")]
+    pub borderless: bool,
+    #[prost(string, optional, tag="7")]
+    pub focus: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="8")]
+    pub exclude_from_sync: ::core::option::Option<bool>,
+    #[prost(bool, tag="9")]
+    pub children_are_stacked: bool,
+    #[prost(uint32, optional, tag="10")]
+    pub external_children_index: ::core::option::Option<u32>,
+    #[prost(bool, tag="11")]
+    pub is_expanded_in_stack: bool,
+    #[prost(bool, tag="12")]
+    pub hide_floating_panes: bool,
+    #[prost(string, optional, tag="13")]
+    pub pane_initial_contents: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FloatingPaneLayout {
+    #[prost(string, optional, tag="1")]
+    pub name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag="2")]
+    pub height: ::core::option::Option<PercentOrFixed>,
+    #[prost(message, optional, tag="3")]
+    pub width: ::core::option::Option<PercentOrFixed>,
+    #[prost(message, optional, tag="4")]
+    pub x: ::core::option::Option<PercentOrFixed>,
+    #[prost(message, optional, tag="5")]
+    pub y: ::core::option::Option<PercentOrFixed>,
+    #[prost(bool, optional, tag="6")]
+    pub pinned: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="7")]
+    pub run: ::core::option::Option<PaneRun>,
+    #[prost(bool, optional, tag="8")]
+    pub focus: ::core::option::Option<bool>,
+    #[prost(bool, tag="9")]
+    pub already_running: bool,
+    #[prost(string, optional, tag="10")]
+    pub pane_initial_contents: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint32, optional, tag="11")]
+    pub logical_position: ::core::option::Option<u32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SwapTiledLayout {
+    #[prost(message, repeated, tag="1")]
+    pub constraint_map: ::prost::alloc::vec::Vec<LayoutConstraintTiledPair>,
+    #[prost(string, optional, tag="2")]
+    pub name: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SwapFloatingLayout {
+    #[prost(message, repeated, tag="1")]
+    pub constraint_map: ::prost::alloc::vec::Vec<LayoutConstraintFloatingPair>,
+    #[prost(string, optional, tag="2")]
+    pub name: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LayoutConstraintTiledPair {
+    #[prost(message, optional, tag="1")]
+    pub constraint: ::core::option::Option<LayoutConstraintWithValue>,
+    #[prost(message, optional, tag="2")]
+    pub layout: ::core::option::Option<TiledPaneLayout>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LayoutConstraintFloatingPair {
+    #[prost(message, optional, tag="1")]
+    pub constraint: ::core::option::Option<LayoutConstraintWithValue>,
+    #[prost(message, repeated, tag="2")]
+    pub layouts: ::prost::alloc::vec::Vec<FloatingPaneLayout>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandOrPlugin {
+    #[prost(oneof="command_or_plugin::CommandOrPluginType", tags="1, 2")]
+    pub command_or_plugin_type: ::core::option::Option<command_or_plugin::CommandOrPluginType>,
+}
+/// Nested message and enum types in `CommandOrPlugin`.
+pub mod command_or_plugin {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum CommandOrPluginType {
+        #[prost(message, tag="1")]
+        Command(super::RunCommandAction),
+        #[prost(message, tag="2")]
+        Plugin(super::RunPluginOrAlias),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NewTabPayload {
+    #[prost(message, optional, tag="1")]
+    pub tiled_layout: ::core::option::Option<TiledPaneLayout>,
+    #[prost(message, repeated, tag="2")]
+    pub floating_layouts: ::prost::alloc::vec::Vec<FloatingPaneLayout>,
+    #[prost(message, repeated, tag="3")]
+    pub swap_tiled_layouts: ::prost::alloc::vec::Vec<SwapTiledLayout>,
+    #[prost(message, repeated, tag="4")]
+    pub swap_floating_layouts: ::prost::alloc::vec::Vec<SwapFloatingLayout>,
+    #[prost(string, optional, tag="5")]
+    pub tab_name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="6")]
+    pub should_change_focus_to_new_tab: bool,
+    #[prost(string, optional, tag="7")]
+    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag="8")]
+    pub initial_panes: ::prost::alloc::vec::Vec<CommandOrPlugin>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Action {
     #[prost(enumeration="ActionName", tag="1")]
     pub name: i32,
-    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50")]
+    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51")]
     pub optional_payload: ::core::option::Option<action::OptionalPayload>,
 }
 /// Nested message and enum types in `Action`.
@@ -103,6 +358,8 @@ pub mod action {
         MouseEventPayload(super::MouseEventPayload),
         #[prost(message, tag="50")]
         NewBlockingPanePayload(super::NewBlockingPanePayload),
+        #[prost(message, tag="51")]
+        NewTabPayload(super::NewTabPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -436,6 +693,104 @@ pub struct KeyWithModifier {
     /// Only set when bare_key is CHAR
     #[prost(string, optional, tag="3")]
     pub character: ::core::option::Option<::prost::alloc::string::String>,
+}
+// Layout and related types
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum SplitDirection {
+    Unspecified = 0,
+    Horizontal = 1,
+    Vertical = 2,
+}
+impl SplitDirection {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            SplitDirection::Unspecified => "SPLIT_DIRECTION_UNSPECIFIED",
+            SplitDirection::Horizontal => "SPLIT_DIRECTION_HORIZONTAL",
+            SplitDirection::Vertical => "SPLIT_DIRECTION_VERTICAL",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "SPLIT_DIRECTION_UNSPECIFIED" => Some(Self::Unspecified),
+            "SPLIT_DIRECTION_HORIZONTAL" => Some(Self::Horizontal),
+            "SPLIT_DIRECTION_VERTICAL" => Some(Self::Vertical),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum LayoutConstraint {
+    Unspecified = 0,
+    MaxPanes = 1,
+    MinPanes = 2,
+    ExactPanes = 3,
+    NoConstraint = 4,
+}
+impl LayoutConstraint {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            LayoutConstraint::Unspecified => "LAYOUT_CONSTRAINT_UNSPECIFIED",
+            LayoutConstraint::MaxPanes => "LAYOUT_CONSTRAINT_MAX_PANES",
+            LayoutConstraint::MinPanes => "LAYOUT_CONSTRAINT_MIN_PANES",
+            LayoutConstraint::ExactPanes => "LAYOUT_CONSTRAINT_EXACT_PANES",
+            LayoutConstraint::NoConstraint => "LAYOUT_CONSTRAINT_NO_CONSTRAINT",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "LAYOUT_CONSTRAINT_UNSPECIFIED" => Some(Self::Unspecified),
+            "LAYOUT_CONSTRAINT_MAX_PANES" => Some(Self::MaxPanes),
+            "LAYOUT_CONSTRAINT_MIN_PANES" => Some(Self::MinPanes),
+            "LAYOUT_CONSTRAINT_EXACT_PANES" => Some(Self::ExactPanes),
+            "LAYOUT_CONSTRAINT_NO_CONSTRAINT" => Some(Self::NoConstraint),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum RunPluginLocation {
+    Unspecified = 0,
+    File = 1,
+    Zellij = 2,
+    Remote = 3,
+}
+impl RunPluginLocation {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            RunPluginLocation::Unspecified => "RUN_PLUGIN_LOCATION_UNSPECIFIED",
+            RunPluginLocation::File => "RUN_PLUGIN_LOCATION_FILE",
+            RunPluginLocation::Zellij => "RUN_PLUGIN_LOCATION_ZELLIJ",
+            RunPluginLocation::Remote => "RUN_PLUGIN_LOCATION_REMOTE",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "RUN_PLUGIN_LOCATION_UNSPECIFIED" => Some(Self::Unspecified),
+            "RUN_PLUGIN_LOCATION_FILE" => Some(Self::File),
+            "RUN_PLUGIN_LOCATION_ZELLIJ" => Some(Self::Zellij),
+            "RUN_PLUGIN_LOCATION_REMOTE" => Some(Self::Remote),
+            _ => None,
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

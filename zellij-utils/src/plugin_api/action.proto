@@ -5,6 +5,162 @@ import "resize.proto";
 
 package api.action;
 
+// Layout and related types
+
+enum SplitDirection {
+  SPLIT_DIRECTION_UNSPECIFIED = 0;
+  SPLIT_DIRECTION_HORIZONTAL = 1;
+  SPLIT_DIRECTION_VERTICAL = 2;
+}
+
+message PercentOrFixed {
+  oneof size_type {
+    uint32 percent = 1;
+    uint32 fixed = 2;
+  }
+}
+
+enum LayoutConstraint {
+  LAYOUT_CONSTRAINT_UNSPECIFIED = 0;
+  LAYOUT_CONSTRAINT_MAX_PANES = 1;
+  LAYOUT_CONSTRAINT_MIN_PANES = 2;
+  LAYOUT_CONSTRAINT_EXACT_PANES = 3;
+  LAYOUT_CONSTRAINT_NO_CONSTRAINT = 4;
+}
+
+message LayoutConstraintWithValue {
+  LayoutConstraint constraint_type = 1;
+  optional uint32 value = 2;
+}
+
+message PluginUserConfiguration {
+  map<string, string> configuration = 1;
+}
+
+enum RunPluginLocation {
+  RUN_PLUGIN_LOCATION_UNSPECIFIED = 0;
+  RUN_PLUGIN_LOCATION_FILE = 1;
+  RUN_PLUGIN_LOCATION_ZELLIJ = 2;
+  RUN_PLUGIN_LOCATION_REMOTE = 3;
+}
+
+message RunPluginLocationData {
+  RunPluginLocation location_type = 1;
+  oneof location_data {
+    string file_path = 2;
+    PluginTag zellij_tag = 3;
+    string remote_url = 4;
+  }
+}
+
+message PluginTag {
+  string tag = 1;
+}
+
+message RunPlugin {
+  bool _allow_exec_host_cmd = 1;
+  RunPluginLocationData location = 2;
+  PluginUserConfiguration configuration = 3;
+  optional string initial_cwd = 4;
+}
+
+message PluginAlias {
+  string name = 1;
+  optional PluginUserConfiguration configuration = 2;
+  optional string initial_cwd = 3;
+  optional RunPlugin run_plugin = 4;
+}
+
+message RunPluginOrAlias {
+  oneof plugin_type {
+    RunPlugin plugin = 1;
+    PluginAlias alias = 2;
+  }
+}
+
+message RunEditFileAction {
+  string file_path = 1;
+  optional uint32 line_number = 2;
+  optional string cwd = 3;
+}
+
+message PaneRun {
+  oneof run_type {
+    RunCommandAction command = 1;
+    RunPluginOrAlias plugin = 2;
+    RunEditFileAction edit_file = 3;
+    string cwd = 4;
+  }
+}
+
+message TiledPaneLayout {
+  SplitDirection children_split_direction = 1;
+  optional string name = 2;
+  repeated TiledPaneLayout children = 3;
+  optional SplitSize split_size = 4;
+  optional PaneRun run = 5;
+  bool borderless = 6;
+  optional string focus = 7;
+  optional bool exclude_from_sync = 8;
+  bool children_are_stacked = 9;
+  optional uint32 external_children_index = 10;
+  bool is_expanded_in_stack = 11;
+  bool hide_floating_panes = 12;
+  optional string pane_initial_contents = 13;
+}
+
+message FloatingPaneLayout {
+  optional string name = 1;
+  optional PercentOrFixed height = 2;
+  optional PercentOrFixed width = 3;
+  optional PercentOrFixed x = 4;
+  optional PercentOrFixed y = 5;
+  optional bool pinned = 6;
+  optional PaneRun run = 7;
+  optional bool focus = 8;
+  bool already_running = 9;
+  optional string pane_initial_contents = 10;
+  optional uint32 logical_position = 11;
+}
+
+message SwapTiledLayout {
+  repeated LayoutConstraintTiledPair constraint_map = 1;
+  optional string name = 2;
+}
+
+message SwapFloatingLayout {
+  repeated LayoutConstraintFloatingPair constraint_map = 1;
+  optional string name = 2;
+}
+
+message LayoutConstraintTiledPair {
+  LayoutConstraintWithValue constraint = 1;
+  TiledPaneLayout layout = 2;
+}
+
+message LayoutConstraintFloatingPair {
+  LayoutConstraintWithValue constraint = 1;
+  repeated FloatingPaneLayout layouts = 2;
+}
+
+message CommandOrPlugin {
+  oneof command_or_plugin_type {
+    RunCommandAction command = 1;
+    RunPluginOrAlias plugin = 2;
+  }
+}
+
+message NewTabPayload {
+  optional TiledPaneLayout tiled_layout = 1;
+  repeated FloatingPaneLayout floating_layouts = 2;
+  repeated SwapTiledLayout swap_tiled_layouts = 3;
+  repeated SwapFloatingLayout swap_floating_layouts = 4;
+  optional string tab_name = 5;
+  bool should_change_focus_to_new_tab = 6;
+  optional string cwd = 7;
+  repeated CommandOrPlugin initial_panes = 8;
+}
+
 message Action {
   ActionName name = 1;
   oneof optional_payload {
@@ -54,6 +210,7 @@ message Action {
     MoveTabDirection move_tab_payload = 48;
     MouseEventPayload mouse_event_payload = 49;
     NewBlockingPanePayload new_blocking_pane_payload = 50;
+    NewTabPayload new_tab_payload = 51;
   }
 }
 
