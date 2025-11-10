@@ -777,6 +777,7 @@ pub(crate) fn route_action(
             tab_name,
             should_change_focus_to_new_tab,
             cwd,
+            initial_panes,
         } => {
             let shell = default_shell.clone();
             let swap_tiled_layouts =

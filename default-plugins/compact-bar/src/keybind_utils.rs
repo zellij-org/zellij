@@ -481,7 +481,8 @@ impl KeybindProcessor {
                                 swap_floating_layouts: None,
                                 tab_name: None,
                                 should_change_focus_to_new_tab: true,
-                                cwd: None
+                                cwd: None,
+                                initial_panes: _,
                             }
                         )
                     },

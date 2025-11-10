@@ -248,6 +248,7 @@ pub enum Action {
         tab_name: Option<String>,
         should_change_focus_to_new_tab: bool,
         cwd: Option<PathBuf>,
+        initial_panes: Option<Vec<crate::data::CommandOrPlugin>>,
     },
     /// Do nothing.
     NoOp,
@@ -837,6 +838,7 @@ impl Action {
                                 tab_name: name,
                                 should_change_focus_to_new_tab,
                                 cwd: None, // the cwd is done through the layout
+                                initial_panes: None,
                             });
                         }
                         Ok(new_tab_actions)
@@ -853,6 +855,7 @@ impl Action {
                             tab_name: name,
                             should_change_focus_to_new_tab,
                             cwd: None, // the cwd is done through the layout
+                            initial_panes: None,
                         }])
                     }
                 } else {
@@ -865,6 +868,7 @@ impl Action {
                         tab_name: name,
                         should_change_focus_to_new_tab,
                         cwd,
+                        initial_panes: None,
                     }])
                 }
             },

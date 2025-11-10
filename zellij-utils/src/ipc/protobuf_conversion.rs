@@ -940,6 +940,7 @@ impl From<crate::input::actions::Action>
                 tab_name,
                 should_change_focus_to_new_tab,
                 cwd,
+                initial_panes,
             } => ActionType::NewTab(NewTabAction {
                 tiled_layout: tiled_layout.map(|l| l.into()),
                 floating_layouts: floating_layouts.into_iter().map(|l| l.into()).collect(),
@@ -952,6 +953,9 @@ impl From<crate::input::actions::Action>
                 tab_name,
                 should_change_focus_to_new_tab,
                 cwd: cwd.map(|p| p.to_string_lossy().to_string()),
+                initial_panes: initial_panes
+                    .map(|panes| panes.into_iter().map(|p| p.into()).collect())
+                    .unwrap_or_default(),
             }),
             crate::input::actions::Action::NoOp => ActionType::NoOp(NoOpAction {}),
             crate::input::actions::Action::GoToNextTab => {
@@ -1493,6 +1497,17 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 tab_name: new_tab_action.tab_name,
                 should_change_focus_to_new_tab: new_tab_action.should_change_focus_to_new_tab,
                 cwd: new_tab_action.cwd.map(PathBuf::from),
+                initial_panes: if new_tab_action.initial_panes.is_empty() {
+                    None
+                } else {
+                    Some(
+                        new_tab_action
+                            .initial_panes
+                            .into_iter()
+                            .map(|p| p.try_into())
+                            .collect::<Result<Vec<_>>>()?,
+                    )
+                },
             }),
             ActionType::NoOp(_) => Ok(crate::input::actions::Action::NoOp),
             ActionType::GoToNextTab(_) => Ok(crate::input::actions::Action::GoToNextTab),
@@ -2755,6 +2770,47 @@ impl From<crate::input::layout::RunPluginOrAlias>
             crate::input::layout::RunPluginOrAlias::Alias(alias) => Self {
                 plugin_type: Some(PluginType::Alias(alias.into())),
             },
+        }
+    }
+}
+
+// CommandOrPlugin conversion
+impl From<crate::data::CommandOrPlugin>
+    for crate::client_server_contract::client_server_contract::CommandOrPlugin
+{
+    fn from(cmd_or_plugin: crate::data::CommandOrPlugin) -> Self {
+        use crate::client_server_contract::client_server_contract::command_or_plugin::CommandOrPluginType;
+        match cmd_or_plugin {
+            crate::data::CommandOrPlugin::Command(cmd) => Self {
+                command_or_plugin_type: Some(CommandOrPluginType::Command(cmd.into())),
+            },
+            crate::data::CommandOrPlugin::Plugin(plugin) => Self {
+                command_or_plugin_type: Some(CommandOrPluginType::Plugin(plugin.into())),
+            },
+        }
+    }
+}
+
+impl TryFrom<crate::client_server_contract::client_server_contract::CommandOrPlugin>
+    for crate::data::CommandOrPlugin
+{
+    type Error = anyhow::Error;
+
+    fn try_from(
+        proto: crate::client_server_contract::client_server_contract::CommandOrPlugin,
+    ) -> Result<Self> {
+        use crate::client_server_contract::client_server_contract::command_or_plugin::CommandOrPluginType;
+
+        let cmd_or_plugin_type = proto
+            .command_or_plugin_type
+            .ok_or_else(|| anyhow!("CommandOrPlugin missing command_or_plugin_type"))?;
+        match cmd_or_plugin_type {
+            CommandOrPluginType::Command(cmd) => Ok(crate::data::CommandOrPlugin::Command(
+                cmd.try_into()?,
+            )),
+            CommandOrPluginType::Plugin(plugin) => Ok(crate::data::CommandOrPlugin::Plugin(
+                plugin.try_into()?,
+            )),
         }
     }
 }

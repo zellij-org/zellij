@@ -666,6 +666,8 @@ pub struct NewTabAction {
     pub should_change_focus_to_new_tab: bool,
     #[prost(string, optional, tag="7")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag="8")]
+    pub initial_panes: ::prost::alloc::vec::Vec<CommandOrPlugin>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1253,6 +1255,23 @@ pub struct PluginAlias {
     pub initial_cwd: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, optional, tag="4")]
     pub run_plugin: ::core::option::Option<RunPlugin>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandOrPlugin {
+    #[prost(oneof="command_or_plugin::CommandOrPluginType", tags="1, 2")]
+    pub command_or_plugin_type: ::core::option::Option<command_or_plugin::CommandOrPluginType>,
+}
+/// Nested message and enum types in `CommandOrPlugin`.
+pub mod command_or_plugin {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum CommandOrPluginType {
+        #[prost(message, tag="1")]
+        Command(super::RunCommandAction),
+        #[prost(message, tag="2")]
+        Plugin(super::RunPluginOrAlias),
+    }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

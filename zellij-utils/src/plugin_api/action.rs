@@ -358,6 +358,7 @@ impl TryFrom<ProtobufAction> for Action {
                             tab_name: None,
                             should_change_focus_to_new_tab: true,
                             cwd: None,
+                            initial_panes: None,
                         })
                     },
                 }
@@ -1111,6 +1112,7 @@ impl TryFrom<Action> for ProtobufAction {
                 tab_name: _,
                 should_change_focus_to_new_tab: _,
                 cwd: _,
+                initial_panes: _,
             } => {
                 // we do not serialize the various newtab payloads
                 Ok(ProtobufAction {

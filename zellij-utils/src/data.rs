@@ -1,8 +1,8 @@
 use crate::home::default_layout_dir;
-use crate::input::actions::Action;
+use crate::input::actions::{Action, RunCommandAction};
 use crate::input::config::ConversionError;
 use crate::input::keybinds::Keybinds;
-use crate::input::layout::{RunPlugin, SplitSize};
+use crate::input::layout::{RunPlugin, RunPluginOrAlias, SplitSize};
 use crate::pane_size::PaneGeom;
 use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
@@ -45,6 +45,12 @@ impl UnblockCondition {
             UnblockCondition::OnAnyExit => true,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CommandOrPlugin {
+    Command(RunCommandAction),
+    Plugin(RunPluginOrAlias),
 }
 
 pub fn client_id_to_colors(

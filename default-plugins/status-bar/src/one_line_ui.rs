@@ -1406,7 +1406,16 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         };
 
         vec![
-        (s("New"), s("New"), single_action_key(&km, &[A::NewTab{tiled_layout: None, floating_layouts: vec![], swap_tiled_layouts: None, swap_floating_layouts: None, tab_name: None, should_change_focus_to_new_tab: true, cwd: None}, TO_NORMAL])),
+        (s("New"), s("New"), single_action_key(&km, &[A::NewTab{
+            tiled_layout: None,
+            floating_layouts: vec![],
+            swap_tiled_layouts: None,
+            swap_floating_layouts: None,
+            tab_name: None,
+            should_change_focus_to_new_tab: true,
+            cwd: None,
+            initial_panes: None,
+        }, TO_NORMAL])),
         (s("Change focus"), s("Move"), focus_keys),
         (s("Close"), s("Close"), single_action_key(&km, &[A::CloseTab, TO_NORMAL])),
         (s("Rename"), s("Rename"),
@@ -1491,7 +1500,16 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Split down"), s("Down"), action_key(&km, &[A::NewPane{direction: Some(Dir::Down), pane_name: None, start_suppressed: false}, TO_NORMAL])),
         (s("Split right"), s("Right"), action_key(&km, &[A::NewPane{direction: Some(Dir::Right), pane_name: None, start_suppressed: false}, TO_NORMAL])),
         (s("Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
-        (s("New tab"), s("New"), action_key(&km, &[A::NewTab{tiled_layout: None, floating_layouts: vec![], swap_tiled_layouts: None, swap_floating_layouts: None, tab_name: None, should_change_focus_to_new_tab: true, cwd: None}, TO_NORMAL])),
+        (s("New tab"), s("New"), action_key(&km, &[A::NewTab{
+            tiled_layout: None,
+            floating_layouts: vec![],
+            swap_tiled_layouts: None,
+            swap_floating_layouts: None,
+            tab_name: None,
+            should_change_focus_to_new_tab: true,
+            cwd: None,
+            initial_panes: None,
+        }, TO_NORMAL])),
         (s("Rename tab"), s("Rename"),
             action_key(&km, &[A::SwitchToMode{input_mode: IM::RenameTab}, A::TabNameInput{input: vec![0]}])),
         (s("Previous Tab"), s("Previous"), action_key(&km, &[A::GoToPreviousTab, TO_NORMAL])),
