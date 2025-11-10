@@ -151,6 +151,7 @@ pub(crate) struct Pty {
     default_editor: Option<PathBuf>,
     post_command_discovery_hook: Option<String>,
     plugin_cwds: HashMap<u32, PathBuf>, // plugin_id -> cwd
+    terminal_cwds: HashMap<u32, PathBuf>, // terminal_id -> cwd
 }
 
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
@@ -725,6 +726,7 @@ impl Pty {
             originating_plugins: HashMap::new(),
             post_command_discovery_hook,
             plugin_cwds: HashMap::new(),
+            terminal_cwds: HashMap::new(),
         }
     }
     pub fn get_default_terminal(
@@ -774,12 +776,18 @@ impl Pty {
                     .get(&client_id)
                     .and_then(|pane| match pane {
                         PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
-                        PaneId::Terminal(id) => self.id_to_child_pid.get(id).and_then(|&id| {
-                            self.bus
-                                .os_input
-                                .as_ref()
-                                .and_then(|input| input.get_cwd(Pid::from_raw(id)))
-                        }),
+                        PaneId::Terminal(id) => {
+                            // Try to get CWD from OS, fall back to cached value
+                            self.id_to_child_pid
+                                .get(id)
+                                .and_then(|&pid| {
+                                    self.bus
+                                        .os_input
+                                        .as_ref()
+                                        .and_then(|input| input.get_cwd(Pid::from_raw(pid)))
+                                })
+                                .or_else(|| self.terminal_cwds.get(id).cloned())
+                        },
                     })
             };
         };
@@ -789,12 +797,16 @@ impl Pty {
             if run_command.cwd.is_none() {
                 run_command.cwd = match pane_id {
                     PaneId::Terminal(terminal_pane_id) => {
-                        self.id_to_child_pid.get(terminal_pane_id).and_then(|&id| {
-                            self.bus
-                                .os_input
-                                .as_ref()
-                                .and_then(|input| input.get_cwd(Pid::from_raw(id)))
-                        })
+                        // Try to get CWD from OS, fall back to cached value
+                        self.id_to_child_pid
+                            .get(terminal_pane_id)
+                            .and_then(|&pid| {
+                                self.bus
+                                    .os_input
+                                    .as_ref()
+                                    .and_then(|input| input.get_cwd(Pid::from_raw(pid)))
+                            })
+                            .or_else(|| self.terminal_cwds.get(terminal_pane_id).cloned())
                     },
                     PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
                 };
@@ -938,6 +950,8 @@ impl Pty {
 
         self.task_handles.insert(terminal_id, terminal_bytes);
         self.id_to_child_pid.insert(terminal_id, child_fd);
+        self.capture_initial_cwd(terminal_id, child_fd);
+
         let starts_held = false;
         Ok((terminal_id, starts_held))
     }
@@ -1162,6 +1176,7 @@ impl Pty {
                     {
                         Ok((terminal_id, pid_primary, child_fd)) => {
                             self.id_to_child_pid.insert(terminal_id, child_fd);
+                            self.capture_initial_cwd(terminal_id, child_fd);
                             Ok(Some((
                                 terminal_id,
                                 starts_held,
@@ -1194,6 +1209,7 @@ impl Pty {
                 {
                     Ok((terminal_id, pid_primary, child_fd)) => {
                         self.id_to_child_pid.insert(terminal_id, child_fd);
+                        self.capture_initial_cwd(terminal_id, child_fd);
                         Ok(Some((terminal_id, starts_held, None, Ok(pid_primary))))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
@@ -1225,6 +1241,7 @@ impl Pty {
                 {
                     Ok((terminal_id, pid_primary, child_fd)) => {
                         self.id_to_child_pid.insert(terminal_id, child_fd);
+                        self.capture_initial_cwd(terminal_id, child_fd);
                         Ok(Some((terminal_id, starts_held, None, Ok(pid_primary))))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
@@ -1248,6 +1265,7 @@ impl Pty {
                 {
                     Ok((terminal_id, pid_primary, child_fd)) => {
                         self.id_to_child_pid.insert(terminal_id, child_fd);
+                        self.capture_initial_cwd(terminal_id, child_fd);
                         Ok(Some((terminal_id, starts_held, None, Ok(pid_primary))))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
@@ -1389,6 +1407,7 @@ impl Pty {
 
                 self.task_handles.insert(id, terminal_bytes);
                 self.id_to_child_pid.insert(id, child_fd);
+                self.capture_initial_cwd(id, child_fd);
                 if let Some(originating_plugin) = self.originating_plugins.get(&id) {
                     self.bus
                         .senders
@@ -1405,7 +1424,7 @@ impl Pty {
         }
     }
     pub fn populate_session_layout_metadata(
-        &self,
+        &mut self,
         session_layout_metadata: &mut SessionLayoutMetadata,
     ) {
         let terminal_ids = session_layout_metadata.all_terminal_ids();
@@ -1447,7 +1466,10 @@ impl Pty {
                 terminal_ids_to_commands.insert(terminal_id, cmd.clone());
             }
             if let Some(cwd) = cwd {
-                terminal_ids_to_cwds.insert(terminal_id, cwd.clone());
+                // log cwd for future use (eg. when opening new panes from a command pane that has
+                // already exited)
+                // TODO: also trigger an Event::CwdChanged - can be useful for plugins
+                self.terminal_cwds.insert(terminal_id, cwd.clone());
             }
         }
         session_layout_metadata.update_default_shell(get_default_shell());
@@ -1476,12 +1498,18 @@ impl Pty {
                 .get(&client_id)
                 .and_then(|pane| match pane {
                     PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
-                    PaneId::Terminal(id) => self.id_to_child_pid.get(id).and_then(|&id| {
-                        self.bus
-                            .os_input
-                            .as_ref()
-                            .and_then(|input| input.get_cwd(Pid::from_raw(id)))
-                    }),
+                    PaneId::Terminal(id) => {
+                        // Try to get CWD from OS, fall back to cached value
+                        self.id_to_child_pid
+                            .get(id)
+                            .and_then(|&pid| {
+                                self.bus
+                                    .os_input
+                                    .as_ref()
+                                    .and_then(|input| input.get_cwd(Pid::from_raw(pid)))
+                            })
+                            .or_else(|| self.terminal_cwds.get(id).cloned())
+                    },
                 })
         };
 
@@ -1516,6 +1544,18 @@ impl Pty {
         ))?;
         Ok(())
     }
+    fn capture_initial_cwd(&mut self, terminal_id: u32, child_fd: RawFd) {
+        if let Some(os_input) = self.bus.os_input.as_ref() {
+            if let Some(cwd) = os_input.get_cwd(Pid::from_raw(child_fd)) {
+                self.terminal_cwds.insert(terminal_id, cwd);
+            }
+        }
+    }
+
+    pub fn get_terminal_cwd(&self, terminal_id: u32) -> Option<&PathBuf> {
+        self.terminal_cwds.get(&terminal_id)
+    }
+
     pub fn reconfigure(
         &mut self,
         default_editor: Option<PathBuf>,
