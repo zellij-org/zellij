@@ -237,6 +237,7 @@ pub enum ScreenInstruction {
         Option<String>,
         (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), // swap layouts
         Option<Vec<CommandOrPlugin>>,                    // initial_panes
+        bool,                                            // block_on_first_terminal
         bool,                                            // should_change_focus_to_new_tab
         (ClientId, bool),                                // bool -> is_web_client
         Option<NotificationEnd>,                         // completion signal
@@ -250,7 +251,8 @@ pub enum ScreenInstruction {
         usize,                   // tab_index
         bool,                    // should change focus to new tab
         (ClientId, bool),        // bool -> is_web_client
-        Option<NotificationEnd>, // completion signal
+        Option<NotificationEnd>, // regular completion signal
+        Option<(u32, NotificationEnd)>, // blocking_terminal (terminal_id, completion_tx)
     ),
     SwitchTabNext(ClientId, Option<NotificationEnd>),
     SwitchTabPrev(ClientId, Option<NotificationEnd>),
@@ -1736,6 +1738,7 @@ impl Screen {
         tab_index: usize,
         should_change_client_focus: bool,
         client_id_and_is_web_client: (ClientId, bool),
+        blocking_terminal: Option<(u32, NotificationEnd)>,
     ) -> Result<()> {
         if self.tabs.get(&tab_index).is_none() {
             // TODO: we should prevent this situation with a UI - eg. cannot close tabs with a
@@ -1820,6 +1823,7 @@ impl Screen {
                     new_floating_terminal_ids,
                     new_plugin_ids,
                     client_id,
+                    blocking_terminal,
                 )?;
                 tab.update_input_modes()?;
 
@@ -2670,6 +2674,7 @@ impl Screen {
                 floating_panes_layout,
                 tab_index,
                 None, // initial_panes
+                false, // block_on_first_terminal
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
                 None,
@@ -2747,6 +2752,7 @@ impl Screen {
             floating_panes_layout,
             tab_index,
             None, // initial_panes
+            false, // block_on_first_terminal
             should_change_focus_to_new_tab,
             (client_id, is_web_client),
             None,
@@ -4587,6 +4593,7 @@ pub(crate) fn screen_thread_main(
                 tab_name,
                 swap_layouts,
                 initial_panes,
+                block_on_first_terminal,
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
                 completion_tx,
@@ -4614,6 +4621,7 @@ pub(crate) fn screen_thread_main(
                         floating_panes_layout,
                         tab_index,
                         initial_panes,
+                        block_on_first_terminal,
                         should_change_focus_to_new_tab,
                         (client_id, is_web_client),
                         completion_tx,
@@ -4629,7 +4637,8 @@ pub(crate) fn screen_thread_main(
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
                 _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
+                                // waiting for it (only used when blocking_terminal is None)
+                blocking_terminal,
             ) => {
                 screen.apply_layout(
                     layout,
@@ -4640,6 +4649,7 @@ pub(crate) fn screen_thread_main(
                     tab_index,
                     should_change_focus_to_new_tab,
                     (client_id, is_web_client),
+                    blocking_terminal,
                 )?;
                 pending_tab_ids.remove(&tab_index);
                 if pending_tab_ids.is_empty() {
@@ -4774,6 +4784,7 @@ pub(crate) fn screen_thread_main(
                                     vec![],
                                     tab_index,
                                     None, // initial_panes
+                                    false, // block_on_first_terminal
                                     should_change_focus_to_new_tab,
                                     (client_id, is_web_client),
                                     completion_tx,

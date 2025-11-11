@@ -423,6 +423,11 @@ impl TryFrom<ProtobufAction> for Action {
                             )
                         };
 
+                        let first_pane_unblock_condition = payload
+                            .first_pane_unblock_condition
+                            .and_then(|uc| ProtobufUnblockCondition::from_i32(uc))
+                            .and_then(|uc| uc.try_into().ok());
+
                         Ok(Action::NewTab {
                             tiled_layout,
                             floating_layouts,
@@ -432,6 +437,7 @@ impl TryFrom<ProtobufAction> for Action {
                             should_change_focus_to_new_tab,
                             cwd,
                             initial_panes,
+                            first_pane_unblock_condition,
                         })
                     },
                     None => {
@@ -446,6 +452,7 @@ impl TryFrom<ProtobufAction> for Action {
                             should_change_focus_to_new_tab: true,
                             cwd: None,
                             initial_panes: None,
+                            first_pane_unblock_condition: None,
                         })
                     },
                     _ => Err("Wrong payload for Action::NewTab"),
@@ -1201,6 +1208,7 @@ impl TryFrom<Action> for ProtobufAction {
                 should_change_focus_to_new_tab,
                 cwd,
                 initial_panes,
+                first_pane_unblock_condition,
             } => {
                 // Always send payload (even if all fields are default)
                 let protobuf_tiled_layout = tiled_layout
@@ -1248,6 +1256,13 @@ impl TryFrom<Action> for ProtobufAction {
                     .transpose()?
                     .unwrap_or_default();
 
+                let protobuf_first_pane_unblock_condition = first_pane_unblock_condition
+                    .map(|uc| {
+                        let protobuf_uc: ProtobufUnblockCondition = uc.try_into().ok()?;
+                        Some(protobuf_uc as i32)
+                    })
+                    .flatten();
+
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewTab as i32,
                     optional_payload: Some(OptionalPayload::NewTabPayload(NewTabPayload {
@@ -1259,6 +1274,7 @@ impl TryFrom<Action> for ProtobufAction {
                         should_change_focus_to_new_tab,
                         cwd: cwd_string,
                         initial_panes: protobuf_initial_panes,
+                        first_pane_unblock_condition: protobuf_first_pane_unblock_condition,
                     })),
                 })
             },
@@ -1978,6 +1994,16 @@ impl TryFrom<UnblockCondition> for ProtobufUnblockCondition {
             UnblockCondition::OnExitSuccess => Ok(ProtobufUnblockCondition::UnblockOnExitSuccess),
             UnblockCondition::OnExitFailure => Ok(ProtobufUnblockCondition::UnblockOnExitFailure),
             UnblockCondition::OnAnyExit => Ok(ProtobufUnblockCondition::UnblockOnAnyExit),
+        }
+    }
+}
+
+impl TryFrom<i32> for UnblockCondition {
+    type Error = &'static str;
+    fn try_from(value: i32) -> Result<Self, &'static str> {
+        match ProtobufUnblockCondition::from_i32(value) {
+            Some(uc) => uc.try_into(),
+            None => Err("Invalid UnblockCondition value"),
         }
     }
 }

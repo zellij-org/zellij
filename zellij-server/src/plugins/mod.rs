@@ -90,6 +90,7 @@ pub enum PluginInstruction {
         Vec<FloatingPaneLayout>,
         usize,                        // tab_index
         Option<Vec<CommandOrPlugin>>, // initial_panes
+        bool,                         // block_on_first_terminal
         bool,                         // should change focus to new tab
         (ClientId, bool),             // bool -> is_web_client
         Option<NotificationEnd>,      // completion signal
@@ -467,6 +468,7 @@ pub(crate) fn plugin_thread_main(
                 mut floating_panes_layout,
                 tab_index,
                 initial_panes,
+                block_on_first_terminal,
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
                 completion_tx,
@@ -558,6 +560,7 @@ pub(crate) fn plugin_thread_main(
                     tab_index,
                     plugin_ids,
                     initial_panes,
+                    block_on_first_terminal,
                     should_change_focus_to_new_tab,
                     (client_id, is_web_client),
                     completion_tx,

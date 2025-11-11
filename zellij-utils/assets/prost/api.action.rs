@@ -252,6 +252,8 @@ pub struct NewTabPayload {
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, repeated, tag="8")]
     pub initial_panes: ::prost::alloc::vec::Vec<CommandOrPlugin>,
+    #[prost(enumeration="UnblockCondition", optional, tag="9")]
+    pub first_pane_unblock_condition: ::core::option::Option<i32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

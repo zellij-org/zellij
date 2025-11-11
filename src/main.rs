@@ -247,6 +247,9 @@ fn main() {
                 initial_plugin: None,
                 close_on_exit: Default::default(),
                 start_suspended: Default::default(),
+                block_until_exit_success: false,
+                block_until_exit_failure: false,
+                block_until_exit: false,
             };
             commands::send_action_to_session(new_layout_cli_action, Some(session_name), config);
         } else {

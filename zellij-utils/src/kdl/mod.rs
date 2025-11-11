@@ -744,6 +744,7 @@ impl Action {
                 should_change_focus_to_new_tab,
                 cwd,
                 initial_panes: _,
+                first_pane_unblock_condition: _,
             } => {
                 let mut node = KdlNode::new("NewTab");
                 let mut children = KdlDocument::new();
@@ -1626,6 +1627,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         should_change_focus_to_new_tab: true,
                         cwd: None,
                         initial_panes: None,
+                        first_pane_unblock_condition: None,
                     });
                 }
 
@@ -1696,6 +1698,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         should_change_focus_to_new_tab,
                         cwd,
                         initial_panes: None,
+                        first_pane_unblock_condition: None,
                     })
                 } else {
                     let (layout, floating_panes_layout) = layout.new_tab();
@@ -1710,6 +1713,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         should_change_focus_to_new_tab,
                         cwd,
                         initial_panes: None,
+                        first_pane_unblock_condition: None,
                     })
                 }
             },

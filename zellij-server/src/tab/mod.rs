@@ -819,6 +819,7 @@ impl Tab {
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         client_id: ClientId,
+        blocking_terminal: Option<(u32, NotificationEnd)>,
     ) -> Result<()> {
         self.swap_layouts
             .set_base_layout((layout.clone(), floating_panes_layout.clone()));
@@ -842,6 +843,7 @@ impl Tab {
             self.arrow_fonts,
             self.styled_underlines,
             self.explicitly_disable_kitty_keyboard_protocol,
+            blocking_terminal,
         )
         .apply_layout(
             layout,
@@ -912,6 +914,7 @@ impl Tab {
                 self.arrow_fonts,
                 self.styled_underlines,
                 self.explicitly_disable_kitty_keyboard_protocol,
+                None,
             )
             .apply_floating_panes_layout_to_existing_panes(&layout_candidate)
             .non_fatal();
@@ -950,6 +953,7 @@ impl Tab {
                 self.arrow_fonts,
                 self.styled_underlines,
                 self.explicitly_disable_kitty_keyboard_protocol,
+                None,
             )
             .apply_tiled_panes_layout_to_existing_panes(&layout_candidate);
             if application_res.is_err() {

@@ -1684,6 +1684,7 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
             should_change_focus_to_new_tab: true,
             cwd,
             initial_panes: None,
+            first_pane_unblock_condition: None,
         };
         tabs_to_open.push(action);
     } else {
@@ -1703,6 +1704,7 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
                 should_change_focus_to_new_tab: should_focus_tab,
                 cwd: cwd.clone(),
                 initial_panes: None,
+                first_pane_unblock_condition: None,
             };
             tabs_to_open.push(action);
         }
@@ -1724,6 +1726,7 @@ fn new_tab(env: &PluginEnv, name: Option<String>, cwd: Option<String>) {
         should_change_focus_to_new_tab: true,
         cwd,
         initial_panes: None,
+        first_pane_unblock_condition: None,
     };
     let error_msg = || format!("Failed to open new tab");
     apply_action!(action, error_msg, env);

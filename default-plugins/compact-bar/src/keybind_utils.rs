@@ -483,6 +483,7 @@ impl KeybindProcessor {
                                 should_change_focus_to_new_tab: true,
                                 cwd: None,
                                 initial_panes: _,
+                                first_pane_unblock_condition: _,
                             }
                         )
                     },

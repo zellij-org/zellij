@@ -778,6 +778,7 @@ pub(crate) fn route_action(
             should_change_focus_to_new_tab,
             cwd,
             initial_panes,
+            first_pane_unblock_condition,
         } => {
             log::info!("route.rs, initial_panes: {:#?}", initial_panes);
             let shell = default_shell.clone();
@@ -786,6 +787,15 @@ pub(crate) fn route_action(
             let swap_floating_layouts = swap_floating_layouts
                 .unwrap_or_else(|| default_layout.swap_floating_layouts.clone());
             let is_web_client = false; // actions cannot be initiated directly from the web
+
+            // Construct completion_tx conditionally
+            let (completion_tx, block_on_first_terminal) = if let Some(condition) = first_pane_unblock_condition {
+                let notification = NotificationEnd::new_with_condition(completion_tx, condition);
+                wait_forever = true;
+                (notification, true)
+            } else {
+                (NotificationEnd::new(completion_tx), false)
+            };
 
             senders
                 .send_to_screen(ScreenInstruction::NewTab(
@@ -796,9 +806,10 @@ pub(crate) fn route_action(
                     tab_name,
                     (swap_tiled_layouts, swap_floating_layouts),
                     initial_panes,
+                    block_on_first_terminal,
                     should_change_focus_to_new_tab,
                     (client_id, is_web_client),
-                    Some(NotificationEnd::new(completion_tx)),
+                    Some(completion_tx),
                 ))
                 .with_context(err_context)?;
         },

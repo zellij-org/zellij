@@ -941,6 +941,7 @@ impl From<crate::input::actions::Action>
                 should_change_focus_to_new_tab,
                 cwd,
                 initial_panes,
+                first_pane_unblock_condition,
             } => ActionType::NewTab(NewTabAction {
                 tiled_layout: tiled_layout.map(|l| l.into()),
                 floating_layouts: floating_layouts.into_iter().map(|l| l.into()).collect(),
@@ -956,6 +957,7 @@ impl From<crate::input::actions::Action>
                 initial_panes: initial_panes
                     .map(|panes| panes.into_iter().map(|p| p.into()).collect())
                     .unwrap_or_default(),
+                first_pane_unblock_condition: first_pane_unblock_condition.map(|c| unblock_condition_to_proto_i32(c)),
             }),
             crate::input::actions::Action::NoOp => ActionType::NoOp(NoOpAction {}),
             crate::input::actions::Action::GoToNextTab => {
@@ -1508,6 +1510,11 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                             .collect::<Result<Vec<_>>>()?,
                     )
                 },
+
+                first_pane_unblock_condition: new_tab_action
+                    .first_pane_unblock_condition
+                    .map(|c| proto_i32_to_unblock_condition(c))
+                    .transpose()?,
             }),
             ActionType::NoOp(_) => Ok(crate::input::actions::Action::NoOp),
             ActionType::GoToNextTab(_) => Ok(crate::input::actions::Action::GoToNextTab),
@@ -2134,7 +2141,6 @@ fn proto_i32_to_search_option(option: i32) -> Result<crate::input::actions::Sear
 }
 
 fn proto_i32_to_unblock_condition(condition: i32) -> Result<crate::data::UnblockCondition> {
-    log::info!("converting condition: {:?}", condition);
     use crate::client_server_contract::client_server_contract::UnblockCondition as ProtoUnblockCondition;
     let proto_condition = match condition {
         x if x == ProtoUnblockCondition::OnExitSuccess as i32 => {
@@ -2146,7 +2152,6 @@ fn proto_i32_to_unblock_condition(condition: i32) -> Result<crate::data::Unblock
         x if x == ProtoUnblockCondition::OnAnyExit as i32 => ProtoUnblockCondition::OnAnyExit,
         _ => return Err(anyhow!("Invalid UnblockCondition: {}", condition)),
     };
-    log::info!("proto_condition: {:?}", proto_condition);
     match proto_condition {
         ProtoUnblockCondition::OnExitSuccess => Ok(crate::data::UnblockCondition::OnExitSuccess),
         ProtoUnblockCondition::OnExitFailure => Ok(crate::data::UnblockCondition::OnExitFailure),

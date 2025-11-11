@@ -249,6 +249,7 @@ pub enum Action {
         should_change_focus_to_new_tab: bool,
         cwd: Option<PathBuf>,
         initial_panes: Option<Vec<crate::data::CommandOrPlugin>>,
+        first_pane_unblock_condition: Option<UnblockCondition>,
     },
     /// Do nothing.
     NoOp,
@@ -750,11 +751,25 @@ impl Action {
                 initial_plugin,
                 close_on_exit,
                 start_suspended,
+                block_until_exit_success,
+                block_until_exit_failure,
+                block_until_exit,
             } => {
                 let current_dir = get_current_dir();
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir.clone()));
+
+                // Map CLI flags to UnblockCondition
+                let first_pane_unblock_condition = if block_until_exit_success {
+                    Some(UnblockCondition::OnExitSuccess)
+                } else if block_until_exit_failure {
+                    Some(UnblockCondition::OnExitFailure)
+                } else if block_until_exit {
+                    Some(UnblockCondition::OnAnyExit)
+                } else {
+                    None
+                };
 
                 // Parse initial_panes from initial_command or initial_plugin
                 let initial_panes = if let Some(plugin_url) = initial_plugin {
@@ -888,6 +903,7 @@ impl Action {
                                 should_change_focus_to_new_tab,
                                 cwd: None, // the cwd is done through the layout
                                 initial_panes: initial_panes.clone(),
+                                first_pane_unblock_condition,
                             });
                         }
                         Ok(new_tab_actions)
@@ -905,6 +921,7 @@ impl Action {
                             should_change_focus_to_new_tab,
                             cwd: None, // the cwd is done through the layout
                             initial_panes,
+                            first_pane_unblock_condition,
                         }])
                     }
                 } else {
@@ -918,6 +935,7 @@ impl Action {
                         should_change_focus_to_new_tab,
                         cwd,
                         initial_panes,
+                        first_pane_unblock_condition,
                     }])
                 }
             },

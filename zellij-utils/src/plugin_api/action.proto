@@ -159,6 +159,7 @@ message NewTabPayload {
   bool should_change_focus_to_new_tab = 6;
   optional string cwd = 7;
   repeated CommandOrPlugin initial_panes = 8;
+  optional UnblockCondition first_pane_unblock_condition = 9;
 }
 
 message Action {

@@ -11,7 +11,7 @@ use crate::{
     plugins::PluginInstruction,
     pty::PtyInstruction,
     thread_bus::ThreadSenders,
-    ClientId,
+    ClientId, NotificationEnd,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -42,6 +42,7 @@ pub struct LayoutApplier<'a> {
     arrow_fonts: bool,
     styled_underlines: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
+    blocking_terminal: Option<(u32, NotificationEnd)>,
 }
 
 impl<'a> LayoutApplier<'a> {
@@ -65,6 +66,7 @@ impl<'a> LayoutApplier<'a> {
         arrow_fonts: bool,
         styled_underlines: bool,
         explicitly_disable_kitty_keyboard_protocol: bool,
+        blocking_terminal: Option<(u32, NotificationEnd)>,
     ) -> Self {
         let viewport = viewport.clone();
         let senders = senders.clone();
@@ -97,6 +99,7 @@ impl<'a> LayoutApplier<'a> {
             arrow_fonts,
             styled_underlines,
             explicitly_disable_kitty_keyboard_protocol,
+            blocking_terminal,
         }
     }
     pub fn apply_layout(
@@ -496,6 +499,18 @@ impl<'a> LayoutApplier<'a> {
             Some(Run::Command(run_command)) => Some(run_command.to_string()),
             _ => None,
         };
+
+        // Check if this terminal should receive the blocking completion_tx
+        let notification_end = if let Some((blocking_pid, _)) = &self.blocking_terminal {
+            if *blocking_pid == pid {
+                self.blocking_terminal.take().map(|(_, tx)| tx)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let mut new_pane = TerminalPane::new(
             pid,
             *position_and_size,
@@ -513,7 +528,7 @@ impl<'a> LayoutApplier<'a> {
             self.arrow_fonts,
             self.styled_underlines,
             self.explicitly_disable_kitty_keyboard_protocol,
-            None,
+            notification_end,
         );
         if let Some(pane_initial_contents) = &layout.pane_initial_contents {
             new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
