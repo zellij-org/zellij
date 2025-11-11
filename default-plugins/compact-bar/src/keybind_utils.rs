@@ -440,7 +440,8 @@ impl KeybindProcessor {
                             action,
                             Action::NewStackedPane {
                                 command: None,
-                                pane_name: None
+                                pane_name: None,
+                                near_current_pane: false,
                             }
                         )
                     },

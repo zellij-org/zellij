@@ -270,11 +270,13 @@ message GoToTabNamePayload {
 
 message NewFloatingPanePayload {
   optional RunCommandAction command = 1;
+  bool near_current_pane = 2;
 }
 
 message NewTiledPanePayload {
   optional RunCommandAction command = 1;
   optional resize.ResizeDirection direction = 2;
+  bool near_current_pane = 3;
 }
 
 message MovePanePayload {
@@ -287,6 +289,7 @@ message EditFilePayload {
   optional string cwd = 3;
   optional resize.ResizeDirection direction = 4;
   bool should_float = 5;
+  bool near_current_pane = 6;
 }
 
 message ScrollAtPayload {
@@ -303,6 +306,7 @@ message NewBlockingPanePayload {
   optional string pane_name = 2;
   optional RunCommandAction command = 3;
   optional UnblockCondition unblock_condition = 4;
+  bool near_current_pane = 5;
 }
 
 message SwitchToModePayload {

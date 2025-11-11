@@ -198,6 +198,7 @@ pub enum Action {
         pane_name: Option<String>,
         command: Option<RunCommandAction>,
         unblock_condition: Option<UnblockCondition>,
+        near_current_pane: bool,
     },
     /// Open the file in a new pane using the default editor
     EditFile {
@@ -207,27 +208,32 @@ pub enum Action {
         in_place: bool,
         start_suppressed: bool,
         coordinates: Option<FloatingPaneCoordinates>,
+        near_current_pane: bool,
     },
     /// Open a new floating pane
     NewFloatingPane {
         command: Option<RunCommandAction>,
         pane_name: Option<String>,
         coordinates: Option<FloatingPaneCoordinates>,
+        near_current_pane: bool,
     },
     /// Open a new tiled (embedded, non-floating) pane
     NewTiledPane {
         direction: Option<Direction>,
         command: Option<RunCommandAction>,
         pane_name: Option<String>,
+        near_current_pane: bool,
     },
     /// Open a new pane in place of the focused one, suppressing it instead
     NewInPlacePane {
         command: Option<RunCommandAction>,
         pane_name: Option<String>,
+        near_current_pane: bool,
     },
     NewStackedPane {
         command: Option<RunCommandAction>,
         pane_name: Option<String>,
+        near_current_pane: bool,
     },
     /// Embed focused pane in tab if floating or float focused pane if embedded
     TogglePaneEmbedOrFloating,
@@ -277,6 +283,7 @@ pub enum Action {
     /// Run specified command in new pane.
     Run {
         command: RunCommandAction,
+        near_current_pane: bool,
     },
     /// Detach session and exit
     Detach,
@@ -517,6 +524,7 @@ impl Action {
                 stacked,
                 blocking,
                 unblock_condition,
+                near_current_pane,
             } => {
                 let current_dir = get_current_dir();
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
@@ -569,6 +577,7 @@ impl Action {
                         pane_name: name,
                         command,
                         unblock_condition,
+                        near_current_pane,
                     }])
                 } else if let Some(plugin) = plugin {
                     let plugin = match RunPluginLocation::parse(&plugin, cwd.clone()) {
@@ -640,22 +649,26 @@ impl Action {
                             command: Some(run_command_action),
                             pane_name: name,
                             coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                            near_current_pane,
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane {
                             command: Some(run_command_action),
                             pane_name: name,
+                            near_current_pane,
                         }])
                     } else if stacked {
                         Ok(vec![Action::NewStackedPane {
                             command: Some(run_command_action),
                             pane_name: name,
+                            near_current_pane,
                         }])
                     } else {
                         Ok(vec![Action::NewTiledPane {
                             direction,
                             command: Some(run_command_action),
                             pane_name: name,
+                            near_current_pane,
                         }])
                     }
                 } else {
@@ -664,22 +677,26 @@ impl Action {
                             command: None,
                             pane_name: name,
                             coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                            near_current_pane,
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane {
                             command: None,
                             pane_name: name,
+                            near_current_pane,
                         }])
                     } else if stacked {
                         Ok(vec![Action::NewStackedPane {
                             command: None,
                             pane_name: name,
+                            near_current_pane,
                         }])
                     } else {
                         Ok(vec![Action::NewTiledPane {
                             direction,
                             command: None,
                             pane_name: name,
+                            near_current_pane,
                         }])
                     }
                 }
@@ -696,6 +713,7 @@ impl Action {
                 width,
                 height,
                 pinned,
+                near_current_pane,
             } => {
                 let mut file = file;
                 let current_dir = get_current_dir();
@@ -715,6 +733,7 @@ impl Action {
                     in_place,
                     start_suppressed,
                     coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                    near_current_pane,
                 }])
             },
             CliAction::SwitchMode { input_mode } => Ok(vec![Action::SwitchToMode { input_mode }]),

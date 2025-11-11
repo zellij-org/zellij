@@ -220,6 +220,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         vec![],
         HashMap::new(),
         client_id,
+        None,
     )
     .unwrap();
     tab
@@ -304,6 +305,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         vec![],
         HashMap::new(),
         client_id,
+        None,
     )
     .unwrap();
     tab
@@ -386,6 +388,7 @@ fn create_new_tab_with_cell_size(
         vec![],
         HashMap::new(),
         client_id,
+        None,
     )
     .unwrap();
     tab

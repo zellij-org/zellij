@@ -578,6 +578,8 @@ pub struct NewPaneAction {
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag="3")]
     pub start_suppressed: bool,
+    #[prost(bool, tag="4")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -594,6 +596,8 @@ pub struct EditFileAction {
     pub start_suppressed: bool,
     #[prost(message, optional, tag="6")]
     pub coordinates: ::core::option::Option<FloatingPaneCoordinates>,
+    #[prost(bool, tag="7")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -604,6 +608,8 @@ pub struct NewFloatingPaneAction {
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, optional, tag="3")]
     pub coordinates: ::core::option::Option<FloatingPaneCoordinates>,
+    #[prost(bool, tag="7")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -614,6 +620,8 @@ pub struct NewTiledPaneAction {
     pub command: ::core::option::Option<RunCommandAction>,
     #[prost(string, optional, tag="3")]
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="7")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -622,6 +630,8 @@ pub struct NewInPlacePaneAction {
     pub command: ::core::option::Option<RunCommandAction>,
     #[prost(string, optional, tag="2")]
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="3")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -630,6 +640,8 @@ pub struct NewStackedPaneAction {
     pub command: ::core::option::Option<RunCommandAction>,
     #[prost(string, optional, tag="2")]
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="3")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -642,6 +654,8 @@ pub struct NewBlockingPaneAction {
     pub command: ::core::option::Option<RunCommandAction>,
     #[prost(enumeration="UnblockCondition", optional, tag="4")]
     pub unblock_condition: ::core::option::Option<i32>,
+    #[prost(bool, tag="5")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -702,6 +716,8 @@ pub struct MoveTabAction {
 pub struct RunAction {
     #[prost(message, optional, tag="1")]
     pub command: ::core::option::Option<RunCommandAction>,
+    #[prost(bool, tag="2")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -789,6 +789,7 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
         in_place,
         start_suppressed,
         coordinates: None,
+        near_current_pane: false,
     };
     apply_action!(action, error_msg, env);
 }
@@ -867,6 +868,7 @@ fn open_file_floating(
         in_place,
         start_suppressed,
         coordinates: floating_pane_coordinates,
+        near_current_pane: false,
     };
     apply_action!(action, error_msg, env);
 }
@@ -895,6 +897,7 @@ fn open_file_in_place(
         in_place,
         start_suppressed,
         coordinates: None,
+        near_current_pane: false,
     };
     apply_action!(action, error_msg, env);
 }
@@ -1004,6 +1007,7 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
         direction: None,
         command: run_command_action,
         pane_name: None,
+        near_current_pane: false,
     };
     apply_action!(action, error_msg, env);
 }
@@ -1053,6 +1057,7 @@ fn open_terminal_floating(
         command: run_command_action,
         pane_name: None,
         coordinates: floating_pane_coordinates,
+        near_current_pane: false,
     };
     apply_action!(action, error_msg, env);
 }
@@ -1101,6 +1106,7 @@ fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
     let action = Action::NewInPlacePane {
         command: run_command_action,
         pane_name: None,
+        near_current_pane: false,
     };
     apply_action!(action, error_msg, env);
 }
@@ -1203,6 +1209,7 @@ fn open_command_pane(
         direction,
         command: Some(run_command_action),
         pane_name: name,
+        near_current_pane: false,
     };
     apply_action!(action, error_msg, env);
 }
@@ -1279,6 +1286,7 @@ fn open_command_pane_floating(
         command: Some(run_command_action),
         pane_name: name,
         coordinates: floating_pane_coordinates,
+        near_current_pane: false,
     };
     apply_action!(action, error_msg, env);
 }
@@ -1354,6 +1362,7 @@ fn open_command_pane_in_place(
     let action = Action::NewInPlacePane {
         command: Some(run_command_action),
         pane_name: name,
+        near_current_pane: false,
     };
     apply_action!(action, error_msg, env);
 }

@@ -44,6 +44,7 @@ fn main() {
             block_until_exit_success,
             block_until_exit_failure,
             block_until_exit,
+            near_current_pane,
         })) = opts.command
         {
             let cwd = cwd.or_else(|| std::env::current_dir().ok());
@@ -80,6 +81,7 @@ fn main() {
                 stacked,
                 blocking,
                 unblock_condition,
+                near_current_pane,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -121,6 +123,7 @@ fn main() {
                 stacked,
                 blocking,
                 unblock_condition,
+                near_current_pane: false,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -137,6 +140,7 @@ fn main() {
             width,
             height,
             pinned,
+            near_current_pane,
         })) = opts.command
         {
             let mut file = file;
@@ -158,6 +162,7 @@ fn main() {
                 width,
                 height,
                 pinned,
+                near_current_pane,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);

@@ -1348,6 +1348,7 @@ Config {
                 NewStackedPane {
                     command: None,
                     pane_name: None,
+                    near_current_pane: false,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -1854,6 +1855,7 @@ Config {
                     should_change_focus_to_new_tab: true,
                     cwd: None,
                     initial_panes: None,
+                    first_pane_unblock_condition: None,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -5586,6 +5588,7 @@ Config {
                     should_change_focus_to_new_tab: true,
                     cwd: None,
                     initial_panes: None,
+                    first_pane_unblock_condition: None,
                 },
                 SwitchToMode {
                     input_mode: Normal,

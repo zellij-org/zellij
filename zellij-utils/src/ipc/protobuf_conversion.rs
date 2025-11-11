@@ -858,6 +858,7 @@ impl From<crate::input::actions::Action>
                 direction: direction.map(|d| direction_to_proto_i32(d)),
                 pane_name,
                 start_suppressed,
+                near_current_pane: false,
             }),
             crate::input::actions::Action::EditFile {
                 payload,
@@ -866,6 +867,7 @@ impl From<crate::input::actions::Action>
                 in_place,
                 start_suppressed,
                 coordinates,
+                near_current_pane,
             } => ActionType::EditFile(EditFileAction {
                 payload: Some(payload.into()),
                 direction: direction.map(|d| direction_to_proto_i32(d)),
@@ -873,35 +875,42 @@ impl From<crate::input::actions::Action>
                 in_place,
                 start_suppressed,
                 coordinates: coordinates.map(|c| c.into()),
+                near_current_pane,
             }),
             crate::input::actions::Action::NewFloatingPane {
                 command,
                 pane_name,
                 coordinates,
+                near_current_pane,
             } => ActionType::NewFloatingPane(NewFloatingPaneAction {
                 command: command.map(|c| c.into()),
                 pane_name,
                 coordinates: coordinates.map(|c| c.into()),
+                near_current_pane,
             }),
             crate::input::actions::Action::NewTiledPane {
                 direction,
                 command,
                 pane_name,
+                near_current_pane,
             } => ActionType::NewTiledPane(NewTiledPaneAction {
                 direction: direction.map(|d| direction_to_proto_i32(d)),
                 command: command.map(|c| c.into()),
                 pane_name,
+                near_current_pane,
             }),
-            crate::input::actions::Action::NewInPlacePane { command, pane_name } => {
+            crate::input::actions::Action::NewInPlacePane { command, pane_name, near_current_pane } => {
                 ActionType::NewInPlacePane(NewInPlacePaneAction {
                     command: command.map(|c| c.into()),
                     pane_name,
+                    near_current_pane,
                 })
             },
-            crate::input::actions::Action::NewStackedPane { command, pane_name } => {
+            crate::input::actions::Action::NewStackedPane { command, pane_name, near_current_pane } => {
                 ActionType::NewStackedPane(NewStackedPaneAction {
                     command: command.map(|c| c.into()),
                     pane_name,
+                    near_current_pane,
                 })
             },
             crate::input::actions::Action::NewBlockingPane {
@@ -909,11 +918,13 @@ impl From<crate::input::actions::Action>
                 pane_name,
                 command,
                 unblock_condition,
+                near_current_pane,
             } => ActionType::NewBlockingPane(NewBlockingPaneAction {
                 placement: Some(placement.into()),
                 pane_name,
                 command: command.map(|c| c.into()),
                 unblock_condition: unblock_condition.map(|c| unblock_condition_to_proto_i32(c)),
+                near_current_pane,
             }),
             crate::input::actions::Action::TogglePaneEmbedOrFloating => {
                 ActionType::TogglePaneEmbedOrFloating(TogglePaneEmbedOrFloatingAction {})
@@ -987,8 +998,9 @@ impl From<crate::input::actions::Action>
                     direction: direction_to_proto_i32(direction),
                 })
             },
-            crate::input::actions::Action::Run { command } => ActionType::Run(RunAction {
+            crate::input::actions::Action::Run { command, near_current_pane } => ActionType::Run(RunAction {
                 command: Some(command.into()),
+                near_current_pane,
             }),
             crate::input::actions::Action::Detach => ActionType::Detach(DetachAction {}),
             crate::input::actions::Action::SwitchSession {
@@ -1388,6 +1400,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     .coordinates
                     .map(|c| c.try_into())
                     .transpose()?,
+                near_current_pane: edit_file_action.near_current_pane,
             }),
             ActionType::NewFloatingPane(new_floating_action) => {
                 Ok(crate::input::actions::Action::NewFloatingPane {
@@ -1400,6 +1413,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .coordinates
                         .map(|c| c.try_into())
                         .transpose()?,
+                    near_current_pane: new_floating_action.near_current_pane,
                 })
             },
             ActionType::NewTiledPane(new_tiled_action) => {
@@ -1410,6 +1424,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .transpose()?,
                     command: new_tiled_action.command.map(|c| c.try_into()).transpose()?,
                     pane_name: new_tiled_action.pane_name,
+                    near_current_pane: new_tiled_action.near_current_pane,
                 })
             },
             ActionType::NewInPlacePane(new_in_place_action) => {
@@ -1419,6 +1434,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .map(|c| c.try_into())
                         .transpose()?,
                     pane_name: new_in_place_action.pane_name,
+                    near_current_pane: new_in_place_action.near_current_pane,
                 })
             },
             ActionType::NewStackedPane(new_stacked_action) => {
@@ -1428,6 +1444,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .map(|c| c.try_into())
                         .transpose()?,
                     pane_name: new_stacked_action.pane_name,
+                    near_current_pane: new_stacked_action.near_current_pane,
                 })
             },
             ActionType::NewBlockingPane(new_blocking_action) => {
@@ -1445,6 +1462,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .unblock_condition
                         .map(|c| proto_i32_to_unblock_condition(c))
                         .transpose()?,
+                    near_current_pane: new_blocking_action.near_current_pane,
                 })
             },
             ActionType::TogglePaneEmbedOrFloating(_) => {
@@ -1544,6 +1562,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     .command
                     .ok_or_else(|| anyhow!("Run missing command"))?
                     .try_into()?,
+                near_current_pane: run_action.near_current_pane,
             }),
             ActionType::Detach(_) => Ok(crate::input::actions::Action::Detach),
             ActionType::SwitchSession(switch_session_action) => {

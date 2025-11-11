@@ -552,6 +552,7 @@ impl Action {
                     return Ok(Action::NewStackedPane {
                         command: None,
                         pane_name: None,
+                        near_current_pane: false,
                     });
                 } else {
                     let direction = Direction::from_str(string.as_str()).map_err(|_| {
@@ -803,6 +804,7 @@ impl Action {
                 direction,
                 command: run_command_action,
                 pane_name: name,
+                near_current_pane: false,
             } => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
@@ -852,6 +854,7 @@ impl Action {
                 command: run_command_action,
                 pane_name: name,
                 coordinates: floating_pane_coordinates,
+                near_current_pane: false,
             } => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
@@ -942,6 +945,7 @@ impl Action {
             Action::NewInPlacePane {
                 command: run_command_action,
                 pane_name: name,
+                near_current_pane: false,
             } => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
@@ -982,6 +986,7 @@ impl Action {
             Action::NewStackedPane {
                 command: run_command_action,
                 pane_name: name,
+                near_current_pane: _,
             } => match run_command_action {
                 Some(run_command_action) => {
                     let mut node = KdlNode::new("Run");
@@ -1794,22 +1799,26 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         command: Some(run_command_action),
                         pane_name: name,
                         coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                        near_current_pane: false,
                     })
                 } else if in_place {
                     Ok(Action::NewInPlacePane {
                         command: Some(run_command_action),
                         pane_name: name,
+                        near_current_pane: false,
                     })
                 } else if stacked {
                     Ok(Action::NewStackedPane {
                         command: Some(run_command_action),
                         pane_name: name,
+                        near_current_pane: false,
                     })
                 } else {
                     Ok(Action::NewTiledPane {
                         direction,
                         command: Some(run_command_action),
                         pane_name: name,
+                        near_current_pane: false,
                     })
                 }
             },

@@ -333,6 +333,7 @@ message NewPaneAction {
   optional Direction direction = 1;
   optional string pane_name = 2;
   bool start_suppressed = 3;
+  bool near_current_pane = 4;
 }
 
 message EditFileAction {
@@ -342,28 +343,33 @@ message EditFileAction {
   bool in_place = 4;
   bool start_suppressed = 5;
   optional FloatingPaneCoordinates coordinates = 6;
+  bool near_current_pane = 7;
 }
 
 message NewFloatingPaneAction {
   optional RunCommandAction command = 1;
   optional string pane_name = 2;
   optional FloatingPaneCoordinates coordinates = 3;
+  bool near_current_pane = 7;
 }
 
 message NewTiledPaneAction {
   optional Direction direction = 1;
   optional RunCommandAction command = 2;
   optional string pane_name = 3;
+  bool near_current_pane = 7;
 }
 
 message NewInPlacePaneAction {
   optional RunCommandAction command = 1;
   optional string pane_name = 2;
+  bool near_current_pane = 3;
 }
 
 message NewStackedPaneAction {
   optional RunCommandAction command = 1;
   optional string pane_name = 2;
+  bool near_current_pane = 3;
 }
 
 message NewBlockingPaneAction {
@@ -371,6 +377,7 @@ message NewBlockingPaneAction {
   optional string pane_name = 2;
   optional RunCommandAction command = 3;
   optional UnblockCondition unblock_condition = 4;
+  bool near_current_pane = 5;
 }
 
 message PaneNameInputAction {
@@ -408,6 +415,7 @@ message MoveTabAction {
 
 message RunAction {
   RunCommandAction command = 1;
+  bool near_current_pane = 2;
 }
 
 message LaunchOrFocusPluginAction {

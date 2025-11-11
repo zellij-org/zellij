@@ -428,6 +428,9 @@ pub enum Sessions {
             conflicts_with("block-until-exit-failure")
         )]
         block_until_exit: bool,
+        /// if set, will open the pane near the current one rather than following the user's focus
+        #[clap(long)]
+        near_current_pane: bool
     },
     /// Load a plugin
     #[clap(visible_alias = "p")]
@@ -521,6 +524,9 @@ pub enum Sessions {
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long, requires("floating"))]
         pinned: Option<bool>,
+        /// if set, will open the pane near the current one rather than following the user's focus
+        #[clap(long)]
+        near_current_pane: bool
     },
     ConvertConfig {
         old_config_file: PathBuf,
@@ -729,8 +735,14 @@ pub enum CliAction {
         #[clap(short, long)]
         blocking: bool,
 
+        // TODO: clean this up
         #[clap(skip)]
         unblock_condition: Option<UnblockCondition>,
+
+        /// if set, will open the pane near the current one rather than following the user's focus
+        #[clap(long)]
+        near_current_pane: bool
+
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
@@ -778,6 +790,9 @@ pub enum CliAction {
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long, requires("floating"))]
         pinned: Option<bool>,
+        /// if set, will open the pane near the current one rather than following the user's focus
+        #[clap(long)]
+        near_current_pane: bool
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode {

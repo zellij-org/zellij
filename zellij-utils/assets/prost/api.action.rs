@@ -431,6 +431,8 @@ pub struct GoToTabNamePayload {
 pub struct NewFloatingPanePayload {
     #[prost(message, optional, tag="1")]
     pub command: ::core::option::Option<RunCommandAction>,
+    #[prost(bool, tag="2")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -439,6 +441,8 @@ pub struct NewTiledPanePayload {
     pub command: ::core::option::Option<RunCommandAction>,
     #[prost(enumeration="super::resize::ResizeDirection", optional, tag="2")]
     pub direction: ::core::option::Option<i32>,
+    #[prost(bool, tag="3")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -459,6 +463,8 @@ pub struct EditFilePayload {
     pub direction: ::core::option::Option<i32>,
     #[prost(bool, tag="5")]
     pub should_float: bool,
+    #[prost(bool, tag="6")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -485,6 +491,8 @@ pub struct NewBlockingPanePayload {
     pub command: ::core::option::Option<RunCommandAction>,
     #[prost(enumeration="UnblockCondition", optional, tag="4")]
     pub unblock_condition: ::core::option::Option<i32>,
+    #[prost(bool, tag="5")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

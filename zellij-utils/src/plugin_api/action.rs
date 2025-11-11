@@ -290,6 +290,7 @@ impl TryFrom<ProtobufAction> for Action {
                         .direction
                         .and_then(|d| ProtobufResizeDirection::from_i32(d))
                         .and_then(|d| d.try_into().ok());
+                    let near_current_pane = payload.near_current_pane;
                     let should_float = payload.should_float;
                     let should_be_in_place = false;
                     Ok(Action::EditFile {
@@ -299,12 +300,14 @@ impl TryFrom<ProtobufAction> for Action {
                         in_place: should_be_in_place,
                         start_suppressed: false,
                         coordinates: None,
+                        near_current_pane,
                     })
                 },
                 _ => Err("Wrong payload for Action::NewPane"),
             },
             Some(ProtobufActionName::NewFloatingPane) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::NewFloatingPanePayload(payload)) => {
+                    let near_current_pane = payload.near_current_pane;
                     if let Some(payload) = payload.command {
                         let pane_name = payload.pane_name.clone();
                         let run_command_action: RunCommandAction = payload.try_into()?;
@@ -312,12 +315,14 @@ impl TryFrom<ProtobufAction> for Action {
                             command: Some(run_command_action),
                             pane_name,
                             coordinates: None,
+                            near_current_pane,
                         })
                     } else {
                         Ok(Action::NewFloatingPane {
                             command: None,
                             pane_name: None,
                             coordinates: None,
+                            near_current_pane,
                         })
                     }
                 },
@@ -329,6 +334,7 @@ impl TryFrom<ProtobufAction> for Action {
                         .direction
                         .and_then(|d| ProtobufResizeDirection::from_i32(d))
                         .and_then(|d| d.try_into().ok());
+                    let near_current_pane = payload.near_current_pane;
                     if let Some(payload) = payload.command {
                         let pane_name = payload.pane_name.clone();
                         let run_command_action: RunCommandAction = payload.try_into()?;
@@ -336,12 +342,14 @@ impl TryFrom<ProtobufAction> for Action {
                             direction,
                             command: Some(run_command_action),
                             pane_name,
+                            near_current_pane,
                         })
                     } else {
                         Ok(Action::NewTiledPane {
                             direction,
                             command: None,
                             pane_name: None,
+                            near_current_pane,
                         })
                     }
                 },
@@ -517,6 +525,7 @@ impl TryFrom<ProtobufAction> for Action {
                     let run_command_action = run_command_action.try_into()?;
                     Ok(Action::Run {
                         command: run_command_action,
+                        near_current_pane: false,
                     })
                 },
                 _ => Err("Wrong payload for Action::Run"),
@@ -880,6 +889,7 @@ impl TryFrom<ProtobufAction> for Action {
                 None => Ok(Action::NewStackedPane {
                     command: None,
                     pane_name: None,
+                    near_current_pane: false,
                 }),
             },
             Some(ProtobufActionName::NewBlockingPane) => match protobuf_action.optional_payload {
@@ -894,11 +904,13 @@ impl TryFrom<ProtobufAction> for Action {
                         .unblock_condition
                         .and_then(|uc| ProtobufUnblockCondition::from_i32(uc))
                         .and_then(|uc| uc.try_into().ok());
+                    let near_current_pane = payload.near_current_pane;
                     Ok(Action::NewBlockingPane {
                         placement,
                         pane_name,
                         command,
                         unblock_condition,
+                        near_current_pane,
                     })
                 },
                 _ => Err("Wrong payload for Action::NewBlockingPane"),
@@ -1120,6 +1132,7 @@ impl TryFrom<Action> for ProtobufAction {
                 in_place: _should_be_in_place,
                 start_suppressed: _start_suppressed,
                 coordinates: _floating_pane_coordinates,
+                near_current_pane,
             } => {
                 let file_to_edit = open_file_payload.path.display().to_string();
                 let cwd = open_file_payload.cwd.map(|cwd| cwd.display().to_string());
@@ -1135,6 +1148,7 @@ impl TryFrom<Action> for ProtobufAction {
                         should_float,
                         direction,
                         cwd,
+                        near_current_pane,
                     })),
                 })
             },
@@ -1142,6 +1156,7 @@ impl TryFrom<Action> for ProtobufAction {
                 command: run_command_action,
                 pane_name,
                 coordinates: _coordinates,
+                near_current_pane,
             } => {
                 let command = run_command_action.and_then(|r| {
                     let mut protobuf_run_command_action: ProtobufRunCommandAction =
@@ -1152,7 +1167,7 @@ impl TryFrom<Action> for ProtobufAction {
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewFloatingPane as i32,
                     optional_payload: Some(OptionalPayload::NewFloatingPanePayload(
-                        NewFloatingPanePayload { command },
+                        NewFloatingPanePayload { command, near_current_pane },
                     )),
                 })
             },
@@ -1160,6 +1175,7 @@ impl TryFrom<Action> for ProtobufAction {
                 direction,
                 command: run_command_action,
                 pane_name,
+                near_current_pane,
             } => {
                 let direction = direction.and_then(|direction| {
                     let protobuf_direction: ProtobufResizeDirection = direction.try_into().ok()?;
@@ -1175,7 +1191,7 @@ impl TryFrom<Action> for ProtobufAction {
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewTiledPane as i32,
                     optional_payload: Some(OptionalPayload::NewTiledPanePayload(
-                        NewTiledPanePayload { direction, command },
+                        NewTiledPanePayload { direction, command, near_current_pane },
                     )),
                 })
             },
@@ -1325,6 +1341,7 @@ impl TryFrom<Action> for ProtobufAction {
             },
             Action::Run {
                 command: run_command_action,
+               near_current_pane: _,
             } => {
                 let run_command_action: ProtobufRunCommandAction = run_command_action.try_into()?;
                 Ok(ProtobufAction {
@@ -1565,6 +1582,7 @@ impl TryFrom<Action> for ProtobufAction {
             Action::NewStackedPane {
                 command: _,
                 pane_name: _,
+                near_current_pane: _,
             } => Ok(ProtobufAction {
                 name: ProtobufActionName::NewStackedPane as i32,
                 optional_payload: None,
@@ -1574,6 +1592,7 @@ impl TryFrom<Action> for ProtobufAction {
                 pane_name,
                 command,
                 unblock_condition,
+                near_current_pane,
             } => {
                 let placement: ProtobufNewPanePlacement = placement.try_into()?;
                 let command = command.and_then(|c| {
@@ -1594,6 +1613,7 @@ impl TryFrom<Action> for ProtobufAction {
                             pane_name,
                             command,
                             unblock_condition,
+                            near_current_pane,
                         },
                     )),
                 })
@@ -1603,6 +1623,7 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::NewInPlacePane {
                 command: _,
                 pane_name: _,
+                near_current_pane: _,
             }
             | Action::NewInPlacePluginPane {
                 plugin: _,
