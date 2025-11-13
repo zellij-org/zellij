@@ -632,6 +632,10 @@ pub struct NewInPlacePaneAction {
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag="3")]
     pub near_current_pane: bool,
+    #[prost(message, optional, tag="4")]
+    pub pane_id_to_replace: ::core::option::Option<PaneId>,
+    #[prost(bool, tag="5")]
+    pub close_replace_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

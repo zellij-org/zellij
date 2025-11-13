@@ -229,6 +229,8 @@ pub enum Action {
         command: Option<RunCommandAction>,
         pane_name: Option<String>,
         near_current_pane: bool,
+        pane_id_to_replace: Option<PaneId>,
+        close_replace_pane: bool,
     },
     NewStackedPane {
         command: Option<RunCommandAction>,
@@ -656,6 +658,8 @@ impl Action {
                             command: Some(run_command_action),
                             pane_name: name,
                             near_current_pane,
+                            pane_id_to_replace: None, // TODO: support this
+                            close_replace_pane: false,
                         }])
                     } else if stacked {
                         Ok(vec![Action::NewStackedPane {
@@ -684,6 +688,8 @@ impl Action {
                             command: None,
                             pane_name: name,
                             near_current_pane,
+                            pane_id_to_replace: None, // TODO: support this
+                            close_replace_pane: false,
                         }])
                     } else if stacked {
                         Ok(vec![Action::NewStackedPane {

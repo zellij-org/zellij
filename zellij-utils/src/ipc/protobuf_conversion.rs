@@ -899,11 +899,13 @@ impl From<crate::input::actions::Action>
                 pane_name,
                 near_current_pane,
             }),
-            crate::input::actions::Action::NewInPlacePane { command, pane_name, near_current_pane } => {
+            crate::input::actions::Action::NewInPlacePane { command, pane_name, near_current_pane, pane_id_to_replace, close_replace_pane } => {
                 ActionType::NewInPlacePane(NewInPlacePaneAction {
                     command: command.map(|c| c.into()),
                     pane_name,
                     near_current_pane,
+                    pane_id_to_replace: pane_id_to_replace.and_then(|p| p.try_into().ok()),
+                    close_replace_pane,
                 })
             },
             crate::input::actions::Action::NewStackedPane { command, pane_name, near_current_pane } => {
@@ -1435,6 +1437,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .transpose()?,
                     pane_name: new_in_place_action.pane_name,
                     near_current_pane: new_in_place_action.near_current_pane,
+                    pane_id_to_replace: new_in_place_action.pane_id_to_replace.and_then(|p| p.try_into().ok()),
+                    close_replace_pane: new_in_place_action.close_replace_pane,
                 })
             },
             ActionType::NewStackedPane(new_stacked_action) => {

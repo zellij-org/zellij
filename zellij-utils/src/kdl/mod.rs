@@ -946,6 +946,8 @@ impl Action {
                 command: run_command_action,
                 pane_name: name,
                 near_current_pane: false,
+                pane_id_to_replace: None,
+                close_replace_pane: false,
             } => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
@@ -1806,6 +1808,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         command: Some(run_command_action),
                         pane_name: name,
                         near_current_pane: false,
+                        pane_id_to_replace: None,
+                        close_replace_pane: false,
                     })
                 } else if stacked {
                     Ok(Action::NewStackedPane {

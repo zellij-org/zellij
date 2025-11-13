@@ -39,21 +39,28 @@ use crate::ClientId;
 
 const ACTION_COMPLETION_TIMEOUT: Duration = Duration::from_secs(1);
 
+#[derive(Debug, Clone)]
+pub struct ActionCompletionResult {
+    pub exit_status: Option<i32>,
+    pub affected_pane_id: Option<PaneId>,
+}
+
 fn wait_for_action_completion(
-    receiver: oneshot::Receiver<Option<i32>>, // currently i32 signals an exit status, can be expanded as
-    // needed
+    receiver: oneshot::Receiver<ActionCompletionResult>,
     action_name: &str,
     wait_forever: bool,
-) -> Option<i32> {
+) -> ActionCompletionResult {
     let runtime = get_tokio_runtime();
     if wait_forever {
         runtime.block_on(async {
             match receiver.await {
-                Ok(Some(payload)) => Some(payload),
-                Ok(None) => None,
+                Ok(result) => result,
                 Err(e) => {
                     log::error!("Failed to wait for action {}: {}", action_name, e);
-                    None
+                    ActionCompletionResult {
+                        exit_status: None,
+                        affected_pane_id: None,
+                    }
                 },
             }
         })
@@ -61,15 +68,17 @@ fn wait_for_action_completion(
         match runtime
             .block_on(async { tokio::time::timeout(ACTION_COMPLETION_TIMEOUT, receiver).await })
         {
-            Ok(Ok(Some(payload))) => Some(payload),
-            Ok(Ok(None)) => None,
+            Ok(Ok(result)) => result,
             Err(_) | Ok(Err(_)) => {
                 log::error!(
                     "Action {} did not complete within {:?} timeout",
                     action_name,
                     ACTION_COMPLETION_TIMEOUT
                 );
-                None
+                ActionCompletionResult {
+                    exit_status: None,
+                    affected_pane_id: None,
+                }
             },
         }
     }
@@ -83,9 +92,10 @@ fn wait_for_action_completion(
 // that it can be included in various other larger structs - DO NOT RELY ON CLONING IT!
 #[derive(Debug)]
 pub struct NotificationEnd {
-    channel: Option<oneshot::Sender<Option<i32>>>,
+    channel: Option<oneshot::Sender<ActionCompletionResult>>,
     exit_status: Option<i32>,
     unblock_condition: Option<UnblockCondition>,
+    affected_pane_id: Option<PaneId>, // optional payload of the pane id affected by this action
 }
 
 impl Clone for NotificationEnd {
@@ -95,32 +105,39 @@ impl Clone for NotificationEnd {
             channel: None,
             exit_status: self.exit_status,
             unblock_condition: self.unblock_condition,
+            affected_pane_id: self.affected_pane_id,
         }
     }
 }
 
 impl NotificationEnd {
-    pub fn new(sender: oneshot::Sender<Option<i32>>) -> Self {
+    pub fn new(sender: oneshot::Sender<ActionCompletionResult>) -> Self {
         NotificationEnd {
             channel: Some(sender),
             exit_status: None,
             unblock_condition: None,
+            affected_pane_id: None,
         }
     }
 
     pub fn new_with_condition(
-        sender: oneshot::Sender<Option<i32>>,
+        sender: oneshot::Sender<ActionCompletionResult>,
         unblock_condition: UnblockCondition,
     ) -> Self {
         NotificationEnd {
             channel: Some(sender),
             exit_status: None,
             unblock_condition: Some(unblock_condition),
+            affected_pane_id: None,
         }
     }
 
     pub fn set_exit_status(&mut self, exit_status: i32) {
         self.exit_status = Some(exit_status);
+    }
+
+    pub fn set_affected_pane_id(&mut self, pane_id: PaneId) {
+        self.affected_pane_id = Some(pane_id);
     }
 
     pub fn unblock_condition(&self) -> Option<UnblockCondition> {
@@ -131,7 +148,11 @@ impl NotificationEnd {
 impl Drop for NotificationEnd {
     fn drop(&mut self) {
         if let Some(tx) = self.channel.take() {
-            let _ = tx.send(self.exit_status);
+            let result = ActionCompletionResult {
+                exit_status: self.exit_status,
+                affected_pane_id: self.affected_pane_id,
+            };
+            let _ = tx.send(result);
         }
     }
 }
@@ -150,7 +171,7 @@ pub(crate) fn route_action(
     client_keybinds: Keybinds,
     default_mode: InputMode,
     os_input: Option<Box<dyn ServerOsApi>>,
-) -> Result<bool> {
+) -> Result<(bool, Option<ActionCompletionResult>)> {
     let mut should_break = false;
     let err_context = || format!("failed to route action for client {client_id}");
     let action_name = action.to_string();
@@ -642,17 +663,23 @@ pub(crate) fn route_action(
             command: run_command,
             pane_name: name,
             near_current_pane,
+            pane_id_to_replace,
+            close_replace_pane,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
+            let pane_id = match pane_id_to_replace {
+                Some(pane_id_to_replace) => pane_id_to_replace.try_into().ok(),
+                None => pane_id,
+            };
             match pane_id {
                 Some(pane_id) if near_current_pane => {
                     senders
                         .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
                             run_cmd,
                             name,
-                            false,
+                            close_replace_pane,
                             ClientTabIndexOrPaneId::PaneId(pane_id),
                             Some(NotificationEnd::new(completion_tx)),
                         ))
@@ -663,7 +690,7 @@ pub(crate) fn route_action(
                         .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
                             run_cmd,
                             name,
-                            false,
+                            close_replace_pane,
                             ClientTabIndexOrPaneId::ClientId(client_id),
                             Some(NotificationEnd::new(completion_tx)),
                         ))
@@ -1469,8 +1496,8 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
     }
-    let exit_status = wait_for_action_completion(completion_rx, &action_name, wait_forever);
-    if let Some(exit_status) = exit_status {
+    let result = wait_for_action_completion(completion_rx, &action_name, wait_forever);
+    if let Some(exit_status) = result.exit_status {
         if let Some(cli_client_id) = cli_client_id {
             if let Some(os_input) = os_input {
                 let _ = os_input.send_to_client(
@@ -1482,7 +1509,7 @@ pub(crate) fn route_action(
             }
         }
     }
-    Ok(should_break)
+    Ok((should_break, Some(result)))
 }
 
 // this should only be used for one-off startup instructions
@@ -1649,7 +1676,7 @@ pub(crate) fn route_thread_main(
                                             keybinds.clone(),
                                             client_input_mode,
                                             Some(os_input.clone()),
-                                        )? {
+                                        )?.0 {
                                             should_break = true;
                                         }
                                     }
@@ -1737,7 +1764,7 @@ pub(crate) fn route_thread_main(
                                     client_keybinds,
                                     client_input_mode,
                                     Some(os_input.clone()),
-                                )? {
+                                )?.0 {
                                     should_break = true;
                                 }
                             }

@@ -3703,9 +3703,11 @@ pub(crate) fn screen_thread_main(
                 new_pane_placement,
                 start_suppressed,
                 client_or_tab_index,
-                completion_tx,
+                mut completion_tx,
                 set_blocking,
             ) => {
+                completion_tx.as_mut().map(|c| c.set_affected_pane_id(pid));
+
                 let blocking_notification = if set_blocking { completion_tx } else { None };
 
                 match client_or_tab_index {

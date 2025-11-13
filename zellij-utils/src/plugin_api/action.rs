@@ -8,7 +8,7 @@ pub use super::generated_api::api::{
         KeyWithModifier as ProtobufKeyWithModifier, LaunchOrFocusPluginPayload,
         MouseEventPayload as ProtobufMouseEventPayload, MovePanePayload,
         MoveTabDirection as ProtobufMoveTabDirection, NameAndValue as ProtobufNameAndValue,
-        NewBlockingPanePayload, NewFloatingPanePayload, NewPanePayload,
+        NewBlockingPanePayload, NewFloatingPanePayload, NewInPlacePanePayload, NewPanePayload,
         NewPanePlacement as ProtobufNewPanePlacement, NewPluginPanePayload, NewTiledPanePayload,
         PaneId as ProtobufPaneId, PaneIdAndShouldFloat,
         PluginConfiguration as ProtobufPluginConfiguration, Position as ProtobufPosition,
@@ -915,6 +915,33 @@ impl TryFrom<ProtobufAction> for Action {
                 },
                 _ => Err("Wrong payload for Action::NewBlockingPane"),
             },
+            Some(ProtobufActionName::NewInPlacePane) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::NewInPlacePanePayload(payload)) => {
+                    let near_current_pane = payload.near_current_pane;
+                    let pane_id_to_replace = payload.pane_id_to_replace.and_then(|p| p.try_into().ok());
+                    let close_replace_pane = payload.close_replace_pane;
+                    if let Some(command) = payload.command {
+                        let pane_name = command.pane_name.clone();
+                        let run_command_action: RunCommandAction = command.try_into()?;
+                        Ok(Action::NewInPlacePane {
+                            command: Some(run_command_action),
+                            pane_name,
+                            near_current_pane,
+                            pane_id_to_replace,
+                            close_replace_pane,
+                        })
+                    } else {
+                        Ok(Action::NewInPlacePane {
+                            command: None,
+                            pane_name: payload.pane_name,
+                            near_current_pane,
+                            pane_id_to_replace,
+                            close_replace_pane,
+                        })
+                    }
+                },
+                _ => Err("Wrong payload for Action::NewInPlacePane"),
+            },
             _ => Err("Unknown Action"),
         }
     }
@@ -1618,13 +1645,36 @@ impl TryFrom<Action> for ProtobufAction {
                     )),
                 })
             },
+            Action::NewInPlacePane {
+                command: run_command_action,
+                pane_name,
+                near_current_pane,
+                pane_id_to_replace,
+                close_replace_pane,
+            } => {
+                let command = run_command_action.and_then(|r| {
+                    let mut protobuf_run_command_action: ProtobufRunCommandAction =
+                        r.try_into().ok()?;
+                    let pane_name = pane_name.and_then(|n| n.try_into().ok());
+                    protobuf_run_command_action.pane_name = pane_name;
+                    Some(protobuf_run_command_action)
+                });
+                let pane_id_to_replace = pane_id_to_replace.and_then(|p| p.try_into().ok());
+                Ok(ProtobufAction {
+                    name: ProtobufActionName::NewInPlacePane as i32,
+                    optional_payload: Some(OptionalPayload::NewInPlacePanePayload(
+                        NewInPlacePanePayload {
+                            command,
+                            pane_name: None, // pane_name is already embedded in command
+                            near_current_pane,
+                            pane_id_to_replace,
+                            close_replace_pane,
+                        },
+                    )),
+                })
+            },
             Action::NoOp
             | Action::Confirm
-            | Action::NewInPlacePane {
-                command: _,
-                pane_name: _,
-                near_current_pane: _,
-            }
             | Action::NewInPlacePluginPane {
                 plugin: _,
                 pane_name: _,

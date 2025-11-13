@@ -590,8 +590,8 @@ pub struct UserActionPayload {
 pub struct ActionCompletePayload {
     #[prost(message, optional, tag="1")]
     pub action: ::core::option::Option<super::action::Action>,
-    #[prost(string, tag="2")]
-    pub payload: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub pane_id: ::core::option::Option<PaneId>,
     #[prost(message, repeated, tag="3")]
     pub context: ::prost::alloc::vec::Vec<ContextItem>,
 }

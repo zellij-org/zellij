@@ -425,13 +425,17 @@ impl TryFrom<ProtobufEvent> for Event {
                         .ok_or("Missing action in ActionComplete payload")?
                         .try_into()
                         .map_err(|_| "Failed to convert Action in ActionComplete payload")?;
-                    let payload = protobuf_payload.payload;
+                    let pane_id = protobuf_payload
+                        .pane_id
+                        .map(|id| id.try_into())
+                        .transpose()
+                        .map_err(|_| "Failed to convert PaneId in ActionComplete payload")?;
                     let context: BTreeMap<String, String> = protobuf_payload
                         .context
                         .into_iter()
                         .map(|item| (item.name, item.value))
                         .collect();
-                    Ok(Event::ActionComplete(action, payload, context))
+                    Ok(Event::ActionComplete(action, pane_id, context))
                 },
                 _ => Err("Malformed payload for the ActionComplete Event"),
             },
@@ -854,15 +858,16 @@ impl TryFrom<Event> for ProtobufEvent {
                     payload: Some(event::Payload::UserActionPayload(protobuf_payload)),
                 })
             },
-            Event::ActionComplete(action, payload, context) => {
+            Event::ActionComplete(action, pane_id, context) => {
                 let protobuf_action = action.try_into()?;
+                let protobuf_pane_id = pane_id.map(|id| id.try_into()).transpose()?;
                 let context_items: Vec<ProtobufContextItem> = context
                     .into_iter()
                     .map(|(name, value)| ProtobufContextItem { name, value })
                     .collect();
                 let action_complete_payload = ProtobufActionCompletePayload {
                     action: Some(protobuf_action),
-                    payload,
+                    pane_id: protobuf_pane_id,
                     context: context_items,
                 };
                 Ok(ProtobufEvent {

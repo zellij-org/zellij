@@ -937,7 +937,7 @@ impl TerminalPane {
         arrow_fonts: bool,
         styled_underlines: bool,
         explicitly_disable_keyboard_protocol: bool,
-        notification_end: Option<NotificationEnd>,
+        mut notification_end: Option<NotificationEnd>,
     ) -> TerminalPane {
         let initial_pane_title =
             initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
@@ -955,6 +955,10 @@ impl TerminalPane {
             styled_underlines,
             explicitly_disable_keyboard_protocol,
         );
+        if let Some(notification_end) = notification_end.as_mut() {
+            notification_end.set_affected_pane_id(PaneId::Terminal(pid));
+
+        }
         TerminalPane {
             frame: HashMap::new(),
             content_offset: Offset::default(),

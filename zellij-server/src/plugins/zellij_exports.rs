@@ -810,8 +810,8 @@ fn run_action(env: &PluginEnv, action: Action, context: BTreeMap<String, String>
 
     // Spawn a new thread to execute the action
     thread::spawn(move || {
-        // Execute the action
-        if let Err(e) = route_action(
+        // Execute the action and capture the result
+        let pane_id = match route_action(
             action,
             client_id,
             None,
@@ -826,15 +826,23 @@ fn run_action(env: &PluginEnv, action: Action, context: BTreeMap<String, String>
             default_mode,
             None,
         ) {
-            log::error!("failed to run action in plugin {}: {:?}", plugin_name, e);
-        }
+            Ok((_should_break, result)) => {
+                // Extract pane_id from ActionCompletionResult
+                result.and_then(|r| r.affected_pane_id)
+            }
+            Err(e) => {
+                log::error!("failed to run action in plugin {}: {:?}", plugin_name, e);
+                None
+            }
+        };
 
         // After action completes, send ActionComplete event with context
-        let payload = String::new(); // Empty payload for now, can be extended later
+        // Convert server PaneId to zellij_utils PaneId
+        let pane_id_for_event = pane_id.map(|p| p.into());
         let updates = vec![(
             Some(plugin_id),
             Some(client_id),
-            Event::ActionComplete(action_clone, payload, context),
+            Event::ActionComplete(action_clone, pane_id_for_event, context),
         )];
 
         // Send the ActionComplete event back to the plugin
@@ -1107,6 +1115,8 @@ fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
         command: run_command_action,
         pane_name: None,
         near_current_pane: false,
+        pane_id_to_replace: None,
+        close_replace_pane: false,
     };
     apply_action!(action, error_msg, env);
 }
@@ -1363,6 +1373,8 @@ fn open_command_pane_in_place(
         command: Some(run_command_action),
         pane_name: name,
         near_current_pane: false,
+        pane_id_to_replace: None,
+        close_replace_pane: false,
     };
     apply_action!(action, error_msg, env);
 }

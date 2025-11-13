@@ -212,6 +212,7 @@ message Action {
     MouseEventPayload mouse_event_payload = 49;
     NewBlockingPanePayload new_blocking_pane_payload = 50;
     NewTabPayload new_tab_payload = 51;
+    NewInPlacePanePayload new_in_place_pane_payload = 52;
   }
 }
 
@@ -307,6 +308,14 @@ message NewBlockingPanePayload {
   optional RunCommandAction command = 3;
   optional UnblockCondition unblock_condition = 4;
   bool near_current_pane = 5;
+}
+
+message NewInPlacePanePayload {
+  optional RunCommandAction command = 1;
+  optional string pane_name = 2;
+  bool near_current_pane = 3;
+  optional PaneId pane_id_to_replace = 4;
+  bool close_replace_pane = 5;
 }
 
 message SwitchToModePayload {
@@ -418,6 +427,7 @@ enum ActionName {
     NewStackedPane = 89;
     SwitchSession = 90;
     NewBlockingPane = 91;
+    NewInPlacePane = 92;
 }
 
 message Position {

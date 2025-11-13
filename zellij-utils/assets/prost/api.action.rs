@@ -260,7 +260,7 @@ pub struct NewTabPayload {
 pub struct Action {
     #[prost(enumeration="ActionName", tag="1")]
     pub name: i32,
-    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51")]
+    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52")]
     pub optional_payload: ::core::option::Option<action::OptionalPayload>,
 }
 /// Nested message and enum types in `Action`.
@@ -362,6 +362,8 @@ pub mod action {
         NewBlockingPanePayload(super::NewBlockingPanePayload),
         #[prost(message, tag="51")]
         NewTabPayload(super::NewTabPayload),
+        #[prost(message, tag="52")]
+        NewInPlacePanePayload(super::NewInPlacePanePayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -493,6 +495,20 @@ pub struct NewBlockingPanePayload {
     pub unblock_condition: ::core::option::Option<i32>,
     #[prost(bool, tag="5")]
     pub near_current_pane: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NewInPlacePanePayload {
+    #[prost(message, optional, tag="1")]
+    pub command: ::core::option::Option<RunCommandAction>,
+    #[prost(string, optional, tag="2")]
+    pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="3")]
+    pub near_current_pane: bool,
+    #[prost(message, optional, tag="4")]
+    pub pane_id_to_replace: ::core::option::Option<PaneId>,
+    #[prost(bool, tag="5")]
+    pub close_replace_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -975,6 +991,7 @@ pub enum ActionName {
     NewStackedPane = 89,
     SwitchSession = 90,
     NewBlockingPane = 91,
+    NewInPlacePane = 92,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1072,6 +1089,7 @@ impl ActionName {
             ActionName::NewStackedPane => "NewStackedPane",
             ActionName::SwitchSession => "SwitchSession",
             ActionName::NewBlockingPane => "NewBlockingPane",
+            ActionName::NewInPlacePane => "NewInPlacePane",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1166,6 +1184,7 @@ impl ActionName {
             "NewStackedPane" => Some(Self::NewStackedPane),
             "SwitchSession" => Some(Self::SwitchSession),
             "NewBlockingPane" => Some(Self::NewBlockingPane),
+            "NewInPlacePane" => Some(Self::NewInPlacePane),
             _ => None,
         }
     }

@@ -364,6 +364,8 @@ message NewInPlacePaneAction {
   optional RunCommandAction command = 1;
   optional string pane_name = 2;
   bool near_current_pane = 3;
+  optional PaneId pane_id_to_replace = 4;
+  bool close_replace_pane = 5;
 }
 
 message NewStackedPaneAction {
