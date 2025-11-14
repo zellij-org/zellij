@@ -3539,8 +3539,11 @@ impl Tab {
                 closed_pane.reset_logical_position();
             }
             closed_pane
-        } else if self.suppressed_panes.contains_key(&id) {
-            self.suppressed_panes.remove(&id).map(|s_p| s_p.1)
+        } else if let Some(suppressed_key_of_pane) = self.suppressed_panes
+            .iter()
+            .find_map(|(key, (_, pane))| if &pane.pid() == &id { Some(*key) } else { None }) {
+                // TODO: test this (from the path in screen.rs focus_plugin_pane ~line 2519
+                self.suppressed_panes.remove(&suppressed_key_of_pane).map(|s_p| s_p.1)
         } else {
             None
         }
@@ -5024,7 +5027,7 @@ impl Tab {
                     .find(|(_id, (_, pane))| {
                         run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with())
                     })
-                    .map(|(id, _)| *id)
+                    .map(|(_, (_, pane))| pane.pid()) // TODO: does this break things????
             })
     }
 
@@ -5032,6 +5035,7 @@ impl Tab {
         &mut self,
         pane_id: PaneId,
         should_float: bool,
+        should_be_in_place: bool,
         client_id: ClientId,
     ) -> Result<()> {
         // TODO: should error if pane is not selectable
@@ -5046,15 +5050,31 @@ impl Tab {
                 };
                 focused_floating_pane
             })
-            .or_else(|_| match self.suppressed_panes.remove(&pane_id) {
+            // TODO: change suppressed_panes to be a proper struct with methods that make sense rather
+            // than doing this dance every time
+            .or_else(|_| match self.suppressed_panes.extract_if(|_key, (_, pane)| pane.pid() == pane_id).next().map(|(_key, (_, pane))| pane) {
                 Some(mut pane) => {
-                    pane.1.set_selectable(true);
+                    pane.set_selectable(true);
                     if should_float {
                         self.show_floating_panes();
-                        self.add_floating_pane(pane.1, pane_id, None, true)
+                        self.add_floating_pane(pane, pane_id, None, true)
+                    } else if should_be_in_place {
+
+                        let replaced_pane = if self.are_floating_panes_visible() {
+                            self.floating_panes.replace_active_pane(pane, client_id).ok()
+                        } else {
+                            self.tiled_panes.replace_active_pane(pane, client_id)
+                        };
+                        if let Some(replaced_pane) = replaced_pane {
+                            self.suppressed_panes
+                                .insert(replaced_pane.pid(), (false, replaced_pane));
+                        } else {
+                            log::error!("Could not find pane to replace, aborting.");
+                        }
+                        Ok(())
                     } else {
                         self.hide_floating_panes();
-                        self.add_tiled_pane(pane.1, pane_id, Some(client_id))
+                        self.add_tiled_pane(pane, pane_id, Some(client_id))
                     }
                 },
                 None => Ok(()),

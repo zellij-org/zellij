@@ -2503,6 +2503,7 @@ impl Screen {
         run_plugin: &RunPluginOrAlias,
         should_float: bool,
         move_to_focused_tab: bool,
+        should_be_in_place: bool,
         client_id: ClientId,
     ) -> Result<bool> {
         // true => found and focused, false => not
@@ -2533,6 +2534,7 @@ impl Screen {
                     None,
                     true,
                 )?;
+            // TODO: also should_be_in_place
             } else {
                 new_active_tab.hide_floating_panes();
                 new_active_tab.add_tiled_pane(
@@ -2549,7 +2551,7 @@ impl Screen {
                 self.tabs
                     .get_mut(&tab_index)
                     .with_context(err_context)?
-                    .focus_pane_with_id(plugin_pane_id, should_float, client_id)
+                    .focus_pane_with_id(plugin_pane_id, should_float, should_be_in_place, client_id)
                     .context("failed to focus plugin pane")?;
                 self.log_and_report_session_state()
                     .with_context(err_context)?;
@@ -2563,6 +2565,7 @@ impl Screen {
         &mut self,
         pane_id: PaneId,
         should_float_if_hidden: bool,
+        should_open_in_place: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to focus_plugin_pane");
@@ -2577,7 +2580,7 @@ impl Screen {
                 self.tabs
                     .iter_mut()
                     .find(|(_, t)| t.position == tab_index)
-                    .map(|(_, t)| t.focus_pane_with_id(pane_id, should_float_if_hidden, client_id))
+                    .map(|(_, t)| t.focus_pane_with_id(pane_id, should_float_if_hidden, should_open_in_place, client_id))
                     .with_context(err_context)
                     .non_fatal();
             },
@@ -4923,7 +4926,7 @@ pub(crate) fn screen_thread_main(
                     }
                 });
                 if let Some(pane_id) = pane_id {
-                    screen.focus_pane_with_id(pane_id, true, client_id)?;
+                    screen.focus_pane_with_id(pane_id, true, false, client_id)?;
                 } else if let Some(tab_position_to_focus) = tab_position_to_focus {
                     screen.go_to_tab(tab_position_to_focus, client_id)?;
                 }
@@ -5479,6 +5482,7 @@ pub(crate) fn screen_thread_main(
                                 &run_plugin,
                                 should_float,
                                 move_to_focused_tab,
+                                should_open_in_place,
                                 client_id,
                             )? {
                                 screen.render(None)?;
@@ -5605,7 +5609,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
-                screen.focus_pane_with_id(pane_id, should_float_if_hidden, client_id)?;
+                screen.focus_pane_with_id(pane_id, should_float_if_hidden, false, client_id)?;
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::RenamePane(
@@ -6091,7 +6095,7 @@ pub(crate) fn screen_thread_main(
                                 // waiting for it
             ) => {
                 if let Some(last_pane_id) = screen.stack_panes(pane_ids_to_stack) {
-                    let _ = screen.focus_pane_with_id(last_pane_id, false, client_id);
+                    let _ = screen.focus_pane_with_id(last_pane_id, false, false, client_id);
                     let _ = screen.render(None);
                     let pane_group = screen.get_client_pane_group(&client_id);
                     if !pane_group.is_empty() {
