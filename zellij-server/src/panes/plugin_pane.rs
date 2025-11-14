@@ -254,17 +254,15 @@ impl Pane for PluginPane {
     fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize)> {
         let own_content_columns = self.get_content_columns();
         let own_content_rows = self.get_content_rows();
+        let Offset { top, left, .. } = self.content_offset;
         if let Some(coordinates) = client_id
             .and_then(|client_id| self.cursor_visibility.get(&client_id)) {
-                coordinates.and_then(|(x, y)| {
-                    // TODO: there's an off-by-1 error somewhere in the whole plugin to here
-                    // process
+                coordinates
+                    .map(|(x, y)| (x + left, y + top))
+                    .and_then(|(x, y)| {
                     if x >= own_content_columns || y >= own_content_rows {
                         None
                     } else {
-                        // TODO: which one? also off-by-1? content-x rather than x in the plugin...
-                        // something else? need to troubleshoot this
-                        // Some((x + 1, y + 1)) // these are 0 indexed
                         Some((x, y)) // these are 0 indexed
                     }
                 })
