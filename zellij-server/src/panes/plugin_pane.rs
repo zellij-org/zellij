@@ -262,7 +262,10 @@ impl Pane for PluginPane {
                     if x >= own_content_columns || y >= own_content_rows {
                         None
                     } else {
-                        Some((x + 1, y + 1)) // these are 0 indexed
+                        // TODO: which one? also off-by-1? content-x rather than x in the plugin...
+                        // something else? need to troubleshoot this
+                        // Some((x + 1, y + 1)) // these are 0 indexed
+                        Some((x, y)) // these are 0 indexed
                     }
                 })
         } else {

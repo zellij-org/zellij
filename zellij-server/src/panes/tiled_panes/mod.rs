@@ -2349,7 +2349,9 @@ impl TiledPanes {
                     }
                 }
             },
-            None => self.active_panes.clear(&mut self.panes),
+            None => {
+                self.active_panes.clear(&mut self.panes)
+            }
         }
     }
     pub fn extract_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
