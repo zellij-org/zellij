@@ -1134,16 +1134,20 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::FocusTerminalPaneWithId {
                 pane_id,
                 should_float_if_hidden,
+                should_be_in_place_if_hidden,
             } => ActionType::FocusTerminalPaneWithId(FocusTerminalPaneWithIdAction {
                 pane_id,
                 should_float_if_hidden,
+                should_be_in_place_if_hidden,
             }),
             crate::input::actions::Action::FocusPluginPaneWithId {
                 pane_id,
                 should_float_if_hidden,
+                should_be_in_place_if_hidden,
             } => ActionType::FocusPluginPaneWithId(FocusPluginPaneWithIdAction {
                 pane_id,
                 should_float_if_hidden,
+                should_be_in_place_if_hidden,
             }),
             crate::input::actions::Action::RenameTerminalPane { pane_id, name } => {
                 ActionType::RenameTerminalPane(RenameTerminalPaneAction {
@@ -1712,12 +1716,14 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 Ok(crate::input::actions::Action::FocusTerminalPaneWithId {
                     pane_id: focus_pane_action.pane_id,
                     should_float_if_hidden: focus_pane_action.should_float_if_hidden,
+                    should_be_in_place_if_hidden: focus_pane_action.should_be_in_place_if_hidden,
                 })
             },
             ActionType::FocusPluginPaneWithId(focus_pane_action) => {
                 Ok(crate::input::actions::Action::FocusPluginPaneWithId {
                     pane_id: focus_pane_action.pane_id,
                     should_float_if_hidden: focus_pane_action.should_float_if_hidden,
+                    should_be_in_place_if_hidden: focus_pane_action.should_be_in_place_if_hidden,
                 })
             },
             ActionType::RenameTerminalPane(rename_pane_action) => {

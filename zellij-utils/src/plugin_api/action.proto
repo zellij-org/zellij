@@ -231,6 +231,7 @@ message IdAndName {
 message PaneIdAndShouldFloat {
   uint32 pane_id = 1;
   bool should_float = 2;
+  bool should_be_in_place = 3;
 }
 
 message NewPluginPanePayload {

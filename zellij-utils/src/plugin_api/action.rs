@@ -778,9 +778,11 @@ impl TryFrom<ProtobufAction> for Action {
                     Some(OptionalPayload::FocusTerminalPaneWithIdPayload(payload)) => {
                         let terminal_pane_id = payload.pane_id;
                         let should_float_if_hidden = payload.should_float;
+                        let should_be_in_place_if_hidden = payload.should_be_in_place;
                         Ok(Action::FocusTerminalPaneWithId {
                             pane_id: terminal_pane_id,
                             should_float_if_hidden,
+                            should_be_in_place_if_hidden,
                         })
                     },
                     _ => Err("Wrong payload for Action::FocusTerminalPaneWithId"),
@@ -791,9 +793,11 @@ impl TryFrom<ProtobufAction> for Action {
                     Some(OptionalPayload::FocusPluginPaneWithIdPayload(payload)) => {
                         let plugin_pane_id = payload.pane_id;
                         let should_float_if_hidden = payload.should_float;
+                        let should_be_in_place_if_hidden = payload.should_be_in_place;
                         Ok(Action::FocusPluginPaneWithId {
                             pane_id: plugin_pane_id,
                             should_float_if_hidden,
+                            should_be_in_place_if_hidden,
                         })
                     },
                     _ => Err("Wrong payload for Action::FocusPluginPaneWithId"),
@@ -1523,24 +1527,28 @@ impl TryFrom<Action> for ProtobufAction {
             Action::FocusTerminalPaneWithId {
                 pane_id: terminal_pane_id,
                 should_float_if_hidden,
+                should_be_in_place_if_hidden,
             } => Ok(ProtobufAction {
                 name: ProtobufActionName::FocusTerminalPaneWithId as i32,
                 optional_payload: Some(OptionalPayload::FocusTerminalPaneWithIdPayload(
                     PaneIdAndShouldFloat {
                         pane_id: terminal_pane_id,
                         should_float: should_float_if_hidden,
+                        should_be_in_place: should_be_in_place_if_hidden,
                     },
                 )),
             }),
             Action::FocusPluginPaneWithId {
                 pane_id: plugin_pane_id,
                 should_float_if_hidden,
+                should_be_in_place_if_hidden,
             } => Ok(ProtobufAction {
                 name: ProtobufActionName::FocusPluginPaneWithId as i32,
                 optional_payload: Some(OptionalPayload::FocusPluginPaneWithIdPayload(
                     PaneIdAndShouldFloat {
                         pane_id: plugin_pane_id,
                         should_float: should_float_if_hidden,
+                        should_be_in_place: should_be_in_place_if_hidden,
                     },
                 )),
             }),

@@ -2779,8 +2779,8 @@ pub enum PluginCommand {
     StartOrReloadPlugin(String),     // plugin url (eg. file:/path/to/plugin.wasm)
     CloseTerminalPane(u32),          // terminal pane id
     ClosePluginPane(u32),            // plugin pane id
-    FocusTerminalPane(u32, bool),    // terminal pane id, should_float_if_hidden
-    FocusPluginPane(u32, bool),      // plugin pane id, should_float_if_hidden
+    FocusTerminalPane(u32, bool, bool),    // terminal pane id, should_float_if_hidden, should_be_in_place_if_hidden
+    FocusPluginPane(u32, bool, bool),      // plugin pane id, should_float_if_hidden, should_be_in_place_if_hidden
     RenameTerminalPane(u32, String), // terminal pane id, new name
     RenamePluginPane(u32, String),   // plugin pane id, new name
     RenameTab(u32, String),          // tab index, new name

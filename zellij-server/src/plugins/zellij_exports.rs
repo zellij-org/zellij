@@ -238,11 +238,11 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ClosePluginPane(plugin_pane_id) => {
                         close_plugin_pane(env, plugin_pane_id)
                     },
-                    PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden) => {
-                        focus_terminal_pane(env, terminal_pane_id, should_float_if_hidden)
+                    PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden, should_be_in_place_if_hidden) => {
+                        focus_terminal_pane(env, terminal_pane_id, should_float_if_hidden, should_be_in_place_if_hidden)
                     },
-                    PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden) => {
-                        focus_plugin_pane(env, plugin_pane_id, should_float_if_hidden)
+                    PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden, should_be_in_place_if_hidden) => {
+                        focus_plugin_pane(env, plugin_pane_id, should_float_if_hidden, should_be_in_place_if_hidden)
                     },
                     PluginCommand::RenameTerminalPane(terminal_pane_id, new_name) => {
                         rename_terminal_pane(env, terminal_pane_id, &new_name)
@@ -1598,6 +1598,7 @@ fn show_self(env: &PluginEnv, should_float_if_hidden: bool) {
     let action = Action::FocusPluginPaneWithId {
         pane_id: env.plugin_id,
         should_float_if_hidden,
+        should_be_in_place_if_hidden: false,
     };
     let error_msg = || format!("Failed to show self for plugin");
     apply_action!(action, error_msg, env);
@@ -1609,6 +1610,7 @@ fn show_pane_with_id(env: &PluginEnv, pane_id: PaneId, should_float_if_hidden: b
         .send_to_screen(ScreenInstruction::FocusPaneWithId(
             pane_id,
             should_float_if_hidden,
+            false,
             env.client_id,
             None,
         ));
@@ -2124,19 +2126,21 @@ fn close_plugin_pane(env: &PluginEnv, plugin_pane_id: u32) {
         .non_fatal();
 }
 
-fn focus_terminal_pane(env: &PluginEnv, terminal_pane_id: u32, should_float_if_hidden: bool) {
+fn focus_terminal_pane(env: &PluginEnv, terminal_pane_id: u32, should_float_if_hidden: bool, should_be_in_place_if_hidden: bool) {
     let action = Action::FocusTerminalPaneWithId {
         pane_id: terminal_pane_id,
         should_float_if_hidden,
+        should_be_in_place_if_hidden,
     };
     let error_msg = || format!("Failed to focus terminal pane");
     apply_action!(action, error_msg, env);
 }
 
-fn focus_plugin_pane(env: &PluginEnv, plugin_pane_id: u32, should_float_if_hidden: bool) {
+fn focus_plugin_pane(env: &PluginEnv, plugin_pane_id: u32, should_float_if_hidden: bool, should_be_in_place_if_hidden: bool) {
     let action = Action::FocusPluginPaneWithId {
         pane_id: plugin_pane_id,
         should_float_if_hidden,
+        should_be_in_place_if_hidden
     };
     let error_msg = || format!("Failed to focus plugin pane");
     apply_action!(action, error_msg, env);

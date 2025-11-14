@@ -393,6 +393,8 @@ pub struct PaneIdAndShouldFloat {
     pub pane_id: u32,
     #[prost(bool, tag="2")]
     pub should_float: bool,
+    #[prost(bool, tag="3")]
+    pub should_be_in_place: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

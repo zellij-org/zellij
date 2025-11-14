@@ -373,7 +373,9 @@ pub enum ScreenInstruction {
         Option<NotificationEnd>,
     ), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace, Option<PathBuf> is an optional cwd, bool after is skip_cache
     SuppressPane(PaneId, ClientId), // bool is should_float
-    FocusPaneWithId(PaneId, bool, ClientId, Option<NotificationEnd>), // bool is should_float
+    FocusPaneWithId(PaneId, bool, bool, ClientId, Option<NotificationEnd>), // bools:
+                                                                            // should_float_if_hidden,
+                                                                            // should_be_in_place_if_hidden
     RenamePane(PaneId, Vec<u8>, Option<NotificationEnd>),
     RenameTab(usize, Vec<u8>, Option<NotificationEnd>),
     RequestPluginPermissions(
@@ -5605,11 +5607,12 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::FocusPaneWithId(
                 pane_id,
                 should_float_if_hidden,
+                should_be_in_place_if_hidden,
                 client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
-                screen.focus_pane_with_id(pane_id, should_float_if_hidden, false, client_id)?;
+                screen.focus_pane_with_id(pane_id, should_float_if_hidden, should_be_in_place_if_hidden, client_id)?;
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::RenamePane(

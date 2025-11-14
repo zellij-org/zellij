@@ -371,10 +371,12 @@ pub enum Action {
     FocusTerminalPaneWithId {
         pane_id: u32,
         should_float_if_hidden: bool,
+        should_be_in_place_if_hidden: bool,
     },
     FocusPluginPaneWithId {
         pane_id: u32,
         should_float_if_hidden: bool,
+        should_be_in_place_if_hidden: bool,
     },
     RenameTerminalPane {
         pane_id: u32,

@@ -842,6 +842,8 @@ pub struct FocusTerminalPaneWithIdAction {
     pub pane_id: u32,
     #[prost(bool, tag="2")]
     pub should_float_if_hidden: bool,
+    #[prost(bool, tag="3")]
+    pub should_be_in_place_if_hidden: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -850,6 +852,8 @@ pub struct FocusPluginPaneWithIdAction {
     pub pane_id: u32,
     #[prost(bool, tag="2")]
     pub should_float_if_hidden: bool,
+    #[prost(bool, tag="3")]
+    pub should_be_in_place_if_hidden: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

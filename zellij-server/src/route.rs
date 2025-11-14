@@ -1243,11 +1243,13 @@ pub(crate) fn route_action(
         Action::FocusTerminalPaneWithId {
             pane_id,
             should_float_if_hidden,
+            should_be_in_place_if_hidden,
         } => {
             senders
                 .send_to_screen(ScreenInstruction::FocusPaneWithId(
                     PaneId::Terminal(pane_id),
                     should_float_if_hidden,
+                    should_be_in_place_if_hidden,
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
@@ -1256,11 +1258,13 @@ pub(crate) fn route_action(
         Action::FocusPluginPaneWithId {
             pane_id,
             should_float_if_hidden,
+            should_be_in_place_if_hidden,
         } => {
             senders
                 .send_to_screen(ScreenInstruction::FocusPaneWithId(
                     PaneId::Plugin(pane_id),
                     should_float_if_hidden,
+                    should_be_in_place_if_hidden,
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
                 ))

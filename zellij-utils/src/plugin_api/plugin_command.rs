@@ -742,7 +742,8 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::FocusTerminalPanePayload(payload)) => {
                     let pane_id = payload.pane_id as u32;
                     let should_float = payload.should_float;
-                    Ok(PluginCommand::FocusTerminalPane(pane_id, should_float))
+                    let should_be_in_place = payload.should_be_in_place;
+                    Ok(PluginCommand::FocusTerminalPane(pane_id, should_float, should_be_in_place))
                 },
                 _ => Err("Mismatched payload for ClosePluginPane"),
             },
@@ -750,7 +751,8 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::FocusPluginPanePayload(payload)) => {
                     let pane_id = payload.pane_id as u32;
                     let should_float = payload.should_float;
-                    Ok(PluginCommand::FocusPluginPane(pane_id, should_float))
+                    let should_be_in_place = payload.should_be_in_place;
+                    Ok(PluginCommand::FocusPluginPane(pane_id, should_float, should_be_in_place))
                 },
                 _ => Err("Mismatched payload for ClosePluginPane"),
             },
@@ -2143,21 +2145,23 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::ClosePluginPane as i32,
                 payload: Some(Payload::ClosePluginPanePayload(pane_id)),
             }),
-            PluginCommand::FocusTerminalPane(pane_id, should_float_if_hidden) => {
+            PluginCommand::FocusTerminalPane(pane_id, should_float_if_hidden, should_be_in_place_if_hidden) => {
                 Ok(ProtobufPluginCommand {
                     name: CommandName::FocusTerminalPane as i32,
                     payload: Some(Payload::FocusTerminalPanePayload(PaneIdAndShouldFloat {
                         pane_id: pane_id,
                         should_float: should_float_if_hidden,
+                        should_be_in_place: should_be_in_place_if_hidden,
                     })),
                 })
             },
-            PluginCommand::FocusPluginPane(pane_id, should_float_if_hidden) => {
+            PluginCommand::FocusPluginPane(pane_id, should_float_if_hidden, should_be_in_place_if_hidden) => {
                 Ok(ProtobufPluginCommand {
                     name: CommandName::FocusPluginPane as i32,
                     payload: Some(Payload::FocusPluginPanePayload(PaneIdAndShouldFloat {
                         pane_id: pane_id,
                         should_float: should_float_if_hidden,
+                        should_be_in_place: should_be_in_place_if_hidden,
                     })),
                 })
             },

@@ -258,11 +258,13 @@ impl ZellijPlugin for State {
                 },
                 BareKey::Char('t') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     let should_float_if_hidden = false;
-                    focus_terminal_pane(1, should_float_if_hidden);
+                    let should_be_in_place_if_hidden = false;
+                    focus_terminal_pane(1, should_float_if_hidden, should_be_in_place_if_hidden);
                 },
                 BareKey::Char('u') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     let should_float_if_hidden = false;
-                    focus_plugin_pane(1, should_float_if_hidden);
+                    let should_be_in_place_if_hidden = false;
+                    focus_plugin_pane(1, should_float_if_hidden, should_be_in_place_if_hidden);
                 },
                 BareKey::Char('v') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     rename_terminal_pane(1, "new terminal_pane_name");

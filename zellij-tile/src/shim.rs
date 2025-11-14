@@ -837,16 +837,16 @@ pub fn close_plugin_pane(plugin_pane_id: u32) {
 }
 
 /// Changes the focus to the terminal pane with the specified id, unsuppressing it if it was suppressed and switching to its tab and layer (eg. floating/tiled).
-pub fn focus_terminal_pane(terminal_pane_id: u32, should_float_if_hidden: bool) {
-    let plugin_command = PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden);
+pub fn focus_terminal_pane(terminal_pane_id: u32, should_float_if_hidden: bool, should_be_in_place_if_hidden: bool) {
+    let plugin_command = PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden, should_be_in_place_if_hidden);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 }
 
 /// Changes the focus to the plugin pane with the specified id, unsuppressing it if it was suppressed and switching to its tab and layer (eg. floating/tiled).
-pub fn focus_plugin_pane(plugin_pane_id: u32, should_float_if_hidden: bool) {
-    let plugin_command = PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden);
+pub fn focus_plugin_pane(plugin_pane_id: u32, should_float_if_hidden: bool, should_be_in_place_if_hidden: bool) {
+    let plugin_command = PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden, should_be_in_place_if_hidden);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -1086,13 +1086,13 @@ pub fn resize_pane_with_id(resize_strategy: ResizeStrategy, pane_id: PaneId) {
 }
 
 /// Changes the focus to the pane with the specified id, unsuppressing it if it was suppressed and switching to its tab and layer (eg. floating/tiled).
-pub fn focus_pane_with_id(pane_id: PaneId, should_float_if_hidden: bool) {
+pub fn focus_pane_with_id(pane_id: PaneId, should_float_if_hidden: bool, should_be_in_place_if_hidden: bool) {
     let plugin_command = match pane_id {
         PaneId::Terminal(terminal_pane_id) => {
-            PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden)
+            PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden, should_be_in_place_if_hidden)
         },
         PaneId::Plugin(plugin_pane_id) => {
-            PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden)
+            PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden, should_be_in_place_if_hidden)
         },
     };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();

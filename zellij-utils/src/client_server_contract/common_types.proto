@@ -492,11 +492,13 @@ message ClosePluginPaneAction {
 message FocusTerminalPaneWithIdAction {
   uint32 pane_id = 1;
   bool should_float_if_hidden = 2;
+  bool should_be_in_place_if_hidden = 3;
 }
 
 message FocusPluginPaneWithIdAction {
   uint32 pane_id = 1;
   bool should_float_if_hidden = 2;
+  bool should_be_in_place_if_hidden = 3;
 }
 
 message RenameTerminalPaneAction {
