@@ -5697,9 +5697,9 @@ pub(crate) fn screen_thread_main(
                 invoked_with,
                 close_replaced_pane,
                 client_id_tab_index_or_pane_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
+                mut completion_tx,
             ) => {
+                completion_tx.as_mut().map(|c| c.set_affected_pane_id(new_pane_id));
                 screen.replace_pane(
                     new_pane_id,
                     hold_for_command,
