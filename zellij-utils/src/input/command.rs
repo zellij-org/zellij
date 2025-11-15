@@ -140,6 +140,20 @@ impl From<RunCommand> for RunCommandAction {
     }
 }
 
+impl RunCommandAction {
+    pub fn new(mut command: Vec<String>) -> Self {
+        if command.is_empty() {
+            Default::default()
+        } else {
+            RunCommandAction {
+                command: PathBuf::from(command.remove(0)),
+                args: command,
+                ..Default::default()
+            }
+        }
+    }
+}
+
 impl RunCommand {
     pub fn new(command: PathBuf) -> Self {
         RunCommand {

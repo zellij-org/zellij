@@ -4643,10 +4643,12 @@ pub(crate) fn screen_thread_main(
                 tab_index,
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it (only used when blocking_terminal is None)
+                mut completion_tx,
                 blocking_terminal,
             ) => {
+                if let Some(first_terminal_pane) = new_pane_pids.iter().next() {
+                    completion_tx.as_mut().map(|c| c.set_affected_pane_id(PaneId::Terminal(first_terminal_pane.0)));
+                }
                 screen.apply_layout(
                     layout,
                     floating_panes_layout,

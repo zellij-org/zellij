@@ -53,6 +53,12 @@ pub enum CommandOrPlugin {
     Plugin(RunPluginOrAlias),
 }
 
+impl CommandOrPlugin {
+    pub fn new_command(command: Vec<String>) -> Self {
+        CommandOrPlugin::Command(RunCommandAction::new(command))
+    }
+}
+
 pub fn client_id_to_colors(
     client_id: ClientId,
     colors: MultiplayerColors,
