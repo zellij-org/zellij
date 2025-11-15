@@ -5066,8 +5066,17 @@ impl Tab {
                             self.tiled_panes.replace_active_pane(pane, client_id)
                         };
                         if let Some(replaced_pane) = replaced_pane {
+                            if let Some(existing_suppressed_pane) = self.suppressed_panes.remove(&pane_id) {
+                                // the pane we are trying to focus is supposed to trigger another
+                                // pane being unsuppressed when it closes, so we remove this
+                                // relationship by binding the other pane to itself in suppressed
+                                // panes, to that it will have to be explicitly unsuppressed, but
+                                // will still remain running
+                                self.suppressed_panes.insert(existing_suppressed_pane.1.pid(), existing_suppressed_pane);
+                            }
                             self.suppressed_panes
-                                .insert(replaced_pane.pid(), (false, replaced_pane));
+                                .insert(pane_id, (false, replaced_pane));
+                                // .insert(replaced_pane.pid(), (false, replaced_pane));
                         } else {
                             log::error!("Could not find pane to replace, aborting.");
                         }
@@ -5098,7 +5107,7 @@ impl Tab {
         // not take it out of there when another pane is closed (eg. like happens with the
         // scrollback editor), but it has to take itself out on its own (eg. a plugin using the
         // show_self() method)
-        if let Some(pane) = self.extract_pane(pane_id, true) {
+        if let Some(pane) = self.extract_pane(pane_id, false) {
             let is_scrollback_editor = false;
             self.suppressed_panes
                 .insert(pane_id, (is_scrollback_editor, pane));
@@ -5111,9 +5120,9 @@ impl Tab {
         let mut floating_pane_info = self.floating_panes.pane_info(&current_pane_group);
         pane_info.append(&mut tiled_pane_info);
         pane_info.append(&mut floating_pane_info);
-        for (pane_id, (_is_scrollback_editor, pane)) in self.suppressed_panes.iter() {
+        for (_pane_id_of_suppressing_pane, (_is_scrollback_editor, pane)) in self.suppressed_panes.iter() {
             let mut pane_info_for_suppressed_pane =
-                pane_info_for_pane(pane_id, pane, &current_pane_group);
+                pane_info_for_pane(&pane.pid(), pane, &current_pane_group);
             pane_info_for_suppressed_pane.is_floating = false;
             pane_info_for_suppressed_pane.is_suppressed = true;
             pane_info_for_suppressed_pane.is_focused = false;
