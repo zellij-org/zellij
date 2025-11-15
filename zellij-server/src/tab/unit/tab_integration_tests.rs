@@ -1198,7 +1198,7 @@ fn render_stacks_without_pane_frames() {
         )
         .unwrap();
     }
-    tab.focus_pane_with_id(PaneId::Terminal(1), false, client_id);
+    tab.focus_pane_with_id(PaneId::Terminal(1), false, false, client_id);
     for i in 7..9 {
         let new_pane_id_1 = PaneId::Terminal(i);
         tab.new_pane(
@@ -1213,7 +1213,7 @@ fn render_stacks_without_pane_frames() {
         )
         .unwrap();
     }
-    let _ = tab.focus_pane_with_id(PaneId::Terminal(1), false, client_id);
+    let _ = tab.focus_pane_with_id(PaneId::Terminal(1), false, false, client_id);
     for i in 9..11 {
         let new_pane_id_1 = PaneId::Terminal(i);
         tab.new_pane(
@@ -1233,8 +1233,8 @@ fn render_stacks_without_pane_frames() {
         ResizeStrategy::new(Resize::Increase, Some(Direction::Right)),
     )
     .unwrap();
-    let _ = tab.focus_pane_with_id(PaneId::Terminal(7), false, client_id);
-    let _ = tab.focus_pane_with_id(PaneId::Terminal(5), false, client_id);
+    let _ = tab.focus_pane_with_id(PaneId::Terminal(7), false, false, client_id);
+    let _ = tab.focus_pane_with_id(PaneId::Terminal(5), false, false, client_id);
 
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(

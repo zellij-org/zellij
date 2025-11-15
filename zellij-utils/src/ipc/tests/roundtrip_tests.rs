@@ -2434,6 +2434,7 @@ fn test_client_messages() {
         action: Action::FocusTerminalPaneWithId {
             pane_id: 12,
             should_float_if_hidden: false,
+            should_be_in_place_if_hidden: false,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -2443,6 +2444,7 @@ fn test_client_messages() {
         action: Action::FocusTerminalPaneWithId {
             pane_id: 12,
             should_float_if_hidden: true,
+            should_be_in_place_if_hidden: false,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -2452,6 +2454,7 @@ fn test_client_messages() {
         action: Action::FocusPluginPaneWithId {
             pane_id: 12,
             should_float_if_hidden: false,
+            should_be_in_place_if_hidden: true,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -2461,6 +2464,7 @@ fn test_client_messages() {
         action: Action::FocusPluginPaneWithId {
             pane_id: 12,
             should_float_if_hidden: true,
+            should_be_in_place_if_hidden: false,
         },
         terminal_id: Some(1),
         client_id: Some(100),
