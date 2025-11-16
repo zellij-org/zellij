@@ -2085,6 +2085,35 @@ impl Tab {
             drop(replaced_pane);
         }
     }
+    pub fn suppress_pane_and_replace_with_other_pane(
+        &mut self,
+        pane_id_to_replace: PaneId,
+        pane_to_replace_with: Box<dyn Pane>,
+        _completion_tx: Option<NotificationEnd>,
+    ) {
+        let pane_to_replace_with_pid = pane_to_replace_with.pid();
+        let mut replaced_pane = if self.floating_panes.panes_contain(&pane_id_to_replace) {
+            self.floating_panes
+                .replace_pane(pane_id_to_replace, pane_to_replace_with)
+                .ok()
+        } else {
+            self.tiled_panes
+                .replace_pane(pane_id_to_replace, pane_to_replace_with)
+        };
+
+        if let Some(replaced_pane) = replaced_pane.take() {
+            if let Some(existing_suppressed_pane) = self.suppressed_panes.remove(&pane_to_replace_with_pid) {
+                // the pane we are trying to focus is supposed to trigger another
+                // pane being unsuppressed when it closes, so we remove this
+                // relationship by binding the other pane to itself in suppressed
+                // panes, to that it will have to be explicitly unsuppressed, but
+                // will still remain running
+                self.suppressed_panes.insert(existing_suppressed_pane.1.pid(), existing_suppressed_pane);
+            }
+            self.suppressed_panes
+                .insert(pane_to_replace_with_pid, (false, replaced_pane));
+        }
+    }
     pub fn horizontal_split(
         &mut self,
         pid: PaneId,

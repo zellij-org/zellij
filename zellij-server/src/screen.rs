@@ -473,7 +473,7 @@ pub enum ScreenInstruction {
     SetMouseSelectionSupport(PaneId, bool),
     InterceptKeyPresses(PluginId, ClientId),
     ClearKeyPressesIntercepts(ClientId),
-    ReplacePaneWithExistingPane(PaneId, PaneId),
+    ReplacePaneWithExistingPane(PaneId, PaneId, bool), // bool -> suppress_replaced_pane
     AddWatcherClient(ClientId, Size),
     RemoveWatcherClient(ClientId),
     SetFollowedClient(ClientId),
@@ -2958,6 +2958,7 @@ impl Screen {
         &mut self,
         pane_id_to_replace: PaneId,
         pane_id_of_existing_pane: PaneId,
+        suppress_replaced_pane: bool,
     ) {
         let Some(tab_index_of_pane_id_to_replace) = self
             .tabs
@@ -2981,7 +2982,8 @@ impl Screen {
             .tabs
             .iter_mut()
             .find(|(_, t)| t.position == tab_index_of_existing_pane)
-            .and_then(|(_, t)| t.extract_pane(pane_id_of_existing_pane, false))
+            // .and_then(|(_, t)| t.extract_pane(pane_id_of_existing_pane, false))
+            .and_then(|(_, t)| t.extract_pane(pane_id_of_existing_pane, true))
         else {
             log::error!("Failed to find pane");
             return;
@@ -2991,11 +2993,19 @@ impl Screen {
             .iter_mut()
             .find(|(_, t)| t.position == tab_index_of_pane_id_to_replace)
         {
-            tab.1.close_pane_and_replace_with_other_pane(
-                pane_id_to_replace,
-                extracted_pane_from_other_tab,
-                None,
-            );
+            if suppress_replaced_pane {
+                tab.1.suppress_pane_and_replace_with_other_pane(
+                    pane_id_to_replace,
+                    extracted_pane_from_other_tab,
+                    None,
+                );
+            } else {
+                tab.1.close_pane_and_replace_with_other_pane(
+                    pane_id_to_replace,
+                    extracted_pane_from_other_tab,
+                    None,
+                );
+            }
         }
         let _ = self.log_and_report_session_state();
     }
@@ -6260,8 +6270,8 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ClearKeyPressesIntercepts(client_id) => {
                 keybind_intercepts.remove(&client_id);
             },
-            ScreenInstruction::ReplacePaneWithExistingPane(old_pane_id, new_pane_id) => {
-                screen.replace_pane_with_existing_pane(old_pane_id, new_pane_id)
+            ScreenInstruction::ReplacePaneWithExistingPane(old_pane_id, new_pane_id, suppress_replaced_pane) => {
+                screen.replace_pane_with_existing_pane(old_pane_id, new_pane_id, suppress_replaced_pane)
             },
             ScreenInstruction::AddWatcherClient(client_id, size) => {
                 screen

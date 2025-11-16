@@ -2902,7 +2902,8 @@ pub enum PluginCommand {
     RenameWebLoginToken(String, String), // (original_name, new_name)
     InterceptKeyPresses,
     ClearKeyPressesIntercepts,
-    ReplacePaneWithExistingPane(PaneId, PaneId), // (pane id to replace, pane id of existing)
+    ReplacePaneWithExistingPane(PaneId, PaneId, bool), // (pane id to replace, pane id of existing,
+                                                       // suppress_replaced_pane)
     RunAction(Action, BTreeMap<String, String>),
     GetMacros,
     SetMacro(String, Vec<Action>),

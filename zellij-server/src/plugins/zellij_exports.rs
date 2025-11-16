@@ -514,10 +514,12 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ReplacePaneWithExistingPane(
                         pane_id_to_replace,
                         existing_pane_id,
+                        suppress_replaced_pane,
                     ) => replace_pane_with_existing_pane(
                         &mut env,
                         pane_id_to_replace.into(),
                         existing_pane_id.into(),
+                        suppress_replaced_pane
                     ),
                     PluginCommand::RunAction(action, context) => run_action(&env, action, context),
                 },
@@ -2856,12 +2858,14 @@ fn replace_pane_with_existing_pane(
     env: &mut PluginEnv,
     pane_to_replace: PaneId,
     existing_pane: PaneId,
+    suppress_replaced_pane: bool,
 ) {
     let _ = env
         .senders
         .send_to_screen(ScreenInstruction::ReplacePaneWithExistingPane(
             pane_to_replace,
             existing_pane,
+            suppress_replaced_pane
         ));
 }
 
