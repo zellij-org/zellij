@@ -2102,16 +2102,8 @@ impl Tab {
         };
 
         if let Some(replaced_pane) = replaced_pane.take() {
-            if let Some(existing_suppressed_pane) = self.suppressed_panes.remove(&pane_to_replace_with_pid) {
-                // the pane we are trying to focus is supposed to trigger another
-                // pane being unsuppressed when it closes, so we remove this
-                // relationship by binding the other pane to itself in suppressed
-                // panes, to that it will have to be explicitly unsuppressed, but
-                // will still remain running
-                self.suppressed_panes.insert(existing_suppressed_pane.1.pid(), existing_suppressed_pane);
-            }
-            self.suppressed_panes
-                .insert(pane_to_replace_with_pid, (false, replaced_pane));
+            let is_scrollback_editor = false;
+            self.insert_suppressed_pane(pane_to_replace_with_pid, (is_scrollback_editor, replaced_pane));
         }
     }
     pub fn horizontal_split(
@@ -5095,17 +5087,8 @@ impl Tab {
                             self.tiled_panes.replace_active_pane(pane, client_id)
                         };
                         if let Some(replaced_pane) = replaced_pane {
-                            if let Some(existing_suppressed_pane) = self.suppressed_panes.remove(&pane_id) {
-                                // the pane we are trying to focus is supposed to trigger another
-                                // pane being unsuppressed when it closes, so we remove this
-                                // relationship by binding the other pane to itself in suppressed
-                                // panes, to that it will have to be explicitly unsuppressed, but
-                                // will still remain running
-                                self.suppressed_panes.insert(existing_suppressed_pane.1.pid(), existing_suppressed_pane);
-                            }
-                            self.suppressed_panes
-                                .insert(pane_id, (false, replaced_pane));
-                                // .insert(replaced_pane.pid(), (false, replaced_pane));
+                            let is_scrollback_editor = false;
+                            self.insert_suppressed_pane(pane_id, (is_scrollback_editor, replaced_pane));
                         } else {
                             log::error!("Could not find pane to replace, aborting.");
                         }
@@ -5137,11 +5120,47 @@ impl Tab {
         // scrollback editor), but it has to take itself out on its own (eg. a plugin using the
         // show_self() method)
         if let Some(pane) = self.extract_pane(pane_id, false) {
-            let is_scrollback_editor = false;
-            self.suppressed_panes
-                .insert(pane_id, (is_scrollback_editor, pane));
+            self.insert_suppressed_pane(pane_id, (false, pane));
         }
     }
+    fn insert_suppressed_pane(&mut self, suppressing_pane_id: PaneId, pane_to_suppress: (bool, Box<dyn Pane>)) { // bool -> is_scrollback_editor
+        // this method is intended to insert an existing provided pane into suppressed_panes, while
+        // making sure any existing panes already in suppressed_panes still remain there
+        // if there's a key collision (eg. the suppressing_pane_id already suppresses another
+        // pane), we fix the colliding pane so that it now becomes suppressed by its own id (i.e.
+        // needs to explicitly be removed from suppressed_panes by eg. a plugin action rather than
+        // being conditionally removed when its suppressing pane is closed or itself suppressed)
+        //
+        // - suppressing_pane_id: the id of the pane suppressing this pane - the pane that if
+        // closed, should trigger this pane being unsuppressed
+        // - pane_to_suppress: the pane itself that we want to suppress
+
+        // this closure removes and returns an existing pane from the map if it exists under this key
+        // and inserts the given pane into the map under this key
+        let mut insert_and_return_existing_value = |key: PaneId, value: (bool, Box<dyn Pane>)| -> Option<(bool, Box<dyn Pane>)> {
+            let existing = self.suppressed_panes.remove(&key);
+            self.suppressed_panes
+                .insert(key, value);
+            existing
+        };
+
+        // here we try to insert a pane into the suppressed panes map while making sure not to drop
+        // (close) any existing panes in the map. We repeat the action of remapping existing panes
+        // under their own keys until all keys either reference the suppressing_pane_id (only one
+        // can do this) or themselves
+        let mut key_to_insert = suppressing_pane_id;
+        let mut pane_to_insert = Some(pane_to_suppress);
+        loop {
+            pane_to_insert = pane_to_insert.take().and_then(|p| insert_and_return_existing_value(key_to_insert, p));
+            if let Some(pane_to_insert) = pane_to_insert.as_ref() {
+                key_to_insert = pane_to_insert.1.pid();
+            } else {
+                break;
+            }
+        }
+    }
+
+
     pub fn pane_infos(&self) -> Vec<PaneInfo> {
         let mut pane_info = vec![];
         let current_pane_group = { self.current_pane_group.borrow().clone_inner() };
@@ -5437,7 +5456,8 @@ impl Tab {
     }
     pub fn add_suppressed_panes(&mut self, mut suppressed_panes: SuppressedPanes) {
         for (pane_id, suppressed_pane_entry) in suppressed_panes.drain() {
-            self.suppressed_panes.insert(pane_id, suppressed_pane_entry);
+            // self.suppressed_panes.insert(pane_id, suppressed_pane_entry);
+            self.insert_suppressed_pane(pane_id, suppressed_pane_entry);
         }
     }
     pub fn toggle_pane_pinned(&mut self, client_id: ClientId) {
