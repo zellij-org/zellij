@@ -1004,10 +1004,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "daemonize"
-version = "0.5.0"
+name = "daemonix"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab8bfdaacb3c887a54d41bdf48d3af8873b3f5566469f8ba21b92057509f116e"
+checksum = "f0b747381562a10fd2104e9333ad72fe5158d79de81b64426fc9e229c6d3fb38"
 dependencies = [
  "libc",
 ]
@@ -5164,7 +5164,7 @@ dependencies = [
  "axum",
  "axum-extra",
  "axum-server",
- "daemonize",
+ "daemonix",
  "dialoguer",
  "futures",
  "futures-util",
@@ -5213,7 +5213,7 @@ dependencies = [
  "chrono",
  "close_fds",
  "crossbeam",
- "daemonize",
+ "daemonix",
  "highway",
  "insta",
  "interprocess",
