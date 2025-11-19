@@ -289,11 +289,17 @@ message SessionManifest {
   bool web_clients_allowed = 8;
   uint32 web_client_count = 9;
   repeated ClientTabHistory tab_history = 10;
+  repeated ClientPaneHistory pane_history = 11;
 }
 
 message ClientTabHistory {
   uint32 client_id = 1;
   repeated uint32 tab_history = 2;
+}
+
+message ClientPaneHistory {
+  uint32 client_id = 1;
+  repeated PaneId pane_history = 2;
 }
 
 message PluginInfo {

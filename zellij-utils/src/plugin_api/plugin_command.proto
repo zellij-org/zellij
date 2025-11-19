@@ -533,6 +533,7 @@ message HidePaneWithIdPayload {
 message ShowPaneWithIdPayload {
   PaneId pane_id = 1;
   bool should_float_if_hidden = 2;
+  bool should_focus_pane = 3;
 }
 
 message NewTabsWithLayoutInfoPayload {

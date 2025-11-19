@@ -630,6 +630,8 @@ pub struct ShowPaneWithIdPayload {
     pub pane_id: ::core::option::Option<PaneId>,
     #[prost(bool, tag="2")]
     pub should_float_if_hidden: bool,
+    #[prost(bool, tag="3")]
+    pub should_focus_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

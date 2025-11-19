@@ -2103,7 +2103,13 @@ impl Tab {
 
         if let Some(replaced_pane) = replaced_pane.take() {
             let is_scrollback_editor = false;
-            self.insert_suppressed_pane(pane_to_replace_with_pid, (is_scrollback_editor, replaced_pane));
+            // TODO: make the plugin API configurable to do either the below commented (make the
+            // pane pop out once its closed) or the uncommented (force it to be explicitly
+            // unsuppressed)
+            // also check what else is using this to be sure we didn't break anything by switching
+            // the behavior here
+            // self.insert_suppressed_pane(pane_to_replace_with_pid, (is_scrollback_editor, replaced_pane));
+            self.insert_suppressed_pane(replaced_pane.pid(), (is_scrollback_editor, replaced_pane));
         }
     }
     pub fn horizontal_split(
@@ -5119,8 +5125,29 @@ impl Tab {
         // not take it out of there when another pane is closed (eg. like happens with the
         // scrollback editor), but it has to take itself out on its own (eg. a plugin using the
         // show_self() method)
-        if let Some(pane) = self.extract_pane(pane_id, false) {
+        // if let Some(pane) = self.extract_pane(pane_id, false) {
+        if let Some(pane) = self.extract_pane(pane_id, true) {
             self.insert_suppressed_pane(pane_id, (false, pane));
+        }
+    }
+    pub fn unsuppress_pane(&mut self, pane_id: PaneId, should_float_if_hidden: bool) {
+        // removes a pane from being suppressed (hidden) but does not focus it
+        match self.suppressed_panes.extract_if(|_key, (_, pane)| pane.pid() == pane_id).next().map(|(_key, (_, pane))| pane) {
+            Some(pane) => {
+                if should_float_if_hidden {
+                    self.add_floating_pane(pane, pane_id, None, true)
+                        .non_fatal();
+                } else {
+                    self.add_tiled_pane(
+                        pane,
+                        pane_id,
+                        None,
+                    ).non_fatal();
+                }
+            },
+            None => {
+                log::error!("Could not find suppressed pane wiht id: {:?}", pane_id);
+            },
         }
     }
     fn insert_suppressed_pane(&mut self, suppressing_pane_id: PaneId, pane_to_suppress: (bool, Box<dyn Pane>)) { // bool -> is_scrollback_editor

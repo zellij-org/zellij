@@ -458,8 +458,8 @@ pub fn show_self(should_float_if_hidden: bool) {
 }
 
 /// Show the pane (unsuppress it if it is suppressed) with the specified [PaneId], focus it and switch to its tab
-pub fn show_pane_with_id(pane_id: PaneId, should_float_if_hidden: bool) {
-    let plugin_command = PluginCommand::ShowPaneWithId(pane_id, should_float_if_hidden);
+pub fn show_pane_with_id(pane_id: PaneId, should_float_if_hidden: bool, should_focus_pane: bool) {
+    let plugin_command = PluginCommand::ShowPaneWithId(pane_id, should_float_if_hidden, should_focus_pane);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

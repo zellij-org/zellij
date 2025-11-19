@@ -1694,6 +1694,7 @@ pub struct SessionInfo {
     pub web_clients_allowed: bool,
     pub web_client_count: usize,
     pub tab_history: BTreeMap<ClientId, Vec<usize>>,
+    pub pane_history: BTreeMap<ClientId, Vec<PaneId>>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -2826,7 +2827,7 @@ pub enum PluginCommand {
     Reconfigure(String, bool), // String -> stringified configuration, bool -> save configuration
     // file to disk
     HidePaneWithId(PaneId),
-    ShowPaneWithId(PaneId, bool), // bool -> should_float_if_hidden
+    ShowPaneWithId(PaneId, bool, bool), // bools -> should_float_if_hidden, should_focus_pane
     OpenCommandPaneBackground(CommandToRun, Context),
     RerunCommandPane(u32), // u32  - terminal pane id
     ResizePaneIdWithDirection(ResizeStrategy, PaneId),

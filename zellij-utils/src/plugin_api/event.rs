@@ -3,6 +3,7 @@ pub use super::generated_api::api::{
     event::{
         event::Payload as ProtobufEventPayload, pane_scrollback_response,
         ActionCompletePayload as ProtobufActionCompletePayload, ClientInfo as ProtobufClientInfo,
+        ClientPaneHistory as ProtobufClientPaneHistory,
         ClientTabHistory as ProtobufClientTabHistory, ContextItem as ProtobufContextItem,
         CopyDestination as ProtobufCopyDestination, Event as ProtobufEvent,
         EventNameList as ProtobufEventNameList, EventType as ProtobufEventType,
@@ -926,6 +927,11 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
                 .into_iter()
                 .map(|t| ProtobufClientTabHistory::from(t))
                 .collect(),
+            pane_history: session_info
+                .pane_history
+                .into_iter()
+                .map(|p| ProtobufClientPaneHistory::from(p))
+                .collect(),
         })
     }
 }
@@ -935,6 +941,18 @@ impl From<(u16, Vec<usize>)> for ProtobufClientTabHistory {
         ProtobufClientTabHistory {
             client_id: client_id as u32,
             tab_history: tab_history.into_iter().map(|t| t as u32).collect(),
+        }
+    }
+}
+
+impl From<(u16, Vec<PaneId>)> for ProtobufClientPaneHistory {
+    fn from((client_id, pane_history): (u16, Vec<PaneId>)) -> ProtobufClientPaneHistory {
+        ProtobufClientPaneHistory {
+            client_id: client_id as u32,
+            pane_history: pane_history
+                .into_iter()
+                .filter_map(|p| p.try_into().ok())
+                .collect(),
         }
     }
 }
@@ -994,6 +1012,16 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
                 .collect();
             tab_history.insert(client_id as u16, tab_history_for_client);
         }
+        let mut pane_history = BTreeMap::new();
+        for client_pane_history in protobuf_session_manifest.pane_history.into_iter() {
+            let client_id = client_pane_history.client_id;
+            let pane_history_for_client = client_pane_history
+                .pane_history
+                .into_iter()
+                .filter_map(|p| p.try_into().ok())
+                .collect();
+            pane_history.insert(client_id as u16, pane_history_for_client);
+        }
         Ok(SessionInfo {
             name: protobuf_session_manifest.name,
             tabs: protobuf_session_manifest
@@ -1013,6 +1041,7 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
             web_clients_allowed: protobuf_session_manifest.web_clients_allowed,
             web_client_count: protobuf_session_manifest.web_client_count as usize,
             tab_history,
+            pane_history,
         })
     }
 }
@@ -2219,6 +2248,7 @@ fn serialize_session_update_event_with_non_default_values() {
         web_clients_allowed: false,
         web_client_count: 1,
         tab_history,
+        pane_history: Default::default(),
     };
     let session_info_2 = SessionInfo {
         name: "session 2".to_owned(),
@@ -2237,6 +2267,7 @@ fn serialize_session_update_event_with_non_default_values() {
         web_clients_allowed: false,
         web_client_count: 0,
         tab_history: Default::default(),
+        pane_history: Default::default(),
     };
     let session_infos = vec![session_info_1, session_info_2];
     let resurrectable_sessions = vec![];

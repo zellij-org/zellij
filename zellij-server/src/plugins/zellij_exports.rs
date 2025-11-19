@@ -322,8 +322,8 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::HidePaneWithId(pane_id) => {
                         hide_pane_with_id(env, pane_id.into())?
                     },
-                    PluginCommand::ShowPaneWithId(pane_id, should_float_if_hidden) => {
-                        show_pane_with_id(env, pane_id.into(), should_float_if_hidden)
+                    PluginCommand::ShowPaneWithId(pane_id, should_float_if_hidden, should_focus_pane) => {
+                        show_pane_with_id(env, pane_id.into(), should_float_if_hidden, should_focus_pane)
                     },
                     PluginCommand::OpenCommandPaneBackground(command_to_run, context) => {
                         open_command_pane_background(env, command_to_run, context)
@@ -1606,16 +1606,28 @@ fn show_self(env: &PluginEnv, should_float_if_hidden: bool) {
     apply_action!(action, error_msg, env);
 }
 
-fn show_pane_with_id(env: &PluginEnv, pane_id: PaneId, should_float_if_hidden: bool) {
-    let _ = env
-        .senders
-        .send_to_screen(ScreenInstruction::FocusPaneWithId(
-            pane_id,
-            should_float_if_hidden,
-            false,
-            env.client_id,
-            None,
-        ));
+fn show_pane_with_id(env: &PluginEnv, pane_id: PaneId, should_float_if_hidden: bool, should_focus_pane: bool) {
+    log::info!("exports show_pane_with_id");
+    if should_focus_pane {
+        log::info!("exports show_pane_with_id if");
+        let _ = env
+            .senders
+            .send_to_screen(ScreenInstruction::FocusPaneWithId(
+                pane_id,
+                should_float_if_hidden,
+                false,
+                env.client_id,
+                None,
+            ));
+    } else {
+        log::info!("exports show_pane_with_id else");
+        let _ = env
+            .senders
+            .send_to_screen(ScreenInstruction::UnsuppressPane(
+                pane_id,
+                should_float_if_hidden,
+            ));
+    }
 }
 
 fn close_self(env: &PluginEnv) {

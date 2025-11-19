@@ -372,7 +372,8 @@ pub enum ScreenInstruction {
         ClientId,
         Option<NotificationEnd>,
     ), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace, Option<PathBuf> is an optional cwd, bool after is skip_cache
-    SuppressPane(PaneId, ClientId), // bool is should_float
+    SuppressPane(PaneId, ClientId),
+    UnsuppressPane(PaneId, bool), // bool -> should float if hidden
     FocusPaneWithId(PaneId, bool, bool, ClientId, Option<NotificationEnd>), // bools:
                                                                             // should_float_if_hidden,
                                                                             // should_be_in_place_if_hidden
@@ -640,6 +641,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::LaunchOrFocusPlugin(..) => ScreenContext::LaunchOrFocusPlugin,
             ScreenInstruction::LaunchPlugin(..) => ScreenContext::LaunchPlugin,
             ScreenInstruction::SuppressPane(..) => ScreenContext::SuppressPane,
+            ScreenInstruction::UnsuppressPane(..) => ScreenContext::UnsuppressPane,
             ScreenInstruction::FocusPaneWithId(..) => ScreenContext::FocusPaneWithId,
             ScreenInstruction::RenamePane(..) => ScreenContext::RenamePane,
             ScreenInstruction::RenameTab(..) => ScreenContext::RenameTab,
@@ -863,6 +865,7 @@ pub(crate) struct Screen {
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_indices: BTreeMap<ClientId, usize>,
     tab_history: BTreeMap<ClientId, Vec<usize>>,
+    pane_history: BTreeMap<ClientId, Vec<PaneId>>,
     mode_info: BTreeMap<ClientId, ModeInfo>,
     default_mode_info: ModeInfo, // TODO: restructure ModeInfo to prevent this duplication
     style: Style,
@@ -953,6 +956,7 @@ impl Screen {
             terminal_emulator_colors: Rc::new(RefCell::new(Palette::default())),
             terminal_emulator_color_codes: Rc::new(RefCell::new(HashMap::new())),
             tab_history: BTreeMap::new(),
+            pane_history: BTreeMap::new(),
             mode_info: BTreeMap::new(),
             default_mode_info: mode_info,
             draw_pane_frames,
@@ -2072,6 +2076,8 @@ impl Screen {
     }
     fn log_and_report_session_state(&mut self) -> Result<()> {
         let err_context = || format!("Failed to log and report session state");
+
+        self.update_active_pane_ids();
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
         let tab_infos = self.generate_and_report_tab_state()?;
@@ -2099,6 +2105,7 @@ impl Screen {
                 .count(),
             plugins: Default::default(), // these are filled in by the wasm thread
             tab_history: self.tab_history.clone(),
+            pane_history: self.pane_history.iter().map(|(k, v)| (*k, v.iter().map(|v| (*v).into()).collect())).collect(),
         };
         self.bus
             .senders
@@ -3531,6 +3538,17 @@ impl Screen {
             }
         }
     }
+    fn update_active_pane_ids(&mut self) {
+        let connected_clients: Vec<ClientId> = self.connected_clients.borrow().keys().copied().collect();
+        for client_id in connected_clients {
+            if let Some(active_pane_id) = self.get_active_pane_id(&client_id) {
+                let active_pane_id: PaneId = active_pane_id.into();
+                let history = self.pane_history.entry(client_id).or_insert_with(|| vec![]);
+                history.retain(|e| e != &active_pane_id);
+                history.push(active_pane_id.into());
+            }
+        }
+    }
 }
 
 #[cfg(not(test))]
@@ -3775,6 +3793,12 @@ pub(crate) fn screen_thread_main(
                     ClientTabIndexOrPaneId::PaneId(pane_id) => {
                         let mut found = false;
                         let all_tabs = screen.get_tabs_mut();
+
+                        // TODO: this was previously hard-coded to true - I think this should be
+                        // false, because otherwise we can't add a pane in the background easily
+                        // without it changing focus - need to make this configurable especially in
+                        // the NewTiledPane action (but likely also others)
+                        let should_focus_pane = false;
                         for tab in all_tabs.values_mut() {
                             if tab.has_pane_with_pid(&pane_id) {
                                 tab.new_pane(
@@ -3782,7 +3806,7 @@ pub(crate) fn screen_thread_main(
                                     initial_pane_title,
                                     invoked_with,
                                     start_suppressed,
-                                    true,
+                                    should_focus_pane,
                                     new_pane_placement,
                                     None,
                                     blocking_notification, // TODO: is this correct?
@@ -5610,6 +5634,17 @@ pub(crate) fn screen_thread_main(
                 for tab in all_tabs.values_mut() {
                     if tab.has_non_suppressed_pane_with_pid(&pane_id) {
                         tab.suppress_pane(pane_id, Some(client_id));
+                        drop(screen.render(None));
+                        break;
+                    }
+                }
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::UnsuppressPane(pane_id, should_float_if_hidden) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.unsuppress_pane(pane_id, should_float_if_hidden);
                         drop(screen.render(None));
                         break;
                     }

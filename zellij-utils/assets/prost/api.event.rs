@@ -343,6 +343,8 @@ pub struct SessionManifest {
     pub web_client_count: u32,
     #[prost(message, repeated, tag="10")]
     pub tab_history: ::prost::alloc::vec::Vec<ClientTabHistory>,
+    #[prost(message, repeated, tag="11")]
+    pub pane_history: ::prost::alloc::vec::Vec<ClientPaneHistory>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -351,6 +353,14 @@ pub struct ClientTabHistory {
     pub client_id: u32,
     #[prost(uint32, repeated, tag="2")]
     pub tab_history: ::prost::alloc::vec::Vec<u32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ClientPaneHistory {
+    #[prost(uint32, tag="1")]
+    pub client_id: u32,
+    #[prost(message, repeated, tag="2")]
+    pub pane_history: ::prost::alloc::vec::Vec<PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -1058,9 +1058,11 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         .and_then(|p_id| PaneId::try_from(p_id).ok())
                         .ok_or("Failed to parse ShowPaneWithId command")?;
                     let should_float_if_hidden = show_pane_with_id_payload.should_float_if_hidden;
+                    let should_focus_pane = show_pane_with_id_payload.should_focus_pane;
                     Ok(PluginCommand::ShowPaneWithId(
                         pane_id,
                         should_float_if_hidden,
+                        should_focus_pane,
                     ))
                 },
                 _ => Err("Mismatched payload for ShowPaneWithId"),
@@ -2407,12 +2409,13 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     pane_id: ProtobufPaneId::try_from(pane_id_to_hide).ok(),
                 })),
             }),
-            PluginCommand::ShowPaneWithId(pane_id_to_show, should_float_if_hidden) => {
+            PluginCommand::ShowPaneWithId(pane_id_to_show, should_float_if_hidden, should_focus_pane) => {
                 Ok(ProtobufPluginCommand {
                     name: CommandName::ShowPaneWithId as i32,
                     payload: Some(Payload::ShowPaneWithIdPayload(ShowPaneWithIdPayload {
                         pane_id: ProtobufPaneId::try_from(pane_id_to_show).ok(),
                         should_float_if_hidden,
+                        should_focus_pane,
                     })),
                 })
             },

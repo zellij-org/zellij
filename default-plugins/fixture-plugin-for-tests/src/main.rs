@@ -356,7 +356,7 @@ impl ZellijPlugin for State {
                     hide_pane_with_id(PaneId::Terminal(1));
                 },
                 BareKey::Char('b') if key.has_modifiers(&[KeyModifier::Alt]) => {
-                    show_pane_with_id(PaneId::Terminal(1), true);
+                    show_pane_with_id(PaneId::Terminal(1), true, true);
                 },
                 BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Alt]) => {
                     open_command_pane_background(
