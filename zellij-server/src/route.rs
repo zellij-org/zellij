@@ -537,6 +537,21 @@ pub(crate) fn route_action(
                 Some(NotificationEnd::new(completion_tx))
             };
 
+            // we prefer the pane id provided by the action explicitly over the one that originated
+            // it (this might be a bit misleading with "near_current_pane", but it's still the
+            // right behavior - in the latter case, if the originator does not wish for this
+            // behavior, they should not provide pane
+            // inside the placement, but rather have the current pane id be picked up instead)
+            let pane_id = match placement {
+                NewPanePlacement::Stacked(pane_id_to_stack_under) => {
+                    pane_id_to_stack_under.map(|p| p.into()).or(pane_id)
+                },
+                NewPanePlacement::InPlace { pane_id_to_replace, .. } => {
+                    pane_id_to_replace.map(|p| p.into()).or(pane_id)
+                },
+                _ => pane_id
+            };
+
             let client_tab_index_or_paneid = if near_current_pane && pane_id.is_some() {
                 ClientTabIndexOrPaneId::PaneId(pane_id.unwrap())
             } else {
@@ -706,6 +721,8 @@ pub(crate) fn route_action(
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
+
+
             match pane_id {
                 Some(pane_id) if near_current_pane => {
                     senders
