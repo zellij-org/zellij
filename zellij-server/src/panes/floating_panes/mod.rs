@@ -795,6 +795,15 @@ impl FloatingPanes {
             pane_geom.adjust_coordinates(new_coordinates, viewport);
             pane.set_geom(pane_geom);
             pane.set_should_render(true);
+
+            // we do this in case this moves the pane under another pane so that the pane user's
+            // are focused on will always be on top
+            let is_focused = self.active_panes.pane_id_is_focused(&pane_id);
+            if is_focused {
+                self.z_indices.retain(|p_id| *p_id != pane_id);
+                self.z_indices.push(pane_id);
+            }
+
             self.desired_pane_positions.insert(pane_id, pane_geom);
         }
         let _ = self.set_pane_frames();

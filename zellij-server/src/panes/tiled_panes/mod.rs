@@ -447,7 +447,9 @@ impl TiledPanes {
             .map(|p| p.is_stacked())
             .unwrap_or(false);
         if !pane_id_is_stacked {
-            let _ = pane_grid.make_pane_stacked(&root_pane_id);
+            if let Err(e) = pane_grid.make_pane_stacked(&root_pane_id) {
+                log::error!("Failed to make pane stacked: {:?}", e);
+            }
         }
         match pane_grid.make_room_in_stack_of_pane_id_for_pane(&root_pane_id) {
             Ok(new_pane_geom) => {
