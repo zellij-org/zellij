@@ -115,7 +115,7 @@ impl LoadingContext {
         let plugin_own_data_dir = ZELLIJ_SESSION_CACHE_DIR
             .join(Url::from(&plugin_config.location).to_string())
             .join(format!("{}-{}", plugin_id, client_id));
-        let plugin_own_cache_dir = ZELLIJ_SESSION_CACHE_DIR
+        let plugin_own_cache_dir = ZELLIJ_CACHE_DIR
             .join(Url::from(&plugin_config.location).to_string())
             .join(format!("plugin_cache"));
         let default_mode = wasm_bridge
