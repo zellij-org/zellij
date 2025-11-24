@@ -313,6 +313,7 @@ impl TiledPanes {
                     Ok(new_pane_geom) => {
                         pane.set_geom(new_pane_geom);
                         self.panes.insert(pane_id, pane); // TODO: is set_geom the right one?
+                        self.expand_pane_in_stack(pane_id);
                     },
                     Err(e) => {
                         log::error!("Failed to add pane to stack: {:?}", e);
@@ -349,7 +350,10 @@ impl TiledPanes {
                 Ok(new_pane_geom) => {
                     pane.set_geom(new_pane_geom);
                     self.panes.insert(pane_id, pane);
-                    self.set_force_render(); // TODO: why do we need this?
+
+                    self.expand_pane_in_stack(pane_id); // TODO: is this the right one instead of
+                                                        // the below?
+                    // self.set_force_render(); // TODO: why do we need this?
                     return;
                 },
                 Err(_e) => {
