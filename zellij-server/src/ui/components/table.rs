@@ -33,11 +33,43 @@ pub fn table(
                 }
             };
 
-            let text_style = if cell.opaque || cell.selected {
+            let mut text_style = if cell.opaque || cell.selected {
                 CharacterStyles::from(declaration).background(Some(declaration.background.into()))
             } else {
                 CharacterStyles::from(declaration)
             };
+
+
+            // TODO: make sure this and the below other styles don't break existing functionality,
+            // ideally merge this with the same copy/pasted code in components/text.rs
+            if cell.unbold {
+                // Explicitly no bold
+                text_style = text_style.bold(Some(AnsiCode::Reset));
+            } else if cell.dimmed {
+                text_style = text_style
+                    .foreground(None) // some terminals (eg. alacritty) do not support dimming non 16
+                                      // colors, so we have to defer to the terminal's default here
+                    .dim(Some(AnsiCode::On));
+            } else {
+                // Default: bold (maintains backwards compatibility)
+                text_style = text_style.bold(Some(AnsiCode::On));
+            }
+
+            // Apply other styles (these can all be combined)
+            if cell.italic {
+                text_style = text_style.italic(Some(AnsiCode::On));
+            }
+            if cell.underline {
+                text_style = text_style.underline(Some(AnsiCode::On));
+            }
+            if cell.blink {
+                text_style = text_style.blink_slow(Some(AnsiCode::On));
+            }
+            if cell.strike {
+                text_style = text_style.strike(Some(AnsiCode::On));
+            }
+
+
             // here we intentionally don't pass our coordinates even if we have them, because
             // these cells have already been padded and truncated
             let (text, _text_width) = stringify_text(

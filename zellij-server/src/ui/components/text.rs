@@ -28,17 +28,19 @@ pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordina
         // Explicitly no bold
         base_text_style = base_text_style.bold(Some(AnsiCode::Reset));
     } else if content.dimmed {
-        log::info!("can has dimmed");
-        base_text_style = base_text_style.dim(Some(AnsiCode::On));
+        base_text_style = base_text_style
+            .foreground(None) // some terminals (eg. alacritty) do not support dimming non 16
+                              // colors, so we have to defer to the terminal's default here
+            .dim(Some(AnsiCode::On));
     } else {
         // Default: bold (maintains backwards compatibility)
         base_text_style = base_text_style.bold(Some(AnsiCode::On));
     }
 
     // Apply other styles (these can all be combined)
-//     if content.dimmed {
-//         base_text_style = base_text_style.dim(Some(AnsiCode::On));
-//     }
+    if content.dimmed {
+        base_text_style = base_text_style.dim(Some(AnsiCode::On));
+    }
     if content.italic {
         base_text_style = base_text_style.italic(Some(AnsiCode::On));
     }
