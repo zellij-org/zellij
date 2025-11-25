@@ -1,5 +1,6 @@
 use super::{
-    is_too_high, parse_indices, parse_opaque, parse_selected, parse_text, stringify_text,
+    is_too_high, parse_blink, parse_dimmed, parse_indices, parse_italic, parse_opaque,
+    parse_selected, parse_strike, parse_text, parse_unbold, parse_underline, stringify_text,
     Coordinates, Text,
 };
 use crate::panes::terminal_character::{AnsiCode, CharacterStyles, RESET_STYLES};
@@ -82,12 +83,24 @@ pub fn parse_nested_list_items<'a>(
             let indentation_level = parse_indentation_level(&mut stringified);
             let selected = parse_selected(&mut stringified);
             let opaque = parse_opaque(&mut stringified);
+            let dimmed = parse_dimmed(&mut stringified);
+            let unbold = parse_unbold(&mut stringified);
+            let italic = parse_italic(&mut stringified);
+            let underline = parse_underline(&mut stringified);
+            let blink = parse_blink(&mut stringified);
+            let strike = parse_strike(&mut stringified);
             let indices = parse_indices(&mut stringified);
             let text = parse_text(&mut stringified).map_err(|e| e.to_string())?;
             let text = Text {
                 text,
                 opaque,
                 selected,
+                dimmed,
+                unbold,
+                italic,
+                underline,
+                blink,
+                strike,
                 indices,
             };
             Ok::<NestedListItem, String>(NestedListItem {

@@ -6,6 +6,12 @@ pub struct Text {
     text: String,
     selected: bool,
     opaque: bool,
+    dimmed: bool,
+    unbold: bool,
+    italic: bool,
+    underline: bool,
+    blink: bool,
+    strike: bool,
     indices: Vec<Vec<usize>>,
 }
 
@@ -18,6 +24,12 @@ impl Text {
             text: content.to_string(),
             selected: false,
             opaque: false,
+            dimmed: false,
+            unbold: false,
+            italic: false,
+            underline: false,
+            blink: false,
+            strike: false,
             indices: vec![],
         }
     }
@@ -27,6 +39,30 @@ impl Text {
     }
     pub fn opaque(mut self) -> Self {
         self.opaque = true;
+        self
+    }
+    pub fn dimmed(mut self) -> Self {
+        self.dimmed = true;
+        self
+    }
+    pub fn unbold(mut self) -> Self {
+        self.unbold = true;
+        self
+    }
+    pub fn italic(mut self) -> Self {
+        self.italic = true;
+        self
+    }
+    pub fn underline(mut self) -> Self {
+        self.underline = true;
+        self
+    }
+    pub fn blink(mut self) -> Self {
+        self.blink = true;
+        self
+    }
+    pub fn strike(mut self) -> Self {
+        self.strike = true;
         self
     }
     pub fn color_indices(mut self, index_level: usize, mut indices: Vec<usize>) -> Self {
@@ -131,6 +167,30 @@ impl Text {
 
         if self.opaque {
             prefix = format!("z{}", prefix);
+        }
+
+        if self.dimmed {
+            prefix = format!("d{}", prefix);
+        }
+
+        if self.unbold {
+            prefix = format!("u{}", prefix);
+        }
+
+        if self.italic {
+            prefix = format!("i{}", prefix);
+        }
+
+        if self.underline {
+            prefix = format!("n{}", prefix);
+        }
+
+        if self.blink {
+            prefix = format!("b{}", prefix);
+        }
+
+        if self.strike {
+            prefix = format!("s{}", prefix);
         }
 
         format!("{}{}{}", prefix, indices, text)

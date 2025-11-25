@@ -1,4 +1,7 @@
-use super::{is_too_wide, parse_indices, parse_opaque, parse_selected, Coordinates};
+use super::{
+    is_too_wide, parse_blink, parse_dimmed, parse_indices, parse_italic, parse_opaque,
+    parse_selected, parse_strike, parse_unbold, parse_underline, Coordinates,
+};
 use crate::panes::{terminal_character::CharacterStyles, AnsiCode};
 use zellij_utils::{
     data::{PaletteColor, Style, StyleDeclaration},
@@ -9,13 +12,45 @@ use unicode_width::UnicodeWidthChar;
 use zellij_utils::errors::prelude::*;
 
 pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordinates>) -> Vec<u8> {
+    log::info!("parsing text...: {:#?}", content);
     let declaration = if content.selected {
         style.colors.text_selected
     } else {
         style.colors.text_unselected
     };
 
-    let base_text_style = CharacterStyles::from(declaration).bold(Some(AnsiCode::On));
+    // Start with base style from declaration
+    let mut base_text_style = CharacterStyles::from(declaration);
+
+    // Apply text styles
+    // Note: unbold removes the default bold, all others are additive
+    if content.unbold {
+        // Explicitly no bold
+        base_text_style = base_text_style.bold(Some(AnsiCode::Reset));
+    } else if content.dimmed {
+        log::info!("can has dimmed");
+        base_text_style = base_text_style.dim(Some(AnsiCode::On));
+    } else {
+        // Default: bold (maintains backwards compatibility)
+        base_text_style = base_text_style.bold(Some(AnsiCode::On));
+    }
+
+    // Apply other styles (these can all be combined)
+//     if content.dimmed {
+//         base_text_style = base_text_style.dim(Some(AnsiCode::On));
+//     }
+    if content.italic {
+        base_text_style = base_text_style.italic(Some(AnsiCode::On));
+    }
+    if content.underline {
+        base_text_style = base_text_style.underline(Some(AnsiCode::On));
+    }
+    if content.blink {
+        base_text_style = base_text_style.blink_slow(Some(AnsiCode::On));
+    }
+    if content.strike {
+        base_text_style = base_text_style.strike(Some(AnsiCode::On));
+    }
 
     let (text, _text_width) = stringify_text(
         &content,
@@ -24,6 +59,8 @@ pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordina
         &declaration,
         base_text_style,
     );
+    log::info!("stringified text: {:?}", text);
+    log::info!("stringified text with base_text_style: {:?}{:?}", format!("{}", base_text_style), text);
     match component_coordinates {
         Some(component_coordinates) => {
             format!("{}{}{}", component_coordinates, base_text_style, text)
@@ -48,6 +85,8 @@ pub fn stringify_text(
     } else {
         component_text_style
     };
+    stringified.push_str(&format!("{}", base_text_style)); // TODO: is this correct? does it break
+                                                           // stuff?
     for (i, character) in text.text.chars().enumerate() {
         let character_width = character.width().unwrap_or(0);
         if is_too_wide(
@@ -114,12 +153,24 @@ pub fn parse_text_params<'a>(params_iter: impl Iterator<Item = &'a mut String>) 
         .flat_map(|mut stringified| {
             let selected = parse_selected(&mut stringified);
             let opaque = parse_opaque(&mut stringified);
+            let dimmed = parse_dimmed(&mut stringified);
+            let unbold = parse_unbold(&mut stringified);
+            let italic = parse_italic(&mut stringified);
+            let underline = parse_underline(&mut stringified);
+            let blink = parse_blink(&mut stringified);
+            let strike = parse_strike(&mut stringified);
             let indices = parse_indices(&mut stringified);
             let text = parse_text(&mut stringified).map_err(|e| e.to_string())?;
             Ok::<Text, String>(Text {
                 text,
                 opaque,
                 selected,
+                dimmed,
+                unbold,
+                italic,
+                underline,
+                blink,
+                strike,
                 indices,
             })
         })
@@ -131,6 +182,12 @@ pub struct Text {
     pub text: String,
     pub selected: bool,
     pub opaque: bool,
+    pub dimmed: bool,
+    pub unbold: bool,
+    pub italic: bool,
+    pub underline: bool,
+    pub blink: bool,
+    pub strike: bool,
     pub indices: Vec<Vec<usize>>,
 }
 
