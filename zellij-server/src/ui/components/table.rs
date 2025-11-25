@@ -55,21 +55,6 @@ pub fn table(
                 text_style = text_style.bold(Some(AnsiCode::On));
             }
 
-            // Apply other styles (these can all be combined)
-            if cell.italic {
-                text_style = text_style.italic(Some(AnsiCode::On));
-            }
-            if cell.underline {
-                text_style = text_style.underline(Some(AnsiCode::On));
-            }
-            if cell.blink {
-                text_style = text_style.blink_slow(Some(AnsiCode::On));
-            }
-            if cell.strike {
-                text_style = text_style.strike(Some(AnsiCode::On));
-            }
-
-
             // here we intentionally don't pass our coordinates even if we have them, because
             // these cells have already been padded and truncated
             let (text, _text_width) = stringify_text(

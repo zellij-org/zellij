@@ -193,42 +193,6 @@ fn parse_unbold(stringified: &mut String) -> bool {
     unbold
 }
 
-fn parse_italic(stringified: &mut String) -> bool {
-    let mut italic = false;
-    if stringified.chars().next() == Some('i') {
-        italic = true;
-        stringified.remove(0);
-    }
-    italic
-}
-
-fn parse_underline(stringified: &mut String) -> bool {
-    let mut underline = false;
-    if stringified.chars().next() == Some('n') {
-        underline = true;
-        stringified.remove(0);
-    }
-    underline
-}
-
-fn parse_blink(stringified: &mut String) -> bool {
-    let mut blink = false;
-    if stringified.chars().next() == Some('b') {
-        blink = true;
-        stringified.remove(0);
-    }
-    blink
-}
-
-fn parse_strike(stringified: &mut String) -> bool {
-    let mut strike = false;
-    if stringified.chars().next() == Some('s') {
-        strike = true;
-        stringified.remove(0);
-    }
-    strike
-}
-
 fn parse_indices(stringified: &mut String) -> Vec<Vec<usize>> {
     stringified
         .chars()

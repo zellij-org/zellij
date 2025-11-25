@@ -1,6 +1,6 @@
 use super::{
-    is_too_wide, parse_blink, parse_dimmed, parse_indices, parse_italic, parse_opaque,
-    parse_selected, parse_strike, parse_unbold, parse_underline, Coordinates,
+    is_too_wide, parse_dimmed, parse_indices, parse_opaque, parse_selected, parse_unbold,
+    Coordinates,
 };
 use crate::panes::{terminal_character::CharacterStyles, AnsiCode};
 use zellij_utils::{
@@ -35,23 +35,6 @@ pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordina
     } else {
         // Default: bold (maintains backwards compatibility)
         base_text_style = base_text_style.bold(Some(AnsiCode::On));
-    }
-
-    // Apply other styles (these can all be combined)
-    if content.dimmed {
-        base_text_style = base_text_style.dim(Some(AnsiCode::On));
-    }
-    if content.italic {
-        base_text_style = base_text_style.italic(Some(AnsiCode::On));
-    }
-    if content.underline {
-        base_text_style = base_text_style.underline(Some(AnsiCode::On));
-    }
-    if content.blink {
-        base_text_style = base_text_style.blink_slow(Some(AnsiCode::On));
-    }
-    if content.strike {
-        base_text_style = base_text_style.strike(Some(AnsiCode::On));
     }
 
     let (text, _text_width) = stringify_text(
@@ -157,10 +140,6 @@ pub fn parse_text_params<'a>(params_iter: impl Iterator<Item = &'a mut String>) 
             let opaque = parse_opaque(&mut stringified);
             let dimmed = parse_dimmed(&mut stringified);
             let unbold = parse_unbold(&mut stringified);
-            let italic = parse_italic(&mut stringified);
-            let underline = parse_underline(&mut stringified);
-            let blink = parse_blink(&mut stringified);
-            let strike = parse_strike(&mut stringified);
             let indices = parse_indices(&mut stringified);
             let text = parse_text(&mut stringified).map_err(|e| e.to_string())?;
             Ok::<Text, String>(Text {
@@ -169,10 +148,6 @@ pub fn parse_text_params<'a>(params_iter: impl Iterator<Item = &'a mut String>) 
                 selected,
                 dimmed,
                 unbold,
-                italic,
-                underline,
-                blink,
-                strike,
                 indices,
             })
         })
@@ -186,10 +161,6 @@ pub struct Text {
     pub opaque: bool,
     pub dimmed: bool,
     pub unbold: bool,
-    pub italic: bool,
-    pub underline: bool,
-    pub blink: bool,
-    pub strike: bool,
     pub indices: Vec<Vec<usize>>,
 }
 
