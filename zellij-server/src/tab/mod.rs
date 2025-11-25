@@ -4704,6 +4704,19 @@ impl Tab {
         }
         Ok(())
     }
+    pub fn copy_text_to_clipboard(&self, text: &str) -> Result<()> {
+        self.write_selection_to_clipboard(text)
+            .with_context(|| format!("failed to write text to clipboard"))?;
+        self.senders
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                None,
+                Event::CopyToClipboard(self.clipboard_provider.as_copy_destination()),
+            )]))
+            .with_context(|| "failed to inform plugins about clipboard copy")
+            .non_fatal();
+        Ok(())
+    }
 
     fn write_selection_to_clipboard(&self, selection: &str) -> Result<()> {
         let err_context = || format!("failed to write selection to clipboard: '{}'", selection);

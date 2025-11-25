@@ -203,6 +203,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::EditScrollback => edit_scrollback(env),
                     PluginCommand::Write(bytes) => write(env, bytes),
                     PluginCommand::WriteChars(chars) => write_chars(env, chars),
+                    PluginCommand::CopyToClipboard(text) => copy_to_clipboard(env, text)?,
                     PluginCommand::ToggleTab => toggle_tab(env),
                     PluginCommand::MovePane => move_pane(env),
                     PluginCommand::MovePaneWithDirection(direction) => {
@@ -1943,6 +1944,12 @@ fn write_chars(env: &PluginEnv, chars_to_write: String) {
     apply_action!(action, error_msg, env);
 }
 
+fn copy_to_clipboard(env: &PluginEnv, text: String) -> Result<()> {
+    env.senders
+        .send_to_screen(ScreenInstruction::CopyTextToClipboard(text, env.plugin_id))
+        .with_context(|| format!("failed to copy to clipboard in plugin {}", env.name()))
+}
+
 fn toggle_tab(env: &PluginEnv) {
     let error_msg = || format!("Failed to toggle tab");
     let action = Action::ToggleTab;
@@ -2968,6 +2975,7 @@ fn check_command_permission(
         | PluginCommand::WriteChars(..)
         | PluginCommand::WriteToPaneId(..)
         | PluginCommand::WriteCharsToPaneId(..) => PermissionType::WriteToStdin,
+        PluginCommand::CopyToClipboard(..) => PermissionType::WriteToClipboard,
         PluginCommand::SwitchTabTo(..)
         | PluginCommand::SwitchToMode(..)
         | PluginCommand::NewTabsWithLayout(..)

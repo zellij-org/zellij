@@ -166,6 +166,7 @@ enum CommandName {
   RemoveMacro = 167;
   RenameMacro = 168;
   ShowCursor = 169;
+  CopyToClipboard = 170;
 }
 
 message PluginCommand {
@@ -279,6 +280,7 @@ message PluginCommand {
     RemoveMacroPayload remove_macro_payload = 116;
     RenameMacroPayload rename_macro_payload = 117;
     ShowCursorPayload show_cursor_payload = 119;
+    CopyToClipboardPayload copy_to_clipboard_payload = 120;
   }
 }
 
@@ -759,4 +761,8 @@ message ShowCursorPayload {
 message CursorPosition {
   uint32 x = 1;
   uint32 y = 2;
+}
+
+message CopyToClipboardPayload {
+  string text = 1;
 }

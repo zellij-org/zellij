@@ -360,6 +360,7 @@ pub enum ScreenContext {
     ResizePaneWithId,
     EditScrollbackForPaneWithId,
     WriteToPaneId,
+    CopyTextToClipboard,
     MovePaneWithPaneId,
     MovePaneWithPaneIdInDirection,
     ClearScreenForPaneId,

@@ -16,6 +16,7 @@ pub enum PermissionType {
     InterceptInput = 12,
     ReadPaneContents = 13,
     RunActionsAsUser = 14,
+    WriteToClipboard = 15,
 }
 impl PermissionType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -39,6 +40,7 @@ impl PermissionType {
             PermissionType::InterceptInput => "InterceptInput",
             PermissionType::ReadPaneContents => "ReadPaneContents",
             PermissionType::RunActionsAsUser => "RunActionsAsUser",
+            PermissionType::WriteToClipboard => "WriteToClipboard",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -59,6 +61,7 @@ impl PermissionType {
             "InterceptInput" => Some(Self::InterceptInput),
             "ReadPaneContents" => Some(Self::ReadPaneContents),
             "RunActionsAsUser" => Some(Self::RunActionsAsUser),
+            "WriteToClipboard" => Some(Self::WriteToClipboard),
             _ => None,
         }
     }

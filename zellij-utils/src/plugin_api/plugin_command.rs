@@ -6,7 +6,7 @@ pub use super::generated_api::api::{
         plugin_command::Payload, BreakPanesToNewTabPayload, BreakPanesToTabWithIndexPayload,
         ChangeFloatingPanesCoordinatesPayload, ChangeHostFolderPayload,
         ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseMultiplePanesPayload,
-        CloseTabWithIndexPayload, CommandName, ContextItem,
+        CloseTabWithIndexPayload, CommandName, ContextItem, CopyToClipboardPayload,
         CreateTokenResponse as ProtobufCreateTokenResponse, CreateTokenResponse,
         EditScrollbackForPaneWithIdPayload, EmbedMultiplePanesPayload, EnvVariable, ExecCmdPayload,
         FixedOrPercent as ProtobufFixedOrPercent,
@@ -1810,6 +1810,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for RenameMacro"),
             },
+            Some(CommandName::CopyToClipboard) => match protobuf_plugin_command.payload {
+                Some(Payload::CopyToClipboardPayload(payload)) => {
+                    Ok(PluginCommand::CopyToClipboard(payload.text))
+                },
+                _ => Err("Mismatched payload for CopyToClipboard"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -3033,6 +3039,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 payload: Some(Payload::RenameMacroPayload(RenameMacroPayload {
                     old_name,
                     new_name,
+                })),
+            }),
+            PluginCommand::CopyToClipboard(text) => Ok(ProtobufPluginCommand {
+                name: CommandName::CopyToClipboard as i32,
+                payload: Some(Payload::CopyToClipboardPayload(CopyToClipboardPayload {
+                    text,
                 })),
             }),
         }

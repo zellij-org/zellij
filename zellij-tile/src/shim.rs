@@ -624,6 +624,17 @@ pub fn write_chars(chars: &str) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Copy arbitrary text to the user's clipboard
+///
+/// Respects the user's configured clipboard destination (system clipboard or primary selection).
+/// Requires the WriteToClipboard permission.
+pub fn copy_to_clipboard(text: impl Into<String>) {
+    let plugin_command = PluginCommand::CopyToClipboard(text.into());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Focused the previously focused tab (regardless of the tab position)
 pub fn toggle_tab() {
     let plugin_command = PluginCommand::ToggleTab;

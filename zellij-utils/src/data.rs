@@ -1038,6 +1038,7 @@ pub enum Permission {
     InterceptInput,
     ReadPaneContents,
     RunActionsAsUser,
+    WriteToClipboard,
 }
 
 impl PermissionType {
@@ -1068,6 +1069,7 @@ impl PermissionType {
                 "Read pane contents (viewport and selection)".to_owned()
             },
             PermissionType::RunActionsAsUser => "Execute actions as the user".to_owned(),
+            PermissionType::WriteToClipboard => "Write to clipboard".to_owned(),
         }
     }
 }
@@ -2910,4 +2912,5 @@ pub enum PluginCommand {
     SetMacro(String, Vec<Action>),
     RemoveMacro(String),
     RenameMacro(String, String), // (old_name, new_name)
+    CopyToClipboard(String),     // text to copy
 }
