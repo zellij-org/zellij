@@ -6,8 +6,6 @@ pub struct Text {
     text: String,
     selected: bool,
     opaque: bool,
-    dimmed: bool,
-    unbold: bool,
     indices: Vec<Vec<usize>>,
 }
 
@@ -20,8 +18,6 @@ impl Text {
             text: content.to_string(),
             selected: false,
             opaque: false,
-            dimmed: false,
-            unbold: false,
             indices: vec![],
         }
     }
@@ -33,13 +29,93 @@ impl Text {
         self.opaque = true;
         self
     }
-    pub fn dimmed(mut self) -> Self {
-        self.dimmed = true;
+    pub fn dim_indices(mut self, mut indices: Vec<usize>) -> Self {
+        const DIM_LEVEL: usize = 4;
+        self.pad_indices(DIM_LEVEL);
+        self.indices
+            .get_mut(DIM_LEVEL)
+            .map(|i| i.append(&mut indices));
         self
     }
-    pub fn unbold(mut self) -> Self {
-        self.unbold = true;
+    pub fn dim_range<R: RangeBounds<usize>>(mut self, indices: R) -> Self {
+        const DIM_LEVEL: usize = 4;
+        self.pad_indices(DIM_LEVEL);
+        let start = match indices.start_bound() {
+            Bound::Unbounded => 0,
+            Bound::Included(s) => *s,
+            Bound::Excluded(s) => *s,
+        };
+        let end = match indices.end_bound() {
+            Bound::Unbounded => self.text.chars().count(),
+            Bound::Included(s) => *s + 1,
+            Bound::Excluded(s) => *s,
+        };
+        let indices = (start..end).into_iter();
+        self.indices
+            .get_mut(DIM_LEVEL)
+            .map(|i| i.append(&mut indices.into_iter().collect()));
         self
+    }
+    pub fn dim_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
+        const DIM_LEVEL: usize = 4;
+        let substr = substr.as_ref();
+        let mut start = 0;
+
+        while let Some(pos) = self.text[start..].find(substr) {
+            let abs_pos = start + pos;
+            self = self.dim_range(abs_pos..abs_pos + substr.chars().count());
+            start = abs_pos + substr.len();
+        }
+
+        self
+    }
+    pub fn dim_all(self) -> Self {
+        const DIM_LEVEL: usize = 4;
+        self.color_range(DIM_LEVEL, ..)
+    }
+    pub fn unbold_indices(mut self, mut indices: Vec<usize>) -> Self {
+        const UNBOLD_LEVEL: usize = 5;
+        self.pad_indices(UNBOLD_LEVEL);
+        self.indices
+            .get_mut(UNBOLD_LEVEL)
+            .map(|i| i.append(&mut indices));
+        self
+    }
+    pub fn unbold_range<R: RangeBounds<usize>>(mut self, indices: R) -> Self {
+        const UNBOLD_LEVEL: usize = 5;
+        self.pad_indices(UNBOLD_LEVEL);
+        let start = match indices.start_bound() {
+            Bound::Unbounded => 0,
+            Bound::Included(s) => *s,
+            Bound::Excluded(s) => *s,
+        };
+        let end = match indices.end_bound() {
+            Bound::Unbounded => self.text.chars().count(),
+            Bound::Included(s) => *s + 1,
+            Bound::Excluded(s) => *s,
+        };
+        let indices = (start..end).into_iter();
+        self.indices
+            .get_mut(UNBOLD_LEVEL)
+            .map(|i| i.append(&mut indices.into_iter().collect()));
+        self
+    }
+    pub fn unbold_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
+        const UNBOLD_LEVEL: usize = 5;
+        let substr = substr.as_ref();
+        let mut start = 0;
+
+        while let Some(pos) = self.text[start..].find(substr) {
+            let abs_pos = start + pos;
+            self = self.unbold_range(abs_pos..abs_pos + substr.chars().count());
+            start = abs_pos + substr.len();
+        }
+
+        self
+    }
+    pub fn unbold_all(self) -> Self {
+        const UNBOLD_LEVEL: usize = 5;
+        self.color_range(UNBOLD_LEVEL, ..)
     }
     pub fn color_indices(mut self, index_level: usize, mut indices: Vec<usize>) -> Self {
         self.pad_indices(index_level);
@@ -143,14 +219,6 @@ impl Text {
 
         if self.opaque {
             prefix = format!("z{}", prefix);
-        }
-
-        if self.dimmed {
-            prefix = format!("d{}", prefix);
-        }
-
-        if self.unbold {
-            prefix = format!("u{}", prefix);
         }
 
         format!("{}{}{}", prefix, indices, text)

@@ -1,7 +1,4 @@
-use super::{
-    is_too_wide, parse_dimmed, parse_indices, parse_opaque, parse_selected, parse_unbold,
-    Coordinates,
-};
+use super::{is_too_wide, parse_indices, parse_opaque, parse_selected, Coordinates};
 use crate::panes::{terminal_character::CharacterStyles, AnsiCode};
 use zellij_utils::{
     data::{PaletteColor, Style, StyleDeclaration},
@@ -12,7 +9,6 @@ use unicode_width::UnicodeWidthChar;
 use zellij_utils::errors::prelude::*;
 
 pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordinates>) -> Vec<u8> {
-    log::info!("parsing text...: {:#?}", content);
     let declaration = if content.selected {
         style.colors.text_selected
     } else {
@@ -20,22 +16,8 @@ pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordina
     };
 
     // Start with base style from declaration
-    let mut base_text_style = CharacterStyles::from(declaration);
-
-    // Apply text styles
-    // Note: unbold removes the default bold, all others are additive
-    if content.unbold {
-        // Explicitly no bold
-        base_text_style = base_text_style.bold(Some(AnsiCode::Reset));
-    } else if content.dimmed {
-        base_text_style = base_text_style
-            .foreground(None) // some terminals (eg. alacritty) do not support dimming non 16
-                              // colors, so we have to defer to the terminal's default here
-            .dim(Some(AnsiCode::On));
-    } else {
-        // Default: bold (maintains backwards compatibility)
-        base_text_style = base_text_style.bold(Some(AnsiCode::On));
-    }
+    // Default: bold (maintains backwards compatibility)
+    let base_text_style = CharacterStyles::from(declaration).bold(Some(AnsiCode::On));
 
     let (text, _text_width) = stringify_text(
         &content,
@@ -44,8 +26,6 @@ pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordina
         &declaration,
         base_text_style,
     );
-    log::info!("stringified text: {:?}", text);
-    log::info!("stringified text with base_text_style: {:?}{:?}", format!("{}", base_text_style), text);
     match component_coordinates {
         Some(component_coordinates) => {
             format!("{}{}{}", component_coordinates, base_text_style, text)
@@ -126,10 +106,30 @@ pub fn color_index_character(
     declaration: &StyleDeclaration,
     base_text_style: CharacterStyles,
 ) -> String {
-    let character_style = text
+    let mut character_style = text
         .style_of_index(index, declaration)
         .map(|foreground_style| base_text_style.foreground(Some(foreground_style.into())))
         .unwrap_or(base_text_style);
+
+    // Apply dim and unbold per-character based on index levels 4 and 5
+    if text.is_unbold_at(index) {
+        // Remove bold for this character
+        character_style = character_style.bold(Some(AnsiCode::Reset));
+    } else if text.is_dimmed_at(index) {
+        // Apply dim for this character
+        character_style = character_style
+            // .foreground(None) // some terminals (eg. alacritty) do not support dimming non 16
+            .foreground(Some(AnsiCode::Reset)) // some terminals (eg. alacritty) do not support dimming non 16
+                              // colors, so we have to defer to the terminal's default here
+            .dim(Some(AnsiCode::On));
+    } else {
+        character_style = character_style
+            .bold(Some(AnsiCode::On))
+            .dim(Some(AnsiCode::Reset)); // default, to reset any
+                                         // possible dim/bold values
+                                         // from previous indices
+    }
+
     format!("{}{}{}", character_style, character, base_text_style)
 }
 
@@ -138,16 +138,12 @@ pub fn parse_text_params<'a>(params_iter: impl Iterator<Item = &'a mut String>) 
         .flat_map(|mut stringified| {
             let selected = parse_selected(&mut stringified);
             let opaque = parse_opaque(&mut stringified);
-            let dimmed = parse_dimmed(&mut stringified);
-            let unbold = parse_unbold(&mut stringified);
             let indices = parse_indices(&mut stringified);
             let text = parse_text(&mut stringified).map_err(|e| e.to_string())?;
             Ok::<Text, String>(Text {
                 text,
                 opaque,
                 selected,
-                dimmed,
-                unbold,
                 indices,
             })
         })
@@ -159,8 +155,6 @@ pub struct Text {
     pub text: String,
     pub selected: bool,
     pub opaque: bool,
-    pub dimmed: bool,
-    pub unbold: bool,
     pub indices: Vec<Vec<usize>>,
 }
 
@@ -169,6 +163,38 @@ impl Text {
         for _ in ansi_len(&self.text)..max_column_width {
             self.text.push(' ');
         }
+    }
+
+    pub fn is_dimmed_at(&self, index: usize) -> bool {
+        const DIM_LEVEL: usize = 4;
+        self.indices
+            .get(DIM_LEVEL)
+            .map(|indices| indices.contains(&index))
+            .unwrap_or(false)
+    }
+
+    pub fn is_unbold_at(&self, index: usize) -> bool {
+        const UNBOLD_LEVEL: usize = 5;
+        self.indices
+            .get(UNBOLD_LEVEL)
+            .map(|indices| indices.contains(&index))
+            .unwrap_or(false)
+    }
+
+    pub fn has_any_dim(&self) -> bool {
+        const DIM_LEVEL: usize = 4;
+        self.indices
+            .get(DIM_LEVEL)
+            .map(|indices| !indices.is_empty())
+            .unwrap_or(false)
+    }
+
+    pub fn has_any_unbold(&self) -> bool {
+        const UNBOLD_LEVEL: usize = 5;
+        self.indices
+            .get(UNBOLD_LEVEL)
+            .map(|indices| !indices.is_empty())
+            .unwrap_or(false)
     }
 
     pub fn style_of_index(&self, index: usize, style: &StyleDeclaration) -> Option<PaletteColor> {

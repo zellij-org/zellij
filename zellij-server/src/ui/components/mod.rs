@@ -175,24 +175,6 @@ fn parse_opaque(stringified: &mut String) -> bool {
     opaque
 }
 
-fn parse_dimmed(stringified: &mut String) -> bool {
-    let mut dimmed = false;
-    if stringified.chars().next() == Some('d') {
-        dimmed = true;
-        stringified.remove(0);
-    }
-    dimmed
-}
-
-fn parse_unbold(stringified: &mut String) -> bool {
-    let mut unbold = false;
-    if stringified.chars().next() == Some('u') {
-        unbold = true;
-        stringified.remove(0);
-    }
-    unbold
-}
-
 fn parse_indices(stringified: &mut String) -> Vec<Vec<usize>> {
     stringified
         .chars()
