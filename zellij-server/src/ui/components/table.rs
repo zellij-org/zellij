@@ -49,6 +49,7 @@ pub fn table(
                 None,
                 &None,
                 &declaration,
+                &style.colors,
                 text_style,
             );
             stringified.push_str(&format!("{}{} {}", text_style, text, RESET_STYLES));

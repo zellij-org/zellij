@@ -24,6 +24,7 @@ pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordina
         None,
         &component_coordinates,
         &declaration,
+        &style.colors,
         base_text_style,
     );
     match component_coordinates {
@@ -41,6 +42,7 @@ pub fn stringify_text(
     left_padding: Option<usize>,
     coordinates: &Option<Coordinates>,
     style: &StyleDeclaration,
+    styling: &zellij_utils::data::Styling,
     component_text_style: CharacterStyles,
 ) -> (String, usize) {
     let mut text_width = 0;
@@ -71,7 +73,7 @@ pub fn stringify_text(
 
         if !text.indices.is_empty() || text.selected || text.opaque {
             let character_with_styling =
-                color_index_character(character, i, &text, style, base_text_style);
+                color_index_character(character, i, &text, style, styling, base_text_style);
             stringified.push_str(&character_with_styling);
         } else {
             stringified.push(character)
@@ -104,10 +106,11 @@ pub fn color_index_character(
     index: usize,
     text: &Text,
     declaration: &StyleDeclaration,
+    styling: &zellij_utils::data::Styling,
     base_text_style: CharacterStyles,
 ) -> String {
     let mut character_style = text
-        .style_of_index(index, declaration)
+        .style_of_index(index, declaration, styling)
         .map(|foreground_style| base_text_style.foreground(Some(foreground_style.into())))
         .unwrap_or(base_text_style);
 
@@ -197,7 +200,62 @@ impl Text {
             .unwrap_or(false)
     }
 
-    pub fn style_of_index(&self, index: usize, style: &StyleDeclaration) -> Option<PaletteColor> {
+    pub fn is_error_colored_at(&self, index: usize) -> bool {
+        const ERROR_COLOR_LEVEL: usize = 6;
+        self.indices
+            .get(ERROR_COLOR_LEVEL)
+            .map(|indices| indices.contains(&index))
+            .unwrap_or(false)
+    }
+
+    pub fn is_success_colored_at(&self, index: usize) -> bool {
+        const SUCCESS_COLOR_LEVEL: usize = 7;
+        self.indices
+            .get(SUCCESS_COLOR_LEVEL)
+            .map(|indices| indices.contains(&index))
+            .unwrap_or(false)
+    }
+
+    pub fn has_any_error_color(&self) -> bool {
+        const ERROR_COLOR_LEVEL: usize = 6;
+        self.indices
+            .get(ERROR_COLOR_LEVEL)
+            .map(|indices| !indices.is_empty())
+            .unwrap_or(false)
+    }
+
+    pub fn has_any_success_color(&self) -> bool {
+        const SUCCESS_COLOR_LEVEL: usize = 7;
+        self.indices
+            .get(SUCCESS_COLOR_LEVEL)
+            .map(|indices| !indices.is_empty())
+            .unwrap_or(false)
+    }
+
+    pub fn style_of_index(
+        &self,
+        index: usize,
+        style: &StyleDeclaration,
+        styling: &zellij_utils::data::Styling,
+    ) -> Option<PaletteColor> {
+        const ERROR_COLOR_LEVEL: usize = 6;
+        const SUCCESS_COLOR_LEVEL: usize = 7;
+
+        // Check error color first (highest precedence)
+        if let Some(indices) = self.indices.get(ERROR_COLOR_LEVEL) {
+            if indices.contains(&index) {
+                return Some(styling.exit_code_error.base);
+            }
+        }
+
+        // Check success color (second highest precedence)
+        if let Some(indices) = self.indices.get(SUCCESS_COLOR_LEVEL) {
+            if indices.contains(&index) {
+                return Some(styling.exit_code_success.base);
+            }
+        }
+
+        // Check regular emphasis levels (existing code)
         let index_variant_styles = [
             style.emphasis_0,
             style.emphasis_1,

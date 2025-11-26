@@ -117,6 +117,136 @@ impl Text {
         const UNBOLD_LEVEL: usize = 5;
         self.color_range(UNBOLD_LEVEL, ..)
     }
+    pub fn error_color_indices(mut self, mut indices: Vec<usize>) -> Self {
+        const ERROR_COLOR_LEVEL: usize = 6;
+        self.pad_indices(ERROR_COLOR_LEVEL);
+        self.indices
+            .get_mut(ERROR_COLOR_LEVEL)
+            .map(|i| i.append(&mut indices));
+        self
+    }
+    pub fn error_color_range<R: RangeBounds<usize>>(mut self, indices: R) -> Self {
+        const ERROR_COLOR_LEVEL: usize = 6;
+        self.pad_indices(ERROR_COLOR_LEVEL);
+        let start = match indices.start_bound() {
+            Bound::Unbounded => 0,
+            Bound::Included(s) => *s,
+            Bound::Excluded(s) => *s,
+        };
+        let end = match indices.end_bound() {
+            Bound::Unbounded => self.text.chars().count(),
+            Bound::Included(s) => *s + 1,
+            Bound::Excluded(s) => *s,
+        };
+        let indices = (start..end).into_iter();
+        self.indices
+            .get_mut(ERROR_COLOR_LEVEL)
+            .map(|i| i.append(&mut indices.into_iter().collect()));
+        self
+    }
+    pub fn error_color_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
+        const ERROR_COLOR_LEVEL: usize = 6;
+        let substr = substr.as_ref();
+        let mut start = 0;
+
+        while let Some(pos) = self.text[start..].find(substr) {
+            let abs_pos = start + pos;
+            self = self.error_color_range(abs_pos..abs_pos + substr.chars().count());
+            start = abs_pos + substr.len();
+        }
+
+        self
+    }
+    pub fn error_color_nth_substring<S: AsRef<str>>(
+        self,
+        substr: S,
+        occurrence_index: usize,
+    ) -> Self {
+        const ERROR_COLOR_LEVEL: usize = 6;
+        let substr = substr.as_ref();
+        let mut start = 0;
+        let mut count = 0;
+
+        while let Some(pos) = self.text[start..].find(substr) {
+            if count == occurrence_index {
+                let abs_pos = start + pos;
+                return self.color_range(ERROR_COLOR_LEVEL, abs_pos..abs_pos + substr.len());
+            }
+            count += 1;
+            start = start + pos + substr.len();
+        }
+
+        self
+    }
+    pub fn error_color_all(self) -> Self {
+        const ERROR_COLOR_LEVEL: usize = 6;
+        self.color_range(ERROR_COLOR_LEVEL, ..)
+    }
+    pub fn success_color_indices(mut self, mut indices: Vec<usize>) -> Self {
+        const SUCCESS_COLOR_LEVEL: usize = 7;
+        self.pad_indices(SUCCESS_COLOR_LEVEL);
+        self.indices
+            .get_mut(SUCCESS_COLOR_LEVEL)
+            .map(|i| i.append(&mut indices));
+        self
+    }
+    pub fn success_color_range<R: RangeBounds<usize>>(mut self, indices: R) -> Self {
+        const SUCCESS_COLOR_LEVEL: usize = 7;
+        self.pad_indices(SUCCESS_COLOR_LEVEL);
+        let start = match indices.start_bound() {
+            Bound::Unbounded => 0,
+            Bound::Included(s) => *s,
+            Bound::Excluded(s) => *s,
+        };
+        let end = match indices.end_bound() {
+            Bound::Unbounded => self.text.chars().count(),
+            Bound::Included(s) => *s + 1,
+            Bound::Excluded(s) => *s,
+        };
+        let indices = (start..end).into_iter();
+        self.indices
+            .get_mut(SUCCESS_COLOR_LEVEL)
+            .map(|i| i.append(&mut indices.into_iter().collect()));
+        self
+    }
+    pub fn success_color_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
+        const SUCCESS_COLOR_LEVEL: usize = 7;
+        let substr = substr.as_ref();
+        let mut start = 0;
+
+        while let Some(pos) = self.text[start..].find(substr) {
+            let abs_pos = start + pos;
+            self = self.success_color_range(abs_pos..abs_pos + substr.chars().count());
+            start = abs_pos + substr.len();
+        }
+
+        self
+    }
+    pub fn success_color_nth_substring<S: AsRef<str>>(
+        self,
+        substr: S,
+        occurrence_index: usize,
+    ) -> Self {
+        const SUCCESS_COLOR_LEVEL: usize = 7;
+        let substr = substr.as_ref();
+        let mut start = 0;
+        let mut count = 0;
+
+        while let Some(pos) = self.text[start..].find(substr) {
+            if count == occurrence_index {
+                let abs_pos = start + pos;
+                return self.color_range(SUCCESS_COLOR_LEVEL, abs_pos..abs_pos + substr.len());
+            }
+            count += 1;
+            start = start + pos + substr.len();
+        }
+
+        self
+    }
+    pub fn success_color_all(self) -> Self {
+        const SUCCESS_COLOR_LEVEL: usize = 7;
+        self.color_range(SUCCESS_COLOR_LEVEL, ..)
+    }
     pub fn color_indices(mut self, index_level: usize, mut indices: Vec<usize>) -> Self {
         self.pad_indices(index_level);
         self.indices
