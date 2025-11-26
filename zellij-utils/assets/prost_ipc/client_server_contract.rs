@@ -2345,7 +2345,7 @@ pub struct ConfigFileUpdatedMsg {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -2385,6 +2385,10 @@ pub mod client_to_server_msg {
         FailedToStartWebServer(super::FailedToStartWebServerMsg),
         #[prost(message, tag="16")]
         AttachWatcherClient(super::AttachWatcherClientMsg),
+        #[prost(message, tag="17")]
+        FocusGained(super::FocusGainedMsg),
+        #[prost(message, tag="18")]
+        FocusLost(super::FocusLostMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -2497,4 +2501,14 @@ pub struct WebServerStartedMsg {
 pub struct FailedToStartWebServerMsg {
     #[prost(string, tag="1")]
     pub error: ::prost::alloc::string::String,
+}
+/// Empty message
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FocusGainedMsg {
+}
+/// Empty message
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FocusLostMsg {
 }

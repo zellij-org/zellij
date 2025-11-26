@@ -270,6 +270,8 @@ pub(crate) enum InputInstruction {
     StartedParsing,
     DoneParsing,
     Exit,
+    FocusGained,
+    FocusLost,
 }
 
 #[cfg(feature = "web_server_capability")]
@@ -588,6 +590,7 @@ pub fn start_client(
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
+    let enable_focus_tracking = "\u{1b}[?1004h";
     let enter_kitty_keyboard_mode = "\u{1b}[>1u";
     os_input.unset_raw_mode(0).unwrap();
 
@@ -784,6 +787,10 @@ pub fn start_client(
     let _ = os_input
         .get_stdout_writer()
         .write(bracketed_paste.as_bytes())
+        .unwrap();
+    let _ = os_input
+        .get_stdout_writer()
+        .write(enable_focus_tracking.as_bytes())
         .unwrap();
 
     let (send_client_instructions, receive_client_instructions): ChannelWithContext<
@@ -1079,10 +1086,12 @@ pub fn start_client(
         os_input.unset_raw_mode(0).unwrap();
         let mut stdout = os_input.get_stdout_writer();
         let exit_kitty_keyboard_mode = "\u{1b}[<1u";
+        let disable_focus_tracking = "\u{1b}[?1004l";
         if !explicitly_disable_kitty_keyboard_protocol {
             let _ = stdout.write(exit_kitty_keyboard_mode.as_bytes()).unwrap();
             stdout.flush().unwrap();
         }
+        let _ = stdout.write(disable_focus_tracking.as_bytes()).unwrap();
         let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
         stdout.flush().unwrap();
     } else {

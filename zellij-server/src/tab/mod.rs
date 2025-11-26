@@ -2932,6 +2932,14 @@ impl Tab {
     pub(crate) fn get_floating_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.floating_panes.get_panes()
     }
+    pub(crate) fn send_pane_tty_focus(&mut self, pane_id: PaneId) {
+        self.floating_panes.send_pane_tty_focus(pane_id);
+        self.tiled_panes.send_pane_tty_focus(pane_id);
+    }
+    pub(crate) fn send_pane_tty_unfocus(&mut self, pane_id: PaneId) {
+        self.floating_panes.send_pane_tty_unfocus(pane_id);
+        self.tiled_panes.send_pane_tty_unfocus(pane_id);
+    }
     pub(crate) fn get_suppressed_panes(
         &self,
     ) -> impl Iterator<Item = (&PaneId, &(bool, Box<dyn Pane>))> {
@@ -4987,7 +4995,6 @@ impl Tab {
     pub fn show_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking floating_panes.toggle_show_panes(true)
         self.floating_panes.toggle_show_panes(true);
-        self.tiled_panes.unfocus_all_panes();
         self.set_force_render();
     }
 
@@ -4995,7 +5002,6 @@ impl Tab {
         // this function is to be preferred to directly invoking
         // floating_panes.toggle_show_panes(false)
         self.floating_panes.toggle_show_panes(false);
-        self.tiled_panes.focus_all_panes();
         self.set_force_render();
     }
 

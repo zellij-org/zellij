@@ -255,6 +255,12 @@ impl InputHandler {
                 Ok((InputInstruction::Exit, _error_context)) => {
                     self.should_exit = true;
                 },
+                Ok((InputInstruction::FocusGained, _error_context)) => {
+                    self.os_input.send_to_server(ClientToServerMsg::FocusGained);
+                },
+                Ok((InputInstruction::FocusLost, _error_context)) => {
+                    self.os_input.send_to_server(ClientToServerMsg::FocusLost);
+                },
                 Err(err) => panic!("Encountered read error: {:?}", err),
             }
         }

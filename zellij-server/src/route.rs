@@ -1779,6 +1779,24 @@ pub(crate) fn route_thread_main(
                             let _ =
                                 to_server.send(ServerInstruction::FailedToStartWebServer(error));
                         },
+                        ClientToServerMsg::FocusGained => {
+                            send_to_screen_or_retry_queue!(
+                                rlocked_sessions,
+                                ScreenInstruction::ClientGainedFocus(client_id),
+                                instruction,
+                                retry_queue
+                            )
+                            .with_context(err_context)?;
+                        },
+                        ClientToServerMsg::FocusLost => {
+                            send_to_screen_or_retry_queue!(
+                                rlocked_sessions,
+                                ScreenInstruction::ClientLostFocus(client_id),
+                                instruction,
+                                retry_queue
+                            )
+                            .with_context(err_context)?;
+                        },
                     }
                     Ok(should_break)
                 };

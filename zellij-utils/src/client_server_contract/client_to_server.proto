@@ -21,6 +21,8 @@ message ClientToServerMsg {
     WebServerStartedMsg web_server_started = 14;
     FailedToStartWebServerMsg failed_to_start_web_server = 15;
     AttachWatcherClientMsg attach_watcher_client = 16;
+    FocusGainedMsg focus_gained = 17;
+    FocusLostMsg focus_lost = 18;
   }
 }
 
@@ -95,4 +97,12 @@ message WebServerStartedMsg {
 
 message FailedToStartWebServerMsg {
   string error = 1;
+}
+
+message FocusGainedMsg {
+  // Empty message
+}
+
+message FocusLostMsg {
+  // Empty message
 }

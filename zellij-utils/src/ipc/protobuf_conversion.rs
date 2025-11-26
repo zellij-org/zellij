@@ -4,9 +4,9 @@ use crate::{
         AttachWatcherClientMsg, BackgroundColorMsg, CliPipeOutputMsg, ClientExitedMsg,
         ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg, ConfigFileUpdatedMsg,
         ConnStatusMsg, ConnectedMsg, DetachSessionMsg, ExitMsg, ExitReason as ProtoExitReason,
-        FailedToStartWebServerMsg, FirstClientConnectedMsg, ForegroundColorMsg,
-        InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LogErrorMsg, LogMsg,
-        QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
+        FailedToStartWebServerMsg, FirstClientConnectedMsg, FocusGainedMsg, FocusLostMsg,
+        ForegroundColorMsg, InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LogErrorMsg,
+        LogMsg, QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
         ServerToClientMsg as ProtoServerToClientMsg, StartWebServerMsg, SwitchSessionMsg,
         TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
         UnblockInputThreadMsg, WebServerStartedMsg,
@@ -110,6 +110,12 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                 client_to_server_msg::Message::FailedToStartWebServer(FailedToStartWebServerMsg {
                     error,
                 })
+            },
+            ClientToServerMsg::FocusGained => {
+                client_to_server_msg::Message::FocusGained(FocusGainedMsg {})
+            },
+            ClientToServerMsg::FocusLost => {
+                client_to_server_msg::Message::FocusLost(FocusLostMsg {})
             },
         };
 
@@ -223,6 +229,12 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                 Ok(ClientToServerMsg::FailedToStartWebServer {
                     error: failed.error,
                 })
+            },
+            Some(client_to_server_msg::Message::FocusGained(_)) => {
+                Ok(ClientToServerMsg::FocusGained)
+            },
+            Some(client_to_server_msg::Message::FocusLost(_)) => {
+                Ok(ClientToServerMsg::FocusLost)
             },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
         }
