@@ -10,7 +10,7 @@ use zellij_utils::input::actions::Action;
 pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::plugin_command::{
-    CreateTokenResponse, ListTokensResponse, ProtobufPluginCommand, RenameWebTokenResponse,
+    CreateTokenResponse, ListTokensResponse, ProtobufGetPanePidResponse, ProtobufPluginCommand, RenameWebTokenResponse,
     RevokeAllWebTokensResponse, RevokeTokenResponse,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
@@ -1174,6 +1174,79 @@ pub fn write_chars_to_pane_id(chars: &str, pane_id: PaneId) {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+}
+
+/// Send SIGINT signal to a terminal pane's child process
+///
+/// Requires the ChangeApplicationState permission.
+///
+/// # Arguments
+/// * `pane_id` - The ID of the pane to send the signal to
+///
+/// # Errors
+/// This will fail silently if:
+/// - The pane is not a terminal pane
+/// - The pane doesn't exist
+/// - The pane has no running process
+pub fn send_sigint_to_pane_id(pane_id: PaneId) {
+    let plugin_command = PluginCommand::SendSigintToPaneId(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Send SIGKILL signal to a terminal pane's child process
+///
+/// Requires the ChangeApplicationState permission.
+///
+/// # Arguments
+/// * `pane_id` - The ID of the pane to send the signal to
+///
+/// # Errors
+/// This will fail silently if:
+/// - The pane is not a terminal pane
+/// - The pane doesn't exist
+/// - The pane has no running process
+pub fn send_sigkill_to_pane_id(pane_id: PaneId) {
+    let plugin_command = PluginCommand::SendSigkillToPaneId(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Get the PID of a terminal pane's child process
+///
+/// Requires the ReadApplicationState permission.
+///
+/// # Arguments
+/// * `pane_id` - The ID of the pane to get the PID from
+///
+/// # Returns
+/// * `Ok(i32)` - The PID of the child process
+/// * `Err(String)` - An error message if the pane was not found, is not a terminal, or another error occurred
+pub fn get_pane_pid(pane_id: PaneId) -> Result<i32, String> {
+    let plugin_command = PluginCommand::GetPanePid { pane_id };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    // Read response from stdin
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+
+    // Decode protobuf response
+    let protobuf_response = ProtobufGetPanePidResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
+
+    // Convert to Rust type
+    let response = GetPanePidResponse::try_from(protobuf_response)
+        .map_err(|e| format!("Failed to convert protobuf response: {}", e))?;
+
+    // Convert Result enum to actual Result type
+    match response {
+        GetPanePidResponse::Ok(pid) => Ok(pid),
+        GetPanePidResponse::Err(error_msg) => Err(error_msg),
+    }
 }
 
 /// Switch the position of the pane with this id with a different pane

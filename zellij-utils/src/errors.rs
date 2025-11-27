@@ -421,6 +421,9 @@ pub enum PtyContext {
     Reconfigure,
     ListClientsToPlugin,
     ReportPluginCwd,
+    SendSigintToPaneId,
+    SendSigkillToPaneId,
+    GetPanePid,
     Exit,
 }
 

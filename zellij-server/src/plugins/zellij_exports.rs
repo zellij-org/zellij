@@ -20,7 +20,7 @@ use std::{
 };
 use wasmi::{Caller, Linker};
 use zellij_utils::data::{
-    CommandType, ConnectToSession, Event, FloatingPaneCoordinates, HttpVerb, KeyWithModifier,
+    CommandType, ConnectToSession, Event, FloatingPaneCoordinates, GetPanePidResponse, HttpVerb, KeyWithModifier,
     LayoutInfo, MessageToPlugin, NewPanePlacement, OriginatingPlugin, PaneScrollbackResponse,
     PermissionStatus, PermissionType, PluginPermission,
 };
@@ -50,7 +50,7 @@ use zellij_utils::{
     },
     plugin_api::{
         event::ProtobufPaneScrollbackResponse,
-        plugin_command::ProtobufPluginCommand,
+        plugin_command::{ProtobufPluginCommand, ProtobufGetPanePidResponse, get_pane_pid_response},
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
 };
@@ -347,6 +347,15 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     },
                     PluginCommand::WriteCharsToPaneId(chars, pane_id) => {
                         write_chars_to_pane_id(env, chars, pane_id.into())
+                    },
+                    PluginCommand::SendSigintToPaneId(pane_id) => {
+                        send_sigint_to_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::SendSigkillToPaneId(pane_id) => {
+                        send_sigkill_to_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::GetPanePid { pane_id } => {
+                        get_pane_pid(env, pane_id.into())
                     },
                     PluginCommand::MovePaneWithPaneId(pane_id) => {
                         move_pane_with_pane_id(env, pane_id.into())
@@ -2448,6 +2457,95 @@ fn write_chars_to_pane_id(env: &PluginEnv, chars: String, pane_id: PaneId) {
         .send_to_screen(ScreenInstruction::WriteToPaneId(bytes, pane_id));
 }
 
+fn send_sigint_to_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let err_context = || {
+        format!(
+            "failed to send SIGINT to pane {:?} from plugin {}",
+            pane_id,
+            env.name()
+        )
+    };
+
+    env.senders
+        .send_to_pty(PtyInstruction::SendSigintToPaneId(pane_id))
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn send_sigkill_to_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let err_context = || {
+        format!(
+            "failed to send SIGKILL to pane {:?} from plugin {}",
+            pane_id,
+            env.name()
+        )
+    };
+
+    env.senders
+        .send_to_pty(PtyInstruction::SendSigkillToPaneId(pane_id))
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn get_pane_pid(env: &PluginEnv, pane_id: PaneId) {
+    use crossbeam::channel::RecvTimeoutError;
+    use std::time::Duration;
+
+    let err_context = || {
+        format!(
+            "failed to get PID for pane {:?} from plugin {}",
+            pane_id,
+            env.name()
+        )
+    };
+
+    // Create oneshot channel for response
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+
+    // Send request directly to PTY thread
+    env.senders
+        .send_to_pty(PtyInstruction::GetPanePid {
+            pane_id,
+            response_channel: response_sender,
+        })
+        .with_context(err_context)
+        .non_fatal();
+
+    // Block waiting for response with 5 second timeout
+    let response = match response_receiver.recv_timeout(Duration::from_secs(5)) {
+        Ok(response) => response,
+        Err(RecvTimeoutError::Timeout) => {
+            log::error!(
+                "GetPanePid timed out after 5s for plugin {} requesting pane {:?}",
+                env.plugin_id,
+                pane_id
+            );
+            GetPanePidResponse::Err(format!(
+                "Timeout retrieving PID for pane {:?}",
+                pane_id
+            ))
+        },
+        Err(RecvTimeoutError::Disconnected) => {
+            log::error!(
+                "GetPanePid channel disconnected for plugin {} requesting pane {:?}",
+                env.plugin_id,
+                pane_id
+            );
+            GetPanePidResponse::Err(format!(
+                "Channel disconnected while retrieving PID for pane {:?}",
+                pane_id
+            ))
+        },
+    };
+
+    // Encode response and write to plugin's stdin
+    let protobuf_response = ProtobufGetPanePidResponse::from(response);
+    let serialized = protobuf_response.encode_to_vec();
+    wasi_write_object(env, &serialized)
+        .with_context(err_context)
+        .non_fatal();
+}
+
 fn move_pane_with_pane_id(env: &PluginEnv, pane_id: PaneId) {
     let _ = env
         .senders
@@ -3056,12 +3154,14 @@ fn check_command_permission(
         | PluginCommand::FloatMultiplePanes(..)
         | PluginCommand::EmbedMultiplePanes(..)
         | PluginCommand::ReplacePaneWithExistingPane(..)
-        | PluginCommand::KillSessions(..) => PermissionType::ChangeApplicationState,
+        | PluginCommand::KillSessions(..)
+        | PluginCommand::SendSigintToPaneId(..)
+        | PluginCommand::SendSigkillToPaneId(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
-        PluginCommand::ListClients | PluginCommand::DumpSessionLayout | PluginCommand::GetMacros => {
+        PluginCommand::ListClients | PluginCommand::DumpSessionLayout | PluginCommand::GetMacros | PluginCommand::GetPanePid { .. } => {
             PermissionType::ReadApplicationState
         },
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) | PluginCommand::SetMacro(..) | PluginCommand::RemoveMacro(..) | PluginCommand::RenameMacro(..) => {

@@ -106,6 +106,9 @@ impl ServerOsApi for FakeInputOutput {
     fn clear_terminal_id(&self, _terminal_id: u32) -> Result<()> {
         unimplemented!()
     }
+    fn send_sigint(&self, pid: Pid) -> Result<()> {
+        unimplemented!()
+    }
 }
 
 fn tab_resize_increase(tab: &mut Tab, id: ClientId) {

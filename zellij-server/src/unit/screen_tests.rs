@@ -249,6 +249,9 @@ impl ServerOsApi for FakeInputOutput {
     fn clear_terminal_id(&self, _terminal_id: u32) -> Result<()> {
         unimplemented!()
     }
+    fn send_sigint(&self, pid: Pid) -> Result<()> {
+        unimplemented!()
+    }
 }
 
 fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {

@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::{
     data::{
-        CommandOrPlugin, Direction, Event, FloatingPaneCoordinates, NewPanePlacement,
+        CommandOrPlugin, Direction, Event, FloatingPaneCoordinates, GetPanePidResponse, NewPanePlacement,
         OriginatingPlugin,
     },
     errors::prelude::*,
@@ -117,6 +117,12 @@ pub enum PtyInstruction {
     },
     ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
     ReportPluginCwd(PluginId, PathBuf),
+    SendSigintToPaneId(PaneId),
+    SendSigkillToPaneId(PaneId),
+    GetPanePid {
+        pane_id: PaneId,
+        response_channel: crossbeam::channel::Sender<GetPanePidResponse>,
+    },
     Exit,
 }
 
@@ -141,6 +147,9 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::Reconfigure { .. } => PtyContext::Reconfigure,
             PtyInstruction::ListClientsToPlugin(..) => PtyContext::ListClientsToPlugin,
             PtyInstruction::ReportPluginCwd(..) => PtyContext::ReportPluginCwd,
+            PtyInstruction::SendSigintToPaneId(..) => PtyContext::SendSigintToPaneId,
+            PtyInstruction::SendSigkillToPaneId(..) => PtyContext::SendSigkillToPaneId,
+            PtyInstruction::GetPanePid { .. } => PtyContext::GetPanePid,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -711,6 +720,19 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 client_id: _,
             } => {
                 pty.reconfigure(default_editor, post_command_discovery_hook);
+            },
+            PtyInstruction::SendSigintToPaneId(pane_id) => {
+                pty.send_sigint_to_pane(pane_id);
+            },
+            PtyInstruction::SendSigkillToPaneId(pane_id) => {
+                pty.send_sigkill_to_pane(pane_id);
+            },
+            PtyInstruction::GetPanePid {
+                pane_id,
+                response_channel,
+            } => {
+                let response = pty.get_pane_pid(pane_id);
+                let _ = response_channel.send(response);
             },
             PtyInstruction::Exit => break,
         }
@@ -1606,6 +1628,75 @@ impl Pty {
     ) {
         self.default_editor = default_editor;
         self.post_command_discovery_hook = post_command_discovery_hook;
+    }
+
+    pub fn send_sigint_to_pane(&self, pane_id: PaneId) {
+        let err_context = || format!("failed to send SIGINT to pane {:?}", pane_id);
+
+        match pane_id {
+            PaneId::Terminal(terminal_id) => {
+                if let Some(&child_fd) = self.id_to_child_pid.get(&terminal_id) {
+                    let pid = Pid::from_raw(child_fd);
+                    self.bus
+                        .os_input
+                        .as_ref()
+                        .context("no OS I/O interface found")
+                        .and_then(|os_input| os_input.send_sigint(pid))
+                        .with_context(err_context)
+                        .non_fatal();
+                } else {
+                    log::warn!("Terminal pane {} not found or not running", terminal_id);
+                }
+            },
+            PaneId::Plugin(plugin_id) => {
+                log::warn!("Cannot send SIGINT to plugin pane {}", plugin_id);
+            },
+        }
+    }
+
+    pub fn send_sigkill_to_pane(&self, pane_id: PaneId) {
+        let err_context = || format!("failed to send SIGKILL to pane {:?}", pane_id);
+
+        match pane_id {
+            PaneId::Terminal(terminal_id) => {
+                if let Some(&child_fd) = self.id_to_child_pid.get(&terminal_id) {
+                    let pid = Pid::from_raw(child_fd);
+                    self.bus
+                        .os_input
+                        .as_ref()
+                        .context("no OS I/O interface found")
+                        .and_then(|os_input| os_input.force_kill(pid))
+                        .with_context(err_context)
+                        .non_fatal();
+                } else {
+                    log::warn!("Terminal pane {} not found or not running", terminal_id);
+                }
+            },
+            PaneId::Plugin(plugin_id) => {
+                log::warn!("Cannot send SIGKILL to plugin pane {}", plugin_id);
+            },
+        }
+    }
+
+    pub fn get_pane_pid(&self, pane_id: PaneId) -> GetPanePidResponse {
+        match pane_id {
+            PaneId::Terminal(terminal_id) => {
+                if let Some(&child_fd) = self.id_to_child_pid.get(&terminal_id) {
+                    GetPanePidResponse::Ok(child_fd)
+                } else {
+                    GetPanePidResponse::Err(format!(
+                        "Terminal pane {} not found or not running",
+                        terminal_id
+                    ))
+                }
+            },
+            PaneId::Plugin(plugin_id) => {
+                GetPanePidResponse::Err(format!(
+                    "Cannot get PID for plugin pane {}",
+                    plugin_id
+                ))
+            },
+        }
     }
 }
 

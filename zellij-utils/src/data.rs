@@ -2107,6 +2107,12 @@ pub enum PaneScrollbackResponse {
     Err(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GetPanePidResponse {
+    Ok(i32),
+    Err(String),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SelectedText {
     pub start: Position,
@@ -2840,6 +2846,9 @@ pub enum PluginCommand {
     },
     WriteToPaneId(Vec<u8>, PaneId),
     WriteCharsToPaneId(String, PaneId),
+    SendSigintToPaneId(PaneId),
+    SendSigkillToPaneId(PaneId),
+    GetPanePid { pane_id: PaneId },
     MovePaneWithPaneId(PaneId),
     MovePaneWithPaneIdInDirection(PaneId, Direction),
     ClearScreenForPaneId(PaneId),

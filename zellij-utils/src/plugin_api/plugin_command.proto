@@ -167,6 +167,9 @@ enum CommandName {
   RenameMacro = 168;
   ShowCursor = 169;
   CopyToClipboard = 170;
+  SendSigintToPaneId = 171;
+  SendSigkillToPaneId = 172;
+  GetPanePid = 173;
 }
 
 message PluginCommand {
@@ -281,6 +284,9 @@ message PluginCommand {
     RenameMacroPayload rename_macro_payload = 117;
     ShowCursorPayload show_cursor_payload = 119;
     CopyToClipboardPayload copy_to_clipboard_payload = 120;
+    PaneId send_sigint_to_pane_id_payload = 121;
+    PaneId send_sigkill_to_pane_id_payload = 122;
+    GetPanePidPayload get_pane_pid_payload = 123;
   }
 }
 
@@ -765,4 +771,15 @@ message CursorPosition {
 
 message CopyToClipboardPayload {
   string text = 1;
+}
+
+message GetPanePidPayload {
+  PaneId pane_id = 1;
+}
+
+message GetPanePidResponse {
+  oneof result {
+    int32 pid = 1;
+    string error = 2;
+  }
 }

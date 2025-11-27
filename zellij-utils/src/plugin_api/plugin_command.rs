@@ -7,6 +7,8 @@ pub use super::generated_api::api::{
         ChangeFloatingPanesCoordinatesPayload, ChangeHostFolderPayload,
         ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseMultiplePanesPayload,
         CloseTabWithIndexPayload, CommandName, ContextItem, CopyToClipboardPayload,
+        GetPanePidPayload, GetPanePidResponse as ProtobufGetPanePidResponse,
+        get_pane_pid_response,
         CreateTokenResponse as ProtobufCreateTokenResponse, CreateTokenResponse,
         EditScrollbackForPaneWithIdPayload, EmbedMultiplePanesPayload, EnvVariable, ExecCmdPayload,
         FixedOrPercent as ProtobufFixedOrPercent,
@@ -42,7 +44,7 @@ pub use super::generated_api::api::{
 };
 
 use crate::data::{
-    ConnectToSession, FloatingPaneCoordinates, HttpVerb, InputMode, KeyWithModifier,
+    ConnectToSession, FloatingPaneCoordinates, GetPanePidResponse, HttpVerb, InputMode, KeyWithModifier,
     MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand,
 };
 use crate::input::actions::Action;
@@ -197,6 +199,30 @@ impl TryFrom<PaneId> for ProtobufPaneId {
                 pane_type: ProtobufPaneType::Plugin as i32,
                 id,
             }),
+        }
+    }
+}
+
+impl TryFrom<ProtobufGetPanePidResponse> for GetPanePidResponse {
+    type Error = &'static str;
+    fn try_from(protobuf_response: ProtobufGetPanePidResponse) -> Result<Self, &'static str> {
+        match protobuf_response.result {
+            Some(get_pane_pid_response::Result::Pid(pid)) => Ok(GetPanePidResponse::Ok(pid)),
+            Some(get_pane_pid_response::Result::Error(error)) => Ok(GetPanePidResponse::Err(error)),
+            None => Err("Empty GetPanePidResponse"),
+        }
+    }
+}
+
+impl From<GetPanePidResponse> for ProtobufGetPanePidResponse {
+    fn from(response: GetPanePidResponse) -> Self {
+        match response {
+            GetPanePidResponse::Ok(pid) => ProtobufGetPanePidResponse {
+                result: Some(get_pane_pid_response::Result::Pid(pid)),
+            },
+            GetPanePidResponse::Err(error) => ProtobufGetPanePidResponse {
+                result: Some(get_pane_pid_response::Result::Error(error)),
+            },
         }
     }
 }
@@ -1156,6 +1182,29 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     }
                 },
                 _ => Err("Mismatched payload for WriteCharsCharsToPaneId"),
+            },
+            Some(CommandName::SendSigintToPaneId) => match protobuf_plugin_command.payload {
+                Some(Payload::SendSigintToPaneIdPayload(pane_id)) => {
+                    Ok(PluginCommand::SendSigintToPaneId(pane_id.try_into()?))
+                },
+                _ => Err("Mismatched payload for SendSigintToPaneId"),
+            },
+            Some(CommandName::SendSigkillToPaneId) => match protobuf_plugin_command.payload {
+                Some(Payload::SendSigkillToPaneIdPayload(pane_id)) => {
+                    Ok(PluginCommand::SendSigkillToPaneId(pane_id.try_into()?))
+                },
+                _ => Err("Mismatched payload for SendSigkillToPaneId"),
+            },
+            Some(CommandName::GetPanePid) => match protobuf_plugin_command.payload {
+                Some(Payload::GetPanePidPayload(get_pane_pid_payload)) => {
+                    match get_pane_pid_payload.pane_id {
+                        Some(pane_id) => Ok(PluginCommand::GetPanePid {
+                            pane_id: pane_id.try_into()?,
+                        }),
+                        _ => Err("Malformed get_pane_pid payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for GetPanePid"),
             },
             Some(CommandName::MovePaneWithPaneId) => match protobuf_plugin_command.payload {
                 Some(Payload::MovePaneWithPaneIdPayload(move_pane_with_pane_id_payload)) => {
@@ -2496,6 +2545,20 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
+            PluginCommand::SendSigintToPaneId(pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::SendSigintToPaneId as i32,
+                payload: Some(Payload::SendSigintToPaneIdPayload(pane_id.try_into()?)),
+            }),
+            PluginCommand::SendSigkillToPaneId(pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::SendSigkillToPaneId as i32,
+                payload: Some(Payload::SendSigkillToPaneIdPayload(pane_id.try_into()?)),
+            }),
+            PluginCommand::GetPanePid { pane_id } => Ok(ProtobufPluginCommand {
+                name: CommandName::GetPanePid as i32,
+                payload: Some(Payload::GetPanePidPayload(GetPanePidPayload {
+                    pane_id: Some(pane_id.try_into()?),
+                })),
+            }),
             PluginCommand::MovePaneWithPaneId(pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::MovePaneWithPaneId as i32,
                 payload: Some(Payload::MovePaneWithPaneIdPayload(
