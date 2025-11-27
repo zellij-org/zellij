@@ -47,7 +47,7 @@ pub fn zellij_server_listener(
                         let Some(session_name) = reconnect_info
                             .as_ref()
                             .and_then(|r| r.name.clone())
-                            .or_else(generate_unique_session_name)
+                            .or_else(|| generate_unique_session_name(config_options.session_name_generator.as_deref()))
                         else {
                             log::error!("Failed to generate unique session name, bailing.");
                             return;

@@ -214,8 +214,12 @@ pub(crate) fn start_web_server(
     std::process::exit(2);
 }
 
-fn create_new_client() -> ClientInfo {
-    ClientInfo::New(generate_unique_session_name_or_exit(), None, None)
+fn create_new_client(session_name_generator: Option<&str>) -> ClientInfo {
+    ClientInfo::New(
+        generate_unique_session_name_or_exit(session_name_generator),
+        None,
+        None,
+    )
 }
 
 #[cfg(feature = "web_server_capability")]
@@ -352,8 +356,8 @@ fn find_indexed_session(
     create: bool,
 ) -> ClientInfo {
     match sessions.get(index) {
-        Some(session) => ClientInfo::Attach(session.clone(), config_options),
-        None if create => create_new_client(),
+        Some(session) => ClientInfo::Attach(session.clone(), config_options.clone()),
+        None if create => create_new_client(config_options.session_name_generator.as_deref()),
         None => {
             println!(
                 "No session indexed by {} found. The following sessions are active:",
@@ -512,7 +516,7 @@ fn attach_with_session_index(config_options: Options, index: usize, create: bool
     match get_sessions_sorted_by_mtime() {
         Ok(sessions) if sessions.is_empty() => {
             if create {
-                create_new_client()
+                create_new_client(config_options.session_name_generator.as_deref())
             } else {
                 eprintln!("No active zellij sessions found.");
                 process::exit(1);
@@ -565,7 +569,9 @@ fn attach_with_session_name(
             },
         },
         None => match get_active_session() {
-            ActiveSession::None if create => create_new_client(),
+            ActiveSession::None if create => {
+                create_new_client(config_options.session_name_generator.as_deref())
+            },
             ActiveSession::None => {
                 eprintln!("No active zellij sessions found.");
                 process::exit(1);
@@ -857,7 +863,9 @@ pub(crate) fn start_client(opts: CliArgs) {
                     process::exit(0);
                 }
 
-                let session_name = generate_unique_session_name_or_exit();
+                let session_name = generate_unique_session_name_or_exit(
+                    config_options.session_name_generator.as_deref(),
+                );
                 start_client_plan(session_name.clone());
                 reconnect_to_session = start_client_impl(
                     Box::new(os_input),
@@ -878,8 +886,8 @@ pub(crate) fn start_client(opts: CliArgs) {
     }
 }
 
-fn generate_unique_session_name_or_exit() -> String {
-    let Some(unique_session_name) = generate_unique_session_name() else {
+fn generate_unique_session_name_or_exit(session_name_generator: Option<&str>) -> String {
+    let Some(unique_session_name) = generate_unique_session_name(session_name_generator) else {
         eprintln!("Failed to generate a unique session name, giving up");
         process::exit(1);
     };

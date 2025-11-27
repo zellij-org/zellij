@@ -19,7 +19,7 @@ pub fn build_initial_connection(
     let default_layout_from_config =
         LayoutInfo::from_config(&config.options.layout_dir, &config.options.default_layout);
     if should_start_with_welcome_screen {
-        let Some(initial_session_name) = session_name.clone().or_else(generate_unique_session_name)
+        let Some(initial_session_name) = session_name.clone().or_else(|| generate_unique_session_name(config.options.session_name_generator.as_deref()))
         else {
             return Err("Failed to generate unique session name, bailing.");
         };

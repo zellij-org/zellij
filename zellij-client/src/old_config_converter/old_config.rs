@@ -562,6 +562,7 @@ struct OldUnbindFromYaml {
 
 /// Main configuration.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
+#[allow(dead_code)]
 struct OldConfig {
     pub keybinds: OldKeybinds,
     pub options: OldOptions,
@@ -572,9 +573,11 @@ struct OldConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[allow(dead_code)]
 struct OldKeybinds(HashMap<OldInputMode, OldModeKeybinds>);
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[allow(dead_code)]
 struct OldModeKeybinds(BTreeMap<OldKey, Vec<OldAction>>);
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -721,9 +724,11 @@ impl Default for OldPluginTypeFromYaml {
 struct OldPluginTag(String);
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[allow(dead_code)]
 struct OldPluginsConfig(HashMap<OldPluginTag, OldPluginConfig>);
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[allow(dead_code)]
 struct OldPluginConfig {
     /// Path of the plugin, see resolve_wasm_bytes for resolution semantics
     pub path: PathBuf,

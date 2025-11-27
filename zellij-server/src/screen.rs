@@ -1950,6 +1950,7 @@ impl Screen {
     }
 
     // Optional: getter for debugging/monitoring
+    #[allow(dead_code)]
     pub fn get_watcher_size(&self, client_id: &ClientId) -> Option<Size> {
         self.watcher_clients
             .get(client_id)
@@ -1957,6 +1958,7 @@ impl Screen {
     }
 
     // Optional: get all watcher sizes
+    #[allow(dead_code)]
     pub fn get_all_watcher_sizes(&self) -> &HashMap<ClientId, WatcherState> {
         &self.watcher_clients
     }

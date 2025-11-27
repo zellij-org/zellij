@@ -17,7 +17,7 @@ use nix::unistd::Pid;
 use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::{
-    data::{Direction, Event, FloatingPaneCoordinates, NewPanePlacement, OriginatingPlugin},
+    data::{Event, FloatingPaneCoordinates, NewPanePlacement, OriginatingPlugin},
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{

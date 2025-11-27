@@ -169,17 +169,20 @@ pub struct AppState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct StdinMessage {
     pub web_client_id: String,
     pub stdin: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub enum ShutdownSignal {
     Shutdown,
 }
 
 #[derive(Serialize, Debug)]
+#[allow(dead_code)]
 pub struct SendShutdownSignalResponse {
     pub status: String,
 }

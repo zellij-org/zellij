@@ -2553,6 +2553,9 @@ impl Options {
         let post_command_discovery_hook =
             kdl_property_first_arg_as_string_or_error!(kdl_options, "post_command_discovery_hook")
                 .map(|(hook, _entry)| hook.to_string());
+        let session_name_generator =
+            kdl_property_first_arg_as_string_or_error!(kdl_options, "session_name_generator")
+                .map(|(gen, _entry)| gen.to_string());
 
         Ok(Options {
             simplified_ui,
@@ -2594,6 +2597,7 @@ impl Options {
             web_server_key,
             enforce_https_for_localhost,
             post_command_discovery_hook,
+            session_name_generator,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {

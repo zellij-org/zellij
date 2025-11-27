@@ -23,11 +23,10 @@ use zellij_utils::data::WebSharing;
 use zellij_utils::envs::set_session_name;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::layout::{
-    FloatingPaneLayout, Layout, PluginUserConfiguration, RunPluginLocation, RunPluginOrAlias,
-    SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+    FloatingPaneLayout, Layout, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
+    TiledPaneLayout,
 };
 use zellij_utils::input::mouse::MouseEvent;
-use zellij_utils::input::plugins::PluginTag;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
@@ -36,7 +35,7 @@ use crate::pty_writer::PtyWriteInstruction;
 use zellij_utils::channels::{self, ChannelWithContext, SenderWithContext};
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 

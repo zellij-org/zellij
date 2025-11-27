@@ -10,6 +10,7 @@ use crate::{
 use anyhow;
 use humantime::format_duration;
 use interprocess::local_socket::LocalSocketStream;
+use nix::unistd::gethostname;
 use std::collections::HashMap;
 use std::os::unix::fs::FileTypeExt;
 use std::time::{Duration, SystemTime};
@@ -457,7 +458,7 @@ pub fn assert_session_ne(name: &str) {
     process::exit(1);
 }
 
-pub fn generate_unique_session_name() -> Option<String> {
+pub fn generate_unique_session_name(session_name_generator: Option<&str>) -> Option<String> {
     let sessions = get_sessions().map(|sessions| {
         sessions
             .iter()
@@ -470,6 +471,12 @@ pub fn generate_unique_session_name() -> Option<String> {
         return None;
     };
 
+    if session_name_generator == Some("numbered") {
+        if let Some(name) = generate_numbered_session_name(&sessions, &dead_sessions) {
+            return Some(name);
+        }
+    }
+
     let name = get_name_generator()
         .take(1000)
         .find(|name| !sessions.contains(name) && !dead_sessions.contains(name));
@@ -479,6 +486,18 @@ pub fn generate_unique_session_name() -> Option<String> {
     } else {
         return None;
     }
+}
+
+fn generate_numbered_session_name(sessions: &[String], dead_sessions: &[String]) -> Option<String> {
+    let mut buf = [0u8; 256];
+    let hostname = gethostname(&mut buf).ok()?.to_str().ok()?;
+    for i in 1..1000 {
+        let name = format!("{}-{}", hostname, i);
+        if !sessions.contains(&name) && !dead_sessions.contains(&name) {
+            return Some(name);
+        }
+    }
+    None
 }
 
 /// Create a new random name generator

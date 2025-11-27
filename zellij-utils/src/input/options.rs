@@ -220,6 +220,12 @@ pub struct Options {
     #[serde(default)]
     pub advanced_mouse_actions: Option<bool>,
 
+    /// The session name generator to use when creating a new session
+    /// default is "random"
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub session_name_generator: Option<String>,
+
     // these are intentionally excluded from the CLI options as they must be specified in the
     // configuration file
     pub web_server_ip: Option<IpAddr>,
@@ -327,6 +333,9 @@ impl Options {
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or(self.post_command_discovery_hook.clone());
+        let session_name_generator = other
+            .session_name_generator
+            .or_else(|| self.session_name_generator.clone());
 
         Options {
             simplified_ui,
@@ -368,6 +377,7 @@ impl Options {
             web_server_key,
             enforce_https_for_localhost,
             post_command_discovery_hook,
+            session_name_generator,
         }
     }
 
@@ -444,6 +454,9 @@ impl Options {
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or_else(|| self.post_command_discovery_hook.clone());
+        let session_name_generator = other
+            .session_name_generator
+            .or_else(|| self.session_name_generator.clone());
 
         Options {
             simplified_ui,
@@ -485,6 +498,7 @@ impl Options {
             web_server_key,
             enforce_https_for_localhost,
             post_command_discovery_hook,
+            session_name_generator,
         }
     }
 

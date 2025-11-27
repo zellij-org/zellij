@@ -78,6 +78,10 @@ pub struct CliArgs {
     /// Specify emitting additional debug information
     #[clap(short, long, value_parser)]
     pub debug: bool,
+
+    /// Specify the session name generator (e.g. "numbered")
+    #[clap(long, short = 'S', value_parser)]
+    pub session_name_generator: Option<String>,
 }
 
 impl CliArgs {

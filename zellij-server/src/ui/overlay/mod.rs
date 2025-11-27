@@ -17,6 +17,7 @@ pub struct Overlay {
     pub overlay_type: OverlayType,
 }
 
+#[allow(dead_code)]
 pub trait Overlayable {
     /// Generates vte_output that can be passed into
     /// the `render()` function
@@ -87,6 +88,7 @@ impl Overlay {
         Self { overlay_type }
     }
 
+    #[allow(dead_code)]
     fn pad_cols(output: &mut String, cols: usize) {
         if let Some(padding) = cols.checked_sub(output.len()) {
             for _ in 0..padding {

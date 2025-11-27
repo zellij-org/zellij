@@ -372,12 +372,18 @@ impl Setup {
         // note that this can potentially exit the process
         Setup::handle_setup_commands(cli_args);
         let config = Config::try_from(cli_args)?;
-        let cli_config_options: Option<Options> =
+        let mut cli_config_options: Option<Options> =
             if let Some(Command::Options(options)) = cli_args.command.clone() {
                 Some(options.into())
             } else {
                 None
             };
+
+        if let Some(session_name_generator) = &cli_args.session_name_generator {
+            let mut options = cli_config_options.unwrap_or_default();
+            options.session_name_generator = Some(session_name_generator.clone());
+            cli_config_options = Some(options);
+        }
 
         // the attach CLI command can also have its own Options, we need to merge them if they
         // exist

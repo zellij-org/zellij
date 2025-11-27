@@ -607,7 +607,8 @@ impl From<crate::input::options::Options>
                 .web_server_key
                 .map(|p| p.to_string_lossy().to_string()),
             enforce_https_for_localhost: options.enforce_https_for_localhost,
-            post_command_discovery_hook: options.post_command_discovery_hook,
+            post_command_discovery_hook: options.post_command_discovery_hook.clone(),
+            session_name_generator: options.session_name_generator.clone(),
         }
     }
 }
@@ -697,6 +698,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             web_server_key: options.web_server_key.map(std::path::PathBuf::from),
             enforce_https_for_localhost: options.enforce_https_for_localhost,
             post_command_discovery_hook: options.post_command_discovery_hook,
+            session_name_generator: options.session_name_generator,
         })
     }
 }
