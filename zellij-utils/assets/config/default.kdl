@@ -506,6 +506,13 @@ load_plugins {
 //
 // advanced_mouse_actions false
 
+// The session name generator to use when creating a new session
+// Options:
+//   - "random" (default)
+//   - "numbered"
+//
+// session_name_generator "numbered"
+
 // A command to run (will be wrapped with sh -c and provided the RESURRECT_COMMAND env variable)
 // after Zellij attempts to discover a command inside a pane when resurrecting sessions, the STDOUT
 // of this command will be used instead of the discovered RESURRECT_COMMAND

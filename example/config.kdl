@@ -245,6 +245,13 @@ plugins {
 //
 // mouse_mode false
 
+// The session name generator to use when creating a new session
+// Options:
+//   - "random" (default)
+//   - "numbered"
+//
+// session_name_generator "numbered"
+
 // Configure the scroll back buffer size
 // This is the number of lines zellij stores for each pane in the scroll back
 // buffer. Excess number of lines are discarded in a FIFO fashion.
