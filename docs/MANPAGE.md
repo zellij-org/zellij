@@ -22,6 +22,9 @@ OPTIONS
     -c, --config <CONFIG>
             Change where zellij looks for the configuration file [env: ZELLIJ_CONFIG_FILE=]
 
+    --completions <SHELL>
+            Generate shell completions
+
     --config-dir <CONFIG_DIR>
             Change where zellij looks for the configuration directory [env: ZELLIJ_CONFIG_DIR=]
 

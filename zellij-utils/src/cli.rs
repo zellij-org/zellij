@@ -5,6 +5,7 @@ use crate::{
     input::{layout::PluginUserConfiguration, options::Options},
 };
 use clap::{Args, Parser, Subcommand};
+use clap_complete::{generate, Shell};
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -82,6 +83,10 @@ pub struct CliArgs {
     /// Specify the session name generator (e.g. "numbered")
     #[clap(long, short = 'S', value_parser)]
     pub session_name_generator: Option<String>,
+
+    /// Generate shell completions
+    #[clap(long, value_parser, value_name = "SHELL")]
+    pub completions: Option<String>,
 }
 
 impl CliArgs {
@@ -99,6 +104,23 @@ impl CliArgs {
         }
         None
     }
+}
+
+/// Prints the shell completions for the given shell to stdout and exits.
+///
+/// # Arguments
+///
+/// * `shell` - A string representation of the shell (e.g., "bash", "zsh", "fish").
+/// * `cmd` - The clap Command struct to generate completions for.
+pub fn print_completions(shell: String, cmd: &mut clap::Command) {
+    let shell: Shell = match shell.parse() {
+        Ok(s) => s,
+        Err(_) => {
+            eprintln!("Unsupported shell: {}", shell);
+            std::process::exit(1);
+        }
+    };
+    generate(shell, cmd, "zellij", &mut std::io::stdout());
 }
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]

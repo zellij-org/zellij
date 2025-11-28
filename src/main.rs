@@ -2,7 +2,7 @@ mod commands;
 #[cfg(test)]
 mod tests;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use zellij_utils::{
     cli::{CliAction, CliArgs, Command, Sessions},
     consts::{create_config_and_cache_folders, VERSION},
@@ -17,6 +17,13 @@ fn main() {
     configure_logger();
     create_config_and_cache_folders();
     let opts = CliArgs::parse();
+
+    if let Some(shell) = opts.completions {
+        let mut cmd = CliArgs::command();
+        zellij_utils::cli::print_completions(shell, &mut cmd);
+        // We exit here because we only want to print the completions and not run the application
+        std::process::exit(0);
+    }
 
     {
         let config = Config::try_from(&opts).ok();
