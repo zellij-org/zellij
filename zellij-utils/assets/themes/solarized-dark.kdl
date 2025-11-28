@@ -1,7 +1,7 @@
 themes {
     solarized-dark {
         text_unselected {
-            base 238 232 213
+            base 147 161 161
             background 7 54 66
             emphasis_0 203 75 22
             emphasis_1 42 161 152
@@ -9,7 +9,7 @@ themes {
             emphasis_3 211 54 130
         }
         text_selected {
-            base 238 232 213
+            base 147 161 161
             background 7 54 66
             emphasis_0 203 75 22
             emphasis_1 42 161 152
@@ -26,7 +26,7 @@ themes {
         }
         ribbon_unselected {
             base 7 54 66
-            background 253 246 227
+            background 147 161 161
             emphasis_0 220 50 47
             emphasis_1 238 232 213
             emphasis_2 38 139 210
@@ -41,15 +41,15 @@ themes {
             emphasis_3 211 54 130
         }
         table_cell_selected {
-            base 238 232 213
-            background 0 43 54
+            base 147 161 161
+            background 7 54 66
             emphasis_0 203 75 22
             emphasis_1 42 161 152
             emphasis_2 133 153 0
             emphasis_3 211 54 130
         }
         table_cell_unselected {
-            base 238 232 213
+            base 147 161 161
             background 7 54 66
             emphasis_0 203 75 22
             emphasis_1 42 161 152
@@ -57,15 +57,15 @@ themes {
             emphasis_3 211 54 130
         }
         list_selected {
-            base 238 232 213
-            background 0 43 54
+            base 147 161 161
+            background 7 54 66
             emphasis_0 203 75 22
             emphasis_1 42 161 152
             emphasis_2 133 153 0
             emphasis_3 211 54 130
         }
         list_unselected {
-            base 238 232 213
+            base 147 161 161
             background 7 54 66
             emphasis_0 203 75 22
             emphasis_1 42 161 152
