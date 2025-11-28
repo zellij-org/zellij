@@ -1,119 +1,119 @@
 themes {
     solarized-light {
         text_unselected {
-            base 238 232 213
-            background 7 54 66
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            base 101 123 131 // base00
+            background 238 232 213 // base2
+            emphasis_0 203 75 22 // orange
+            emphasis_1 42 161 152 // cyan
+            emphasis_2 133 153 0 // green
+            emphasis_3 211 54 130 // magenta
         }
         text_selected {
-            base 238 232 213
-            background 7 54 66
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            base 88 110 117 // base01
+            background 238 232 213 // base2
+            emphasis_0 203 75 22 // orange
+            emphasis_1 42 161 152 // cyan
+            emphasis_2 133 153 0 // green
+            emphasis_3 211 54 130 // magenta
         }
         ribbon_selected {
-            base 7 54 66
-            background 133 153 0
-            emphasis_0 220 50 47
-            emphasis_1 203 75 22
-            emphasis_2 211 54 130
-            emphasis_3 38 139 210
+            base 238 232 213 // base2
+            background 133 153 0 // green
+            emphasis_0 220 50 47 // red
+            emphasis_1 203 75 22 // orange
+            emphasis_2 211 54 130 // magenta
+            emphasis_3 38 139 210 // blue
         }
         ribbon_unselected {
-            base 7 54 66
-            background 101 123 131
-            emphasis_0 220 50 47
-            emphasis_1 238 232 213
-            emphasis_2 38 139 210
-            emphasis_3 211 54 130
+            base 238 232 213 // base2
+            background 147 161 161 // base1
+            emphasis_0 220 50 47 // red
+            emphasis_1 7 54 66 // base02
+            emphasis_2 38 139 210 // blue
+            emphasis_3 211 54 130 // magenta
         }
         table_title {
-            base 133 153 0
-            background 0
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            base 133 153 0 // green
+            background 238 232 213 // base2
+            emphasis_0 203 75 22 // orange
+            emphasis_1 42 161 152 // cyan
+            emphasis_2 133 153 0 // green
+            emphasis_3 211 54 130 // magenta
         }
         table_cell_selected {
-            base 238 232 213
-            background 253 246 227
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            base 88 110 117 // base01
+            background 238 232 213 // base2
+            emphasis_0 203 75 22 // orange
+            emphasis_1 42 161 152 // cyan
+            emphasis_2 133 153 0 // green
+            emphasis_3 211 54 130 // magenta
         }
         table_cell_unselected {
-            base 238 232 213
-            background 7 54 66
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            base 101 123 131 // base00
+            background 238 232 213 // base2
+            emphasis_0 203 75 22 // orange
+            emphasis_1 42 161 152 // cyan
+            emphasis_2 133 153 0 // green
+            emphasis_3 211 54 130 // magenta
         }
         list_selected {
-            base 238 232 213
-            background 253 246 227
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            base 88 110 117 // base01
+            background 238 232 213 // base2
+            emphasis_0 203 75 22 // orange
+            emphasis_1 42 161 152 // cyan
+            emphasis_2 133 153 0 // green
+            emphasis_3 211 54 130 // magenta
         }
         list_unselected {
-            base 238 232 213
-            background 7 54 66
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            base 101 123 131 // base00
+            background 238 232 213 // base2
+            emphasis_0 203 75 22 // orange
+            emphasis_1 42 161 152 // cyan
+            emphasis_2 133 153 0 // green
+            emphasis_3 211 54 130 // magenta
         }
         frame_selected {
-            base 133 153 0
-            background 0
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 211 54 130
-            emphasis_3 0
+            base 133 153 0 // green
+            background 0 // no background?
+            emphasis_0 203 75 22 // orange
+            emphasis_1 42 161 152 // cyan
+            emphasis_2 211 54 130 // magenta
+            emphasis_3 0 // no emphasis_3?
         }
         frame_highlight {
-            base 203 75 22
-            background 0
-            emphasis_0 211 54 130
-            emphasis_1 203 75 22
-            emphasis_2 203 75 22
-            emphasis_3 203 75 22
+            base 203 75 22 // orange
+            background 0 // no background?
+            emphasis_0 211 54 130 // magenta
+            emphasis_1 203 75 22 // orange
+            emphasis_2 203 75 22 // orange
+            emphasis_3 203 75 22 // orange
         }
         exit_code_success {
-            base 133 153 0
-            background 0
-            emphasis_0 42 161 152
-            emphasis_1 7 54 66
-            emphasis_2 211 54 130
-            emphasis_3 38 139 210
+            base 133 153 0 // green
+            background 0 // no background?
+            emphasis_0 42 161 152 // cyan
+            emphasis_1 7 54 66 // base02
+            emphasis_2 211 54 130 // magenta
+            emphasis_3 38 139 210 // blue
         }
         exit_code_error {
-            base 220 50 47
-            background 0
-            emphasis_0 181 137 0
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            base 220 50 47 // red
+            background 0 // no background?
+            emphasis_0 181 137 0 // yellow
+            emphasis_1 0 // no emphasis_1?
+            emphasis_2 0 // no emphasis_2?
+            emphasis_3 0 // no emphasis_3?
         }
         multiplayer_user_colors {
-            player_1 211 54 130
-            player_2 38 139 210
-            player_3 0
-            player_4 181 137 0
-            player_5 42 161 152
-            player_6 0
-            player_7 220 50 47
-            player_8 0
-            player_9 0
+            player_1 211 54 130 // magenta
+            player_2 38 139 210 // blue
+            player_3 0 // no player_3?
+            player_4 181 137 0 // yellow
+            player_5 42 161 152 // cyan
+            player_6 0 // no player_6?
+            player_7 220 50 47 // red
+            player_8 0 // no player_8?
+            player_9 0 // no player_9?
             player_10 0
         }
     }
