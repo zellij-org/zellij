@@ -7,7 +7,7 @@ use super::layout::{
 };
 use crate::cli::CliAction;
 use crate::data::{
-    Direction, KeyWithModifier, LayoutInfo, NewPanePlacement, PaneId, Resize, UnblockCondition, OriginatingPlugin
+    Direction, KeyWithModifier, LayoutInfo, NewPanePlacement, PaneId, Resize, UnblockCondition, OriginatingPlugin, CommandOrPlugin
 };
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -256,7 +256,7 @@ pub enum Action {
         tab_name: Option<String>,
         should_change_focus_to_new_tab: bool,
         cwd: Option<PathBuf>,
-        initial_panes: Option<Vec<crate::data::CommandOrPlugin>>,
+        initial_panes: Option<Vec<CommandOrPlugin>>,
         first_pane_unblock_condition: Option<UnblockCondition>,
     },
     /// Do nothing.
@@ -819,7 +819,7 @@ impl Action {
                             RunPluginOrAlias::Alias(plugin_alias)
                         },
                     };
-                    Some(vec![crate::data::CommandOrPlugin::Plugin(plugin)])
+                    Some(vec![CommandOrPlugin::Plugin(plugin)])
                 } else if let Some(command_vec) = initial_command {
                     if !command_vec.is_empty() {
                         let mut command = command_vec.clone();
@@ -835,7 +835,7 @@ impl Action {
                             hold_on_start,
                             ..Default::default()
                         };
-                        Some(vec![crate::data::CommandOrPlugin::Command(run_command_action)])
+                        Some(vec![CommandOrPlugin::Command(run_command_action)])
                     } else {
                         None
                     }
@@ -1183,6 +1183,22 @@ impl Action {
             }
             Action::EditFile { payload, .. } => {
                 payload.originating_plugin = Some(originating_plugin);
+            }
+            Action::NewTab { initial_panes, .. } => {
+                log::info!("populating new tab event 0");
+                if let Some(initial_panes) = initial_panes.as_mut() {
+                    log::info!("populating new tab event 1");
+                    for pane in initial_panes.iter_mut() {
+                        log::info!("populating new tab event 2");
+                        match pane {
+                            CommandOrPlugin::Command(run_command) => {
+                                log::info!("populating new tab event 3");
+                                run_command.populate_originating_plugin(originating_plugin.clone());
+                            },
+                            _ => {}
+                        }
+                    }
+                }
             }
             _ => {}
         }

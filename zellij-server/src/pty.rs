@@ -1031,24 +1031,53 @@ impl Pty {
                                                                                              // starts_held,
                                                                                              // run_command,
                                                                                              // file_descriptor)
+
         let mut new_floating_panes_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> =
             vec![]; // same
                     // as
                     // new_pane_pids
+
+        let mut originating_plugins_to_inform = vec![];
+
         for run_instruction in extracted_run_instructions {
+            let originating_plugin = run_instruction.as_ref().and_then(|r| {
+                if let Run::Command(run_command) = r {
+                    run_command.originating_plugin.clone()
+                } else {
+                    None
+                }
+            });
+            let mut terminal_id = None;
             if let Some(new_pane_data) =
                 self.apply_run_instruction(run_instruction, default_shell.clone())?
             {
+                terminal_id = Some(new_pane_data.0);
                 new_pane_pids.push(new_pane_data);
+            }
+            if let (Some(originating_plugin), Some(terminal_id)) = (originating_plugin, terminal_id) {
+                originating_plugins_to_inform.push((terminal_id, originating_plugin));
             }
         }
         for run_instruction in extracted_floating_run_instructions {
+            let originating_plugin = run_instruction.as_ref().and_then(|r| {
+                if let Run::Command(run_command) = r {
+                    run_command.originating_plugin.clone()
+                } else {
+                    None
+                }
+            });
+            let mut terminal_id = None;
             if let Some(new_pane_data) =
                 self.apply_run_instruction(run_instruction, default_shell.clone())?
             {
+                terminal_id = Some(new_pane_data.0);
                 new_floating_panes_pids.push(new_pane_data);
             }
+            if let (Some(originating_plugin), Some(terminal_id)) = (originating_plugin, terminal_id) {
+                originating_plugins_to_inform.push((terminal_id, originating_plugin));
+            }
         }
+
         // Option<RunCommand> should only be Some if the pane starts held
         let new_tab_pane_ids: Vec<(u32, Option<RunCommand>)> = new_pane_pids
             .iter()
@@ -1090,8 +1119,8 @@ impl Pty {
             .send_to_screen(ScreenInstruction::ApplyLayout(
                 layout,
                 floating_panes_layout,
-                new_tab_pane_ids,
-                new_tab_floating_pane_ids,
+                new_tab_pane_ids.clone(),
+                new_tab_floating_pane_ids.clone(),
                 plugin_ids,
                 tab_index,
                 should_change_focus_to_new_tab,
@@ -1101,6 +1130,7 @@ impl Pty {
             ))
             .with_context(err_context)?;
         let mut terminals_to_start = vec![];
+
         terminals_to_start.append(&mut new_pane_pids);
         terminals_to_start.append(&mut new_floating_panes_pids);
         for (terminal_id, starts_held, run_command, pid_primary) in terminals_to_start {
@@ -1156,8 +1186,25 @@ impl Pty {
                 },
             }
         }
+        for (terminal_id, originating_plugin) in originating_plugins_to_inform {
+            self.inform_originating_plugin_of_open(terminal_id, originating_plugin);
+        }
         Ok(())
     }
+    fn inform_originating_plugin_of_open(&mut self, terminal_id: u32, originating_plugin: OriginatingPlugin) {
+        self.originating_plugins
+            .insert(terminal_id, originating_plugin.clone());
+        let update_event =
+            Event::CommandPaneOpened(terminal_id, originating_plugin.context);
+        let _ = self.bus
+            .senders
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                Some(originating_plugin.plugin_id),
+                Some(originating_plugin.client_id),
+                update_event,
+            )]));
+    }
+
     fn apply_run_instruction(
         &mut self,
         run_instruction: Option<Run>,
