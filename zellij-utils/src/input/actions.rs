@@ -7,7 +7,7 @@ use super::layout::{
 };
 use crate::cli::CliAction;
 use crate::data::{
-    Direction, KeyWithModifier, LayoutInfo, NewPanePlacement, PaneId, Resize, UnblockCondition,
+    Direction, KeyWithModifier, LayoutInfo, NewPanePlacement, PaneId, Resize, UnblockCondition, OriginatingPlugin
 };
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -1167,6 +1167,24 @@ impl Action {
                     cwd,
                 }])
             },
+        }
+    }
+    pub fn populate_originating_plugin(&mut self, originating_plugin: OriginatingPlugin) {
+        match self {
+            Action::NewBlockingPane { command, .. } |
+            Action::NewFloatingPane { command, .. } |
+            Action::NewTiledPane { command, .. } |
+            Action::NewInPlacePane { command, .. } |
+            Action::NewStackedPane { command, .. }  => {
+                command.as_mut().map(|c| c.populate_originating_plugin(originating_plugin));
+            }
+            Action::Run { command, .. } => {
+                command.populate_originating_plugin(originating_plugin);
+            }
+            Action::EditFile { payload, .. } => {
+                payload.originating_plugin = Some(originating_plugin);
+            }
+            _ => {}
         }
     }
     pub fn launches_plugin(&self, plugin_url: &str) -> bool {

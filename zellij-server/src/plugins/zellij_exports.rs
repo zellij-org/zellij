@@ -806,8 +806,11 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
     apply_action!(action, error_msg, env);
 }
 
-fn run_action(env: &PluginEnv, action: Action, context: BTreeMap<String, String>) {
+fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, String>) {
     // Clone the necessary data to move into the thread
+    action.populate_originating_plugin(
+        OriginatingPlugin::new(env.plugin_id, env.client_id, context.clone()),
+    );
     let action_clone = action.clone();
     let client_id = env.client_id;
     let plugin_id = env.plugin_id;

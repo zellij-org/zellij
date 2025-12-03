@@ -152,6 +152,9 @@ impl RunCommandAction {
             }
         }
     }
+    pub fn populate_originating_plugin(&mut self, originating_plugin: OriginatingPlugin) {
+        self.originating_plugin = Some(originating_plugin);
+    }
 }
 
 impl RunCommand {

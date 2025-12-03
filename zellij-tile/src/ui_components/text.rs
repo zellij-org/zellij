@@ -272,16 +272,17 @@ impl Text {
             .map(|i| i.append(&mut indices.into_iter().collect()));
         self
     }
+
     pub fn color_substring<S: AsRef<str>>(mut self, index_level: usize, substr: S) -> Self {
         let substr = substr.as_ref();
         let mut start = 0;
-
         while let Some(pos) = self.text[start..].find(substr) {
             let abs_pos = start + pos;
-            self = self.color_range(index_level, abs_pos..abs_pos + substr.chars().count());
+            let char_start = self.text[..abs_pos].chars().count();
+            let char_end = char_start + substr.chars().count();
+            self = self.color_range(index_level, char_start..char_end);
             start = abs_pos + substr.len();
         }
-
         self
     }
 
