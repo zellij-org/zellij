@@ -1620,9 +1620,7 @@ fn show_self(env: &PluginEnv, should_float_if_hidden: bool) {
 }
 
 fn show_pane_with_id(env: &PluginEnv, pane_id: PaneId, should_float_if_hidden: bool, should_focus_pane: bool) {
-    log::info!("exports show_pane_with_id");
     if should_focus_pane {
-        log::info!("exports show_pane_with_id if");
         let _ = env
             .senders
             .send_to_screen(ScreenInstruction::FocusPaneWithId(
@@ -1633,10 +1631,9 @@ fn show_pane_with_id(env: &PluginEnv, pane_id: PaneId, should_float_if_hidden: b
                 None,
             ));
     } else {
-        log::info!("exports show_pane_with_id else");
         let _ = env
             .senders
-            .send_to_screen(ScreenInstruction::UnsuppressPane(
+            .send_to_screen(ScreenInstruction::UnsuppressOrExpandPane(
                 pane_id,
                 should_float_if_hidden,
             ));

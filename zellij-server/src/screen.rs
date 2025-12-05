@@ -374,6 +374,7 @@ pub enum ScreenInstruction {
     ), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace, Option<PathBuf> is an optional cwd, bool after is skip_cache
     SuppressPane(PaneId, ClientId),
     UnsuppressPane(PaneId, bool), // bool -> should float if hidden
+    UnsuppressOrExpandPane(PaneId, bool), // bool -> should float if hidden
     FocusPaneWithId(PaneId, bool, bool, ClientId, Option<NotificationEnd>), // bools:
                                                                             // should_float_if_hidden,
                                                                             // should_be_in_place_if_hidden
@@ -643,6 +644,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::LaunchPlugin(..) => ScreenContext::LaunchPlugin,
             ScreenInstruction::SuppressPane(..) => ScreenContext::SuppressPane,
             ScreenInstruction::UnsuppressPane(..) => ScreenContext::UnsuppressPane,
+            ScreenInstruction::UnsuppressOrExpandPane(..) => ScreenContext::UnsuppressOrExpandPane,
             ScreenInstruction::FocusPaneWithId(..) => ScreenContext::FocusPaneWithId,
             ScreenInstruction::RenamePane(..) => ScreenContext::RenamePane,
             ScreenInstruction::RenameTab(..) => ScreenContext::RenameTab,
@@ -5647,6 +5649,17 @@ pub(crate) fn screen_thread_main(
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         tab.unsuppress_pane(pane_id, should_float_if_hidden);
+                        drop(screen.render(None));
+                        break;
+                    }
+                }
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::UnsuppressOrExpandPane(pane_id, should_float_if_hidden) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.unsuppress_or_expand_pane(pane_id, should_float_if_hidden);
                         drop(screen.render(None));
                         break;
                     }

@@ -341,6 +341,7 @@ pub enum ScreenContext {
     LaunchPlugin,
     SuppressPane,
     UnsuppressPane,
+    UnsuppressOrExpandPane,
     FocusPaneWithId,
     RenamePane,
     RenameTab,

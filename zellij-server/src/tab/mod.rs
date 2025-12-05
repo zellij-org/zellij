@@ -5159,7 +5159,30 @@ impl Tab {
                 }
             },
             None => {
-                log::error!("Could not find suppressed pane wiht id: {:?}", pane_id);
+                log::error!("Could not find suppressed pane with id: {:?}", pane_id);
+            },
+        }
+    }
+    pub fn unsuppress_or_expand_pane(&mut self, pane_id: PaneId, should_float_if_hidden: bool) {
+        // removes a pane from being suppressed (hidden) but does not focus it
+        match self.suppressed_panes.extract_if(|_key, (_, pane)| pane.pid() == pane_id).next().map(|(_key, (_, pane))| pane) {
+            Some(pane) => {
+                if should_float_if_hidden {
+                    self.add_floating_pane(pane, pane_id, None, true)
+                        .non_fatal();
+                } else {
+                    self.add_tiled_pane(
+                        pane,
+                        pane_id,
+                        None,
+                    ).non_fatal();
+                }
+            },
+            None => {
+                let expand_panes_success = self.tiled_panes.expand_pane_in_stack(pane_id).len() > 0;
+                if !expand_panes_success {
+                    log::error!("Could not find suppressed or stacked pane with id: {:?}", pane_id);
+                }
             },
         }
     }
