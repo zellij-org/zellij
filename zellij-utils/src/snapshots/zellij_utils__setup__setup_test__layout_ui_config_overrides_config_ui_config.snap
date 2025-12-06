@@ -5837,6 +5837,9 @@ Config {
                 key_modifiers: {},
             }: [
                 FocusNextPane,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
