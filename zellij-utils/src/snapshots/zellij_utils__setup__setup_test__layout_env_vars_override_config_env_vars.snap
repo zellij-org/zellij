@@ -5783,6 +5783,9 @@ Config {
                 key_modifiers: {},
             }: [
                 NextSwapLayout,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
