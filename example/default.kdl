@@ -171,7 +171,7 @@ keybinds {
         bind "k" { MoveFocus "Up"; SwitchToMode "Normal"; }
         bind "o" { FocusNextPane; SwitchToMode "Normal"; }
         bind "d" { Detach; }
-        bind "Space" { NextSwapLayout; }
+        bind "Space" { NextSwapLayout; SwitchToMode "Normal"; }
         bind "x" { CloseFocus; SwitchToMode "Normal"; }
     }
     shared_except "locked" {
