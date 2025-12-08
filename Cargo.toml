@@ -50,6 +50,7 @@ members = [
     "default-plugins/about",
     "default-plugins/share",
     "default-plugins/multiple-select",
+    "default-plugins/sequence",
     "zellij-client",
     "zellij-server",
     "zellij-utils",

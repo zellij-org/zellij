@@ -3371,6 +3371,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sequence"
+version = "0.1.0"
+dependencies = [
+ "fuzzy-matcher",
+ "regex",
+ "serde",
+ "serde_json",
+ "strum",
+ "unicode-width 0.1.10",
+ "uuid",
+ "zellij-tile",
+]
+
+[[package]]
 name = "serde"
 version = "1.0.217"
 source = "registry+https://github.com/rust-lang/crates.io-index"
