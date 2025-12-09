@@ -2091,7 +2091,6 @@ impl Tab {
         pane_to_replace_with: Box<dyn Pane>,
         _completion_tx: Option<NotificationEnd>,
     ) {
-        let pane_to_replace_with_pid = pane_to_replace_with.pid();
         let mut replaced_pane = if self.floating_panes.panes_contain(&pane_id_to_replace) {
             self.floating_panes
                 .replace_pane(pane_id_to_replace, pane_to_replace_with)
@@ -2103,12 +2102,6 @@ impl Tab {
 
         if let Some(replaced_pane) = replaced_pane.take() {
             let is_scrollback_editor = false;
-            // TODO: make the plugin API configurable to do either the below commented (make the
-            // pane pop out once its closed) or the uncommented (force it to be explicitly
-            // unsuppressed)
-            // also check what else is using this to be sure we didn't break anything by switching
-            // the behavior here
-            // self.insert_suppressed_pane(pane_to_replace_with_pid, (is_scrollback_editor, replaced_pane));
             self.insert_suppressed_pane(replaced_pane.pid(), (is_scrollback_editor, replaced_pane));
         }
     }

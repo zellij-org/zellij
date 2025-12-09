@@ -3004,7 +3004,6 @@ impl Screen {
             .tabs
             .iter_mut()
             .find(|(_, t)| t.position == tab_index_of_existing_pane)
-            // .and_then(|(_, t)| t.extract_pane(pane_id_of_existing_pane, false))
             .and_then(|(_, t)| t.extract_pane(pane_id_of_existing_pane, true))
         else {
             log::error!("Failed to find pane");
@@ -3809,11 +3808,6 @@ pub(crate) fn screen_thread_main(
                     ClientTabIndexOrPaneId::PaneId(pane_id) => {
                         let mut found = false;
                         let all_tabs = screen.get_tabs_mut();
-
-                        // TODO: this was previously hard-coded to true - I think this should be
-                        // false, because otherwise we can't add a pane in the background easily
-                        // without it changing focus - need to make this configurable especially in
-                        // the NewTiledPane action (but likely also others)
                         let should_focus_pane = false;
                         for tab in all_tabs.values_mut() {
                             if tab.has_pane_with_pid(&pane_id) {
