@@ -2,12 +2,12 @@ mod path_formatting;
 mod state;
 mod ui;
 
-use crate::ui::layout_calculations::calculate_viewport;
-use crate::ui::truncation::truncate_middle;
 use crate::state::CommandStatus;
-use crate::ui::fuzzy_complete;
-use crate::ui::text_input::InputAction;
 use crate::ui::components;
+use crate::ui::fuzzy_complete;
+use crate::ui::layout_calculations::calculate_viewport;
+use crate::ui::text_input::InputAction;
+use crate::ui::truncation::truncate_middle;
 use state::State;
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
@@ -79,7 +79,13 @@ impl ZellijPlugin for State {
             );
         }
 
-        print_table_with_coordinates(table, base_x, base_y, self.own_columns.map(|o| o.saturating_sub(base_x)), None);
+        print_table_with_coordinates(
+            table,
+            base_x,
+            base_y,
+            self.own_columns.map(|o| o.saturating_sub(base_x)),
+            None,
+        );
 
         let help_y = base_y + visible_count + 2;
         let (first_help, _, second_help) = components::render_help_lines(self, Some(cols));
@@ -99,12 +105,12 @@ pub fn handle_event(state: &mut State, event: Event) -> bool {
             change_host_folder(PathBuf::from("/"));
             update_title(state);
             true
-        }
+        },
         Event::ModeUpdate(mode_info) => {
             state.shell = mode_info.shell.clone();
 
             false
-        }
+        },
         Event::Key(key) => {
             let mut should_render = handle_key_event(state, key);
             let repositioned = state.reposition_plugin();
@@ -114,7 +120,7 @@ pub fn handle_event(state: &mut State, event: Event) -> bool {
             }
             update_cursor(state);
             should_render
-        }
+        },
         Event::SessionUpdate(session_infos, _resurrectable_sessions) => {
             if state.is_first_run {
                 // Find the current session
@@ -139,14 +145,14 @@ pub fn handle_event(state: &mut State, event: Event) -> bool {
                 }
             }
             false
-        }
+        },
         Event::Timer(_elapsed) => {
             // Timer events are used for lock backoff
 
             let should_render = update_spinner(state);
 
             should_render
-        }
+        },
         Event::PastedText(pasted_text) => {
             // Split pasted text into lines
             let mut should_render = true;
@@ -168,7 +174,7 @@ pub fn handle_event(state: &mut State, event: Event) -> bool {
             update_cursor(state);
 
             should_render
-        }
+        },
         Event::TabUpdate(tab_infos) => {
             if let Some(tab_info) = tab_infos.iter().find(|t| t.active) {
                 let new_cols = Some(tab_info.viewport_columns);
@@ -188,13 +194,13 @@ pub fn handle_event(state: &mut State, event: Event) -> bool {
             }
 
             false
-        }
+        },
         Event::PaneUpdate(pane_manifest) => handle_pane_update(state, pane_manifest),
         Event::ActionComplete(_action, pane_id, context) => {
             let should_render = handle_action_complete(state, pane_id, context);
             update_title(state);
             should_render
-        }
+        },
         Event::CommandPaneOpened(terminal_pane_id, context) => {
             // we get this event immediately as the pane opens, we use it to associate the
             // pane's id with our state
@@ -213,7 +219,7 @@ pub fn handle_event(state: &mut State, event: Event) -> bool {
             }
 
             true
-        }
+        },
         _ => false,
     }
 }
@@ -326,11 +332,16 @@ fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
     // Handle input actions from TextInput
     let is_backspace = matches!(key.bare_key, BareKey::Backspace);
 
-    if let Some(action) = state.editing.editing_input.as_mut().map(|i| i.handle_key(key)) {
+    if let Some(action) = state
+        .editing
+        .editing_input
+        .as_mut()
+        .map(|i| i.handle_key(key))
+    {
         match action {
             InputAction::Submit => {
                 return handle_submit(state);
-            }
+            },
             InputAction::Cancel => {
                 state.cancel_editing_selected();
                 if state.all_commands_are_pending() {
@@ -338,7 +349,7 @@ fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
                     state.start_editing_selected();
                 }
                 true
-            }
+            },
             InputAction::Complete => {
                 state
                     .editing_input_text()
@@ -355,15 +366,20 @@ fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
                         }
                     })
                     .unwrap_or(false)
-            }
+            },
             InputAction::Continue => {
                 if let Some(current_text) = state.editing_input_text() {
-                    if let Some((cmd_text, chain_type)) = state::detect_chain_operator_at_end(&current_text) {
+                    if let Some((cmd_text, chain_type)) =
+                        state::detect_chain_operator_at_end(&current_text)
+                    {
                         let mut should_add_empty_line = true;
                         if let Some(path) = state::detect_cd_command(&cmd_text) {
-                            if let Some(new_cwd) = path_formatting::resolve_path(state.cwd.as_ref(), &path) {
-                                let remaining_text = state::get_remaining_after_first_segment(&current_text)
-                                    .unwrap_or_else(|| "".to_owned());
+                            if let Some(new_cwd) =
+                                path_formatting::resolve_path(state.cwd.as_ref(), &path)
+                            {
+                                let remaining_text =
+                                    state::get_remaining_after_first_segment(&current_text)
+                                        .unwrap_or_else(|| "".to_owned());
                                 if remaining_text.len() > 0 {
                                     should_add_empty_line = false;
                                 }
@@ -388,11 +404,16 @@ fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
 
                 // Handle backspace on empty command
                 if is_backspace {
-                    let is_empty = state.current_selected_command_is_empty() || state.editing_input_text().map(|i| i.is_empty()).unwrap_or(false);
+                    let is_empty = state.current_selected_command_is_empty()
+                        || state
+                            .editing_input_text()
+                            .map(|i| i.is_empty())
+                            .unwrap_or(false);
                     let has_more_than_one_command = state.execution.all_commands.len() > 1;
 
                     if is_empty && has_more_than_one_command {
-                        let current_index = state.selection.current_selected_command_index.unwrap_or(0);
+                        let current_index =
+                            state.selection.current_selected_command_index.unwrap_or(0);
                         if current_index > 0 {
                             state.remove_current_selected_command();
                             return true;
@@ -401,7 +422,7 @@ fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
                 }
 
                 true
-            }
+            },
             InputAction::NoAction => false,
         }
     } else {
@@ -454,7 +475,10 @@ pub fn calculate_cursor_position(state: &mut State) -> Option<(usize, usize)> {
 
     // Only show cursor if in edit mode
     let (text, cursor_pos) = if let Some(text_input) = &state.editing.editing_input {
-        (text_input.get_text().to_string(), text_input.cursor_position())
+        (
+            text_input.get_text().to_string(),
+            text_input.cursor_position(),
+        )
     } else {
         return None;
     };
@@ -560,7 +584,6 @@ pub fn handle_action_complete(
             .clone()
             .unwrap_or_else(|| PathBuf::from("/bin/bash"));
 
-
         let command = zellij_tile::prelude::actions::RunCommandAction {
             command: shell,
             args: vec!["-ic".to_string(), next_command_text.trim().to_string()],
@@ -575,7 +598,8 @@ pub fn handle_action_complete(
         // Update status: mark current command as completed
         // Use the pane_id from ActionComplete if the status is still Pending
         let pane_id_to_mark = state
-            .execution.all_commands
+            .execution
+            .all_commands
             .get(state.execution.current_running_command_index)
             .and_then(|c| match c.get_status() {
                 CommandStatus::Running(pid) => pid,
@@ -585,7 +609,8 @@ pub fn handle_action_complete(
             });
 
         state
-            .execution.all_commands
+            .execution
+            .all_commands
             .get_mut(state.execution.current_running_command_index)
             .map(|c| c.set_status(CommandStatus::Exited(None, pane_id_to_mark)));
         state.execution.current_running_command_index = next_index;
@@ -609,7 +634,10 @@ pub fn handle_action_complete(
 
         // Pass the sequence ID in the context
         let mut context = BTreeMap::new();
-        context.insert("sequence_id".to_string(), state.execution.sequence_id.to_string());
+        context.insert(
+            "sequence_id".to_string(),
+            state.execution.sequence_id.to_string(),
+        );
         context.insert("command_text".to_string(), next_command_text.to_string());
 
         // Put the sequence back with updated index
@@ -618,7 +646,8 @@ pub fn handle_action_complete(
         // Sequence complete - mark the last command as Exited
 
         let pane_id_to_mark = state
-            .execution.all_commands
+            .execution
+            .all_commands
             .get(state.execution.current_running_command_index)
             .and_then(|c| match c.get_status() {
                 CommandStatus::Running(pid) => pid,
@@ -628,7 +657,8 @@ pub fn handle_action_complete(
             });
 
         state
-            .execution.all_commands
+            .execution
+            .all_commands
             .get_mut(state.execution.current_running_command_index)
             .map(|c| c.set_status(CommandStatus::Exited(None, pane_id_to_mark)));
     }
@@ -646,7 +676,8 @@ pub fn adjust_scroll_offset(sequence: &mut crate::state::State, rows: usize) {
     }
 
     let focus_index = sequence
-        .selection.current_selected_command_index
+        .selection
+        .current_selected_command_index
         .unwrap_or(sequence.execution.current_running_command_index);
     let half_visible = max_visible / 2;
 
@@ -659,7 +690,8 @@ pub fn adjust_scroll_offset(sequence: &mut crate::state::State, rows: usize) {
     }
 
     sequence.selection.scroll_offset = sequence
-        .selection.scroll_offset
+        .selection
+        .scroll_offset
         .min(total_commands.saturating_sub(max_visible));
 }
 
@@ -861,7 +893,8 @@ fn update_spinner(state: &mut State) -> bool {
 
     // If we have a running command, schedule next timer event
     let has_running = state
-        .execution.all_commands
+        .execution
+        .all_commands
         .iter()
         .any(|command| matches!(command.get_status(), CommandStatus::Running(_)));
     if has_running && !state.layout.spinner_timer_scheduled {
@@ -882,14 +915,18 @@ fn rerun_sequence(state: &mut State) {
         return;
     }
 
-    let selected_index = state.selection.current_selected_command_index.unwrap_or(0)
+    let selected_index = state
+        .selection
+        .current_selected_command_index
+        .unwrap_or(0)
         .min(state.execution.all_commands.len().saturating_sub(1));
 
     let mut close_replaced_pane = true;
 
     // Extract the selected pane's ID BEFORE resetting statuses (needed for in-place replacement)
     let selected_pane_id_for_replacement = &state
-        .execution.all_commands
+        .execution
+        .all_commands
         .get(selected_index)
         .and_then(|c| match c.get_status() {
             CommandStatus::Running(pane_id) => pane_id,
@@ -906,7 +943,8 @@ fn rerun_sequence(state: &mut State) {
     for i in (selected_index + 1)..state.execution.all_commands.len() {
         // Extract pane_id from the command status
         let pane_id = state
-            .execution.all_commands
+            .execution
+            .all_commands
             .get(i)
             .and_then(|c| match c.get_status() {
                 CommandStatus::Running(pane_id) => pane_id,
@@ -927,14 +965,16 @@ fn rerun_sequence(state: &mut State) {
 
         // Reset the command status to Pending
         state
-            .execution.all_commands
+            .execution
+            .all_commands
             .get_mut(i)
             .map(|c| c.set_status(CommandStatus::Pending));
     }
 
     // Reset the selected pane's status to Pending (it will be replaced in-place)
     state
-        .execution.all_commands
+        .execution
+        .all_commands
         .get_mut(selected_index)
         .map(|c| c.set_status(CommandStatus::Pending));
 
@@ -943,7 +983,8 @@ fn rerun_sequence(state: &mut State) {
 
     // Execute the command at the selected index
     if let Some((command_text, chain_type, command_cwd)) = state
-        .execution.all_commands
+        .execution
+        .all_commands
         .get(selected_index)
         .map(|c| (c.get_text(), c.get_chain_type(), c.get_cwd()))
     {
@@ -997,7 +1038,10 @@ fn rerun_sequence(state: &mut State) {
 
         // Pass the sequence ID in the context
         let mut context = BTreeMap::new();
-        context.insert("sequence_id".to_string(), state.execution.sequence_id.to_string());
+        context.insert(
+            "sequence_id".to_string(),
+            state.execution.sequence_id.to_string(),
+        );
         context.insert("command_text".to_string(), command_text.to_string());
         run_action(action, context);
     }
@@ -1042,13 +1086,19 @@ pub fn update_title(state: &mut State) {
     let title = if state.all_commands_are_pending() {
         "Run one or more commands in sequence"
     } else {
-        let has_running_commands = state.execution.all_commands
+        let has_running_commands = state
+            .execution
+            .all_commands
             .iter()
             .any(|c| matches!(c.get_status(), CommandStatus::Running(..)));
-        let has_interrupted_commands = state.execution.all_commands
+        let has_interrupted_commands = state
+            .execution
+            .all_commands
             .iter()
             .any(|c| matches!(c.get_status(), CommandStatus::Interrupted(..)));
-        let all_commands_complete = state.execution.all_commands
+        let all_commands_complete = state
+            .execution
+            .all_commands
             .iter()
             .all(|c| matches!(c.get_status(), CommandStatus::Exited(..)));
         if has_running_commands {

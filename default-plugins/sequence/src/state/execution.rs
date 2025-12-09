@@ -1,9 +1,9 @@
 use crate::path_formatting::format_cwd;
 use crate::state::{ChainType, CommandEntry, CommandStatus};
-use zellij_tile::prelude::*;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
+use zellij_tile::prelude::*;
 
 pub struct Execution {
     pub all_commands: Vec<CommandEntry>,
@@ -141,7 +141,7 @@ impl Execution {
                             );
                             command.set_status(CommandStatus::Running(None));
                             updated = true;
-                        }
+                        },
                         CommandStatus::Exited(exit_code, _) => {
                             eprintln!(
                                 "Pane {:?} was closed after exiting, setting pane_id to None",
@@ -149,13 +149,13 @@ impl Execution {
                             );
                             command.set_status(CommandStatus::Exited(exit_code, None));
                             updated = true;
-                        }
+                        },
                         CommandStatus::Interrupted(_) => {
                             eprintln!("Pane {:?} was closed after being interrupted, setting pane_id to None", pane_id);
                             command.set_status(CommandStatus::Interrupted(None));
                             updated = true;
-                        }
-                        _ => {}
+                        },
+                        _ => {},
                     }
                 }
             }
@@ -181,16 +181,16 @@ impl Execution {
                             match chain_type {
                                 ChainType::And => {
                                     should_stop = exit_code.unwrap_or(0) != 0;
-                                }
+                                },
                                 ChainType::Or => {
                                     should_stop = exit_code.unwrap_or(0) == 0;
-                                }
+                                },
                                 ChainType::Then => {
                                     should_stop = false;
-                                }
+                                },
                                 ChainType::None => {
                                     should_stop = true;
-                                }
+                                },
                             }
                         } else {
                             should_stop = true;
@@ -220,13 +220,13 @@ impl Execution {
             return;
         };
 
-        let shell = shell
-            .clone()
-            .unwrap_or_else(|| PathBuf::from("/bin/bash"));
+        let shell = shell.clone().unwrap_or_else(|| PathBuf::from("/bin/bash"));
 
         let first_command = first_active_sequence_command.get_text();
         let first_chain_type = first_active_sequence_command.get_chain_type();
-        let command_cwd = first_active_sequence_command.get_cwd().or_else(|| global_cwd.clone());
+        let command_cwd = first_active_sequence_command
+            .get_cwd()
+            .or_else(|| global_cwd.clone());
 
         let command = RunCommandAction {
             command: shell.clone(),

@@ -20,9 +20,9 @@ use std::{
 };
 use wasmi::{Caller, Linker};
 use zellij_utils::data::{
-    CommandType, ConnectToSession, Event, FloatingPaneCoordinates, GetPanePidResponse, HttpVerb, KeyWithModifier,
-    LayoutInfo, MessageToPlugin, NewPanePlacement, OriginatingPlugin, PaneScrollbackResponse,
-    PermissionStatus, PermissionType, PluginPermission,
+    CommandType, ConnectToSession, Event, FloatingPaneCoordinates, GetPanePidResponse, HttpVerb,
+    KeyWithModifier, LayoutInfo, MessageToPlugin, NewPanePlacement, OriginatingPlugin,
+    PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
@@ -50,7 +50,9 @@ use zellij_utils::{
     },
     plugin_api::{
         event::ProtobufPaneScrollbackResponse,
-        plugin_command::{ProtobufPluginCommand, ProtobufGetPanePidResponse, get_pane_pid_response},
+        plugin_command::{
+            get_pane_pid_response, ProtobufGetPanePidResponse, ProtobufPluginCommand,
+        },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
 };
@@ -235,12 +237,26 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ClosePluginPane(plugin_pane_id) => {
                         close_plugin_pane(env, plugin_pane_id)
                     },
-                    PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden, should_be_in_place_if_hidden) => {
-                        focus_terminal_pane(env, terminal_pane_id, should_float_if_hidden, should_be_in_place_if_hidden)
-                    },
-                    PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden, should_be_in_place_if_hidden) => {
-                        focus_plugin_pane(env, plugin_pane_id, should_float_if_hidden, should_be_in_place_if_hidden)
-                    },
+                    PluginCommand::FocusTerminalPane(
+                        terminal_pane_id,
+                        should_float_if_hidden,
+                        should_be_in_place_if_hidden,
+                    ) => focus_terminal_pane(
+                        env,
+                        terminal_pane_id,
+                        should_float_if_hidden,
+                        should_be_in_place_if_hidden,
+                    ),
+                    PluginCommand::FocusPluginPane(
+                        plugin_pane_id,
+                        should_float_if_hidden,
+                        should_be_in_place_if_hidden,
+                    ) => focus_plugin_pane(
+                        env,
+                        plugin_pane_id,
+                        should_float_if_hidden,
+                        should_be_in_place_if_hidden,
+                    ),
                     PluginCommand::RenameTerminalPane(terminal_pane_id, new_name) => {
                         rename_terminal_pane(env, terminal_pane_id, &new_name)
                     },
@@ -319,9 +335,16 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::HidePaneWithId(pane_id) => {
                         hide_pane_with_id(env, pane_id.into())?
                     },
-                    PluginCommand::ShowPaneWithId(pane_id, should_float_if_hidden, should_focus_pane) => {
-                        show_pane_with_id(env, pane_id.into(), should_float_if_hidden, should_focus_pane)
-                    },
+                    PluginCommand::ShowPaneWithId(
+                        pane_id,
+                        should_float_if_hidden,
+                        should_focus_pane,
+                    ) => show_pane_with_id(
+                        env,
+                        pane_id.into(),
+                        should_float_if_hidden,
+                        should_focus_pane,
+                    ),
                     PluginCommand::OpenCommandPaneBackground(command_to_run, context) => {
                         open_command_pane_background(env, command_to_run, context)
                     },
@@ -350,9 +373,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::SendSigkillToPaneId(pane_id) => {
                         send_sigkill_to_pane_id(env, pane_id.into())
                     },
-                    PluginCommand::GetPanePid { pane_id } => {
-                        get_pane_pid(env, pane_id.into())
-                    },
+                    PluginCommand::GetPanePid { pane_id } => get_pane_pid(env, pane_id.into()),
                     PluginCommand::MovePaneWithPaneId(pane_id) => {
                         move_pane_with_pane_id(env, pane_id.into())
                     },
@@ -525,7 +546,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         &mut env,
                         pane_id_to_replace.into(),
                         existing_pane_id.into(),
-                        suppress_replaced_pane
+                        suppress_replaced_pane,
                     ),
                     PluginCommand::RunAction(action, context) => run_action(&env, action, context),
                 },
@@ -619,7 +640,11 @@ fn show_cursor(env: &PluginEnv, cursor_position: Option<(usize, usize)>) {
         .with_context(|| {
             format!(
                 "failed to {} plugin cursor from plugin {}",
-                if cursor_position.is_some() { "show" } else { "hide" },
+                if cursor_position.is_some() {
+                    "show"
+                } else {
+                    "hide"
+                },
                 env.name()
             )
         })
@@ -718,9 +743,11 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
 
 fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, String>) {
     // Clone the necessary data to move into the thread
-    action.populate_originating_plugin(
-        OriginatingPlugin::new(env.plugin_id, env.client_id, context.clone()),
-    );
+    action.populate_originating_plugin(OriginatingPlugin::new(
+        env.plugin_id,
+        env.client_id,
+        context.clone(),
+    ));
     let action_clone = action.clone();
     let client_id = env.client_id;
     let plugin_id = env.plugin_id;
@@ -754,11 +781,11 @@ fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, Str
             Ok((_should_break, result)) => {
                 // Extract pane_id from ActionCompletionResult
                 result.and_then(|r| r.affected_pane_id)
-            }
+            },
             Err(e) => {
                 log::error!("failed to run action in plugin {}: {:?}", plugin_name, e);
                 None
-            }
+            },
         };
 
         // After action completes, send ActionComplete event with context
@@ -1529,7 +1556,12 @@ fn show_self(env: &PluginEnv, should_float_if_hidden: bool) {
     apply_action!(action, error_msg, env);
 }
 
-fn show_pane_with_id(env: &PluginEnv, pane_id: PaneId, should_float_if_hidden: bool, should_focus_pane: bool) {
+fn show_pane_with_id(
+    env: &PluginEnv,
+    pane_id: PaneId,
+    should_float_if_hidden: bool,
+    should_focus_pane: bool,
+) {
     if should_focus_pane {
         let _ = env
             .senders
@@ -2066,7 +2098,12 @@ fn close_plugin_pane(env: &PluginEnv, plugin_pane_id: u32) {
         .non_fatal();
 }
 
-fn focus_terminal_pane(env: &PluginEnv, terminal_pane_id: u32, should_float_if_hidden: bool, should_be_in_place_if_hidden: bool) {
+fn focus_terminal_pane(
+    env: &PluginEnv,
+    terminal_pane_id: u32,
+    should_float_if_hidden: bool,
+    should_be_in_place_if_hidden: bool,
+) {
     let action = Action::FocusTerminalPaneWithId {
         pane_id: terminal_pane_id,
         should_float_if_hidden,
@@ -2076,11 +2113,16 @@ fn focus_terminal_pane(env: &PluginEnv, terminal_pane_id: u32, should_float_if_h
     apply_action!(action, error_msg, env);
 }
 
-fn focus_plugin_pane(env: &PluginEnv, plugin_pane_id: u32, should_float_if_hidden: bool, should_be_in_place_if_hidden: bool) {
+fn focus_plugin_pane(
+    env: &PluginEnv,
+    plugin_pane_id: u32,
+    should_float_if_hidden: bool,
+    should_be_in_place_if_hidden: bool,
+) {
     let action = Action::FocusPluginPaneWithId {
         pane_id: plugin_pane_id,
         should_float_if_hidden,
-        should_be_in_place_if_hidden
+        should_be_in_place_if_hidden,
     };
     let error_msg = || format!("Failed to focus plugin pane");
     apply_action!(action, error_msg, env);
@@ -2430,10 +2472,7 @@ fn get_pane_pid(env: &PluginEnv, pane_id: PaneId) {
                 env.plugin_id,
                 pane_id
             );
-            GetPanePidResponse::Err(format!(
-                "Timeout retrieving PID for pane {:?}",
-                pane_id
-            ))
+            GetPanePidResponse::Err(format!("Timeout retrieving PID for pane {:?}", pane_id))
         },
         Err(RecvTimeoutError::Disconnected) => {
             log::error!(
@@ -2892,7 +2931,7 @@ fn replace_pane_with_existing_pane(
         .send_to_screen(ScreenInstruction::ReplacePaneWithExistingPane(
             pane_to_replace,
             existing_pane,
-            suppress_replaced_pane
+            suppress_replaced_pane,
         ));
 }
 
@@ -3071,9 +3110,9 @@ fn check_command_permission(
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
-        PluginCommand::ListClients | PluginCommand::DumpSessionLayout | PluginCommand::GetPanePid { .. } => {
-            PermissionType::ReadApplicationState
-        },
+        PluginCommand::ListClients
+        | PluginCommand::DumpSessionLayout
+        | PluginCommand::GetPanePid { .. } => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },

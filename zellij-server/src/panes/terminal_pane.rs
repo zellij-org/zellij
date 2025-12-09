@@ -957,7 +957,6 @@ impl TerminalPane {
         );
         if let Some(notification_end) = notification_end.as_mut() {
             notification_end.set_affected_pane_id(PaneId::Terminal(pid));
-
         }
         TerminalPane {
             frame: HashMap::new(),

@@ -1347,9 +1347,6 @@ impl<'a> TiledPaneGrid<'a> {
         } else {
             // best effort resize - we just remove the pane and relayout everything
             // this might happen if we are closing a fixed pane
-            //
-            // TODO (CHECK THIS!!!): does this break things??? eg. with fixed sized panes on the
-            // right/left/up/down/middle, etc.
             self.panes.borrow_mut().remove(&id);
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
             let _ = pane_resizer.layout(SplitDirection::Horizontal, self.display_area.cols);

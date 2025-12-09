@@ -1,48 +1,71 @@
 pub use super::generated_api::api::{
     action::{
-        action::OptionalPayload, Action as ProtobufAction, ActionName as ProtobufActionName,
-        BareKey as ProtobufBareKey, DumpScreenPayload, EditFilePayload,
-        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates,
-        FloatingPlacement as ProtobufFloatingPlacement, GoToTabNamePayload, IdAndName,
-        InPlaceConfig as ProtobufInPlaceConfig, KeyModifier as ProtobufKeyModifier,
-        KeyWithModifier as ProtobufKeyWithModifier, LaunchOrFocusPluginPayload,
-        MouseEventPayload as ProtobufMouseEventPayload, MovePanePayload,
-        MoveTabDirection as ProtobufMoveTabDirection, NameAndValue as ProtobufNameAndValue,
-        NewBlockingPanePayload, NewFloatingPanePayload, NewInPlacePanePayload, NewPanePayload,
-        NewPanePlacement as ProtobufNewPanePlacement, NewPluginPanePayload, NewTiledPanePayload,
-        PaneId as ProtobufPaneId, PaneIdAndShouldFloat,
-        PluginConfiguration as ProtobufPluginConfiguration, Position as ProtobufPosition,
-        RunCommandAction as ProtobufRunCommandAction, ScrollAtPayload,
-        SearchDirection as ProtobufSearchDirection, SearchOption as ProtobufSearchOption,
-        SplitSize as ProtobufSplitSize, StackedPlacement as ProtobufStackedPlacement,
-        SwitchToModePayload, TiledPlacement as ProtobufTiledPlacement,
-        UnblockCondition as ProtobufUnblockCondition, WriteCharsPayload, WritePayload,
+        action::OptionalPayload,
+        command_or_plugin::CommandOrPluginType,
+        pane_run::RunType,
+        run_plugin_location_data::LocationData,
+        run_plugin_or_alias::PluginType,
+        Action as ProtobufAction,
+        ActionName as ProtobufActionName,
+        BareKey as ProtobufBareKey,
         // New layout-related types
         CommandOrPlugin as ProtobufCommandOrPlugin,
-        command_or_plugin::CommandOrPluginType,
+        DumpScreenPayload,
+        EditFilePayload,
+        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates,
         FloatingPaneLayout as ProtobufFloatingPaneLayout,
+        FloatingPlacement as ProtobufFloatingPlacement,
+        GoToTabNamePayload,
+        IdAndName,
+        InPlaceConfig as ProtobufInPlaceConfig,
+        KeyModifier as ProtobufKeyModifier,
+        KeyWithModifier as ProtobufKeyWithModifier,
+        LaunchOrFocusPluginPayload,
         LayoutConstraint as ProtobufLayoutConstraint,
         LayoutConstraintFloatingPair as ProtobufLayoutConstraintFloatingPair,
         LayoutConstraintTiledPair as ProtobufLayoutConstraintTiledPair,
         LayoutConstraintWithValue as ProtobufLayoutConstraintWithValue,
+        MouseEventPayload as ProtobufMouseEventPayload,
+        MovePanePayload,
+        MoveTabDirection as ProtobufMoveTabDirection,
+        NameAndValue as ProtobufNameAndValue,
+        NewBlockingPanePayload,
+        NewFloatingPanePayload,
+        NewInPlacePanePayload,
+        NewPanePayload,
+        NewPanePlacement as ProtobufNewPanePlacement,
+        NewPluginPanePayload,
         NewTabPayload,
+        NewTiledPanePayload,
+        PaneId as ProtobufPaneId,
+        PaneIdAndShouldFloat,
         PaneRun as ProtobufPaneRun,
-        pane_run::RunType,
         PercentOrFixed as ProtobufPercentOrFixed,
         PluginAlias as ProtobufPluginAlias,
+        PluginConfiguration as ProtobufPluginConfiguration,
         PluginTag as ProtobufPluginTag,
         PluginUserConfiguration as ProtobufPluginUserConfiguration,
+        Position as ProtobufPosition,
+        RunCommandAction as ProtobufRunCommandAction,
         RunEditFileAction as ProtobufRunEditFileAction,
         RunPlugin as ProtobufRunPlugin,
         RunPluginLocation as ProtobufRunPluginLocation,
         RunPluginLocationData as ProtobufRunPluginLocationData,
-        run_plugin_location_data::LocationData,
         RunPluginOrAlias as ProtobufRunPluginOrAlias,
-        run_plugin_or_alias::PluginType,
+        ScrollAtPayload,
+        SearchDirection as ProtobufSearchDirection,
+        SearchOption as ProtobufSearchOption,
         SplitDirection as ProtobufSplitDirection,
+        SplitSize as ProtobufSplitSize,
+        StackedPlacement as ProtobufStackedPlacement,
         SwapFloatingLayout as ProtobufSwapFloatingLayout,
         SwapTiledLayout as ProtobufSwapTiledLayout,
+        SwitchToModePayload,
         TiledPaneLayout as ProtobufTiledPaneLayout,
+        TiledPlacement as ProtobufTiledPlacement,
+        UnblockCondition as ProtobufUnblockCondition,
+        WriteCharsPayload,
+        WritePayload,
     },
     input_mode::InputMode as ProtobufInputMode,
     resize::{Resize as ProtobufResize, ResizeDirection as ProtobufResizeDirection},
@@ -57,9 +80,9 @@ use crate::input::actions::{SearchDirection, SearchOption};
 use crate::input::command::{OpenFilePayload, RunCommandAction};
 use crate::input::layout::SplitSize;
 use crate::input::layout::{
-    FloatingPaneLayout, LayoutConstraint, PercentOrFixed,
-    PluginAlias, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
-    SplitDirection, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+    FloatingPaneLayout, LayoutConstraint, PercentOrFixed, PluginAlias, PluginUserConfiguration,
+    Run, RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, SwapFloatingLayout,
+    SwapTiledLayout, TiledPaneLayout,
 };
 use crate::input::mouse::{MouseEvent, MouseEventType};
 use crate::position::Position;
@@ -385,11 +408,11 @@ impl TryFrom<ProtobufAction> for Action {
                 match protobuf_action.optional_payload {
                     Some(OptionalPayload::NewTabPayload(payload)) => {
                         // New behavior: extract all fields from payload
-                        let tiled_layout = payload.tiled_layout
-                            .map(|l| l.try_into())
-                            .transpose()?;
+                        let tiled_layout =
+                            payload.tiled_layout.map(|l| l.try_into()).transpose()?;
 
-                        let floating_layouts = payload.floating_layouts
+                        let floating_layouts = payload
+                            .floating_layouts
                             .into_iter()
                             .map(|l| l.try_into())
                             .collect::<Result<Vec<_>, _>>()?;
@@ -398,10 +421,11 @@ impl TryFrom<ProtobufAction> for Action {
                             None
                         } else {
                             Some(
-                                payload.swap_tiled_layouts
+                                payload
+                                    .swap_tiled_layouts
                                     .into_iter()
                                     .map(|l| l.try_into())
-                                    .collect::<Result<Vec<_>, _>>()?
+                                    .collect::<Result<Vec<_>, _>>()?,
                             )
                         };
 
@@ -409,10 +433,11 @@ impl TryFrom<ProtobufAction> for Action {
                             None
                         } else {
                             Some(
-                                payload.swap_floating_layouts
+                                payload
+                                    .swap_floating_layouts
                                     .into_iter()
                                     .map(|l| l.try_into())
-                                    .collect::<Result<Vec<_>, _>>()?
+                                    .collect::<Result<Vec<_>, _>>()?,
                             )
                         };
 
@@ -424,10 +449,11 @@ impl TryFrom<ProtobufAction> for Action {
                             None
                         } else {
                             Some(
-                                payload.initial_panes
+                                payload
+                                    .initial_panes
                                     .into_iter()
                                     .map(|p| p.try_into())
-                                    .collect::<Result<Vec<_>, _>>()?
+                                    .collect::<Result<Vec<_>, _>>()?,
                             )
                         };
 
@@ -922,7 +948,8 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::NewInPlacePane) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::NewInPlacePanePayload(payload)) => {
                     let near_current_pane = payload.near_current_pane;
-                    let pane_id_to_replace = payload.pane_id_to_replace.and_then(|p| p.try_into().ok());
+                    let pane_id_to_replace =
+                        payload.pane_id_to_replace.and_then(|p| p.try_into().ok());
                     let close_replace_pane = payload.close_replace_pane;
                     if let Some(command) = payload.command {
                         let pane_name = command.pane_name.clone();
@@ -1198,7 +1225,10 @@ impl TryFrom<Action> for ProtobufAction {
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewFloatingPane as i32,
                     optional_payload: Some(OptionalPayload::NewFloatingPanePayload(
-                        NewFloatingPanePayload { command, near_current_pane },
+                        NewFloatingPanePayload {
+                            command,
+                            near_current_pane,
+                        },
                     )),
                 })
             },
@@ -1222,7 +1252,11 @@ impl TryFrom<Action> for ProtobufAction {
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewTiledPane as i32,
                     optional_payload: Some(OptionalPayload::NewTiledPanePayload(
-                        NewTiledPanePayload { direction, command, near_current_pane },
+                        NewTiledPanePayload {
+                            direction,
+                            command,
+                            near_current_pane,
+                        },
                     )),
                 })
             },
@@ -1372,7 +1406,7 @@ impl TryFrom<Action> for ProtobufAction {
             },
             Action::Run {
                 command: run_command_action,
-               near_current_pane: _,
+                near_current_pane: _,
             } => {
                 let run_command_action: ProtobufRunCommandAction = run_command_action.try_into()?;
                 Ok(ProtobufAction {
@@ -2303,9 +2337,7 @@ impl TryFrom<ProtobufLayoutConstraint> for LayoutConstraint {
             ProtobufLayoutConstraint::MinPanes => Ok(LayoutConstraint::MinPanes(0)),
             ProtobufLayoutConstraint::ExactPanes => Ok(LayoutConstraint::ExactPanes(0)),
             ProtobufLayoutConstraint::NoConstraint => Ok(LayoutConstraint::NoConstraint),
-            ProtobufLayoutConstraint::Unspecified => {
-                Err("LayoutConstraint cannot be unspecified")
-            },
+            ProtobufLayoutConstraint::Unspecified => Err("LayoutConstraint cannot be unspecified"),
         }
     }
 }
@@ -2325,23 +2357,20 @@ impl TryFrom<LayoutConstraint> for ProtobufLayoutConstraint {
 impl TryFrom<ProtobufLayoutConstraintWithValue> for LayoutConstraint {
     type Error = &'static str;
     fn try_from(protobuf: ProtobufLayoutConstraintWithValue) -> Result<Self, Self::Error> {
-        let constraint_type =
-            ProtobufLayoutConstraint::from_i32(protobuf.constraint_type)
-                .ok_or("Invalid constraint type")?;
+        let constraint_type = ProtobufLayoutConstraint::from_i32(protobuf.constraint_type)
+            .ok_or("Invalid constraint type")?;
         match constraint_type {
-            ProtobufLayoutConstraint::MaxPanes => {
-                Ok(LayoutConstraint::MaxPanes(protobuf.value.unwrap_or(0) as usize))
-            },
-            ProtobufLayoutConstraint::MinPanes => {
-                Ok(LayoutConstraint::MinPanes(protobuf.value.unwrap_or(0) as usize))
-            },
-            ProtobufLayoutConstraint::ExactPanes => {
-                Ok(LayoutConstraint::ExactPanes(protobuf.value.unwrap_or(0) as usize))
-            },
+            ProtobufLayoutConstraint::MaxPanes => Ok(LayoutConstraint::MaxPanes(
+                protobuf.value.unwrap_or(0) as usize,
+            )),
+            ProtobufLayoutConstraint::MinPanes => Ok(LayoutConstraint::MinPanes(
+                protobuf.value.unwrap_or(0) as usize,
+            )),
+            ProtobufLayoutConstraint::ExactPanes => Ok(LayoutConstraint::ExactPanes(
+                protobuf.value.unwrap_or(0) as usize,
+            )),
             ProtobufLayoutConstraint::NoConstraint => Ok(LayoutConstraint::NoConstraint),
-            ProtobufLayoutConstraint::Unspecified => {
-                Err("LayoutConstraint cannot be unspecified")
-            },
+            ProtobufLayoutConstraint::Unspecified => Err("LayoutConstraint cannot be unspecified"),
         }
     }
 }
@@ -2350,9 +2379,15 @@ impl TryFrom<LayoutConstraint> for ProtobufLayoutConstraintWithValue {
     type Error = &'static str;
     fn try_from(internal: LayoutConstraint) -> Result<Self, Self::Error> {
         let (constraint_type, value) = match internal {
-            LayoutConstraint::MaxPanes(v) => (ProtobufLayoutConstraint::MaxPanes as i32, Some(v as u32)),
-            LayoutConstraint::MinPanes(v) => (ProtobufLayoutConstraint::MinPanes as i32, Some(v as u32)),
-            LayoutConstraint::ExactPanes(v) => (ProtobufLayoutConstraint::ExactPanes as i32, Some(v as u32)),
+            LayoutConstraint::MaxPanes(v) => {
+                (ProtobufLayoutConstraint::MaxPanes as i32, Some(v as u32))
+            },
+            LayoutConstraint::MinPanes(v) => {
+                (ProtobufLayoutConstraint::MinPanes as i32, Some(v as u32))
+            },
+            LayoutConstraint::ExactPanes(v) => {
+                (ProtobufLayoutConstraint::ExactPanes as i32, Some(v as u32))
+            },
             LayoutConstraint::NoConstraint => (ProtobufLayoutConstraint::NoConstraint as i32, None),
         };
         Ok(ProtobufLayoutConstraintWithValue {
@@ -2400,9 +2435,7 @@ impl TryFrom<ProtobufRunPluginLocationData> for RunPluginLocation {
         use super::generated_api::api::action::run_plugin_location_data::LocationData;
         match protobuf.location_data {
             Some(LocationData::FilePath(path)) => Ok(RunPluginLocation::File(PathBuf::from(path))),
-            Some(LocationData::ZellijTag(tag)) => {
-                Ok(RunPluginLocation::Zellij(tag.try_into()?))
-            },
+            Some(LocationData::ZellijTag(tag)) => Ok(RunPluginLocation::Zellij(tag.try_into()?)),
             Some(LocationData::RemoteUrl(url)) => Ok(RunPluginLocation::Remote(url)),
             None => Err("RunPluginLocationData must have location_data"),
         }
@@ -2413,7 +2446,8 @@ impl TryFrom<RunPluginLocation> for ProtobufRunPluginLocationData {
     type Error = &'static str;
     fn try_from(internal: RunPluginLocation) -> Result<Self, Self::Error> {
         use super::generated_api::api::action::{
-            run_plugin_location_data::LocationData, RunPluginLocation as ProtobufRunPluginLocationType,
+            run_plugin_location_data::LocationData,
+            RunPluginLocation as ProtobufRunPluginLocationType,
         };
         let (location_type, location_data) = match internal {
             RunPluginLocation::File(path) => (
@@ -2501,9 +2535,7 @@ impl TryFrom<ProtobufRunPluginOrAlias> for RunPluginOrAlias {
     fn try_from(protobuf: ProtobufRunPluginOrAlias) -> Result<Self, Self::Error> {
         use super::generated_api::api::action::run_plugin_or_alias::PluginType;
         match protobuf.plugin_type {
-            Some(PluginType::Plugin(plugin)) => {
-                Ok(RunPluginOrAlias::RunPlugin(plugin.try_into()?))
-            },
+            Some(PluginType::Plugin(plugin)) => Ok(RunPluginOrAlias::RunPlugin(plugin.try_into()?)),
             Some(PluginType::Alias(alias)) => Ok(RunPluginOrAlias::Alias(alias.try_into()?)),
             None => Err("RunPluginOrAlias must have plugin_type"),
         }
@@ -2609,11 +2641,10 @@ impl TryFrom<CommandOrPlugin> for ProtobufCommandOrPlugin {
 impl TryFrom<ProtobufTiledPaneLayout> for TiledPaneLayout {
     type Error = &'static str;
     fn try_from(protobuf: ProtobufTiledPaneLayout) -> Result<Self, Self::Error> {
-        let children_split_direction = ProtobufSplitDirection::from_i32(
-            protobuf.children_split_direction,
-        )
-        .ok_or("Invalid split direction")?
-        .try_into()?;
+        let children_split_direction =
+            ProtobufSplitDirection::from_i32(protobuf.children_split_direction)
+                .ok_or("Invalid split direction")?
+                .try_into()?;
         let children = protobuf
             .children
             .into_iter()
@@ -2746,9 +2777,7 @@ impl TryFrom<ProtobufLayoutConstraintTiledPair> for (LayoutConstraint, TiledPane
 
 impl TryFrom<(LayoutConstraint, TiledPaneLayout)> for ProtobufLayoutConstraintTiledPair {
     type Error = &'static str;
-    fn try_from(
-        internal: (LayoutConstraint, TiledPaneLayout),
-    ) -> Result<Self, Self::Error> {
+    fn try_from(internal: (LayoutConstraint, TiledPaneLayout)) -> Result<Self, Self::Error> {
         Ok(ProtobufLayoutConstraintTiledPair {
             constraint: Some(internal.0.try_into()?),
             layout: Some(internal.1.try_into()?),
@@ -2756,13 +2785,9 @@ impl TryFrom<(LayoutConstraint, TiledPaneLayout)> for ProtobufLayoutConstraintTi
     }
 }
 
-impl TryFrom<ProtobufLayoutConstraintFloatingPair>
-    for (LayoutConstraint, Vec<FloatingPaneLayout>)
-{
+impl TryFrom<ProtobufLayoutConstraintFloatingPair> for (LayoutConstraint, Vec<FloatingPaneLayout>) {
     type Error = &'static str;
-    fn try_from(
-        protobuf: ProtobufLayoutConstraintFloatingPair,
-    ) -> Result<Self, Self::Error> {
+    fn try_from(protobuf: ProtobufLayoutConstraintFloatingPair) -> Result<Self, Self::Error> {
         let constraint = protobuf
             .constraint
             .ok_or("LayoutConstraintFloatingPair must have constraint")?
@@ -2776,9 +2801,7 @@ impl TryFrom<ProtobufLayoutConstraintFloatingPair>
     }
 }
 
-impl TryFrom<(LayoutConstraint, Vec<FloatingPaneLayout>)>
-    for ProtobufLayoutConstraintFloatingPair
-{
+impl TryFrom<(LayoutConstraint, Vec<FloatingPaneLayout>)> for ProtobufLayoutConstraintFloatingPair {
     type Error = &'static str;
     fn try_from(
         internal: (LayoutConstraint, Vec<FloatingPaneLayout>),

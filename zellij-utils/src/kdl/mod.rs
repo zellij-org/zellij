@@ -5095,14 +5095,17 @@ impl SessionInfo {
             }
         }
         let mut pane_history = BTreeMap::new();
-        if let Some(kdl_pane_history) = kdl_document.get("pane_history").and_then(|p| p.children()) {
+        if let Some(kdl_pane_history) = kdl_document.get("pane_history").and_then(|p| p.children())
+        {
             for client_node in kdl_pane_history.nodes() {
                 if let Some(client_id) = client_node.children().and_then(|c| {
                     c.get("id")
                         .and_then(|c| c.entries().iter().next().and_then(|e| e.value().as_i64()))
                 }) {
                     let mut history = vec![];
-                    if let Some(history_node) = client_node.children().and_then(|c| c.get("history")) {
+                    if let Some(history_node) =
+                        client_node.children().and_then(|c| c.get("history"))
+                    {
                         if let Some(history_children) = history_node.children() {
                             for pane_id_node in history_children.nodes() {
                                 if pane_id_node.name().value() == "pane_id" {

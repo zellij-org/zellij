@@ -35,7 +35,8 @@ impl Layout {
         let Some(plugin_id) = plugin_id else {
             return;
         };
-        let (Some(total_cols), Some(total_rows)) = (total_viewport_columns, total_viewport_rows) else {
+        let (Some(total_cols), Some(total_rows)) = (total_viewport_columns, total_viewport_rows)
+        else {
             return;
         };
 

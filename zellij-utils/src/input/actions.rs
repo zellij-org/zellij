@@ -7,7 +7,8 @@ use super::layout::{
 };
 use crate::cli::CliAction;
 use crate::data::{
-    Direction, KeyWithModifier, LayoutInfo, NewPanePlacement, PaneId, Resize, UnblockCondition, OriginatingPlugin, CommandOrPlugin
+    CommandOrPlugin, Direction, KeyWithModifier, LayoutInfo, NewPanePlacement, OriginatingPlugin,
+    PaneId, Resize, UnblockCondition,
 };
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -101,7 +102,17 @@ impl FromStr for SearchOption {
 // They might need to be adjusted in the default config
 // as well `../../assets/config/default.yaml`
 /// Actions that can be bound to keys.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, strum_macros::Display, strum_macros::EnumString, strum_macros::EnumIter)]
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Deserialize,
+    Serialize,
+    strum_macros::Display,
+    strum_macros::EnumString,
+    strum_macros::EnumIter,
+)]
 #[strum(ascii_case_insensitive)]
 pub enum Action {
     /// Quit Zellij.
@@ -801,20 +812,15 @@ impl Action {
                 // Parse initial_panes from initial_command or initial_plugin
                 let initial_panes = if let Some(plugin_url) = initial_plugin {
                     let plugin = match RunPluginLocation::parse(&plugin_url, cwd.clone()) {
-                        Ok(location) => {
-                            RunPluginOrAlias::RunPlugin(RunPlugin {
-                                _allow_exec_host_cmd: false,
-                                location,
-                                configuration: Default::default(),
-                                initial_cwd: cwd.clone(),
-                            })
-                        },
+                        Ok(location) => RunPluginOrAlias::RunPlugin(RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location,
+                            configuration: Default::default(),
+                            initial_cwd: cwd.clone(),
+                        }),
                         Err(_) => {
-                            let mut plugin_alias = PluginAlias::new(
-                                &plugin_url,
-                                &None,
-                                cwd.clone(),
-                            );
+                            let mut plugin_alias =
+                                PluginAlias::new(&plugin_url, &None, cwd.clone());
                             plugin_alias.set_caller_cwd_if_not_set(Some(current_dir.clone()));
                             RunPluginOrAlias::Alias(plugin_alias)
                         },
@@ -1171,19 +1177,21 @@ impl Action {
     }
     pub fn populate_originating_plugin(&mut self, originating_plugin: OriginatingPlugin) {
         match self {
-            Action::NewBlockingPane { command, .. } |
-            Action::NewFloatingPane { command, .. } |
-            Action::NewTiledPane { command, .. } |
-            Action::NewInPlacePane { command, .. } |
-            Action::NewStackedPane { command, .. }  => {
-                command.as_mut().map(|c| c.populate_originating_plugin(originating_plugin));
-            }
+            Action::NewBlockingPane { command, .. }
+            | Action::NewFloatingPane { command, .. }
+            | Action::NewTiledPane { command, .. }
+            | Action::NewInPlacePane { command, .. }
+            | Action::NewStackedPane { command, .. } => {
+                command
+                    .as_mut()
+                    .map(|c| c.populate_originating_plugin(originating_plugin));
+            },
             Action::Run { command, .. } => {
                 command.populate_originating_plugin(originating_plugin);
-            }
+            },
             Action::EditFile { payload, .. } => {
                 payload.originating_plugin = Some(originating_plugin);
-            }
+            },
             Action::NewTab { initial_panes, .. } => {
                 log::info!("populating new tab event 0");
                 if let Some(initial_panes) = initial_panes.as_mut() {
@@ -1195,12 +1203,12 @@ impl Action {
                                 log::info!("populating new tab event 3");
                                 run_command.populate_originating_plugin(originating_plugin.clone());
                             },
-                            _ => {}
+                            _ => {},
                         }
                     }
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
     pub fn launches_plugin(&self, plugin_url: &str) -> bool {

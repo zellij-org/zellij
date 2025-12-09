@@ -256,13 +256,13 @@ pub fn fuzzy_complete(
 
             // Replace the last token with the completion
             Some(replace_last_token(input, &completed))
-        }
+        },
         (Some(cmd), None) => {
             // Command completion - add space (unless it's a prefix completion)
             let suffix = if cmd.is_prefix_completion { "" } else { " " };
             let completed = format!("{}{}", cmd.completed_text, suffix);
             Some(replace_last_token(input, &completed))
-        }
+        },
         (None, Some(path)) => {
             // Path completion - add slash if directory (unless it's a prefix completion)
             let suffix = if path.is_prefix_completion {
@@ -274,7 +274,7 @@ pub fn fuzzy_complete(
             };
             let completed = format!("{}{}", path.completed_text, suffix);
             Some(replace_last_token(input, &completed))
-        }
+        },
         (None, None) => None,
     }
 }
@@ -298,7 +298,7 @@ fn get_completion_suffix(
             } else {
                 ""
             }
-        }
+        },
     }
 }
 

@@ -255,11 +255,12 @@ impl Pane for PluginPane {
         let own_content_columns = self.get_content_columns();
         let own_content_rows = self.get_content_rows();
         let Offset { top, left, .. } = self.content_offset;
-        if let Some(coordinates) = client_id
-            .and_then(|client_id| self.cursor_visibility.get(&client_id)) {
-                coordinates
-                    .map(|(x, y)| (x + left, y + top))
-                    .and_then(|(x, y)| {
+        if let Some(coordinates) =
+            client_id.and_then(|client_id| self.cursor_visibility.get(&client_id))
+        {
+            coordinates
+                .map(|(x, y)| (x + left, y + top))
+                .and_then(|(x, y)| {
                     if x >= own_content_columns || y >= own_content_rows {
                         None
                     } else {

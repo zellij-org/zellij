@@ -430,7 +430,7 @@ pub enum Sessions {
         block_until_exit: bool,
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]
-        near_current_pane: bool
+        near_current_pane: bool,
     },
     /// Load a plugin
     #[clap(visible_alias = "p")]
@@ -526,7 +526,7 @@ pub enum Sessions {
         pinned: Option<bool>,
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]
-        near_current_pane: bool
+        near_current_pane: bool,
     },
     ConvertConfig {
         old_config_file: PathBuf,
@@ -741,8 +741,7 @@ pub enum CliAction {
 
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]
-        near_current_pane: bool
-
+        near_current_pane: bool,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
@@ -792,7 +791,7 @@ pub enum CliAction {
         pinned: Option<bool>,
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]
-        near_current_pane: bool
+        near_current_pane: bool,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode {
@@ -852,7 +851,12 @@ pub enum CliAction {
         cwd: Option<PathBuf>,
 
         /// Initial command to run in the new tab (space-delimited string)
-        #[clap(long, value_parser, conflicts_with("initial-plugin"), multiple_values(true))]
+        #[clap(
+            long,
+            value_parser,
+            conflicts_with("initial-plugin"),
+            multiple_values(true)
+        )]
         initial_command: Option<Vec<String>>,
 
         /// Initial plugin to load in the new tab

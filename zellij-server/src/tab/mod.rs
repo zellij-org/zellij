@@ -3566,11 +3566,15 @@ impl Tab {
                 closed_pane.reset_logical_position();
             }
             closed_pane
-        } else if let Some(suppressed_key_of_pane) = self.suppressed_panes
+        } else if let Some(suppressed_key_of_pane) = self
+            .suppressed_panes
             .iter()
-            .find_map(|(key, (_, pane))| if &pane.pid() == &id { Some(*key) } else { None }) {
-                // TODO: test this (from the path in screen.rs focus_plugin_pane ~line 2519
-                self.suppressed_panes.remove(&suppressed_key_of_pane).map(|s_p| s_p.1)
+            .find_map(|(key, (_, pane))| if &pane.pid() == &id { Some(*key) } else { None })
+        {
+            // TODO: test this (from the path in screen.rs focus_plugin_pane ~line 2519
+            self.suppressed_panes
+                .remove(&suppressed_key_of_pane)
+                .map(|s_p| s_p.1)
         } else {
             None
         }
@@ -4993,7 +4997,12 @@ impl Tab {
             plugin_pane.update_loading_indication(loading_indication);
         }
     }
-    pub fn show_plugin_cursor(&mut self, pid: u32, client_id: ClientId, cursor_position: Option<(usize, usize)>) {
+    pub fn show_plugin_cursor(
+        &mut self,
+        pid: u32,
+        client_id: ClientId,
+        cursor_position: Option<(usize, usize)>,
+    ) {
         if let Some(plugin_pane) = self
             .tiled_panes
             .get_pane_mut(PaneId::Plugin(pid))
@@ -5092,32 +5101,43 @@ impl Tab {
             })
             // TODO: change suppressed_panes to be a proper struct with methods that make sense rather
             // than doing this dance every time
-            .or_else(|_| match self.suppressed_panes.extract_if(|_key, (_, pane)| pane.pid() == pane_id).next().map(|(_key, (_, pane))| pane) {
-                Some(mut pane) => {
-                    pane.set_selectable(true);
-                    if should_float {
-                        self.show_floating_panes();
-                        self.add_floating_pane(pane, pane_id, None, true)
-                    } else if should_be_in_place {
-
-                        let replaced_pane = if self.are_floating_panes_visible() {
-                            self.floating_panes.replace_active_pane(pane, client_id).ok()
+            .or_else(|_| {
+                match self
+                    .suppressed_panes
+                    .extract_if(|_key, (_, pane)| pane.pid() == pane_id)
+                    .next()
+                    .map(|(_key, (_, pane))| pane)
+                {
+                    Some(mut pane) => {
+                        pane.set_selectable(true);
+                        if should_float {
+                            self.show_floating_panes();
+                            self.add_floating_pane(pane, pane_id, None, true)
+                        } else if should_be_in_place {
+                            let replaced_pane = if self.are_floating_panes_visible() {
+                                self.floating_panes
+                                    .replace_active_pane(pane, client_id)
+                                    .ok()
+                            } else {
+                                self.tiled_panes.replace_active_pane(pane, client_id)
+                            };
+                            if let Some(replaced_pane) = replaced_pane {
+                                let is_scrollback_editor = false;
+                                self.insert_suppressed_pane(
+                                    pane_id,
+                                    (is_scrollback_editor, replaced_pane),
+                                );
+                            } else {
+                                log::error!("Could not find pane to replace, aborting.");
+                            }
+                            Ok(())
                         } else {
-                            self.tiled_panes.replace_active_pane(pane, client_id)
-                        };
-                        if let Some(replaced_pane) = replaced_pane {
-                            let is_scrollback_editor = false;
-                            self.insert_suppressed_pane(pane_id, (is_scrollback_editor, replaced_pane));
-                        } else {
-                            log::error!("Could not find pane to replace, aborting.");
+                            self.hide_floating_panes();
+                            self.add_tiled_pane(pane, pane_id, Some(client_id))
                         }
-                        Ok(())
-                    } else {
-                        self.hide_floating_panes();
-                        self.add_tiled_pane(pane, pane_id, Some(client_id))
-                    }
-                },
-                None => Ok(()),
+                    },
+                    None => Ok(()),
+                }
             })
     }
     pub fn focus_suppressed_pane_for_all_clients(&mut self, pane_id: PaneId) {
@@ -5138,24 +5158,24 @@ impl Tab {
         // not take it out of there when another pane is closed (eg. like happens with the
         // scrollback editor), but it has to take itself out on its own (eg. a plugin using the
         // show_self() method)
-        // if let Some(pane) = self.extract_pane(pane_id, false) {
         if let Some(pane) = self.extract_pane(pane_id, true) {
             self.insert_suppressed_pane(pane_id, (false, pane));
         }
     }
     pub fn unsuppress_pane(&mut self, pane_id: PaneId, should_float_if_hidden: bool) {
         // removes a pane from being suppressed (hidden) but does not focus it
-        match self.suppressed_panes.extract_if(|_key, (_, pane)| pane.pid() == pane_id).next().map(|(_key, (_, pane))| pane) {
+        match self
+            .suppressed_panes
+            .extract_if(|_key, (_, pane)| pane.pid() == pane_id)
+            .next()
+            .map(|(_key, (_, pane))| pane)
+        {
             Some(pane) => {
                 if should_float_if_hidden {
                     self.add_floating_pane(pane, pane_id, None, true)
                         .non_fatal();
                 } else {
-                    self.add_tiled_pane(
-                        pane,
-                        pane_id,
-                        None,
-                    ).non_fatal();
+                    self.add_tiled_pane(pane, pane_id, None).non_fatal();
                 }
             },
             None => {
@@ -5165,28 +5185,37 @@ impl Tab {
     }
     pub fn unsuppress_or_expand_pane(&mut self, pane_id: PaneId, should_float_if_hidden: bool) {
         // removes a pane from being suppressed (hidden) but does not focus it
-        match self.suppressed_panes.extract_if(|_key, (_, pane)| pane.pid() == pane_id).next().map(|(_key, (_, pane))| pane) {
+        match self
+            .suppressed_panes
+            .extract_if(|_key, (_, pane)| pane.pid() == pane_id)
+            .next()
+            .map(|(_key, (_, pane))| pane)
+        {
             Some(pane) => {
                 if should_float_if_hidden {
                     self.add_floating_pane(pane, pane_id, None, true)
                         .non_fatal();
                 } else {
-                    self.add_tiled_pane(
-                        pane,
-                        pane_id,
-                        None,
-                    ).non_fatal();
+                    self.add_tiled_pane(pane, pane_id, None).non_fatal();
                 }
             },
             None => {
                 let expand_panes_success = self.tiled_panes.expand_pane_in_stack(pane_id).len() > 0;
                 if !expand_panes_success {
-                    log::error!("Could not find suppressed or stacked pane with id: {:?}", pane_id);
+                    log::error!(
+                        "Could not find suppressed or stacked pane with id: {:?}",
+                        pane_id
+                    );
                 }
             },
         }
     }
-    fn insert_suppressed_pane(&mut self, suppressing_pane_id: PaneId, pane_to_suppress: (bool, Box<dyn Pane>)) { // bool -> is_scrollback_editor
+    fn insert_suppressed_pane(
+        &mut self,
+        suppressing_pane_id: PaneId,
+        pane_to_suppress: (bool, Box<dyn Pane>),
+    ) {
+        // bool -> is_scrollback_editor
         // this method is intended to insert an existing provided pane into suppressed_panes, while
         // making sure any existing panes already in suppressed_panes still remain there
         // if there's a key collision (eg. the suppressing_pane_id already suppresses another
@@ -5200,12 +5229,12 @@ impl Tab {
 
         // this closure removes and returns an existing pane from the map if it exists under this key
         // and inserts the given pane into the map under this key
-        let mut insert_and_return_existing_value = |key: PaneId, value: (bool, Box<dyn Pane>)| -> Option<(bool, Box<dyn Pane>)> {
-            let existing = self.suppressed_panes.remove(&key);
-            self.suppressed_panes
-                .insert(key, value);
-            existing
-        };
+        let mut insert_and_return_existing_value =
+            |key: PaneId, value: (bool, Box<dyn Pane>)| -> Option<(bool, Box<dyn Pane>)> {
+                let existing = self.suppressed_panes.remove(&key);
+                self.suppressed_panes.insert(key, value);
+                existing
+            };
 
         // here we try to insert a pane into the suppressed panes map while making sure not to drop
         // (close) any existing panes in the map. We repeat the action of remapping existing panes
@@ -5214,7 +5243,9 @@ impl Tab {
         let mut key_to_insert = suppressing_pane_id;
         let mut pane_to_insert = Some(pane_to_suppress);
         loop {
-            pane_to_insert = pane_to_insert.take().and_then(|p| insert_and_return_existing_value(key_to_insert, p));
+            pane_to_insert = pane_to_insert
+                .take()
+                .and_then(|p| insert_and_return_existing_value(key_to_insert, p));
             if let Some(pane_to_insert) = pane_to_insert.as_ref() {
                 key_to_insert = pane_to_insert.1.pid();
             } else {
@@ -5223,7 +5254,6 @@ impl Tab {
         }
     }
 
-
     pub fn pane_infos(&self) -> Vec<PaneInfo> {
         let mut pane_info = vec![];
         let current_pane_group = { self.current_pane_group.borrow().clone_inner() };
@@ -5231,7 +5261,9 @@ impl Tab {
         let mut floating_pane_info = self.floating_panes.pane_info(&current_pane_group);
         pane_info.append(&mut tiled_pane_info);
         pane_info.append(&mut floating_pane_info);
-        for (_pane_id_of_suppressing_pane, (_is_scrollback_editor, pane)) in self.suppressed_panes.iter() {
+        for (_pane_id_of_suppressing_pane, (_is_scrollback_editor, pane)) in
+            self.suppressed_panes.iter()
+        {
             let mut pane_info_for_suppressed_pane =
                 pane_info_for_pane(&pane.pid(), pane, &current_pane_group);
             pane_info_for_suppressed_pane.is_floating = false;
@@ -5519,7 +5551,6 @@ impl Tab {
     }
     pub fn add_suppressed_panes(&mut self, mut suppressed_panes: SuppressedPanes) {
         for (pane_id, suppressed_pane_entry) in suppressed_panes.drain() {
-            // self.suppressed_panes.insert(pane_id, suppressed_pane_entry);
             self.insert_suppressed_pane(pane_id, suppressed_pane_entry);
         }
     }

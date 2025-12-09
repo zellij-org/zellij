@@ -546,10 +546,10 @@ pub(crate) fn route_action(
                 NewPanePlacement::Stacked(pane_id_to_stack_under) => {
                     pane_id_to_stack_under.map(|p| p.into()).or(pane_id)
                 },
-                NewPanePlacement::InPlace { pane_id_to_replace, .. } => {
-                    pane_id_to_replace.map(|p| p.into()).or(pane_id)
-                },
-                _ => pane_id
+                NewPanePlacement::InPlace {
+                    pane_id_to_replace, ..
+                } => pane_id_to_replace.map(|p| p.into()).or(pane_id),
+                _ => pane_id,
             };
 
             let client_tab_index_or_paneid = if near_current_pane && pane_id.is_some() {
@@ -722,7 +722,6 @@ pub(crate) fn route_action(
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
 
-
             match pane_id {
                 Some(pane_id) if near_current_pane => {
                     senders
@@ -812,7 +811,10 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::Run { command, near_current_pane } => {
+        Action::Run {
+            command,
+            near_current_pane,
+        } => {
             let run_cmd = Some(TerminalAction::RunCommand(command.clone().into()));
             let client_tab_index_or_paneid = if near_current_pane && pane_id.is_some() {
                 ClientTabIndexOrPaneId::PaneId(pane_id.unwrap())
@@ -858,7 +860,9 @@ pub(crate) fn route_action(
             let is_web_client = false; // actions cannot be initiated directly from the web
 
             // Construct completion_tx conditionally
-            let (completion_tx, block_on_first_terminal) = if let Some(condition) = first_pane_unblock_condition {
+            let (completion_tx, block_on_first_terminal) = if let Some(condition) =
+                first_pane_unblock_condition
+            {
                 let notification = NotificationEnd::new_with_condition(completion_tx, condition);
                 wait_forever = true;
                 (notification, true)
@@ -1697,7 +1701,9 @@ pub(crate) fn route_thread_main(
                                             keybinds.clone(),
                                             client_input_mode,
                                             Some(os_input.clone()),
-                                        )?.0 {
+                                        )?
+                                        .0
+                                        {
                                             should_break = true;
                                         }
                                     }
@@ -1785,7 +1791,9 @@ pub(crate) fn route_thread_main(
                                     client_keybinds,
                                     client_input_mode,
                                     Some(os_input.clone()),
-                                )?.0 {
+                                )?
+                                .0
+                                {
                                     should_break = true;
                                 }
                             }

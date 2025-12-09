@@ -248,10 +248,10 @@ pub enum ScreenInstruction {
         Vec<(u32, HoldForCommand)>, // new pane pids
         Vec<(u32, HoldForCommand)>, // new floating pane pids
         HashMap<RunPluginOrAlias, Vec<u32>>,
-        usize,                   // tab_index
-        bool,                    // should change focus to new tab
-        (ClientId, bool),        // bool -> is_web_client
-        Option<NotificationEnd>, // regular completion signal
+        usize,                          // tab_index
+        bool,                           // should change focus to new tab
+        (ClientId, bool),               // bool -> is_web_client
+        Option<NotificationEnd>,        // regular completion signal
         Option<(u32, NotificationEnd)>, // blocking_terminal (terminal_id, completion_tx)
     ),
     SwitchTabNext(ClientId, Option<NotificationEnd>),
@@ -376,8 +376,8 @@ pub enum ScreenInstruction {
     UnsuppressPane(PaneId, bool), // bool -> should float if hidden
     UnsuppressOrExpandPane(PaneId, bool), // bool -> should float if hidden
     FocusPaneWithId(PaneId, bool, bool, ClientId, Option<NotificationEnd>), // bools:
-                                                                            // should_float_if_hidden,
-                                                                            // should_be_in_place_if_hidden
+    // should_float_if_hidden,
+    // should_be_in_place_if_hidden
     RenamePane(PaneId, Vec<u8>, Option<NotificationEnd>),
     RenameTab(usize, Vec<u8>, Option<NotificationEnd>),
     RequestPluginPermissions(
@@ -2109,7 +2109,11 @@ impl Screen {
                 .count(),
             plugins: Default::default(), // these are filled in by the wasm thread
             tab_history: self.tab_history.clone(),
-            pane_history: self.pane_history.iter().map(|(k, v)| (*k, v.iter().map(|v| (*v).into()).collect())).collect(),
+            pane_history: self
+                .pane_history
+                .iter()
+                .map(|(k, v)| (*k, v.iter().map(|v| (*v).into()).collect()))
+                .collect(),
         };
         self.bus
             .senders
@@ -2593,7 +2597,14 @@ impl Screen {
                 self.tabs
                     .iter_mut()
                     .find(|(_, t)| t.position == tab_index)
-                    .map(|(_, t)| t.focus_pane_with_id(pane_id, should_float_if_hidden, should_open_in_place, client_id))
+                    .map(|(_, t)| {
+                        t.focus_pane_with_id(
+                            pane_id,
+                            should_float_if_hidden,
+                            should_open_in_place,
+                            client_id,
+                        )
+                    })
                     .with_context(err_context)
                     .non_fatal();
             },
@@ -2689,7 +2700,7 @@ impl Screen {
                 Some(tiled_panes_layout),
                 floating_panes_layout,
                 tab_index,
-                None, // initial_panes
+                None,  // initial_panes
                 false, // block_on_first_terminal
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
@@ -2767,7 +2778,7 @@ impl Screen {
             Some(tiled_panes_layout),
             floating_panes_layout,
             tab_index,
-            None, // initial_panes
+            None,  // initial_panes
             false, // block_on_first_terminal
             should_change_focus_to_new_tab,
             (client_id, is_web_client),
@@ -3543,7 +3554,8 @@ impl Screen {
         }
     }
     fn update_active_pane_ids(&mut self) {
-        let connected_clients: Vec<ClientId> = self.connected_clients.borrow().keys().copied().collect();
+        let connected_clients: Vec<ClientId> =
+            self.connected_clients.borrow().keys().copied().collect();
         for client_id in connected_clients {
             if let Some(active_pane_id) = self.get_active_pane_id(&client_id) {
                 let active_pane_id: PaneId = active_pane_id.into();
@@ -4493,8 +4505,11 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 if !found_plugin {
-                    pending_events_waiting_for_tab
-                        .push(ScreenInstruction::ShowPluginCursor(pid, client_id, cursor_position));
+                    pending_events_waiting_for_tab.push(ScreenInstruction::ShowPluginCursor(
+                        pid,
+                        client_id,
+                        cursor_position,
+                    ));
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -4685,7 +4700,9 @@ pub(crate) fn screen_thread_main(
                 blocking_terminal,
             ) => {
                 if let Some(first_terminal_pane) = new_pane_pids.iter().next() {
-                    completion_tx.as_mut().map(|c| c.set_affected_pane_id(PaneId::Terminal(first_terminal_pane.0)));
+                    completion_tx
+                        .as_mut()
+                        .map(|c| c.set_affected_pane_id(PaneId::Terminal(first_terminal_pane.0)));
                 }
                 screen.apply_layout(
                     layout,
@@ -4830,7 +4847,7 @@ pub(crate) fn screen_thread_main(
                                     None,
                                     vec![],
                                     tab_index,
-                                    None, // initial_panes
+                                    None,  // initial_panes
                                     false, // block_on_first_terminal
                                     should_change_focus_to_new_tab,
                                     (client_id, is_web_client),
@@ -5674,7 +5691,12 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
-                screen.focus_pane_with_id(pane_id, should_float_if_hidden, should_be_in_place_if_hidden, client_id)?;
+                screen.focus_pane_with_id(
+                    pane_id,
+                    should_float_if_hidden,
+                    should_be_in_place_if_hidden,
+                    client_id,
+                )?;
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::RenamePane(
@@ -5764,7 +5786,9 @@ pub(crate) fn screen_thread_main(
                 client_id_tab_index_or_pane_id,
                 mut completion_tx,
             ) => {
-                completion_tx.as_mut().map(|c| c.set_affected_pane_id(new_pane_id));
+                completion_tx
+                    .as_mut()
+                    .map(|c| c.set_affected_pane_id(new_pane_id));
                 screen.replace_pane(
                     new_pane_id,
                     hold_for_command,
@@ -5935,7 +5959,12 @@ pub(crate) fn screen_thread_main(
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&plugin_pane_id) {
                         tab.copy_text_to_clipboard(&text)
-                            .with_context(|| format!("failed to copy text to clipboard from plugin {}", plugin_id))
+                            .with_context(|| {
+                                format!(
+                                    "failed to copy text to clipboard from plugin {}",
+                                    plugin_id
+                                )
+                            })
                             .non_fatal();
                         break;
                     }
@@ -6333,9 +6362,15 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ClearKeyPressesIntercepts(client_id) => {
                 keybind_intercepts.remove(&client_id);
             },
-            ScreenInstruction::ReplacePaneWithExistingPane(old_pane_id, new_pane_id, suppress_replaced_pane) => {
-                screen.replace_pane_with_existing_pane(old_pane_id, new_pane_id, suppress_replaced_pane)
-            },
+            ScreenInstruction::ReplacePaneWithExistingPane(
+                old_pane_id,
+                new_pane_id,
+                suppress_replaced_pane,
+            ) => screen.replace_pane_with_existing_pane(
+                old_pane_id,
+                new_pane_id,
+                suppress_replaced_pane,
+            ),
             ScreenInstruction::AddWatcherClient(client_id, size) => {
                 screen
                     .add_watcher_client(client_id)

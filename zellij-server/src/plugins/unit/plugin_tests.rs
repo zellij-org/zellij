@@ -9141,7 +9141,6 @@ pub fn before_close_plugin_event() {
 #[test]
 #[ignore]
 pub fn show_cursor_plugin_command() {
-
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());

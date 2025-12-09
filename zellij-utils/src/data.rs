@@ -2789,16 +2789,16 @@ pub enum PluginCommand {
     NextSwapLayout,
     GoToTabName(String),
     FocusOrCreateTab(String),
-    GoToTab(u32),                    // tab index
-    StartOrReloadPlugin(String),     // plugin url (eg. file:/path/to/plugin.wasm)
-    CloseTerminalPane(u32),          // terminal pane id
-    ClosePluginPane(u32),            // plugin pane id
-    FocusTerminalPane(u32, bool, bool),    // terminal pane id, should_float_if_hidden, should_be_in_place_if_hidden
-    FocusPluginPane(u32, bool, bool),      // plugin pane id, should_float_if_hidden, should_be_in_place_if_hidden
-    RenameTerminalPane(u32, String), // terminal pane id, new name
-    RenamePluginPane(u32, String),   // plugin pane id, new name
-    RenameTab(u32, String),          // tab index, new name
-    ReportPanic(String),             // stringified panic
+    GoToTab(u32),                       // tab index
+    StartOrReloadPlugin(String),        // plugin url (eg. file:/path/to/plugin.wasm)
+    CloseTerminalPane(u32),             // terminal pane id
+    ClosePluginPane(u32),               // plugin pane id
+    FocusTerminalPane(u32, bool, bool), // terminal pane id, should_float_if_hidden, should_be_in_place_if_hidden
+    FocusPluginPane(u32, bool, bool), // plugin pane id, should_float_if_hidden, should_be_in_place_if_hidden
+    RenameTerminalPane(u32, String),  // terminal pane id, new name
+    RenamePluginPane(u32, String),    // plugin pane id, new name
+    RenameTab(u32, String),           // tab index, new name
+    ReportPanic(String),              // stringified panic
     RequestPluginPermissions(Vec<PermissionType>),
     SwitchSession(ConnectToSession),
     DeleteDeadSession(String),       // String -> session name
@@ -2847,7 +2847,9 @@ pub enum PluginCommand {
     WriteCharsToPaneId(String, PaneId),
     SendSigintToPaneId(PaneId),
     SendSigkillToPaneId(PaneId),
-    GetPanePid { pane_id: PaneId },
+    GetPanePid {
+        pane_id: PaneId,
+    },
     MovePaneWithPaneId(PaneId),
     MovePaneWithPaneIdInDirection(PaneId, Direction),
     ClearScreenForPaneId(PaneId),
@@ -2914,7 +2916,7 @@ pub enum PluginCommand {
     InterceptKeyPresses,
     ClearKeyPressesIntercepts,
     ReplacePaneWithExistingPane(PaneId, PaneId, bool), // (pane id to replace, pane id of existing,
-                                                       // suppress_replaced_pane)
+    // suppress_replaced_pane)
     RunAction(Action, BTreeMap<String, String>),
-    CopyToClipboard(String),     // text to copy
+    CopyToClipboard(String), // text to copy
 }

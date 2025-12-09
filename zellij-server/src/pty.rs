@@ -18,8 +18,8 @@ use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::{
     data::{
-        CommandOrPlugin, Direction, Event, FloatingPaneCoordinates, GetPanePidResponse, NewPanePlacement,
-        OriginatingPlugin,
+        CommandOrPlugin, Direction, Event, FloatingPaneCoordinates, GetPanePidResponse,
+        NewPanePlacement, OriginatingPlugin,
     },
     errors::prelude::*,
     errors::{ContextType, PtyContext},
@@ -164,7 +164,7 @@ pub(crate) struct Pty {
     task_handles: HashMap<u32, JoinHandle<()>>, // terminal_id to join-handle
     default_editor: Option<PathBuf>,
     post_command_discovery_hook: Option<String>,
-    plugin_cwds: HashMap<u32, PathBuf>, // plugin_id -> cwd
+    plugin_cwds: HashMap<u32, PathBuf>,   // plugin_id -> cwd
     terminal_cwds: HashMap<u32, PathBuf>, // terminal_id -> cwd
 }
 
@@ -1054,7 +1054,8 @@ impl Pty {
                 terminal_id = Some(new_pane_data.0);
                 new_pane_pids.push(new_pane_data);
             }
-            if let (Some(originating_plugin), Some(terminal_id)) = (originating_plugin, terminal_id) {
+            if let (Some(originating_plugin), Some(terminal_id)) = (originating_plugin, terminal_id)
+            {
                 originating_plugins_to_inform.push((terminal_id, originating_plugin));
             }
         }
@@ -1073,7 +1074,8 @@ impl Pty {
                 terminal_id = Some(new_pane_data.0);
                 new_floating_panes_pids.push(new_pane_data);
             }
-            if let (Some(originating_plugin), Some(terminal_id)) = (originating_plugin, terminal_id) {
+            if let (Some(originating_plugin), Some(terminal_id)) = (originating_plugin, terminal_id)
+            {
                 originating_plugins_to_inform.push((terminal_id, originating_plugin));
             }
         }
@@ -1101,18 +1103,20 @@ impl Pty {
             .collect();
 
         // Track the first terminal_id if blocking is requested
-        let first_initial_pane_terminal_id = if block_on_first_terminal && !new_pane_pids.is_empty() {
+        let first_initial_pane_terminal_id = if block_on_first_terminal && !new_pane_pids.is_empty()
+        {
             Some(new_pane_pids[0].0)
         } else {
             None
         };
 
         // Prepare blocking_terminal for ApplyLayout
-        let (direct_completion_tx, blocking_terminal) = if let Some(terminal_id) = first_initial_pane_terminal_id {
-            (None, completion_tx.map(|tx| (terminal_id, tx)))
-        } else {
-            (completion_tx, None)
-        };
+        let (direct_completion_tx, blocking_terminal) =
+            if let Some(terminal_id) = first_initial_pane_terminal_id {
+                (None, completion_tx.map(|tx| (terminal_id, tx)))
+            } else {
+                (completion_tx, None)
+            };
 
         self.bus
             .senders
@@ -1191,12 +1195,16 @@ impl Pty {
         }
         Ok(())
     }
-    fn inform_originating_plugin_of_open(&mut self, terminal_id: u32, originating_plugin: OriginatingPlugin) {
+    fn inform_originating_plugin_of_open(
+        &mut self,
+        terminal_id: u32,
+        originating_plugin: OriginatingPlugin,
+    ) {
         self.originating_plugins
             .insert(terminal_id, originating_plugin.clone());
-        let update_event =
-            Event::CommandPaneOpened(terminal_id, originating_plugin.context);
-        let _ = self.bus
+        let update_event = Event::CommandPaneOpened(terminal_id, originating_plugin.context);
+        let _ = self
+            .bus
             .senders
             .send_to_plugin(PluginInstruction::Update(vec![(
                 Some(originating_plugin.plugin_id),
@@ -1738,10 +1746,7 @@ impl Pty {
                 }
             },
             PaneId::Plugin(plugin_id) => {
-                GetPanePidResponse::Err(format!(
-                    "Cannot get PID for plugin pane {}",
-                    plugin_id
-                ))
+                GetPanePidResponse::Err(format!("Cannot get PID for plugin pane {}", plugin_id))
             },
         }
     }

@@ -10,8 +10,8 @@ use zellij_utils::input::actions::Action;
 pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::plugin_command::{
-    CreateTokenResponse, ListTokensResponse, ProtobufGetPanePidResponse, ProtobufPluginCommand, RenameWebTokenResponse,
-    RevokeAllWebTokensResponse, RevokeTokenResponse,
+    CreateTokenResponse, ListTokensResponse, ProtobufGetPanePidResponse, ProtobufPluginCommand,
+    RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
@@ -407,7 +407,8 @@ pub fn show_self(should_float_if_hidden: bool) {
 
 /// Show the pane (unsuppress it if it is suppressed) with the specified [PaneId], focus it and switch to its tab
 pub fn show_pane_with_id(pane_id: PaneId, should_float_if_hidden: bool, should_focus_pane: bool) {
-    let plugin_command = PluginCommand::ShowPaneWithId(pane_id, should_float_if_hidden, should_focus_pane);
+    let plugin_command =
+        PluginCommand::ShowPaneWithId(pane_id, should_float_if_hidden, should_focus_pane);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -796,16 +797,32 @@ pub fn close_plugin_pane(plugin_pane_id: u32) {
 }
 
 /// Changes the focus to the terminal pane with the specified id, unsuppressing it if it was suppressed and switching to its tab and layer (eg. floating/tiled).
-pub fn focus_terminal_pane(terminal_pane_id: u32, should_float_if_hidden: bool, should_be_in_place_if_hidden: bool) {
-    let plugin_command = PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden, should_be_in_place_if_hidden);
+pub fn focus_terminal_pane(
+    terminal_pane_id: u32,
+    should_float_if_hidden: bool,
+    should_be_in_place_if_hidden: bool,
+) {
+    let plugin_command = PluginCommand::FocusTerminalPane(
+        terminal_pane_id,
+        should_float_if_hidden,
+        should_be_in_place_if_hidden,
+    );
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 }
 
 /// Changes the focus to the plugin pane with the specified id, unsuppressing it if it was suppressed and switching to its tab and layer (eg. floating/tiled).
-pub fn focus_plugin_pane(plugin_pane_id: u32, should_float_if_hidden: bool, should_be_in_place_if_hidden: bool) {
-    let plugin_command = PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden, should_be_in_place_if_hidden);
+pub fn focus_plugin_pane(
+    plugin_pane_id: u32,
+    should_float_if_hidden: bool,
+    should_be_in_place_if_hidden: bool,
+) {
+    let plugin_command = PluginCommand::FocusPluginPane(
+        plugin_pane_id,
+        should_float_if_hidden,
+        should_be_in_place_if_hidden,
+    );
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -1045,14 +1062,22 @@ pub fn resize_pane_with_id(resize_strategy: ResizeStrategy, pane_id: PaneId) {
 }
 
 /// Changes the focus to the pane with the specified id, unsuppressing it if it was suppressed and switching to its tab and layer (eg. floating/tiled).
-pub fn focus_pane_with_id(pane_id: PaneId, should_float_if_hidden: bool, should_be_in_place_if_hidden: bool) {
+pub fn focus_pane_with_id(
+    pane_id: PaneId,
+    should_float_if_hidden: bool,
+    should_be_in_place_if_hidden: bool,
+) {
     let plugin_command = match pane_id {
-        PaneId::Terminal(terminal_pane_id) => {
-            PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden, should_be_in_place_if_hidden)
-        },
-        PaneId::Plugin(plugin_pane_id) => {
-            PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden, should_be_in_place_if_hidden)
-        },
+        PaneId::Terminal(terminal_pane_id) => PluginCommand::FocusTerminalPane(
+            terminal_pane_id,
+            should_float_if_hidden,
+            should_be_in_place_if_hidden,
+        ),
+        PaneId::Plugin(plugin_pane_id) => PluginCommand::FocusPluginPane(
+            plugin_pane_id,
+            should_float_if_hidden,
+            should_be_in_place_if_hidden,
+        ),
     };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
@@ -1124,18 +1149,7 @@ pub fn write_chars_to_pane_id(chars: &str, pane_id: PaneId) {
     unsafe { host_run_plugin_command() };
 }
 
-/// Send SIGINT signal to a terminal pane's child process
-///
-/// Requires the ChangeApplicationState permission.
-///
-/// # Arguments
-/// * `pane_id` - The ID of the pane to send the signal to
-///
-/// # Errors
-/// This will fail silently if:
-/// - The pane is not a terminal pane
-/// - The pane doesn't exist
-/// - The pane has no running process
+/// Send SIGINT to the process running inside a terminal pane identified by this PaneId
 pub fn send_sigint_to_pane_id(pane_id: PaneId) {
     let plugin_command = PluginCommand::SendSigintToPaneId(pane_id);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1143,18 +1157,7 @@ pub fn send_sigint_to_pane_id(pane_id: PaneId) {
     unsafe { host_run_plugin_command() };
 }
 
-/// Send SIGKILL signal to a terminal pane's child process
-///
-/// Requires the ChangeApplicationState permission.
-///
-/// # Arguments
-/// * `pane_id` - The ID of the pane to send the signal to
-///
-/// # Errors
-/// This will fail silently if:
-/// - The pane is not a terminal pane
-/// - The pane doesn't exist
-/// - The pane has no running process
+/// Send SIGKILL to the process running inside a terminal pane identified by this PaneId
 pub fn send_sigkill_to_pane_id(pane_id: PaneId) {
     let plugin_command = PluginCommand::SendSigkillToPaneId(pane_id);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1162,16 +1165,7 @@ pub fn send_sigkill_to_pane_id(pane_id: PaneId) {
     unsafe { host_run_plugin_command() };
 }
 
-/// Get the PID of a terminal pane's child process
-///
-/// Requires the ReadApplicationState permission.
-///
-/// # Arguments
-/// * `pane_id` - The ID of the pane to get the PID from
-///
-/// # Returns
-/// * `Ok(i32)` - The PID of the child process
-/// * `Err(String)` - An error message if the pane was not found, is not a terminal, or another error occurred
+/// Get the PID of the process running inside a terminal pane
 pub fn get_pane_pid(pane_id: PaneId) -> Result<i32, String> {
     let plugin_command = PluginCommand::GetPanePid { pane_id };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1599,9 +1593,16 @@ pub fn clear_key_presses_intercepts() {
     unsafe { host_run_plugin_command() };
 }
 
-pub fn replace_pane_with_existing_pane(pane_id_to_replace: PaneId, existing_pane_id: PaneId, suppress_replaced_pane: bool) {
-    let plugin_command =
-        PluginCommand::ReplacePaneWithExistingPane(pane_id_to_replace, existing_pane_id, suppress_replaced_pane);
+pub fn replace_pane_with_existing_pane(
+    pane_id_to_replace: PaneId,
+    existing_pane_id: PaneId,
+    suppress_replaced_pane: bool,
+) {
+    let plugin_command = PluginCommand::ReplacePaneWithExistingPane(
+        pane_id_to_replace,
+        existing_pane_id,
+        suppress_replaced_pane,
+    );
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -1675,9 +1676,6 @@ pub fn post_message_to_plugin(plugin_message: PluginMessage) {
     unsafe { host_run_plugin_command() };
 }
 
-/// Execute an arbitrary Zellij action
-///
-/// Requires the `RunActionsAsUser` permission.
 pub fn run_action(action: Action, context: BTreeMap<String, String>) {
     // TODO: also accept reference
     let plugin_command = PluginCommand::RunAction(action, context);

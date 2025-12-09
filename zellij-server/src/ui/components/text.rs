@@ -16,7 +16,6 @@ pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordina
     };
 
     // Start with base style from declaration
-    // Default: bold (maintains backwards compatibility)
     let base_text_style = CharacterStyles::from(declaration).bold(Some(AnsiCode::On));
 
     let (text, _text_width) = stringify_text(
@@ -52,8 +51,7 @@ pub fn stringify_text(
     } else {
         component_text_style
     };
-    stringified.push_str(&format!("{}", base_text_style)); // TODO: is this correct? does it break
-                                                           // stuff?
+    stringified.push_str(&format!("{}", base_text_style));
     for (i, character) in text.text.chars().enumerate() {
         let character_width = character.width().unwrap_or(0);
         if is_too_wide(
@@ -121,9 +119,8 @@ pub fn color_index_character(
     } else if text.is_dimmed_at(index) {
         // Apply dim for this character
         character_style = character_style
-            // .foreground(None) // some terminals (eg. alacritty) do not support dimming non 16
             .foreground(Some(AnsiCode::Reset)) // some terminals (eg. alacritty) do not support dimming non 16
-                              // colors, so we have to defer to the terminal's default here
+            // colors, so we have to defer to the terminal's default here
             .dim(Some(AnsiCode::On));
     } else {
         character_style = character_style

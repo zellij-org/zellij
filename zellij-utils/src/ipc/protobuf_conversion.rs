@@ -899,22 +899,28 @@ impl From<crate::input::actions::Action>
                 pane_name,
                 near_current_pane,
             }),
-            crate::input::actions::Action::NewInPlacePane { command, pane_name, near_current_pane, pane_id_to_replace, close_replace_pane } => {
-                ActionType::NewInPlacePane(NewInPlacePaneAction {
-                    command: command.map(|c| c.into()),
-                    pane_name,
-                    near_current_pane,
-                    pane_id_to_replace: pane_id_to_replace.and_then(|p| p.try_into().ok()),
-                    close_replace_pane,
-                })
-            },
-            crate::input::actions::Action::NewStackedPane { command, pane_name, near_current_pane } => {
-                ActionType::NewStackedPane(NewStackedPaneAction {
-                    command: command.map(|c| c.into()),
-                    pane_name,
-                    near_current_pane,
-                })
-            },
+            crate::input::actions::Action::NewInPlacePane {
+                command,
+                pane_name,
+                near_current_pane,
+                pane_id_to_replace,
+                close_replace_pane,
+            } => ActionType::NewInPlacePane(NewInPlacePaneAction {
+                command: command.map(|c| c.into()),
+                pane_name,
+                near_current_pane,
+                pane_id_to_replace: pane_id_to_replace.and_then(|p| p.try_into().ok()),
+                close_replace_pane,
+            }),
+            crate::input::actions::Action::NewStackedPane {
+                command,
+                pane_name,
+                near_current_pane,
+            } => ActionType::NewStackedPane(NewStackedPaneAction {
+                command: command.map(|c| c.into()),
+                pane_name,
+                near_current_pane,
+            }),
             crate::input::actions::Action::NewBlockingPane {
                 placement,
                 pane_name,
@@ -970,7 +976,8 @@ impl From<crate::input::actions::Action>
                 initial_panes: initial_panes
                     .map(|panes| panes.into_iter().map(|p| p.into()).collect())
                     .unwrap_or_default(),
-                first_pane_unblock_condition: first_pane_unblock_condition.map(|c| unblock_condition_to_proto_i32(c)),
+                first_pane_unblock_condition: first_pane_unblock_condition
+                    .map(|c| unblock_condition_to_proto_i32(c)),
             }),
             crate::input::actions::Action::NoOp => ActionType::NoOp(NoOpAction {}),
             crate::input::actions::Action::GoToNextTab => {
@@ -1000,7 +1007,10 @@ impl From<crate::input::actions::Action>
                     direction: direction_to_proto_i32(direction),
                 })
             },
-            crate::input::actions::Action::Run { command, near_current_pane } => ActionType::Run(RunAction {
+            crate::input::actions::Action::Run {
+                command,
+                near_current_pane,
+            } => ActionType::Run(RunAction {
                 command: Some(command.into()),
                 near_current_pane,
             }),
@@ -1441,7 +1451,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .transpose()?,
                     pane_name: new_in_place_action.pane_name,
                     near_current_pane: new_in_place_action.near_current_pane,
-                    pane_id_to_replace: new_in_place_action.pane_id_to_replace.and_then(|p| p.try_into().ok()),
+                    pane_id_to_replace: new_in_place_action
+                        .pane_id_to_replace
+                        .and_then(|p| p.try_into().ok()),
                     close_replace_pane: new_in_place_action.close_replace_pane,
                 })
             },
@@ -2839,12 +2851,12 @@ impl TryFrom<crate::client_server_contract::client_server_contract::CommandOrPlu
             .command_or_plugin_type
             .ok_or_else(|| anyhow!("CommandOrPlugin missing command_or_plugin_type"))?;
         match cmd_or_plugin_type {
-            CommandOrPluginType::Command(cmd) => Ok(crate::data::CommandOrPlugin::Command(
-                cmd.try_into()?,
-            )),
-            CommandOrPluginType::Plugin(plugin) => Ok(crate::data::CommandOrPlugin::Plugin(
-                plugin.try_into()?,
-            )),
+            CommandOrPluginType::Command(cmd) => {
+                Ok(crate::data::CommandOrPlugin::Command(cmd.try_into()?))
+            },
+            CommandOrPluginType::Plugin(plugin) => {
+                Ok(crate::data::CommandOrPlugin::Plugin(plugin.try_into()?))
+            },
         }
     }
 }

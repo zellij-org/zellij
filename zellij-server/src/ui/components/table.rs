@@ -45,14 +45,8 @@ pub fn table(
 
             // here we intentionally don't pass our coordinates even if we have them, because
             // these cells have already been padded and truncated
-            let (text, _text_width) = stringify_text(
-                &cell,
-                None,
-                &None,
-                &declaration,
-                &style.colors,
-                text_style,
-            );
+            let (text, _text_width) =
+                stringify_text(&cell, None, &None, &declaration, &style.colors, text_style);
             if cell_index == cell_count.saturating_sub(1) {
                 // do not add padding between columns for the last cell
                 stringified.push_str(&format!("{}{}{}", text_style, text, RESET_STYLES));

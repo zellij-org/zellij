@@ -22,11 +22,11 @@ pub fn expand_path(path_str: &str, current_cwd: Option<&PathBuf>) -> Option<Path
         match component {
             std::path::Component::ParentDir => {
                 normalized.pop();
-            }
-            std::path::Component::CurDir => {}
+            },
+            std::path::Component::CurDir => {},
             _ => {
                 normalized.push(component);
-            }
+            },
         }
     }
 

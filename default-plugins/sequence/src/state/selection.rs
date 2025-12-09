@@ -26,7 +26,8 @@ impl Selection {
             self.current_selected_command_mut(all_commands)
                 .map(|c| c.fill_chain_type_if_empty());
 
-            if let Some(current_selected_command_index) = self.current_selected_command_index.take() {
+            if let Some(current_selected_command_index) = self.current_selected_command_index.take()
+            {
                 let new_command = CommandEntry::new("", cwd.clone());
                 if current_selected_command_index == all_commands.len().saturating_sub(1) {
                     all_commands.push(new_command);
@@ -69,10 +70,16 @@ impl Selection {
         } else {
             self.clear_current_selected_command(all_commands, editing);
         }
-        if current_selected_command_index >= all_commands.len() && current_selected_command_index > 0 {
+        if current_selected_command_index >= all_commands.len()
+            && current_selected_command_index > 0
+        {
             current_selected_command_index -= 1;
         }
-        self.update_current_selected_command_index(current_selected_command_index, all_commands, editing);
+        self.update_current_selected_command_index(
+            current_selected_command_index,
+            all_commands,
+            editing,
+        );
         if current_selected_command_index == all_commands.len().saturating_sub(1) {
             self.current_selected_command_mut(all_commands)
                 .map(|c| c.clear_chain_type());
@@ -87,7 +94,8 @@ impl Selection {
         let Some(current_selected_command_index) = self.current_selected_command_index else {
             return;
         };
-        self.current_selected_command_mut(all_commands).map(|c| c.clear_text());
+        self.current_selected_command_mut(all_commands)
+            .map(|c| c.clear_text());
         self.clear_editing_buffer(editing);
         if current_selected_command_index == all_commands.len().saturating_sub(1) {
             self.current_selected_command_mut(all_commands)
@@ -100,13 +108,13 @@ impl Selection {
         match self.current_selected_command_index.as_mut() {
             Some(i) if *i > 0 => {
                 *i -= 1;
-            }
+            },
             None => {
                 self.current_selected_command_index = Some(all_commands.len().saturating_sub(1));
-            }
+            },
             _ => {
                 self.current_selected_command_index = None;
-            }
+            },
         }
         self.update_editing_buffer_to_current_selected(all_commands, editing);
     }
@@ -116,13 +124,13 @@ impl Selection {
         match self.current_selected_command_index.as_mut() {
             Some(i) if *i < all_commands.len().saturating_sub(1) => {
                 *i += 1;
-            }
+            },
             None => {
                 self.current_selected_command_index = Some(0);
-            }
+            },
             _ => {
                 self.current_selected_command_index = None;
-            }
+            },
         }
         self.update_editing_buffer_to_current_selected(all_commands, editing);
     }
@@ -161,8 +169,12 @@ impl Selection {
         self.update_editing_buffer_to_current_selected(all_commands, editing);
     }
 
-    fn get_text_of_current_selected_command(&self, all_commands: &[CommandEntry]) -> Option<String> {
-        self.current_selected_command(all_commands).map(|c| c.get_text())
+    fn get_text_of_current_selected_command(
+        &self,
+        all_commands: &[CommandEntry],
+    ) -> Option<String> {
+        self.current_selected_command(all_commands)
+            .map(|c| c.get_text())
     }
 
     fn save_editing_buffer_to_current_selected(

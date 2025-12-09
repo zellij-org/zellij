@@ -784,7 +784,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             floating_panes_layout,
                             tab_name,
                             swap_layouts,
-                            None, // initial_panes
+                            None,  // initial_panes
                             false, // block_on_first_terminal
                             should_focus_tab,
                             (client_id, is_web_client),

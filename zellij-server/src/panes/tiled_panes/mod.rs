@@ -351,9 +351,7 @@ impl TiledPanes {
                     pane.set_geom(new_pane_geom);
                     self.panes.insert(pane_id, pane);
 
-                    self.expand_pane_in_stack(pane_id); // TODO: is this the right one instead of
-                                                        // the below?
-                    // self.set_force_render(); // TODO: why do we need this?
+                    self.expand_pane_in_stack(pane_id);
                     return;
                 },
                 Err(_e) => {
@@ -2355,9 +2353,7 @@ impl TiledPanes {
                     }
                 }
             },
-            None => {
-                self.active_panes.clear(&mut self.panes)
-            }
+            None => self.active_panes.clear(&mut self.panes),
         }
     }
     pub fn extract_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {

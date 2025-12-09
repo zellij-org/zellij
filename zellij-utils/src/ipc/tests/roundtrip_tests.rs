@@ -1,7 +1,8 @@
 use super::test_framework::*;
 use crate::data::{
-    BareKey, ConnectToSession, Direction, FloatingPaneCoordinates, InputMode, KeyModifier,
-    KeyWithModifier, LayoutInfo, OriginatingPlugin, PaneId, PluginTag, Resize, WebSharing, CommandOrPlugin
+    BareKey, CommandOrPlugin, ConnectToSession, Direction, FloatingPaneCoordinates, InputMode,
+    KeyModifier, KeyWithModifier, LayoutInfo, OriginatingPlugin, PaneId, PluginTag, Resize,
+    WebSharing,
 };
 use crate::input::actions::{Action, SearchDirection, SearchOption};
 use crate::input::cli_assets::CliAssets;
@@ -2033,7 +2034,7 @@ fn test_client_messages() {
             should_change_focus_to_new_tab: true,
             cwd: None,
             initial_panes: Some(vec![
-                CommandOrPlugin::Command(RunCommandAction{
+                CommandOrPlugin::Command(RunCommandAction {
                     command: PathBuf::from("/path/to/command"),
                     args: vec![],
                     cwd: None,

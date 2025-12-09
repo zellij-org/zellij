@@ -6,28 +6,26 @@ use zellij_tile::prelude::*;
 
 const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"];
 
-// TODO: CONTINUE HERE - adjust help text, then adjust title then fix the bugs in mental-load,
-// polish and see what else we need
 const HELP_RUNNING_WITH_SELECTION: &str =
     "<Ctrl c> - interrupt, <Enter> - run from selected, <Esc> - deselect";
-const HELP_RUNNING_NO_SELECTION: &str =
-    "<Ctrl c> - interrupt, <↓↑> - navigate";
-const HELP_STOPPED_WITH_SELECTION: &str = "<Ctrl w> - close all, <Enter> - run from selected, <e> - edit, <Esc> - deselect";
+const HELP_RUNNING_NO_SELECTION: &str = "<Ctrl c> - interrupt, <↓↑> - navigate";
+const HELP_STOPPED_WITH_SELECTION: &str =
+    "<Ctrl w> - close all, <Enter> - run from selected, <e> - edit, <Esc> - deselect";
 const HELP_STOPPED_NO_SELECTION: &str =
     "<Ctrl w> - close all, <↓↑> - navigate, <Enter> - run from first, <Esc> - back";
 
 const HELP_ONE_PENDING_COMMAND: &str = "<Enter> - run, <Ctrl Enter> - add command";
 
-const HELP_ALL_COMMANDS_PENDING: &str = "Help: <Enter> - run, <Ctrl Enter> - add command, <↓↑> - navigate";
-const HELP_ALL_COMMANDS_PENDING_WITH_SELECTION: &str = "Help: <Enter> - run, <Ctrl Enter> - add command, <↓↑> - navigate, <e> - edit selected";
+const HELP_ALL_COMMANDS_PENDING: &str =
+    "Help: <Enter> - run, <Ctrl Enter> - add command, <↓↑> - navigate";
+const HELP_ALL_COMMANDS_PENDING_WITH_SELECTION: &str =
+    "Help: <Enter> - run, <Ctrl Enter> - add command, <↓↑> - navigate, <e> - edit selected";
 
 pub const ALL_HELP_TEXTS: &[&str] = &[
     HELP_RUNNING_WITH_SELECTION,
     HELP_RUNNING_NO_SELECTION,
     HELP_STOPPED_WITH_SELECTION,
     HELP_STOPPED_NO_SELECTION,
-//     HELP_FINISHED_WITH_SELECTION,
-//     HELP_FINISHED_NO_SELECTION,
     HELP_ONE_PENDING_COMMAND,
     HELP_ALL_COMMANDS_PENDING,
     HELP_ALL_COMMANDS_PENDING_WITH_SELECTION,
@@ -35,11 +33,13 @@ pub const ALL_HELP_TEXTS: &[&str] = &[
 
 fn select_help_text(sequence: &State) -> &'static str {
     let is_running = sequence
-        .execution.all_commands
+        .execution
+        .all_commands
         .iter()
         .any(|command| matches!(command.get_status(), CommandStatus::Running(_)));
     let all_pending = sequence
-        .execution.all_commands
+        .execution
+        .all_commands
         .iter()
         .all(|command| matches!(command.get_status(), CommandStatus::Pending));
     let has_selection = sequence.selection.current_selected_command_index.is_some();
@@ -54,9 +54,17 @@ fn select_help_text(sequence: &State) -> &'static str {
             HELP_ALL_COMMANDS_PENDING
         }
     } else if is_running {
-        if has_selection { HELP_RUNNING_WITH_SELECTION } else { HELP_RUNNING_NO_SELECTION }
+        if has_selection {
+            HELP_RUNNING_WITH_SELECTION
+        } else {
+            HELP_RUNNING_NO_SELECTION
+        }
     } else {
-        if has_selection { HELP_STOPPED_WITH_SELECTION } else { HELP_STOPPED_NO_SELECTION }
+        if has_selection {
+            HELP_STOPPED_WITH_SELECTION
+        } else {
+            HELP_STOPPED_NO_SELECTION
+        }
     }
 }
 
@@ -71,7 +79,10 @@ fn style_help_text(text: &str) -> Text {
         .color_substring(3, "<e>")
 }
 
-pub fn render_help_lines(sequence: &State, max_width: Option<usize>) -> (Text, usize, Option<(Text, usize)>) {
+pub fn render_help_lines(
+    sequence: &State,
+    max_width: Option<usize>,
+) -> (Text, usize, Option<(Text, usize)>) {
     let is_editing = sequence.editing.editing_input.is_some();
 
     if is_editing {
@@ -92,7 +103,11 @@ pub fn render_help_lines(sequence: &State, max_width: Option<usize>) -> (Text, u
             .unbold_all();
         let editing_len = editing_help_text.len();
 
-        return (first_line.0, first_line.1, Some((editing_help, editing_len)));
+        return (
+            first_line.0,
+            first_line.1,
+            Some((editing_help, editing_len)),
+        );
     }
 
     let help_text = select_help_text(sequence);
@@ -107,14 +122,21 @@ pub fn render_help_lines(sequence: &State, max_width: Option<usize>) -> (Text, u
                 let (truncated, len) = truncate_help_line(&second_line, width);
                 (style_help_text(&truncated).unbold_all(), len)
             } else {
-                (style_help_text(&second_line).unbold_all(), second_line_width)
+                (
+                    style_help_text(&second_line).unbold_all(),
+                    second_line_width,
+                )
             };
 
             return (first_styled, first_len, Some((second_styled, second_len)));
         }
 
         let (truncated_text, help_len) = truncate_help_line(help_text, width);
-        (style_help_text(&truncated_text).unbold_all(), help_len, None)
+        (
+            style_help_text(&truncated_text).unbold_all(),
+            help_len,
+            None,
+        )
     } else {
         let help_len = help_text.chars().count();
         (style_help_text(help_text).unbold_all(), help_len, None)
@@ -191,7 +213,7 @@ pub fn format_status_text(status: &CommandStatus, spinner_frame: usize) -> Strin
         CommandStatus::Running(_) => {
             let spinner = get_spinner_frame(spinner_frame);
             format!("[RUNNING] {}", spinner)
-        }
+        },
         CommandStatus::Interrupted(_) => "[INTERRUPTED]".to_string(),
         CommandStatus::Exited(Some(code), _) => format!("[EXIT CODE: {}]", code),
         CommandStatus::Exited(None, _) => "[EXITED]".to_string(),
@@ -207,12 +229,12 @@ fn apply_status_color(text: Text, status: &CommandStatus, status_str: &str) -> T
             let number_start = 12;
             let number_end = status_str.len() - 1;
             text.success_color_range(number_start..number_end)
-        }
+        },
         CommandStatus::Exited(Some(_), _) => {
             let number_start = 12;
             let number_end = status_str.len() - 1;
             text.error_color_range(number_start..number_end)
-        }
+        },
         _ => text,
     }
 }
@@ -261,11 +283,17 @@ fn command_sequence_row(
 
     cells = apply_row_styles(cells, status, is_selected);
 
-    let truncated_cmd_text = if truncated_cmd_text.is_empty() { " " } else { truncated_cmd_text };
+    let truncated_cmd_text = if truncated_cmd_text.is_empty() {
+        " "
+    } else {
+        truncated_cmd_text
+    };
     let mut row_length = folder_display.chars().count()
         + truncated_cmd_text.chars().count()
         + chain_type_to_str(chain_type).chars().count()
-        + format_status_text(status, state.layout.spinner_frame).chars().count()
+        + format_status_text(status, state.layout.spinner_frame)
+            .chars()
+            .count()
         + 3;
 
     if let Some(indicator) = overflow_indicator {
@@ -273,7 +301,6 @@ fn command_sequence_row(
         cells.push(overflow_cell(&indicator, is_selected));
         row_length += indicator_len + 1;
     }
-
 
     (cells, row_length)
 }
@@ -287,7 +314,12 @@ pub fn build_table_header(has_overflow: bool) -> Table {
     Table::new().add_row(header_cols)
 }
 
-fn calculate_overflow_indicator(visible_idx: usize, visible_count: usize, hidden_above: usize, hidden_below: usize) -> Option<String> {
+fn calculate_overflow_indicator(
+    visible_idx: usize,
+    visible_count: usize,
+    hidden_above: usize,
+    hidden_below: usize,
+) -> Option<String> {
     if visible_idx == 0 && hidden_above > 0 {
         Some(format!("[+{}]", hidden_above))
     } else if visible_idx == visible_count.saturating_sub(1) && hidden_below > 0 {
@@ -315,12 +347,8 @@ pub fn calculate_row_layout_info(
     }
 
     let visible_idx = index.saturating_sub(offset);
-    let overflow_indicator = calculate_overflow_indicator(
-        visible_idx,
-        visible_count,
-        hidden_above,
-        hidden_below,
-    );
+    let overflow_indicator =
+        calculate_overflow_indicator(visible_idx, visible_count, hidden_above, hidden_below);
 
     let available_cmd_width = calculate_available_cmd_width(
         cols,
@@ -379,7 +407,7 @@ pub fn add_command_row(
             let (truncated_editing_text, _) = truncate_middle(
                 text_input.get_text(),
                 available_cmd_width,
-                Some(text_input.cursor_position())
+                Some(text_input.cursor_position()),
             );
             let (row, _) = command_sequence_row(
                 state,
@@ -409,8 +437,6 @@ pub fn add_command_row(
     table.add_styled_row(row)
 }
 
-/* UTILITY FUNCTIONS */
-
 pub fn calculate_max_widths(
     commands: &[crate::state::CommandEntry],
     spinner_frame: usize,
@@ -423,7 +449,11 @@ pub fn calculate_max_widths(
 
     let max_status_width = commands
         .iter()
-        .map(|cmd| format_status_text(&cmd.get_status(), spinner_frame).chars().count())
+        .map(|cmd| {
+            format_status_text(&cmd.get_status(), spinner_frame)
+                .chars()
+                .count()
+        })
         .max()
         .unwrap_or(0);
 
@@ -475,7 +505,14 @@ pub fn truncate_help_line(help_text: &str, max_width: usize) -> (String, usize) 
         return result;
     }
 
-    truncate_with_ellipsis(&keybindings.iter().map(|(k, _, _)| *k).collect::<Vec<_>>().join("/"), max_width)
+    truncate_with_ellipsis(
+        &keybindings
+            .iter()
+            .map(|(k, _, _)| *k)
+            .collect::<Vec<_>>()
+            .join("/"),
+        max_width,
+    )
 }
 
 fn parse_help_keybindings(help_text: &str) -> Vec<(&str, &str, &str)> {
@@ -492,7 +529,10 @@ fn parse_help_keybindings(help_text: &str) -> Vec<(&str, &str, &str)> {
         .collect()
 }
 
-fn try_shortened_help(keybindings: &[(&str, &str, &str)], max_width: usize) -> Option<(String, usize)> {
+fn try_shortened_help(
+    keybindings: &[(&str, &str, &str)],
+    max_width: usize,
+) -> Option<(String, usize)> {
     let shortened: Vec<String> = keybindings
         .iter()
         .map(|(key, first_word, _)| format!("{} - {}", key, first_word))
@@ -507,8 +547,15 @@ fn try_shortened_help(keybindings: &[(&str, &str, &str)], max_width: usize) -> O
     }
 }
 
-fn try_keys_spaced(keybindings: &[(&str, &str, &str)], max_width: usize) -> Option<(String, usize)> {
-    let keys_spaced_text = keybindings.iter().map(|(key, _, _)| *key).collect::<Vec<_>>().join(" / ");
+fn try_keys_spaced(
+    keybindings: &[(&str, &str, &str)],
+    max_width: usize,
+) -> Option<(String, usize)> {
+    let keys_spaced_text = keybindings
+        .iter()
+        .map(|(key, _, _)| *key)
+        .collect::<Vec<_>>()
+        .join(" / ");
     let keys_spaced_width = keys_spaced_text.chars().count();
 
     if keys_spaced_width <= max_width {
@@ -519,7 +566,11 @@ fn try_keys_spaced(keybindings: &[(&str, &str, &str)], max_width: usize) -> Opti
 }
 
 fn try_keys_tight(keybindings: &[(&str, &str, &str)], max_width: usize) -> Option<(String, usize)> {
-    let keys_tight_text = keybindings.iter().map(|(key, _, _)| *key).collect::<Vec<_>>().join("/");
+    let keys_tight_text = keybindings
+        .iter()
+        .map(|(key, _, _)| *key)
+        .collect::<Vec<_>>()
+        .join("/");
     let keys_tight_width = keys_tight_text.chars().count();
 
     if keys_tight_width <= max_width {

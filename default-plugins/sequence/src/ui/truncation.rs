@@ -17,12 +17,9 @@ pub fn calculate_available_cmd_width(
         separator_width += 1;
     }
 
-    let overflow_width = overflow_indicator
-        .map(|s| s.chars().count())
-        .unwrap_or(0);
+    let overflow_width = overflow_indicator.map(|s| s.chars().count()).unwrap_or(0);
 
-    cols
-        .saturating_sub(folder_width)
+    cols.saturating_sub(folder_width)
         .saturating_sub(chain_width)
         .saturating_sub(status_width)
         .saturating_sub(separator_width)
@@ -53,7 +50,11 @@ pub fn truncate_middle(
     truncate_no_cursor(text, max_width)
 }
 
-fn truncate_minimal(text: &str, max_width: usize, cursor_position: Option<usize>) -> (String, Option<usize>) {
+fn truncate_minimal(
+    text: &str,
+    max_width: usize,
+    cursor_position: Option<usize>,
+) -> (String, Option<usize>) {
     let mut result = String::new();
     let mut current_width = 0;
     let mut new_cursor_pos = None;
@@ -110,7 +111,11 @@ fn truncate_no_cursor(text: &str, max_width: usize) -> (String, Option<usize>) {
     (format!("{}...{}", left_part, right_part), None)
 }
 
-fn truncate_with_cursor(text: &str, max_width: usize, cursor_char_idx: usize) -> (String, Option<usize>) {
+fn truncate_with_cursor(
+    text: &str,
+    max_width: usize,
+    cursor_char_idx: usize,
+) -> (String, Option<usize>) {
     let chars: Vec<char> = text.chars().collect();
     let char_widths: Vec<usize> = chars.iter().map(|ch| ch.to_string().width()).collect();
 
@@ -126,13 +131,19 @@ fn truncate_with_cursor(text: &str, max_width: usize, cursor_char_idx: usize) ->
         calculate_middle_truncation(&char_widths, max_width, cursor_char_idx)
     };
 
-    let (start_idx, end_idx) = adjust_small_truncations(start_idx, end_idx, &char_widths, cursor_char_idx, &chars);
-    let (start_idx, end_idx) = trim_excess(&char_widths, start_idx, end_idx, max_width, cursor_char_idx);
+    let (start_idx, end_idx) =
+        adjust_small_truncations(start_idx, end_idx, &char_widths, cursor_char_idx, &chars);
+    let (start_idx, end_idx) =
+        trim_excess(&char_widths, start_idx, end_idx, max_width, cursor_char_idx);
 
     build_truncated_result(&chars, start_idx, end_idx, cursor_char_idx)
 }
 
-fn calculate_end_truncation(chars: &[char], char_widths: &[usize], available: usize) -> (usize, usize) {
+fn calculate_end_truncation(
+    chars: &[char],
+    char_widths: &[usize],
+    available: usize,
+) -> (usize, usize) {
     let mut end_idx = 0;
     let mut width = 0;
     while end_idx < chars.len() && width + char_widths[end_idx] <= available {
@@ -142,7 +153,11 @@ fn calculate_end_truncation(chars: &[char], char_widths: &[usize], available: us
     (0, end_idx)
 }
 
-fn calculate_start_truncation(chars: &[char], char_widths: &[usize], available: usize) -> (usize, usize) {
+fn calculate_start_truncation(
+    chars: &[char],
+    char_widths: &[usize],
+    available: usize,
+) -> (usize, usize) {
     let mut start_idx = chars.len();
     let mut width = 0;
     while start_idx > 0 && width + char_widths[start_idx - 1] <= available {
@@ -152,7 +167,11 @@ fn calculate_start_truncation(chars: &[char], char_widths: &[usize], available: 
     (start_idx, chars.len())
 }
 
-fn calculate_middle_truncation(char_widths: &[usize], max_width: usize, cursor_char_idx: usize) -> (usize, usize) {
+fn calculate_middle_truncation(
+    char_widths: &[usize],
+    max_width: usize,
+    cursor_char_idx: usize,
+) -> (usize, usize) {
     let available_both_ellipsis = max_width.saturating_sub(6);
     let target_before = available_both_ellipsis / 2;
     let target_after = available_both_ellipsis - target_before;
@@ -192,7 +211,13 @@ fn calculate_middle_truncation(char_widths: &[usize], max_width: usize, cursor_c
     (start_idx, end_idx)
 }
 
-fn adjust_small_truncations(start_idx: usize, end_idx: usize, char_widths: &[usize], cursor_char_idx: usize, chars: &[char]) -> (usize, usize) {
+fn adjust_small_truncations(
+    start_idx: usize,
+    end_idx: usize,
+    char_widths: &[usize],
+    cursor_char_idx: usize,
+    chars: &[char],
+) -> (usize, usize) {
     let width_truncated_start: usize = char_widths[..start_idx].iter().sum();
     let width_truncated_end: usize = char_widths[end_idx..].iter().sum();
 
@@ -220,7 +245,13 @@ fn adjust_small_truncations(start_idx: usize, end_idx: usize, char_widths: &[usi
     (start_idx, end_idx)
 }
 
-fn trim_excess(char_widths: &[usize], start_idx: usize, end_idx: usize, max_width: usize, cursor_char_idx: usize) -> (usize, usize) {
+fn trim_excess(
+    char_widths: &[usize],
+    start_idx: usize,
+    end_idx: usize,
+    max_width: usize,
+    cursor_char_idx: usize,
+) -> (usize, usize) {
     let truncate_start = start_idx > 0;
     let truncate_end = end_idx < char_widths.len();
     let ellipsis_width = match (truncate_start, truncate_end) {
@@ -252,7 +283,12 @@ fn trim_excess(char_widths: &[usize], start_idx: usize, end_idx: usize, max_widt
     (start_idx, end_idx)
 }
 
-fn build_truncated_result(chars: &[char], start_idx: usize, end_idx: usize, cursor_char_idx: usize) -> (String, Option<usize>) {
+fn build_truncated_result(
+    chars: &[char],
+    start_idx: usize,
+    end_idx: usize,
+    cursor_char_idx: usize,
+) -> (String, Option<usize>) {
     let mut result = String::new();
     let mut new_cursor_char_pos = 0;
     let mut current_char_pos = 0;

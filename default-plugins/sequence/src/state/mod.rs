@@ -1,22 +1,25 @@
-mod command_entry;
-mod command_status;
 mod chain_type;
-pub mod positioning;
-mod selection;
+mod command_entry;
+mod command_parser;
+mod command_status;
 mod editing;
 mod execution;
 mod layout;
-mod command_parser;
+pub mod positioning;
+mod selection;
 
-pub use command_entry::CommandEntry;
-pub use command_status::CommandStatus;
 pub use chain_type::ChainType;
-pub use selection::Selection;
+pub use command_entry::CommandEntry;
+pub use command_parser::{
+    detect_cd_command, detect_chain_operator_at_end, get_remaining_after_first_segment,
+    split_by_chain_operators,
+};
+pub use command_status::CommandStatus;
 pub use editing::Editing;
 pub use execution::Execution;
 pub use layout::Layout;
-pub use command_parser::{split_by_chain_operators, detect_chain_operator_at_end, detect_cd_command, get_remaining_after_first_segment};
 use positioning::reposition_plugin_for_sequence;
+pub use selection::Selection;
 
 use crate::ui::text_input::TextInput;
 use std::path::PathBuf;
@@ -71,7 +74,8 @@ impl State {
 
     /// Check if the sequence has finished executing (all commands are done)
     pub fn has_finished(&self) -> bool {
-        self.execution.all_commands
+        self.execution
+            .all_commands
             .iter()
             .all(|command| matches!(command.status, CommandStatus::Exited(_, _)))
     }
@@ -84,42 +88,38 @@ impl State {
     }
 
     pub fn current_selected_command_is_empty(&self) -> bool {
-        self.selection.current_selected_command_is_empty(
-            &self.execution.all_commands,
-            &self.editing,
-        )
+        self.selection
+            .current_selected_command_is_empty(&self.execution.all_commands, &self.editing)
     }
 
     pub fn remove_current_selected_command(&mut self) {
-        self.selection.remove_current_selected_command(
-            &mut self.execution.all_commands,
-            &mut self.editing,
-        );
+        self.selection
+            .remove_current_selected_command(&mut self.execution.all_commands, &mut self.editing);
     }
 
     pub fn clear_current_selected_command(&mut self) {
-        self.selection.clear_current_selected_command(
-            &mut self.execution.all_commands,
-            &mut self.editing,
-        );
+        self.selection
+            .clear_current_selected_command(&mut self.execution.all_commands, &mut self.editing);
     }
 
     pub fn move_selection_up(&mut self) {
-        self.selection.move_up(
-            &mut self.execution.all_commands,
-            &mut self.editing,
-        );
-        if let Some(pane_id) = self.current_selected_command().and_then(|c| c.get_pane_id()) {
+        self.selection
+            .move_up(&mut self.execution.all_commands, &mut self.editing);
+        if let Some(pane_id) = self
+            .current_selected_command()
+            .and_then(|c| c.get_pane_id())
+        {
             show_pane_with_id(pane_id, true, false);
         }
     }
 
     pub fn move_selection_down(&mut self) {
-        self.selection.move_down(
-            &mut self.execution.all_commands,
-            &mut self.editing,
-        );
-        if let Some(pane_id) = self.current_selected_command().and_then(|c| c.get_pane_id()) {
+        self.selection
+            .move_down(&mut self.execution.all_commands, &mut self.editing);
+        if let Some(pane_id) = self
+            .current_selected_command()
+            .and_then(|c| c.get_pane_id())
+        {
             show_pane_with_id(pane_id, true, false);
         }
     }
@@ -140,7 +140,12 @@ impl State {
     pub fn set_editing_input_text(&mut self, text: String) {
         self.editing.set_input_text(text);
     }
-    fn handle_first_pasted_segment(&mut self, current_text: &str, segment_text: &str, chain_type_opt: &Option<ChainType>) {
+    fn handle_first_pasted_segment(
+        &mut self,
+        current_text: &str,
+        segment_text: &str,
+        chain_type_opt: &Option<ChainType>,
+    ) {
         let new_text = if current_text.trim().is_empty() {
             segment_text.to_string()
         } else {
@@ -169,7 +174,12 @@ impl State {
         });
     }
 
-    fn insert_new_pasted_segment(&mut self, segment_text: &str, chain_type_opt: &Option<ChainType>, is_last_line: bool) {
+    fn insert_new_pasted_segment(
+        &mut self,
+        segment_text: &str,
+        chain_type_opt: &Option<ChainType>,
+        is_last_line: bool,
+    ) {
         use crate::path_formatting;
 
         let cd_path = detect_cd_command(segment_text);
@@ -186,7 +196,8 @@ impl State {
             }
         }
 
-        let Some(new_selected_index) = self.selection.current_selected_command_index.map(|i| i + 1) else {
+        let Some(new_selected_index) = self.selection.current_selected_command_index.map(|i| i + 1)
+        else {
             return;
         };
 
@@ -197,17 +208,22 @@ impl State {
             new_command.set_chain_type(ChainType::And);
         }
 
-        self.execution.all_commands.insert(new_selected_index, new_command);
+        self.execution
+            .all_commands
+            .insert(new_selected_index, new_command);
         self.selection.current_selected_command_index = Some(new_selected_index);
     }
 
     fn ensure_line_end_chain_type(&mut self) {
         if let Some(last_cmd_index) = self.selection.current_selected_command_index {
-            self.execution.all_commands.get_mut(last_cmd_index).map(|c| {
-                if matches!(c.get_chain_type(), ChainType::None) {
-                    c.set_chain_type(ChainType::And);
-                }
-            });
+            self.execution
+                .all_commands
+                .get_mut(last_cmd_index)
+                .map(|c| {
+                    if matches!(c.get_chain_type(), ChainType::None) {
+                        c.set_chain_type(ChainType::And);
+                    }
+                });
         }
     }
 
@@ -266,7 +282,8 @@ impl State {
     }
 
     pub fn update_pane_id_for_command(&mut self, pane_id: PaneId, command_text: &str) {
-        self.execution.update_pane_id_for_command(pane_id, command_text);
+        self.execution
+            .update_pane_id_for_command(pane_id, command_text);
     }
     pub fn update_exited_command_statuses(&mut self, pane_manifest: &PaneManifest) -> bool {
         self.execution.update_exited_command_statuses(pane_manifest)
@@ -339,21 +356,27 @@ impl State {
                 if Some(&coordinates) != self.current_position.as_ref() {
                     repositioned = true;
                     self.current_position = Some(coordinates.clone());
-                    change_floating_panes_coordinates(vec![(PaneId::Plugin(plugin_id), coordinates)]);
+                    change_floating_panes_coordinates(vec![(
+                        PaneId::Plugin(plugin_id),
+                        coordinates,
+                    )]);
                 }
             });
         } else {
-
             // Calculate longest table row width
             let longest_cwd_display = self.execution.longest_cwd_display(&self.cwd);
-            let longest_command = self.execution.all_commands
+            let longest_command = self
+                .execution
+                .all_commands
                 .iter()
                 .map(|cmd| cmd.get_text().chars().count())
                 .max()
                 .unwrap_or(1);
 
-            let (max_chain_width, max_status_width) =
-                crate::ui::components::calculate_max_widths(&self.execution.all_commands, self.layout.spinner_frame);
+            let (max_chain_width, max_status_width) = crate::ui::components::calculate_max_widths(
+                &self.execution.all_commands,
+                self.layout.spinner_frame,
+            );
 
             let longest_line = crate::ui::components::calculate_longest_line(
                 &longest_cwd_display,
@@ -382,19 +405,21 @@ impl State {
                 if Some(&coordinates) != self.current_position.as_ref() {
                     self.current_position = Some(coordinates.clone());
                     repositioned = true;
-                    change_floating_panes_coordinates(vec![(PaneId::Plugin(plugin_id), coordinates)]);
+                    change_floating_panes_coordinates(vec![(
+                        PaneId::Plugin(plugin_id),
+                        coordinates,
+                    )]);
                 }
             });
         }
         repositioned
     }
     pub fn all_commands_are_pending(&self) -> bool {
-        self
-            .execution.all_commands
+        self.execution
+            .all_commands
             .iter()
             .all(|command| matches!(command.get_status(), CommandStatus::Pending))
     }
-
 
     fn current_selected_command(&self) -> Option<&CommandEntry> {
         let Some(i) = self.selection.current_selected_command_index else {
@@ -403,11 +428,14 @@ impl State {
         self.execution.all_commands.get(i)
     }
     fn current_running_command_mut(&mut self) -> Option<&mut CommandEntry> {
-        self.execution.all_commands
+        self.execution
+            .all_commands
             .get_mut(self.execution.current_running_command_index)
     }
     fn current_running_command(&self) -> Option<&CommandEntry> {
-        self.execution.all_commands.get(self.execution.current_running_command_index)
+        self.execution
+            .all_commands
+            .get(self.execution.current_running_command_index)
     }
     fn clear_editing_buffer(&mut self) {
         self.editing.editing_input.as_mut().map(|c| c.clear());
@@ -429,14 +457,10 @@ impl State {
     }
 
     pub fn execute_command_sequence(&mut self) {
-        self.execution.execute_command_sequence(
-            &self.shell,
-            &self.cwd,
-            self.primary_pane_id,
-        );
+        self.execution
+            .execute_command_sequence(&self.shell, &self.cwd, self.primary_pane_id);
     }
 }
-
 
 impl Default for State {
     fn default() -> Self {
@@ -445,4 +469,3 @@ impl Default for State {
         state
     }
 }
-

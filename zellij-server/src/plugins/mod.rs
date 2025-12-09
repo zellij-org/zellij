@@ -487,8 +487,12 @@ pub(crate) fn plugin_thread_main(
                     if let Some(ref mut tiled_layout) = tab_layout {
                         for initial_pane in initial_panes_vec.iter() {
                             if let CommandOrPlugin::Plugin(run_plugin_or_alias) = initial_pane {
-                                if !tiled_layout.replace_next_empty_slot_with_run(Run::Plugin(run_plugin_or_alias.clone())) {
-                                    log::warn!("More initial_panes provided than empty slots available");
+                                if !tiled_layout.replace_next_empty_slot_with_run(Run::Plugin(
+                                    run_plugin_or_alias.clone(),
+                                )) {
+                                    log::warn!(
+                                        "More initial_panes provided than empty slots available"
+                                    );
                                     break;
                                 }
                             }

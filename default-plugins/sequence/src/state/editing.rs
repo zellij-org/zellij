@@ -1,6 +1,6 @@
-use crate::ui::text_input::TextInput;
-use crate::state::CommandEntry;
 use crate::path_formatting;
+use crate::state::CommandEntry;
+use crate::ui::text_input::TextInput;
 use std::path::PathBuf;
 
 pub struct Editing {
@@ -49,7 +49,9 @@ impl Editing {
                             current_text[3..].trim()
                         };
 
-                        if let Some(new_cwd) = path_formatting::resolve_path(current_cwd.as_ref(), path) {
+                        if let Some(new_cwd) =
+                            path_formatting::resolve_path(current_cwd.as_ref(), path)
+                        {
                             command.set_cwd(Some(new_cwd));
                         }
 
@@ -58,8 +60,8 @@ impl Editing {
                         new_selection_index = selection_index; // remain editing after a cd command
                         handled_internally = true;
                         return (handled_internally, new_selection_index); // avoid setting edit_input to None below, we
-                                                   // still want to be in editing mode after
-                                                   // changing directory with cd
+                                                                          // still want to be in editing mode after
+                                                                          // changing directory with cd
                     } else {
                         command.set_text(current_text.to_owned());
                     }

@@ -263,42 +263,42 @@ impl TextInput {
                 BareKey::Char('a') => {
                     self.move_to_start();
                     return InputAction::Continue;
-                }
+                },
                 BareKey::Char('e') => {
                     self.move_to_end();
                     return InputAction::Continue;
-                }
+                },
                 BareKey::Char('c') => {
                     // Ctrl-C clears the prompt
                     return InputAction::Cancel;
-                }
+                },
                 BareKey::Char('z') => {
                     // Ctrl-Z: Undo
                     self.undo();
                     return InputAction::Continue;
-                }
+                },
                 BareKey::Char('y') => {
                     // Ctrl-Y: Redo
                     self.redo();
                     return InputAction::Continue;
-                }
+                },
                 BareKey::Left => {
                     self.move_word_left();
                     return InputAction::Continue;
-                }
+                },
                 BareKey::Right => {
                     self.move_word_right();
                     return InputAction::Continue;
-                }
+                },
                 BareKey::Backspace => {
                     self.delete_word_backward();
                     return InputAction::Continue;
-                }
+                },
                 BareKey::Delete => {
                     self.delete_word_forward();
                     return InputAction::Continue;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
 
@@ -309,8 +309,8 @@ impl TextInput {
                     // Ctrl-Shift-Z: Redo (alternative)
                     self.redo();
                     return InputAction::Continue;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
 
@@ -320,20 +320,20 @@ impl TextInput {
                 BareKey::Left => {
                     self.move_word_left();
                     return InputAction::Continue;
-                }
+                },
                 BareKey::Right => {
                     self.move_word_right();
                     return InputAction::Continue;
-                }
+                },
                 BareKey::Backspace => {
                     self.delete_word_backward();
                     return InputAction::Continue;
-                }
+                },
                 BareKey::Delete => {
                     self.delete_word_forward();
                     return InputAction::Continue;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
 
@@ -345,31 +345,31 @@ impl TextInput {
             BareKey::Backspace => {
                 self.backspace();
                 InputAction::Continue
-            }
+            },
             BareKey::Delete => {
                 self.delete();
                 InputAction::Continue
-            }
+            },
             BareKey::Left => {
                 self.move_left();
                 InputAction::Continue
-            }
+            },
             BareKey::Right => {
                 self.move_right();
                 InputAction::Continue
-            }
+            },
             BareKey::Home => {
                 self.move_to_start();
                 InputAction::Continue
-            }
+            },
             BareKey::End => {
                 self.move_to_end();
                 InputAction::Continue
-            }
+            },
             BareKey::Char(c) => {
                 self.insert_char(c);
                 InputAction::Continue
-            }
+            },
             _ => InputAction::NoAction,
         }
     }

@@ -63,14 +63,14 @@ pub fn split_by_chain_operators(text: &str) -> Vec<(String, Option<ChainType>)> 
                     current_segment.push(ch);
                     i += 1;
                 }
-            }
+            },
             ParseState::InSingleQuote => {
                 current_segment.push(ch);
                 if ch == '\'' {
                     state = ParseState::Normal;
                 }
                 i += 1;
-            }
+            },
             ParseState::InDoubleQuote => {
                 if ch == '\\' {
                     state = ParseState::Escaped(EscapeContext::DoubleQuote);
@@ -84,7 +84,7 @@ pub fn split_by_chain_operators(text: &str) -> Vec<(String, Option<ChainType>)> 
                     current_segment.push(ch);
                     i += 1;
                 }
-            }
+            },
             ParseState::Escaped(context) => {
                 current_segment.push(ch);
                 state = match context {
@@ -92,7 +92,7 @@ pub fn split_by_chain_operators(text: &str) -> Vec<(String, Option<ChainType>)> 
                     EscapeContext::DoubleQuote => ParseState::InDoubleQuote,
                 };
                 i += 1;
-            }
+            },
         }
     }
 

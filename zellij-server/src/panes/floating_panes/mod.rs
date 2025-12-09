@@ -1247,11 +1247,12 @@ impl FloatingPanes {
         floating_pane_grid.next_selectable_pane_id_to_the_right(&pane_id)
     }
     fn make_sure_pinned_panes_are_on_top(&mut self) {
-        let pinned_status: std::collections::HashMap<_, _> = self.z_indices
+        let pinned_status: std::collections::HashMap<_, _> = self
+            .z_indices
             .iter()
             .map(|id| (id.clone(), self.pane_id_is_pinned(id)))
             .collect();
-        
+
         self.z_indices.sort_by(|a_id, b_id| {
             let a_is_pinned = pinned_status.get(a_id).copied().unwrap_or(false);
             let b_is_pinned = pinned_status.get(b_id).copied().unwrap_or(false);
@@ -1263,6 +1264,9 @@ impl FloatingPanes {
         });
     }
     fn pane_id_is_pinned(&self, pane_id: &PaneId) -> bool {
-        self.panes.get(pane_id).map(|p| p.position_and_size().is_pinned).unwrap_or(false)
+        self.panes
+            .get(pane_id)
+            .map(|p| p.position_and_size().is_pinned)
+            .unwrap_or(false)
     }
 }

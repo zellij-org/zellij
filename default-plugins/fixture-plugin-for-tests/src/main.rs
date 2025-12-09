@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 #[allow(unused_imports)]
 use std::io::prelude::*;
-use zellij_tile::prelude::*;
 use zellij_tile::prelude::actions::Action;
+use zellij_tile::prelude::*;
 
 // This is a fixture plugin used only for tests in Zellij
 // it is not (and should not!) be included in the mainline executable
@@ -570,7 +570,12 @@ impl ZellijPlugin for State {
                     // Test run_action with MoveFocus
                     let mut context = BTreeMap::new();
                     context.insert("test_key".to_string(), "test_value".to_string());
-                    run_action(Action::MoveFocus{direction: Direction::Left}, context);
+                    run_action(
+                        Action::MoveFocus {
+                            direction: Direction::Left,
+                        },
+                        context,
+                    );
                 },
                 BareKey::Char('e') if key.has_modifiers(&[KeyModifier::Super]) => {
                     // Test send_sigint_to_pane_id
