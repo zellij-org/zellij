@@ -122,6 +122,12 @@ keybinds clear-defaults=true {
             }
             SwitchToMode "normal"
         }
+        bind "q" {
+            LaunchPlugin "zellij:sequence" {
+                floating true
+            }
+            SwitchToMode "normal"
+        }
         bind "s" {
             LaunchOrFocusPlugin "zellij:share" {
                 floating true

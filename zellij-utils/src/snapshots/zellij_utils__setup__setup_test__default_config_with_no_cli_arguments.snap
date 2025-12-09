@@ -4449,6 +4449,36 @@ Config {
                 bare_key: Char(
                     'q',
                 ),
+                key_modifiers: {},
+            }: [
+                LaunchPlugin {
+                    plugin: RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "sequence",
+                                ),
+                            ),
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
+                    should_float: true,
+                    should_open_in_place: false,
+                    skip_cache: false,
+                    cwd: None,
+                },
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'q',
+                ),
                 key_modifiers: {
                     Ctrl,
                 },
