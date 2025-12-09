@@ -63,7 +63,6 @@ use zellij_utils::{
         get_mode_info,
         keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, PluginAlias, Run, RunPluginOrAlias},
-        macros::Macros,
         options::Options,
         plugins::PluginAliases,
     },
@@ -122,18 +121,6 @@ pub enum ServerInstruction {
         keys_to_unbind: Vec<(InputMode, KeyWithModifier)>,
         write_config_to_disk: bool,
     },
-    UpdateMacros {
-        client_id: ClientId,
-        macro_name: String,
-        actions: Option<Vec<Action>>,  // None means remove
-        write_config_to_disk: bool,
-    },
-    RenameMacro {
-        client_id: ClientId,
-        old_name: String,
-        new_name: String,
-        write_config_to_disk: bool,
-    },
     StartWebServer(ClientId),
     ShareCurrentSession(ClientId),
     StopSharingCurrentSession(ClientId),
@@ -176,8 +163,6 @@ impl From<&ServerInstruction> for ServerContext {
                 ServerContext::FailedToWriteConfigToDisk
             },
             ServerInstruction::RebindKeys { .. } => ServerContext::RebindKeys,
-            ServerInstruction::UpdateMacros { .. } => ServerContext::UpdateMacros,
-            ServerInstruction::RenameMacro { .. } => ServerContext::RenameMacro,
             ServerInstruction::StartWebServer(..) => ServerContext::StartWebServer,
             ServerInstruction::ShareCurrentSession(..) => ServerContext::ShareCurrentSession,
             ServerInstruction::StopSharingCurrentSession(..) => {
@@ -322,82 +307,6 @@ impl SessionConfiguration {
 
         (full_reconfigured_config, config_changed)
     }
-    pub fn update_macros(
-        &mut self,
-        client_id: &ClientId,
-        macro_name: String,
-        actions: Option<Vec<Action>>,
-    ) -> (Option<Config>, bool) {
-        let mut full_reconfigured_config = None;
-        let mut config_changed = false;
-
-        // Ensure client has a runtime config
-        if self.runtime_config.get(client_id).is_none() {
-            self.runtime_config
-                .insert(*client_id, self.saved_config.clone());
-        }
-
-        // Modify the runtime config for this client
-        match self.runtime_config.get_mut(client_id) {
-            Some(config) => {
-                if let Some(actions) = actions {
-                    // Set or update macro
-                    config.macros.insert(macro_name, actions);
-                    config_changed = true;
-                } else {
-                    // Remove macro
-                    let removed = config.macros.remove(&macro_name);
-                    if removed.is_some() {
-                        config_changed = true;
-                    }
-                }
-                if config_changed {
-                    full_reconfigured_config = Some(config.clone());
-                }
-            },
-            None => {
-                log::error!("Failed to get config for client_id: {}", client_id);
-            },
-        }
-
-        (full_reconfigured_config, config_changed)
-    }
-
-    pub fn rename_macro(
-        &mut self,
-        client_id: &ClientId,
-        old_name: String,
-        new_name: String,
-    ) -> Result<(Option<Config>, bool), String> {
-        // Ensure client has a runtime config (create from saved_config if needed)
-        if self.runtime_config.get(client_id).is_none() {
-            self.runtime_config.insert(*client_id, self.saved_config.clone());
-        }
-
-        match self.runtime_config.get_mut(client_id) {
-            Some(config) => {
-                // Validate: check if old_name exists
-                if !config.macros.0.contains_key(&old_name) {
-                    return Err(format!("Macro '{}' does not exist", old_name));
-                }
-
-                // Validate: check if new_name already exists (prevent overwrites)
-                if config.macros.0.contains_key(&new_name) && old_name != new_name {
-                    return Err(format!("Macro '{}' already exists", new_name));
-                }
-
-                // Perform the rename: remove old entry and insert with new name
-                if let Some(actions) = config.macros.remove(&old_name) {
-                    config.macros.insert(new_name, actions);
-                    Ok((Some(config.clone()), true))
-                } else {
-                    // This shouldn't happen since we checked above, but handle it
-                    Err(format!("Failed to rename macro '{}': not found", old_name))
-                }
-            }
-            None => Err(format!("No config found for client {}", client_id)),
-        }
-    }
 }
 
 pub(crate) struct SessionMetaData {
@@ -490,7 +399,6 @@ impl SessionMetaData {
                 .send_to_plugin(PluginInstruction::Reconfigure {
                     client_id,
                     keybinds: Some(new_config.keybinds),
-                    macros: Some(new_config.macros),
                     default_mode: new_config.options.default_mode,
                     default_shell: self.default_shell.clone(),
                     was_written_to_disk: config_was_written_to_disk,
@@ -1603,61 +1511,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     client_id,
                 );
             },
-            ServerInstruction::UpdateMacros {
-                client_id,
-                macro_name,
-                actions,
-                write_config_to_disk,
-            } => {
-                // Update the SessionConfiguration runtime config
-                let (new_config, runtime_config_changed) = session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .session_configuration
-                    .update_macros(&client_id, macro_name, actions);
-
-                // Propagate changes to all threads
-                update_new_saved_config(
-                    new_config,
-                    write_config_to_disk,
-                    runtime_config_changed,
-                    &session_data,
-                    client_id,
-                );
-            },
-            ServerInstruction::RenameMacro {
-                client_id,
-                old_name,
-                new_name,
-                write_config_to_disk,
-            } => {
-                let rename_result = session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .session_configuration
-                    .rename_macro(&client_id, old_name.clone(), new_name.clone());
-                match rename_result {
-                    Ok((new_config, config_changed)) => {
-                        if config_changed {
-                            update_new_saved_config(
-                                new_config,
-                                write_config_to_disk,
-                                config_changed,
-                                &session_data,
-                                client_id,
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("Failed to rename macro '{}' to '{}': {}", old_name, new_name, e);
-                        // Optionally: send error event back to plugin
-                    }
-                }
-            },
             ServerInstruction::StartWebServer(client_id) => {
                 if cfg!(feature = "web_server_capability") {
                     send_to_client!(
@@ -1831,7 +1684,6 @@ fn init_session(
 
     let default_mode = config_options.default_mode.unwrap_or_default();
     let default_keybinds = config.keybinds.clone();
-    let default_macros = config.macros.clone();
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
@@ -1928,7 +1780,6 @@ fn init_session(
                     plugin_aliases,
                     default_mode,
                     default_keybinds,
-                    default_macros,
                     background_plugins,
                     client_id,
                 )

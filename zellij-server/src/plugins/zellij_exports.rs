@@ -107,10 +107,6 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ShowCursor(cursor_position) => show_cursor(env, cursor_position),
                     PluginCommand::GetPluginIds => get_plugin_ids(env),
                     PluginCommand::GetZellijVersion => get_zellij_version(env),
-                    PluginCommand::GetMacros => get_macros(env),
-                    PluginCommand::SetMacro(name, actions) => set_macro(env, name, actions)?,
-                    PluginCommand::RemoveMacro(name) => remove_macro(env, name)?,
-                    PluginCommand::RenameMacro(old_name, new_name) => rename_macro(env, old_name, new_name)?,
                     PluginCommand::OpenFile(file_to_open, context) => {
                         open_file(env, file_to_open, context)
                     },
@@ -694,92 +690,6 @@ fn get_zellij_version(env: &PluginEnv) {
             )
         })
         .non_fatal();
-}
-
-fn get_macros(env: &PluginEnv) {
-    use zellij_utils::plugin_api::generated_api::api::plugin_command::{MacroEntry, MacrosPayload};
-    let macro_entries: Vec<MacroEntry> = env.macros.0
-        .iter()
-        .filter_map(|(name, actions)| {
-            let protobuf_actions: Result<Vec<_>, _> = actions
-                .iter()
-                .map(|a| a.clone().try_into())
-                .collect();
-            match protobuf_actions {
-                Ok(actions) => Some(MacroEntry {
-                    name: name.clone(),
-                    actions,
-                }),
-                Err(e) => {
-                    log::error!("Failed to serialize macro {}: {}", name, e);
-                    None
-                }
-            }
-        })
-        .collect();
-
-    let protobuf_macros = MacrosPayload {
-        macros: macro_entries,
-    };
-
-    wasi_write_object(env, &protobuf_macros.encode_to_vec())
-        .with_context(|| {
-            format!(
-                "failed to get macros from host for plugin {}",
-                env.name()
-            )
-        })
-        .non_fatal();
-}
-
-fn set_macro(env: &PluginEnv, name: String, actions: Vec<Action>) -> Result<()> {
-    let client_id = env.client_id;
-
-    // Send to server thread to update config and propagate to all plugins
-    env.senders
-        .send_to_server(ServerInstruction::UpdateMacros {
-            client_id,
-            macro_name: name.clone(),
-            actions: Some(actions),
-            write_config_to_disk: false,
-        })
-        .with_context(|| format!("Failed to set macro '{}'", name))?;
-    Ok(())
-}
-
-fn remove_macro(env: &PluginEnv, name: String) -> Result<()> {
-    let client_id = env.client_id;
-
-    // Send to server thread to update config and propagate to all plugins
-    env.senders
-        .send_to_server(ServerInstruction::UpdateMacros {
-            client_id,
-            macro_name: name.clone(),
-            actions: None,  // None means remove
-            write_config_to_disk: false,
-        })
-        .with_context(|| format!("Failed to remove macro '{}'", name))?;
-    Ok(())
-}
-
-fn rename_macro(env: &PluginEnv, old_name: String, new_name: String) -> Result<()> {
-    let client_id = env.client_id;
-
-    env.senders
-        .send_to_server(ServerInstruction::RenameMacro {
-            client_id,
-            old_name: old_name.clone(),
-            new_name: new_name.clone(),
-            write_config_to_disk: false,
-        })
-        .with_context(|| {
-            format!(
-                "failed to rename macro '{}' to '{}' for plugin {}",
-                old_name, new_name, env.name()
-            )
-        })?;
-
-    Ok(())
 }
 
 fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String, String>) {
@@ -3161,10 +3071,10 @@ fn check_command_permission(
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
-        PluginCommand::ListClients | PluginCommand::DumpSessionLayout | PluginCommand::GetMacros | PluginCommand::GetPanePid { .. } => {
+        PluginCommand::ListClients | PluginCommand::DumpSessionLayout | PluginCommand::GetPanePid { .. } => {
             PermissionType::ReadApplicationState
         },
-        PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) | PluginCommand::SetMacro(..) | PluginCommand::RemoveMacro(..) | PluginCommand::RenameMacro(..) => {
+        PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },
         PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,

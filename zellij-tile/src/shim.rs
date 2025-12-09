@@ -89,58 +89,6 @@ pub fn get_zellij_version() -> String {
     protobuf_zellij_version.version
 }
 
-// Macro Functions
-
-/// Get all defined macros
-pub fn get_macros() -> BTreeMap<String, Vec<Action>> {
-    use zellij_utils::plugin_api::generated_api::api::plugin_command::MacrosPayload as ProtobufMacrosPayload;
-    let plugin_command = PluginCommand::GetMacros;
-    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
-    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
-    unsafe { host_run_plugin_command() };
-    match bytes_from_stdin().ok().and_then(|b| ProtobufMacrosPayload::decode(b.as_slice()).ok()) {
-        Some(protobuf_macros) => {
-            protobuf_macros.macros
-                .into_iter()
-                .filter_map(|entry| {
-                    let actions: Vec<Action> = entry.actions
-                        .into_iter()
-                        .filter_map(|a| a.try_into().ok())
-                        .collect();
-                    Some((entry.name, actions))
-                })
-                .collect()
-        },
-        None => {
-            // probably permission denied
-            Default::default()
-        }
-    }
-}
-
-/// Set or update a macro
-pub fn set_macro(name: String, actions: Vec<Action>) {
-    let plugin_command = PluginCommand::SetMacro(name, actions);
-    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
-    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
-    unsafe { host_run_plugin_command() };
-}
-
-/// Remove a macro
-pub fn remove_macro(name: String) {
-    let plugin_command = PluginCommand::RemoveMacro(name);
-    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
-    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
-    unsafe { host_run_plugin_command() };
-}
-
-pub fn rename_macro(old_name: String, new_name: String) {
-    let plugin_command = PluginCommand::RenameMacro(old_name, new_name);
-    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
-    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
-    unsafe { host_run_plugin_command() };
-}
-
 // Host Functions
 
 /// Open a file in the user's default `$EDITOR` in a new pane

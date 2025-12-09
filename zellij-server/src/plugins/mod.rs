@@ -40,7 +40,6 @@ use zellij_utils::{
         command::TerminalAction,
         keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout},
-        macros::Macros,
         plugins::PluginAliases,
     },
     ipc::ClientAttributes,
@@ -166,7 +165,6 @@ pub enum PluginInstruction {
     Reconfigure {
         client_id: ClientId,
         keybinds: Option<Keybinds>,
-        macros: Option<Macros>,
         default_mode: Option<InputMode>,
         default_shell: Option<TerminalAction>,
         was_written_to_disk: bool,
@@ -255,7 +253,6 @@ pub(crate) fn plugin_thread_main(
     plugin_aliases: PluginAliases,
     default_mode: InputMode,
     default_keybinds: Keybinds,
-    default_macros: Macros,
     background_plugins: HashSet<RunPluginOrAlias>,
     // the client id that started the session,
     // we need it here because the thread's own list of connected clients might not yet be updated
@@ -285,7 +282,6 @@ pub(crate) fn plugin_thread_main(
         layout_dir,
         default_mode,
         default_keybinds,
-        default_macros,
     );
 
     for run_plugin_or_alias in background_plugins {
@@ -961,13 +957,12 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::Reconfigure {
                 client_id,
                 keybinds,
-                macros: new_macros,
                 default_mode,
                 default_shell,
                 was_written_to_disk,
             } => {
                 wasm_bridge
-                    .reconfigure(client_id, keybinds, new_macros, default_mode, default_shell)
+                    .reconfigure(client_id, keybinds, default_mode, default_shell)
                     .non_fatal();
                 // TODO: notify plugins that this happened so that they can eg. rebind temporary keys that
                 // were lost

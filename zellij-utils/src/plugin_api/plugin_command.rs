@@ -33,8 +33,7 @@ pub use super::generated_api::api::{
         RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
         RunActionPayload, RunCommandPayload, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
-        SetFloatingPanePinnedPayload, SetMacroPayload, SetSelfMouseSelectionSupportPayload, SetTimeoutPayload,
-        MacrosPayload as ProtobufMacrosPayload, MacroEntry as ProtobufMacroEntry, RemoveMacroPayload, RenameMacroPayload,
+        SetFloatingPanePinnedPayload, SetSelfMouseSelectionSupportPayload, SetTimeoutPayload,
         ShowCursorPayload, CursorPosition, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload, SwitchSessionPayload,
         SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload,
         UnsubscribePayload, WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
@@ -1830,35 +1829,6 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for RunAction"),
             },
-            Some(CommandName::GetMacros) => {
-                if protobuf_plugin_command.payload.is_some() {
-                    Err("GetMacros should not have a payload")
-                } else {
-                    Ok(PluginCommand::GetMacros)
-                }
-            },
-            Some(CommandName::SetMacro) => match protobuf_plugin_command.payload {
-                Some(Payload::SetMacroPayload(payload)) => {
-                    let actions: Result<Vec<Action>, _> = payload.actions
-                        .into_iter()
-                        .map(|a| a.try_into())
-                        .collect();
-                    Ok(PluginCommand::SetMacro(payload.name, actions?))
-                },
-                _ => Err("Mismatched payload for SetMacro"),
-            },
-            Some(CommandName::RemoveMacro) => match protobuf_plugin_command.payload {
-                Some(Payload::RemoveMacroPayload(payload)) => {
-                    Ok(PluginCommand::RemoveMacro(payload.name))
-                },
-                _ => Err("Mismatched payload for RemoveMacro"),
-            },
-            Some(CommandName::RenameMacro) => match protobuf_plugin_command.payload {
-                Some(Payload::RenameMacroPayload(payload)) => {
-                    Ok(PluginCommand::RenameMacro(payload.old_name, payload.new_name))
-                },
-                _ => Err("Mismatched payload for RenameMacro"),
-            },
             Some(CommandName::CopyToClipboard) => match protobuf_plugin_command.payload {
                 Some(Payload::CopyToClipboardPayload(payload)) => {
                     Ok(PluginCommand::CopyToClipboard(payload.text))
@@ -3074,36 +3044,6 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     })),
                 })
             },
-            PluginCommand::GetMacros => Ok(ProtobufPluginCommand {
-                name: CommandName::GetMacros as i32,
-                payload: None,
-            }),
-            PluginCommand::SetMacro(name, actions) => {
-                let protobuf_actions: Result<Vec<_>, _> = actions
-                    .into_iter()
-                    .map(|a| a.try_into())
-                    .collect();
-                Ok(ProtobufPluginCommand {
-                    name: CommandName::SetMacro as i32,
-                    payload: Some(Payload::SetMacroPayload(SetMacroPayload {
-                        name,
-                        actions: protobuf_actions?,
-                    })),
-                })
-            },
-            PluginCommand::RemoveMacro(name) => Ok(ProtobufPluginCommand {
-                name: CommandName::RemoveMacro as i32,
-                payload: Some(Payload::RemoveMacroPayload(RemoveMacroPayload {
-                    name,
-                })),
-            }),
-            PluginCommand::RenameMacro(old_name, new_name) => Ok(ProtobufPluginCommand {
-                name: CommandName::RenameMacro as i32,
-                payload: Some(Payload::RenameMacroPayload(RenameMacroPayload {
-                    old_name,
-                    new_name,
-                })),
-            }),
             PluginCommand::CopyToClipboard(text) => Ok(ProtobufPluginCommand {
                 name: CommandName::CopyToClipboard as i32,
                 payload: Some(Payload::CopyToClipboardPayload(CopyToClipboardPayload {

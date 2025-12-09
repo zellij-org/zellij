@@ -19,7 +19,6 @@ use zellij_utils::{
     input::command::TerminalAction,
     input::keybinds::Keybinds,
     input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation},
-    input::macros::Macros,
     input::plugins::PluginConfig,
     ipc::ClientAttributes,
 };
@@ -298,7 +297,6 @@ pub struct PluginEnv {
     pub stdin_pipe: Arc<Mutex<VecDeque<u8>>>,
     pub stdout_pipe: Arc<Mutex<VecDeque<u8>>>,
     pub keybinds: Keybinds,
-    pub macros: Macros,
     pub intercepting_key_presses: bool,
     pub store_limits: StoreLimits,
 }
@@ -401,9 +399,6 @@ impl RunningPlugin {
     }
     pub fn update_keybinds(&mut self, keybinds: Keybinds) {
         self.store.data_mut().keybinds = keybinds;
-    }
-    pub fn update_macros(&mut self, macros: Macros) {
-        self.store.data_mut().macros = macros;
     }
     pub fn update_default_mode(&mut self, default_mode: InputMode) {
         self.store.data_mut().default_mode = default_mode;

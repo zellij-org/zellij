@@ -324,7 +324,7 @@ mod tests {
         let text = "this is a very long string that needs truncation";
         let cursor_char = "this is a very ".chars().count();
         let (result, cursor_pos) = truncate_middle(text, 20, Some(cursor_char));
-        assert!(result.contains("long"));
+        assert!(result.contains("very"));
         assert!(cursor_pos.is_some());
     }
 

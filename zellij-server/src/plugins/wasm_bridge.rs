@@ -28,7 +28,6 @@ use zellij_utils::data::{
 };
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::keybinds::Keybinds;
-use zellij_utils::input::macros::Macros;
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::plugin_api::event::ProtobufEvent;
 
@@ -97,7 +96,6 @@ pub struct LoadingContext {
     pub layout_dir: Option<PathBuf>,
     pub default_mode: InputMode,
     pub keybinds: Keybinds,
-    pub macros: Macros,
     pub plugin_dir: PathBuf,
     pub size: Size,
 }
@@ -129,12 +127,6 @@ impl LoadingContext {
             .cloned()
             .unwrap_or_else(|| wasm_bridge.default_keybinds.clone());
 
-        let macros = wasm_bridge
-            .macros
-            .get(&client_id)
-            .cloned()
-            .unwrap_or_else(|| wasm_bridge.default_macros.clone());
-
         LoadingContext {
             client_id,
             plugin_id,
@@ -145,7 +137,6 @@ impl LoadingContext {
             default_shell: wasm_bridge.default_shell.clone(),
             layout_dir: wasm_bridge.layout_dir.clone(),
             keybinds,
-            macros,
             default_mode,
             plugin_own_data_dir,
             plugin_own_cache_dir,
@@ -191,8 +182,6 @@ pub struct WasmBridge {
     default_mode: InputMode,
     default_keybinds: Keybinds,
     keybinds: HashMap<ClientId, Keybinds>,
-    default_macros: Macros, // TODO: remove this
-    macros: HashMap<ClientId, Macros>,
     base_modes: HashMap<ClientId, InputMode>,
     downloader: Downloader,
     previous_pane_render_report: Option<PaneRenderReport>,
@@ -212,7 +201,6 @@ impl WasmBridge {
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
         default_keybinds: Keybinds,
-        default_macros: Macros,
     ) -> Self {
         let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
@@ -255,8 +243,6 @@ impl WasmBridge {
             default_mode,
             default_keybinds,
             keybinds: HashMap::new(),
-            default_macros, // 
-            macros: HashMap::new(),
             base_modes: HashMap::new(),
             downloader,
             previous_pane_render_report: None,
@@ -1336,7 +1322,6 @@ impl WasmBridge {
         &mut self,
         client_id: ClientId,
         keybinds: Option<Keybinds>,
-        macros: Option<Macros>,
         default_mode: Option<InputMode>,
         default_shell: Option<TerminalAction>,
     ) -> Result<()> {
@@ -1361,15 +1346,11 @@ impl WasmBridge {
         if let Some(keybinds) = keybinds.as_ref() {
             self.keybinds.insert(client_id, keybinds.clone());
         }
-        if let Some(macros) = macros.as_ref() {
-            self.macros.insert(client_id, macros.clone());
-        }
         self.default_shell = default_shell.clone();
         for (plugin_id, running_plugin) in plugins_to_reconfigure {
             self.plugin_executor.execute_for_plugin(plugin_id, {
                 let running_plugin = running_plugin.clone();
                 let keybinds = keybinds.clone();
-                let macros = macros.clone();
                 let default_shell = default_shell.clone();
                 move |senders,
                       _plugin_map,
@@ -1380,15 +1361,6 @@ impl WasmBridge {
                     let mut running_plugin = running_plugin.lock().unwrap();
                     if let Some(keybinds) = keybinds {
                         running_plugin.update_keybinds(keybinds);
-                    }
-                    if let Some(macros) = macros.clone() {
-                        running_plugin.update_macros(macros);
-                        // Fire MacrosUpdated event after updating the plugin environment
-                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                            Some(plugin_id),
-                            Some(client_id),
-                            Event::MacrosUpdated,
-                        )]));
                     }
                     if let Some(default_mode) = default_mode {
                         running_plugin.update_default_mode(default_mode);
@@ -1929,8 +1901,7 @@ fn check_event_permission(
         | Event::EditPaneExited(..)
         | Event::FailedToWriteConfigToDisk(..)
         | Event::CommandPaneReRun(..)
-        | Event::InputReceived
-        | Event::MacrosUpdated => PermissionType::ReadApplicationState,
+        | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,
         Event::UserAction(..) => PermissionType::InterceptInput,

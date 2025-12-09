@@ -5935,9 +5935,6 @@ Config {
             ],
         },
     },
-    macros: Macros(
-        {},
-    ),
     options: Options {
         simplified_ui: None,
         theme: None,
@@ -7808,6 +7805,18 @@ Config {
                 location: Zellij(
                     PluginTag(
                         "plugin-manager",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
+            "sequence": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "sequence",
                     ),
                 ),
                 configuration: PluginUserConfiguration(

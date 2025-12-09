@@ -11,7 +11,6 @@ use std::convert::TryFrom;
 
 use super::keybinds::Keybinds;
 use super::layout::RunPluginOrAlias;
-use super::macros::Macros;
 use super::options::Options;
 use super::plugins::{PluginAliases, PluginsConfigError};
 use super::theme::{Themes, UiConfig};
@@ -28,7 +27,6 @@ type ConfigResult = Result<Config, ConfigError>;
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Config {
     pub keybinds: Keybinds,
-    pub macros: Macros,
     pub options: Options,
     pub themes: Themes,
     pub plugins: PluginAliases,
@@ -235,7 +233,6 @@ impl Config {
     pub fn merge(&mut self, other: Config) -> Result<(), ConfigError> {
         self.options = self.options.merge(other.options);
         self.keybinds.merge(other.keybinds.clone());
-        self.macros.merge(other.macros);
         self.themes = self.themes.merge(other.themes);
         self.plugins.merge(other.plugins);
         self.ui = self.ui.merge(other.ui);

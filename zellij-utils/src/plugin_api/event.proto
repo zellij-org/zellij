@@ -61,7 +61,6 @@ enum EventType {
     PaneRenderReport = 36;
     UserAction = 37;
     ActionComplete = 38;
-    MacrosUpdated = 39;
 }
 
 message EventNameList {

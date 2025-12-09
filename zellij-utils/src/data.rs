@@ -995,7 +995,6 @@ pub enum Event {
     UserAction(Action, ClientId, Option<u32>, Option<ClientId>), // Action, client_id, terminal_id, cli_client_id
     PaneRenderReport(HashMap<PaneId, PaneContents>),
     ActionComplete(Action, Option<PaneId>, BTreeMap<String, String>), // Action, pane_id, context
-    MacrosUpdated,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, ToString, Serialize, Deserialize)]
@@ -2917,9 +2916,5 @@ pub enum PluginCommand {
     ReplacePaneWithExistingPane(PaneId, PaneId, bool), // (pane id to replace, pane id of existing,
                                                        // suppress_replaced_pane)
     RunAction(Action, BTreeMap<String, String>),
-    GetMacros,
-    SetMacro(String, Vec<Action>),
-    RemoveMacro(String),
-    RenameMacro(String, String), // (old_name, new_name)
     CopyToClipboard(String),     // text to copy
 }
