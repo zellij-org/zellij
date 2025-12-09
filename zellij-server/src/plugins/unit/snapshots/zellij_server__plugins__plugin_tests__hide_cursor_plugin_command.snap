@@ -1,0 +1,11 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+expression: "format!(\"{:#?}\", hide_cursor_instruction)"
+---
+Some(
+    (
+        0,
+        1,
+        None,
+    ),
+)
