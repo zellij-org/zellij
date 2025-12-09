@@ -161,7 +161,7 @@ pub enum RcCharacterStyles {
     Rc(Rc<CharacterStyles>),
 }
 
-#[cfg(target_arch = "x86_64")]
+// #[cfg(target_arch = "x86_64")]
 const _: [(); 8] = [(); std::mem::size_of::<RcCharacterStyles>()];
 
 impl From<CharacterStyles> for RcCharacterStyles {
@@ -931,7 +931,7 @@ pub struct TerminalCharacter {
 
 // This size has significant memory and CPU implications for long lines,
 // be careful about allowing it to grow
-#[cfg(target_arch = "x86_64")]
+// #[cfg(target_arch = "x86_64")]
 const _: [(); 16] = [(); std::mem::size_of::<TerminalCharacter>()];
 
 impl TerminalCharacter {
