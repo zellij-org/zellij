@@ -6,6 +6,8 @@ enum KittyKeysParsingState {
     Ground,
     ReceivedEscapeCharacter,
     ParsingNumber,
+    ParsingShiftedKey,
+    ParsingBaseLayoutKey,
     ParsingModifiers,
     DoneParsingWithU,
     DoneParsingWithTilde,
@@ -15,6 +17,8 @@ enum KittyKeysParsingState {
 pub struct KittyKeyboardParser {
     state: KittyKeysParsingState,
     number_bytes: Vec<u8>,
+    shifted_key_bytes: Vec<u8>,
+    base_layout_bytes: Vec<u8>,
     modifier_bytes: Vec<u8>,
 }
 
@@ -23,6 +27,8 @@ impl KittyKeyboardParser {
         KittyKeyboardParser {
             state: KittyKeysParsingState::Ground,
             number_bytes: vec![],
+            shifted_key_bytes: vec![],
+            base_layout_bytes: vec![],
             modifier_bytes: vec![],
         }
     }
@@ -34,8 +40,13 @@ impl KittyKeyboardParser {
         }
         match self.state {
             KittyKeysParsingState::DoneParsingWithU => {
-                // CSI number ; modifiers u
-                KeyWithModifier::from_bytes_with_u(&self.number_bytes, &self.modifier_bytes)
+                // CSI unicode:shifted:base-layout ; modifiers u
+                let base_layout = if self.base_layout_bytes.is_empty() {
+                    None
+                } else {
+                    Some(self.base_layout_bytes.as_slice())
+                };
+                KeyWithModifier::from_bytes_with_u(&self.number_bytes, &self.modifier_bytes, base_layout)
             },
             KittyKeysParsingState::DoneParsingWithTilde => {
                 // CSI number ; modifiers ~
@@ -69,15 +80,23 @@ impl KittyKeyboardParser {
             (KittyKeysParsingState::ReceivedEscapeCharacter, 91) => {
                 self.state = KittyKeysParsingState::ParsingNumber;
             },
-            (KittyKeysParsingState::ParsingNumber, 59) => {
-                // semicolon
+            (KittyKeysParsingState::ParsingNumber, 58) => {
+                // colon - start parsing shifted key
+                self.state = KittyKeysParsingState::ParsingShiftedKey;
+            },
+            (KittyKeysParsingState::ParsingShiftedKey, 58) => {
+                // colon - start parsing base layout key
+                self.state = KittyKeysParsingState::ParsingBaseLayoutKey;
+            },
+            (KittyKeysParsingState::ParsingNumber | KittyKeysParsingState::ParsingShiftedKey | KittyKeysParsingState::ParsingBaseLayoutKey, 59) => {
+                // semicolon - start parsing modifiers
                 if &self.number_bytes == &[49] {
                     self.number_bytes.clear();
                 }
                 self.state = KittyKeysParsingState::ParsingModifiers;
             },
             (
-                KittyKeysParsingState::ParsingNumber | KittyKeysParsingState::ParsingModifiers,
+                KittyKeysParsingState::ParsingNumber | KittyKeysParsingState::ParsingShiftedKey | KittyKeysParsingState::ParsingBaseLayoutKey | KittyKeysParsingState::ParsingModifiers,
                 117,
             ) => {
                 // u
@@ -92,6 +111,12 @@ impl KittyKeyboardParser {
             },
             (KittyKeysParsingState::ParsingNumber, _) => {
                 self.number_bytes.push(byte);
+            },
+            (KittyKeysParsingState::ParsingShiftedKey, _) => {
+                self.shifted_key_bytes.push(byte);
+            },
+            (KittyKeysParsingState::ParsingBaseLayoutKey, _) => {
+                self.base_layout_bytes.push(byte);
             },
             (KittyKeysParsingState::ParsingModifiers, _) => {
                 self.modifier_bytes.push(byte);
@@ -1775,5 +1800,39 @@ pub fn can_parse_keys_with_multiple_modifiers() {
                 .with_shift_modifier()
         ),
         "Can parse a bare 'F4 (superernate)' keypress with all modifiers"
+    );
+}
+
+#[test]
+pub fn can_parse_keys_with_base_layout_key() {
+    use zellij_utils::data::BareKey;
+    // CSI unicode:shifted:base-layout ; modifiers u
+    // Russian П (1087) with base layout g (103), Ctrl modifier (5)
+    let key = "\u{1b}[1087:1055:103;5u";
+    assert_eq!(
+        KittyKeyboardParser::new().parse(&key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier()),
+        "Can parse Ctrl+П with base layout key g"
+    );
+    // Russian а (1072) with base layout f (102), Alt modifier (3)
+    let key = "\u{1b}[1072:1040:102;3u";
+    assert_eq!(
+        KittyKeyboardParser::new().parse(&key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('f')).with_alt_modifier()),
+        "Can parse Alt+а with base layout key f"
+    );
+    // Without base layout key (old format still works)
+    let key = "\u{1b}[97;5u";
+    assert_eq!(
+        KittyKeyboardParser::new().parse(&key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier()),
+        "Can parse Ctrl+a without base layout key"
+    );
+    // Only unicode and shifted, no base layout
+    let key = "\u{1b}[1072:1040;3u";
+    assert_eq!(
+        KittyKeyboardParser::new().parse(&key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('\u{0430}')).with_alt_modifier()),
+        "Can parse Alt+а with shifted key but no base layout"
     );
 }

@@ -314,9 +314,11 @@ impl BareKey {
             Ok("57424") => Some(BareKey::End),
             Ok("57425") => Some(BareKey::Insert),
             Ok("57426") => Some(BareKey::Delete),
-            Ok(num) => u8::from_str_radix(num, 10)
+            Ok(num) => u32::from_str_radix(num, 10)
                 .ok()
-                .map(|n| BareKey::Char((n as char).to_ascii_lowercase())),
+                .and_then(char::from_u32)
+                .and_then(|c| c.to_lowercase().next())
+                .map(BareKey::Char),
             _ => None,
         }
     }
@@ -427,9 +429,11 @@ impl KeyWithModifier {
         self.key_modifiers.insert(KeyModifier::Super);
         self
     }
-    pub fn from_bytes_with_u(number_bytes: &[u8], modifier_bytes: &[u8]) -> Option<Self> {
-        // CSI number ; modifiers u
-        let bare_key = BareKey::from_bytes_with_u(number_bytes);
+    pub fn from_bytes_with_u(number_bytes: &[u8], modifier_bytes: &[u8], base_layout_bytes: Option<&[u8]>) -> Option<Self> {
+        // CSI unicode:shifted:base-layout ; modifiers u
+        // If base_layout_bytes is provided, use it for layout-independent keybindings
+        let key_bytes = base_layout_bytes.unwrap_or(number_bytes);
+        let bare_key = BareKey::from_bytes_with_u(key_bytes);
         match bare_key {
             Some(bare_key) => {
                 let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
@@ -2845,4 +2849,58 @@ pub enum PluginCommand {
     InterceptKeyPresses,
     ClearKeyPressesIntercepts,
     ReplacePaneWithExistingPane(PaneId, PaneId), // (pane id to replace, pane id of existing)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bare_key_from_bytes_with_u_supports_ascii() {
+        assert_eq!(BareKey::from_bytes_with_u(b"97"), Some(BareKey::Char('a')));
+        assert_eq!(BareKey::from_bytes_with_u(b"65"), Some(BareKey::Char('a')));
+        assert_eq!(BareKey::from_bytes_with_u(b"122"), Some(BareKey::Char('z')));
+        assert_eq!(BareKey::from_bytes_with_u(b"48"), Some(BareKey::Char('0')));
+        assert_eq!(BareKey::from_bytes_with_u(b"57"), Some(BareKey::Char('9')));
+    }
+
+    #[test]
+    fn bare_key_from_bytes_with_u_supports_cyrillic() {
+        assert_eq!(BareKey::from_bytes_with_u(b"1072"), Some(BareKey::Char('\u{0430}')));
+        assert_eq!(BareKey::from_bytes_with_u(b"1040"), Some(BareKey::Char('\u{0430}')));
+        assert_eq!(BareKey::from_bytes_with_u(b"1088"), Some(BareKey::Char('\u{0440}')));
+        assert_eq!(BareKey::from_bytes_with_u(b"1110"), Some(BareKey::Char('\u{0456}')));
+        assert_eq!(BareKey::from_bytes_with_u(b"1111"), Some(BareKey::Char('\u{0457}')));
+    }
+
+    #[test]
+    fn bare_key_from_bytes_with_u_supports_greek() {
+        assert_eq!(BareKey::from_bytes_with_u(b"945"), Some(BareKey::Char('\u{03B1}')));
+        assert_eq!(BareKey::from_bytes_with_u(b"913"), Some(BareKey::Char('\u{03B1}')));
+        assert_eq!(BareKey::from_bytes_with_u(b"946"), Some(BareKey::Char('\u{03B2}')));
+        assert_eq!(BareKey::from_bytes_with_u(b"969"), Some(BareKey::Char('\u{03C9}')));
+    }
+
+    #[test]
+    fn bare_key_from_bytes_with_u_supports_cjk() {
+        assert_eq!(BareKey::from_bytes_with_u(b"20013"), Some(BareKey::Char('\u{4E2D}')));
+        assert_eq!(BareKey::from_bytes_with_u(b"25991"), Some(BareKey::Char('\u{6587}')));
+        assert_eq!(BareKey::from_bytes_with_u(b"12354"), Some(BareKey::Char('\u{3042}')));
+        assert_eq!(BareKey::from_bytes_with_u(b"44032"), Some(BareKey::Char('\u{AC00}')));
+    }
+
+    #[test]
+    fn bare_key_from_bytes_with_u_supports_special_keys() {
+        assert_eq!(BareKey::from_bytes_with_u(b"27"), Some(BareKey::Esc));
+        assert_eq!(BareKey::from_bytes_with_u(b"13"), Some(BareKey::Enter));
+        assert_eq!(BareKey::from_bytes_with_u(b"9"), Some(BareKey::Tab));
+        assert_eq!(BareKey::from_bytes_with_u(b"127"), Some(BareKey::Backspace));
+    }
+
+    #[test]
+    fn bare_key_from_bytes_with_u_returns_none_for_invalid() {
+        assert_eq!(BareKey::from_bytes_with_u(b"invalid"), None);
+        assert_eq!(BareKey::from_bytes_with_u(b""), None);
+        assert_eq!(BareKey::from_bytes_with_u(b"4294967296"), None);
+    }
 }
