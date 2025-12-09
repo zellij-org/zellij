@@ -1901,6 +1901,7 @@ fn check_event_permission(
         | Event::EditPaneExited(..)
         | Event::FailedToWriteConfigToDisk(..)
         | Event::CommandPaneReRun(..)
+        | Event::CwdChanged(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,

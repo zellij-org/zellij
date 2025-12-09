@@ -5,13 +5,14 @@ pub use super::generated_api::api::{
         ActionCompletePayload as ProtobufActionCompletePayload, ClientInfo as ProtobufClientInfo,
         ClientPaneHistory as ProtobufClientPaneHistory,
         ClientTabHistory as ProtobufClientTabHistory, ContextItem as ProtobufContextItem,
-        CopyDestination as ProtobufCopyDestination, Event as ProtobufEvent,
-        EventNameList as ProtobufEventNameList, EventType as ProtobufEventType,
-        FileMetadata as ProtobufFileMetadata, InputModeKeybinds as ProtobufInputModeKeybinds,
-        KeyBind as ProtobufKeyBind, LayoutInfo as ProtobufLayoutInfo,
-        ModeUpdatePayload as ProtobufModeUpdatePayload, PaneContents as ProtobufPaneContents,
-        PaneContentsEntry as ProtobufPaneContentsEntry, PaneId as ProtobufPaneId,
-        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
+        CopyDestination as ProtobufCopyDestination, CwdChangedPayload as ProtobufCwdChangedPayload,
+        Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
+        EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
+        InputModeKeybinds as ProtobufInputModeKeybinds, KeyBind as ProtobufKeyBind,
+        LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
+        PaneContents as ProtobufPaneContents, PaneContentsEntry as ProtobufPaneContentsEntry,
+        PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
+        PaneManifest as ProtobufPaneManifest,
         PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
         PaneScrollbackResponse as ProtobufPaneScrollbackResponse, PaneType as ProtobufPaneType,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
@@ -439,6 +440,18 @@ impl TryFrom<ProtobufEvent> for Event {
                     Ok(Event::ActionComplete(action, pane_id, context))
                 },
                 _ => Err("Malformed payload for the ActionComplete Event"),
+            },
+            Some(ProtobufEventType::CwdChanged) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::CwdChangedPayload(protobuf_payload)) => {
+                    let pane_id: PaneId = protobuf_payload
+                        .pane_id
+                        .ok_or("Missing pane_id in CwdChanged payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert PaneId in CwdChanged payload")?;
+                    let new_cwd = PathBuf::from(protobuf_payload.new_cwd);
+                    Ok(Event::CwdChanged(pane_id, new_cwd))
+                },
+                _ => Err("Malformed payload for the CwdChanged Event"),
             },
             None => Err("Unknown Protobuf Event"),
         }
@@ -872,6 +885,21 @@ impl TryFrom<Event> for ProtobufEvent {
                     payload: Some(event::Payload::ActionCompletePayload(
                         action_complete_payload,
                     )),
+                })
+            },
+            Event::CwdChanged(pane_id, new_cwd) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                let new_cwd_string = new_cwd
+                    .to_str()
+                    .ok_or("Failed to convert PathBuf to string")?
+                    .to_string();
+                let cwd_changed_payload = ProtobufCwdChangedPayload {
+                    pane_id: Some(protobuf_pane_id),
+                    new_cwd: new_cwd_string,
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::CwdChanged as i32,
+                    payload: Some(event::Payload::CwdChangedPayload(cwd_changed_payload)),
                 })
             },
         }
@@ -1583,6 +1611,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::PaneRenderReport => EventType::PaneRenderReport,
             ProtobufEventType::UserAction => EventType::UserAction,
             ProtobufEventType::ActionComplete => EventType::ActionComplete,
+            ProtobufEventType::CwdChanged => EventType::CwdChanged,
         })
     }
 }
@@ -1629,6 +1658,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::PaneRenderReport => ProtobufEventType::PaneRenderReport,
             EventType::UserAction => ProtobufEventType::UserAction,
             EventType::ActionComplete => ProtobufEventType::ActionComplete,
+            EventType::CwdChanged => ProtobufEventType::CwdChanged,
         })
     }
 }

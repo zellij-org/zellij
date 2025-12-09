@@ -425,6 +425,7 @@ pub enum PtyContext {
     SendSigintToPaneId,
     SendSigkillToPaneId,
     GetPanePid,
+    UpdateAndReportCwds,
     Exit,
 }
 

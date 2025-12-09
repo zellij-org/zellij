@@ -18,8 +18,8 @@ use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::{
     data::{
-        CommandOrPlugin, Direction, Event, FloatingPaneCoordinates, GetPanePidResponse,
-        NewPanePlacement, OriginatingPlugin,
+        CommandOrPlugin, Event, FloatingPaneCoordinates, GetPanePidResponse, NewPanePlacement,
+        OriginatingPlugin,
     },
     errors::prelude::*,
     errors::{ContextType, PtyContext},
@@ -123,6 +123,7 @@ pub enum PtyInstruction {
         pane_id: PaneId,
         response_channel: crossbeam::channel::Sender<GetPanePidResponse>,
     },
+    UpdateAndReportCwds,
     Exit,
 }
 
@@ -150,6 +151,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::SendSigintToPaneId(..) => PtyContext::SendSigintToPaneId,
             PtyInstruction::SendSigkillToPaneId(..) => PtyContext::SendSigkillToPaneId,
             PtyInstruction::GetPanePid { .. } => PtyContext::GetPanePid,
+            PtyInstruction::UpdateAndReportCwds => PtyContext::UpdateAndReportCwds,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -733,6 +735,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             } => {
                 let response = pty.get_pane_pid(pane_id);
                 let _ = response_channel.send(response);
+            },
+            PtyInstruction::UpdateAndReportCwds => {
+                pty.update_and_report_cwds();
             },
             PtyInstruction::Exit => break,
         }
@@ -1547,6 +1552,7 @@ impl Pty {
         &mut self,
         session_layout_metadata: &mut SessionLayoutMetadata,
     ) {
+        log::info!("populate_session_layout_metadata");
         let terminal_ids = session_layout_metadata.all_terminal_ids();
         let mut terminal_ids_to_commands: HashMap<u32, Vec<String>> = HashMap::new();
         let mut terminal_ids_to_cwds: HashMap<u32, PathBuf> = HashMap::new();
@@ -1586,10 +1592,7 @@ impl Pty {
                 terminal_ids_to_commands.insert(terminal_id, cmd.clone());
             }
             if let Some(cwd) = cwd {
-                // log cwd for future use (eg. when opening new panes from a command pane that has
-                // already exited)
-                // TODO: also trigger an Event::CwdChanged - can be useful for plugins
-                self.terminal_cwds.insert(terminal_id, cwd.clone());
+                terminal_ids_to_cwds.insert(terminal_id, cwd.clone());
             }
         }
         session_layout_metadata.update_default_shell(get_default_shell());
@@ -1674,6 +1677,44 @@ impl Pty {
 
     pub fn get_terminal_cwd(&self, terminal_id: u32) -> Option<&PathBuf> {
         self.terminal_cwds.get(&terminal_id)
+    }
+
+    pub fn update_and_report_cwds(&mut self) {
+        let terminal_ids: Vec<u32> = self.id_to_child_pid.keys().copied().collect();
+
+        let pids: Vec<_> = terminal_ids
+            .iter()
+            .filter_map(|id| self.id_to_child_pid.get(&id))
+            .map(|pid| Pid::from_raw(*pid))
+            .collect();
+
+        let (pids_to_cwds, _) = self
+            .bus
+            .os_input
+            .as_ref()
+            .map(|os_input| os_input.get_cwds(pids))
+            .unwrap_or_default();
+
+        for terminal_id in terminal_ids {
+            let process_id = self.id_to_child_pid.get(&terminal_id);
+            let cwd = process_id
+                .as_ref()
+                .and_then(|pid| pids_to_cwds.get(&Pid::from_raw(**pid)));
+
+            if let Some(cwd) = cwd {
+                if self.terminal_cwds.get(&terminal_id) != Some(cwd) {
+                    let _ = self
+                        .bus
+                        .senders
+                        .send_to_plugin(PluginInstruction::Update(vec![(
+                            None,
+                            None,
+                            Event::CwdChanged(PaneId::Terminal(terminal_id).into(), cwd.clone())
+                        )]));
+                }
+                self.terminal_cwds.insert(terminal_id, cwd.clone());
+            }
+        }
     }
 
     pub fn reconfigure(

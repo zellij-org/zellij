@@ -9,7 +9,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -79,7 +79,17 @@ pub mod event {
         UserActionPayload(super::UserActionPayload),
         #[prost(message, tag="32")]
         ActionCompletePayload(super::ActionCompletePayload),
+        #[prost(message, tag="33")]
+        CwdChangedPayload(super::CwdChangedPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CwdChangedPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(string, tag="2")]
+    pub new_cwd: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -661,6 +671,7 @@ pub enum EventType {
     PaneRenderReport = 36,
     UserAction = 37,
     ActionComplete = 38,
+    CwdChanged = 39,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -707,6 +718,7 @@ impl EventType {
             EventType::PaneRenderReport => "PaneRenderReport",
             EventType::UserAction => "UserAction",
             EventType::ActionComplete => "ActionComplete",
+            EventType::CwdChanged => "CwdChanged",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -750,6 +762,7 @@ impl EventType {
             "PaneRenderReport" => Some(Self::PaneRenderReport),
             "UserAction" => Some(Self::UserAction),
             "ActionComplete" => Some(Self::ActionComplete),
+            "CwdChanged" => Some(Self::CwdChanged),
             _ => None,
         }
     }

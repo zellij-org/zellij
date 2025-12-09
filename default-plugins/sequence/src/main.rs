@@ -44,8 +44,7 @@ impl ZellijPlugin for State {
     }
 
     fn update(&mut self, event: Event) -> bool {
-        let should_render = handle_event(self, event);
-        should_render
+        handle_event(self, event)
     }
 
     fn render(&mut self, rows: usize, cols: usize) {

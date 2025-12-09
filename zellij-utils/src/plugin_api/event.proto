@@ -61,6 +61,7 @@ enum EventType {
     PaneRenderReport = 36;
     UserAction = 37;
     ActionComplete = 38;
+    CwdChanged = 39;
 }
 
 message EventNameList {
@@ -101,7 +102,13 @@ message Event {
     PaneRenderReportPayload pane_render_report_payload = 30;
     UserActionPayload user_action_payload = 31;
     ActionCompletePayload action_complete_payload = 32;
+    CwdChangedPayload cwd_changed_payload = 33;
   }
+}
+
+message CwdChangedPayload {
+  PaneId pane_id = 1;
+  string new_cwd = 2;
 }
 
 message FailedToStartWebServerPayload {
