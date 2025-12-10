@@ -57,7 +57,6 @@ impl Text {
         self
     }
     pub fn dim_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
-        const DIM_LEVEL: usize = 4;
         let substr = substr.as_ref();
         let mut start = 0;
 
@@ -101,7 +100,6 @@ impl Text {
         self
     }
     pub fn unbold_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
-        const UNBOLD_LEVEL: usize = 5;
         let substr = substr.as_ref();
         let mut start = 0;
 
@@ -145,7 +143,6 @@ impl Text {
         self
     }
     pub fn error_color_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
-        const ERROR_COLOR_LEVEL: usize = 6;
         let substr = substr.as_ref();
         let mut start = 0;
 
@@ -210,7 +207,6 @@ impl Text {
         self
     }
     pub fn success_color_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
-        const SUCCESS_COLOR_LEVEL: usize = 7;
         let substr = substr.as_ref();
         let mut start = 0;
 
