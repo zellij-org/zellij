@@ -1013,10 +1013,14 @@ fn rerun_sequence(state: &mut State) {
         let placement = if let Some(pane_id) = selected_pane_id_for_replacement {
             NewPanePlacement::InPlace {
                 pane_id_to_replace: Some(*pane_id),
-                close_replaced_pane
+                close_replaced_pane,
             }
         } else {
-            let pane_id_to_stack_under = state.execution.all_commands.iter().find_map(|c| c.get_pane_id());
+            let pane_id_to_stack_under = state
+                .execution
+                .all_commands
+                .iter()
+                .find_map(|c| c.get_pane_id());
             NewPanePlacement::Stacked(pane_id_to_stack_under)
         };
 

@@ -6,20 +6,22 @@ use zellij_tile::prelude::*;
 
 const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"];
 
-const HELP_RUNNING_WITH_SELECTION: &str =
-    "<Ctrl c> - interrupt, <Enter> - run from selected, <Esc> - deselect";
+const HELP_RUNNING_WITH_SELECTION: &str = "<Ctrl c> - interrupt, <Enter> - run from selected";
 const HELP_RUNNING_NO_SELECTION: &str = "<Ctrl c> - interrupt, <↓↑> - navigate";
 const HELP_STOPPED_WITH_SELECTION: &str =
-    "<Ctrl w> - close all, <Enter> - run from selected, <e> - edit, <Esc> - deselect";
+    "<Ctrl w> - close all, <Enter> - run from selected, <e> - edit";
 const HELP_STOPPED_NO_SELECTION: &str =
-    "<Ctrl w> - close all, <↓↑> - navigate, <Enter> - run from first, <Esc> - back";
+    "<Ctrl w> - close all, <↓↑> - navigate, <Enter> - run from first";
 
 const HELP_ONE_PENDING_COMMAND: &str = "<Enter> - run, <Ctrl Enter> - add command";
 
 const HELP_ALL_COMMANDS_PENDING: &str =
-    "Help: <Enter> - run, <Ctrl Enter> - add command, <↓↑> - navigate";
+    "<Enter> - run, <Ctrl Enter> - add command, <↓↑> - navigate";
 const HELP_ALL_COMMANDS_PENDING_WITH_SELECTION: &str =
-    "Help: <Enter> - run, <Ctrl Enter> - add command, <↓↑> - navigate, <e> - edit selected";
+    "<Enter> - run, <Ctrl Enter> - add command, <↓↑> - navigate, <e> - edit selected";
+
+const HELP_EDITING_FIRST_LINE: &str =
+    "<Enter> - accept, <Ctrl Enter> - add command, <↓↑> - navigate";
 
 fn select_help_text(sequence: &State) -> &'static str {
     let is_running = sequence
@@ -40,6 +42,8 @@ fn select_help_text(sequence: &State) -> &'static str {
             HELP_ONE_PENDING_COMMAND
         } else if has_selection && !is_editing {
             HELP_ALL_COMMANDS_PENDING_WITH_SELECTION
+        } else if is_editing {
+            HELP_EDITING_FIRST_LINE
         } else {
             HELP_ALL_COMMANDS_PENDING
         }
@@ -50,8 +54,10 @@ fn select_help_text(sequence: &State) -> &'static str {
             HELP_RUNNING_NO_SELECTION
         }
     } else {
-        if has_selection {
+        if has_selection && !is_editing {
             HELP_STOPPED_WITH_SELECTION
+        } else if is_editing {
+            HELP_EDITING_FIRST_LINE
         } else {
             HELP_STOPPED_NO_SELECTION
         }

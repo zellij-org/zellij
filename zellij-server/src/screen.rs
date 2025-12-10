@@ -51,9 +51,7 @@ use crate::{
     pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     tab::{SuppressedPanes, Tab},
     thread_bus::Bus,
-    ui::{
-        loading_indication::LoadingIndication,
-    },
+    ui::loading_indication::LoadingIndication,
     ClientId, ServerInstruction,
 };
 use zellij_utils::{

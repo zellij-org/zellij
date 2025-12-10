@@ -1705,7 +1705,7 @@ impl Pty {
                         .send_to_plugin(PluginInstruction::Update(vec![(
                             None,
                             None,
-                            Event::CwdChanged(PaneId::Terminal(terminal_id).into(), cwd.clone())
+                            Event::CwdChanged(PaneId::Terminal(terminal_id).into(), cwd.clone()),
                         )]));
                 }
                 self.terminal_cwds.insert(terminal_id, cwd.clone());

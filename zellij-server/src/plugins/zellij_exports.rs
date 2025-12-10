@@ -50,9 +50,7 @@ use zellij_utils::{
     },
     plugin_api::{
         event::ProtobufPaneScrollbackResponse,
-        plugin_command::{
-            ProtobufGetPanePidResponse, ProtobufPluginCommand,
-        },
+        plugin_command::{ProtobufGetPanePidResponse, ProtobufPluginCommand},
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
 };
