@@ -18,7 +18,6 @@ pub use command_status::CommandStatus;
 pub use editing::Editing;
 pub use execution::Execution;
 pub use layout::Layout;
-use positioning::reposition_plugin_for_sequence;
 pub use selection::Selection;
 
 use crate::ui::text_input::TextInput;
@@ -426,34 +425,6 @@ impl State {
             return None;
         };
         self.execution.all_commands.get(i)
-    }
-    fn current_running_command_mut(&mut self) -> Option<&mut CommandEntry> {
-        self.execution
-            .all_commands
-            .get_mut(self.execution.current_running_command_index)
-    }
-    fn current_running_command(&self) -> Option<&CommandEntry> {
-        self.execution
-            .all_commands
-            .get(self.execution.current_running_command_index)
-    }
-    fn clear_editing_buffer(&mut self) {
-        self.editing.editing_input.as_mut().map(|c| c.clear());
-    }
-    fn update_current_selected_command_index(&mut self, new_index: usize) {
-        self.selection.current_selected_command_index = Some(new_index);
-        self.update_editing_buffer_to_current_selected();
-    }
-    fn get_text_of_current_selected_command(&self) -> Option<String> {
-        self.current_selected_command().map(|c| c.get_text())
-    }
-    fn update_editing_buffer_to_current_selected(&mut self) {
-        let new_text_of_current_selected_command = self
-            .get_text_of_current_selected_command()
-            .unwrap_or_else(|| String::new());
-        if let Some(editing_input) = self.editing.editing_input.as_mut() {
-            editing_input.set_text(new_text_of_current_selected_command);
-        }
     }
 
     pub fn execute_command_sequence(&mut self) {

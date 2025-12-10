@@ -21,16 +21,6 @@ const HELP_ALL_COMMANDS_PENDING: &str =
 const HELP_ALL_COMMANDS_PENDING_WITH_SELECTION: &str =
     "Help: <Enter> - run, <Ctrl Enter> - add command, <↓↑> - navigate, <e> - edit selected";
 
-pub const ALL_HELP_TEXTS: &[&str] = &[
-    HELP_RUNNING_WITH_SELECTION,
-    HELP_RUNNING_NO_SELECTION,
-    HELP_STOPPED_WITH_SELECTION,
-    HELP_STOPPED_NO_SELECTION,
-    HELP_ONE_PENDING_COMMAND,
-    HELP_ALL_COMMANDS_PENDING,
-    HELP_ALL_COMMANDS_PENDING_WITH_SELECTION,
-];
-
 fn select_help_text(sequence: &State) -> &'static str {
     let is_running = sequence
         .execution
@@ -245,7 +235,7 @@ fn status_cell(status: &CommandStatus, spinner_frame: usize) -> Text {
     apply_status_color(text, status, &status_str)
 }
 
-fn apply_row_styles(cells: Vec<Text>, status: &CommandStatus, is_selected: bool) -> Vec<Text> {
+fn apply_row_styles(cells: Vec<Text>, is_selected: bool) -> Vec<Text> {
     let mut styled_cells = cells;
 
     if is_selected {
@@ -281,7 +271,7 @@ fn command_sequence_row(
         status_cell(status, state.layout.spinner_frame),
     ];
 
-    cells = apply_row_styles(cells, status, is_selected);
+    cells = apply_row_styles(cells, is_selected);
 
     let truncated_cmd_text = if truncated_cmd_text.is_empty() {
         " "
