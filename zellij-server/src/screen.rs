@@ -53,7 +53,6 @@ use crate::{
     thread_bus::Bus,
     ui::{
         loading_indication::LoadingIndication,
-        overlay::{Overlay, OverlayWindow},
     },
     ClientId, ServerInstruction,
 };
@@ -288,10 +287,6 @@ pub enum ScreenInstruction {
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
     ),
     RemoveClient(ClientId),
-    AddOverlay(Overlay, ClientId),
-    RemoveOverlay(ClientId),
-    ConfirmPrompt(ClientId, Option<NotificationEnd>),
-    DenyPrompt(ClientId, Option<NotificationEnd>),
     UpdateSearch(Vec<u8>, ClientId, Option<NotificationEnd>),
     SearchDown(ClientId, Option<NotificationEnd>),
     SearchUp(ClientId, Option<NotificationEnd>),
@@ -601,10 +596,6 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ToggleTab(..) => ScreenContext::ToggleTab,
             ScreenInstruction::AddClient(..) => ScreenContext::AddClient,
             ScreenInstruction::RemoveClient(..) => ScreenContext::RemoveClient,
-            ScreenInstruction::AddOverlay(..) => ScreenContext::AddOverlay,
-            ScreenInstruction::RemoveOverlay(..) => ScreenContext::RemoveOverlay,
-            ScreenInstruction::ConfirmPrompt(..) => ScreenContext::ConfirmPrompt,
-            ScreenInstruction::DenyPrompt(..) => ScreenContext::DenyPrompt,
             ScreenInstruction::UpdateSearch(..) => ScreenContext::UpdateSearch,
             ScreenInstruction::SearchDown(..) => ScreenContext::SearchDown,
             ScreenInstruction::SearchUp(..) => ScreenContext::SearchUp,
@@ -861,8 +852,6 @@ pub(crate) struct Screen {
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     stacked_resize: Rc<RefCell<bool>>,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
-    /// The overlay that is drawn on top of [`Pane`]'s', [`Tab`]'s and the [`Screen`]
-    overlay: OverlayWindow,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     connected_clients: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
@@ -956,7 +945,6 @@ impl Screen {
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
             active_tab_indices: BTreeMap::new(),
             tabs: BTreeMap::new(),
-            overlay: OverlayWindow::default(),
             terminal_emulator_colors: Rc::new(RefCell::new(Palette::default())),
             terminal_emulator_color_codes: Rc::new(RefCell::new(HashMap::new())),
             tab_history: BTreeMap::new(),
@@ -1657,11 +1645,6 @@ impl Screen {
                 .ok_or_else(|| anyhow!("active tab {} does not exist", tab)),
             None => Err(anyhow!("active tab not found for client {:?}", client_id)),
         }
-    }
-
-    /// Returns a mutable reference to this [`Screen`]'s active [`Overlays`].
-    pub fn get_active_overlays_mut(&mut self) -> &mut Vec<Overlay> {
-        &mut self.overlay.overlay_stack
     }
 
     /// Returns a mutable reference to this [`Screen`]'s indexed [`Tab`].
@@ -4995,37 +4978,6 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::RemoveClient(client_id) => {
                 screen.remove_client(client_id)?;
                 screen.log_and_report_session_state()?;
-                screen.render(None)?;
-            },
-            ScreenInstruction::AddOverlay(overlay, _client_id) => {
-                screen.get_active_overlays_mut().pop();
-                screen.get_active_overlays_mut().push(overlay);
-            },
-            ScreenInstruction::RemoveOverlay(_client_id) => {
-                screen.get_active_overlays_mut().pop();
-                screen.render(None)?;
-            },
-            ScreenInstruction::ConfirmPrompt(
-                _client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
-            ) => {
-                let overlay = screen.get_active_overlays_mut().pop();
-                let instruction = overlay.and_then(|o| o.prompt_confirm());
-                if let Some(instruction) = instruction {
-                    screen
-                        .bus
-                        .senders
-                        .send_to_server(*instruction)
-                        .context("failed to confirm prompt")?;
-                }
-            },
-            ScreenInstruction::DenyPrompt(
-                _client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
-            ) => {
-                screen.get_active_overlays_mut().pop();
                 screen.render(None)?;
             },
             ScreenInstruction::UpdateSearch(

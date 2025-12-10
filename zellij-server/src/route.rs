@@ -1038,20 +1038,12 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::Confirm => {
-            senders
-                .send_to_screen(ScreenInstruction::ConfirmPrompt(
-                    client_id,
-                    Some(NotificationEnd::new(completion_tx)),
-                ))
-                .with_context(err_context)?;
+            // no-op, these are deprecated and should be removed when we upgrade the server/client
+            // contract
         },
         Action::Deny => {
-            senders
-                .send_to_screen(ScreenInstruction::DenyPrompt(
-                    client_id,
-                    Some(NotificationEnd::new(completion_tx)),
-                ))
-                .with_context(err_context)?;
+            // no-op, these are deprecated and should be removed when we upgrade the server/client
+            // contract
         },
         #[allow(clippy::single_match)]
         Action::SkipConfirm { action } => match *action {
