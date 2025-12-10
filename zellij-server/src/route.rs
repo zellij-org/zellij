@@ -1980,7 +1980,9 @@ pub(crate) fn route_thread_main(
             },
             None => {
                 consecutive_unknown_messages_received += 1;
-                log::error!("Received unknown message from client.");
+                if consecutive_unknown_messages_received == 1 {
+                    log::error!("Received unknown message from client.");
+                }
                 if consecutive_unknown_messages_received >= 1000 {
                     log::error!("Client sent over 1000 consecutive unknown messages, this is probably an infinite loop, logging client out");
                     let _ = os_input.send_to_client(

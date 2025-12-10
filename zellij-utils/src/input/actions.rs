@@ -548,7 +548,7 @@ impl Action {
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir.clone()));
-                if blocking {
+                if blocking || unblock_condition.is_some() {
                     // For blocking panes, we don't support plugins
                     if plugin.is_some() {
                         return Err("Blocking panes do not support plugin variants".to_string());
