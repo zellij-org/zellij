@@ -168,22 +168,6 @@ pub struct AppState {
     pub is_https: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StdinMessage {
-    pub web_client_id: String,
-    pub stdin: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ShutdownSignal {
-    Shutdown,
-}
-
-#[derive(Serialize, Debug)]
-pub struct SendShutdownSignalResponse {
-    pub status: String,
-}
-
 #[derive(Serialize)]
 pub struct CreateClientIdResponse {
     pub web_client_id: String,

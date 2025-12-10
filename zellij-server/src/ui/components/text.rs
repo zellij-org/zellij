@@ -181,54 +181,6 @@ impl Text {
             .unwrap_or(false)
     }
 
-    pub fn has_any_dim(&self) -> bool {
-        const DIM_LEVEL: usize = 4;
-        self.indices
-            .get(DIM_LEVEL)
-            .map(|indices| !indices.is_empty())
-            .unwrap_or(false)
-    }
-
-    pub fn has_any_unbold(&self) -> bool {
-        const UNBOLD_LEVEL: usize = 5;
-        self.indices
-            .get(UNBOLD_LEVEL)
-            .map(|indices| !indices.is_empty())
-            .unwrap_or(false)
-    }
-
-    pub fn is_error_colored_at(&self, index: usize) -> bool {
-        const ERROR_COLOR_LEVEL: usize = 6;
-        self.indices
-            .get(ERROR_COLOR_LEVEL)
-            .map(|indices| indices.contains(&index))
-            .unwrap_or(false)
-    }
-
-    pub fn is_success_colored_at(&self, index: usize) -> bool {
-        const SUCCESS_COLOR_LEVEL: usize = 7;
-        self.indices
-            .get(SUCCESS_COLOR_LEVEL)
-            .map(|indices| indices.contains(&index))
-            .unwrap_or(false)
-    }
-
-    pub fn has_any_error_color(&self) -> bool {
-        const ERROR_COLOR_LEVEL: usize = 6;
-        self.indices
-            .get(ERROR_COLOR_LEVEL)
-            .map(|indices| !indices.is_empty())
-            .unwrap_or(false)
-    }
-
-    pub fn has_any_success_color(&self) -> bool {
-        const SUCCESS_COLOR_LEVEL: usize = 7;
-        self.indices
-            .get(SUCCESS_COLOR_LEVEL)
-            .map(|indices| !indices.is_empty())
-            .unwrap_or(false)
-    }
-
     pub fn style_of_index(
         &self,
         index: usize,

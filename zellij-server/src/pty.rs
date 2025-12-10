@@ -1675,10 +1675,6 @@ impl Pty {
         }
     }
 
-    pub fn get_terminal_cwd(&self, terminal_id: u32) -> Option<&PathBuf> {
-        self.terminal_cwds.get(&terminal_id)
-    }
-
     pub fn update_and_report_cwds(&mut self) {
         let terminal_ids: Vec<u32> = self.id_to_child_pid.keys().copied().collect();
 

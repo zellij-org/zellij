@@ -5,7 +5,6 @@ use crate::output::{CharacterChunk, SixelImageChunk};
 use crate::panes::{
     grid::Grid,
     sixel::SixelImageStore,
-    terminal_character::EMPTY_TERMINAL_CHARACTER,
     terminal_pane::{BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END},
     LinkHandler, PaneId,
 };

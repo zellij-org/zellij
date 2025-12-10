@@ -1352,7 +1352,7 @@ impl WasmBridge {
                 let running_plugin = running_plugin.clone();
                 let keybinds = keybinds.clone();
                 let default_shell = default_shell.clone();
-                move |senders,
+                move |_senders,
                       _plugin_map,
                       _connected_clients,
                       _default_layout,

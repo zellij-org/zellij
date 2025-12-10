@@ -7,7 +7,6 @@ mod layout_applier;
 mod swap_layouts;
 
 use copy_command::CopyCommand;
-use serde;
 use std::env::temp_dir;
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -46,7 +45,6 @@ use crate::{
     thread_bus::ThreadSenders,
     ClientId, ServerInstruction,
 };
-use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
@@ -277,16 +275,6 @@ pub(crate) struct Tab {
     // is brought online
     web_server_ip: IpAddr,
     web_server_port: u16,
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(crate = "self::serde")]
-pub(crate) struct TabData {
-    pub position: usize,
-    pub name: String,
-    pub active: bool,
-    pub mode_info: ModeInfo,
-    pub colors: Styling,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication

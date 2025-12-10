@@ -1966,18 +1966,6 @@ impl Screen {
         }
     }
 
-    // Optional: getter for debugging/monitoring
-    pub fn get_watcher_size(&self, client_id: &ClientId) -> Option<Size> {
-        self.watcher_clients
-            .get(client_id)
-            .map(|state| state.size())
-    }
-
-    // Optional: get all watcher sizes
-    pub fn get_all_watcher_sizes(&self) -> &HashMap<ClientId, WatcherState> {
-        &self.watcher_clients
-    }
-
     pub fn generate_and_report_tab_state(&mut self) -> Result<Vec<TabInfo>> {
         let mut plugin_updates = vec![];
         let mut tab_infos_for_screen_state = BTreeMap::new();

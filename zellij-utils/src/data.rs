@@ -15,7 +15,7 @@ use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::time::Duration;
-use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
+use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString};
 use unicode_width::UnicodeWidthChar;
 
 #[cfg(not(target_family = "wasm"))]
@@ -285,7 +285,7 @@ impl FromStr for BareKey {
 }
 
 #[derive(
-    Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord, ToString,
+    Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord, Display,
 )]
 pub enum KeyModifier {
     Ctrl,
@@ -922,7 +922,7 @@ impl From<Metadata> for FileMetadata {
 
 /// These events can be subscribed to with subscribe method exported by `zellij-tile`.
 /// Once subscribed to, they will trigger the `update` method of the `ZellijPlugin` trait.
-#[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, EnumDiscriminants, Display, Serialize, Deserialize)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(EventType))]
 #[non_exhaustive]
@@ -998,7 +998,7 @@ pub enum Event {
     CwdChanged(PaneId, PathBuf),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, ToString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, Display, Serialize, Deserialize)]
 pub enum WebServerStatus {
     Online(String), // String -> base url
     Offline,
@@ -1013,7 +1013,7 @@ pub enum WebServerStatus {
     Copy,
     Clone,
     EnumDiscriminants,
-    ToString,
+    Display,
     Serialize,
     Deserialize,
     PartialOrd,
@@ -2726,7 +2726,7 @@ impl NewPanePlacement {
 
 type Context = BTreeMap<String, String>;
 
-#[derive(Debug, Clone, EnumDiscriminants, ToString)]
+#[derive(Debug, Clone, EnumDiscriminants, Display)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(CommandType))]
 pub enum PluginCommand {
