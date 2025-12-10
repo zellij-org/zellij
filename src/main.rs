@@ -248,7 +248,7 @@ fn main() {
                 layout_dir: options.as_ref().and_then(|o| o.layout_dir.clone()),
                 name: None,
                 cwd: options.as_ref().and_then(|o| o.default_cwd.clone()),
-                initial_command: None,
+                initial_command: vec![],
                 initial_plugin: None,
                 close_on_exit: Default::default(),
                 start_suspended: Default::default(),

@@ -826,25 +826,24 @@ impl Action {
                         },
                     };
                     Some(vec![CommandOrPlugin::Plugin(plugin)])
-                } else if let Some(command_vec) = initial_command {
-                    if !command_vec.is_empty() {
-                        let mut command = command_vec.clone();
-                        let (command, args) = (PathBuf::from(command.remove(0)), command);
-                        let hold_on_close = !close_on_exit;
-                        let hold_on_start = start_suspended;
-                        let run_command_action = RunCommandAction {
-                            command,
-                            args,
-                            cwd: cwd.clone(),
-                            direction: None,
-                            hold_on_close,
-                            hold_on_start,
-                            ..Default::default()
-                        };
-                        Some(vec![CommandOrPlugin::Command(run_command_action)])
-                    } else {
-                        None
-                    }
+                } else if !initial_command.is_empty() {
+                    let mut command: Vec<String> = initial_command.clone();
+                    let (command, args) = (
+                        PathBuf::from(command.remove(0)),
+                        command.into_iter().collect(),
+                    );
+                    let hold_on_close = !close_on_exit;
+                    let hold_on_start = start_suspended;
+                    let run_command_action = RunCommandAction {
+                        command,
+                        args,
+                        cwd: cwd.clone(),
+                        direction: None,
+                        hold_on_close,
+                        hold_on_start,
+                        ..Default::default()
+                    };
+                    Some(vec![CommandOrPlugin::Command(run_command_action)])
                 } else {
                     None
                 };
