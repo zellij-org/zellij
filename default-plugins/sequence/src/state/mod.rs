@@ -92,8 +92,11 @@ impl State {
     }
 
     pub fn remove_current_selected_command(&mut self) {
-        self.selection
+        let removed_pane_id = self.selection
             .remove_current_selected_command(&mut self.execution.all_commands, &mut self.editing);
+        if let Some(removed_pane_id) = removed_pane_id {
+            close_pane_with_id(removed_pane_id);
+        }
     }
 
     pub fn clear_current_selected_command(&mut self) {

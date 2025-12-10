@@ -1193,14 +1193,10 @@ impl Action {
                 payload.originating_plugin = Some(originating_plugin);
             },
             Action::NewTab { initial_panes, .. } => {
-                log::info!("populating new tab event 0");
                 if let Some(initial_panes) = initial_panes.as_mut() {
-                    log::info!("populating new tab event 1");
                     for pane in initial_panes.iter_mut() {
-                        log::info!("populating new tab event 2");
                         match pane {
                             CommandOrPlugin::Command(run_command) => {
-                                log::info!("populating new tab event 3");
                                 run_command.populate_originating_plugin(originating_plugin.clone());
                             },
                             _ => {},

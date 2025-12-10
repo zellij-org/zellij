@@ -2463,8 +2463,8 @@ fn get_pane_pid(env: &PluginEnv, pane_id: PaneId) {
         .with_context(err_context)
         .non_fatal();
 
-    // Block waiting for response with 5 second timeout
-    let response = match response_receiver.recv_timeout(Duration::from_secs(5)) {
+    // Block waiting for response with 100ms timeout
+    let response = match response_receiver.recv_timeout(Duration::from_millis(100)) {
         Ok(response) => response,
         Err(RecvTimeoutError::Timeout) => {
             log::error!(

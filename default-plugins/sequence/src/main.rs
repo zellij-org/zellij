@@ -224,7 +224,7 @@ pub fn handle_event(state: &mut State, event: Event) -> bool {
 }
 
 fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
-    // Ctrl+Enter - Insert command after current with THEN chain type
+    // Ctrl+Enter - Insert command after current with AND chain type
     if key.has_modifiers(&[KeyModifier::Ctrl]) && matches!(key.bare_key, BareKey::Enter) {
         let mut is_cd = false;
         if let Some(current_text) = state.editing_input_text() {
@@ -304,6 +304,9 @@ fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
 
             if is_empty && has_more_than_one_command {
                 state.remove_current_selected_command();
+            } else if is_empty {
+                // last command, return to shell
+                close_panes_and_return_to_shell(state);
             } else {
                 // If not empty, clear it
                 state.clear_current_selected_command();
@@ -417,6 +420,9 @@ fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
                             state.remove_current_selected_command();
                             return true;
                         }
+                    } else if is_empty {
+                        // last command
+                        close_panes_and_return_to_shell(state);
                     }
                 }
 
@@ -813,7 +819,6 @@ fn close_panes_and_return_to_shell(state: &mut State) -> bool {
             _ => None,
         }
     }) {
-        // if let Some(primary_pane_id_before_sequence) = state.execution.primary_pane_id_before_sequence {
         if let Some(original_pane_id) = state.original_pane_id {
             replace_pane_with_existing_pane(
                 first_pane_id,
@@ -934,8 +939,12 @@ fn rerun_sequence(state: &mut State) {
             _ => None,
         })
         .or_else(|| {
-            close_replaced_pane = false; // we should never close the original pane_id
-            state.original_pane_id
+            if state.all_commands_are_pending() {
+                close_replaced_pane = false; // we should never close the original pane_id
+                state.original_pane_id
+            } else {
+                None
+            }
         });
 
     // Close all panes AFTER the selected one (selected will be replaced in-place)
@@ -1004,10 +1013,11 @@ fn rerun_sequence(state: &mut State) {
         let placement = if let Some(pane_id) = selected_pane_id_for_replacement {
             NewPanePlacement::InPlace {
                 pane_id_to_replace: Some(*pane_id),
-                close_replaced_pane: false,
+                close_replaced_pane
             }
         } else {
-            NewPanePlacement::Stacked(None)
+            let pane_id_to_stack_under = state.execution.all_commands.iter().find_map(|c| c.get_pane_id());
+            NewPanePlacement::Stacked(pane_id_to_stack_under)
         };
 
         // Determine unblock_condition based on whether this is the last command

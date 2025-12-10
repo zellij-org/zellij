@@ -71,6 +71,9 @@ impl CommandEntry {
     pub fn clear_chain_type(&mut self) {
         self.chain_type = ChainType::None;
     }
+    pub fn clear_status(&mut self) {
+        self.status = CommandStatus::Pending;
+    }
     pub fn cycle_chain_type(&mut self) {
         self.chain_type.cycle_next();
     }

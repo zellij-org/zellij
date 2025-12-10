@@ -1,5 +1,6 @@
 use crate::state::{CommandEntry, Editing};
 use std::path::PathBuf;
+use zellij_tile::prelude::*;
 
 pub struct Selection {
     pub current_selected_command_index: Option<usize>,
@@ -61,12 +62,15 @@ impl Selection {
         &mut self,
         all_commands: &mut Vec<CommandEntry>,
         editing: &mut Editing,
-    ) {
+    ) -> Option<PaneId> {
+        // returns the pane_id of the removed command, if any
+        let mut removed_pane_id = None;
         let Some(mut current_selected_command_index) = self.current_selected_command_index else {
-            return;
+            return removed_pane_id;
         };
         if all_commands.len() > 1 && all_commands.len() > current_selected_command_index {
-            all_commands.remove(current_selected_command_index);
+            let command = all_commands.remove(current_selected_command_index);
+            removed_pane_id = command.get_pane_id();
         } else {
             self.clear_current_selected_command(all_commands, editing);
         }
@@ -84,6 +88,7 @@ impl Selection {
             self.current_selected_command_mut(all_commands)
                 .map(|c| c.clear_chain_type());
         }
+        removed_pane_id
     }
 
     pub fn clear_current_selected_command(
