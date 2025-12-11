@@ -41,6 +41,7 @@ impl ZellijPlugin for State {
         self.plugin_id = Some(plugin_ids.plugin_id);
         self.client_id = Some(plugin_ids.client_id);
         self.cwd = Some(plugin_ids.initial_cwd);
+        update_title(self);
     }
 
     fn update(&mut self, event: Event) -> bool {

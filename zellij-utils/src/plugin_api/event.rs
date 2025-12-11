@@ -898,10 +898,8 @@ impl TryFrom<Event> for ProtobufEvent {
                     .to_str()
                     .ok_or("Failed to convert PathBuf to string")?
                     .to_string();
-                let focused_client_ids_u32: Vec<u32> = focused_client_ids
-                    .into_iter()
-                    .map(|id| id as u32)
-                    .collect();
+                let focused_client_ids_u32: Vec<u32> =
+                    focused_client_ids.into_iter().map(|id| id as u32).collect();
                 let cwd_changed_payload = ProtobufCwdChangedPayload {
                     pane_id: Some(protobuf_pane_id),
                     new_cwd: new_cwd_string,
