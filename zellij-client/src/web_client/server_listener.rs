@@ -81,14 +81,36 @@ pub fn zellij_server_listener(
                         .unwrap()
                         .to_owned();
 
-                    let (first_message, zellij_ipc_pipe) = session_manager.spawn_session_if_needed(
+                    // Look up read-only status from connection table
+                    let is_read_only = connection_table
+                        .lock()
+                        .unwrap()
+                        .is_client_read_only(&web_client_id);
+
+                    let result = session_manager.spawn_session_if_needed(
                         &session_name,
                         client_attributes,
                         config_file_path.clone(),
                         &config_options,
                         os_input.clone(),
                         reconnect_info.as_ref().and_then(|r| r.layout.clone()),
+                        is_read_only,
                     );
+
+                    let (first_message, zellij_ipc_pipe) = match result {
+                        Ok(msg_and_pipe) => msg_and_pipe,
+                        Err(error_msg) => {
+                            // Send error to client and close connection
+                            log::error!("Session attachment failed: {}", error_msg);
+                            client_connection_bus.send_control(
+                                WebServerToWebClientControlMessage::LogError {
+                                    lines: vec![error_msg],
+                                },
+                            );
+                            client_connection_bus.close_connection();
+                            return;
+                        },
+                    };
 
                     os_input.connect_to_server(&zellij_ipc_pipe);
                     os_input.send_to_server(first_message);

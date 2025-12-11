@@ -51,21 +51,34 @@ pub fn spawn_session_if_needed(
     config_options: &Options,
     os_input: Box<dyn ClientOsApi>,
     requested_layout: Option<LayoutInfo>,
-) -> (ClientToServerMsg, PathBuf) {
-    if session_exists(&session_name).unwrap_or(false) {
-        ipc_pipe_and_first_message_for_existing_session(
+    is_read_only: bool,
+) -> Result<(ClientToServerMsg, PathBuf), String> {
+    let session_exists = session_exists(&session_name).unwrap_or(false);
+
+    // CRITICAL: Read-only tokens cannot create new sessions
+    if is_read_only && !session_exists {
+        return Err(
+            "Read-only tokens can only attach to existing sessions. \
+             Please ask an administrator to create the session first."
+                .to_string(),
+        );
+    }
+
+    if session_exists {
+        Ok(ipc_pipe_and_first_message_for_existing_session(
             session_name,
             client_attributes,
             config_file_path,
             config_options.clone(),
-        )
+            is_read_only,
+        ))
     } else {
         // we still parse the resurrection layout here even though we don't use it just in case
         // it's corrupted
         let resurrection_layout = resurrection_layout(&session_name).ok().flatten();
 
         if resurrection_layout.is_some() {
-            spawn_new_session(
+            Ok(spawn_new_session(
                 &session_name,
                 os_input.clone(),
                 config_file_path,
@@ -76,16 +89,16 @@ pub fn spawn_session_if_needed(
                         .to_string(),
                 )),
                 client_attributes,
-            )
+            ))
         } else {
-            spawn_new_session(
+            Ok(spawn_new_session(
                 &session_name,
                 os_input.clone(),
                 config_file_path,
                 config_options.clone(),
                 requested_layout,
                 client_attributes,
-            )
+            ))
         }
     }
 }
@@ -143,6 +156,7 @@ fn ipc_pipe_and_first_message_for_existing_session(
     client_attributes: ClientAttributes,
     config_file_path: Option<PathBuf>,
     mut config_opts: Options,
+    is_read_only: bool,
 ) -> (ClientToServerMsg, PathBuf) {
     let zellij_ipc_pipe: PathBuf = {
         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
@@ -154,26 +168,37 @@ fn ipc_pipe_and_first_message_for_existing_session(
 
     config_opts.web_server = Some(true);
     config_opts.web_sharing = Some(WebSharing::On);
-    let cli_assets = CliAssets {
-        config_file_path,
-        config_dir: None,
-        should_ignore_config: false,
-        configuration_options: Some(config_opts),
-        layout: None,
-        terminal_window_size: client_attributes.size,
-        data_dir: None,
-        is_debug: false,
-        max_panes: None,
-        force_run_layout_commands: false,
-        cwd: None,
-    };
-    let is_web_client = true;
 
-    let first_message = ClientToServerMsg::AttachClient {
-        cli_assets,
-        tab_position_to_focus: None,
-        pane_to_focus: None,
-        is_web_client,
+    // CRITICAL: Choose message type based on read-only status
+    let first_message = if is_read_only {
+        // Read-only clients attach as watchers
+        ClientToServerMsg::AttachWatcherClient {
+            terminal_size: client_attributes.size,
+        }
+    } else {
+        // Regular clients attach normally
+        let cli_assets = CliAssets {
+            config_file_path,
+            config_dir: None,
+            should_ignore_config: false,
+            configuration_options: Some(config_opts),
+            layout: None,
+            terminal_window_size: client_attributes.size,
+            data_dir: None,
+            is_debug: false,
+            max_panes: None,
+            force_run_layout_commands: false,
+            cwd: None,
+        };
+        let is_web_client = true;
+
+        ClientToServerMsg::AttachClient {
+            cli_assets,
+            tab_position_to_focus: None,
+            pane_to_focus: None,
+            is_web_client,
+        }
     };
+
     (first_message, zellij_ipc_pipe)
 }

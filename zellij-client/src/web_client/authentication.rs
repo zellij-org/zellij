@@ -3,7 +3,7 @@ use axum::body::Body;
 use axum::http::header::SET_COOKIE;
 use axum::{extract::Request, http::StatusCode, middleware::Next, response::Response};
 use axum_extra::extract::cookie::{Cookie, SameSite};
-use zellij_utils::web_authentication_tokens::validate_session_token;
+use zellij_utils::web_authentication_tokens::{is_session_token_read_only, validate_session_token};
 
 pub async fn auth_middleware(request: Request, next: Next) -> Result<Response, StatusCode> {
     let cookies = parse_cookies(&request);
@@ -15,6 +15,13 @@ pub async fn auth_middleware(request: Request, next: Next) -> Result<Response, S
 
     match validate_session_token(&session_token) {
         Ok(true) => {
+            // Check if this is a read-only token
+            let is_read_only = is_session_token_read_only(&session_token).unwrap_or(false);
+
+            // Store in request extensions for downstream handlers
+            let mut request = request;
+            request.extensions_mut().insert(is_read_only);
+
             let response = next.run(request).await;
             Ok(response)
         },

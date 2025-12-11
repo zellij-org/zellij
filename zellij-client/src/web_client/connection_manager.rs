@@ -6,9 +6,22 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
 
 impl ConnectionTable {
-    pub fn add_new_client(&mut self, client_id: String, client_os_api: Box<dyn ClientOsApi>) {
+    pub fn add_new_client(
+        &mut self,
+        client_id: String,
+        client_os_api: Box<dyn ClientOsApi>,
+        is_read_only: bool,
+    ) {
         self.client_id_to_channels
-            .insert(client_id, ClientChannels::new(client_os_api));
+            .insert(client_id.clone(), ClientChannels::new(client_os_api));
+        self.client_read_only_status.insert(client_id, is_read_only);
+    }
+
+    pub fn is_client_read_only(&self, client_id: &str) -> bool {
+        self.client_read_only_status
+            .get(client_id)
+            .copied()
+            .unwrap_or(false)
     }
 
     pub fn add_client_control_tx(

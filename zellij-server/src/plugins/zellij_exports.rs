@@ -2769,7 +2769,8 @@ fn embed_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
 
 #[cfg(feature = "web_server_capability")]
 fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>) {
-    let serialized = match create_token(token_label) {
+    // Default to read-write (false) for plugin-created tokens
+    let serialized = match create_token(token_label, false) {
         Ok((token, token_label)) => CreateTokenResponse {
             token: Some(token),
             token_label: Some(token_label),

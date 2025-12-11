@@ -312,7 +312,21 @@ fn main() {
                 },
             }
         } else if web_opts.create_token {
-            match commands::create_auth_token() {
+            let read_only = false;
+            match commands::create_auth_token(web_opts.token_name.clone(), read_only) {
+                Ok(token_and_name) => {
+                    println!("Created token successfully");
+                    println!("");
+                    println!("{}", token_and_name);
+                },
+                Err(e) => {
+                    eprintln!("Failed to create token: {}", e);
+                    std::process::exit(2)
+                },
+            }
+        } else if web_opts.create_read_only_token {
+            let read_only = true;
+            match commands::create_auth_token(web_opts.token_name.clone(), read_only) {
                 Ok(token_and_name) => {
                     println!("Created token successfully");
                     println!("");

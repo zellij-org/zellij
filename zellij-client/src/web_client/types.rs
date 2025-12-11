@@ -42,7 +42,8 @@ pub trait SessionManager: Send + Sync + std::fmt::Debug {
         config_options: &Options,
         os_input: Box<dyn ClientOsApi>,
         requested_layout: Option<LayoutInfo>,
-    ) -> (ClientToServerMsg, PathBuf);
+        is_read_only: bool,
+    ) -> Result<(ClientToServerMsg, PathBuf), String>;
 }
 
 #[derive(Debug, Clone)]
@@ -71,7 +72,8 @@ impl SessionManager for RealSessionManager {
         config_options: &Options,
         os_input: Box<dyn ClientOsApi>,
         requested_layout: Option<LayoutInfo>,
-    ) -> (ClientToServerMsg, PathBuf) {
+        is_read_only: bool,
+    ) -> Result<(ClientToServerMsg, PathBuf), String> {
         crate::web_client::session_management::spawn_session_if_needed(
             session_name,
             client_attributes,
@@ -79,6 +81,7 @@ impl SessionManager for RealSessionManager {
             config_options,
             os_input,
             requested_layout,
+            is_read_only,
         )
     }
 }
@@ -86,6 +89,7 @@ impl SessionManager for RealSessionManager {
 #[derive(Debug, Default, Clone)]
 pub struct ConnectionTable {
     pub client_id_to_channels: HashMap<String, ClientChannels>,
+    pub client_read_only_status: HashMap<String, bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -171,6 +175,7 @@ pub struct AppState {
 #[derive(Serialize)]
 pub struct CreateClientIdResponse {
     pub web_client_id: String,
+    pub is_read_only: bool,
 }
 
 #[derive(Deserialize)]

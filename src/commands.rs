@@ -236,15 +236,18 @@ pub(crate) fn stop_web_server() -> Result<(), String> {
 }
 
 #[cfg(feature = "web_server_capability")]
-pub(crate) fn create_auth_token() -> Result<String, String> {
+pub(crate) fn create_auth_token(name: Option<String>, read_only: bool) -> Result<String, String> {
     // returns the token and it's name
-    create_token(None)
-        .map(|(token_name, token)| format!("{}: {}", token, token_name))
+    create_token(name, read_only)
+        .map(|(token, token_name)| {
+            let access_type = if read_only { " (read-only)" } else { "" };
+            format!("{}: {}{}", token, token_name, access_type)
+        })
         .map_err(|e| e.to_string())
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn create_auth_token() -> Result<String, String> {
+pub(crate) fn create_auth_token(_name: Option<String>, _read_only: bool) -> Result<String, String> {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot create auth token!"
     );
@@ -294,7 +297,8 @@ pub(crate) fn list_auth_tokens() -> Result<Vec<String>, String> {
         .map(|tokens| {
             let mut res = vec![];
             for t in tokens {
-                res.push(format!("{}: created at {}", t.name, t.created_at))
+                let access_type = if t.read_only { " [READ-ONLY]" } else { "" };
+                res.push(format!("{}: created at {}{}", t.name, t.created_at, access_type))
             }
             res
         })
