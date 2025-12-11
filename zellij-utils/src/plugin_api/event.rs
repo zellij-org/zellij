@@ -27,8 +27,8 @@ pub use super::generated_api::api::{
 };
 #[allow(hidden_glob_reexports)]
 use crate::data::{
-    ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier,
-    LayoutInfo, ModeInfo, Mouse, PaneContents, PaneId, PaneInfo, PaneManifest,
+    ClientId, ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode,
+    KeyWithModifier, LayoutInfo, ModeInfo, Mouse, PaneContents, PaneId, PaneInfo, PaneManifest,
     PaneScrollbackResponse, PermissionStatus, PluginCapabilities, PluginInfo, SelectedText,
     SessionInfo, Style, TabInfo, WebServerStatus, WebSharing,
 };
@@ -449,7 +449,12 @@ impl TryFrom<ProtobufEvent> for Event {
                         .try_into()
                         .map_err(|_| "Failed to convert PaneId in CwdChanged payload")?;
                     let new_cwd = PathBuf::from(protobuf_payload.new_cwd);
-                    Ok(Event::CwdChanged(pane_id, new_cwd))
+                    let focused_client_ids: Vec<ClientId> = protobuf_payload
+                        .focused_client_ids
+                        .into_iter()
+                        .map(|id| id as u16)
+                        .collect();
+                    Ok(Event::CwdChanged(pane_id, new_cwd, focused_client_ids))
                 },
                 _ => Err("Malformed payload for the CwdChanged Event"),
             },
@@ -887,15 +892,20 @@ impl TryFrom<Event> for ProtobufEvent {
                     )),
                 })
             },
-            Event::CwdChanged(pane_id, new_cwd) => {
+            Event::CwdChanged(pane_id, new_cwd, focused_client_ids) => {
                 let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
                 let new_cwd_string = new_cwd
                     .to_str()
                     .ok_or("Failed to convert PathBuf to string")?
                     .to_string();
+                let focused_client_ids_u32: Vec<u32> = focused_client_ids
+                    .into_iter()
+                    .map(|id| id as u32)
+                    .collect();
                 let cwd_changed_payload = ProtobufCwdChangedPayload {
                     pane_id: Some(protobuf_pane_id),
                     new_cwd: new_cwd_string,
+                    focused_client_ids: focused_client_ids_u32,
                 };
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::CwdChanged as i32,

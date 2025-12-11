@@ -1699,13 +1699,20 @@ impl Pty {
 
             if let Some(cwd) = cwd {
                 if self.terminal_cwds.get(&terminal_id) != Some(cwd) {
+                    let pane_id = PaneId::Terminal(terminal_id);
+                    let focused_client_ids: Vec<ClientId> = self
+                        .active_panes
+                        .iter()
+                        .filter(|(_, active_pane)| *active_pane == &pane_id)
+                        .map(|(client_id, _)| *client_id)
+                        .collect();
                     let _ = self
                         .bus
                         .senders
                         .send_to_plugin(PluginInstruction::Update(vec![(
                             None,
                             None,
-                            Event::CwdChanged(PaneId::Terminal(terminal_id).into(), cwd.clone()),
+                            Event::CwdChanged(pane_id.into(), cwd.clone(), focused_client_ids),
                         )]));
                 }
                 self.terminal_cwds.insert(terminal_id, cwd.clone());

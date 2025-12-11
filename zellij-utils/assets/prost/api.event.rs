@@ -90,6 +90,8 @@ pub struct CwdChangedPayload {
     pub pane_id: ::core::option::Option<PaneId>,
     #[prost(string, tag="2")]
     pub new_cwd: ::prost::alloc::string::String,
+    #[prost(uint32, repeated, tag="3")]
+    pub focused_client_ids: ::prost::alloc::vec::Vec<u32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

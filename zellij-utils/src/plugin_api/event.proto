@@ -109,6 +109,7 @@ message Event {
 message CwdChangedPayload {
   PaneId pane_id = 1;
   string new_cwd = 2;
+  repeated uint32 focused_client_ids = 3;
 }
 
 message FailedToStartWebServerPayload {
