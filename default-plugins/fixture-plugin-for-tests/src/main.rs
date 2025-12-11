@@ -17,6 +17,7 @@ struct State {
     message_to_plugin_payload: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Default, Serialize, Deserialize)]
 struct TestWorker {
     number_of_messages_received: usize,
@@ -612,3 +613,6 @@ impl ZellijPlugin for State {
         }
     }
 }
+
+#[cfg(not(target_family = "wasm"))]
+fn main() {}

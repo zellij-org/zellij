@@ -5,11 +5,11 @@ description = "A terminal workspace with batteries included"
 homepage = "https://zellij.dev"
 include = ["src/**/*", "assets/layouts/*", "assets/config/*", "LICENSE.md", "README.md", "!**/*_test.*", "!**/tests/**/*"]
 # See 'workspace.package' for concrete values
-license.workspace = true
-repository.workspace = true
-edition.workspace = true
-version.workspace = true
-rust-version.workspace = true
+license = { workspace = true }
+repository = { workspace = true }
+edition = { workspace = true }
+version = { workspace = true }
+rust-version = { workspace = true }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
