@@ -26,6 +26,7 @@ pub fn zellij_server_listener(
     config_file_path: Option<PathBuf>,
     web_client_id: String,
     session_manager: Arc<dyn SessionManager>,
+    attachment_complete_tx: Option<tokio::sync::oneshot::Sender<()>>,
 ) {
     let _server_listener_thread = std::thread::Builder::new()
         .name("server_listener".to_string())
@@ -41,6 +42,7 @@ pub fn zellij_server_listener(
                             return;
                         },
                     };
+                let mut attachment_complete_tx = attachment_complete_tx;
                 'reconnect_loop: loop {
                     let reconnect_info = reconnect_to_session.take();
                     let path = {
@@ -114,6 +116,10 @@ pub fn zellij_server_listener(
 
                     os_input.connect_to_server(&zellij_ipc_pipe);
                     os_input.send_to_server(first_message);
+
+                    if let Some(tx) = attachment_complete_tx.take() {
+                        let _ = tx.send(());
+                    }
 
                     client_connection_bus.send_control(
                         WebServerToWebClientControlMessage::SwitchedSession {

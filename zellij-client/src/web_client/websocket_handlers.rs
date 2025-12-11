@@ -132,6 +132,9 @@ async fn handle_ws_terminal(
         .unwrap()
         .add_client_terminal_tx(&web_client_id, stdout_channel_tx);
 
+    let (attachment_complete_tx, attachment_complete_rx) =
+        tokio::sync::oneshot::channel();
+
     zellij_server_listener(
         os_input.clone(),
         state.connection_table.clone(),
@@ -141,6 +144,7 @@ async fn handle_ws_terminal(
         Some(state.config_file_path.clone()),
         web_client_id.clone(),
         state.session_manager.clone(),
+        Some(attachment_complete_tx),
     );
 
     let terminal_channel_cancellation_token = CancellationToken::new();
@@ -166,6 +170,9 @@ async fn handle_ws_terminal(
         .support_kitty_keyboard_protocol
         .map(|e| !e)
         .unwrap_or(false);
+
+    let _ = attachment_complete_rx.await;
+
     let mut mouse_old_event = MouseEvent::new();
     while let Some(Ok(msg)) = client_terminal_channel_rx.next().await {
         match msg {
