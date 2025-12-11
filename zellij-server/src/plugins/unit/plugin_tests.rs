@@ -9137,3 +9137,670 @@ pub fn before_close_plugin_event() {
         .unwrap();
     assert_snapshot!(format!("{:#?}", sent_instruction));
 }
+
+#[test]
+#[ignore]
+pub fn show_cursor_plugin_command() {
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+                                          // destructor removes the directory
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, screen_receiver, teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+        ..Default::default()
+    });
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
+        received_screen_instructions,
+        ScreenInstruction::ShowPluginCursor,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        plugin_title,
+        run_plugin,
+        Some(tab_index),
+        None,
+        client_id,
+        size,
+        None,
+        None,
+        false,
+        None,
+        None,
+        None,
+    ));
+
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(KeyWithModifier::new(BareKey::Char('a')).with_super_modifier()),
+    )]));
+
+    screen_thread.join().unwrap();
+    teardown();
+
+    let show_cursor_instruction = received_screen_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let ScreenInstruction::ShowPluginCursor(plugin_id, client_id, cursor_position) = i {
+                Some((*plugin_id, *client_id, *cursor_position))
+            } else {
+                None
+            }
+        });
+
+    assert_snapshot!(format!("{:#?}", show_cursor_instruction));
+}
+
+#[test]
+#[ignore]
+pub fn hide_cursor_plugin_command() {
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+                                          // destructor removes the directory
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, screen_receiver, teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+        ..Default::default()
+    });
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
+        received_screen_instructions,
+        ScreenInstruction::ShowPluginCursor,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        plugin_title,
+        run_plugin,
+        Some(tab_index),
+        None,
+        client_id,
+        size,
+        None,
+        None,
+        false,
+        None,
+        None,
+        None,
+    ));
+
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(KeyWithModifier::new(BareKey::Char('b')).with_super_modifier()),
+    )]));
+
+    screen_thread.join().unwrap();
+    teardown();
+
+    let hide_cursor_instruction = received_screen_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let ScreenInstruction::ShowPluginCursor(plugin_id, client_id, cursor_position) = i {
+                Some((*plugin_id, *client_id, *cursor_position))
+            } else {
+                None
+            }
+        });
+
+    assert_snapshot!(format!("{:#?}", hide_cursor_instruction));
+}
+
+#[test]
+#[ignore]
+pub fn copy_to_clipboard_plugin_command() {
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+                                          // destructor removes the directory
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, screen_receiver, teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+        ..Default::default()
+    });
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
+        received_screen_instructions,
+        ScreenInstruction::CopyTextToClipboard,
+        screen_receiver,
+        1,
+        &PermissionType::WriteToClipboard,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        plugin_title,
+        run_plugin,
+        Some(tab_index),
+        None,
+        client_id,
+        size,
+        None,
+        None,
+        false,
+        None,
+        None,
+        None,
+    ));
+
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(KeyWithModifier::new(BareKey::Char('c')).with_super_modifier()),
+    )]));
+
+    screen_thread.join().unwrap();
+    teardown();
+
+    let copy_instruction = received_screen_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let ScreenInstruction::CopyTextToClipboard(text, plugin_id) = i {
+                Some((text.clone(), *plugin_id))
+            } else {
+                None
+            }
+        });
+
+    assert_snapshot!(format!("{:#?}", copy_instruction));
+}
+
+#[test]
+#[ignore]
+pub fn run_action_plugin_command() {
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+                                          // destructor removes the directory
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, screen_receiver, teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+        ..Default::default()
+    });
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
+        received_screen_instructions,
+        ScreenInstruction::MoveFocusLeft,
+        screen_receiver,
+        1,
+        &PermissionType::RunActionsAsUser,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        plugin_title,
+        run_plugin,
+        Some(tab_index),
+        None,
+        client_id,
+        size,
+        None,
+        None,
+        false,
+        None,
+        None,
+        None,
+    ));
+
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(KeyWithModifier::new(BareKey::Char('d')).with_super_modifier()),
+    )]));
+
+    screen_thread.join().unwrap();
+    teardown();
+
+    let move_focus_instruction = received_screen_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let ScreenInstruction::MoveFocusLeft(client_id, notification_end) = i {
+                Some((*client_id, notification_end.clone()))
+            } else {
+                None
+            }
+        });
+
+    assert_snapshot!(format!("{:#?}", move_focus_instruction));
+}
+
+#[test]
+#[ignore]
+pub fn send_sigint_to_pane_id_plugin_command() {
+    let temp_folder = tempdir().unwrap();
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, pty_receiver, screen_receiver, teardown) =
+        create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
+
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let client_id = 1;
+
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::SendSigintToPaneId,
+        pty_receiver,
+        1
+    );
+
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+        ..Default::default()
+    });
+    let tab_index = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        plugin_title,
+        run_plugin,
+        Some(tab_index),
+        None,
+        client_id,
+        size,
+        None,
+        None,
+        false,
+        None,
+        None,
+        None,
+    ));
+
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(KeyWithModifier::new(BareKey::Char('e')).with_super_modifier()),
+    )]));
+
+    pty_thread.join().unwrap();
+    teardown();
+
+    let sigint_instruction = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let PtyInstruction::SendSigintToPaneId(pane_id) = i {
+                Some(*pane_id)
+            } else {
+                None
+            }
+        });
+
+    assert_snapshot!(format!("{:#?}", sigint_instruction));
+}
+
+#[test]
+#[ignore]
+pub fn send_sigkill_to_pane_id_plugin_command() {
+    let temp_folder = tempdir().unwrap();
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, pty_receiver, screen_receiver, teardown) =
+        create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
+
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let client_id = 1;
+
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::SendSigkillToPaneId,
+        pty_receiver,
+        1
+    );
+
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+        ..Default::default()
+    });
+    let tab_index = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        plugin_title,
+        run_plugin,
+        Some(tab_index),
+        None,
+        client_id,
+        size,
+        None,
+        None,
+        false,
+        None,
+        None,
+        None,
+    ));
+
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(KeyWithModifier::new(BareKey::Char('f')).with_super_modifier()),
+    )]));
+
+    pty_thread.join().unwrap();
+    teardown();
+
+    let sigkill_instruction = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let PtyInstruction::SendSigkillToPaneId(pane_id) = i {
+                Some(*pane_id)
+            } else {
+                None
+            }
+        });
+
+    assert_snapshot!(format!("{:#?}", sigkill_instruction));
+}
+
+#[test]
+#[ignore]
+pub fn copy_to_clipboard_without_permission() {
+    let temp_folder = tempdir().unwrap();
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, screen_receiver, teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
+
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let client_id = 1;
+
+    // This test denies the permission and expects no CopyTextToClipboard instruction
+    let screen_thread = deny_permissions_and_log_actions_in_thread!(
+        received_screen_instructions,
+        ScreenInstruction::CopyTextToClipboard,
+        screen_receiver,
+        1,
+        &PermissionType::WriteToClipboard,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+        ..Default::default()
+    });
+    let tab_index = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        plugin_title,
+        run_plugin,
+        Some(tab_index),
+        None,
+        client_id,
+        size,
+        None,
+        None,
+        false,
+        None,
+        None,
+        None,
+    ));
+
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(KeyWithModifier::new(BareKey::Char('c')).with_super_modifier()),
+    )]));
+
+    // Give it time to potentially (incorrectly) send the instruction
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+
+    let _ = plugin_thread_sender.send(PluginInstruction::Exit);
+    screen_thread.join().unwrap();
+    teardown();
+
+    let copy_instruction = received_screen_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let ScreenInstruction::CopyTextToClipboard(text, plugin_id) = i {
+                Some((text.clone(), *plugin_id))
+            } else {
+                None
+            }
+        });
+
+    // Should be None because permission was denied
+    assert_snapshot!(format!("{:#?}", copy_instruction));
+}
+
+#[test]
+#[ignore]
+pub fn run_action_without_permission() {
+    let temp_folder = tempdir().unwrap();
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, screen_receiver, teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
+
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let client_id = 1;
+
+    let screen_thread = deny_permissions_and_log_actions_in_thread!(
+        received_screen_instructions,
+        ScreenInstruction::MoveFocusLeft,
+        screen_receiver,
+        1,
+        &PermissionType::RunActionsAsUser,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+        ..Default::default()
+    });
+    let tab_index = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        plugin_title,
+        run_plugin,
+        Some(tab_index),
+        None,
+        client_id,
+        size,
+        None,
+        None,
+        false,
+        None,
+        None,
+        None,
+    ));
+
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(KeyWithModifier::new(BareKey::Char('d')).with_super_modifier()),
+    )]));
+
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+
+    let _ = plugin_thread_sender.send(PluginInstruction::Exit);
+    screen_thread.join().unwrap();
+    teardown();
+
+    let move_focus_instruction = received_screen_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let ScreenInstruction::MoveFocusLeft(client_id, notification_end) = i {
+                Some((*client_id, notification_end.clone()))
+            } else {
+                None
+            }
+        });
+
+    // Should be None because permission was denied
+    assert_snapshot!(format!("{:#?}", move_focus_instruction));
+}

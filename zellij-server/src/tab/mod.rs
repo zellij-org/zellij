@@ -7,7 +7,6 @@ mod layout_applier;
 mod swap_layouts;
 
 use copy_command::CopyCommand;
-use serde;
 use std::env::temp_dir;
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -46,7 +45,6 @@ use crate::{
     thread_bus::ThreadSenders,
     ClientId, ServerInstruction,
 };
-use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
@@ -279,16 +277,6 @@ pub(crate) struct Tab {
     web_server_port: u16,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(crate = "self::serde")]
-pub(crate) struct TabData {
-    pub position: usize,
-    pub name: String,
-    pub active: bool,
-    pub mode_info: ModeInfo,
-    pub colors: Styling,
-}
-
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
 pub trait Pane {
     fn x(&self) -> usize;
@@ -304,7 +292,8 @@ pub trait Pane {
     fn set_geom_override(&mut self, pane_geom: PaneGeom);
     fn handle_pty_bytes(&mut self, _bytes: VteBytes) {}
     fn handle_plugin_bytes(&mut self, _client_id: ClientId, _bytes: VteBytes) {}
-    fn cursor_coordinates(&self) -> Option<(usize, usize)>;
+    fn show_cursor(&mut self, _client_id: ClientId, _cursor_position: Option<(usize, usize)>) {}
+    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)>;
     fn is_mid_frame(&self) -> bool {
         false
     }
@@ -818,6 +807,7 @@ impl Tab {
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         client_id: ClientId,
+        blocking_terminal: Option<(u32, NotificationEnd)>,
     ) -> Result<()> {
         self.swap_layouts
             .set_base_layout((layout.clone(), floating_panes_layout.clone()));
@@ -841,6 +831,7 @@ impl Tab {
             self.arrow_fonts,
             self.styled_underlines,
             self.explicitly_disable_kitty_keyboard_protocol,
+            blocking_terminal,
         )
         .apply_layout(
             layout,
@@ -911,6 +902,7 @@ impl Tab {
                 self.arrow_fonts,
                 self.styled_underlines,
                 self.explicitly_disable_kitty_keyboard_protocol,
+                None,
             )
             .apply_floating_panes_layout_to_existing_panes(&layout_candidate)
             .non_fatal();
@@ -949,6 +941,7 @@ impl Tab {
                 self.arrow_fonts,
                 self.styled_underlines,
                 self.explicitly_disable_kitty_keyboard_protocol,
+                None,
             )
             .apply_tiled_panes_layout_to_existing_panes(&layout_candidate);
             if application_res.is_err() {
@@ -2080,6 +2073,26 @@ impl Tab {
             drop(replaced_pane);
         }
     }
+    pub fn suppress_pane_and_replace_with_other_pane(
+        &mut self,
+        pane_id_to_replace: PaneId,
+        pane_to_replace_with: Box<dyn Pane>,
+        _completion_tx: Option<NotificationEnd>,
+    ) {
+        let mut replaced_pane = if self.floating_panes.panes_contain(&pane_id_to_replace) {
+            self.floating_panes
+                .replace_pane(pane_id_to_replace, pane_to_replace_with)
+                .ok()
+        } else {
+            self.tiled_panes
+                .replace_pane(pane_id_to_replace, pane_to_replace_with)
+        };
+
+        if let Some(replaced_pane) = replaced_pane.take() {
+            let is_scrollback_editor = false;
+            self.insert_suppressed_pane(replaced_pane.pid(), (is_scrollback_editor, replaced_pane));
+        }
+    }
     pub fn horizontal_split(
         &mut self,
         pid: PaneId,
@@ -2683,7 +2696,7 @@ impl Tab {
             .get(&active_pane_id)
             .or_else(|| self.tiled_panes.get_pane(active_pane_id))?;
         active_terminal
-            .cursor_coordinates()
+            .cursor_coordinates(Some(client_id))
             .map(|(x_in_terminal, y_in_terminal)| {
                 let x = active_terminal.x() + x_in_terminal;
                 let y = active_terminal.y() + y_in_terminal;
@@ -3381,21 +3394,16 @@ impl Tab {
         if let Some(pane) = self.tiled_panes.get_pane_mut(id) {
             pane.set_selectable(selectable);
             if !selectable {
-                // there are some edge cases in which this causes a hard crash when there are no
-                // other selectable panes - ideally this should never happen unless it's a
-                // configuration error - but this *does* sometimes happen with the default
-                // configuration as well since we set this at run time. I left this here because
-                // this should very rarely happen and I hope in my heart that we will stop setting
-                // this at runtime in the default configuration at some point
-                //
-                // If however this is not the case and we find this does cause crashes, we can
-                // solve it by adding a "dangling_clients" struct to Tab which we would fill with
-                // the relevant client ids in this case and drain as soon as a new selectable pane
-                // is opened
                 self.tiled_panes.move_clients_out_of_pane(id);
             }
         } else if let Some(pane) = self.floating_panes.get_pane_mut(id) {
             pane.set_selectable(selectable);
+            if !selectable {
+                self.floating_panes.move_clients_out_of_pane(id);
+                if !self.floating_panes.has_selectable_panes() {
+                    self.hide_floating_panes();
+                }
+            }
         }
         // we do this here because if there is a non-selectable pane on the edge, we consider it
         // outside the viewport (a ui-pane, eg. the status-bar and tab-bar) and need to adjust for it
@@ -3539,8 +3547,15 @@ impl Tab {
                 closed_pane.reset_logical_position();
             }
             closed_pane
-        } else if self.suppressed_panes.contains_key(&id) {
-            self.suppressed_panes.remove(&id).map(|s_p| s_p.1)
+        } else if let Some(suppressed_key_of_pane) = self
+            .suppressed_panes
+            .iter()
+            .find_map(|(key, (_, pane))| if &pane.pid() == &id { Some(*key) } else { None })
+        {
+            // TODO: test this (from the path in screen.rs focus_plugin_pane ~line 2519
+            self.suppressed_panes
+                .remove(&suppressed_key_of_pane)
+                .map(|s_p| s_p.1)
         } else {
             None
         }
@@ -4674,6 +4689,19 @@ impl Tab {
         }
         Ok(())
     }
+    pub fn copy_text_to_clipboard(&self, text: &str) -> Result<()> {
+        self.write_selection_to_clipboard(text)
+            .with_context(|| format!("failed to write text to clipboard"))?;
+        self.senders
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                None,
+                Event::CopyToClipboard(self.clipboard_provider.as_copy_destination()),
+            )]))
+            .with_context(|| "failed to inform plugins about clipboard copy")
+            .non_fatal();
+        Ok(())
+    }
 
     fn write_selection_to_clipboard(&self, selection: &str) -> Result<()> {
         let err_context = || format!("failed to write selection to clipboard: '{}'", selection);
@@ -4950,6 +4978,26 @@ impl Tab {
             plugin_pane.update_loading_indication(loading_indication);
         }
     }
+    pub fn show_plugin_cursor(
+        &mut self,
+        pid: u32,
+        client_id: ClientId,
+        cursor_position: Option<(usize, usize)>,
+    ) {
+        if let Some(plugin_pane) = self
+            .tiled_panes
+            .get_pane_mut(PaneId::Plugin(pid))
+            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Plugin(pid)))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == PaneId::Plugin(pid))
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            plugin_pane.show_cursor(client_id, cursor_position);
+        }
+    }
     pub fn start_plugin_loading_indication(
         &mut self,
         pid: u32,
@@ -5009,7 +5057,7 @@ impl Tab {
                     .find(|(_id, (_, pane))| {
                         run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with())
                     })
-                    .map(|(id, _)| *id)
+                    .map(|(_, (_, pane))| pane.pid()) // TODO: does this break things????
             })
     }
 
@@ -5017,6 +5065,7 @@ impl Tab {
         &mut self,
         pane_id: PaneId,
         should_float: bool,
+        should_be_in_place: bool,
         client_id: ClientId,
     ) -> Result<()> {
         // TODO: should error if pane is not selectable
@@ -5031,18 +5080,45 @@ impl Tab {
                 };
                 focused_floating_pane
             })
-            .or_else(|_| match self.suppressed_panes.remove(&pane_id) {
-                Some(mut pane) => {
-                    pane.1.set_selectable(true);
-                    if should_float {
-                        self.show_floating_panes();
-                        self.add_floating_pane(pane.1, pane_id, None, true)
-                    } else {
-                        self.hide_floating_panes();
-                        self.add_tiled_pane(pane.1, pane_id, Some(client_id))
-                    }
-                },
-                None => Ok(()),
+            // TODO: change suppressed_panes to be a proper struct with methods that make sense rather
+            // than doing this dance every time
+            .or_else(|_| {
+                match self
+                    .suppressed_panes
+                    .extract_if(|_key, (_, pane)| pane.pid() == pane_id)
+                    .next()
+                    .map(|(_key, (_, pane))| pane)
+                {
+                    Some(mut pane) => {
+                        pane.set_selectable(true);
+                        if should_float {
+                            self.show_floating_panes();
+                            self.add_floating_pane(pane, pane_id, None, true)
+                        } else if should_be_in_place {
+                            let replaced_pane = if self.are_floating_panes_visible() {
+                                self.floating_panes
+                                    .replace_active_pane(pane, client_id)
+                                    .ok()
+                            } else {
+                                self.tiled_panes.replace_active_pane(pane, client_id)
+                            };
+                            if let Some(replaced_pane) = replaced_pane {
+                                let is_scrollback_editor = false;
+                                self.insert_suppressed_pane(
+                                    pane_id,
+                                    (is_scrollback_editor, replaced_pane),
+                                );
+                            } else {
+                                log::error!("Could not find pane to replace, aborting.");
+                            }
+                            Ok(())
+                        } else {
+                            self.hide_floating_panes();
+                            self.add_tiled_pane(pane, pane_id, Some(client_id))
+                        }
+                    },
+                    None => Ok(()),
+                }
             })
     }
     pub fn focus_suppressed_pane_for_all_clients(&mut self, pane_id: PaneId) {
@@ -5064,11 +5140,101 @@ impl Tab {
         // scrollback editor), but it has to take itself out on its own (eg. a plugin using the
         // show_self() method)
         if let Some(pane) = self.extract_pane(pane_id, true) {
-            let is_scrollback_editor = false;
-            self.suppressed_panes
-                .insert(pane_id, (is_scrollback_editor, pane));
+            self.insert_suppressed_pane(pane_id, (false, pane));
         }
     }
+    pub fn unsuppress_pane(&mut self, pane_id: PaneId, should_float_if_hidden: bool) {
+        // removes a pane from being suppressed (hidden) but does not focus it
+        match self
+            .suppressed_panes
+            .extract_if(|_key, (_, pane)| pane.pid() == pane_id)
+            .next()
+            .map(|(_key, (_, pane))| pane)
+        {
+            Some(pane) => {
+                if should_float_if_hidden {
+                    self.add_floating_pane(pane, pane_id, None, true)
+                        .non_fatal();
+                } else {
+                    self.add_tiled_pane(pane, pane_id, None).non_fatal();
+                }
+            },
+            None => {
+                log::error!("Could not find suppressed pane with id: {:?}", pane_id);
+            },
+        }
+    }
+    pub fn unsuppress_or_expand_pane(&mut self, pane_id: PaneId, should_float_if_hidden: bool) {
+        // removes a pane from being suppressed (hidden) but does not focus it
+        match self
+            .suppressed_panes
+            .extract_if(|_key, (_, pane)| pane.pid() == pane_id)
+            .next()
+            .map(|(_key, (_, pane))| pane)
+        {
+            Some(pane) => {
+                if should_float_if_hidden {
+                    self.add_floating_pane(pane, pane_id, None, true)
+                        .non_fatal();
+                } else {
+                    self.add_tiled_pane(pane, pane_id, None).non_fatal();
+                }
+            },
+            None => {
+                let expand_panes_success = self.tiled_panes.expand_pane_in_stack(pane_id).len() > 0;
+                if !expand_panes_success {
+                    log::error!(
+                        "Could not find suppressed or stacked pane with id: {:?}",
+                        pane_id
+                    );
+                }
+            },
+        }
+    }
+    fn insert_suppressed_pane(
+        &mut self,
+        suppressing_pane_id: PaneId,
+        pane_to_suppress: (bool, Box<dyn Pane>),
+    ) {
+        // bool -> is_scrollback_editor
+        // this method is intended to insert an existing provided pane into suppressed_panes, while
+        // making sure any existing panes already in suppressed_panes still remain there
+        // if there's a key collision (eg. the suppressing_pane_id already suppresses another
+        // pane), we fix the colliding pane so that it now becomes suppressed by its own id (i.e.
+        // needs to explicitly be removed from suppressed_panes by eg. a plugin action rather than
+        // being conditionally removed when its suppressing pane is closed or itself suppressed)
+        //
+        // - suppressing_pane_id: the id of the pane suppressing this pane - the pane that if
+        // closed, should trigger this pane being unsuppressed
+        // - pane_to_suppress: the pane itself that we want to suppress
+
+        // this closure removes and returns an existing pane from the map if it exists under this key
+        // and inserts the given pane into the map under this key
+        let mut insert_and_return_existing_value =
+            |key: PaneId, value: (bool, Box<dyn Pane>)| -> Option<(bool, Box<dyn Pane>)> {
+                let existing = self.suppressed_panes.remove(&key);
+                self.suppressed_panes.insert(key, value);
+                existing
+            };
+
+        // here we try to insert a pane into the suppressed panes map while making sure not to drop
+        // (close) any existing panes in the map. We repeat the action of remapping existing panes
+        // under their own keys until all keys either reference the suppressing_pane_id (only one
+        // can do this) or themselves
+        let mut key_to_insert = suppressing_pane_id;
+        let mut pane_to_insert = Some(pane_to_suppress);
+        loop {
+            pane_to_insert = pane_to_insert
+                .take()
+                .and_then(|p| insert_and_return_existing_value(key_to_insert, p));
+            if let Some(pane_to_insert) = pane_to_insert.as_ref() {
+                key_to_insert = pane_to_insert.1.pid();
+            } else {
+                break;
+            }
+        }
+    }
+
     pub fn pane_infos(&self) -> Vec<PaneInfo> {
         let mut pane_info = vec![];
         let current_pane_group = { self.current_pane_group.borrow().clone_inner() };
@@ -5076,9 +5242,11 @@ impl Tab {
         let mut floating_pane_info = self.floating_panes.pane_info(&current_pane_group);
         pane_info.append(&mut tiled_pane_info);
         pane_info.append(&mut floating_pane_info);
-        for (pane_id, (_is_scrollback_editor, pane)) in self.suppressed_panes.iter() {
+        for (_pane_id_of_suppressing_pane, (_is_scrollback_editor, pane)) in
+            self.suppressed_panes.iter()
+        {
             let mut pane_info_for_suppressed_pane =
-                pane_info_for_pane(pane_id, pane, &current_pane_group);
+                pane_info_for_pane(&pane.pid(), pane, &current_pane_group);
             pane_info_for_suppressed_pane.is_floating = false;
             pane_info_for_suppressed_pane.is_suppressed = true;
             pane_info_for_suppressed_pane.is_focused = false;
@@ -5364,7 +5532,7 @@ impl Tab {
     }
     pub fn add_suppressed_panes(&mut self, mut suppressed_panes: SuppressedPanes) {
         for (pane_id, suppressed_pane_entry) in suppressed_panes.drain() {
-            self.suppressed_panes.insert(pane_id, suppressed_pane_entry);
+            self.insert_suppressed_pane(pane_id, suppressed_pane_entry);
         }
     }
     pub fn toggle_pane_pinned(&mut self, client_id: ClientId) {
@@ -5531,7 +5699,7 @@ pub fn pane_info_for_pane(
     pane_info.pane_content_rows = pane.get_content_rows();
     pane_info.pane_columns = pane.cols();
     pane_info.pane_content_columns = pane.get_content_columns();
-    pane_info.cursor_coordinates_in_pane = pane.cursor_coordinates();
+    pane_info.cursor_coordinates_in_pane = pane.cursor_coordinates(None);
     pane_info.is_selectable = pane.selectable();
     pane_info.title = pane.current_title();
     pane_info.exited = pane.exited();

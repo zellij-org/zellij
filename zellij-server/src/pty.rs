@@ -17,7 +17,10 @@ use nix::unistd::Pid;
 use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::{
-    data::{Direction, Event, FloatingPaneCoordinates, NewPanePlacement, OriginatingPlugin},
+    data::{
+        CommandOrPlugin, Event, FloatingPaneCoordinates, GetPanePidResponse, NewPanePlacement,
+        OriginatingPlugin,
+    },
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
@@ -66,6 +69,8 @@ pub enum PtyInstruction {
         Vec<FloatingPaneLayout>,
         usize,                               // tab_index
         HashMap<RunPluginOrAlias, Vec<u32>>, // plugin_ids
+        Option<Vec<CommandOrPlugin>>,        // initial_panes
+        bool,                                // block_on_first_terminal
         bool,                                // should change focus to new tab
         (ClientId, bool),                    // bool -> is_web_client
         Option<NotificationEnd>,             // completion signal
@@ -112,6 +117,13 @@ pub enum PtyInstruction {
     },
     ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
     ReportPluginCwd(PluginId, PathBuf),
+    SendSigintToPaneId(PaneId),
+    SendSigkillToPaneId(PaneId),
+    GetPanePid {
+        pane_id: PaneId,
+        response_channel: crossbeam::channel::Sender<GetPanePidResponse>,
+    },
+    UpdateAndReportCwds,
     Exit,
 }
 
@@ -136,6 +148,10 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::Reconfigure { .. } => PtyContext::Reconfigure,
             PtyInstruction::ListClientsToPlugin(..) => PtyContext::ListClientsToPlugin,
             PtyInstruction::ReportPluginCwd(..) => PtyContext::ReportPluginCwd,
+            PtyInstruction::SendSigintToPaneId(..) => PtyContext::SendSigintToPaneId,
+            PtyInstruction::SendSigkillToPaneId(..) => PtyContext::SendSigkillToPaneId,
+            PtyInstruction::GetPanePid { .. } => PtyContext::GetPanePid,
+            PtyInstruction::UpdateAndReportCwds => PtyContext::UpdateAndReportCwds,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -150,7 +166,8 @@ pub(crate) struct Pty {
     task_handles: HashMap<u32, JoinHandle<()>>, // terminal_id to join-handle
     default_editor: Option<PathBuf>,
     post_command_discovery_hook: Option<String>,
-    plugin_cwds: HashMap<u32, PathBuf>, // plugin_id -> cwd
+    plugin_cwds: HashMap<u32, PathBuf>,   // plugin_id -> cwd
+    terminal_cwds: HashMap<u32, PathBuf>, // terminal_id -> cwd
 }
 
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
@@ -430,6 +447,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 floating_panes_layout,
                 tab_index,
                 plugin_ids,
+                initial_panes,
+                block_on_first_terminal,
                 should_change_focus_to_new_tab,
                 client_id_and_is_web_client,
                 completion_tx,
@@ -447,7 +466,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     floating_panes_layout,
                     terminal_action.clone(),
                     plugin_ids,
+                    initial_panes,
                     tab_index,
+                    block_on_first_terminal,
                     should_change_focus_to_new_tab,
                     client_id_and_is_web_client,
                     completion_tx,
@@ -702,6 +723,22 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             } => {
                 pty.reconfigure(default_editor, post_command_discovery_hook);
             },
+            PtyInstruction::SendSigintToPaneId(pane_id) => {
+                pty.send_sigint_to_pane(pane_id);
+            },
+            PtyInstruction::SendSigkillToPaneId(pane_id) => {
+                pty.send_sigkill_to_pane(pane_id);
+            },
+            PtyInstruction::GetPanePid {
+                pane_id,
+                response_channel,
+            } => {
+                let response = pty.get_pane_pid(pane_id);
+                let _ = response_channel.send(response);
+            },
+            PtyInstruction::UpdateAndReportCwds => {
+                pty.update_and_report_cwds();
+            },
             PtyInstruction::Exit => break,
         }
     }
@@ -725,6 +762,7 @@ impl Pty {
             originating_plugins: HashMap::new(),
             post_command_discovery_hook,
             plugin_cwds: HashMap::new(),
+            terminal_cwds: HashMap::new(),
         }
     }
     pub fn get_default_terminal(
@@ -774,12 +812,18 @@ impl Pty {
                     .get(&client_id)
                     .and_then(|pane| match pane {
                         PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
-                        PaneId::Terminal(id) => self.id_to_child_pid.get(id).and_then(|&id| {
-                            self.bus
-                                .os_input
-                                .as_ref()
-                                .and_then(|input| input.get_cwd(Pid::from_raw(id)))
-                        }),
+                        PaneId::Terminal(id) => {
+                            // Try to get CWD from OS, fall back to cached value
+                            self.id_to_child_pid
+                                .get(id)
+                                .and_then(|&pid| {
+                                    self.bus
+                                        .os_input
+                                        .as_ref()
+                                        .and_then(|input| input.get_cwd(Pid::from_raw(pid)))
+                                })
+                                .or_else(|| self.terminal_cwds.get(id).cloned())
+                        },
                     })
             };
         };
@@ -789,12 +833,16 @@ impl Pty {
             if run_command.cwd.is_none() {
                 run_command.cwd = match pane_id {
                     PaneId::Terminal(terminal_pane_id) => {
-                        self.id_to_child_pid.get(terminal_pane_id).and_then(|&id| {
-                            self.bus
-                                .os_input
-                                .as_ref()
-                                .and_then(|input| input.get_cwd(Pid::from_raw(id)))
-                        })
+                        // Try to get CWD from OS, fall back to cached value
+                        self.id_to_child_pid
+                            .get(terminal_pane_id)
+                            .and_then(|&pid| {
+                                self.bus
+                                    .os_input
+                                    .as_ref()
+                                    .and_then(|input| input.get_cwd(Pid::from_raw(pid)))
+                            })
+                            .or_else(|| self.terminal_cwds.get(terminal_pane_id).cloned())
                     },
                     PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
                 };
@@ -938,6 +986,8 @@ impl Pty {
 
         self.task_handles.insert(terminal_id, terminal_bytes);
         self.id_to_child_pid.insert(terminal_id, child_fd);
+        self.capture_initial_cwd(terminal_id, child_fd);
+
         let starts_held = false;
         Ok((terminal_id, starts_held))
     }
@@ -948,7 +998,9 @@ impl Pty {
         floating_panes_layout: Vec<FloatingPaneLayout>,
         default_shell: Option<TerminalAction>,
         plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
+        initial_panes: Option<Vec<CommandOrPlugin>>,
         tab_index: usize,
+        block_on_first_terminal: bool,
         should_change_focus_to_new_tab: bool,
         client_id_and_is_web_client: (ClientId, bool),
         completion_tx: Option<NotificationEnd>,
@@ -959,6 +1011,22 @@ impl Pty {
             default_shell.unwrap_or_else(|| self.get_default_terminal(cwd, None));
         let (client_id, is_web_client) = client_id_and_is_web_client;
         self.fill_cwd(&mut default_shell, client_id);
+
+        // Match initial_panes commands to empty slots in the layout
+        let mut layout = layout;
+        if let Some(ref initial_panes_vec) = initial_panes {
+            for initial_pane in initial_panes_vec.iter() {
+                if let CommandOrPlugin::Command(run_command_action) = initial_pane {
+                    let run_command: RunCommand = run_command_action.clone().into();
+                    if !layout.replace_next_empty_slot_with_run(Run::Command(run_command)) {
+                        log::warn!("More initial_panes provided than empty slots available");
+                        break;
+                    }
+                }
+                // Skip CommandOrPlugin::Plugin entries (already handled by plugin thread)
+            }
+        }
+
         let extracted_run_instructions = layout.extract_run_instructions();
         let extracted_floating_run_instructions = floating_panes_layout
             .iter()
@@ -968,24 +1036,55 @@ impl Pty {
                                                                                              // starts_held,
                                                                                              // run_command,
                                                                                              // file_descriptor)
+
         let mut new_floating_panes_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> =
             vec![]; // same
                     // as
                     // new_pane_pids
+
+        let mut originating_plugins_to_inform = vec![];
+
         for run_instruction in extracted_run_instructions {
+            let originating_plugin = run_instruction.as_ref().and_then(|r| {
+                if let Run::Command(run_command) = r {
+                    run_command.originating_plugin.clone()
+                } else {
+                    None
+                }
+            });
+            let mut terminal_id = None;
             if let Some(new_pane_data) =
                 self.apply_run_instruction(run_instruction, default_shell.clone())?
             {
+                terminal_id = Some(new_pane_data.0);
                 new_pane_pids.push(new_pane_data);
+            }
+            if let (Some(originating_plugin), Some(terminal_id)) = (originating_plugin, terminal_id)
+            {
+                originating_plugins_to_inform.push((terminal_id, originating_plugin));
             }
         }
         for run_instruction in extracted_floating_run_instructions {
+            let originating_plugin = run_instruction.as_ref().and_then(|r| {
+                if let Run::Command(run_command) = r {
+                    run_command.originating_plugin.clone()
+                } else {
+                    None
+                }
+            });
+            let mut terminal_id = None;
             if let Some(new_pane_data) =
                 self.apply_run_instruction(run_instruction, default_shell.clone())?
             {
+                terminal_id = Some(new_pane_data.0);
                 new_floating_panes_pids.push(new_pane_data);
             }
+            if let (Some(originating_plugin), Some(terminal_id)) = (originating_plugin, terminal_id)
+            {
+                originating_plugins_to_inform.push((terminal_id, originating_plugin));
+            }
         }
+
         // Option<RunCommand> should only be Some if the pane starts held
         let new_tab_pane_ids: Vec<(u32, Option<RunCommand>)> = new_pane_pids
             .iter()
@@ -1007,21 +1106,40 @@ impl Pty {
                 }
             })
             .collect();
+
+        // Track the first terminal_id if blocking is requested
+        let first_initial_pane_terminal_id = if block_on_first_terminal && !new_pane_pids.is_empty()
+        {
+            Some(new_pane_pids[0].0)
+        } else {
+            None
+        };
+
+        // Prepare blocking_terminal for ApplyLayout
+        let (direct_completion_tx, blocking_terminal) =
+            if let Some(terminal_id) = first_initial_pane_terminal_id {
+                (None, completion_tx.map(|tx| (terminal_id, tx)))
+            } else {
+                (completion_tx, None)
+            };
+
         self.bus
             .senders
             .send_to_screen(ScreenInstruction::ApplyLayout(
                 layout,
                 floating_panes_layout,
-                new_tab_pane_ids,
-                new_tab_floating_pane_ids,
+                new_tab_pane_ids.clone(),
+                new_tab_floating_pane_ids.clone(),
                 plugin_ids,
                 tab_index,
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
-                completion_tx,
+                direct_completion_tx,
+                blocking_terminal,
             ))
             .with_context(err_context)?;
         let mut terminals_to_start = vec![];
+
         terminals_to_start.append(&mut new_pane_pids);
         terminals_to_start.append(&mut new_floating_panes_pids);
         for (terminal_id, starts_held, run_command, pid_primary) in terminals_to_start {
@@ -1077,8 +1195,29 @@ impl Pty {
                 },
             }
         }
+        for (terminal_id, originating_plugin) in originating_plugins_to_inform {
+            self.inform_originating_plugin_of_open(terminal_id, originating_plugin);
+        }
         Ok(())
     }
+    fn inform_originating_plugin_of_open(
+        &mut self,
+        terminal_id: u32,
+        originating_plugin: OriginatingPlugin,
+    ) {
+        self.originating_plugins
+            .insert(terminal_id, originating_plugin.clone());
+        let update_event = Event::CommandPaneOpened(terminal_id, originating_plugin.context);
+        let _ = self
+            .bus
+            .senders
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                Some(originating_plugin.plugin_id),
+                Some(originating_plugin.client_id),
+                update_event,
+            )]));
+    }
+
     fn apply_run_instruction(
         &mut self,
         run_instruction: Option<Run>,
@@ -1162,6 +1301,7 @@ impl Pty {
                     {
                         Ok((terminal_id, pid_primary, child_fd)) => {
                             self.id_to_child_pid.insert(terminal_id, child_fd);
+                            self.capture_initial_cwd(terminal_id, child_fd);
                             Ok(Some((
                                 terminal_id,
                                 starts_held,
@@ -1194,6 +1334,7 @@ impl Pty {
                 {
                     Ok((terminal_id, pid_primary, child_fd)) => {
                         self.id_to_child_pid.insert(terminal_id, child_fd);
+                        self.capture_initial_cwd(terminal_id, child_fd);
                         Ok(Some((terminal_id, starts_held, None, Ok(pid_primary))))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
@@ -1225,6 +1366,7 @@ impl Pty {
                 {
                     Ok((terminal_id, pid_primary, child_fd)) => {
                         self.id_to_child_pid.insert(terminal_id, child_fd);
+                        self.capture_initial_cwd(terminal_id, child_fd);
                         Ok(Some((terminal_id, starts_held, None, Ok(pid_primary))))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
@@ -1248,6 +1390,7 @@ impl Pty {
                 {
                     Ok((terminal_id, pid_primary, child_fd)) => {
                         self.id_to_child_pid.insert(terminal_id, child_fd);
+                        self.capture_initial_cwd(terminal_id, child_fd);
                         Ok(Some((terminal_id, starts_held, None, Ok(pid_primary))))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
@@ -1389,6 +1532,7 @@ impl Pty {
 
                 self.task_handles.insert(id, terminal_bytes);
                 self.id_to_child_pid.insert(id, child_fd);
+                self.capture_initial_cwd(id, child_fd);
                 if let Some(originating_plugin) = self.originating_plugins.get(&id) {
                     self.bus
                         .senders
@@ -1405,9 +1549,10 @@ impl Pty {
         }
     }
     pub fn populate_session_layout_metadata(
-        &self,
+        &mut self,
         session_layout_metadata: &mut SessionLayoutMetadata,
     ) {
+        log::info!("populate_session_layout_metadata");
         let terminal_ids = session_layout_metadata.all_terminal_ids();
         let mut terminal_ids_to_commands: HashMap<u32, Vec<String>> = HashMap::new();
         let mut terminal_ids_to_cwds: HashMap<u32, PathBuf> = HashMap::new();
@@ -1476,12 +1621,18 @@ impl Pty {
                 .get(&client_id)
                 .and_then(|pane| match pane {
                     PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
-                    PaneId::Terminal(id) => self.id_to_child_pid.get(id).and_then(|&id| {
-                        self.bus
-                            .os_input
-                            .as_ref()
-                            .and_then(|input| input.get_cwd(Pid::from_raw(id)))
-                    }),
+                    PaneId::Terminal(id) => {
+                        // Try to get CWD from OS, fall back to cached value
+                        self.id_to_child_pid
+                            .get(id)
+                            .and_then(|&pid| {
+                                self.bus
+                                    .os_input
+                                    .as_ref()
+                                    .and_then(|input| input.get_cwd(Pid::from_raw(pid)))
+                            })
+                            .or_else(|| self.terminal_cwds.get(id).cloned())
+                    },
                 })
         };
 
@@ -1516,6 +1667,59 @@ impl Pty {
         ))?;
         Ok(())
     }
+    fn capture_initial_cwd(&mut self, terminal_id: u32, child_fd: RawFd) {
+        if let Some(os_input) = self.bus.os_input.as_ref() {
+            if let Some(cwd) = os_input.get_cwd(Pid::from_raw(child_fd)) {
+                self.terminal_cwds.insert(terminal_id, cwd);
+            }
+        }
+    }
+
+    pub fn update_and_report_cwds(&mut self) {
+        let terminal_ids: Vec<u32> = self.id_to_child_pid.keys().copied().collect();
+
+        let pids: Vec<_> = terminal_ids
+            .iter()
+            .filter_map(|id| self.id_to_child_pid.get(&id))
+            .map(|pid| Pid::from_raw(*pid))
+            .collect();
+
+        let (pids_to_cwds, _) = self
+            .bus
+            .os_input
+            .as_ref()
+            .map(|os_input| os_input.get_cwds(pids))
+            .unwrap_or_default();
+
+        for terminal_id in terminal_ids {
+            let process_id = self.id_to_child_pid.get(&terminal_id);
+            let cwd = process_id
+                .as_ref()
+                .and_then(|pid| pids_to_cwds.get(&Pid::from_raw(**pid)));
+
+            if let Some(cwd) = cwd {
+                if self.terminal_cwds.get(&terminal_id) != Some(cwd) {
+                    let pane_id = PaneId::Terminal(terminal_id);
+                    let focused_client_ids: Vec<ClientId> = self
+                        .active_panes
+                        .iter()
+                        .filter(|(_, active_pane)| *active_pane == &pane_id)
+                        .map(|(client_id, _)| *client_id)
+                        .collect();
+                    let _ = self
+                        .bus
+                        .senders
+                        .send_to_plugin(PluginInstruction::Update(vec![(
+                            None,
+                            None,
+                            Event::CwdChanged(pane_id.into(), cwd.clone(), focused_client_ids),
+                        )]));
+                }
+                self.terminal_cwds.insert(terminal_id, cwd.clone());
+            }
+        }
+    }
+
     pub fn reconfigure(
         &mut self,
         default_editor: Option<PathBuf>,
@@ -1523,6 +1727,72 @@ impl Pty {
     ) {
         self.default_editor = default_editor;
         self.post_command_discovery_hook = post_command_discovery_hook;
+    }
+
+    pub fn send_sigint_to_pane(&self, pane_id: PaneId) {
+        let err_context = || format!("failed to send SIGINT to pane {:?}", pane_id);
+
+        match pane_id {
+            PaneId::Terminal(terminal_id) => {
+                if let Some(&child_fd) = self.id_to_child_pid.get(&terminal_id) {
+                    let pid = Pid::from_raw(child_fd);
+                    self.bus
+                        .os_input
+                        .as_ref()
+                        .context("no OS I/O interface found")
+                        .and_then(|os_input| os_input.send_sigint(pid))
+                        .with_context(err_context)
+                        .non_fatal();
+                } else {
+                    log::warn!("Terminal pane {} not found or not running", terminal_id);
+                }
+            },
+            PaneId::Plugin(plugin_id) => {
+                log::warn!("Cannot send SIGINT to plugin pane {}", plugin_id);
+            },
+        }
+    }
+
+    pub fn send_sigkill_to_pane(&self, pane_id: PaneId) {
+        let err_context = || format!("failed to send SIGKILL to pane {:?}", pane_id);
+
+        match pane_id {
+            PaneId::Terminal(terminal_id) => {
+                if let Some(&child_fd) = self.id_to_child_pid.get(&terminal_id) {
+                    let pid = Pid::from_raw(child_fd);
+                    self.bus
+                        .os_input
+                        .as_ref()
+                        .context("no OS I/O interface found")
+                        .and_then(|os_input| os_input.force_kill(pid))
+                        .with_context(err_context)
+                        .non_fatal();
+                } else {
+                    log::warn!("Terminal pane {} not found or not running", terminal_id);
+                }
+            },
+            PaneId::Plugin(plugin_id) => {
+                log::warn!("Cannot send SIGKILL to plugin pane {}", plugin_id);
+            },
+        }
+    }
+
+    pub fn get_pane_pid(&self, pane_id: PaneId) -> GetPanePidResponse {
+        match pane_id {
+            PaneId::Terminal(terminal_id) => {
+                if let Some(&child_fd) = self.id_to_child_pid.get(&terminal_id) {
+                    GetPanePidResponse::Ok(child_fd)
+                } else {
+                    GetPanePidResponse::Err(format!(
+                        "Terminal pane {} not found or not running",
+                        terminal_id
+                    ))
+                }
+            },
+            PaneId::Plugin(plugin_id) => {
+                GetPanePidResponse::Err(format!("Cannot get PID for plugin pane {}", plugin_id))
+            },
+        }
     }
 }
 

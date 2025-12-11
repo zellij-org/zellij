@@ -1,0 +1,17 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+expression: "format!(\"{:#?}\", move_focus_instruction)"
+---
+Some(
+    (
+        1,
+        Some(
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+                unblock_condition: None,
+                affected_pane_id: None,
+            },
+        ),
+    ),
+)

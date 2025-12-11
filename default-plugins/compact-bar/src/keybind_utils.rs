@@ -440,7 +440,8 @@ impl KeybindProcessor {
                             action,
                             Action::NewStackedPane {
                                 command: None,
-                                pane_name: None
+                                pane_name: None,
+                                near_current_pane: false,
                             }
                         )
                     },
@@ -481,7 +482,9 @@ impl KeybindProcessor {
                                 swap_floating_layouts: None,
                                 tab_name: None,
                                 should_change_focus_to_new_tab: true,
-                                cwd: None
+                                cwd: None,
+                                initial_panes: _,
+                                first_pane_unblock_condition: _,
                             }
                         )
                     },

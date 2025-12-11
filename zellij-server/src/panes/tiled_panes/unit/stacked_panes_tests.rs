@@ -1085,7 +1085,7 @@ impl Pane for MockPane {
     fn handle_plugin_bytes(&mut self, _client_id: ClientId, _bytes: VteBytes) {
         unimplemented!()
     }
-    fn cursor_coordinates(&self) -> Option<(usize, usize)> {
+    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)> {
         unimplemented!()
     }
 

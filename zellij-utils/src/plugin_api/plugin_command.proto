@@ -160,6 +160,12 @@ enum CommandName {
   ClearKeyPressesIntercepts = 144;
   ReplacePaneWithExistingPane = 155;
   GetPaneScrollback = 163;
+  RunAction = 164;
+  ShowCursor = 169;
+  CopyToClipboard = 170;
+  SendSigintToPaneId = 171;
+  SendSigkillToPaneId = 172;
+  GetPanePid = 173;
 }
 
 message PluginCommand {
@@ -268,6 +274,12 @@ message PluginCommand {
     ReplacePaneWithExistingPanePayload replace_pane_with_existing_pane_payload = 111;
     NewTabPayload new_tab_payload = 112;
     GetPaneScrollbackPayload get_pane_scrollback_payload = 113;
+    RunActionPayload run_action_payload = 114;
+    ShowCursorPayload show_cursor_payload = 119;
+    CopyToClipboardPayload copy_to_clipboard_payload = 120;
+    PaneId send_sigint_to_pane_id_payload = 121;
+    PaneId send_sigkill_to_pane_id_payload = 122;
+    GetPanePidPayload get_pane_pid_payload = 123;
   }
 }
 
@@ -276,9 +288,15 @@ message NewTabPayload {
   optional string cwd = 2;
 }
 
+message RunActionPayload {
+  action.Action action = 1;
+  repeated ContextItem context = 2;
+}
+
 message ReplacePaneWithExistingPanePayload {
   PaneId pane_id_to_replace = 1;
   PaneId existing_pane_id = 2;
+  bool suppress_replaced_pane = 3;
 }
 
 message RenameWebLoginTokenPayload {
@@ -516,6 +534,7 @@ message HidePaneWithIdPayload {
 message ShowPaneWithIdPayload {
   PaneId pane_id = 1;
   bool should_float_if_hidden = 2;
+  bool should_focus_pane = 3;
 }
 
 message NewTabsWithLayoutInfoPayload {
@@ -709,4 +728,28 @@ message RenameWebTokenResponse {
 message GetPaneScrollbackPayload {
   PaneId pane_id = 1;
   bool get_full_scrollback = 2;
+}
+
+message ShowCursorPayload {
+  optional CursorPosition position = 1;
+}
+
+message CursorPosition {
+  uint32 x = 1;
+  uint32 y = 2;
+}
+
+message CopyToClipboardPayload {
+  string text = 1;
+}
+
+message GetPanePidPayload {
+  PaneId pane_id = 1;
+}
+
+message GetPanePidResponse {
+  oneof result {
+    int32 pid = 1;
+    string error = 2;
+  }
 }

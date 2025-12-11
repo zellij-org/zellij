@@ -159,7 +159,7 @@ impl<'a> PaneContentsAndUi<'a> {
             ) {
                 let cursor_is_visible = self
                     .pane
-                    .cursor_coordinates()
+                    .cursor_coordinates(Some(*fake_cursor_client_id))
                     .map(|(x, y)| {
                         self.output
                             .cursor_is_visible(self.pane.x() + x, self.pane.y() + y)
@@ -279,6 +279,7 @@ impl<'a> PaneContentsAndUi<'a> {
                     .add_post_vte_instruction_to_client(client_id, &vte_output);
             }
         }
+
         Ok(())
     }
     pub fn render_pane_boundaries(

@@ -1,4 +1,4 @@
-use crate::data::{Direction, InputMode, Resize};
+use crate::data::{Direction, InputMode, Resize, UnblockCondition};
 use crate::setup::Setup;
 use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
@@ -388,9 +388,49 @@ pub enum Sessions {
             takes_value(false)
         )]
         stacked: bool,
-        /// Whether to block until this command has finished
+        /// Block until the command has finished and its pane has been closed
         #[clap(long, value_parser, default_value("false"), takes_value(false))]
         blocking: bool,
+
+        /// Block until the command exits successfully (exit status 0) OR its pane has been closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("blocking"),
+            conflicts_with("block-until-exit-failure"),
+            conflicts_with("block-until-exit")
+        )]
+        block_until_exit_success: bool,
+
+        /// Block until the command exits with failure (non-zero exit status) OR its pane has been
+        /// closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("blocking"),
+            conflicts_with("block-until-exit-success"),
+            conflicts_with("block-until-exit")
+        )]
+        block_until_exit_failure: bool,
+
+        /// Block until the command exits (regardless of exit status) OR its pane has been closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("blocking"),
+            conflicts_with("block-until-exit-success"),
+            conflicts_with("block-until-exit-failure")
+        )]
+        block_until_exit: bool,
+        /// if set, will open the pane near the current one rather than following the user's focus
+        #[clap(long)]
+        near_current_pane: bool,
     },
     /// Load a plugin
     #[clap(visible_alias = "p")]
@@ -484,6 +524,9 @@ pub enum Sessions {
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long, requires("floating"))]
         pinned: Option<bool>,
+        /// if set, will open the pane near the current one rather than following the user's focus
+        #[clap(long)]
+        near_current_pane: bool,
     },
     ConvertConfig {
         old_config_file: PathBuf,
@@ -691,6 +734,14 @@ pub enum CliAction {
         stacked: bool,
         #[clap(short, long)]
         blocking: bool,
+
+        // TODO: clean this up
+        #[clap(skip)]
+        unblock_condition: Option<UnblockCondition>,
+
+        /// if set, will open the pane near the current one rather than following the user's focus
+        #[clap(long)]
+        near_current_pane: bool,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
@@ -738,6 +789,9 @@ pub enum CliAction {
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long, requires("floating"))]
         pinned: Option<bool>,
+        /// if set, will open the pane near the current one rather than following the user's focus
+        #[clap(long)]
+        near_current_pane: bool,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode {
@@ -795,6 +849,76 @@ pub enum CliAction {
         /// Change the working directory of the new tab
         #[clap(short, long, value_parser)]
         cwd: Option<PathBuf>,
+
+        /// Optional initial command to run in the new tab
+        #[clap(
+            value_parser,
+            conflicts_with("initial-plugin"),
+            multiple_values(true),
+            takes_value(true),
+            last(true)
+        )]
+        initial_command: Vec<String>,
+
+        /// Initial plugin to load in the new tab
+        #[clap(long, value_parser, conflicts_with("initial-command"))]
+        initial_plugin: Option<String>,
+
+        /// Close the pane immediately when its command exits
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("initial-command")
+        )]
+        close_on_exit: bool,
+
+        /// Start the command suspended, only running it after you first press ENTER
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("initial-command")
+        )]
+        start_suspended: bool,
+
+        /// Block until the command exits successfully (exit status 0) OR its pane has been closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("initial-command"),
+            conflicts_with("block-until-exit-failure"),
+            conflicts_with("block-until-exit")
+        )]
+        block_until_exit_success: bool,
+
+        /// Block until the command exits with failure (non-zero exit status) OR its pane has been closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("initial-command"),
+            conflicts_with("block-until-exit-success"),
+            conflicts_with("block-until-exit")
+        )]
+        block_until_exit_failure: bool,
+
+        /// Block until the command exits (regardless of exit status) OR its pane has been closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("initial-command"),
+            conflicts_with("block-until-exit-success"),
+            conflicts_with("block-until-exit-failure")
+        )]
+        block_until_exit: bool,
     },
     /// Move the focused tab in the specified direction. [right|left]
     MoveTab {

@@ -138,6 +138,9 @@ impl ServerOsApi for FakeInputOutput {
     fn clear_terminal_id(&self, _terminal_id: u32) -> Result<()> {
         unimplemented!()
     }
+    fn send_sigint(&self, pid: Pid) -> Result<()> {
+        unimplemented!()
+    }
 }
 
 struct MockPtyInstructionBus {
@@ -280,6 +283,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         vec![],
         HashMap::new(),
         client_id,
+        None,
     )
     .unwrap();
     tab
@@ -361,6 +365,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         vec![],
         HashMap::new(),
         client_id,
+        None,
     )
     .unwrap();
     tab
@@ -469,6 +474,7 @@ fn create_new_tab_with_swap_layouts(
         new_floating_terminal_ids,
         new_plugin_ids,
         client_id,
+        None,
     )
     .unwrap();
     tab
@@ -554,6 +560,7 @@ fn create_new_tab_with_os_api(
         vec![],
         HashMap::new(),
         client_id,
+        None,
     )
     .unwrap();
     tab
@@ -648,6 +655,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         floating_pane_ids,
         HashMap::new(),
         client_id,
+        None,
     )
     .unwrap();
     tab
@@ -734,6 +742,7 @@ fn create_new_tab_with_mock_pty_writer(
         vec![],
         HashMap::new(),
         client_id,
+        None,
     )
     .unwrap();
     tab
@@ -822,6 +831,7 @@ fn create_new_tab_with_sixel_support(
         vec![],
         HashMap::new(),
         client_id,
+        None,
     )
     .unwrap();
     tab
@@ -1191,7 +1201,7 @@ fn render_stacks_without_pane_frames() {
         )
         .unwrap();
     }
-    tab.focus_pane_with_id(PaneId::Terminal(1), false, client_id);
+    tab.focus_pane_with_id(PaneId::Terminal(1), false, false, client_id);
     for i in 7..9 {
         let new_pane_id_1 = PaneId::Terminal(i);
         tab.new_pane(
@@ -1206,7 +1216,7 @@ fn render_stacks_without_pane_frames() {
         )
         .unwrap();
     }
-    let _ = tab.focus_pane_with_id(PaneId::Terminal(1), false, client_id);
+    let _ = tab.focus_pane_with_id(PaneId::Terminal(1), false, false, client_id);
     for i in 9..11 {
         let new_pane_id_1 = PaneId::Terminal(i);
         tab.new_pane(
@@ -1226,8 +1236,8 @@ fn render_stacks_without_pane_frames() {
         ResizeStrategy::new(Resize::Increase, Some(Direction::Right)),
     )
     .unwrap();
-    let _ = tab.focus_pane_with_id(PaneId::Terminal(7), false, client_id);
-    let _ = tab.focus_pane_with_id(PaneId::Terminal(5), false, client_id);
+    let _ = tab.focus_pane_with_id(PaneId::Terminal(7), false, false, client_id);
+    let _ = tab.focus_pane_with_id(PaneId::Terminal(5), false, false, client_id);
 
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(

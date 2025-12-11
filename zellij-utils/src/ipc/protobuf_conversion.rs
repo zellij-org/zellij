@@ -858,6 +858,7 @@ impl From<crate::input::actions::Action>
                 direction: direction.map(|d| direction_to_proto_i32(d)),
                 pane_name,
                 start_suppressed,
+                near_current_pane: false,
             }),
             crate::input::actions::Action::EditFile {
                 payload,
@@ -866,6 +867,7 @@ impl From<crate::input::actions::Action>
                 in_place,
                 start_suppressed,
                 coordinates,
+                near_current_pane,
             } => ActionType::EditFile(EditFileAction {
                 payload: Some(payload.into()),
                 direction: direction.map(|d| direction_to_proto_i32(d)),
@@ -873,45 +875,64 @@ impl From<crate::input::actions::Action>
                 in_place,
                 start_suppressed,
                 coordinates: coordinates.map(|c| c.into()),
+                near_current_pane,
             }),
             crate::input::actions::Action::NewFloatingPane {
                 command,
                 pane_name,
                 coordinates,
+                near_current_pane,
             } => ActionType::NewFloatingPane(NewFloatingPaneAction {
                 command: command.map(|c| c.into()),
                 pane_name,
                 coordinates: coordinates.map(|c| c.into()),
+                near_current_pane,
             }),
             crate::input::actions::Action::NewTiledPane {
                 direction,
                 command,
                 pane_name,
+                near_current_pane,
             } => ActionType::NewTiledPane(NewTiledPaneAction {
                 direction: direction.map(|d| direction_to_proto_i32(d)),
                 command: command.map(|c| c.into()),
                 pane_name,
+                near_current_pane,
             }),
-            crate::input::actions::Action::NewInPlacePane { command, pane_name } => {
-                ActionType::NewInPlacePane(NewInPlacePaneAction {
-                    command: command.map(|c| c.into()),
-                    pane_name,
-                })
-            },
-            crate::input::actions::Action::NewStackedPane { command, pane_name } => {
-                ActionType::NewStackedPane(NewStackedPaneAction {
-                    command: command.map(|c| c.into()),
-                    pane_name,
-                })
-            },
+            crate::input::actions::Action::NewInPlacePane {
+                command,
+                pane_name,
+                near_current_pane,
+                pane_id_to_replace,
+                close_replace_pane,
+            } => ActionType::NewInPlacePane(NewInPlacePaneAction {
+                command: command.map(|c| c.into()),
+                pane_name,
+                near_current_pane,
+                pane_id_to_replace: pane_id_to_replace.and_then(|p| p.try_into().ok()),
+                close_replace_pane,
+            }),
+            crate::input::actions::Action::NewStackedPane {
+                command,
+                pane_name,
+                near_current_pane,
+            } => ActionType::NewStackedPane(NewStackedPaneAction {
+                command: command.map(|c| c.into()),
+                pane_name,
+                near_current_pane,
+            }),
             crate::input::actions::Action::NewBlockingPane {
                 placement,
                 pane_name,
                 command,
+                unblock_condition,
+                near_current_pane,
             } => ActionType::NewBlockingPane(NewBlockingPaneAction {
                 placement: Some(placement.into()),
                 pane_name,
                 command: command.map(|c| c.into()),
+                unblock_condition: unblock_condition.map(|c| unblock_condition_to_proto_i32(c)),
+                near_current_pane,
             }),
             crate::input::actions::Action::TogglePaneEmbedOrFloating => {
                 ActionType::TogglePaneEmbedOrFloating(TogglePaneEmbedOrFloatingAction {})
@@ -938,6 +959,8 @@ impl From<crate::input::actions::Action>
                 tab_name,
                 should_change_focus_to_new_tab,
                 cwd,
+                initial_panes,
+                first_pane_unblock_condition,
             } => ActionType::NewTab(NewTabAction {
                 tiled_layout: tiled_layout.map(|l| l.into()),
                 floating_layouts: floating_layouts.into_iter().map(|l| l.into()).collect(),
@@ -950,6 +973,11 @@ impl From<crate::input::actions::Action>
                 tab_name,
                 should_change_focus_to_new_tab,
                 cwd: cwd.map(|p| p.to_string_lossy().to_string()),
+                initial_panes: initial_panes
+                    .map(|panes| panes.into_iter().map(|p| p.into()).collect())
+                    .unwrap_or_default(),
+                first_pane_unblock_condition: first_pane_unblock_condition
+                    .map(|c| unblock_condition_to_proto_i32(c)),
             }),
             crate::input::actions::Action::NoOp => ActionType::NoOp(NoOpAction {}),
             crate::input::actions::Action::GoToNextTab => {
@@ -979,8 +1007,12 @@ impl From<crate::input::actions::Action>
                     direction: direction_to_proto_i32(direction),
                 })
             },
-            crate::input::actions::Action::Run { command } => ActionType::Run(RunAction {
+            crate::input::actions::Action::Run {
+                command,
+                near_current_pane,
+            } => ActionType::Run(RunAction {
                 command: Some(command.into()),
+                near_current_pane,
             }),
             crate::input::actions::Action::Detach => ActionType::Detach(DetachAction {}),
             crate::input::actions::Action::SwitchSession {
@@ -1112,16 +1144,20 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::FocusTerminalPaneWithId {
                 pane_id,
                 should_float_if_hidden,
+                should_be_in_place_if_hidden,
             } => ActionType::FocusTerminalPaneWithId(FocusTerminalPaneWithIdAction {
                 pane_id,
                 should_float_if_hidden,
+                should_be_in_place_if_hidden,
             }),
             crate::input::actions::Action::FocusPluginPaneWithId {
                 pane_id,
                 should_float_if_hidden,
+                should_be_in_place_if_hidden,
             } => ActionType::FocusPluginPaneWithId(FocusPluginPaneWithIdAction {
                 pane_id,
                 should_float_if_hidden,
+                should_be_in_place_if_hidden,
             }),
             crate::input::actions::Action::RenameTerminalPane { pane_id, name } => {
                 ActionType::RenameTerminalPane(RenameTerminalPaneAction {
@@ -1380,6 +1416,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     .coordinates
                     .map(|c| c.try_into())
                     .transpose()?,
+                near_current_pane: edit_file_action.near_current_pane,
             }),
             ActionType::NewFloatingPane(new_floating_action) => {
                 Ok(crate::input::actions::Action::NewFloatingPane {
@@ -1392,6 +1429,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .coordinates
                         .map(|c| c.try_into())
                         .transpose()?,
+                    near_current_pane: new_floating_action.near_current_pane,
                 })
             },
             ActionType::NewTiledPane(new_tiled_action) => {
@@ -1402,6 +1440,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .transpose()?,
                     command: new_tiled_action.command.map(|c| c.try_into()).transpose()?,
                     pane_name: new_tiled_action.pane_name,
+                    near_current_pane: new_tiled_action.near_current_pane,
                 })
             },
             ActionType::NewInPlacePane(new_in_place_action) => {
@@ -1411,6 +1450,11 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .map(|c| c.try_into())
                         .transpose()?,
                     pane_name: new_in_place_action.pane_name,
+                    near_current_pane: new_in_place_action.near_current_pane,
+                    pane_id_to_replace: new_in_place_action
+                        .pane_id_to_replace
+                        .and_then(|p| p.try_into().ok()),
+                    close_replace_pane: new_in_place_action.close_replace_pane,
                 })
             },
             ActionType::NewStackedPane(new_stacked_action) => {
@@ -1420,6 +1464,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .map(|c| c.try_into())
                         .transpose()?,
                     pane_name: new_stacked_action.pane_name,
+                    near_current_pane: new_stacked_action.near_current_pane,
                 })
             },
             ActionType::NewBlockingPane(new_blocking_action) => {
@@ -1433,6 +1478,11 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .command
                         .map(|c| c.try_into())
                         .transpose()?,
+                    unblock_condition: new_blocking_action
+                        .unblock_condition
+                        .map(|c| proto_i32_to_unblock_condition(c))
+                        .transpose()?,
+                    near_current_pane: new_blocking_action.near_current_pane,
                 })
             },
             ActionType::TogglePaneEmbedOrFloating(_) => {
@@ -1487,6 +1537,22 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 tab_name: new_tab_action.tab_name,
                 should_change_focus_to_new_tab: new_tab_action.should_change_focus_to_new_tab,
                 cwd: new_tab_action.cwd.map(PathBuf::from),
+                initial_panes: if new_tab_action.initial_panes.is_empty() {
+                    None
+                } else {
+                    Some(
+                        new_tab_action
+                            .initial_panes
+                            .into_iter()
+                            .map(|p| p.try_into())
+                            .collect::<Result<Vec<_>>>()?,
+                    )
+                },
+
+                first_pane_unblock_condition: new_tab_action
+                    .first_pane_unblock_condition
+                    .map(|c| proto_i32_to_unblock_condition(c))
+                    .transpose()?,
             }),
             ActionType::NoOp(_) => Ok(crate::input::actions::Action::NoOp),
             ActionType::GoToNextTab(_) => Ok(crate::input::actions::Action::GoToNextTab),
@@ -1516,6 +1582,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     .command
                     .ok_or_else(|| anyhow!("Run missing command"))?
                     .try_into()?,
+                near_current_pane: run_action.near_current_pane,
             }),
             ActionType::Detach(_) => Ok(crate::input::actions::Action::Detach),
             ActionType::SwitchSession(switch_session_action) => {
@@ -1661,12 +1728,14 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 Ok(crate::input::actions::Action::FocusTerminalPaneWithId {
                     pane_id: focus_pane_action.pane_id,
                     should_float_if_hidden: focus_pane_action.should_float_if_hidden,
+                    should_be_in_place_if_hidden: focus_pane_action.should_be_in_place_if_hidden,
                 })
             },
             ActionType::FocusPluginPaneWithId(focus_pane_action) => {
                 Ok(crate::input::actions::Action::FocusPluginPaneWithId {
                     pane_id: focus_pane_action.pane_id,
                     should_float_if_hidden: focus_pane_action.should_float_if_hidden,
+                    should_be_in_place_if_hidden: focus_pane_action.should_be_in_place_if_hidden,
                 })
             },
             ActionType::RenameTerminalPane(rename_pane_action) => {
@@ -2037,6 +2106,15 @@ fn search_option_to_proto_i32(option: crate::input::actions::SearchOption) -> i3
     }
 }
 
+fn unblock_condition_to_proto_i32(condition: crate::data::UnblockCondition) -> i32 {
+    use crate::client_server_contract::client_server_contract::UnblockCondition as ProtoUnblockCondition;
+    match condition {
+        crate::data::UnblockCondition::OnExitSuccess => ProtoUnblockCondition::OnExitSuccess as i32,
+        crate::data::UnblockCondition::OnExitFailure => ProtoUnblockCondition::OnExitFailure as i32,
+        crate::data::UnblockCondition::OnAnyExit => ProtoUnblockCondition::OnAnyExit as i32,
+    }
+}
+
 // Reverse helper functions for Action conversion
 
 fn proto_i32_to_resize(resize: i32) -> Result<crate::data::Resize> {
@@ -2100,6 +2178,26 @@ fn proto_i32_to_search_option(option: i32) -> Result<crate::input::actions::Sear
         ProtoSearchOption::Wrap => Ok(crate::input::actions::SearchOption::Wrap),
         ProtoSearchOption::WholeWord => Ok(crate::input::actions::SearchOption::WholeWord),
         ProtoSearchOption::Unspecified => Err(anyhow!("Unspecified search option")),
+    }
+}
+
+fn proto_i32_to_unblock_condition(condition: i32) -> Result<crate::data::UnblockCondition> {
+    use crate::client_server_contract::client_server_contract::UnblockCondition as ProtoUnblockCondition;
+    let proto_condition = match condition {
+        x if x == ProtoUnblockCondition::OnExitSuccess as i32 => {
+            ProtoUnblockCondition::OnExitSuccess
+        },
+        x if x == ProtoUnblockCondition::OnExitFailure as i32 => {
+            ProtoUnblockCondition::OnExitFailure
+        },
+        x if x == ProtoUnblockCondition::OnAnyExit as i32 => ProtoUnblockCondition::OnAnyExit,
+        _ => return Err(anyhow!("Invalid UnblockCondition: {}", condition)),
+    };
+    match proto_condition {
+        ProtoUnblockCondition::OnExitSuccess => Ok(crate::data::UnblockCondition::OnExitSuccess),
+        ProtoUnblockCondition::OnExitFailure => Ok(crate::data::UnblockCondition::OnExitFailure),
+        ProtoUnblockCondition::OnAnyExit => Ok(crate::data::UnblockCondition::OnAnyExit),
+        ProtoUnblockCondition::Unspecified => Err(anyhow!("Unspecified unblock condition")),
     }
 }
 
@@ -2717,6 +2815,47 @@ impl From<crate::input::layout::RunPluginOrAlias>
             },
             crate::input::layout::RunPluginOrAlias::Alias(alias) => Self {
                 plugin_type: Some(PluginType::Alias(alias.into())),
+            },
+        }
+    }
+}
+
+// CommandOrPlugin conversion
+impl From<crate::data::CommandOrPlugin>
+    for crate::client_server_contract::client_server_contract::CommandOrPlugin
+{
+    fn from(cmd_or_plugin: crate::data::CommandOrPlugin) -> Self {
+        use crate::client_server_contract::client_server_contract::command_or_plugin::CommandOrPluginType;
+        match cmd_or_plugin {
+            crate::data::CommandOrPlugin::Command(cmd) => Self {
+                command_or_plugin_type: Some(CommandOrPluginType::Command(cmd.into())),
+            },
+            crate::data::CommandOrPlugin::Plugin(plugin) => Self {
+                command_or_plugin_type: Some(CommandOrPluginType::Plugin(plugin.into())),
+            },
+        }
+    }
+}
+
+impl TryFrom<crate::client_server_contract::client_server_contract::CommandOrPlugin>
+    for crate::data::CommandOrPlugin
+{
+    type Error = anyhow::Error;
+
+    fn try_from(
+        proto: crate::client_server_contract::client_server_contract::CommandOrPlugin,
+    ) -> Result<Self> {
+        use crate::client_server_contract::client_server_contract::command_or_plugin::CommandOrPluginType;
+
+        let cmd_or_plugin_type = proto
+            .command_or_plugin_type
+            .ok_or_else(|| anyhow!("CommandOrPlugin missing command_or_plugin_type"))?;
+        match cmd_or_plugin_type {
+            CommandOrPluginType::Command(cmd) => {
+                Ok(crate::data::CommandOrPlugin::Command(cmd.try_into()?))
+            },
+            CommandOrPluginType::Plugin(plugin) => {
+                Ok(crate::data::CommandOrPlugin::Plugin(plugin.try_into()?))
             },
         }
     }

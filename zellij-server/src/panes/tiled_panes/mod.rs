@@ -313,6 +313,7 @@ impl TiledPanes {
                     Ok(new_pane_geom) => {
                         pane.set_geom(new_pane_geom);
                         self.panes.insert(pane_id, pane); // TODO: is set_geom the right one?
+                        self.expand_pane_in_stack(pane_id);
                     },
                     Err(e) => {
                         log::error!("Failed to add pane to stack: {:?}", e);
@@ -349,7 +350,8 @@ impl TiledPanes {
                 Ok(new_pane_geom) => {
                     pane.set_geom(new_pane_geom);
                     self.panes.insert(pane_id, pane);
-                    self.set_force_render(); // TODO: why do we need this?
+
+                    self.expand_pane_in_stack(pane_id);
                     return;
                 },
                 Err(_e) => {
@@ -447,7 +449,9 @@ impl TiledPanes {
             .map(|p| p.is_stacked())
             .unwrap_or(false);
         if !pane_id_is_stacked {
-            let _ = pane_grid.make_pane_stacked(&root_pane_id);
+            if let Err(e) = pane_grid.make_pane_stacked(&root_pane_id) {
+                log::error!("Failed to make pane stacked: {:?}", e);
+            }
         }
         match pane_grid.make_room_in_stack_of_pane_id_for_pane(&root_pane_id) {
             Ok(new_pane_geom) => {

@@ -578,6 +578,8 @@ pub struct NewPaneAction {
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag="3")]
     pub start_suppressed: bool,
+    #[prost(bool, tag="4")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -594,6 +596,8 @@ pub struct EditFileAction {
     pub start_suppressed: bool,
     #[prost(message, optional, tag="6")]
     pub coordinates: ::core::option::Option<FloatingPaneCoordinates>,
+    #[prost(bool, tag="7")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -604,6 +608,8 @@ pub struct NewFloatingPaneAction {
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, optional, tag="3")]
     pub coordinates: ::core::option::Option<FloatingPaneCoordinates>,
+    #[prost(bool, tag="7")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -614,6 +620,8 @@ pub struct NewTiledPaneAction {
     pub command: ::core::option::Option<RunCommandAction>,
     #[prost(string, optional, tag="3")]
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="7")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -622,6 +630,12 @@ pub struct NewInPlacePaneAction {
     pub command: ::core::option::Option<RunCommandAction>,
     #[prost(string, optional, tag="2")]
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="3")]
+    pub near_current_pane: bool,
+    #[prost(message, optional, tag="4")]
+    pub pane_id_to_replace: ::core::option::Option<PaneId>,
+    #[prost(bool, tag="5")]
+    pub close_replace_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -630,6 +644,8 @@ pub struct NewStackedPaneAction {
     pub command: ::core::option::Option<RunCommandAction>,
     #[prost(string, optional, tag="2")]
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="3")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -640,6 +656,10 @@ pub struct NewBlockingPaneAction {
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, optional, tag="3")]
     pub command: ::core::option::Option<RunCommandAction>,
+    #[prost(enumeration="UnblockCondition", optional, tag="4")]
+    pub unblock_condition: ::core::option::Option<i32>,
+    #[prost(bool, tag="5")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -664,6 +684,10 @@ pub struct NewTabAction {
     pub should_change_focus_to_new_tab: bool,
     #[prost(string, optional, tag="7")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag="8")]
+    pub initial_panes: ::prost::alloc::vec::Vec<CommandOrPlugin>,
+    #[prost(enumeration="UnblockCondition", optional, tag="9")]
+    pub first_pane_unblock_condition: ::core::option::Option<i32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -696,6 +720,8 @@ pub struct MoveTabAction {
 pub struct RunAction {
     #[prost(message, optional, tag="1")]
     pub command: ::core::option::Option<RunCommandAction>,
+    #[prost(bool, tag="2")]
+    pub near_current_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -816,6 +842,8 @@ pub struct FocusTerminalPaneWithIdAction {
     pub pane_id: u32,
     #[prost(bool, tag="2")]
     pub should_float_if_hidden: bool,
+    #[prost(bool, tag="3")]
+    pub should_be_in_place_if_hidden: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -824,6 +852,8 @@ pub struct FocusPluginPaneWithIdAction {
     pub pane_id: u32,
     #[prost(bool, tag="2")]
     pub should_float_if_hidden: bool,
+    #[prost(bool, tag="3")]
+    pub should_be_in_place_if_hidden: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1251,6 +1281,23 @@ pub struct PluginAlias {
     pub initial_cwd: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, optional, tag="4")]
     pub run_plugin: ::core::option::Option<RunPlugin>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandOrPlugin {
+    #[prost(oneof="command_or_plugin::CommandOrPluginType", tags="1, 2")]
+    pub command_or_plugin_type: ::core::option::Option<command_or_plugin::CommandOrPluginType>,
+}
+/// Nested message and enum types in `CommandOrPlugin`.
+pub mod command_or_plugin {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum CommandOrPluginType {
+        #[prost(message, tag="1")]
+        Command(super::RunCommandAction),
+        #[prost(message, tag="2")]
+        Plugin(super::RunPluginOrAlias),
+    }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1828,6 +1875,38 @@ impl Direction {
             "DIRECTION_RIGHT" => Some(Self::Right),
             "DIRECTION_UP" => Some(Self::Up),
             "DIRECTION_DOWN" => Some(Self::Down),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum UnblockCondition {
+    Unspecified = 0,
+    OnExitSuccess = 1,
+    OnExitFailure = 2,
+    OnAnyExit = 3,
+}
+impl UnblockCondition {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            UnblockCondition::Unspecified => "UNBLOCK_CONDITION_UNSPECIFIED",
+            UnblockCondition::OnExitSuccess => "UNBLOCK_CONDITION_ON_EXIT_SUCCESS",
+            UnblockCondition::OnExitFailure => "UNBLOCK_CONDITION_ON_EXIT_FAILURE",
+            UnblockCondition::OnAnyExit => "UNBLOCK_CONDITION_ON_ANY_EXIT",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "UNBLOCK_CONDITION_UNSPECIFIED" => Some(Self::Unspecified),
+            "UNBLOCK_CONDITION_ON_EXIT_SUCCESS" => Some(Self::OnExitSuccess),
+            "UNBLOCK_CONDITION_ON_EXIT_FAILURE" => Some(Self::OnExitFailure),
+            "UNBLOCK_CONDITION_ON_ANY_EXIT" => Some(Self::OnAnyExit),
             _ => None,
         }
     }

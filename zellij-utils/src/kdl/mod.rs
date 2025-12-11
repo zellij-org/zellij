@@ -1,8 +1,8 @@
 mod kdl_layout_parser;
 use crate::data::{
     BareKey, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo,
-    MultiplayerColors, Palette, PaletteColor, PaneInfo, PaneManifest, PermissionType, Resize,
-    SessionInfo, StyleDeclaration, Styling, TabInfo, WebSharing, DEFAULT_STYLES,
+    MultiplayerColors, Palette, PaletteColor, PaneId, PaneInfo, PaneManifest, PermissionType,
+    Resize, SessionInfo, StyleDeclaration, Styling, TabInfo, WebSharing, DEFAULT_STYLES,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -551,6 +551,7 @@ impl Action {
                     return Ok(Action::NewStackedPane {
                         command: None,
                         pane_name: None,
+                        near_current_pane: false,
                     });
                 } else {
                     let direction = Direction::from_str(string.as_str()).map_err(|_| {
@@ -742,6 +743,8 @@ impl Action {
                 tab_name: name,
                 should_change_focus_to_new_tab,
                 cwd,
+                initial_panes: _,
+                first_pane_unblock_condition: _,
             } => {
                 let mut node = KdlNode::new("NewTab");
                 let mut children = KdlDocument::new();
@@ -800,6 +803,7 @@ impl Action {
                 direction,
                 command: run_command_action,
                 pane_name: name,
+                near_current_pane: false,
             } => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
@@ -849,6 +853,7 @@ impl Action {
                 command: run_command_action,
                 pane_name: name,
                 coordinates: floating_pane_coordinates,
+                near_current_pane: false,
             } => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
@@ -939,6 +944,9 @@ impl Action {
             Action::NewInPlacePane {
                 command: run_command_action,
                 pane_name: name,
+                near_current_pane: false,
+                pane_id_to_replace: None,
+                close_replace_pane: false,
             } => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
@@ -979,6 +987,7 @@ impl Action {
             Action::NewStackedPane {
                 command: run_command_action,
                 pane_name: name,
+                near_current_pane: _,
             } => match run_command_action {
                 Some(run_command_action) => {
                     let mut node = KdlNode::new("Run");
@@ -1623,6 +1632,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         tab_name: None,
                         should_change_focus_to_new_tab: true,
                         cwd: None,
+                        initial_panes: None,
+                        first_pane_unblock_condition: None,
                     });
                 }
 
@@ -1692,6 +1703,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         tab_name: name,
                         should_change_focus_to_new_tab,
                         cwd,
+                        initial_panes: None,
+                        first_pane_unblock_condition: None,
                     })
                 } else {
                     let (layout, floating_panes_layout) = layout.new_tab();
@@ -1705,6 +1718,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         tab_name: name,
                         should_change_focus_to_new_tab,
                         cwd,
+                        initial_panes: None,
+                        first_pane_unblock_condition: None,
                     })
                 }
             },
@@ -1785,22 +1800,28 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         command: Some(run_command_action),
                         pane_name: name,
                         coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                        near_current_pane: false,
                     })
                 } else if in_place {
                     Ok(Action::NewInPlacePane {
                         command: Some(run_command_action),
                         pane_name: name,
+                        near_current_pane: false,
+                        pane_id_to_replace: None,
+                        close_replace_pane: false,
                     })
                 } else if stacked {
                     Ok(Action::NewStackedPane {
                         command: Some(run_command_action),
                         pane_name: name,
+                        near_current_pane: false,
                     })
                 } else {
                     Ok(Action::NewTiledPane {
                         direction,
                         command: Some(run_command_action),
                         pane_name: name,
+                        near_current_pane: false,
                     })
                 }
             },
@@ -5073,6 +5094,50 @@ impl SessionInfo {
                 }
             }
         }
+        let mut pane_history = BTreeMap::new();
+        if let Some(kdl_pane_history) = kdl_document.get("pane_history").and_then(|p| p.children())
+        {
+            for client_node in kdl_pane_history.nodes() {
+                if let Some(client_id) = client_node.children().and_then(|c| {
+                    c.get("id")
+                        .and_then(|c| c.entries().iter().next().and_then(|e| e.value().as_i64()))
+                }) {
+                    let mut history = vec![];
+                    if let Some(history_node) =
+                        client_node.children().and_then(|c| c.get("history"))
+                    {
+                        if let Some(history_children) = history_node.children() {
+                            for pane_id_node in history_children.nodes() {
+                                if pane_id_node.name().value() == "pane_id" {
+                                    let pane_type = pane_id_node
+                                        .entries()
+                                        .iter()
+                                        .find(|e| e.name().map(|n| n.value()) == Some("type"))
+                                        .and_then(|e| e.value().as_string());
+                                    let id = pane_id_node
+                                        .entries()
+                                        .iter()
+                                        .find(|e| e.name().is_none())
+                                        .and_then(|e| e.value().as_i64())
+                                        .map(|i| i as u32);
+                                    if let (Some(pane_type), Some(id)) = (pane_type, id) {
+                                        let pane_id = match pane_type {
+                                            "terminal" => Some(PaneId::Terminal(id)),
+                                            "plugin" => Some(PaneId::Plugin(id)),
+                                            _ => None,
+                                        };
+                                        if let Some(pane_id) = pane_id {
+                                            history.push(pane_id);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    pane_history.insert(client_id as u16, history);
+                }
+            }
+        }
         Ok(SessionInfo {
             name,
             tabs,
@@ -5084,6 +5149,7 @@ impl SessionInfo {
             web_clients_allowed,
             plugins: Default::default(), // we do not serialize plugin information
             tab_history,
+            pane_history,
         })
     }
     pub fn to_string(&self) -> String {
@@ -5148,6 +5214,35 @@ impl SessionInfo {
         }
         tab_history.set_children(tab_history_children);
 
+        let mut pane_history = KdlNode::new("pane_history");
+        let mut pane_history_children = KdlDocument::new();
+        for (client_id, client_pane_history) in &self.pane_history {
+            let mut client_document = KdlDocument::new();
+            let mut client_node = KdlNode::new("client");
+            let mut id = KdlNode::new("id");
+            id.push(*client_id as i64);
+            client_document.nodes_mut().push(id);
+            let mut history = KdlNode::new("history");
+            for pane_id in client_pane_history {
+                let mut pane_id_node = KdlNode::new("pane_id");
+                match pane_id {
+                    PaneId::Terminal(id) => {
+                        pane_id_node.push(KdlEntry::new_prop("type", "terminal"));
+                        pane_id_node.push(*id as i64);
+                    },
+                    PaneId::Plugin(id) => {
+                        pane_id_node.push(KdlEntry::new_prop("type", "plugin"));
+                        pane_id_node.push(*id as i64);
+                    },
+                }
+                history.ensure_children().nodes_mut().push(pane_id_node);
+            }
+            client_document.nodes_mut().push(history);
+            client_node.set_children(client_document);
+            pane_history_children.nodes_mut().push(client_node);
+        }
+        pane_history.set_children(pane_history_children);
+
         kdl_document.nodes_mut().push(name);
         kdl_document.nodes_mut().push(tabs);
         kdl_document.nodes_mut().push(panes);
@@ -5156,6 +5251,7 @@ impl SessionInfo {
         kdl_document.nodes_mut().push(web_client_count);
         kdl_document.nodes_mut().push(available_layouts);
         kdl_document.nodes_mut().push(tab_history);
+        kdl_document.nodes_mut().push(pane_history);
         kdl_document.fmt();
         kdl_document.to_string()
     }
@@ -5714,6 +5810,7 @@ fn serialize_and_deserialize_session_info_with_data() {
         web_client_count: 2,
         web_clients_allowed: true,
         tab_history: Default::default(),
+        pane_history: Default::default(),
     };
     let serialized = session_info.to_string();
     let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();

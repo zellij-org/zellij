@@ -249,6 +249,9 @@ impl ServerOsApi for FakeInputOutput {
     fn clear_terminal_id(&self, _terminal_id: u32) -> Result<()> {
         unimplemented!()
     }
+    fn send_sigint(&self, pid: Pid) -> Result<()> {
+        unimplemented!()
+    }
 }
 
 fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
@@ -402,6 +405,8 @@ impl MockScreen {
             initial_floating_panes_layout.clone(),
             tab_name,
             (vec![], vec![]), // swap layouts
+            None,             // initial_panes
+            false,
             should_change_focus_to_new_tab,
             (self.main_client_id, false),
             None,
@@ -415,6 +420,7 @@ impl MockScreen {
             tab_index,
             true,
             (self.main_client_id, false),
+            None,
             None,
         ));
         self.last_opened_tab_index = Some(tab_index);
@@ -492,6 +498,8 @@ impl MockScreen {
             initial_floating_panes_layout.clone(),
             tab_name,
             (vec![], vec![]), // swap layouts
+            None,             // initial_panes
+            false,
             should_change_focus_to_new_tab,
             (self.main_client_id, false),
             None,
@@ -505,6 +513,7 @@ impl MockScreen {
             tab_index,
             true,
             (self.main_client_id, false),
+            None,
             None,
         ));
         self.last_opened_tab_index = Some(tab_index);
@@ -528,6 +537,8 @@ impl MockScreen {
             vec![], // floating_panes_layout
             tab_name,
             (vec![], vec![]), // swap layouts
+            None,             // initial_panes
+            false,
             should_change_focus_to_new_tab,
             (self.main_client_id, false),
             None,
@@ -541,6 +552,7 @@ impl MockScreen {
             0,
             true,
             (self.main_client_id, false),
+            None,
             None,
         ));
         self.last_opened_tab_index = Some(tab_index);
@@ -756,6 +768,7 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
             tab_index,
             true,
             (client_id, false),
+            None,
         )
         .expect("TEST");
 }
@@ -2638,6 +2651,8 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         pinned: None,
         stacked: false,
         blocking: false,
+        unblock_condition: None,
+        near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2684,6 +2699,8 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         pinned: None,
         stacked: false,
         blocking: false,
+        unblock_condition: None,
+        near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2730,6 +2747,8 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         pinned: None,
         stacked: false,
         blocking: false,
+        unblock_condition: None,
+        near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2787,6 +2806,8 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         pinned: None,
         stacked: false,
         blocking: false,
+        unblock_condition: None,
+        near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2826,6 +2847,7 @@ pub fn send_cli_edit_action_with_default_parameters() {
         width: None,
         height: None,
         pinned: None,
+        near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2865,6 +2887,7 @@ pub fn send_cli_edit_action_with_line_number() {
         width: None,
         height: None,
         pinned: None,
+        near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2904,6 +2927,7 @@ pub fn send_cli_edit_action_with_split_direction() {
         width: None,
         height: None,
         pinned: None,
+        near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3089,6 +3113,13 @@ pub fn send_cli_new_tab_action_default_params() {
         layout: None,
         layout_dir: None,
         cwd: None,
+        initial_command: vec![],
+        initial_plugin: None,
+        close_on_exit: Default::default(),
+        start_suspended: Default::default(),
+        block_until_exit: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -3129,6 +3160,13 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
         ))),
         layout_dir: None,
         cwd: None,
+        initial_command: vec![],
+        initial_plugin: None,
+        close_on_exit: Default::default(),
+        start_suspended: Default::default(),
+        block_until_exit: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -3699,6 +3737,7 @@ pub fn screen_can_break_pane_to_a_new_tab() {
         true,
         (1, false),
         None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // move back to make sure the other pane is in the previous tab
@@ -3806,6 +3845,7 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
         true,
         (1, false),
         None,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(200));
     // move back to make sure the other pane is in the previous tab
@@ -3879,6 +3919,7 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
         1,
         true,
         (1, false),
+        None,
         None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -3957,6 +3998,7 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
         1,
         true,
         (1, false),
+        None,
         None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));

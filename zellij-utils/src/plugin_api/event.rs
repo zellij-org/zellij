@@ -2,20 +2,24 @@ pub use super::generated_api::api::{
     action::{Action as ProtobufAction, Position as ProtobufPosition},
     event::{
         event::Payload as ProtobufEventPayload, pane_scrollback_response,
-        ClientInfo as ProtobufClientInfo, ClientTabHistory as ProtobufClientTabHistory,
-        CopyDestination as ProtobufCopyDestination, Event as ProtobufEvent,
-        EventNameList as ProtobufEventNameList, EventType as ProtobufEventType,
-        FileMetadata as ProtobufFileMetadata, InputModeKeybinds as ProtobufInputModeKeybinds,
-        KeyBind as ProtobufKeyBind, LayoutInfo as ProtobufLayoutInfo,
-        ModeUpdatePayload as ProtobufModeUpdatePayload, PaneContents as ProtobufPaneContents,
-        PaneContentsEntry as ProtobufPaneContentsEntry, PaneId as ProtobufPaneId,
-        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
+        ActionCompletePayload as ProtobufActionCompletePayload, ClientInfo as ProtobufClientInfo,
+        ClientPaneHistory as ProtobufClientPaneHistory,
+        ClientTabHistory as ProtobufClientTabHistory, ContextItem as ProtobufContextItem,
+        CopyDestination as ProtobufCopyDestination, CwdChangedPayload as ProtobufCwdChangedPayload,
+        Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
+        EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
+        InputModeKeybinds as ProtobufInputModeKeybinds, KeyBind as ProtobufKeyBind,
+        LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
+        PaneContents as ProtobufPaneContents, PaneContentsEntry as ProtobufPaneContentsEntry,
+        PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
+        PaneManifest as ProtobufPaneManifest,
         PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
         PaneScrollbackResponse as ProtobufPaneScrollbackResponse, PaneType as ProtobufPaneType,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SelectedText as ProtobufSelectedText, SessionManifest as ProtobufSessionManifest,
-        TabInfo as ProtobufTabInfo, WebServerStatusPayload as ProtobufWebServerStatusPayload,
-        WebSharing as ProtobufWebSharing, *,
+        TabInfo as ProtobufTabInfo, UserActionPayload as ProtobufUserActionPayload,
+        WebServerStatusPayload as ProtobufWebServerStatusPayload, WebSharing as ProtobufWebSharing,
+        *,
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
@@ -23,8 +27,8 @@ pub use super::generated_api::api::{
 };
 #[allow(hidden_glob_reexports)]
 use crate::data::{
-    ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier,
-    LayoutInfo, ModeInfo, Mouse, PaneContents, PaneId, PaneInfo, PaneManifest,
+    ClientId, ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode,
+    KeyWithModifier, LayoutInfo, ModeInfo, Mouse, PaneContents, PaneId, PaneInfo, PaneManifest,
     PaneScrollbackResponse, PermissionStatus, PluginCapabilities, PluginInfo, SelectedText,
     SessionInfo, Style, TabInfo, WebServerStatus, WebSharing,
 };
@@ -396,6 +400,63 @@ impl TryFrom<ProtobufEvent> for Event {
                     Ok(Event::PaneRenderReport(protobuf_payload.try_into()?))
                 },
                 _ => Err("Malformed payload for the PaneRenderReport Event"),
+            },
+            Some(ProtobufEventType::UserAction) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::UserActionPayload(protobuf_payload)) => {
+                    let action: Action = protobuf_payload
+                        .action
+                        .ok_or("Missing action in UserAction payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert Action in UserAction payload")?;
+                    let client_id = protobuf_payload.client_id as u16;
+                    let terminal_id = protobuf_payload.terminal_id;
+                    let cli_client_id = protobuf_payload.cli_client_id.map(|id| id as u16);
+                    Ok(Event::UserAction(
+                        action,
+                        client_id,
+                        terminal_id,
+                        cli_client_id,
+                    ))
+                },
+                _ => Err("Malformed payload for the UserAction Event"),
+            },
+            Some(ProtobufEventType::ActionComplete) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::ActionCompletePayload(protobuf_payload)) => {
+                    let action: Action = protobuf_payload
+                        .action
+                        .ok_or("Missing action in ActionComplete payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert Action in ActionComplete payload")?;
+                    let pane_id = protobuf_payload
+                        .pane_id
+                        .map(|id| id.try_into())
+                        .transpose()
+                        .map_err(|_| "Failed to convert PaneId in ActionComplete payload")?;
+                    let context: BTreeMap<String, String> = protobuf_payload
+                        .context
+                        .into_iter()
+                        .map(|item| (item.name, item.value))
+                        .collect();
+                    Ok(Event::ActionComplete(action, pane_id, context))
+                },
+                _ => Err("Malformed payload for the ActionComplete Event"),
+            },
+            Some(ProtobufEventType::CwdChanged) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::CwdChangedPayload(protobuf_payload)) => {
+                    let pane_id: PaneId = protobuf_payload
+                        .pane_id
+                        .ok_or("Missing pane_id in CwdChanged payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert PaneId in CwdChanged payload")?;
+                    let new_cwd = PathBuf::from(protobuf_payload.new_cwd);
+                    let focused_client_ids: Vec<ClientId> = protobuf_payload
+                        .focused_client_ids
+                        .into_iter()
+                        .map(|id| id as u16)
+                        .collect();
+                    Ok(Event::CwdChanged(pane_id, new_cwd, focused_client_ids))
+                },
+                _ => Err("Malformed payload for the CwdChanged Event"),
             },
             None => Err("Unknown Protobuf Event"),
         }
@@ -797,6 +858,58 @@ impl TryFrom<Event> for ProtobufEvent {
                     pane_contents_map.try_into()?,
                 )),
             }),
+            Event::UserAction(action, client_id, terminal_id, cli_client_id) => {
+                let protobuf_action: ProtobufAction = action
+                    .try_into()
+                    .map_err(|_| "Failed to convert Action to protobuf")?;
+                let protobuf_payload = ProtobufUserActionPayload {
+                    action: Some(protobuf_action),
+                    client_id: client_id as u32,
+                    terminal_id,
+                    cli_client_id: cli_client_id.map(|id| id as u32),
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::UserAction as i32,
+                    payload: Some(event::Payload::UserActionPayload(protobuf_payload)),
+                })
+            },
+            Event::ActionComplete(action, pane_id, context) => {
+                let protobuf_action = action.try_into()?;
+                let protobuf_pane_id = pane_id.map(|id| id.try_into()).transpose()?;
+                let context_items: Vec<ProtobufContextItem> = context
+                    .into_iter()
+                    .map(|(name, value)| ProtobufContextItem { name, value })
+                    .collect();
+                let action_complete_payload = ProtobufActionCompletePayload {
+                    action: Some(protobuf_action),
+                    pane_id: protobuf_pane_id,
+                    context: context_items,
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::ActionComplete as i32,
+                    payload: Some(event::Payload::ActionCompletePayload(
+                        action_complete_payload,
+                    )),
+                })
+            },
+            Event::CwdChanged(pane_id, new_cwd, focused_client_ids) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                let new_cwd_string = new_cwd
+                    .to_str()
+                    .ok_or("Failed to convert PathBuf to string")?
+                    .to_string();
+                let focused_client_ids_u32: Vec<u32> =
+                    focused_client_ids.into_iter().map(|id| id as u32).collect();
+                let cwd_changed_payload = ProtobufCwdChangedPayload {
+                    pane_id: Some(protobuf_pane_id),
+                    new_cwd: new_cwd_string,
+                    focused_client_ids: focused_client_ids_u32,
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::CwdChanged as i32,
+                    payload: Some(event::Payload::CwdChangedPayload(cwd_changed_payload)),
+                })
+            },
         }
     }
 }
@@ -842,6 +955,11 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
                 .into_iter()
                 .map(|t| ProtobufClientTabHistory::from(t))
                 .collect(),
+            pane_history: session_info
+                .pane_history
+                .into_iter()
+                .map(|p| ProtobufClientPaneHistory::from(p))
+                .collect(),
         })
     }
 }
@@ -851,6 +969,18 @@ impl From<(u16, Vec<usize>)> for ProtobufClientTabHistory {
         ProtobufClientTabHistory {
             client_id: client_id as u32,
             tab_history: tab_history.into_iter().map(|t| t as u32).collect(),
+        }
+    }
+}
+
+impl From<(u16, Vec<PaneId>)> for ProtobufClientPaneHistory {
+    fn from((client_id, pane_history): (u16, Vec<PaneId>)) -> ProtobufClientPaneHistory {
+        ProtobufClientPaneHistory {
+            client_id: client_id as u32,
+            pane_history: pane_history
+                .into_iter()
+                .filter_map(|p| p.try_into().ok())
+                .collect(),
         }
     }
 }
@@ -910,6 +1040,16 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
                 .collect();
             tab_history.insert(client_id as u16, tab_history_for_client);
         }
+        let mut pane_history = BTreeMap::new();
+        for client_pane_history in protobuf_session_manifest.pane_history.into_iter() {
+            let client_id = client_pane_history.client_id;
+            let pane_history_for_client = client_pane_history
+                .pane_history
+                .into_iter()
+                .filter_map(|p| p.try_into().ok())
+                .collect();
+            pane_history.insert(client_id as u16, pane_history_for_client);
+        }
         Ok(SessionInfo {
             name: protobuf_session_manifest.name,
             tabs: protobuf_session_manifest
@@ -929,6 +1069,7 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
             web_clients_allowed: protobuf_session_manifest.web_clients_allowed,
             web_client_count: protobuf_session_manifest.web_client_count as usize,
             tab_history,
+            pane_history,
         })
     }
 }
@@ -1476,6 +1617,9 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::FailedToStartWebServer => EventType::FailedToStartWebServer,
             ProtobufEventType::InterceptedKeyPress => EventType::InterceptedKeyPress,
             ProtobufEventType::PaneRenderReport => EventType::PaneRenderReport,
+            ProtobufEventType::UserAction => EventType::UserAction,
+            ProtobufEventType::ActionComplete => EventType::ActionComplete,
+            ProtobufEventType::CwdChanged => EventType::CwdChanged,
         })
     }
 }
@@ -1520,6 +1664,9 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::FailedToStartWebServer => ProtobufEventType::FailedToStartWebServer,
             EventType::InterceptedKeyPress => ProtobufEventType::InterceptedKeyPress,
             EventType::PaneRenderReport => ProtobufEventType::PaneRenderReport,
+            EventType::UserAction => ProtobufEventType::UserAction,
+            EventType::ActionComplete => ProtobufEventType::ActionComplete,
+            EventType::CwdChanged => ProtobufEventType::CwdChanged,
         })
     }
 }
@@ -2129,6 +2276,7 @@ fn serialize_session_update_event_with_non_default_values() {
         web_clients_allowed: false,
         web_client_count: 1,
         tab_history,
+        pane_history: Default::default(),
     };
     let session_info_2 = SessionInfo {
         name: "session 2".to_owned(),
@@ -2147,6 +2295,7 @@ fn serialize_session_update_event_with_non_default_values() {
         web_clients_allowed: false,
         web_client_count: 0,
         tab_history: Default::default(),
+        pane_history: Default::default(),
     };
     let session_infos = vec![session_info_1, session_info_2];
     let resurrectable_sessions = vec![];

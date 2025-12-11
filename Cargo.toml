@@ -50,6 +50,7 @@ members = [
     "default-plugins/about",
     "default-plugins/share",
     "default-plugins/multiple-select",
+    "default-plugins/sequence",
     "zellij-client",
     "zellij-server",
     "zellij-utils",
@@ -90,8 +91,8 @@ regex = { version = "1.5.5", default-features = false, features = ["perf", "std"
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 signal-hook = { version = "0.3", default-features = false, features = ["iterator"] }
-strum = { version = "0.20.0", default-features = false }
-strum_macros = { version = "0.20.0", default-features = false }
+strum = { version = "0.27.2", default-features = false, features = ["std"] }
+strum_macros = { version = "0.27.2", default-features = false }
 suggest = { version = "0.4.0", default-features = false }
 tempfile = { version = "3.2.0", default-features = false }
 termwiz = { version = "0.23.2", default-features = false }

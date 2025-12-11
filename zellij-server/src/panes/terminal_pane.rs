@@ -197,7 +197,7 @@ impl Pane for TerminalPane {
             self.vte_parser.advance(&mut self.grid, byte);
         }
     }
-    fn cursor_coordinates(&self) -> Option<(usize, usize)> {
+    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)> {
         // (x, y)
         if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
             // do not render cursor if there's no room for it
@@ -740,6 +740,14 @@ impl Pane for TerminalPane {
         if let Some(notification_end) = self.notification_end.as_mut() {
             if let Some(exit_status) = exit_status {
                 notification_end.set_exit_status(exit_status);
+
+                // Check if unblock condition is met
+                if let Some(condition) = notification_end.unblock_condition() {
+                    if condition.is_met(exit_status) {
+                        // Condition met - drop the NotificationEnd now to unblock
+                        drop(self.notification_end.take());
+                    }
+                }
             }
         }
         if is_first_run {
@@ -899,6 +907,13 @@ impl Pane for TerminalPane {
     fn update_exit_status(&mut self, exit_status: i32) {
         if let Some(notification_end) = self.notification_end.as_mut() {
             notification_end.set_exit_status(exit_status);
+            // Check if unblock condition is met
+            if let Some(condition) = notification_end.unblock_condition() {
+                if condition.is_met(exit_status) {
+                    // Condition met - drop the NotificationEnd now to unblock
+                    drop(self.notification_end.take());
+                }
+            }
         }
     }
 }
@@ -922,7 +937,7 @@ impl TerminalPane {
         arrow_fonts: bool,
         styled_underlines: bool,
         explicitly_disable_keyboard_protocol: bool,
-        notification_end: Option<NotificationEnd>,
+        mut notification_end: Option<NotificationEnd>,
     ) -> TerminalPane {
         let initial_pane_title =
             initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
@@ -940,6 +955,9 @@ impl TerminalPane {
             styled_underlines,
             explicitly_disable_keyboard_protocol,
         );
+        if let Some(notification_end) = notification_end.as_mut() {
+            notification_end.set_affected_pane_id(PaneId::Terminal(pid));
+        }
         TerminalPane {
             frame: HashMap::new(),
             content_offset: Offset::default(),

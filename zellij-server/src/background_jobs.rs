@@ -24,6 +24,7 @@ use std::time::{Duration, Instant};
 
 use crate::panes::PaneId;
 use crate::plugins::{PluginId, PluginInstruction};
+use crate::pty::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::thread_bus::Bus;
 use crate::ClientId;
@@ -228,6 +229,7 @@ pub(crate) fn background_jobs_main(
                                 session_infos_on_machine,
                                 resurrectable_sessions,
                             ));
+                            let _ = senders.send_to_pty(PtyInstruction::UpdateAndReportCwds);
                             if last_serialization_time
                                 .lock()
                                 .unwrap()

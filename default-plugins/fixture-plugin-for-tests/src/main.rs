@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 #[allow(unused_imports)]
 use std::io::prelude::*;
+use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 
 // This is a fixture plugin used only for tests in Zellij
@@ -59,6 +60,8 @@ impl ZellijPlugin for State {
             PermissionType::ReadCliPipes,
             PermissionType::MessageAndLaunchOtherPlugins,
             PermissionType::Reconfigure,
+            PermissionType::WriteToClipboard,
+            PermissionType::RunActionsAsUser,
         ]);
         self.configuration = configuration;
         subscribe(&[
@@ -258,11 +261,13 @@ impl ZellijPlugin for State {
                 },
                 BareKey::Char('t') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     let should_float_if_hidden = false;
-                    focus_terminal_pane(1, should_float_if_hidden);
+                    let should_be_in_place_if_hidden = false;
+                    focus_terminal_pane(1, should_float_if_hidden, should_be_in_place_if_hidden);
                 },
                 BareKey::Char('u') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     let should_float_if_hidden = false;
-                    focus_plugin_pane(1, should_float_if_hidden);
+                    let should_be_in_place_if_hidden = false;
+                    focus_plugin_pane(1, should_float_if_hidden, should_be_in_place_if_hidden);
                 },
                 BareKey::Char('v') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     rename_terminal_pane(1, "new terminal_pane_name");
@@ -354,7 +359,7 @@ impl ZellijPlugin for State {
                     hide_pane_with_id(PaneId::Terminal(1));
                 },
                 BareKey::Char('b') if key.has_modifiers(&[KeyModifier::Alt]) => {
-                    show_pane_with_id(PaneId::Terminal(1), true);
+                    show_pane_with_id(PaneId::Terminal(1), true, true);
                 },
                 BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Alt]) => {
                     open_command_pane_background(
@@ -548,6 +553,37 @@ impl ZellijPlugin for State {
                 },
                 BareKey::Char('z') if key.has_modifiers(&[KeyModifier::Alt]) => {
                     list_clients();
+                },
+                BareKey::Char('a') if key.has_modifiers(&[KeyModifier::Super]) => {
+                    // Test show_cursor with coordinates
+                    show_cursor(Some((5, 10)));
+                },
+                BareKey::Char('b') if key.has_modifiers(&[KeyModifier::Super]) => {
+                    // Test hide_cursor
+                    show_cursor(None);
+                },
+                BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Super]) => {
+                    // Test copy_to_clipboard
+                    copy_to_clipboard("test clipboard text");
+                },
+                BareKey::Char('d') if key.has_modifiers(&[KeyModifier::Super]) => {
+                    // Test run_action with MoveFocus
+                    let mut context = BTreeMap::new();
+                    context.insert("test_key".to_string(), "test_value".to_string());
+                    run_action(
+                        Action::MoveFocus {
+                            direction: Direction::Left,
+                        },
+                        context,
+                    );
+                },
+                BareKey::Char('e') if key.has_modifiers(&[KeyModifier::Super]) => {
+                    // Test send_sigint_to_pane_id
+                    send_sigint_to_pane_id(PaneId::Terminal(1));
+                },
+                BareKey::Char('f') if key.has_modifiers(&[KeyModifier::Super]) => {
+                    // Test send_sigkill_to_pane_id
+                    send_sigkill_to_pane_id(PaneId::Terminal(1));
                 },
                 _ => {},
             },

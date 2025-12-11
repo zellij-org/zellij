@@ -155,6 +155,12 @@ keybinds clear-defaults=true {{
             }};
             SwitchToMode "Locked"
         }}
+        bind "q" {{
+            LaunchPlugin "zellij:sequence" {{
+                floating true
+            }};
+            SwitchToMode "Locked"
+        }}
     }}
     shared_except "locked" "renametab" "renamepane" {{
         bind "{primary_modifier} g" {{ SwitchToMode "Locked"; }}
@@ -368,6 +374,12 @@ keybinds clear-defaults=true {{
             LaunchOrFocusPlugin "zellij:share" {{
                 floating true
                 move_to_focused_tab true
+            }};
+            SwitchToMode "Normal"
+        }}
+        bind "q" {{
+            LaunchPlugin "zellij:sequence" {{
+                floating true
             }};
             SwitchToMode "Normal"
         }}
@@ -587,6 +599,12 @@ keybinds clear-defaults=true {{
             }};
             SwitchToMode "Normal"
         }}
+        bind "q" {{
+            LaunchPlugin "zellij:sequence" {{
+                floating true
+            }};
+            SwitchToMode "Normal"
+        }}
     }}
     tmux {{
         bind "[" {{ SwitchToMode "Scroll"; }}
@@ -781,6 +799,12 @@ keybinds clear-defaults=true {{
             LaunchOrFocusPlugin "zellij:share" {{
                 floating true
                 move_to_focused_tab true
+            }};
+            SwitchToMode "Normal"
+        }}
+        bind "q" {{
+            LaunchPlugin "zellij:sequence" {{
+                floating true
             }};
             SwitchToMode "Normal"
         }}
@@ -981,6 +1005,12 @@ keybinds clear-defaults=true {{
             }};
             SwitchToMode "Normal"
         }}
+        bind "q" {{
+            LaunchPlugin "zellij:sequence" {{
+                floating true
+            }};
+            SwitchToMode "Normal"
+        }}
     }}
     tmux {{
         bind "[" {{ SwitchToMode "Scroll"; }}
@@ -1170,6 +1200,12 @@ keybinds clear-defaults=true {{
             LaunchOrFocusPlugin "zellij:share" {{
                 floating true
                 move_to_focused_tab true
+            }};
+            SwitchToMode "Normal"
+        }}
+        bind "q" {{
+            LaunchPlugin "zellij:sequence" {{
+                floating true
             }};
             SwitchToMode "Normal"
         }}

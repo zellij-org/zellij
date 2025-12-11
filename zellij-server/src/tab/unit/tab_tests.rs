@@ -106,6 +106,9 @@ impl ServerOsApi for FakeInputOutput {
     fn clear_terminal_id(&self, _terminal_id: u32) -> Result<()> {
         unimplemented!()
     }
+    fn send_sigint(&self, pid: Pid) -> Result<()> {
+        unimplemented!()
+    }
 }
 
 fn tab_resize_increase(tab: &mut Tab, id: ClientId) {
@@ -220,6 +223,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         vec![],
         HashMap::new(),
         client_id,
+        None,
     )
     .unwrap();
     tab
@@ -304,6 +308,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         vec![],
         HashMap::new(),
         client_id,
+        None,
     )
     .unwrap();
     tab
@@ -386,6 +391,7 @@ fn create_new_tab_with_cell_size(
         vec![],
         HashMap::new(),
         client_id,
+        None,
     )
     .unwrap();
     tab

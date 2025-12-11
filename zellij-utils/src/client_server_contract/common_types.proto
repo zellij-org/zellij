@@ -333,6 +333,7 @@ message NewPaneAction {
   optional Direction direction = 1;
   optional string pane_name = 2;
   bool start_suppressed = 3;
+  bool near_current_pane = 4;
 }
 
 message EditFileAction {
@@ -342,34 +343,43 @@ message EditFileAction {
   bool in_place = 4;
   bool start_suppressed = 5;
   optional FloatingPaneCoordinates coordinates = 6;
+  bool near_current_pane = 7;
 }
 
 message NewFloatingPaneAction {
   optional RunCommandAction command = 1;
   optional string pane_name = 2;
   optional FloatingPaneCoordinates coordinates = 3;
+  bool near_current_pane = 7;
 }
 
 message NewTiledPaneAction {
   optional Direction direction = 1;
   optional RunCommandAction command = 2;
   optional string pane_name = 3;
+  bool near_current_pane = 7;
 }
 
 message NewInPlacePaneAction {
   optional RunCommandAction command = 1;
   optional string pane_name = 2;
+  bool near_current_pane = 3;
+  optional PaneId pane_id_to_replace = 4;
+  bool close_replace_pane = 5;
 }
 
 message NewStackedPaneAction {
   optional RunCommandAction command = 1;
   optional string pane_name = 2;
+  bool near_current_pane = 3;
 }
 
 message NewBlockingPaneAction {
   NewPanePlacement placement = 1;
   optional string pane_name = 2;
   optional RunCommandAction command = 3;
+  optional UnblockCondition unblock_condition = 4;
+  bool near_current_pane = 5;
 }
 
 message PaneNameInputAction {
@@ -384,6 +394,8 @@ message NewTabAction {
   optional string tab_name = 5;
   bool should_change_focus_to_new_tab = 6;
   optional string cwd = 7;
+  repeated CommandOrPlugin initial_panes = 8;
+  optional UnblockCondition first_pane_unblock_condition = 9;
 }
 
 message GoToTabAction {
@@ -405,6 +417,7 @@ message MoveTabAction {
 
 message RunAction {
   RunCommandAction command = 1;
+  bool near_current_pane = 2;
 }
 
 message LaunchOrFocusPluginAction {
@@ -479,11 +492,13 @@ message ClosePluginPaneAction {
 message FocusTerminalPaneWithIdAction {
   uint32 pane_id = 1;
   bool should_float_if_hidden = 2;
+  bool should_be_in_place_if_hidden = 3;
 }
 
 message FocusPluginPaneWithIdAction {
   uint32 pane_id = 1;
   bool should_float_if_hidden = 2;
+  bool should_be_in_place_if_hidden = 3;
 }
 
 message RenameTerminalPaneAction {
@@ -569,6 +584,13 @@ enum Direction {
   DIRECTION_RIGHT = 2;
   DIRECTION_UP = 3;
   DIRECTION_DOWN = 4;
+}
+
+enum UnblockCondition {
+  UNBLOCK_CONDITION_UNSPECIFIED = 0;
+  UNBLOCK_CONDITION_ON_EXIT_SUCCESS = 1;
+  UNBLOCK_CONDITION_ON_EXIT_FAILURE = 2;
+  UNBLOCK_CONDITION_ON_ANY_EXIT = 3;
 }
 
 enum ResizeType {
@@ -759,6 +781,13 @@ message PluginAlias {
   optional PluginUserConfiguration configuration = 2;
   optional string initial_cwd = 3;
   optional RunPlugin run_plugin = 4;
+}
+
+message CommandOrPlugin {
+  oneof command_or_plugin_type {
+    RunCommandAction command = 1;
+    RunPluginOrAlias plugin = 2;
+  }
 }
 
 message MouseEvent {

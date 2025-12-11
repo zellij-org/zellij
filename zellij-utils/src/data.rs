@@ -1,8 +1,8 @@
 use crate::home::default_layout_dir;
-use crate::input::actions::Action;
+use crate::input::actions::{Action, RunCommandAction};
 use crate::input::config::ConversionError;
 use crate::input::keybinds::Keybinds;
-use crate::input::layout::{RunPlugin, SplitSize};
+use crate::input::layout::{RunPlugin, RunPluginOrAlias, SplitSize};
 use crate::pane_size::PaneGeom;
 use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
@@ -15,7 +15,7 @@ use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::time::Duration;
-use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
+use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString};
 use unicode_width::UnicodeWidthChar;
 
 #[cfg(not(target_family = "wasm"))]
@@ -25,6 +25,39 @@ use termwiz::{
 };
 
 pub type ClientId = u16; // TODO: merge with crate type?
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UnblockCondition {
+    /// Unblock only when exit status is 0 (success)
+    OnExitSuccess,
+    /// Unblock only when exit status is non-zero (failure)
+    OnExitFailure,
+    /// Unblock on any exit (success or failure)
+    OnAnyExit,
+}
+
+impl UnblockCondition {
+    /// Check if the condition is met for the given exit status
+    pub fn is_met(&self, exit_status: i32) -> bool {
+        match self {
+            UnblockCondition::OnExitSuccess => exit_status == 0,
+            UnblockCondition::OnExitFailure => exit_status != 0,
+            UnblockCondition::OnAnyExit => true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CommandOrPlugin {
+    Command(RunCommandAction),
+    Plugin(RunPluginOrAlias),
+}
+
+impl CommandOrPlugin {
+    pub fn new_command(command: Vec<String>) -> Self {
+        CommandOrPlugin::Command(RunCommandAction::new(command))
+    }
+}
 
 pub fn client_id_to_colors(
     client_id: ClientId,
@@ -252,7 +285,7 @@ impl FromStr for BareKey {
 }
 
 #[derive(
-    Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord, ToString,
+    Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord, Display,
 )]
 pub enum KeyModifier {
     Ctrl,
@@ -589,6 +622,12 @@ pub enum Direction {
     Down,
 }
 
+impl Default for Direction {
+    fn default() -> Self {
+        Direction::Left
+    }
+}
+
 impl Direction {
     pub fn invert(&self) -> Direction {
         match *self {
@@ -640,6 +679,12 @@ impl FromStr for Direction {
 pub enum Resize {
     Increase,
     Decrease,
+}
+
+impl Default for Resize {
+    fn default() -> Self {
+        Resize::Increase
+    }
 }
 
 impl Resize {
@@ -877,7 +922,7 @@ impl From<Metadata> for FileMetadata {
 
 /// These events can be subscribed to with subscribe method exported by `zellij-tile`.
 /// Once subscribed to, they will trigger the `update` method of the `ZellijPlugin` trait.
-#[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, EnumDiscriminants, Display, Serialize, Deserialize)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(EventType))]
 #[non_exhaustive]
@@ -946,10 +991,14 @@ pub enum Event {
     FailedToStartWebServer(String),
     BeforeClose,
     InterceptedKeyPress(KeyWithModifier),
+    /// An action was performed by the user (requires InterceptInput permission)
+    UserAction(Action, ClientId, Option<u32>, Option<ClientId>), // Action, client_id, terminal_id, cli_client_id
     PaneRenderReport(HashMap<PaneId, PaneContents>),
+    ActionComplete(Action, Option<PaneId>, BTreeMap<String, String>), // Action, pane_id, context
+    CwdChanged(PaneId, PathBuf, Vec<ClientId>), // pane_id, cwd, focused_client_ids
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, ToString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, Display, Serialize, Deserialize)]
 pub enum WebServerStatus {
     Online(String), // String -> base url
     Offline,
@@ -964,7 +1013,7 @@ pub enum WebServerStatus {
     Copy,
     Clone,
     EnumDiscriminants,
-    ToString,
+    Display,
     Serialize,
     Deserialize,
     PartialOrd,
@@ -988,6 +1037,8 @@ pub enum Permission {
     StartWebServer,
     InterceptInput,
     ReadPaneContents,
+    RunActionsAsUser,
+    WriteToClipboard,
 }
 
 impl PermissionType {
@@ -1017,6 +1068,8 @@ impl PermissionType {
             PermissionType::ReadPaneContents => {
                 "Read pane contents (viewport and selection)".to_owned()
             },
+            PermissionType::RunActionsAsUser => "Execute actions as the user".to_owned(),
+            PermissionType::WriteToClipboard => "Write to clipboard".to_owned(),
         }
     }
 }
@@ -1643,6 +1696,7 @@ pub struct SessionInfo {
     pub web_clients_allowed: bool,
     pub web_client_count: usize,
     pub tab_history: BTreeMap<ClientId, Vec<usize>>,
+    pub pane_history: BTreeMap<ClientId, Vec<PaneId>>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -2053,6 +2107,12 @@ pub enum PaneScrollbackResponse {
     Err(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GetPanePidResponse {
+    Ok(i32),
+    Err(String),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SelectedText {
     pub start: Position,
@@ -2224,6 +2284,12 @@ pub struct NewPluginArgs {
 pub enum PaneId {
     Terminal(u32),
     Plugin(u32),
+}
+
+impl Default for PaneId {
+    fn default() -> Self {
+        PaneId::Terminal(0)
+    }
 }
 
 impl FromStr for PaneId {
@@ -2660,13 +2726,14 @@ impl NewPanePlacement {
 
 type Context = BTreeMap<String, String>;
 
-#[derive(Debug, Clone, EnumDiscriminants, ToString)]
+#[derive(Debug, Clone, EnumDiscriminants, Display)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(CommandType))]
 pub enum PluginCommand {
     Subscribe(HashSet<EventType>),
     Unsubscribe(HashSet<EventType>),
     SetSelectable(bool),
+    ShowCursor(Option<(usize, usize)>),
     GetPluginIds,
     GetZellijVersion,
     OpenFile(FileToOpen, Context),
@@ -2723,16 +2790,16 @@ pub enum PluginCommand {
     NextSwapLayout,
     GoToTabName(String),
     FocusOrCreateTab(String),
-    GoToTab(u32),                    // tab index
-    StartOrReloadPlugin(String),     // plugin url (eg. file:/path/to/plugin.wasm)
-    CloseTerminalPane(u32),          // terminal pane id
-    ClosePluginPane(u32),            // plugin pane id
-    FocusTerminalPane(u32, bool),    // terminal pane id, should_float_if_hidden
-    FocusPluginPane(u32, bool),      // plugin pane id, should_float_if_hidden
-    RenameTerminalPane(u32, String), // terminal pane id, new name
-    RenamePluginPane(u32, String),   // plugin pane id, new name
-    RenameTab(u32, String),          // tab index, new name
-    ReportPanic(String),             // stringified panic
+    GoToTab(u32),                       // tab index
+    StartOrReloadPlugin(String),        // plugin url (eg. file:/path/to/plugin.wasm)
+    CloseTerminalPane(u32),             // terminal pane id
+    ClosePluginPane(u32),               // plugin pane id
+    FocusTerminalPane(u32, bool, bool), // terminal pane id, should_float_if_hidden, should_be_in_place_if_hidden
+    FocusPluginPane(u32, bool, bool), // plugin pane id, should_float_if_hidden, should_be_in_place_if_hidden
+    RenameTerminalPane(u32, String),  // terminal pane id, new name
+    RenamePluginPane(u32, String),    // plugin pane id, new name
+    RenameTab(u32, String),           // tab index, new name
+    ReportPanic(String),              // stringified panic
     RequestPluginPermissions(Vec<PermissionType>),
     SwitchSession(ConnectToSession),
     DeleteDeadSession(String),       // String -> session name
@@ -2768,7 +2835,7 @@ pub enum PluginCommand {
     Reconfigure(String, bool), // String -> stringified configuration, bool -> save configuration
     // file to disk
     HidePaneWithId(PaneId),
-    ShowPaneWithId(PaneId, bool), // bool -> should_float_if_hidden
+    ShowPaneWithId(PaneId, bool, bool), // bools -> should_float_if_hidden, should_focus_pane
     OpenCommandPaneBackground(CommandToRun, Context),
     RerunCommandPane(u32), // u32  - terminal pane id
     ResizePaneIdWithDirection(ResizeStrategy, PaneId),
@@ -2779,6 +2846,11 @@ pub enum PluginCommand {
     },
     WriteToPaneId(Vec<u8>, PaneId),
     WriteCharsToPaneId(String, PaneId),
+    SendSigintToPaneId(PaneId),
+    SendSigkillToPaneId(PaneId),
+    GetPanePid {
+        pane_id: PaneId,
+    },
     MovePaneWithPaneId(PaneId),
     MovePaneWithPaneIdInDirection(PaneId, Direction),
     ClearScreenForPaneId(PaneId),
@@ -2844,5 +2916,8 @@ pub enum PluginCommand {
     RenameWebLoginToken(String, String), // (original_name, new_name)
     InterceptKeyPresses,
     ClearKeyPressesIntercepts,
-    ReplacePaneWithExistingPane(PaneId, PaneId), // (pane id to replace, pane id of existing)
+    ReplacePaneWithExistingPane(PaneId, PaneId, bool), // (pane id to replace, pane id of existing,
+    // suppress_replaced_pane)
+    RunAction(Action, BTreeMap<String, String>),
+    CopyToClipboard(String), // text to copy
 }

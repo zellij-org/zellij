@@ -90,6 +90,7 @@ pub(crate) struct PluginPane {
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     vte_parsers: HashMap<ClientId, vte::Parser>,
     grids: HashMap<ClientId, Grid>,
+    cursor_visibility: HashMap<ClientId, Option<(usize, usize)>>,
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
@@ -149,6 +150,7 @@ impl PluginPane {
             sixel_image_store,
             vte_parsers: HashMap::new(),
             grids: HashMap::new(),
+            cursor_visibility: HashMap::new(),
             style,
             pane_frame_color_override: None,
             invoked_with,
@@ -248,8 +250,25 @@ impl Pane for PluginPane {
 
         self.should_render.insert(client_id, true);
     }
-    fn cursor_coordinates(&self) -> Option<(usize, usize)> {
-        None
+    fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize)> {
+        let own_content_columns = self.get_content_columns();
+        let own_content_rows = self.get_content_rows();
+        let Offset { top, left, .. } = self.content_offset;
+        if let Some(coordinates) =
+            client_id.and_then(|client_id| self.cursor_visibility.get(&client_id))
+        {
+            coordinates
+                .map(|(x, y)| (x + left, y + top))
+                .and_then(|(x, y)| {
+                    if x >= own_content_columns || y >= own_content_rows {
+                        None
+                    } else {
+                        Some((x, y)) // these are 0 indexed
+                    }
+                })
+        } else {
+            None
+        }
     }
     fn adjust_input_to_terminal(
         &mut self,
@@ -360,6 +379,10 @@ impl Pane for PluginPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
+    fn show_cursor(&mut self, client_id: ClientId, cursor_position: Option<(usize, usize)>) {
+        self.cursor_visibility.insert(client_id, cursor_position);
+        self.should_render.insert(client_id, true);
+    }
     fn request_permissions_from_user(&mut self, permissions: Option<PluginPermission>) {
         self.requesting_permissions = permissions;
         self.handle_plugin_bytes_for_all_clients(Default::default()); // to trigger the render of
@@ -440,7 +463,7 @@ impl Pane for PluginPane {
         let res = match self.frame.get(&client_id) {
             // TODO: use and_then or something?
             Some(last_frame) => {
-                if &frame != last_frame {
+                if &frame != last_frame || is_pinned {
                     if !self.borderless {
                         let frame_output = frame.render().with_context(err_context)?;
                         self.frame.insert(client_id, frame);

@@ -1348,6 +1348,7 @@ Config {
                 NewStackedPane {
                     command: None,
                     pane_name: None,
+                    near_current_pane: false,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -1853,6 +1854,8 @@ Config {
                     tab_name: None,
                     should_change_focus_to_new_tab: true,
                     cwd: None,
+                    initial_panes: None,
+                    first_pane_unblock_condition: None,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -4446,6 +4449,36 @@ Config {
                 bare_key: Char(
                     'q',
                 ),
+                key_modifiers: {},
+            }: [
+                LaunchPlugin {
+                    plugin: RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "sequence",
+                                ),
+                            ),
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
+                    should_float: true,
+                    should_open_in_place: false,
+                    skip_cache: false,
+                    cwd: None,
+                },
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'q',
+                ),
                 key_modifiers: {
                     Ctrl,
                 },
@@ -5584,6 +5617,8 @@ Config {
                     tab_name: None,
                     should_change_focus_to_new_tab: true,
                     cwd: None,
+                    initial_panes: None,
+                    first_pane_unblock_condition: None,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -7800,6 +7835,18 @@ Config {
                 location: Zellij(
                     PluginTag(
                         "plugin-manager",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
+            "sequence": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "sequence",
                     ),
                 ),
                 configuration: PluginUserConfiguration(

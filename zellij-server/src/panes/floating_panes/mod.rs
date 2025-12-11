@@ -18,6 +18,7 @@ use crate::{
     ClientId,
 };
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Instant;
@@ -129,6 +130,7 @@ impl FloatingPanes {
             .insert(pane_id, pane.position_and_size());
         self.panes.insert(pane_id, pane);
         self.z_indices.push(pane_id);
+        self.make_sure_pinned_panes_are_on_top();
     }
     pub fn replace_active_pane(
         &mut self,
@@ -169,6 +171,7 @@ impl FloatingPanes {
                     .with_context(err_context)?;
                 self.z_indices.remove(z_index);
                 self.z_indices.insert(z_index, with_pane_id);
+                self.make_sure_pinned_panes_are_on_top();
                 Ok(removed_pane)
             });
 
@@ -415,21 +418,10 @@ impl FloatingPanes {
             vec![]
         };
         floating_panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
-            self.z_indices
-                .iter()
-                .position(|id| id == *a_id)
-                .with_context(err_context)
-                .fatal()
-                .cmp(
-                    &self
-                        .z_indices
-                        .iter()
-                        .position(|id| id == *b_id)
-                        .with_context(err_context)
-                        .fatal(),
-                )
+            let a_pos = self.z_indices.iter().position(|id| id == *a_id);
+            let b_pos = self.z_indices.iter().position(|id| id == *b_id);
+            a_pos.cmp(&b_pos)
         });
-
         for (z_index, (kind, pane)) in floating_panes.iter_mut().enumerate() {
             let mut active_panes = active_panes.clone();
             let multiple_users_exist_in_session =
@@ -806,6 +798,16 @@ impl FloatingPanes {
             pane_geom.adjust_coordinates(new_coordinates, viewport);
             pane.set_geom(pane_geom);
             pane.set_should_render(true);
+
+            // we do this in case this moves the pane under another pane so that the pane user's
+            // are focused on will always be on top
+            let is_focused = self.active_panes.pane_id_is_focused(&pane_id);
+            if is_focused {
+                self.z_indices.retain(|p_id| *p_id != pane_id);
+                self.z_indices.push(pane_id);
+                self.make_sure_pinned_panes_are_on_top();
+            }
+
             self.desired_pane_positions.insert(pane_id, pane_geom);
         }
         let _ = self.set_pane_frames();
@@ -840,7 +842,7 @@ impl FloatingPanes {
                         self.focus_pane(next_active_pane_id, client_id);
                     },
                     None => {
-                        self.defocus_pane(pane_id, client_id);
+                        self.defocus_pane(client_id);
                     },
                 }
             }
@@ -855,6 +857,7 @@ impl FloatingPanes {
         }
         self.z_indices.retain(|p_id| *p_id != pane_id);
         self.z_indices.push(pane_id);
+        self.make_sure_pinned_panes_are_on_top();
         self.set_pane_active_at(pane_id);
         self.set_force_render();
     }
@@ -888,8 +891,7 @@ impl FloatingPanes {
             },
         }
     }
-    pub fn defocus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
-        self.z_indices.retain(|p_id| *p_id != pane_id);
+    pub fn defocus_pane(&mut self, client_id: ClientId) {
         self.active_panes.remove(&client_id, &mut self.panes);
         self.set_force_render();
     }
@@ -1243,5 +1245,28 @@ impl FloatingPanes {
             viewport,
         );
         floating_pane_grid.next_selectable_pane_id_to_the_right(&pane_id)
+    }
+    fn make_sure_pinned_panes_are_on_top(&mut self) {
+        let pinned_status: std::collections::HashMap<_, _> = self
+            .z_indices
+            .iter()
+            .map(|id| (id.clone(), self.pane_id_is_pinned(id)))
+            .collect();
+
+        self.z_indices.sort_by(|a_id, b_id| {
+            let a_is_pinned = pinned_status.get(a_id).copied().unwrap_or(false);
+            let b_is_pinned = pinned_status.get(b_id).copied().unwrap_or(false);
+            match (a_is_pinned, b_is_pinned) {
+                (true, false) => Ordering::Greater,
+                (false, true) => Ordering::Less,
+                _ => Ordering::Equal,
+            }
+        });
+    }
+    fn pane_id_is_pinned(&self, pane_id: &PaneId) -> bool {
+        self.panes
+            .get(pane_id)
+            .map(|p| p.position_and_size().is_pinned)
+            .unwrap_or(false)
     }
 }

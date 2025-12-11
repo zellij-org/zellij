@@ -1,0 +1,9 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+expression: "format!(\"{:#?}\", sigint_instruction)"
+---
+Some(
+    Terminal(
+        1,
+    ),
+)

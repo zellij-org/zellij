@@ -3,7 +3,7 @@
 pub struct PluginCommand {
     #[prost(enumeration="CommandName", tag="1")]
     pub name: i32,
-    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113")]
+    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123")]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
 /// Nested message and enum types in `PluginCommand`.
@@ -217,6 +217,18 @@ pub mod plugin_command {
         NewTabPayload(super::NewTabPayload),
         #[prost(message, tag="113")]
         GetPaneScrollbackPayload(super::GetPaneScrollbackPayload),
+        #[prost(message, tag="114")]
+        RunActionPayload(super::RunActionPayload),
+        #[prost(message, tag="119")]
+        ShowCursorPayload(super::ShowCursorPayload),
+        #[prost(message, tag="120")]
+        CopyToClipboardPayload(super::CopyToClipboardPayload),
+        #[prost(message, tag="121")]
+        SendSigintToPaneIdPayload(super::PaneId),
+        #[prost(message, tag="122")]
+        SendSigkillToPaneIdPayload(super::PaneId),
+        #[prost(message, tag="123")]
+        GetPanePidPayload(super::GetPanePidPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -229,11 +241,21 @@ pub struct NewTabPayload {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RunActionPayload {
+    #[prost(message, optional, tag="1")]
+    pub action: ::core::option::Option<super::action::Action>,
+    #[prost(message, repeated, tag="2")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ReplacePaneWithExistingPanePayload {
     #[prost(message, optional, tag="1")]
     pub pane_id_to_replace: ::core::option::Option<PaneId>,
     #[prost(message, optional, tag="2")]
     pub existing_pane_id: ::core::option::Option<PaneId>,
+    #[prost(bool, tag="3")]
+    pub suppress_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -610,6 +632,8 @@ pub struct ShowPaneWithIdPayload {
     pub pane_id: ::core::option::Option<PaneId>,
     #[prost(bool, tag="2")]
     pub should_float_if_hidden: bool,
+    #[prost(bool, tag="3")]
+    pub should_focus_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -899,6 +923,49 @@ pub struct GetPaneScrollbackPayload {
     #[prost(bool, tag="2")]
     pub get_full_scrollback: bool,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ShowCursorPayload {
+    #[prost(message, optional, tag="1")]
+    pub position: ::core::option::Option<CursorPosition>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CursorPosition {
+    #[prost(uint32, tag="1")]
+    pub x: u32,
+    #[prost(uint32, tag="2")]
+    pub y: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CopyToClipboardPayload {
+    #[prost(string, tag="1")]
+    pub text: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPanePidPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPanePidResponse {
+    #[prost(oneof="get_pane_pid_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<get_pane_pid_response::Result>,
+}
+/// Nested message and enum types in `GetPanePidResponse`.
+pub mod get_pane_pid_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(int32, tag="1")]
+        Pid(i32),
+        #[prost(string, tag="2")]
+        Error(::prost::alloc::string::String),
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum CommandName {
@@ -1049,6 +1116,12 @@ pub enum CommandName {
     ClearKeyPressesIntercepts = 144,
     ReplacePaneWithExistingPane = 155,
     GetPaneScrollback = 163,
+    RunAction = 164,
+    ShowCursor = 169,
+    CopyToClipboard = 170,
+    SendSigintToPaneId = 171,
+    SendSigkillToPaneId = 172,
+    GetPanePid = 173,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1204,6 +1277,12 @@ impl CommandName {
             CommandName::ClearKeyPressesIntercepts => "ClearKeyPressesIntercepts",
             CommandName::ReplacePaneWithExistingPane => "ReplacePaneWithExistingPane",
             CommandName::GetPaneScrollback => "GetPaneScrollback",
+            CommandName::RunAction => "RunAction",
+            CommandName::ShowCursor => "ShowCursor",
+            CommandName::CopyToClipboard => "CopyToClipboard",
+            CommandName::SendSigintToPaneId => "SendSigintToPaneId",
+            CommandName::SendSigkillToPaneId => "SendSigkillToPaneId",
+            CommandName::GetPanePid => "GetPanePid",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1356,6 +1435,12 @@ impl CommandName {
             "ClearKeyPressesIntercepts" => Some(Self::ClearKeyPressesIntercepts),
             "ReplacePaneWithExistingPane" => Some(Self::ReplacePaneWithExistingPane),
             "GetPaneScrollback" => Some(Self::GetPaneScrollback),
+            "RunAction" => Some(Self::RunAction),
+            "ShowCursor" => Some(Self::ShowCursor),
+            "CopyToClipboard" => Some(Self::CopyToClipboard),
+            "SendSigintToPaneId" => Some(Self::SendSigintToPaneId),
+            "SendSigkillToPaneId" => Some(Self::SendSigkillToPaneId),
+            "GetPanePid" => Some(Self::GetPanePid),
             _ => None,
         }
     }

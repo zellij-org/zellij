@@ -1,17 +1,19 @@
 pub use super::generated_api::api::{
-    action::{PaneIdAndShouldFloat, SwitchToModePayload},
+    action::{Action as ProtobufAction, PaneIdAndShouldFloat, SwitchToModePayload},
     event::{EventNameList as ProtobufEventNameList, Header},
     input_mode::InputMode as ProtobufInputMode,
     plugin_command::{
-        plugin_command::Payload, BreakPanesToNewTabPayload, BreakPanesToTabWithIndexPayload,
-        ChangeFloatingPanesCoordinatesPayload, ChangeHostFolderPayload,
-        ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseMultiplePanesPayload,
-        CloseTabWithIndexPayload, CommandName, ContextItem,
-        CreateTokenResponse as ProtobufCreateTokenResponse, CreateTokenResponse,
-        EditScrollbackForPaneWithIdPayload, EmbedMultiplePanesPayload, EnvVariable, ExecCmdPayload,
+        get_pane_pid_response, plugin_command::Payload, BreakPanesToNewTabPayload,
+        BreakPanesToTabWithIndexPayload, ChangeFloatingPanesCoordinatesPayload,
+        ChangeHostFolderPayload, ClearScreenForPaneIdPayload, CliPipeOutputPayload,
+        CloseMultiplePanesPayload, CloseTabWithIndexPayload, CommandName, ContextItem,
+        CopyToClipboardPayload, CreateTokenResponse as ProtobufCreateTokenResponse,
+        CreateTokenResponse, CursorPosition, EditScrollbackForPaneWithIdPayload,
+        EmbedMultiplePanesPayload, EnvVariable, ExecCmdPayload,
         FixedOrPercent as ProtobufFixedOrPercent,
         FixedOrPercentValue as ProtobufFixedOrPercentValue, FloatMultiplePanesPayload,
         FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, GenerateWebLoginTokenPayload,
+        GetPanePidPayload, GetPanePidResponse as ProtobufGetPanePidResponse,
         GetPaneScrollbackPayload, GroupAndUngroupPanesPayload, HidePaneWithIdPayload,
         HighlightAndUnhighlightPanesPayload, HttpVerb as ProtobufHttpVerb, IdAndNewName,
         KeyToRebind, KeyToUnbind, KillSessionsPayload, ListTokensResponse, LoadNewPluginPayload,
@@ -29,20 +31,21 @@ pub use super::generated_api::api::{
         RenameWebTokenResponse, ReplacePaneWithExistingPanePayload, RequestPluginPermissionPayload,
         RerunCommandPanePayload, ResizePaneIdWithDirectionPayload, ResizePayload,
         RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
-        RunCommandPayload, ScrollDownInPaneIdPayload, ScrollToBottomInPaneIdPayload,
-        ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetFloatingPanePinnedPayload,
-        SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowPaneWithIdPayload,
-        StackPanesPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToPayload,
-        TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
-        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        RunActionPayload, RunCommandPayload, ScrollDownInPaneIdPayload,
+        ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
+        SetFloatingPanePinnedPayload, SetSelfMouseSelectionSupportPayload, SetTimeoutPayload,
+        ShowCursorPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
+        SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
+        TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
 };
 
 use crate::data::{
-    ConnectToSession, FloatingPaneCoordinates, HttpVerb, InputMode, KeyWithModifier,
-    MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand,
+    ConnectToSession, FloatingPaneCoordinates, GetPanePidResponse, HttpVerb, InputMode,
+    KeyWithModifier, MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand,
 };
 use crate::input::actions::Action;
 use crate::input::layout::SplitSize;
@@ -200,6 +203,30 @@ impl TryFrom<PaneId> for ProtobufPaneId {
     }
 }
 
+impl TryFrom<ProtobufGetPanePidResponse> for GetPanePidResponse {
+    type Error = &'static str;
+    fn try_from(protobuf_response: ProtobufGetPanePidResponse) -> Result<Self, &'static str> {
+        match protobuf_response.result {
+            Some(get_pane_pid_response::Result::Pid(pid)) => Ok(GetPanePidResponse::Ok(pid)),
+            Some(get_pane_pid_response::Result::Error(error)) => Ok(GetPanePidResponse::Err(error)),
+            None => Err("Empty GetPanePidResponse"),
+        }
+    }
+}
+
+impl From<GetPanePidResponse> for ProtobufGetPanePidResponse {
+    fn from(response: GetPanePidResponse) -> Self {
+        match response {
+            GetPanePidResponse::Ok(pid) => ProtobufGetPanePidResponse {
+                result: Some(get_pane_pid_response::Result::Pid(pid)),
+            },
+            GetPanePidResponse::Err(error) => ProtobufGetPanePidResponse {
+                result: Some(get_pane_pid_response::Result::Error(error)),
+            },
+        }
+    }
+}
+
 impl TryFrom<(InputMode, KeyWithModifier, Vec<Action>)> for KeyToRebind {
     type Error = &'static str;
     fn try_from(
@@ -287,6 +314,14 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     Ok(PluginCommand::SetSelectable(should_be_selectable))
                 },
                 _ => Err("Mismatched payload for SetSelectable"),
+            },
+            Some(CommandName::ShowCursor) => match protobuf_plugin_command.payload {
+                Some(Payload::ShowCursorPayload(payload)) => {
+                    let cursor_position =
+                        payload.position.map(|pos| (pos.x as usize, pos.y as usize));
+                    Ok(PluginCommand::ShowCursor(cursor_position))
+                },
+                _ => Err("Mismatched payload for ShowCursor"),
             },
             Some(CommandName::GetPluginIds) => {
                 if protobuf_plugin_command.payload.is_some() {
@@ -734,7 +769,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::FocusTerminalPanePayload(payload)) => {
                     let pane_id = payload.pane_id as u32;
                     let should_float = payload.should_float;
-                    Ok(PluginCommand::FocusTerminalPane(pane_id, should_float))
+                    let should_be_in_place = payload.should_be_in_place;
+                    Ok(PluginCommand::FocusTerminalPane(
+                        pane_id,
+                        should_float,
+                        should_be_in_place,
+                    ))
                 },
                 _ => Err("Mismatched payload for ClosePluginPane"),
             },
@@ -742,7 +782,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::FocusPluginPanePayload(payload)) => {
                     let pane_id = payload.pane_id as u32;
                     let should_float = payload.should_float;
-                    Ok(PluginCommand::FocusPluginPane(pane_id, should_float))
+                    let should_be_in_place = payload.should_be_in_place;
+                    Ok(PluginCommand::FocusPluginPane(
+                        pane_id,
+                        should_float,
+                        should_be_in_place,
+                    ))
                 },
                 _ => Err("Mismatched payload for ClosePluginPane"),
             },
@@ -1048,9 +1093,11 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         .and_then(|p_id| PaneId::try_from(p_id).ok())
                         .ok_or("Failed to parse ShowPaneWithId command")?;
                     let should_float_if_hidden = show_pane_with_id_payload.should_float_if_hidden;
+                    let should_focus_pane = show_pane_with_id_payload.should_focus_pane;
                     Ok(PluginCommand::ShowPaneWithId(
                         pane_id,
                         should_float_if_hidden,
+                        should_focus_pane,
                     ))
                 },
                 _ => Err("Mismatched payload for ShowPaneWithId"),
@@ -1144,6 +1191,29 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     }
                 },
                 _ => Err("Mismatched payload for WriteCharsCharsToPaneId"),
+            },
+            Some(CommandName::SendSigintToPaneId) => match protobuf_plugin_command.payload {
+                Some(Payload::SendSigintToPaneIdPayload(pane_id)) => {
+                    Ok(PluginCommand::SendSigintToPaneId(pane_id.try_into()?))
+                },
+                _ => Err("Mismatched payload for SendSigintToPaneId"),
+            },
+            Some(CommandName::SendSigkillToPaneId) => match protobuf_plugin_command.payload {
+                Some(Payload::SendSigkillToPaneIdPayload(pane_id)) => {
+                    Ok(PluginCommand::SendSigkillToPaneId(pane_id.try_into()?))
+                },
+                _ => Err("Mismatched payload for SendSigkillToPaneId"),
+            },
+            Some(CommandName::GetPanePid) => match protobuf_plugin_command.payload {
+                Some(Payload::GetPanePidPayload(get_pane_pid_payload)) => {
+                    match get_pane_pid_payload.pane_id {
+                        Some(pane_id) => Ok(PluginCommand::GetPanePid {
+                            pane_id: pane_id.try_into()?,
+                        }),
+                        _ => Err("Malformed get_pane_pid payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for GetPanePid"),
             },
             Some(CommandName::MovePaneWithPaneId) => match protobuf_plugin_command.payload {
                 Some(Payload::MovePaneWithPaneIdPayload(move_pane_with_pane_id_payload)) => {
@@ -1745,8 +1815,34 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         .existing_pane_id
                         .and_then(|p_id| PaneId::try_from(p_id).ok())
                         .ok_or("Failed to parse ReplacePaneWithExistingPanePayload")?,
+                    replace_pane_with_other_pane_payload.suppress_replaced_pane,
                 )),
                 _ => Err("Mismatched payload for ReplacePaneWithExistingPane"),
+            },
+            Some(CommandName::RunAction) => match protobuf_plugin_command.payload {
+                Some(Payload::RunActionPayload(protobuf_payload)) => {
+                    let action = Action::try_from(
+                        protobuf_payload
+                            .action
+                            .ok_or("Missing action in RunAction payload")?,
+                    )
+                    .map_err(|_| "Failed to convert protobuf action")?;
+
+                    let context: BTreeMap<String, String> = protobuf_payload
+                        .context
+                        .into_iter()
+                        .map(|item| (item.name, item.value))
+                        .collect();
+
+                    Ok(PluginCommand::RunAction(action, context))
+                },
+                _ => Err("Mismatched payload for RunAction"),
+            },
+            Some(CommandName::CopyToClipboard) => match protobuf_plugin_command.payload {
+                Some(Payload::CopyToClipboardPayload(payload)) => {
+                    Ok(PluginCommand::CopyToClipboard(payload.text))
+                },
+                _ => Err("Mismatched payload for CopyToClipboard"),
             },
             None => Err("Unrecognized plugin command"),
         }
@@ -1779,6 +1875,16 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::SetSelectable as i32,
                 payload: Some(Payload::SetSelectablePayload(should_be_selectable)),
             }),
+            PluginCommand::ShowCursor(cursor_position) => {
+                let position = cursor_position.map(|(x, y)| CursorPosition {
+                    x: x as u32,
+                    y: y as u32,
+                });
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::ShowCursor as i32,
+                    payload: Some(Payload::ShowCursorPayload(ShowCursorPayload { position })),
+                })
+            },
             PluginCommand::GetPluginIds => Ok(ProtobufPluginCommand {
                 name: CommandName::GetPluginIds as i32,
                 payload: None,
@@ -2077,24 +2183,30 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::ClosePluginPane as i32,
                 payload: Some(Payload::ClosePluginPanePayload(pane_id)),
             }),
-            PluginCommand::FocusTerminalPane(pane_id, should_float_if_hidden) => {
-                Ok(ProtobufPluginCommand {
-                    name: CommandName::FocusTerminalPane as i32,
-                    payload: Some(Payload::FocusTerminalPanePayload(PaneIdAndShouldFloat {
-                        pane_id: pane_id,
-                        should_float: should_float_if_hidden,
-                    })),
-                })
-            },
-            PluginCommand::FocusPluginPane(pane_id, should_float_if_hidden) => {
-                Ok(ProtobufPluginCommand {
-                    name: CommandName::FocusPluginPane as i32,
-                    payload: Some(Payload::FocusPluginPanePayload(PaneIdAndShouldFloat {
-                        pane_id: pane_id,
-                        should_float: should_float_if_hidden,
-                    })),
-                })
-            },
+            PluginCommand::FocusTerminalPane(
+                pane_id,
+                should_float_if_hidden,
+                should_be_in_place_if_hidden,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::FocusTerminalPane as i32,
+                payload: Some(Payload::FocusTerminalPanePayload(PaneIdAndShouldFloat {
+                    pane_id: pane_id,
+                    should_float: should_float_if_hidden,
+                    should_be_in_place: should_be_in_place_if_hidden,
+                })),
+            }),
+            PluginCommand::FocusPluginPane(
+                pane_id,
+                should_float_if_hidden,
+                should_be_in_place_if_hidden,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::FocusPluginPane as i32,
+                payload: Some(Payload::FocusPluginPanePayload(PaneIdAndShouldFloat {
+                    pane_id: pane_id,
+                    should_float: should_float_if_hidden,
+                    should_be_in_place: should_be_in_place_if_hidden,
+                })),
+            }),
             PluginCommand::RenameTerminalPane(pane_id, new_name) => Ok(ProtobufPluginCommand {
                 name: CommandName::RenameTerminalPane as i32,
                 payload: Some(Payload::RenameTerminalPanePayload(IdAndNewName {
@@ -2335,15 +2447,18 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     pane_id: ProtobufPaneId::try_from(pane_id_to_hide).ok(),
                 })),
             }),
-            PluginCommand::ShowPaneWithId(pane_id_to_show, should_float_if_hidden) => {
-                Ok(ProtobufPluginCommand {
-                    name: CommandName::ShowPaneWithId as i32,
-                    payload: Some(Payload::ShowPaneWithIdPayload(ShowPaneWithIdPayload {
-                        pane_id: ProtobufPaneId::try_from(pane_id_to_show).ok(),
-                        should_float_if_hidden,
-                    })),
-                })
-            },
+            PluginCommand::ShowPaneWithId(
+                pane_id_to_show,
+                should_float_if_hidden,
+                should_focus_pane,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::ShowPaneWithId as i32,
+                payload: Some(Payload::ShowPaneWithIdPayload(ShowPaneWithIdPayload {
+                    pane_id: ProtobufPaneId::try_from(pane_id_to_show).ok(),
+                    should_float_if_hidden,
+                    should_focus_pane,
+                })),
+            }),
             PluginCommand::OpenCommandPaneBackground(command_to_run, context) => {
                 let context: Vec<_> = context
                     .into_iter()
@@ -2415,6 +2530,20 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
+            PluginCommand::SendSigintToPaneId(pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::SendSigintToPaneId as i32,
+                payload: Some(Payload::SendSigintToPaneIdPayload(pane_id.try_into()?)),
+            }),
+            PluginCommand::SendSigkillToPaneId(pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::SendSigkillToPaneId as i32,
+                payload: Some(Payload::SendSigkillToPaneIdPayload(pane_id.try_into()?)),
+            }),
+            PluginCommand::GetPanePid { pane_id } => Ok(ProtobufPluginCommand {
+                name: CommandName::GetPanePid as i32,
+                payload: Some(Payload::GetPanePidPayload(GetPanePidPayload {
+                    pane_id: Some(pane_id.try_into()?),
+                })),
+            }),
             PluginCommand::MovePaneWithPaneId(pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::MovePaneWithPaneId as i32,
                 payload: Some(Payload::MovePaneWithPaneIdPayload(
@@ -2901,17 +3030,43 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::ClearKeyPressesIntercepts as i32,
                 payload: None,
             }),
-            PluginCommand::ReplacePaneWithExistingPane(pane_id_to_replace, existing_pane_id) => {
+            PluginCommand::ReplacePaneWithExistingPane(
+                pane_id_to_replace,
+                existing_pane_id,
+                suppress_replaced_pane,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::ReplacePaneWithExistingPane as i32,
+                payload: Some(Payload::ReplacePaneWithExistingPanePayload(
+                    ReplacePaneWithExistingPanePayload {
+                        pane_id_to_replace: ProtobufPaneId::try_from(pane_id_to_replace).ok(),
+                        existing_pane_id: ProtobufPaneId::try_from(existing_pane_id).ok(),
+                        suppress_replaced_pane,
+                    },
+                )),
+            }),
+            PluginCommand::RunAction(action, context) => {
+                let protobuf_action = ProtobufAction::try_from(action)
+                    .map_err(|_| "Failed to convert action to protobuf")?;
+
+                let context_items: Vec<ContextItem> = context
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+
                 Ok(ProtobufPluginCommand {
-                    name: CommandName::ReplacePaneWithExistingPane as i32,
-                    payload: Some(Payload::ReplacePaneWithExistingPanePayload(
-                        ReplacePaneWithExistingPanePayload {
-                            pane_id_to_replace: ProtobufPaneId::try_from(pane_id_to_replace).ok(),
-                            existing_pane_id: ProtobufPaneId::try_from(existing_pane_id).ok(),
-                        },
-                    )),
+                    name: CommandName::RunAction as i32,
+                    payload: Some(Payload::RunActionPayload(RunActionPayload {
+                        action: Some(protobuf_action),
+                        context: context_items,
+                    })),
                 })
             },
+            PluginCommand::CopyToClipboard(text) => Ok(ProtobufPluginCommand {
+                name: CommandName::CopyToClipboard as i32,
+                payload: Some(Payload::CopyToClipboardPayload(CopyToClipboardPayload {
+                    text,
+                })),
+            }),
         }
     }
 }

@@ -150,6 +150,12 @@ keybinds {
             };
             SwitchToMode "Normal"
         }
+        bind "q" {
+            LaunchPlugin "zellij:sequence" {
+                floating true
+            };
+            SwitchToMode "Normal"
+        }
     }
     tmux {
         bind "[" { SwitchToMode "Scroll"; }
@@ -235,6 +241,7 @@ plugins {
     configuration location="zellij:configuration"
     plugin-manager location="zellij:plugin-manager"
     about location="zellij:about"
+    sequence location="zellij:sequence"
 }
 
 // Plugins to load in the background when a new session starts
