@@ -3271,8 +3271,8 @@ impl Perform for Grid {
             // https://vt100.net/docs/vt510-rm/DA1.html
             match intermediates.get(0) {
                 None | Some(0) => {
-                    // primary device attributes - VT220 with sixel
-                    let terminal_capabilities = "\u{1b}[?62;4c";
+                    // primary device attributes - VT220 with sixel and OSC 52 clipboard
+                    let terminal_capabilities = "\u{1b}[?62;4;52c";
                     self.pending_messages_to_pty
                         .push(terminal_capabilities.as_bytes().to_vec());
                 },
