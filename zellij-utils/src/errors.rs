@@ -393,6 +393,8 @@ pub enum ScreenContext {
     RemoveWatcherClient,
     SetFollowedClient,
     WatcherTerminalResize, // NEW
+    ClientGainedFocus,
+    ClientLostFocus,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
