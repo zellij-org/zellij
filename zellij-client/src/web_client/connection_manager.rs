@@ -74,6 +74,7 @@ impl ConnectionTable {
         if let Some(mut client_channels) = self.client_id_to_channels.remove(client_id).take() {
             client_channels.cleanup();
         }
+        self.client_read_only_status.remove(client_id);
     }
 }
 
