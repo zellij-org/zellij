@@ -2,7 +2,7 @@
  * Connection-related utility functions and management
  */
 
-import { is_https } from './utils.js';
+import { getBaseUrl } from "./utils.js";
 
 // Connection state
 let reconnectionAttempt = 0;
@@ -27,10 +27,10 @@ export function getReconnectionDelay(attempt) {
  */
 export async function checkConnection() {
     try {
-        let url_prefix = is_https() ? "https" : "http";
-        const response = await fetch(`${url_prefix}://${window.location.host}/info/version`, {
-            method: 'GET',
-            timeout: 5000
+        const baseUrl = getBaseUrl();
+        const response = await fetch(`${baseUrl}/info/version`, {
+            method: "GET",
+            timeout: 5000,
         });
         return response.ok;
     } catch (error) {
@@ -46,27 +46,30 @@ export async function handleReconnection() {
     if (isReconnecting || !hasConnectedBefore || isPageUnloading) {
         return;
     }
-    
+
     isReconnecting = true;
     let currentModal = null;
-    
+
     while (isReconnecting) {
         reconnectionAttempt++;
         const delaySeconds = getReconnectionDelay(reconnectionAttempt);
-        
-        const result = await showReconnectionModal(reconnectionAttempt, delaySeconds);
-        
-        if (result.action === 'cancel') {
+
+        const result = await showReconnectionModal(
+            reconnectionAttempt,
+            delaySeconds
+        );
+
+        if (result.action === "cancel") {
             if (result.cleanup) result.cleanup();
             isReconnecting = false;
             reconnectionAttempt = 0;
             return;
         }
-        
-        if (result.action === 'reconnect') {
+
+        if (result.action === "reconnect") {
             currentModal = result.modal;
             const connectionOk = await checkConnection();
-            
+
             if (connectionOk) {
                 if (result.cleanup) result.cleanup();
                 isReconnecting = false;
@@ -85,11 +88,11 @@ export async function handleReconnection() {
  * Initialize connection handlers and event listeners
  */
 export function initConnectionHandlers() {
-    window.addEventListener('beforeunload', () => {
+    window.addEventListener("beforeunload", () => {
         isPageUnloading = true;
     });
 
-    window.addEventListener('pagehide', () => {
+    window.addEventListener("pagehide", () => {
         isPageUnloading = true;
     });
 }
