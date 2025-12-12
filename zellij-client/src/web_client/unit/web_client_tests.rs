@@ -122,8 +122,9 @@ mod web_client_tests {
         let _ = delete_db();
 
         let test_token_name = "test_token_login";
+        let read_only = false;
         let (auth_token, _) =
-            create_token(Some(test_token_name.to_string())).expect("Failed to create test token");
+            create_token(Some(test_token_name.to_string()), read_only).expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -258,8 +259,9 @@ mod web_client_tests {
         let _ = delete_db();
 
         let test_token_name = "test_token_session_flow";
+        let read_only = false;
         let (auth_token, _) =
-            create_token(Some(test_token_name.to_string())).expect("Failed to create test token");
+            create_token(Some(test_token_name.to_string()), read_only).expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -582,8 +584,9 @@ mod web_client_tests {
         let _ = delete_db();
 
         let test_token_name = "test_token_server_shutdown";
+        let read_only = false;
         let (auth_token, _) =
-            create_token(Some(test_token_name.to_string())).expect("Failed to create test token");
+            create_token(Some(test_token_name.to_string()), read_only).expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -726,8 +729,9 @@ mod web_client_tests {
         let _ = delete_db();
 
         let test_token_name = "test_token_client_cleanup";
+        let read_only = false;
         let (auth_token, _) =
-            create_token(Some(test_token_name.to_string())).expect("Failed to create test token");
+            create_token(Some(test_token_name.to_string()), read_only).expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -901,8 +905,9 @@ mod web_client_tests {
         let _ = delete_db();
 
         let test_token_name = "test_token_cancellation";
+        let read_only = false;
         let (auth_token, _) =
-            create_token(Some(test_token_name.to_string())).expect("Failed to create test token");
+            create_token(Some(test_token_name.to_string()), read_only).expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -1050,8 +1055,9 @@ mod web_client_tests {
         let _ = delete_db();
 
         let test_token_name = "test_token_exit_reasons";
+        let read_only = false;
         let (auth_token, _) =
-            create_token(Some(test_token_name.to_string())).expect("Failed to create test token");
+            create_token(Some(test_token_name.to_string()), read_only).expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -1302,7 +1308,8 @@ impl SessionManager for MockSessionManager {
         config_options: &Options,
         _os_input: Box<dyn ClientOsApi>,
         _requested_layout: Option<LayoutInfo>,
-    ) -> (ClientToServerMsg, PathBuf) {
+        _read_only: bool,
+    ) -> Result<(ClientToServerMsg, PathBuf), String> {
         let mock_ipc_path = PathBuf::from(format!("/tmp/mock_zellij_{}", session_name));
 
         let cli_assets = CliAssets {
@@ -1325,7 +1332,7 @@ impl SessionManager for MockSessionManager {
             is_web_client: true,
         };
 
-        (first_message, mock_ipc_path)
+        Ok((first_message, mock_ipc_path))
     }
 }
 
