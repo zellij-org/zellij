@@ -61,7 +61,8 @@ type Result<T> = std::result::Result<T, TokenError>;
 
 fn get_db_path() -> Result<PathBuf> {
     // if cfg!(debug_assertions) {
-    if true { // TODO: NO!!!!111oneoneone
+    if true {
+        // TODO: NO!!!!111oneoneone
         // tests db
         let data_dir = ZELLIJ_PROJ_DIR.data_dir();
         std::fs::create_dir_all(&data_dir)?;
@@ -99,7 +100,6 @@ fn init_db(conn: &Connection) -> Result<()> {
     )?;
 
     // Migration: Add read_only column if it doesn't exist
-    // Using .ok() to suppress error if column already exists
     conn.execute(
         "ALTER TABLE tokens ADD COLUMN read_only BOOLEAN NOT NULL DEFAULT 0",
         [],
@@ -343,7 +343,8 @@ pub fn list_tokens() -> Result<Vec<TokenInfo>> {
     let conn = Connection::open(db_path)?;
     init_db(&conn)?;
 
-    let mut stmt = conn.prepare("SELECT name, created_at, read_only FROM tokens ORDER BY created_at")?;
+    let mut stmt =
+        conn.prepare("SELECT name, created_at, read_only FROM tokens ORDER BY created_at")?;
     let rows = stmt.query_map([], |row| {
         Ok(TokenInfo {
             name: row.get::<_, String>(0)?,

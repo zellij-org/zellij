@@ -55,13 +55,11 @@ pub fn spawn_session_if_needed(
 ) -> Result<(ClientToServerMsg, PathBuf), String> {
     let session_exists = session_exists(&session_name).unwrap_or(false);
 
-    // CRITICAL: Read-only tokens cannot create new sessions
+    // read only tokens cannot create new sessions
     if is_read_only && !session_exists {
-        return Err(
-            "Read-only tokens can only attach to existing sessions. \
+        return Err("Read-only tokens can only attach to existing sessions. \
              Please ask an administrator to create the session first."
-                .to_string(),
-        );
+            .to_string());
     }
 
     if session_exists {
@@ -169,14 +167,12 @@ fn ipc_pipe_and_first_message_for_existing_session(
     config_opts.web_server = Some(true);
     config_opts.web_sharing = Some(WebSharing::On);
 
-    // CRITICAL: Choose message type based on read-only status
     let first_message = if is_read_only {
-        // Read-only clients attach as watchers
+        // read only clients attach as watchers
         ClientToServerMsg::AttachWatcherClient {
             terminal_size: client_attributes.size,
         }
     } else {
-        // Regular clients attach normally
         let cli_assets = CliAssets {
             config_file_path,
             config_dir: None,

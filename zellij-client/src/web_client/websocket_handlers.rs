@@ -132,8 +132,7 @@ async fn handle_ws_terminal(
         .unwrap()
         .add_client_terminal_tx(&web_client_id, stdout_channel_tx);
 
-    let (attachment_complete_tx, attachment_complete_rx) =
-        tokio::sync::oneshot::channel();
+    let (attachment_complete_tx, attachment_complete_rx) = tokio::sync::oneshot::channel();
 
     zellij_server_listener(
         os_input.clone(),

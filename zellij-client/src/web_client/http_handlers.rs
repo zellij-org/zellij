@@ -92,11 +92,11 @@ pub async fn create_new_client(
         .create_client_os_api()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_string())))?;
 
-    state
-        .connection_table
-        .lock()
-        .unwrap()
-        .add_new_client(web_client_id.to_owned(), os_input, is_read_only);
+    state.connection_table.lock().unwrap().add_new_client(
+        web_client_id.to_owned(),
+        os_input,
+        is_read_only,
+    );
 
     Ok(Json(CreateClientIdResponse {
         web_client_id,

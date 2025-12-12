@@ -298,7 +298,10 @@ pub(crate) fn list_auth_tokens() -> Result<Vec<String>, String> {
             let mut res = vec![];
             for t in tokens {
                 let access_type = if t.read_only { " [READ-ONLY]" } else { "" };
-                res.push(format!("{}: created at {}{}", t.name, t.created_at, access_type))
+                res.push(format!(
+                    "{}: created at {}{}",
+                    t.name, t.created_at, access_type
+                ))
             }
             res
         })
