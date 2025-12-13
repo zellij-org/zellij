@@ -1275,6 +1275,7 @@ mod web_client_tests {
 pub struct MockSessionManager {
     pub mock_sessions: HashMap<String, bool>,
     pub mock_layouts: HashMap<String, Layout>,
+    pub sessions_created: HashSet<String>,
 }
 
 impl MockSessionManager {
@@ -1282,6 +1283,7 @@ impl MockSessionManager {
         Self {
             mock_sessions: HashMap::new(),
             mock_layouts: HashMap::new(),
+            sessions_created: HashMap::new(),
         }
     }
 }
@@ -1301,38 +1303,16 @@ impl SessionManager for MockSessionManager {
     }
 
     fn spawn_session_if_needed(
-        &self,
+        &mut self,
         session_name: &str,
-        client_attributes: ClientAttributes,
-        config_file_path: Option<PathBuf>,
-        config_options: &Options,
-        _os_input: Box<dyn ClientOsApi>,
-        _requested_layout: Option<LayoutInfo>,
-        _read_only: bool,
-    ) -> Result<(ClientToServerMsg, PathBuf), String> {
-        let mock_ipc_path = PathBuf::from(format!("/tmp/mock_zellij_{}", session_name));
-
-        let cli_assets = CliAssets {
-            config_file_path,
-            config_dir: None,
-            should_ignore_config: false,
-            configuration_options: Some(config_options.clone()),
-            layout: None,
-            terminal_window_size: client_attributes.size,
-            data_dir: None,
-            is_debug: false,
-            max_panes: None,
-            force_run_layout_commands: false,
-            cwd: None,
-        };
-        let first_message = ClientToServerMsg::AttachClient {
-            cli_assets,
-            tab_position_to_focus: None,
-            pane_to_focus: None,
-            is_web_client: true,
-        };
-
-        Ok((first_message, mock_ipc_path))
+        os_input: Box<dyn ClientOsApi>,
+        session_exists: bool,
+        zellij_ipc_pipe: &PathBuf,
+    ) {
+        if !session_exists {
+            // TODO: assert this
+            self.sessions_created.insert(session_name);
+        }
     }
 }
 

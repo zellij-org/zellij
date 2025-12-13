@@ -36,7 +36,7 @@ pub trait SessionManager: Send + Sync + std::fmt::Debug {
         session_name: &str,
     ) -> Option<zellij_utils::input::layout::Layout>;
     fn spawn_session_if_needed(
-        &self,
+        &mut self,
         session_name: &str,
         os_input: Box<dyn ClientOsApi>,
         session_exists: bool,
@@ -63,7 +63,7 @@ impl SessionManager for RealSessionManager {
     }
 
     fn spawn_session_if_needed(
-        &self,
+        &mut self,
         session_name: &str,
         os_input: Box<dyn ClientOsApi>,
         session_exists: bool,
