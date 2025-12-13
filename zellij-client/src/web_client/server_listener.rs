@@ -1,6 +1,6 @@
 use crate::os_input_output::ClientOsApi;
 use crate::web_client::control_message::{SetConfigPayload, WebServerToWebClientControlMessage};
-use crate::web_client::session_management::build_initial_connection;
+use crate::web_client::session_management::{build_initial_connection, create_first_message, create_ipc_pipe};
 use crate::web_client::types::{ClientConnectionBus, ConnectionTable, SessionManager};
 use crate::web_client::utils::terminal_init_messages;
 
@@ -13,7 +13,7 @@ use zellij_utils::{
     data::Style,
     input::{config::Config, options::Options},
     ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
-    sessions::generate_unique_session_name,
+    sessions::{generate_unique_session_name, session_exists},
     setup::Setup,
 };
 
@@ -52,6 +52,7 @@ pub fn zellij_server_listener(
                             .or_else(generate_unique_session_name)
                         else {
                             log::error!("Failed to generate unique session name, bailing.");
+                            client_connection_bus.close_connection();
                             return;
                         };
                         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
@@ -89,30 +90,25 @@ pub fn zellij_server_listener(
                         .unwrap()
                         .is_client_read_only(&web_client_id);
 
-                    let result = session_manager.spawn_session_if_needed(
-                        &session_name,
-                        client_attributes,
-                        config_file_path.clone(),
-                        &config_options,
-                        os_input.clone(),
-                        reconnect_info.as_ref().and_then(|r| r.layout.clone()),
-                        is_read_only,
-                    );
 
-                    let (first_message, zellij_ipc_pipe) = match result {
-                        Ok(msg_and_pipe) => msg_and_pipe,
-                        Err(error_msg) => {
-                            // Send error to client and close connection
-                            log::error!("Session attachment failed: {}", error_msg);
-                            client_connection_bus.send_control(
-                                WebServerToWebClientControlMessage::LogError {
-                                    lines: vec![error_msg],
-                                },
-                            );
-                            client_connection_bus.close_connection();
-                            return;
-                        },
-                    };
+                    let session_exists = session_exists(&session_name).unwrap_or(false);
+
+                    if is_read_only && !session_exists {
+                        log::error!("Read only tokens cannot create new sessions.");
+                        client_connection_bus.close_connection();
+                        return;
+                    }
+
+                    let should_create_new_session = !session_exists;
+                    let first_message = create_first_message(is_read_only, config_file_path.clone(), client_attributes.clone(), config_options.clone(), should_create_new_session, &session_name);
+                    let zellij_ipc_pipe = create_ipc_pipe(&session_name);
+
+                    session_manager.spawn_session_if_needed(
+                        &session_name,
+                        os_input.clone(),
+                        session_exists,
+                        &zellij_ipc_pipe,
+                    );
 
                     os_input.connect_to_server(&zellij_ipc_pipe);
                     os_input.send_to_server(first_message);
