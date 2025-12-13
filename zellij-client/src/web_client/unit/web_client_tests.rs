@@ -3,7 +3,7 @@ use super::*;
 use futures_util::{SinkExt, StreamExt};
 use isahc::prelude::*;
 use serde_json;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque, HashSet};
 use std::sync::{Arc, Mutex};
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::http::Request;
@@ -1275,7 +1275,7 @@ mod web_client_tests {
 pub struct MockSessionManager {
     pub mock_sessions: HashMap<String, bool>,
     pub mock_layouts: HashMap<String, Layout>,
-    pub sessions_created: HashSet<String>,
+    pub sessions_created: Arc<Mutex<HashSet<String>>>,
 }
 
 impl MockSessionManager {
@@ -1283,7 +1283,7 @@ impl MockSessionManager {
         Self {
             mock_sessions: HashMap::new(),
             mock_layouts: HashMap::new(),
-            sessions_created: HashMap::new(),
+            sessions_created: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 }
@@ -1303,7 +1303,7 @@ impl SessionManager for MockSessionManager {
     }
 
     fn spawn_session_if_needed(
-        &mut self,
+        &self,
         session_name: &str,
         os_input: Box<dyn ClientOsApi>,
         session_exists: bool,
@@ -1311,7 +1311,7 @@ impl SessionManager for MockSessionManager {
     ) {
         if !session_exists {
             // TODO: assert this
-            self.sessions_created.insert(session_name);
+            self.sessions_created.lock().unwrap().insert(session_name.to_owned());
         }
     }
 }
