@@ -41,6 +41,7 @@ pub trait SessionManager: Send + Sync + std::fmt::Debug {
         os_input: Box<dyn ClientOsApi>,
         session_exists: bool,
         zellij_ipc_pipe: &PathBuf,
+        first_message: ClientToServerMsg,
     );
 }
 
@@ -68,14 +69,17 @@ impl SessionManager for RealSessionManager {
         os_input: Box<dyn ClientOsApi>,
         session_exists: bool,
         zellij_ipc_pipe: &PathBuf,
+        first_message: ClientToServerMsg,
     ) {
         if !session_exists {
             spawn_new_session(
                 session_name,
-                os_input,
+                os_input.clone(),
                 zellij_ipc_pipe,
             );
         }
+        os_input.connect_to_server(&zellij_ipc_pipe);
+        os_input.send_to_server(first_message);
     }
 }
 

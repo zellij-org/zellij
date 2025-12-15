@@ -1308,6 +1308,7 @@ impl SessionManager for MockSessionManager {
         os_input: Box<dyn ClientOsApi>,
         session_exists: bool,
         zellij_ipc_pipe: &PathBuf,
+        first_message: ClientToServerMsg,
     ) {
         if !session_exists {
             // TODO: assert this

@@ -108,10 +108,8 @@ pub fn zellij_server_listener(
                         os_input.clone(),
                         session_exists,
                         &zellij_ipc_pipe,
+                        first_message,
                     );
-
-                    os_input.connect_to_server(&zellij_ipc_pipe);
-                    os_input.send_to_server(first_message);
 
                     if let Some(tx) = attachment_complete_tx.take() {
                         let _ = tx.send(());
