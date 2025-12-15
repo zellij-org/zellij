@@ -116,6 +116,7 @@ pub enum ClientToServerMsg {
     },
     AttachWatcherClient {
         terminal_size: Size,
+        is_web_client: bool,
     },
     Action {
         action: Action,

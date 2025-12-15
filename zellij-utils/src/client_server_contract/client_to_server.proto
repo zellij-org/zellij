@@ -62,6 +62,7 @@ message AttachClientMsg {
 
 message AttachWatcherClientMsg {
   Size terminal_size = 1;
+  bool is_web_client = 2;
 }
 
 message ActionMsg {

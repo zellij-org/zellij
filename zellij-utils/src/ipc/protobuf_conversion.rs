@@ -69,9 +69,10 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                 pane_to_focus: pane_to_focus.map(|p| p.into()),
                 is_web_client,
             }),
-            ClientToServerMsg::AttachWatcherClient { terminal_size } => {
+            ClientToServerMsg::AttachWatcherClient { terminal_size, is_web_client } => {
                 client_to_server_msg::Message::AttachWatcherClient(AttachWatcherClientMsg {
                     terminal_size: Some(terminal_size.into()),
+                    is_web_client,
                 })
             },
             ClientToServerMsg::Action {
@@ -191,6 +192,7 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                         .terminal_size
                         .ok_or_else(|| anyhow::anyhow!("Missing terminal_size"))?
                         .try_into()?,
+                    is_web_client: attach_watcher.is_web_client,
                 })
             },
             Some(client_to_server_msg::Message::Action(action)) => Ok(ClientToServerMsg::Action {

@@ -8,7 +8,7 @@ use zellij_utils::{
     envs,
     input::{cli_assets::CliAssets, config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg},
-    sessions::{generate_unique_session_name, resurrection_layout, session_exists},
+    sessions::{generate_unique_session_name, resurrection_layout},
 };
 
 pub fn build_initial_connection(
@@ -82,10 +82,12 @@ pub fn create_first_message(
     config_opts.web_server = Some(true);
     config_opts.web_sharing = Some(WebSharing::On);
 
+    let is_web_client = true;
     if is_read_only {
         // read only clients attach as watchers
         ClientToServerMsg::AttachWatcherClient {
             terminal_size: client_attributes.size,
+            is_web_client,
         }
     } else if should_create_session {
 
@@ -104,7 +106,6 @@ pub fn create_first_message(
             force_run_layout_commands: false,
             cwd: None,
         };
-        let is_web_client = true;
 
         ClientToServerMsg::FirstClientConnected {
             cli_assets,
@@ -167,10 +168,12 @@ fn ipc_pipe_and_first_message_for_existing_session(
     config_opts.web_server = Some(true);
     config_opts.web_sharing = Some(WebSharing::On);
 
+    let is_web_client = true;
     let first_message = if is_read_only {
         // read only clients attach as watchers
         ClientToServerMsg::AttachWatcherClient {
             terminal_size: client_attributes.size,
+            is_web_client,
         }
     } else {
         let cli_assets = CliAssets {
@@ -186,7 +189,6 @@ fn ipc_pipe_and_first_message_for_existing_session(
             force_run_layout_commands: false,
             cwd: None,
         };
-        let is_web_client = true;
 
         ClientToServerMsg::AttachClient {
             cli_assets,
