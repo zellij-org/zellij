@@ -94,7 +94,7 @@ pub enum ServerInstruction {
         bool,                // is_web_client
         ClientId,
     ),
-    AttachWatcherClient(ClientId, Size),
+    AttachWatcherClient(ClientId, Size, bool), // bool -> is_web_client
     ConnStatus(ClientId),
     Log(Vec<String>, ClientId, Option<NotificationEnd>),
     LogError(Vec<String>, ClientId, Option<NotificationEnd>),
@@ -447,6 +447,13 @@ macro_rules! remove_client {
     };
 }
 
+macro_rules! remove_watcher {
+    ($client_id:expr, $os_input:expr, $session_state:expr) => {
+        $os_input.remove_client($client_id).unwrap();
+        $session_state.write().unwrap().remove_watcher($client_id);
+    };
+}
+
 macro_rules! send_to_client {
     ($client_id:expr, $os_input:expr, $msg:expr, $session_state:expr) => {
         let send_to_client_res = $os_input.send_to_client($client_id, $msg);
@@ -475,7 +482,7 @@ macro_rules! send_to_client {
 pub(crate) struct SessionState {
     clients: HashMap<ClientId, Option<(Size, bool)>>, // bool -> is_web_client
     pipes: HashMap<String, ClientId>,                 // String => pipe_id
-    watchers: HashSet<ClientId>,                      // watcher clients (read-only observers)
+    watchers: HashMap<ClientId, bool>,                // watcher clients (read-only observers) bool -> is_web_client
     last_active_client: Option<ClientId>,             // last client that sent a Key message
 }
 
@@ -484,7 +491,7 @@ impl SessionState {
         SessionState {
             clients: HashMap::new(),
             pipes: HashMap::new(),
-            watchers: HashSet::new(),
+            watchers: HashMap::new(),
             last_active_client: None,
         }
     }
@@ -493,7 +500,7 @@ impl SessionState {
             .clients
             .keys()
             .copied()
-            .chain(self.watchers.iter().copied())
+            .chain(self.watchers.keys().copied())
             .collect();
 
         let mut next_client_id = 1;
@@ -557,7 +564,7 @@ impl SessionState {
         self.clients.keys().copied().collect()
     }
     pub fn watcher_client_ids(&self) -> Vec<ClientId> {
-        self.watchers.iter().copied().collect()
+        self.watchers.keys().copied().collect()
     }
     pub fn web_client_ids(&self) -> Vec<ClientId> {
         self.clients
@@ -565,6 +572,18 @@ impl SessionState {
             .filter_map(|(c_id, size_and_is_web_client)| {
                 size_and_is_web_client
                     .and_then(|(_s, is_web_client)| if is_web_client { Some(*c_id) } else { None })
+            })
+            .collect()
+    }
+    pub fn web_watcher_client_ids(&self) -> Vec<ClientId> {
+        self.watchers
+            .iter()
+            .filter_map(|(&c_id, &is_web_client)| {
+                if is_web_client {
+                    Some(c_id)
+                } else {
+                    None
+                }
             })
             .collect()
     }
@@ -582,12 +601,12 @@ impl SessionState {
         }
         active_clients_connected
     }
-    pub fn convert_client_to_watcher(&mut self, client_id: ClientId) {
+    pub fn convert_client_to_watcher(&mut self, client_id: ClientId, is_web_client: bool) {
         self.clients.remove(&client_id);
-        self.watchers.insert(client_id);
+        self.watchers.insert(client_id, is_web_client);
     }
     pub fn is_watcher(&self, client_id: &ClientId) -> bool {
-        self.watchers.contains(client_id)
+        self.watchers.get(client_id).is_some()
     }
     pub fn remove_watcher(&mut self, client_id: ClientId) {
         self.watchers.remove(&client_id);
@@ -942,7 +961,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     )]))
                     .unwrap();
             },
-            ServerInstruction::AttachWatcherClient(client_id, terminal_size) => {
+            ServerInstruction::AttachWatcherClient(client_id, terminal_size, is_web_client) => {
                 // the client_id was inserted into clients upon ipc tunnel initialization
                 // now that it identified itself as a watcher, we need to convert it
 
@@ -950,7 +969,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 session_state
                     .write()
                     .unwrap()
-                    .convert_client_to_watcher(client_id);
+                    .convert_client_to_watcher(client_id, is_web_client);
 
                 // Also notify Screen to add this as a watcher client (for rendering) with the terminal size
                 session_data
@@ -1292,7 +1311,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .read()
                         .unwrap()
                         .watchers
-                        .iter()
+                        .keys()
                         .copied()
                         .collect();
                     for watcher_id in watcher_ids {
@@ -1569,6 +1588,22 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                 },
                             );
                             remove_client!(client_id, os_input, session_state);
+                        }
+                        let web_watcher_client_ids: Vec<ClientId> = session_state
+                            .read()
+                            .unwrap()
+                            .web_watcher_client_ids()
+                            .iter()
+                            .copied()
+                            .collect();
+                        for client_id in web_watcher_client_ids {
+                            let _ = os_input.send_to_client(
+                                client_id,
+                                ServerToClientMsg::Exit {
+                                    exit_reason: ExitReason::WebClientsForbidden,
+                                },
+                            );
+                            remove_watcher!(client_id, os_input, session_state);
                         }
 
                         session_data

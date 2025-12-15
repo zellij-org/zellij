@@ -1941,7 +1941,7 @@ pub(crate) fn route_thread_main(
 
                             if should_allow_connection {
                                 let attach_watcher_instruction =
-                                    ServerInstruction::AttachWatcherClient(client_id, terminal_size);
+                                    ServerInstruction::AttachWatcherClient(client_id, terminal_size, is_web_client);
                                 to_server
                                     .send(attach_watcher_instruction)
                                     .with_context(err_context)?;
