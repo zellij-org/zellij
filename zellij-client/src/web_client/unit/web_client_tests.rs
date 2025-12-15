@@ -3,7 +3,7 @@ use super::*;
 use futures_util::{SinkExt, StreamExt};
 use isahc::prelude::*;
 use serde_json;
-use std::collections::{HashMap, VecDeque, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::http::Request;
@@ -123,8 +123,8 @@ mod web_client_tests {
 
         let test_token_name = "test_token_login";
         let read_only = false;
-        let (auth_token, _) =
-            create_token(Some(test_token_name.to_string()), read_only).expect("Failed to create test token");
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -260,8 +260,8 @@ mod web_client_tests {
 
         let test_token_name = "test_token_session_flow";
         let read_only = false;
-        let (auth_token, _) =
-            create_token(Some(test_token_name.to_string()), read_only).expect("Failed to create test token");
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -585,8 +585,8 @@ mod web_client_tests {
 
         let test_token_name = "test_token_server_shutdown";
         let read_only = false;
-        let (auth_token, _) =
-            create_token(Some(test_token_name.to_string()), read_only).expect("Failed to create test token");
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -730,8 +730,8 @@ mod web_client_tests {
 
         let test_token_name = "test_token_client_cleanup";
         let read_only = false;
-        let (auth_token, _) =
-            create_token(Some(test_token_name.to_string()), read_only).expect("Failed to create test token");
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -906,8 +906,8 @@ mod web_client_tests {
 
         let test_token_name = "test_token_cancellation";
         let read_only = false;
-        let (auth_token, _) =
-            create_token(Some(test_token_name.to_string()), read_only).expect("Failed to create test token");
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -1056,8 +1056,8 @@ mod web_client_tests {
 
         let test_token_name = "test_token_exit_reasons";
         let read_only = false;
-        let (auth_token, _) =
-            create_token(Some(test_token_name.to_string()), read_only).expect("Failed to create test token");
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -1248,10 +1248,7 @@ mod web_client_tests {
         let is_read_only = client_data["is_read_only"].as_bool().unwrap();
         let web_client_id = client_data["web_client_id"].as_str().unwrap().to_string();
 
-        assert_eq!(
-            is_read_only, true,
-            "Client should be marked as read-only"
-        );
+        assert_eq!(is_read_only, true, "Client should be marked as read-only");
 
         // Try to connect via control WebSocket
         // This will trigger the server_listener which should close the connection

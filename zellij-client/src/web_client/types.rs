@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
 
-use crate::web_client::session_management::spawn_new_session;
 use crate::os_input_output::ClientOsApi;
+use crate::web_client::session_management::spawn_new_session;
 use std::path::PathBuf;
 use zellij_utils::{
     data::LayoutInfo,
@@ -72,11 +72,7 @@ impl SessionManager for RealSessionManager {
         first_message: ClientToServerMsg,
     ) {
         if !session_exists {
-            spawn_new_session(
-                session_name,
-                os_input.clone(),
-                zellij_ipc_pipe,
-            );
+            spawn_new_session(session_name, os_input.clone(), zellij_ipc_pipe);
         }
         os_input.connect_to_server(&zellij_ipc_pipe);
         os_input.send_to_server(first_message);

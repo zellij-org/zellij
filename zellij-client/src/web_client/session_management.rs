@@ -47,7 +47,7 @@ pub fn build_initial_connection(
 pub fn spawn_new_session(
     session_name: &str,
     mut os_input: Box<dyn ClientOsApi>,
-    zellij_ipc_pipe: &PathBuf
+    zellij_ipc_pipe: &PathBuf,
 ) {
     let debug = false;
     envs::set_session_name(session_name.to_owned());
@@ -63,8 +63,6 @@ pub fn create_first_message(
     should_create_session: bool,
     session_name: &str,
 ) -> ClientToServerMsg {
-
-
     let resurrection_layout = resurrection_layout(&session_name).ok().flatten();
 
     let layout_info = if resurrection_layout.is_some() {
@@ -77,8 +75,6 @@ pub fn create_first_message(
         None
     };
 
-
-
     config_opts.web_server = Some(true);
     config_opts.web_sharing = Some(WebSharing::On);
 
@@ -90,7 +86,6 @@ pub fn create_first_message(
             is_web_client,
         }
     } else if should_create_session {
-
         config_opts.web_server = Some(true);
         config_opts.web_sharing = Some(WebSharing::On);
         let cli_assets = CliAssets {
@@ -111,8 +106,6 @@ pub fn create_first_message(
             cli_assets,
             is_web_client,
         }
-
-
     } else {
         let cli_assets = CliAssets {
             config_file_path,
@@ -137,7 +130,6 @@ pub fn create_first_message(
         }
     }
 }
-
 
 pub fn create_ipc_pipe(session_name: &str) -> PathBuf {
     let zellij_ipc_pipe: PathBuf = {

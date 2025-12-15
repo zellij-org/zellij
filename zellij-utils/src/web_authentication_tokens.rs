@@ -60,9 +60,7 @@ impl From<std::io::Error> for TokenError {
 type Result<T> = std::result::Result<T, TokenError>;
 
 fn get_db_path() -> Result<PathBuf> {
-    // if cfg!(debug_assertions) {
-    if true {
-        // TODO: NO!!!!111oneoneone
+    if cfg!(debug_assertions) {
         // tests db
         let data_dir = ZELLIJ_PROJ_DIR.data_dir();
         std::fs::create_dir_all(&data_dir)?;

@@ -1928,7 +1928,7 @@ pub(crate) fn route_thread_main(
                         },
                         ClientToServerMsg::AttachWatcherClient {
                             terminal_size,
-                            is_web_client
+                            is_web_client,
                         } => {
                             let allow_web_connections = session_data
                                 .read()
@@ -1941,7 +1941,11 @@ pub(crate) fn route_thread_main(
 
                             if should_allow_connection {
                                 let attach_watcher_instruction =
-                                    ServerInstruction::AttachWatcherClient(client_id, terminal_size, is_web_client);
+                                    ServerInstruction::AttachWatcherClient(
+                                        client_id,
+                                        terminal_size,
+                                        is_web_client,
+                                    );
                                 to_server
                                     .send(attach_watcher_instruction)
                                     .with_context(err_context)?;

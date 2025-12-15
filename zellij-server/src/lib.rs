@@ -482,8 +482,8 @@ macro_rules! send_to_client {
 pub(crate) struct SessionState {
     clients: HashMap<ClientId, Option<(Size, bool)>>, // bool -> is_web_client
     pipes: HashMap<String, ClientId>,                 // String => pipe_id
-    watchers: HashMap<ClientId, bool>,                // watcher clients (read-only observers) bool -> is_web_client
-    last_active_client: Option<ClientId>,             // last client that sent a Key message
+    watchers: HashMap<ClientId, bool>, // watcher clients (read-only observers) bool -> is_web_client
+    last_active_client: Option<ClientId>, // last client that sent a Key message
 }
 
 impl SessionState {
@@ -578,13 +578,15 @@ impl SessionState {
     pub fn web_watcher_client_ids(&self) -> Vec<ClientId> {
         self.watchers
             .iter()
-            .filter_map(|(&c_id, &is_web_client)| {
-                if is_web_client {
-                    Some(c_id)
-                } else {
-                    None
-                }
-            })
+            .filter_map(
+                |(&c_id, &is_web_client)| {
+                    if is_web_client {
+                        Some(c_id)
+                    } else {
+                        None
+                    }
+                },
+            )
             .collect()
     }
     pub fn get_pipe(&self, pipe_name: &str) -> Option<ClientId> {

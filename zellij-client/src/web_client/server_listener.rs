@@ -1,6 +1,8 @@
 use crate::os_input_output::ClientOsApi;
 use crate::web_client::control_message::{SetConfigPayload, WebServerToWebClientControlMessage};
-use crate::web_client::session_management::{build_initial_connection, create_first_message, create_ipc_pipe};
+use crate::web_client::session_management::{
+    build_initial_connection, create_first_message, create_ipc_pipe,
+};
 use crate::web_client::types::{ClientConnectionBus, ConnectionTable, SessionManager};
 use crate::web_client::utils::terminal_init_messages;
 
