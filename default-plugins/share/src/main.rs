@@ -205,7 +205,7 @@ impl App {
 
     fn handle_token_action(&mut self) {
         if self.tokens.list.is_empty() {
-            self.generate_new_token(None);
+            self.generate_new_token(None, false);
         } else {
             self.change_to_manage_tokens_screen();
         }
@@ -234,6 +234,10 @@ impl App {
                 self.tokens.start_new_token_input();
                 true
             },
+            BareKey::Char('o') if key.has_no_modifiers() => {
+                self.tokens.start_new_read_only_token_input();
+                true
+            },
             BareKey::Enter if key.has_no_modifiers() => self.handle_enter_key(),
             BareKey::Char('r') if key.has_no_modifiers() => {
                 self.tokens.start_rename_input();
@@ -259,7 +263,12 @@ impl App {
 
     fn handle_enter_key(&mut self) -> bool {
         if let Some(token_name) = self.tokens.finish_new_token_input() {
-            self.generate_new_token(token_name);
+            self.generate_new_token(token_name, false);
+            return true;
+        }
+
+        if let Some(token_name) = self.tokens.finish_new_read_only_token_input() {
+            self.generate_new_token(token_name, true);
             return true;
         }
 
@@ -271,8 +280,7 @@ impl App {
         false
     }
 
-    fn generate_new_token(&mut self, name: Option<String>) {
-        let read_only = false;
+    fn generate_new_token(&mut self, name: Option<String>, read_only: bool) {
         match generate_web_login_token(name, read_only) {
             Ok(token) => self.change_to_token_screen(token),
             Err(e) => self.web_server.error = Some(e),
@@ -449,11 +457,18 @@ impl App {
     }
 
     fn render_manage_tokens_screen(&self, rows: usize, cols: usize) {
+        // Pass whichever token input field is active (normal or read-only)
+        let entering_new_token_name = if self.tokens.entering_new_name.is_some() {
+            &self.tokens.entering_new_name
+        } else {
+            &self.tokens.entering_new_read_only_name
+        };
+
         TokenManagementScreen::new(
             &self.tokens.list,
             self.tokens.selected_index,
             &self.tokens.renaming_token,
-            &self.tokens.entering_new_name,
+            entering_new_token_name,
             &self.web_server.error,
             &self.state.info,
             rows,
@@ -503,6 +518,7 @@ struct TokenManager {
     list: Vec<(String, String, bool)>, // bool -> is_read_only
     selected_index: Option<usize>,
     entering_new_name: Option<String>,
+    entering_new_read_only_name: Option<String>,
     renaming_token: Option<String>,
 }
 
@@ -561,6 +577,10 @@ impl TokenManager {
         self.entering_new_name = Some(String::new());
     }
 
+    fn start_new_read_only_token_input(&mut self) {
+        self.entering_new_read_only_name = Some(String::new());
+    }
+
     fn start_rename_input(&mut self) {
         self.renaming_token = Some(String::new());
     }
@@ -572,6 +592,10 @@ impl TokenManager {
                     name.push(c);
                     return true;
                 }
+                if let Some(ref mut name) = self.entering_new_read_only_name {
+                    name.push(c);
+                    return true;
+                }
                 if let Some(ref mut name) = self.renaming_token {
                     name.push(c);
                     return true;
@@ -579,6 +603,10 @@ impl TokenManager {
             },
             BareKey::Backspace if key.has_no_modifiers() => {
                 if let Some(ref mut name) = self.entering_new_name {
+                    name.pop();
+                    return true;
+                }
+                if let Some(ref mut name) = self.entering_new_read_only_name {
                     name.pop();
                     return true;
                 }
@@ -598,12 +626,20 @@ impl TokenManager {
             .map(|name| if name.is_empty() { None } else { Some(name) })
     }
 
+    fn finish_new_read_only_token_input(&mut self) -> Option<Option<String>> {
+        self.entering_new_read_only_name
+            .take()
+            .map(|name| if name.is_empty() { None } else { Some(name) })
+    }
+
     fn finish_rename_input(&mut self) -> Option<String> {
         self.renaming_token.take()
     }
 
     fn cancel_input(&mut self) -> bool {
-        self.entering_new_name.take().is_some() || self.renaming_token.take().is_some()
+        self.entering_new_name.take().is_some()
+            || self.entering_new_read_only_name.take().is_some()
+            || self.renaming_token.take().is_some()
     }
 }
 
