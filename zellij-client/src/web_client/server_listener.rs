@@ -91,7 +91,7 @@ pub fn zellij_server_listener(
                         .is_client_read_only(&web_client_id);
 
 
-                    let session_exists = session_exists(&session_name).unwrap_or(false);
+                    let session_exists = session_manager.session_exists(&session_name).unwrap_or(false);
 
                     if is_read_only && !session_exists {
                         log::error!("Read only tokens cannot create new sessions.");
