@@ -1500,8 +1500,11 @@ pub fn set_self_mouse_selection_support(selection_support: bool) {
     unsafe { host_run_plugin_command() };
 }
 
-pub fn generate_web_login_token(token_label: Option<String>) -> Result<String, String> {
-    let plugin_command = PluginCommand::GenerateWebLoginToken(token_label);
+pub fn generate_web_login_token(
+    token_label: Option<String>,
+    read_only: bool
+) -> Result<String, String> {
+    let plugin_command = PluginCommand::GenerateWebLoginToken(token_label, read_only);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -1530,23 +1533,28 @@ pub fn revoke_web_login_token(token_label: &str) -> Result<(), String> {
     }
 }
 
-pub fn list_web_login_tokens() -> Result<Vec<(String, String)>, String> {
-    // (name, created_at)
+pub fn list_web_login_tokens() -> Result<Vec<(String, String, bool)>, String> {
+    // (name, created_at, read_only)
     let plugin_command = PluginCommand::ListWebLoginTokens;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
     let list_tokens_response =
         ListTokensResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+
     if let Some(error) = list_tokens_response.error {
         Err(error)
     } else {
-        let tokens_and_creation_times = std::iter::zip(
-            list_tokens_response.tokens,
-            list_tokens_response.creation_times,
-        )
-        .collect();
-        Ok(tokens_and_creation_times)
+        let tokens_with_info = list_tokens_response
+            .tokens
+            .iter()
+            .zip(list_tokens_response.creation_times.iter())
+            .zip(list_tokens_response.read_only_flags.iter())
+            .map(|((name, created_at), read_only)| {
+                (name.clone(), created_at.clone(), *read_only)
+            })
+            .collect();
+        Ok(tokens_with_info)
     }
 }
 

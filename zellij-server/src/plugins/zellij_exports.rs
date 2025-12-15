@@ -517,8 +517,8 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::SetSelfMouseSelectionSupport(selection_support) => {
                         set_self_mouse_selection_support(env, selection_support);
                     },
-                    PluginCommand::GenerateWebLoginToken(token_label) => {
-                        generate_web_login_token(env, token_label);
+                    PluginCommand::GenerateWebLoginToken(token_label, read_only) => {
+                        generate_web_login_token(env, token_label, read_only);
                     },
                     PluginCommand::RevokeWebLoginToken(label) => {
                         revoke_web_login_token(env, label);
@@ -2768,9 +2768,8 @@ fn embed_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
 }
 
 #[cfg(feature = "web_server_capability")]
-fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>) {
-    // Default to read-write (false) for plugin-created tokens
-    let serialized = match create_token(token_label, false) {
+fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>, read_only: bool) {
+    let serialized = match create_token(token_label, read_only) {
         Ok((token, token_label)) => CreateTokenResponse {
             token: Some(token),
             token_label: Some(token_label),
@@ -2786,7 +2785,7 @@ fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>) {
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-fn generate_web_login_token(env: &PluginEnv, _token_label: Option<String>) {
+fn generate_web_login_token(env: &PluginEnv, _token_label: Option<String>, _read_only: bool) {
     log::error!("This version of Zellij was compiled without the web server capabilities!");
     let empty_vec: Vec<&str> = vec![];
     let _ = wasi_write_object(env, &empty_vec);
@@ -2868,11 +2867,13 @@ fn list_web_login_tokens(env: &PluginEnv) {
         Ok(token_list) => ListTokensResponse {
             tokens: token_list.iter().map(|t| t.name.clone()).collect(),
             creation_times: token_list.iter().map(|t| t.created_at.clone()).collect(),
+            read_only_flags: token_list.iter().map(|t| t.read_only).collect(),
             error: None,
         },
         Err(e) => ListTokensResponse {
             tokens: vec![],
             creation_times: vec![],
+            read_only_flags: vec![],
             error: Some(e.to_string()),
         },
     };

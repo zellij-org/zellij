@@ -272,7 +272,8 @@ impl App {
     }
 
     fn generate_new_token(&mut self, name: Option<String>) {
-        match generate_web_login_token(name) {
+        let read_only = false;
+        match generate_web_login_token(name, read_only) {
             Ok(token) => self.change_to_token_screen(token),
             Err(e) => self.web_server.error = Some(e),
         }
@@ -499,7 +500,7 @@ impl UIState {
 
 #[derive(Debug, Default)]
 struct TokenManager {
-    list: Vec<(String, String)>,
+    list: Vec<(String, String, bool)>, // bool -> is_read_only
     selected_index: Option<usize>,
     entering_new_name: Option<String>,
     renaming_token: Option<String>,
@@ -516,7 +517,7 @@ impl TokenManager {
         }
     }
 
-    fn get_selected_token(&self) -> Option<&(String, String)> {
+    fn get_selected_token(&self) -> Option<&(String, String, bool)> {
         self.selected_index.and_then(|i| self.list.get(i))
     }
 

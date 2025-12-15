@@ -31,7 +31,7 @@ struct ColumnWidths {
 }
 
 pub struct TokenManagementScreen<'a> {
-    token_list: &'a Vec<(String, String)>,
+    token_list: &'a Vec<(String, String, bool)>, // bool -> is_read_only
     selected_list_index: Option<usize>,
     renaming_token: &'a Option<String>,
     entering_new_token_name: &'a Option<String>,
@@ -43,7 +43,7 @@ pub struct TokenManagementScreen<'a> {
 
 impl<'a> TokenManagementScreen<'a> {
     pub fn new(
-        token_list: &'a Vec<(String, String)>,
+        token_list: &'a Vec<(String, String, bool)>,
         selected_list_index: Option<usize>,
         renaming_token: &'a Option<String>,
         entering_new_token_name: &'a Option<String>,
@@ -234,7 +234,7 @@ impl<'a> TokenManagementScreen<'a> {
         max_width = std::cmp::max(max_width, title_text.len());
 
         let mut items = vec![];
-        for (i, (token, created_at)) in self.token_list.iter().enumerate() {
+        for (i, (token, created_at, _read_only)) in self.token_list.iter().enumerate() {
             let is_selected = Some(i) == self.selected_list_index;
             let (row_text, row_items) =
                 self.create_token_item(token, created_at, is_selected, &column_widths);

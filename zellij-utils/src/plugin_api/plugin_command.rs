@@ -1761,6 +1761,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::GenerateWebLoginTokenPayload(generate_web_login_token_payload)) => {
                     Ok(PluginCommand::GenerateWebLoginToken(
                         generate_web_login_token_payload.token_label,
+                        generate_web_login_token_payload.read_only.unwrap_or(false),
                     ))
                 },
                 _ => Err("GenerateWebLoginToken requires a payload"),
@@ -2996,10 +2997,13 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
-            PluginCommand::GenerateWebLoginToken(token_label) => Ok(ProtobufPluginCommand {
+            PluginCommand::GenerateWebLoginToken(token_label, read_only) => Ok(ProtobufPluginCommand {
                 name: CommandName::GenerateWebLoginToken as i32,
                 payload: Some(Payload::GenerateWebLoginTokenPayload(
-                    GenerateWebLoginTokenPayload { token_label },
+                    GenerateWebLoginTokenPayload {
+                        token_label,
+                        read_only: Some(read_only),
+                    },
                 )),
             }),
             PluginCommand::RevokeWebLoginToken(token_label) => Ok(ProtobufPluginCommand {
