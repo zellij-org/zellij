@@ -1447,7 +1447,7 @@ mod web_client_tests {
         );
 
         // Verify the terminal size is passed correctly
-        if let ClientToServerMsg::AttachWatcherClient { terminal_size } = readonly_msg {
+        if let ClientToServerMsg::AttachWatcherClient { terminal_size, .. } = readonly_msg {
             assert!(terminal_size.rows > 0 && terminal_size.cols > 0);
         }
 
