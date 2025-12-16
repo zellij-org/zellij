@@ -2909,8 +2909,8 @@ pub enum PluginCommand {
     EmbedMultiplePanes(Vec<PaneId>),
     QueryWebServerStatus,
     SetSelfMouseSelectionSupport(bool),
-    GenerateWebLoginToken(Option<String>), // String -> optional token label
-    RevokeWebLoginToken(String),           // String -> token id (provided name or generated id)
+    GenerateWebLoginToken(Option<String>, bool), // (token_label, read_only)
+    RevokeWebLoginToken(String), // String -> token id (provided name or generated id)
     ListWebLoginTokens,
     RevokeAllWebLoginTokens,
     RenameWebLoginToken(String, String), // (original_name, new_name)

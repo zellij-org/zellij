@@ -2527,6 +2527,8 @@ pub struct AttachClientMsg {
 pub struct AttachWatcherClientMsg {
     #[prost(message, optional, tag="1")]
     pub terminal_size: ::core::option::Option<Size>,
+    #[prost(bool, tag="2")]
+    pub is_web_client: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

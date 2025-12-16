@@ -310,6 +310,7 @@ message RevokeWebLoginTokenPayload {
 
 message GenerateWebLoginTokenPayload {
   optional string token_label = 1;
+  optional bool read_only = 2;
 }
 
 message SetSelfMouseSelectionSupportPayload {
@@ -709,10 +710,11 @@ message RevokeTokenResponse {
 }
 
 message ListTokensResponse {
-  // tokens/creation_times should be synchronized
+  // tokens/creation_times/read_only_flags should be synchronized
   repeated string tokens = 1;
   repeated string creation_times = 2;
-  optional string error = 3;
+  repeated bool read_only_flags = 3;
+  optional string error = 4;
 }
 
 message RevokeAllWebTokensResponse {

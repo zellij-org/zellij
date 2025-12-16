@@ -81,20 +81,27 @@ pub async fn login_handler(
 
 pub async fn create_new_client(
     State(state): State<AppState>,
+    request: axum::extract::Request,
 ) -> Result<Json<CreateClientIdResponse>, (StatusCode, impl IntoResponse)> {
+    // Extract is_read_only from request extensions (set by auth middleware)
+    let is_read_only = request.extensions().get::<bool>().copied().unwrap_or(false);
+
     let web_client_id = String::from(Uuid::new_v4());
     let os_input = state
         .client_os_api_factory
         .create_client_os_api()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_string())))?;
 
-    state
-        .connection_table
-        .lock()
-        .unwrap()
-        .add_new_client(web_client_id.to_owned(), os_input);
+    state.connection_table.lock().unwrap().add_new_client(
+        web_client_id.to_owned(),
+        os_input,
+        is_read_only,
+    );
 
-    Ok(Json(CreateClientIdResponse { web_client_id }))
+    Ok(Json(CreateClientIdResponse {
+        web_client_id,
+        is_read_only,
+    }))
 }
 
 pub async fn get_static_asset(AxumPath(path): AxumPath<String>) -> impl IntoResponse {

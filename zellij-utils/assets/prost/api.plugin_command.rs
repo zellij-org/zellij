@@ -276,6 +276,8 @@ pub struct RevokeWebLoginTokenPayload {
 pub struct GenerateWebLoginTokenPayload {
     #[prost(string, optional, tag="1")]
     pub token_label: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="2")]
+    pub read_only: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -891,12 +893,14 @@ pub struct RevokeTokenResponse {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListTokensResponse {
-    /// tokens/creation_times should be synchronized
+    /// tokens/creation_times/read_only_flags should be synchronized
     #[prost(string, repeated, tag="1")]
     pub tokens: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(string, repeated, tag="2")]
     pub creation_times: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-    #[prost(string, optional, tag="3")]
+    #[prost(bool, repeated, tag="3")]
+    pub read_only_flags: ::prost::alloc::vec::Vec<bool>,
+    #[prost(string, optional, tag="4")]
     pub error: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]

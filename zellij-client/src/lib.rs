@@ -678,10 +678,12 @@ pub fn start_client(
             envs::set_session_name(name.clone());
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
+            let is_web_client = false;
 
             (
                 ClientToServerMsg::AttachWatcherClient {
                     terminal_size: full_screen_ws,
+                    is_web_client,
                 },
                 ipc_pipe,
             )
