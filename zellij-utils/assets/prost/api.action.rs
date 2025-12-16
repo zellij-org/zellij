@@ -257,10 +257,32 @@ pub struct NewTabPayload {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OverrideLayoutPayload {
+    #[prost(message, optional, tag="1")]
+    pub tiled_layout: ::core::option::Option<TiledPaneLayout>,
+    #[prost(message, repeated, tag="2")]
+    pub floating_layouts: ::prost::alloc::vec::Vec<FloatingPaneLayout>,
+    #[prost(message, repeated, tag="3")]
+    pub swap_tiled_layouts: ::prost::alloc::vec::Vec<SwapTiledLayout>,
+    #[prost(message, repeated, tag="4")]
+    pub swap_floating_layouts: ::prost::alloc::vec::Vec<SwapFloatingLayout>,
+    #[prost(string, optional, tag="5")]
+    pub tab_name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="6")]
+    pub should_change_focus_to_new_tab: bool,
+    #[prost(string, optional, tag="7")]
+    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag="8")]
+    pub initial_panes: ::prost::alloc::vec::Vec<CommandOrPlugin>,
+    #[prost(enumeration="UnblockCondition", optional, tag="9")]
+    pub first_pane_unblock_condition: ::core::option::Option<i32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Action {
     #[prost(enumeration="ActionName", tag="1")]
     pub name: i32,
-    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52")]
+    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53")]
     pub optional_payload: ::core::option::Option<action::OptionalPayload>,
 }
 /// Nested message and enum types in `Action`.
@@ -364,6 +386,8 @@ pub mod action {
         NewTabPayload(super::NewTabPayload),
         #[prost(message, tag="52")]
         NewInPlacePanePayload(super::NewInPlacePanePayload),
+        #[prost(message, tag="53")]
+        OverrideLayoutPayload(super::OverrideLayoutPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -994,6 +1018,7 @@ pub enum ActionName {
     SwitchSession = 90,
     NewBlockingPane = 91,
     NewInPlacePane = 92,
+    OverrideLayout = 93,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1092,6 +1117,7 @@ impl ActionName {
             ActionName::SwitchSession => "SwitchSession",
             ActionName::NewBlockingPane => "NewBlockingPane",
             ActionName::NewInPlacePane => "NewInPlacePane",
+            ActionName::OverrideLayout => "OverrideLayout",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1187,6 +1213,7 @@ impl ActionName {
             "SwitchSession" => Some(Self::SwitchSession),
             "NewBlockingPane" => Some(Self::NewBlockingPane),
             "NewInPlacePane" => Some(Self::NewInPlacePane),
+            "OverrideLayout" => Some(Self::OverrideLayout),
             _ => None,
         }
     }

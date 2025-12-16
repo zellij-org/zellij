@@ -933,6 +933,16 @@ pub enum CliAction {
     },
     PreviousSwapLayout,
     NextSwapLayout,
+    /// Override the layout of the active tab
+    OverrideLayout {
+        /// Path to the layout file
+        #[clap(value_parser)]
+        layout: PathBuf,
+
+        /// Default folder to look for layouts
+        #[clap(long, value_parser)]
+        layout_dir: Option<PathBuf>,
+    },
     /// Query all tab names
     QueryTabNames,
     StartOrReloadPlugin {

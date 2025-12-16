@@ -324,6 +324,7 @@ pub enum ScreenContext {
     ClearPaneFrameColorOverride,
     PreviousSwapLayout,
     NextSwapLayout,
+    OverrideLayout,
     QueryTabNames,
     NewTiledPluginPane,
     StartOrReloadPluginPane,

@@ -229,6 +229,7 @@ message Action {
     ToggleGroupMarkingAction toggle_group_marking = 91;
     SwitchSessionAction switch_session = 92;
     NewBlockingPaneAction new_blocking_pane = 93;
+    OverrideLayoutAction override_layout = 94;
   }
 }
 
@@ -271,6 +272,17 @@ message DenyAction {}
 message ToggleMouseModeAction {}
 message PreviousSwapLayoutAction {}
 message NextSwapLayoutAction {}
+message OverrideLayoutAction {
+  optional TiledPaneLayout tiled_layout = 1;
+  repeated FloatingPaneLayout floating_layouts = 2;
+  repeated SwapTiledLayout swap_tiled_layouts = 3;
+  repeated SwapFloatingLayout swap_floating_layouts = 4;
+  optional string tab_name = 5;
+  bool should_change_focus_to_new_tab = 6;
+  optional string cwd = 7;
+  repeated CommandOrPlugin initial_panes = 8;
+  optional UnblockCondition first_pane_unblock_condition = 9;
+}
 message QueryTabNamesAction {}
 message BreakPaneAction {}
 message BreakPaneRightAction {}

@@ -2053,6 +2053,22 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::OverrideLayout {
+            tiled_layout: None,
+            floating_layouts: vec![],
+            swap_tiled_layouts: None,
+            swap_floating_layouts: None,
+            tab_name: None,
+            should_change_focus_to_new_tab: true,
+            cwd: None,
+            initial_panes: None,
+            first_pane_unblock_condition: None,
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::NoOp,
         terminal_id: Some(1),
         client_id: Some(100),

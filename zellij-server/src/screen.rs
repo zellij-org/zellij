@@ -295,6 +295,14 @@ pub enum ScreenInstruction {
     ClearPaneFrameColorOverride(Vec<PaneId>),
     PreviousSwapLayout(ClientId, Option<NotificationEnd>),
     NextSwapLayout(ClientId, Option<NotificationEnd>),
+    OverrideLayout(
+        TiledPaneLayout,
+        Vec<FloatingPaneLayout>,
+        Option<Vec<SwapTiledLayout>>,
+        Option<Vec<SwapFloatingLayout>>,
+        ClientId,
+        Option<NotificationEnd>,
+    ),
     QueryTabNames(ClientId, Option<NotificationEnd>),
     NewTiledPluginPane(
         RunPluginOrAlias,
@@ -610,6 +618,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
             ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
+            ScreenInstruction::OverrideLayout(..) => ScreenContext::OverrideLayout,
             ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
             ScreenInstruction::NewTiledPluginPane(..) => ScreenContext::NewTiledPluginPane,
             ScreenInstruction::NewFloatingPluginPane(..) => ScreenContext::NewFloatingPluginPane,
@@ -5119,6 +5128,23 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::OverrideLayout(
+                tiled_layout,
+                floating_layouts,
+                swap_tiled_layouts,
+                swap_floating_layouts,
+                client_id,
+                completion_tx, // dropping this will release the CLI waiting for completion
+            ) => {
+                // TODO: Implement layout override functionality
+                // This is a stub implementation - the actual override logic will be implemented later
+                log::info!("OverrideLayout instruction received (not yet implemented)");
+                log::info!("tiled_layout: {:?}", tiled_layout);
+                log::info!("floating_layouts: {:?}", floating_layouts);
+                log::info!("swap_tiled_layouts: {:?}", swap_tiled_layouts);
+                log::info!("swap_floating_layouts: {:?}", swap_floating_layouts);
+                log::info!("client_id: {:?}", client_id);
             },
             ScreenInstruction::QueryTabNames(client_id, completion_tx) => {
                 let tab_names = screen
