@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow attaching to sessions as "read-only" (https://github.com/zellij-org/zellij/pull/4487)
 * feat: improve cli interface (add detach, switch-session and more) (https://github.com/zellij-org/zellij/pull/4492)
 * feat: command sequences, conditionally blocking CLI commands, new plugin APIs (https://github.com/zellij-org/zellij/pull/4546)
+* feat: read-only web authentication-tokens (https://github.com/zellij-org/zellij/pull/4551)
 
 ## [0.43.1] - 2025-08-08
 * fix: pane rename backspace regression (https://github.com/zellij-org/zellij/pull/4346)
