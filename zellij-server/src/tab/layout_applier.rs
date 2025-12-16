@@ -252,6 +252,10 @@ impl<'a> LayoutApplier<'a> {
             run_instructions_without_a_location,
             &mut new_terminal_ids,
         );
+        // TODO: we should also make sure to expand panes in stack here, we only do this on
+        // reapplication (which happens anyway in all user paths, but for order's sake should also
+        // happen here)
+
         self.adjust_viewport().with_context(err_context)?;
         self.set_focused_tiled_pane(focus_pane_id, client_id);
         Ok(())
@@ -291,7 +295,6 @@ impl<'a> LayoutApplier<'a> {
     ) -> Result<Option<PaneId>> {
         // here we open new panes for each run instruction in the layout with the details
         // we got from the plugin thread and pty thread
-        // let positions_and_size = positions_in_layout.iter();
         let mut focus_pane_id: Option<PaneId> = None;
         let mut set_focus_pane_id = |layout: &TiledPaneLayout, pane_id: PaneId| {
             if layout.focus.unwrap_or(false) && focus_pane_id.is_none() {
