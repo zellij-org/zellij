@@ -2910,7 +2910,7 @@ pub enum PluginCommand {
     QueryWebServerStatus,
     SetSelfMouseSelectionSupport(bool),
     GenerateWebLoginToken(Option<String>, bool), // (token_label, read_only)
-    RevokeWebLoginToken(String),           // String -> token id (provided name or generated id)
+    RevokeWebLoginToken(String), // String -> token id (provided name or generated id)
     ListWebLoginTokens,
     RevokeAllWebLoginTokens,
     RenameWebLoginToken(String, String), // (original_name, new_name)

@@ -185,8 +185,6 @@ mod web_client_tests {
         assert_eq!(response_json["success"], true);
         assert_eq!(response_json["message"], "Login successful");
 
-        println!("✓ Login endpoint test passed");
-
         server_handle.abort();
         revoke_token(test_token_name).expect("Failed to revoke test token");
         // time for cleanup
@@ -248,7 +246,6 @@ mod web_client_tests {
         .expect("Login request failed");
 
         assert_eq!(response.status(), 401);
-        println!("✓ Invalid auth token correctly rejected");
 
         server_handle.abort();
     }
@@ -327,8 +324,6 @@ mod web_client_tests {
             .and_then(|part| part.split('=').nth(1))
             .unwrap();
 
-        println!("✓ Successfully logged in and received session token");
-
         let session_url = format!("http://127.0.0.1:{}/session", port);
         let mut client_response = timeout(
             Duration::from_secs(5),
@@ -355,8 +350,6 @@ mod web_client_tests {
             serde_json::from_str(&client_response.text().unwrap()).unwrap();
         let web_client_id = client_data["web_client_id"].as_str().unwrap().to_string();
 
-        println!("✓ Successfully created client session");
-
         let control_ws_url = format!("ws://127.0.0.1:{}/ws/control", port);
         let (control_ws, _) = timeout(
             Duration::from_secs(5),
@@ -379,9 +372,7 @@ mod web_client_tests {
                 serde_json::from_str(&text).expect("Failed to parse control message");
 
             match parsed {
-                WebServerToWebClientControlMessage::SetConfig(_) => {
-                    println!("✓ Received expected SetConfig message");
-                },
+                WebServerToWebClientControlMessage::SetConfig(_) => {},
                 _ => panic!("Expected SetConfig message, got: {:?}", parsed),
             }
         } else {
@@ -401,8 +392,6 @@ mod web_client_tests {
             .await
             .expect("Failed to send resize message");
 
-        println!("✓ Sent terminal resize message");
-
         let terminal_ws_url = format!(
             "ws://127.0.0.1:{}/ws/terminal?web_client_id={}",
             port, web_client_id
@@ -421,8 +410,6 @@ mod web_client_tests {
             .send(Message::Text("echo hello\n".to_string()))
             .await
             .expect("Failed to send terminal input");
-
-        println!("✓ Sent terminal input");
 
         tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -455,21 +442,16 @@ mod web_client_tests {
             found_resize,
             "Terminal resize message was not received by mock OS API"
         );
-        println!("✓ Verified terminal resize message was processed by mock OS API");
-
         assert!(
             found_terminal_input,
             "Terminal input message was not received by mock OS API"
         );
-        println!("✓ Verified terminal input message was processed by mock OS API");
 
         let _ = control_sink.close().await;
         let _ = terminal_sink.close().await;
         server_handle.abort();
 
         revoke_token(test_token_name).expect("Failed to revoke test token");
-        println!("✓ Full session flow test completed successfully");
-        // time for cleanup
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
@@ -517,7 +499,6 @@ mod web_client_tests {
         .expect("Session request failed");
 
         assert_eq!(response.status(), 401);
-        println!("✓ Unauthorized access correctly rejected");
 
         server_handle.abort();
     }
@@ -573,7 +554,6 @@ mod web_client_tests {
         .expect("Session request failed");
 
         assert_eq!(response.status(), 401);
-        println!("✓ Invalid session token correctly rejected");
 
         server_handle.abort();
     }
@@ -717,7 +697,6 @@ mod web_client_tests {
             },
         }
 
-        println!("✓ Server shutdown closes WebSocket connections test completed");
         revoke_token(test_token_name).expect("Failed to revoke test token");
         // time for cleanup
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -890,12 +869,9 @@ mod web_client_tests {
             "Should have received at least 2 resize messages"
         );
 
-        println!("✓ Client cleanup removes from connection table test completed");
-
         let _ = control_sink_2.close().await;
         server_handle.abort();
         revoke_token(test_token_name).expect("Failed to revoke test token");
-        // time for cleanup
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
@@ -1032,20 +1008,13 @@ mod web_client_tests {
             }
         }
 
-        println!(
-            "Connection terminated: {}, reason: {}",
-            connection_terminated, termination_reason
-        );
-
         assert!(
             connection_terminated,
             "Connection should have been terminated due to server shutdown. Reason: {}",
             termination_reason
         );
 
-        println!("✓ Cancellation token triggers on shutdown test completed");
         revoke_token(test_token_name).expect("Failed to revoke test token");
-        // time for cleanup
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
@@ -1170,8 +1139,6 @@ mod web_client_tests {
             "ClientExited message should have been sent during cleanup"
         );
 
-        println!("✓ Different exit reasons handled properly test completed");
-
         server_handle.abort();
         revoke_token(test_token_name).expect("Failed to revoke test token");
         // time for cleanup
@@ -1246,7 +1213,6 @@ mod web_client_tests {
         let client_data: serde_json::Value =
             serde_json::from_str(&client_response.text().unwrap()).unwrap();
         let is_read_only = client_data["is_read_only"].as_bool().unwrap();
-        let web_client_id = client_data["web_client_id"].as_str().unwrap().to_string();
 
         assert_eq!(is_read_only, true, "Client should be marked as read-only");
 
@@ -1256,7 +1222,7 @@ mod web_client_tests {
         let control_ws_url = format!("ws://127.0.0.1:{}/ws/control", port);
 
         // The connection might fail or close immediately
-        let ws_result = timeout(
+        let _ws_result = timeout(
             Duration::from_secs(3),
             connect_async_with_cookie(&control_ws_url, &session_token),
         )
@@ -1270,8 +1236,6 @@ mod web_client_tests {
             !session_manager_for_verification.was_session_created("default"),
             "No session should be created for read-only token attempting to create new session"
         );
-
-        println!("✓ Read-only token correctly prevented from creating new session");
 
         server_handle.abort();
         let _ = delete_db();
@@ -1364,11 +1328,10 @@ mod web_client_tests {
                 panic!("No messages were sent to mock session manager. This indicates the server_listener didn't call spawn_session_if_needed.");
             }
 
-            let (session_name, msg) = all_messages
+            let (_session_name, msg) = all_messages
                 .first()
                 .expect("Should have at least one message");
 
-            println!("Session name: {}", session_name);
             msg.clone()
         };
 
@@ -1377,8 +1340,6 @@ mod web_client_tests {
             "Regular client should use AttachClient message for existing session, got {:?}",
             regular_msg
         );
-
-        println!("✓ Regular client correctly uses AttachClient for existing session");
 
         // Now attach with READ-ONLY token
         let readonly_session_token = login_and_get_session_token(port, &readonly_token).await;
@@ -1415,7 +1376,6 @@ mod web_client_tests {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         // VERIFY: Read-only client should use AttachWatcherClient
-        // This verifies the PRODUCTION create_first_message() logic!
         let readonly_msg = {
             let all_messages = session_manager_for_verification
                 .first_messages_sent
@@ -1429,11 +1389,10 @@ mod web_client_tests {
             );
 
             // Get the second message (readonly client)
-            let (readonly_session_name, msg) = all_messages
+            let (_readonly_session_name, msg) = all_messages
                 .get(1)
                 .expect("Should have message for read-only client");
 
-            println!("Readonly session name: {}", readonly_session_name);
             msg.clone()
         };
 
@@ -1447,9 +1406,6 @@ mod web_client_tests {
         if let ClientToServerMsg::AttachWatcherClient { terminal_size, .. } = readonly_msg {
             assert!(terminal_size.rows > 0 && terminal_size.cols > 0);
         }
-
-        println!("✓ Read-only client correctly uses AttachWatcherClient message");
-        println!("✓ Production create_first_message() logic verified");
 
         let _ = regular_control_sink.close().await;
         let _ = regular_terminal_sink.close().await;
@@ -1562,9 +1518,6 @@ mod web_client_tests {
             "Session should be created by regular client"
         );
 
-        println!("✓ Regular client correctly uses FirstClientConnected for new session");
-        println!("✓ Session was created as expected");
-
         let _ = control_sink.close().await;
         let _ = terminal_sink.close().await;
         server_handle.abort();
@@ -1673,10 +1626,6 @@ mod web_client_tests {
             readonly_is_read_only, true,
             "Read-only client should be read-only"
         );
-
-        println!("✓ Regular client correctly marked as read-write");
-        println!("✓ Read-only client correctly marked as read-only");
-        println!("✓ ConnectionTable correctly tracks read-only status per client");
 
         server_handle.abort();
         let _ = delete_db();

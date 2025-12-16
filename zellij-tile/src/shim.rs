@@ -1502,7 +1502,7 @@ pub fn set_self_mouse_selection_support(selection_support: bool) {
 
 pub fn generate_web_login_token(
     token_label: Option<String>,
-    read_only: bool
+    read_only: bool,
 ) -> Result<String, String> {
     let plugin_command = PluginCommand::GenerateWebLoginToken(token_label, read_only);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1550,9 +1550,7 @@ pub fn list_web_login_tokens() -> Result<Vec<(String, String, bool)>, String> {
             .iter()
             .zip(list_tokens_response.creation_times.iter())
             .zip(list_tokens_response.read_only_flags.iter())
-            .map(|((name, created_at), read_only)| {
-                (name.clone(), created_at.clone(), *read_only)
-            })
+            .map(|((name, created_at), read_only)| (name.clone(), created_at.clone(), *read_only))
             .collect();
         Ok(tokens_with_info)
     }

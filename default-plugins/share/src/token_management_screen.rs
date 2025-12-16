@@ -86,8 +86,11 @@ impl<'a> TokenManagementScreen<'a> {
         const MIN_CONTROLS_WIDTH: usize = 6; // Minimum for "(<x>, <r>)"
         const COLUMN_SPACING: usize = 5; // Space between columns (4 columns with table padding)
 
-        let min_total_width =
-            MIN_TOKEN_WIDTH + MIN_DATE_WIDTH + MIN_READ_ONLY_WIDTH + MIN_CONTROLS_WIDTH + COLUMN_SPACING;
+        let min_total_width = MIN_TOKEN_WIDTH
+            + MIN_DATE_WIDTH
+            + MIN_READ_ONLY_WIDTH
+            + MIN_CONTROLS_WIDTH
+            + COLUMN_SPACING;
 
         if max_table_width <= min_total_width {
             return ColumnWidths {
@@ -103,7 +106,8 @@ impl<'a> TokenManagementScreen<'a> {
         const PREFERRED_CONTROLS_WIDTH: usize = 24; // "(<x> revoke, <r> rename)"
 
         let available_width = max_table_width.saturating_sub(COLUMN_SPACING);
-        let preferred_fixed_width = PREFERRED_DATE_WIDTH + PREFERRED_READ_ONLY_WIDTH + PREFERRED_CONTROLS_WIDTH;
+        let preferred_fixed_width =
+            PREFERRED_DATE_WIDTH + PREFERRED_READ_ONLY_WIDTH + PREFERRED_CONTROLS_WIDTH;
 
         if available_width >= preferred_fixed_width + MIN_TOKEN_WIDTH {
             // We can use preferred widths for date, read_only, and controls
@@ -198,7 +202,11 @@ impl<'a> TokenManagementScreen<'a> {
     }
 
     fn format_read_only(&self, is_read_only: bool, max_width: usize) -> String {
-        let full_text = if is_read_only { "read-only" } else { "read-write" };
+        let full_text = if is_read_only {
+            "read-only"
+        } else {
+            "read-write"
+        };
         let short_text = if is_read_only { "RO" } else { "RW" };
 
         let text = if full_text.chars().count() <= max_width {
@@ -217,7 +225,12 @@ impl<'a> TokenManagementScreen<'a> {
         let left_padding = padding / 2;
         let right_padding = padding - left_padding;
 
-        format!("{}{}{}", " ".repeat(left_padding), text, " ".repeat(right_padding))
+        format!(
+            "{}{}{}",
+            " ".repeat(left_padding),
+            text,
+            " ".repeat(right_padding)
+        )
     }
 
     fn format_controls(&self, max_width: usize, is_selected: bool) -> String {
@@ -432,7 +445,10 @@ impl<'a> TokenManagementScreen<'a> {
             Text::new(&controls_text),
         ];
         (
-            format!("{} {} {} {}", item_text, date_text, read_only_text, controls_text),
+            format!(
+                "{} {} {} {}",
+                item_text, date_text, read_only_text, controls_text
+            ),
             items,
         )
     }
@@ -479,7 +495,10 @@ impl<'a> TokenManagementScreen<'a> {
         ];
 
         (
-            format!("{} {} {} {}", item_text, date_text, read_only_text, controls_text),
+            format!(
+                "{} {} {} {}",
+                item_text, date_text, read_only_text, controls_text
+            ),
             items,
         )
     }
@@ -507,7 +526,10 @@ impl<'a> TokenManagementScreen<'a> {
             Text::new(&controls_text),
         ];
         (
-            format!("{} {} {} {}", item_text, date_text, read_only_text, controls_text),
+            format!(
+                "{} {} {} {}",
+                item_text, date_text, read_only_text, controls_text
+            ),
             items,
         )
     }
@@ -634,7 +656,13 @@ impl<'a> TokenManagementScreen<'a> {
         print_table_with_coordinates(table, layout.base_x, layout.base_y + 1, None, None);
 
         if let Some((_, new_token_text)) = content.new_token_line {
-            print_text_with_coordinates(new_token_text, layout.base_x, layout.new_token_y, None, None);
+            print_text_with_coordinates(
+                new_token_text,
+                layout.base_x,
+                layout.new_token_y,
+                None,
+                None,
+            );
         }
 
         if let Some((_, status_text)) = content.status_message {

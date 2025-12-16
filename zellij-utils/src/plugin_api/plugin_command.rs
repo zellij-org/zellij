@@ -2997,15 +2997,17 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
-            PluginCommand::GenerateWebLoginToken(token_label, read_only) => Ok(ProtobufPluginCommand {
-                name: CommandName::GenerateWebLoginToken as i32,
-                payload: Some(Payload::GenerateWebLoginTokenPayload(
-                    GenerateWebLoginTokenPayload {
-                        token_label,
-                        read_only: Some(read_only),
-                    },
-                )),
-            }),
+            PluginCommand::GenerateWebLoginToken(token_label, read_only) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::GenerateWebLoginToken as i32,
+                    payload: Some(Payload::GenerateWebLoginTokenPayload(
+                        GenerateWebLoginTokenPayload {
+                            token_label,
+                            read_only: Some(read_only),
+                        },
+                    )),
+                })
+            },
             PluginCommand::RevokeWebLoginToken(token_label) => Ok(ProtobufPluginCommand {
                 name: CommandName::RevokeWebLoginToken as i32,
                 payload: Some(Payload::RevokeWebLoginTokenPayload(
