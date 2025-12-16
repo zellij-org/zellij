@@ -3936,6 +3936,57 @@ impl Tab {
         Ok(())
     }
 
+    pub fn handle_scrollwheel(
+        &mut self,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
+        let err_context = || {
+            format!("failed to handle scrollwheel event {event:?} for client {client_id}")
+        };
+
+        if let Some(pane) = self.get_pane_at(&event.position, false).with_context(err_context)? {
+            let relative_position = pane.relative_position(&event.position);
+            let mut pass_event = *event;
+            pass_event.position = relative_position;
+            
+            // Try to pass through to terminal with mouse tracking enabled (with modifiers)
+            if let Some(mouse_event) = pane.mouse_event(&pass_event, client_id) {
+                self.write_to_terminal_at(mouse_event.into_bytes(), &event.position, client_id)
+                    .with_context(err_context)?;
+            } else if pane.is_alternate_mode_active() {
+                // faux scrolling, send arrow keys
+                let lines = 3;
+                if event.wheel_up {
+                    for _ in 0..lines {
+                        self.write_to_terminal_at("\u{1b}[A".as_bytes().to_owned(), &event.position, client_id)
+                            .with_context(err_context)?;
+                    }
+                } else if event.wheel_down {
+                    for _ in 0..lines {
+                        self.write_to_terminal_at("\u{1b}[B".as_bytes().to_owned(), &event.position, client_id)
+                            .with_context(err_context)?;
+                    }
+                }
+            } else {
+                // Zellij internal scrolling
+                let lines = 3;
+                if event.wheel_up {
+                    pane.scroll_up(lines, client_id);
+                } else if event.wheel_down {
+                    pane.scroll_down(lines, client_id);
+                    if !pane.is_scrolled() {
+                        if let PaneId::Terminal(pid) = pane.pid() {
+                            self.process_pending_vte_events(pid)
+                                .with_context(err_context)?;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(MouseEffect::default())
+    }
+
     pub fn handle_scrollwheel_up(
         &mut self,
         point: &Position,
@@ -4145,10 +4196,8 @@ impl Tab {
                 MouseEventType::Motion => self.handle_left_mouse_motion(event, client_id),
                 MouseEventType::Release => self.handle_left_mouse_release(event, client_id),
             }
-        } else if event.wheel_up {
-            self.handle_scrollwheel_up(&event.position, 3, client_id)
-        } else if event.wheel_down {
-            self.handle_scrollwheel_down(&event.position, 3, client_id)
+        } else if event.wheel_up || event.wheel_down {
+            self.handle_scrollwheel(event, client_id)
         } else if event.right && event.alt {
             self.mouse_hover_pane_id.remove(&client_id);
             Ok(MouseEffect::ungroup())
