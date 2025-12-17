@@ -863,6 +863,71 @@ impl Tab {
         }
         Ok(())
     }
+    pub fn override_layout(
+        &mut self,
+        layout: TiledPaneLayout,
+        floating_panes_layout: Vec<FloatingPaneLayout>,
+        new_terminal_ids: Vec<(u32, HoldForCommand)>,
+        new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
+        new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
+        client_id: ClientId,
+        blocking_terminal: Option<(u32, NotificationEnd)>,
+    ) -> Result<()> {
+        self.swap_layouts
+            .set_base_layout((layout.clone(), floating_panes_layout.clone()));
+        match LayoutApplier::new(
+            &self.viewport,
+            &self.senders,
+            &self.sixel_image_store,
+            &self.link_handler,
+            &self.terminal_emulator_colors,
+            &self.terminal_emulator_color_codes,
+            &self.character_cell_size,
+            &self.connected_clients_in_app,
+            &self.style,
+            &self.display_area,
+            &mut self.tiled_panes,
+            &mut self.floating_panes,
+            self.draw_pane_frames,
+            &mut self.focus_pane_id,
+            &self.os_api,
+            self.debug,
+            self.arrow_fonts,
+            self.styled_underlines,
+            self.explicitly_disable_kitty_keyboard_protocol,
+            blocking_terminal,
+        )
+        .override_layout(
+            layout,
+            floating_panes_layout,
+            new_terminal_ids,
+            new_floating_terminal_ids,
+            new_plugin_ids,
+            client_id,
+        ) {
+            Ok(should_show_floating_panes) => {
+                log::info!("done overriding layout, tiled_panes: {:#?}", self.tiled_panes.get_panes().map(|(_, p)| p.pid()).collect::<Vec<_>>());
+                if should_show_floating_panes && !self.floating_panes.panes_are_visible() {
+                    self.toggle_floating_panes(Some(client_id), None, None)
+                        .non_fatal();
+                } else if !should_show_floating_panes && self.floating_panes.panes_are_visible() {
+                    self.toggle_floating_panes(Some(client_id), None, None)
+                        .non_fatal();
+                }
+                self.tiled_panes.reapply_pane_frames();
+                self.is_pending = false;
+                self.apply_buffered_instructions().non_fatal();
+            },
+            Err(e) => {
+                // TODO: this should only happen due to an erroneous layout created by user
+                // configuration that was somehow not caught in our KDL layout parser
+                // we should still be able to properly recover from this with a useful error
+                // message though
+                log::error!("Failed to apply layout: {}", e);
+            },
+        }
+        Ok(())
+    }
     pub fn swap_layout_info(&self) -> (Option<String>, bool) {
         if self.floating_panes.panes_are_visible() {
             self.swap_layouts.floating_layout_info()

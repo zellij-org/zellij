@@ -122,6 +122,28 @@ impl<'a> LayoutApplier<'a> {
         let should_show_floating_panes = layout_has_floating_panes && !hide_floating_panes;
         return Ok(should_show_floating_panes);
     }
+    pub fn override_layout(
+        &mut self,
+        tiled_panes_layout: TiledPaneLayout,
+        floating_panes_layout: Vec<FloatingPaneLayout>,
+        new_terminal_ids: Vec<(u32, HoldForCommand)>,
+        new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
+        mut new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
+        client_id: ClientId,
+    ) -> Result<bool> {
+        log::info!("LayoutApplier override_layout");
+        // true => should_show_floating_panes
+        let hide_floating_panes = tiled_panes_layout.hide_floating_panes;
+        self.override_tiled_panes_layout_for_existing_panes(&tiled_panes_layout, new_terminal_ids, &mut new_plugin_ids)?;
+
+        let layout_has_floating_panes = self.override_floating_panes_layout_for_existing_panes(
+            &floating_panes_layout,
+            new_floating_terminal_ids,
+            &mut new_plugin_ids,
+        )?;
+        let should_show_floating_panes = layout_has_floating_panes && !hide_floating_panes;
+        return Ok(should_show_floating_panes);
+    }
     pub fn apply_tiled_panes_layout_to_existing_panes(
         &mut self,
         layout: &TiledPaneLayout,
@@ -193,11 +215,11 @@ impl<'a> LayoutApplier<'a> {
     }
     pub fn override_tiled_panes_layout_for_existing_panes(
         &mut self,
-        layout: &TiledPaneLayout,
+        tiled_panes_layout: &TiledPaneLayout,
         mut new_terminal_ids: Vec<(u32, HoldForCommand)>,
         mut new_plugin_ids: &mut HashMap<RunPluginOrAlias, Vec<u32>>,
     ) -> Result<()> {
-        let positions_in_layout = self.flatten_layout(layout, true)?;
+        let positions_in_layout = self.flatten_layout(tiled_panes_layout, false)?;
 
         let mut existing_tab_state = ExistingTabState::new(self.tiled_panes.drain());
 
@@ -212,7 +234,7 @@ impl<'a> LayoutApplier<'a> {
         // look for exact matches (eg. panes that expect a specific command or plugin to run in them)
         for (layout, position_and_size) in positions_in_layout {
             match existing_tab_state
-                .find_and_extract_exact_match_pane(&layout.run, position_and_size.logical_position)
+                .find_and_extract_exact_pane_with_same_run(&layout.run)
             {
                 Some(pane) => {
                     pane_applier.apply_position_and_size_to_tiled_pane(
@@ -1032,6 +1054,16 @@ impl ExistingTabState {
                 .remove(&current_pane_id_with_same_contents);
         }
         None
+    }
+    pub fn find_and_extract_exact_pane_with_same_run(
+        &mut self,
+        run: &Option<Run>,
+    ) -> Option<Box<dyn Pane>> {
+        let candidates = self.pane_candidates();
+        let pane_id = candidates
+            .iter()
+            .find_map(|(_pid, p)| if p.invoked_with() == run { Some(p.pid())} else { None });
+        pane_id.and_then(|p| self.existing_panes.remove(&p))
     }
     pub fn find_and_extract_pane_with_same_logical_position(
         &mut self,

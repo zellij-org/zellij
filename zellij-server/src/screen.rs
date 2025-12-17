@@ -308,7 +308,7 @@ pub enum ScreenInstruction {
         Vec<FloatingPaneLayout>,
         Option<Vec<SwapTiledLayout>>,
         Option<Vec<SwapFloatingLayout>>,
-        Vec<(u32, HoldForCommand)>, // new pane pids
+        Vec<(u32, HoldForCommand)>, // new terminal pids
         Vec<(u32, HoldForCommand)>, // new floating pane pids
         HashMap<RunPluginOrAlias, Vec<u32>>,
         usize,                   // tab_index
@@ -5229,16 +5229,28 @@ pub(crate) fn screen_thread_main(
                 floating_layouts,
                 swap_tiled_layouts,
                 swap_floating_layouts,
-                new_pane_pids,
+                new_terminal_pids,
                 new_floating_pane_pids,
                 plugin_ids,
                 tab_index,
                 client_id,
                 completion_tx,
             ) => {
-                log::info!("new_pane_pids: {:?}", new_pane_pids);
-                log::info!("new_floating_pane_pids: {:?}", new_floating_pane_pids);
-                log::info!("plugin_ids: {:?}", plugin_ids);
+                screen.tabs.get_mut(&tab_index).map(|t| {
+                    t.override_layout(
+                        tiled_layout,
+                        floating_layouts,
+                        new_terminal_pids,
+                        new_floating_pane_pids,
+                        plugin_ids,
+                        client_id,
+                        None
+                    )
+                });
+                screen.render(None);
+//                 log::info!("new_pane_pids: {:?}", new_terminal_pids);
+//                 log::info!("new_floating_pane_pids: {:?}", new_floating_pane_pids);
+//                 log::info!("plugin_ids: {:?}", plugin_ids);
 
             },
             ScreenInstruction::QueryTabNames(client_id, completion_tx) => {
