@@ -303,6 +303,18 @@ pub enum ScreenInstruction {
         ClientId,
         Option<NotificationEnd>,
     ),
+    OverrideLayoutComplete(
+        TiledPaneLayout,
+        Vec<FloatingPaneLayout>,
+        Option<Vec<SwapTiledLayout>>,
+        Option<Vec<SwapFloatingLayout>>,
+        Vec<(u32, HoldForCommand)>, // new pane pids
+        Vec<(u32, HoldForCommand)>, // new floating pane pids
+        HashMap<RunPluginOrAlias, Vec<u32>>,
+        usize,                   // tab_index
+        ClientId,
+        Option<NotificationEnd>,
+    ),
     QueryTabNames(ClientId, Option<NotificationEnd>),
     NewTiledPluginPane(
         RunPluginOrAlias,
@@ -619,6 +631,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
             ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
             ScreenInstruction::OverrideLayout(..) => ScreenContext::OverrideLayout,
+            ScreenInstruction::OverrideLayoutComplete(..) => ScreenContext::OverrideLayoutComplete,
             ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
             ScreenInstruction::NewTiledPluginPane(..) => ScreenContext::NewTiledPluginPane,
             ScreenInstruction::NewFloatingPluginPane(..) => ScreenContext::NewFloatingPluginPane,
@@ -5196,6 +5209,36 @@ pub(crate) fn screen_thread_main(
                 for idx in floating_indices {
                     floating_layouts.get_mut(idx).map(|f| f.already_running = true);
                 }
+
+                let tab_index = active_tab.index;
+                screen
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::OverrideLayout(
+                        tiled_layout,
+                        floating_layouts,
+                        swap_tiled_layouts,
+                        swap_floating_layouts,
+                        tab_index,
+                        client_id,
+                        _completion_tx,
+                    ))?;
+            },
+            ScreenInstruction::OverrideLayoutComplete(
+                tiled_layout,
+                floating_layouts,
+                swap_tiled_layouts,
+                swap_floating_layouts,
+                new_pane_pids,
+                new_floating_pane_pids,
+                plugin_ids,
+                tab_index,
+                client_id,
+                completion_tx,
+            ) => {
+                log::info!("new_pane_pids: {:?}", new_pane_pids);
+                log::info!("new_floating_pane_pids: {:?}", new_floating_pane_pids);
+                log::info!("plugin_ids: {:?}", plugin_ids);
 
             },
             ScreenInstruction::QueryTabNames(client_id, completion_tx) => {
