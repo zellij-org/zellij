@@ -3557,6 +3557,47 @@ fn get_default_editor() -> Option<PathBuf> {
     None
 }
 
+fn find_already_running_panes(
+    tiled_layout: &TiledPaneLayout,
+    floating_layouts: &[FloatingPaneLayout],
+    active_tab: &Tab,
+) -> (Vec<Option<Run>>, Vec<usize>) {
+    let mut layout_tiled_instructions = tiled_layout.extract_run_instructions();
+    let running_tiled_instructions: Vec<Option<Run>> = active_tab
+        .get_tiled_panes()
+        .map(|(_, pane)| pane.invoked_with().clone())
+        .collect();
+
+    let mut tiled_to_ignore = Vec::new();
+    for running_instr in running_tiled_instructions {
+        if let Some(pos) = layout_tiled_instructions
+            .iter()
+            .position(|layout_instr| layout_instr == &running_instr)
+        {
+            layout_tiled_instructions.remove(pos);
+            tiled_to_ignore.push(running_instr);
+        }
+    }
+
+    let mut running_floating_instructions: Vec<Option<Run>> = active_tab
+        .get_floating_panes()
+        .map(|(_, pane)| pane.invoked_with().clone())
+        .collect();
+
+    let mut floating_indices = Vec::new();
+    for (idx, floating_layout) in floating_layouts.iter().enumerate() {
+        if let Some(pos) = running_floating_instructions
+            .iter()
+            .position(|instr| instr == &floating_layout.run)
+        {
+            running_floating_instructions.remove(pos);
+            floating_indices.push(idx);
+        }
+    }
+
+    (tiled_to_ignore, floating_indices)
+}
+
 // The box is here in order to make the
 // NewClient enum smaller
 #[allow(clippy::boxed_local)]
@@ -5130,21 +5171,32 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::OverrideLayout(
-                tiled_layout,
-                floating_layouts,
+                mut tiled_layout,
+                mut floating_layouts,
                 swap_tiled_layouts,
                 swap_floating_layouts,
                 client_id,
-                completion_tx, // dropping this will release the CLI waiting for completion
+                _completion_tx,
             ) => {
-                // TODO: Implement layout override functionality
-                // This is a stub implementation - the actual override logic will be implemented later
-                log::info!("OverrideLayout instruction received (not yet implemented)");
-                log::info!("tiled_layout: {:?}", tiled_layout);
-                log::info!("floating_layouts: {:?}", floating_layouts);
-                log::info!("swap_tiled_layouts: {:?}", swap_tiled_layouts);
-                log::info!("swap_floating_layouts: {:?}", swap_floating_layouts);
-                log::info!("client_id: {:?}", client_id);
+                let active_tab = match screen.get_active_tab(client_id) {
+                    Ok(tab) => tab,
+                    Err(_) => {
+                        log::info!("OverrideLayout: No active tab for client_id {:?}", client_id);
+                        continue;
+                    }
+                };
+
+                let (tiled_to_ignore, floating_indices) =
+                    find_already_running_panes(&tiled_layout, &floating_layouts, active_tab);
+
+                for run_instruction in tiled_to_ignore {
+                    tiled_layout.ignore_run_instruction(run_instruction);
+                }
+
+                for idx in floating_indices {
+                    floating_layouts.get_mut(idx).map(|f| f.already_running = true);
+                }
+
             },
             ScreenInstruction::QueryTabNames(client_id, completion_tx) => {
                 let tab_names = screen
