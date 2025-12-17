@@ -1,0 +1,121 @@
+// Translated from https://github.com/everviolet/nvim
+themes {
+    evergarden-spring {
+        text_unselected {
+            base 248 249 232        // text
+            background 43 52 56     // base (spring)
+            emphasis_0 248 249 232  // text
+            emphasis_1 173 201 188  // subtext1
+            emphasis_2 150 180 170  // subtext0
+            emphasis_3 131 158 154  // overlay2
+        }
+        text_selected {
+            base 248 249 232        // text
+            background 62 74 79     // surface1 (spring)
+            emphasis_0 255 255 255  // white
+            emphasis_1 178 202 237  // blue
+            emphasis_2 179 230 219  // skye
+            emphasis_3 179 217 230  // snow
+        }
+        ribbon_selected {
+            base 43 52 56           // base (spring)
+            background 179 230 219  // skye
+            emphasis_0 43 52 56     // base
+            emphasis_1 52 62 67     // surface0 (spring)
+            emphasis_2 62 74 79     // surface1 (spring)
+            emphasis_3 74 88 92     // surface2
+        }
+        ribbon_unselected {
+            base 150 180 170        // subtext0
+            background 52 62 67     // surface0 (spring)
+            emphasis_0 173 201 188  // subtext1
+            emphasis_1 150 180 170  // subtext0
+            emphasis_2 131 158 154  // overlay2
+            emphasis_3 111 135 136  // overlay1
+        }
+        table_title {
+            base 248 249 232        // text
+            background 43 52 56     // base (spring)
+            emphasis_0 179 230 219  // skye
+            emphasis_1 178 202 237  // blue
+            emphasis_2 219 230 175  // lime
+            emphasis_3 203 227 179  // green
+        }
+        table_cell_selected {
+            base 248 249 232        // text
+            background 62 74 79     // surface1 (spring)
+            emphasis_0 179 230 219  // skye
+            emphasis_1 178 202 237  // blue
+            emphasis_2 219 230 175  // lime
+            emphasis_3 203 227 179  // green
+        }
+        table_cell_unselected {
+            base 150 180 170        // subtext0
+            background 43 52 56     // base (spring)
+            emphasis_0 131 158 154  // overlay2
+            emphasis_1 111 135 136  // overlay1
+            emphasis_2 88 104 109   // overlay0
+            emphasis_3 74 88 92     // surface2
+        }
+        list_selected {
+            base 248 249 232        // text
+            background 62 74 79     // surface1 (spring)
+            emphasis_0 179 230 219  // skye
+            emphasis_1 178 202 237  // blue
+            emphasis_2 210 191 243  // purple
+            emphasis_3 243 192 229  // pink
+        }
+        list_unselected {
+            base 150 180 170        // subtext0
+            background 43 52 56     // base (spring)
+            emphasis_0 173 201 188  // subtext1
+            emphasis_1 150 180 170  // subtext0
+            emphasis_2 131 158 154  // overlay2
+            emphasis_3 111 135 136  // overlay1
+        }
+        frame_selected {
+            base 179 230 219        // skye
+            background 62 74 79     // surface1 (spring)
+            emphasis_0 178 202 237  // blue
+            emphasis_1 203 227 179  // green
+            emphasis_2 245 208 152  // yellow
+            emphasis_3 247 161 130  // orange
+        }
+        frame_highlight {
+            base 245 208 152        // yellow
+            background 62 74 79     // surface1 (spring)
+            emphasis_0 247 161 130  // orange
+            emphasis_1 245 127 130  // red
+            emphasis_2 243 192 229  // pink
+            emphasis_3 210 191 243  // purple
+        }
+        exit_code_success {
+            base 203 227 179        // green
+            background 43 52 56     // base (spring)
+            emphasis_0 179 227 202  // aqua
+            emphasis_1 203 227 179  // green
+            emphasis_2 219 230 175  // lime
+            emphasis_3 179 230 219  // skye
+        }
+        exit_code_error {
+            base 245 127 130        // red
+            background 43 52 56     // base (spring)
+            emphasis_0 200 80 85    // darker red
+            emphasis_1 245 127 130  // red
+            emphasis_2 247 161 130  // orange
+            emphasis_3 245 208 152  // yellow
+        }
+        multiplayer_user_colors {
+            user_0 179 230 219      // skye
+            user_1 203 227 179      // green
+            user_2 178 202 237      // blue
+            user_3 210 191 243      // purple
+            user_4 245 208 152      // yellow
+            user_5 247 161 130      // orange
+            user_6 243 192 229      // pink
+            user_7 179 227 202      // aqua
+            user_8 245 127 130      // red
+            user_9 246 206 229      // cherry
+        }
+    }
+}
