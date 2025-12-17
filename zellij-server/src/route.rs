@@ -1115,13 +1115,18 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::OverrideLayout {
+            cwd,
             tiled_layout,
             floating_layouts,
             swap_tiled_layouts,
             swap_floating_layouts,
+            tab_name,
+            initial_panes,
+            first_pane_unblock_condition,
             ..
         } => {
             // Extract required layout fields, use defaults if None
+            let shell = default_shell.clone();
             let tiled = tiled_layout.unwrap_or_else(|| TiledPaneLayout::default());
             let floating = floating_layouts;
             let swap_tiled = swap_tiled_layouts;
@@ -1129,6 +1134,8 @@ pub(crate) fn route_action(
 
             senders
                 .send_to_screen(ScreenInstruction::OverrideLayout(
+                    cwd,
+                    shell,
                     tiled,
                     floating,
                     swap_tiled,

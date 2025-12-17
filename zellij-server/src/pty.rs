@@ -79,6 +79,8 @@ pub enum PtyInstruction {
         Option<NotificationEnd>,             // completion signal
     ), // the String is the tab name
     OverrideLayout(
+        Option<PathBuf>, // CWD
+        Option<TerminalAction>, // Default Shell
         TiledPaneLayout,
         Vec<FloatingPaneLayout>,
         Option<Vec<SwapTiledLayout>>,
@@ -490,8 +492,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 .with_context(err_context)?;
             },
             PtyInstruction::OverrideLayout(
+                cwd,
+                default_shell,
                 tiled_layout,
-                floating_layouts,
+                floating_panes_layout,
                 swap_tiled_layouts,
                 swap_floating_layouts,
                 tab_index,
@@ -499,95 +503,130 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 client_id,
                 completion_tx,
             ) => {
-                let err_context = || "failed to handle override layout";
+                let err_context = || "failed to override layout";
+//         cwd: Option<PathBuf>,
+//         layout: TiledPaneLayout,
+//         floating_panes_layout: Vec<FloatingPaneLayout>,
+//         default_shell: Option<TerminalAction>,
+//         plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
+//         initial_panes: Option<Vec<CommandOrPlugin>>,
+//         tab_index: usize,
+//         block_on_first_terminal: bool,
+//         should_change_focus_to_new_tab: bool,
+//         client_id_and_is_web_client: (ClientId, bool),
+//         swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
+//         swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
+//         completion_tx: Option<NotificationEnd>,
 
-                // Extract run instructions from tiled layout
-                let extracted_run_instructions = tiled_layout.extract_run_instructions();
 
-                // Extract run instructions from floating layouts (excluding already_running)
-                let extracted_floating_run_instructions = floating_layouts
-                    .iter()
-                    .filter(|f| !f.already_running)
-                    .map(|f| f.run.clone());
+                let initial_panes = None; // TODO: support this?
+                let block_on_first_terminal = false; // TODO: support this?
 
-                let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> = vec![];
-                let mut new_floating_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> = vec![];
+                pty.spawn_terminals_for_layout_override(
+                    cwd,
+                    tiled_layout,
+                    floating_panes_layout,
+                    default_shell,
+                    plugin_ids,
+                    initial_panes,
+                    tab_index,
+                    block_on_first_terminal,
+                    client_id,
+                    swap_tiled_layouts,
+                    swap_floating_layouts,
+                    completion_tx,
+                )
+                .with_context(err_context)?;
 
-                let default_shell = pty.get_default_terminal(None, None);
-
-                // Spawn terminals for tiled panes
-                for run_instruction in extracted_run_instructions {
-                    if let Some(new_pane_data) =
-                        pty.apply_run_instruction(run_instruction, default_shell.clone())?
-                    {
-                        new_pane_pids.push(new_pane_data);
-                    }
-                }
-
-                // Spawn terminals for floating panes
-                for run_instruction in extracted_floating_run_instructions {
-                    if let Some(new_pane_data) =
-                        pty.apply_run_instruction(run_instruction, default_shell.clone())?
-                    {
-                        new_floating_pane_pids.push(new_pane_data);
-                    }
-                }
-
-                // Convert to the format expected by ScreenInstruction
-                let new_tab_pane_ids: Vec<(u32, Option<RunCommand>)> = new_pane_pids
-                    .iter()
-                    .map(|(terminal_id, starts_held, run_command, _)| {
-                        if *starts_held {
-                            (*terminal_id, run_command.clone())
-                        } else {
-                            (*terminal_id, None)
-                        }
-                    })
-                    .collect();
-
-                let new_tab_floating_pane_ids: Vec<(u32, Option<RunCommand>)> = new_floating_pane_pids
-                    .iter()
-                    .map(|(terminal_id, starts_held, run_command, _)| {
-                        if *starts_held {
-                            (*terminal_id, run_command.clone())
-                        } else {
-                            (*terminal_id, None)
-                        }
-                    })
-                    .collect();
-
-                // Send back to screen
-                pty.bus
-                    .senders
-                    .send_to_screen(ScreenInstruction::OverrideLayoutComplete(
-                        tiled_layout,
-                        floating_layouts,
-                        swap_tiled_layouts,
-                        swap_floating_layouts,
-                        new_tab_pane_ids,
-                        new_tab_floating_pane_ids,
-                        plugin_ids,
-                        tab_index,
-                        client_id,
-                        completion_tx,
-                    ))
-                    .with_context(err_context)?;
-
-                // Start the terminals
-                let mut terminals_to_start = vec![];
-                terminals_to_start.append(&mut new_pane_pids);
-                terminals_to_start.append(&mut new_floating_pane_pids);
-
-                for (terminal_id, _starts_held, _run_command, pid) in terminals_to_start {
-                    match pid {
-                        Ok(pid) => {
-                            pty.id_to_child_pid.insert(terminal_id, pid);
-                        },
-                        Err(err) => {
-                            log::error!("Failed to spawn terminal for override layout: {:?}", err);
-                        },
-                    }
-                }
+//                 let err_context = || "failed to handle override layout";
+// 
+//                 // Extract run instructions from tiled layout
+//                 let extracted_run_instructions = tiled_layout.extract_run_instructions();
+// 
+//                 // Extract run instructions from floating layouts (excluding already_running)
+//                 let extracted_floating_run_instructions = floating_layouts
+//                     .iter()
+//                     .filter(|f| !f.already_running)
+//                     .map(|f| f.run.clone());
+// 
+//                 let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> = vec![];
+//                 let mut new_floating_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> = vec![];
+// 
+//                 let default_shell = pty.get_default_terminal(None, None);
+// 
+//                 // Spawn terminals for tiled panes
+//                 for run_instruction in extracted_run_instructions {
+//                     if let Some(new_pane_data) =
+//                         pty.apply_run_instruction(run_instruction, default_shell.clone())?
+//                     {
+//                         new_pane_pids.push(new_pane_data);
+//                     }
+//                 }
+// 
+//                 // Spawn terminals for floating panes
+//                 for run_instruction in extracted_floating_run_instructions {
+//                     if let Some(new_pane_data) =
+//                         pty.apply_run_instruction(run_instruction, default_shell.clone())?
+//                     {
+//                         new_floating_pane_pids.push(new_pane_data);
+//                     }
+//                 }
+// 
+//                 // Convert to the format expected by ScreenInstruction
+//                 let new_tab_pane_ids: Vec<(u32, Option<RunCommand>)> = new_pane_pids
+//                     .iter()
+//                     .map(|(terminal_id, starts_held, run_command, _)| {
+//                         if *starts_held {
+//                             (*terminal_id, run_command.clone())
+//                         } else {
+//                             (*terminal_id, None)
+//                         }
+//                     })
+//                     .collect();
+// 
+//                 let new_tab_floating_pane_ids: Vec<(u32, Option<RunCommand>)> = new_floating_pane_pids
+//                     .iter()
+//                     .map(|(terminal_id, starts_held, run_command, _)| {
+//                         if *starts_held {
+//                             (*terminal_id, run_command.clone())
+//                         } else {
+//                             (*terminal_id, None)
+//                         }
+//                     })
+//                     .collect();
+// 
+//                 // Send back to screen
+//                 pty.bus
+//                     .senders
+//                     .send_to_screen(ScreenInstruction::OverrideLayoutComplete(
+//                         tiled_layout,
+//                         floating_layouts,
+//                         swap_tiled_layouts,
+//                         swap_floating_layouts,
+//                         new_tab_pane_ids,
+//                         new_tab_floating_pane_ids,
+//                         plugin_ids,
+//                         tab_index,
+//                         client_id,
+//                         completion_tx,
+//                     ))
+//                     .with_context(err_context)?;
+// 
+//                 // Start the terminals
+//                 let mut terminals_to_start = vec![];
+//                 terminals_to_start.append(&mut new_pane_pids);
+//                 terminals_to_start.append(&mut new_floating_pane_pids);
+// 
+//                 for (terminal_id, _starts_held, _run_command, pid) in terminals_to_start {
+//                     match pid {
+//                         Ok(pid) => {
+//                             pty.id_to_child_pid.insert(terminal_id, pid);
+//                         },
+//                         Err(err) => {
+//                             log::error!("Failed to spawn terminal for override layout: {:?}", err);
+//                         },
+//                     }
+//                 }
             },
             PtyInstruction::ClosePane(id, _completion_tx) => {
                 pty.close_pane(id)
@@ -1262,6 +1301,234 @@ impl Pty {
                 continue;
             }
             match pid_primary {
+                Ok(pid_primary) => {
+                    let terminal_bytes = task::spawn({
+                        let senders = self.bus.senders.clone();
+                        let os_input = self
+                            .bus
+                            .os_input
+                            .as_ref()
+                            .with_context(err_context)?
+                            .clone();
+                        let debug_to_file = self.debug_to_file;
+                        async move {
+                            TerminalBytes::new(
+                                pid_primary,
+                                senders,
+                                os_input,
+                                debug_to_file,
+                                terminal_id,
+                            )
+                            .listen()
+                            .await
+                            .context("failed to spawn terminals for layout")
+                            .fatal();
+                        }
+                    });
+                    self.task_handles.insert(terminal_id, terminal_bytes);
+                },
+                _ => match run_command {
+                    Some(run_command) => {
+                        if run_command.hold_on_close {
+                            send_command_not_found_to_screen(
+                                self.bus.senders.clone(),
+                                terminal_id,
+                                run_command.clone(),
+                            )
+                            .with_context(err_context)?;
+                        } else {
+                            self.close_pane(PaneId::Terminal(terminal_id))
+                                .with_context(err_context)?;
+                        }
+                    },
+                    None => {
+                        self.close_pane(PaneId::Terminal(terminal_id))
+                            .with_context(err_context)?;
+                    },
+                },
+            }
+        }
+        for (terminal_id, originating_plugin) in originating_plugins_to_inform {
+            self.inform_originating_plugin_of_open(terminal_id, originating_plugin);
+        }
+        Ok(())
+    }
+    pub fn spawn_terminals_for_layout_override(
+        &mut self,
+        cwd: Option<PathBuf>,
+        layout: TiledPaneLayout,
+        floating_panes_layout: Vec<FloatingPaneLayout>,
+        default_shell: Option<TerminalAction>,
+        plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
+        initial_panes: Option<Vec<CommandOrPlugin>>,
+        tab_index: usize,
+        block_on_first_terminal: bool,
+        client_id: ClientId,
+        swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
+        swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let err_context = || format!("failed to spawn terminals for layout for");
+
+        let mut default_shell =
+            default_shell.unwrap_or_else(|| self.get_default_terminal(cwd, None));
+        self.fill_cwd(&mut default_shell, client_id);
+
+        // Match initial_panes commands to empty slots in the layout
+        let mut layout = layout;
+        if let Some(ref initial_panes_vec) = initial_panes {
+            for initial_pane in initial_panes_vec.iter() {
+                if let CommandOrPlugin::Command(run_command_action) = initial_pane {
+                    let run_command: RunCommand = run_command_action.clone().into();
+                    if !layout.replace_next_empty_slot_with_run(Run::Command(run_command)) {
+                        log::warn!("More initial_panes provided than empty slots available");
+                        break;
+                    }
+                }
+                // Skip CommandOrPlugin::Plugin entries (already handled by plugin thread)
+            }
+        }
+
+        let extracted_run_instructions = layout.extract_run_instructions();
+        let extracted_floating_run_instructions = floating_panes_layout
+            .iter()
+            .filter(|f| !f.already_running)
+            .map(|f| f.run.clone());
+        let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> = vec![]; // (terminal_id,
+                                                                                             // starts_held,
+                                                                                             // run_command,
+                                                                                             // file_descriptor)
+
+        let mut new_floating_panes_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> =
+            vec![]; // same
+                    // as
+                    // new_pane_pids
+
+        let mut originating_plugins_to_inform = vec![];
+
+        for run_instruction in extracted_run_instructions {
+            let originating_plugin = run_instruction.as_ref().and_then(|r| {
+                if let Run::Command(run_command) = r {
+                    run_command.originating_plugin.clone()
+                } else {
+                    None
+                }
+            });
+            let mut terminal_id = None;
+            if let Some(new_pane_data) =
+                self.apply_run_instruction(run_instruction, default_shell.clone())?
+            {
+                terminal_id = Some(new_pane_data.0);
+                new_pane_pids.push(new_pane_data);
+            }
+            if let (Some(originating_plugin), Some(terminal_id)) = (originating_plugin, terminal_id)
+            {
+                originating_plugins_to_inform.push((terminal_id, originating_plugin));
+            }
+        }
+        for run_instruction in extracted_floating_run_instructions {
+            let originating_plugin = run_instruction.as_ref().and_then(|r| {
+                if let Run::Command(run_command) = r {
+                    run_command.originating_plugin.clone()
+                } else {
+                    None
+                }
+            });
+            let mut terminal_id = None;
+            if let Some(new_pane_data) =
+                self.apply_run_instruction(run_instruction, default_shell.clone())?
+            {
+                terminal_id = Some(new_pane_data.0);
+                new_floating_panes_pids.push(new_pane_data);
+            }
+            if let (Some(originating_plugin), Some(terminal_id)) = (originating_plugin, terminal_id)
+            {
+                originating_plugins_to_inform.push((terminal_id, originating_plugin));
+            }
+        }
+
+        // Option<RunCommand> should only be Some if the pane starts held
+        let new_tab_pane_ids: Vec<(u32, Option<RunCommand>)> = new_pane_pids
+            .iter()
+            .map(|(terminal_id, starts_held, run_command, _)| {
+                if *starts_held {
+                    (*terminal_id, run_command.clone())
+                } else {
+                    (*terminal_id, None)
+                }
+            })
+            .collect();
+        let new_tab_floating_pane_ids: Vec<(u32, Option<RunCommand>)> = new_floating_panes_pids
+            .iter()
+            .map(|(terminal_id, starts_held, run_command, _)| {
+                if *starts_held {
+                    (*terminal_id, run_command.clone())
+                } else {
+                    (*terminal_id, None)
+                }
+            })
+            .collect();
+
+//         // Track the first terminal_id if blocking is requested
+//         let first_initial_pane_terminal_id = if block_on_first_terminal && !new_pane_pids.is_empty()
+//         {
+//             Some(new_pane_pids[0].0)
+//         } else {
+//             None
+//         };
+
+//         // Prepare blocking_terminal for ApplyLayout
+//         let (direct_completion_tx, blocking_terminal) =
+//             if let Some(terminal_id) = first_initial_pane_terminal_id {
+//                 (None, completion_tx.map(|tx| (terminal_id, tx)))
+//             } else {
+//                 (completion_tx, None)
+//             };
+
+//         self.bus
+//             .senders
+//             .send_to_screen(ScreenInstruction::ApplyLayout(
+//                 layout,
+//                 floating_panes_layout,
+//                 new_tab_pane_ids.clone(),
+//                 new_tab_floating_pane_ids.clone(),
+//                 plugin_ids,
+//                 tab_index,
+//                 should_change_focus_to_new_tab,
+//                 (client_id, is_web_client),
+//                 direct_completion_tx,
+//                 blocking_terminal,
+//             ))
+//             .with_context(err_context)?;
+
+            self.bus
+                .senders
+                .send_to_screen(ScreenInstruction::OverrideLayoutComplete(
+                    layout,
+                    floating_panes_layout,
+                    swap_tiled_layouts,
+                    swap_floating_layouts,
+                    new_tab_pane_ids,
+                    new_tab_floating_pane_ids,
+                    plugin_ids,
+                    tab_index,
+                    client_id,
+                    completion_tx,
+                ))
+                .with_context(err_context)?;
+
+
+
+   let mut terminals_to_start = vec![];
+
+   terminals_to_start.append(&mut new_pane_pids);
+   terminals_to_start.append(&mut new_floating_panes_pids);
+   for (terminal_id, starts_held, run_command, pid_primary) in terminals_to_start {
+       if starts_held {
+           // we do not run a command or start listening for bytes on held panes
+           continue;
+       }
+       match pid_primary {
                 Ok(pid_primary) => {
                     let terminal_bytes = task::spawn({
                         let senders = self.bus.senders.clone();

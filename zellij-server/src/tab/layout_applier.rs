@@ -134,7 +134,7 @@ impl<'a> LayoutApplier<'a> {
         log::info!("LayoutApplier override_layout");
         // true => should_show_floating_panes
         let hide_floating_panes = tiled_panes_layout.hide_floating_panes;
-        self.override_tiled_panes_layout_for_existing_panes(&tiled_panes_layout, new_terminal_ids, &mut new_plugin_ids)?;
+        self.override_tiled_panes_layout_for_existing_panes(&tiled_panes_layout, new_terminal_ids, &mut new_plugin_ids, client_id)?;
 
         let layout_has_floating_panes = self.override_floating_panes_layout_for_existing_panes(
             &floating_panes_layout,
@@ -218,7 +218,16 @@ impl<'a> LayoutApplier<'a> {
         tiled_panes_layout: &TiledPaneLayout,
         mut new_terminal_ids: Vec<(u32, HoldForCommand)>,
         mut new_plugin_ids: &mut HashMap<RunPluginOrAlias, Vec<u32>>,
+        client_id: ClientId
     ) -> Result<()> {
+        // TODO: CONTINUE HERE - test this with:
+        // 1. focus
+        // 2. more terminal panes
+        // 3. command panes
+        // 4. editor panes
+        // 5. panes with cwd
+        // 6. all above permutations with existing that should be closed and new that should not
+        // 7. test what happens when the pane the user was focused on is closed
         let positions_in_layout = self.flatten_layout(tiled_panes_layout, false)?;
 
         let mut existing_tab_state = ExistingTabState::new(self.tiled_panes.drain());
@@ -273,6 +282,11 @@ impl<'a> LayoutApplier<'a> {
             &mut new_plugin_ids,
             &mut positions_left_without_exact_matches,
         )?;
+
+        if let Some(pane_id) = focus_pane_id {
+            *self.focus_pane_id = Some(pane_id);
+            self.tiled_panes.focus_pane(pane_id, client_id);
+        }
 
         LayoutApplier::offset_viewport(
             self.viewport.clone(),
@@ -593,6 +607,8 @@ impl<'a> LayoutApplier<'a> {
             _ => None,
         };
 
+        let initial_title_clone = initial_title.clone(); // TODO: REMOVEME
+
         // Check if this terminal should receive the blocking completion_tx
         let notification_end = if let Some((blocking_pid, _)) = &self.blocking_terminal {
             if *blocking_pid == pid {
@@ -634,6 +650,7 @@ impl<'a> LayoutApplier<'a> {
         if let Some(held_command) = hold_for_command {
             new_pane.hold(None, true, held_command.clone());
         }
+        log::info!("adding tiled pane with pid: {:?}, initial_title: {:?}", pid, initial_title_clone);
         self.tiled_panes
             .add_pane_with_existing_geom(PaneId::Terminal(pid), Box::new(new_pane));
         Ok(())

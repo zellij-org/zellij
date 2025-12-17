@@ -98,6 +98,8 @@ pub enum PluginInstruction {
         Option<NotificationEnd>,      // completion signal
     ),
     OverrideLayout(
+        Option<PathBuf>, // cwd
+        Option<TerminalAction>, // default_shell
         TiledPaneLayout,
         Vec<FloatingPaneLayout>,
         Option<Vec<SwapTiledLayout>>,
@@ -580,6 +582,8 @@ pub(crate) fn plugin_thread_main(
                 )));
             },
             PluginInstruction::OverrideLayout(
+                cwd,
+                default_shell,
                 mut tiled_layout,
                 mut floating_layouts,
                 swap_tiled_layouts,
@@ -645,6 +649,8 @@ pub(crate) fn plugin_thread_main(
 
                 // Send to pty thread
                 drop(bus.senders.send_to_pty(PtyInstruction::OverrideLayout(
+                    cwd,
+                    default_shell,
                     tiled_layout,
                     floating_layouts,
                     swap_tiled_layouts,

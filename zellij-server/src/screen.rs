@@ -296,6 +296,8 @@ pub enum ScreenInstruction {
     PreviousSwapLayout(ClientId, Option<NotificationEnd>),
     NextSwapLayout(ClientId, Option<NotificationEnd>),
     OverrideLayout(
+        Option<PathBuf>, // cwd
+        Option<TerminalAction>, // default_shell
         TiledPaneLayout,
         Vec<FloatingPaneLayout>,
         Option<Vec<SwapTiledLayout>>,
@@ -5184,6 +5186,8 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::OverrideLayout(
+                cwd,
+                default_shell,
                 mut tiled_layout,
                 mut floating_layouts,
                 swap_tiled_layouts,
@@ -5215,6 +5219,8 @@ pub(crate) fn screen_thread_main(
                     .bus
                     .senders
                     .send_to_plugin(PluginInstruction::OverrideLayout(
+                        cwd,
+                        default_shell,
                         tiled_layout,
                         floating_layouts,
                         swap_tiled_layouts,
