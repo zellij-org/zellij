@@ -906,7 +906,6 @@ impl Tab {
             client_id,
         ) {
             Ok(should_show_floating_panes) => {
-                log::info!("done overriding layout, tiled_panes: {:#?}", self.tiled_panes.get_panes().map(|(_, p)| p.pid()).collect::<Vec<_>>());
                 if should_show_floating_panes && !self.floating_panes.panes_are_visible() {
                     self.toggle_floating_panes(Some(client_id), None, None)
                         .non_fatal();

@@ -5198,7 +5198,7 @@ pub(crate) fn screen_thread_main(
                 let active_tab = match screen.get_active_tab(client_id) {
                     Ok(tab) => tab,
                     Err(_) => {
-                        log::info!("OverrideLayout: No active tab for client_id {:?}", client_id);
+                        log::error!("OverrideLayout: No active tab for client_id {:?}", client_id);
                         continue;
                     }
                 };
@@ -5254,9 +5254,6 @@ pub(crate) fn screen_thread_main(
                     )
                 });
                 screen.render(None);
-//                 log::info!("new_pane_pids: {:?}", new_terminal_pids);
-//                 log::info!("new_floating_pane_pids: {:?}", new_floating_pane_pids);
-//                 log::info!("plugin_ids: {:?}", plugin_ids);
 
             },
             ScreenInstruction::QueryTabNames(client_id, completion_tx) => {

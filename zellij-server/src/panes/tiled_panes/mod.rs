@@ -2566,6 +2566,17 @@ impl TiledPanes {
     pub fn set_active_panes(&mut self, active_panes: ActivePanes) {
         self.active_panes = active_panes;
     }
+    pub fn move_client_focus_to_existing_panes(&mut self) {
+        let existing_pane_ids: Vec<PaneId> = self.panes.keys().copied().collect();
+        let nonexisting_panes_that_are_focused = self.active_panes
+            .values()
+            .filter(|pane_id| !existing_pane_ids.contains(pane_id))
+            .copied()
+            .collect::<Vec<_>>();
+        for pane_id in nonexisting_panes_that_are_focused {
+            self.move_clients_out_of_pane(pane_id);
+        }
+    }
     fn move_clients_between_panes(&mut self, from_pane_id: PaneId, to_pane_id: PaneId) {
         let clients_in_pane: Vec<ClientId> = self
             .active_panes

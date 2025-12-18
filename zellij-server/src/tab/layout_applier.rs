@@ -131,7 +131,6 @@ impl<'a> LayoutApplier<'a> {
         mut new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         client_id: ClientId,
     ) -> Result<bool> {
-        log::info!("LayoutApplier override_layout");
         // true => should_show_floating_panes
         let hide_floating_panes = tiled_panes_layout.hide_floating_panes;
         self.override_tiled_panes_layout_for_existing_panes(&tiled_panes_layout, new_terminal_ids, &mut new_plugin_ids, client_id)?;
@@ -287,6 +286,9 @@ impl<'a> LayoutApplier<'a> {
             *self.focus_pane_id = Some(pane_id);
             self.tiled_panes.focus_pane(pane_id, client_id);
         }
+
+        // in case focused panes were closed by the override
+        self.tiled_panes.move_client_focus_to_existing_panes();
 
         LayoutApplier::offset_viewport(
             self.viewport.clone(),
@@ -607,8 +609,6 @@ impl<'a> LayoutApplier<'a> {
             _ => None,
         };
 
-        let initial_title_clone = initial_title.clone(); // TODO: REMOVEME
-
         // Check if this terminal should receive the blocking completion_tx
         let notification_end = if let Some((blocking_pid, _)) = &self.blocking_terminal {
             if *blocking_pid == pid {
@@ -650,7 +650,6 @@ impl<'a> LayoutApplier<'a> {
         if let Some(held_command) = hold_for_command {
             new_pane.hold(None, true, held_command.clone());
         }
-        log::info!("adding tiled pane with pid: {:?}, initial_title: {:?}", pid, initial_title_clone);
         self.tiled_panes
             .add_pane_with_existing_geom(PaneId::Terminal(pid), Box::new(new_pane));
         Ok(())
@@ -831,7 +830,7 @@ impl<'a> LayoutApplier<'a> {
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         mut new_plugin_ids: &mut HashMap<RunPluginOrAlias, Vec<u32>>,
     ) -> Result<bool> {
-        let layout_has_floating_panes = self.floating_panes.has_panes();
+        let layout_has_floating_panes = !floating_panes_layout.is_empty();
         let mut positions_in_layout = floating_panes_layout.clone();
         let mut logical_position = 0;
         for floating_pane_layout in positions_in_layout.iter_mut() {
@@ -937,6 +936,9 @@ impl<'a> LayoutApplier<'a> {
             self.floating_panes
                 .focus_pane_for_all_clients(focused_floating_pane);
         }
+
+        // in case focused panes were closed by the override
+        self.floating_panes.move_client_focus_to_existing_panes();
 
         if layout_has_floating_panes {
             Ok(true)

@@ -264,6 +264,17 @@ impl FloatingPanes {
         );
         floating_pane_grid.find_room_for_new_pane()
     }
+    pub fn move_client_focus_to_existing_panes(&mut self) {
+        let existing_pane_ids: Vec<PaneId> = self.panes.keys().copied().collect();
+        let nonexisting_panes_that_are_focused = self.active_panes
+            .values()
+            .filter(|pane_id| !existing_pane_ids.contains(pane_id))
+            .copied()
+            .collect::<Vec<_>>();
+        for pane_id in nonexisting_panes_that_are_focused {
+            self.move_clients_out_of_pane(pane_id);
+        }
+    }
     pub fn position_floating_pane_layout(
         &mut self,
         floating_pane_layout: &FloatingPaneLayout,

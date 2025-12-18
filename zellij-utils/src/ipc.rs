@@ -303,7 +303,6 @@ where
                 },
             },
             Err(e) => {
-                warn!("Error in protobuf IpcReceiver.recv_client_msg(): {:?}", e);
                 None
             },
         }
@@ -319,7 +318,6 @@ where
                 },
             },
             Err(e) => {
-                warn!("Error in protobuf IpcReceiver.recv_server_msg(): {:?}", e);
                 None
             },
         }
@@ -393,7 +391,6 @@ pub fn recv_protobuf_client_to_server(
             },
         },
         Err(e) => {
-            warn!("Error reading protobuf message: {:?}", e);
             None
         },
     }
@@ -411,7 +408,6 @@ pub fn recv_protobuf_server_to_client(
             },
         },
         Err(e) => {
-            warn!("Error reading protobuf message: {:?}", e);
             None
         },
     }
