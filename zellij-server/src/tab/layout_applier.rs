@@ -221,12 +221,19 @@ impl<'a> LayoutApplier<'a> {
     ) -> Result<()> {
         // TODO: CONTINUE HERE - test this with:
         // 1. focus
+        //  - focus on floating panes (with/without originally having them)
+        //  - focus on tiled panes while floating panes exist
+        //  - focus on both
+        //  - hide_floating_panes with/without focus
         // 2. more terminal panes
         // 3. command panes
         // 4. editor panes
         // 5. panes with cwd
         // 6. all above permutations with existing that should be closed and new that should not
         // 7. test what happens when the pane the user was focused on is closed
+        // 8. multiple users
+        // 9. multiple users in different tabs
+        // 10. layout with multiple tabs (do we support this?)
         let positions_in_layout = self.flatten_layout(tiled_panes_layout, false)?;
 
         let mut existing_tab_state = ExistingTabState::new(self.tiled_panes.drain());
@@ -844,9 +851,8 @@ impl<'a> LayoutApplier<'a> {
         // look for exact matches, first by pane contents and then by logical position
         for floating_pane_layout in positions_in_layout {
             match existing_tab_state
-                .find_and_extract_exact_match_pane(
+                .find_and_extract_exact_pane_with_same_run(
                     &floating_pane_layout.run,
-                    floating_pane_layout.logical_position,
                 ) {
                 Some(pane) => {
                     panes_to_apply.push((pane, floating_pane_layout));

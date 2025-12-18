@@ -1933,7 +1933,6 @@ impl Pty {
         &mut self,
         session_layout_metadata: &mut SessionLayoutMetadata,
     ) {
-        log::info!("populate_session_layout_metadata");
         let terminal_ids = session_layout_metadata.all_terminal_ids();
         let mut terminal_ids_to_commands: HashMap<u32, Vec<String>> = HashMap::new();
         let mut terminal_ids_to_cwds: HashMap<u32, PathBuf> = HashMap::new();
